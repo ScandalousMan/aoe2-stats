@@ -1,0 +1,98 @@
+# Contract: DataProvider interfaces
+
+The boundary constitution III draws. `apps/*` and `packages/core` depend on these Protocols and
+never on a concrete provider, a URL or an HTTP client.
+
+Ground truth for endpoint shapes is `docs/data-sources.md` and the `aoe2-data-sources` skill. This
+document is about the *interface*, not the wire format.
+
+## Shared obligations
+
+Every provider, without exception:
+
+- takes an explicit timeout; there is no default that means "forever";
+- sends `User-Agent: aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)`;
+- passes through a token bucket before every request;
+- persists the raw response verbatim before any transformation (constitution IV);
+- records a `provider_calls` row;
+- raises a typed error — `ProviderUnavailable`, `ProviderRateLimited`, `ProviderContractViolation` —
+  and never returns a partially-parsed object;
+- validates strictly with Pydantic. A field of an unexpected type is a `ProviderContractViolation`,
+  never a coerced value. Silent coercion is how wrong data becomes permanent.
+
+## `SteamAuthProvider`
+
+```python
+def begin(self, return_to: str, state: str) -> str: ...
+def verify(self, callback_params: Mapping[str, str]) -> SteamId64 | None: ...
+```
+
+`verify` performs the `check_authentication` round trip. It returns `None` for any failure and never
+raises for an invalid assertion, so that a caller cannot accidentally treat an exception path as
+success. It validates `return_to` against configuration and `claimed_id` against the exact expected
+pattern.
+
+## `ProfileProvider`
+
+```python
+async def resolve_profile(self, steam_id64: str) -> ProfileRef | None: ...
+async def personal_stats(self, profile_ids: Sequence[int]) -> list[LeaderboardSnapshot]: ...
+```
+
+`resolve_profile` returns `None` when the Steam account has no AoE2 profile — an ordinary outcome
+(FR-003), not an error. `personal_stats` accepts up to 50 profiles per call.
+
+## `MatchHistoryProvider`
+
+```python
+async def recent_matches(self, profile_ids: Sequence[int]) -> list[RawMatch]: ...
+```
+
+Batched, up to 10 profiles per call — the response is roughly 400 KB per profile. `RawMatch` carries
+the parsed fields *and* the untouched payload.
+
+## `ReplayProvider`
+
+```python
+async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | Unavailable: ...
+```
+
+The one interface where the failure taxonomy is part of the contract, because the caller must record
+different outcomes in the database:
+
+| Result | Meaning | Caller does |
+| --- | --- | --- |
+| `ReplayBlob` | bytes, filename, content type | verify, store, mark `stored` |
+| `Unavailable(reason="not_recorded")` | 404, match younger than the retention window | mark `unavailable`, stop |
+| `Unavailable(reason="expired")` | 404, match older than the window | mark `expired` — **and alert** |
+| `ProviderRateLimited` | 429 or an unexpected 403 | **stop the whole run** and alert |
+| `ProviderUnavailable` | 5xx, timeout | back off, retry later |
+
+Distinguishing `not_recorded` from `expired` is done by the caller from `completed_at`, not by the
+provider: the endpoint returns an identical 404 for both. Getting this wrong means either alert
+fatigue or silence on the one metric that matters.
+
+`ProviderRateLimited` stopping the entire run, rather than that one capture, is deliberate. The
+budget is 21 days; there is always tomorrow. Being blocked by the source is not recoverable on the
+same timescale.
+
+## `EnrichmentProvider` (aoe2companion)
+
+```python
+async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]: ...
+```
+
+Behind a circuit breaker, and the **only** provider whose failure is not an error. It returns
+whatever it managed to get; missing keys are normal. A 403 here is expected noise (see
+`docs/data-sources.md`). Whether it is reachable from Vercel at all is unverified — the application
+must render correctly with this provider returning nothing, and that case gets a test.
+
+Its `linkedProfiles` field is **not to be consumed**. FR-045: only a completed sign-in establishes
+that two profiles belong to one person.
+
+## Fixtures
+
+`packages/providers/fixtures/` holds frozen real responses, captured with the checks in
+`scripts/checks/`. Unit tests use them exclusively; the network is unavailable in unit tests by
+construction. Contract tests against live APIs run nightly and are the only place a schema change is
+detected.

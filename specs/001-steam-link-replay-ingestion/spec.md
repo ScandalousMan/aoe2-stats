@@ -29,12 +29,25 @@ constitution principle I.
   user's AoE2 identity *is* their Steam account: losing Steam means losing the game profile anyway,
   so a separate local account would survive only as an empty shell. Resolves FR-006.
 
-- **Q: A player can hold several AoE2 profiles under one Steam account. One profile or several?**
-  A: Capture all of them, present one. Ingestion covers every profile discovered for the Steam
-  identity; the interface shows a single primary profile chosen by the user. This follows
-  constitution principle I: a second profile's replays face the same ~31-day window, so not
-  capturing them destroys them permanently, whereas presenting them is a display problem that can be
-  solved at any later date. Resolves FR-007.
+- **Q: A player can hold several AoE2 profiles. One profile or several?**
+  A: Capture all of them, present one. Ingestion covers every profile the user has linked; the
+  interface shows a single primary profile chosen by the user. This follows constitution principle
+  I: a second profile's replays face the same ~31-day window, so not capturing them destroys them
+  permanently, whereas presenting them is a display problem solvable at any later date.
+  Resolves FR-007.
+
+- **Correction, same session — how "several profiles" actually works.** The original wording assumed
+  one Steam account could hold several AoE2 profiles. Measurement says otherwise: **one Steam account
+  maps to exactly one AoE2 profile.** What players call a second profile is a second *Steam account*.
+  A well-known player was observed with four profiles across four distinct Steam accounts.
+  Consequently, supporting several profiles means letting a user **link several Steam accounts to one
+  aoe2-stats account**, each proven by its own sign-in. It cannot be done by discovery.
+
+  Third-party services publish a community-curated mapping between a player's accounts. We
+  deliberately do **not** use it, for two reasons: it is an unverifiable claim about someone's
+  identity, and acting on it would silently reveal that one account is an alternate of another —
+  something players frequently take pains to keep separate. Only a completed sign-in proves
+  ownership. Reflected in FR-007, FR-042 and FR-045.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -59,13 +72,15 @@ and confirm the correct profile and current ratings appear without any manual en
 3. **Given** a Steam account whose owner has never played AoE2 II:DE online, **When** they sign in,
    **Then** the system explains clearly that no AoE2 profile could be found and offers to retry
    rather than leaving them on an empty screen.
-4. **Given** a Steam account holding more than one AoE2 profile, **When** the user signs in,
-   **Then** all of them are discovered, the user picks which one to see, and they are told that all
-   of them are being archived.
-5. **Given** a signed-in user, **When** they choose to unlink, **Then** automatic ingestion stops for
-   every one of their profiles and they are told plainly what happens to the replays already
-   archived.
-6. **Given** a visitor about to consent, **When** they are shown what the service does, **Then** they
+4. **Given** a user who already has one linked account, **When** they sign in with a second Steam
+   account, **Then** it is added to the same aoe2-stats account, both profiles begin being archived,
+   and the user picks which one the interface shows.
+5. **Given** a user with several linked profiles, **When** anyone other than that user views
+   anything the service exposes, **Then** nothing reveals that those profiles belong to the same
+   person.
+6. **Given** a signed-in user, **When** they choose to unlink a profile, **Then** automatic ingestion
+   stops for it and they are told plainly what happens to the replays already archived.
+7. **Given** a visitor about to consent, **When** they are shown what the service does, **Then** they
    are told before consenting that access depends entirely on their Steam account and cannot be
    recovered by any other means.
 
@@ -191,8 +206,10 @@ records or in storage.
 - A user links a Steam account that owns AoE2 but has only ever played single-player: no online
   profile exists.
 - A player owns several AoE2 profiles under one Steam account, or has changed their in-game alias.
-- A user acquires a new AoE2 profile after linking: it must be discovered and archived without them
-  having to do anything.
+- A user creates a new Steam account and starts playing on it: nothing can discover this, so the
+  onus is on the user to link it, and the consequence of not doing so — permanent loss — must be
+  stated where they would see it.
+- A user links a second Steam account that is already linked to a different aoe2-stats account.
 - A user loses access to their Steam account: by design there is no recovery path, and they were
   told so before consenting.
 - The match discovery source is unreachable for several days: capture must catch up automatically,
@@ -231,10 +248,15 @@ records or in storage.
   passwords, and MUST NOT offer password reset, email verification or account recovery: a user who
   loses access to their Steam account loses access here, and this MUST be stated plainly before they
   consent to anything being archived.
-- **FR-007**: System MUST discover every AoE2 profile belonging to the signed-in Steam identity, not
-  only the most active one.
-- **FR-042**: System MUST ingest replays for **all** of the user's discovered profiles, so that no
-  profile's matches expire uncaptured.
+- **FR-007**: System MUST let a user link more than one Steam account to their single aoe2-stats
+  account, each proven by its own completed sign-in, since one Steam account corresponds to exactly
+  one AoE2 profile.
+- **FR-042**: System MUST ingest replays for **all** of the user's linked profiles, so that no
+  linked profile's matches expire uncaptured.
+- **FR-045**: System MUST NOT infer, suggest or act upon any relationship between AoE2 profiles that
+  the user has not proven by signing in. Third-party mappings between a player's accounts MUST NOT be
+  used to link, merge or display profiles together: they are unverifiable, and surfacing them would
+  expose alternate accounts their owners keep separate on purpose.
 - **FR-043**: System MUST let the user designate one discovered profile as primary, and MUST present
   ratings and match history for that profile. Where a user has more than one profile, the interface
   MUST make the others reachable rather than hiding that they exist and are being archived.
@@ -313,7 +335,8 @@ records or in storage.
 ### Key Entities
 
 - **User**: someone with an account. Holds their consent decisions and their allowlist status.
-- **Steam identity**: the verified Steam account bound to a user.
+- **Steam identity**: a Steam account whose ownership the user has proven by signing in. A user may
+  hold several; each maps to exactly one AoE2 profile.
 - **Player profile**: an AoE2 player as the game knows them — identifier, alias, country. Exists for
   users and for third parties alike; only users' profiles are linked to an account.
 - **Profile link**: the association between a user and one of their player profiles, whether it is
@@ -358,6 +381,8 @@ records or in storage.
 
 ## Assumptions
 
+- One Steam account corresponds to exactly one AoE2 profile. Verified against the source, 2026-08-19.
+  Multi-profile support therefore means multiple linked Steam accounts, never discovery.
 - Steam is the only sign-in route in scope, and the only credential. Players on other platforms are
   out of scope for this feature and this is stated to them explicitly rather than left to fail.
 - Because there is no second credential, there is no account recovery. This is a deliberate trade:
