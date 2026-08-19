@@ -6,11 +6,18 @@ this file in the same change. A PR that adds personal data without a row here is
 Controller: the project owner. Contact and DPO details go here before the first real user is
 onboarded.
 
+This register is wrong in **both** directions, and both matter: a category collected without a row
+here is a breach, and a row for a category that is not collected misdescribes the processing to
+whoever reads it, with no way for them to tell. So a row is removed as carefully as it is added.
+
+A verified Steam sign-in is the sole credential. There is no password and no email address anywhere
+in the system, which is why neither appears above.
+
 ## Processing activities
 
 | # | Purpose | Data subjects | Categories of data | Legal basis | Source | Retention | Recipients |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Account and authentication | registered users | email, hashed credential or OAuth subject, steamid64, Relic profile_id | contract performance (Art. 6-1-b) | the user, via Steam OpenID | until account deletion | none |
+| 1 | Account and authentication | registered users | OpenID claimed identifier, steamid64, Relic profile_id, opaque session identifier | contract performance (Art. 6-1-b) | the user, via Steam OpenID | until account deletion | none |
 | 2 | Displaying stats and match history | registered users | Relic profile_id, alias, country, per-leaderboard rating / rank / W-L / streak, match metadata | contract performance (Art. 6-1-b) | Relic API | until account deletion | none |
 | 3 | Replay archival | registered users | the `.aoe2record` recording of their own matches, containing their actions, alias and in-game chat | explicit consent (Art. 6-1-a), collected separately from account creation | aoe.ms | indefinite, until erasure is requested | none |
 | 4 | Third-party players appearing in a user's matches | other AoE2 players | Relic profile_id, public alias, country, civilisation, result, rating; and, inside archived replays, their in-game actions and chat | legitimate interest (Art. 6-1-f) — the data is already public through the official leaderboards and stats page, and capture is limited to matches the consenting user played in | Relic API, aoe.ms | same as the replay it belongs to | none |
