@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Probe Relic, aoe.ms, aoe2companion and aoestats
+      - name: Probe Steam, Relic, aoe.ms, aoe2companion and aoestats
         run: uv run --with requests scripts/checks/contract_sources.py
 
   parser-canary:

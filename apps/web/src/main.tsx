@@ -7,11 +7,16 @@ import './index.css'
 // (vite.config.ts). Never hand-edited, and not committed — see .gitignore.
 import { routeTree } from './routeTree.gen'
 
-// Scaffold only (T003): a query client with library defaults and a router with no
-// session bootstrap. T017 replaces this with the real shell — `GET /api/me`, the API
-// client that branches on the error `code`, and the footer (T098a).
+// The web shell (T017): one query client, shared with the router so the root route's
+// `beforeLoad` can bootstrap the session through `GET /api/me` (see routes/__root.tsx) via
+// `queryClient.ensureQueryData` instead of a second, disconnected fetch.
 const queryClient = new QueryClient()
-const router = createRouter({ routeTree })
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  // Router-level defaults; __root.tsx's `pendingComponent` is what a slow `beforeLoad` shows.
+  defaultPreload: 'intent',
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

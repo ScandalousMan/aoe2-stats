@@ -5,16 +5,37 @@ These are the only checks allowed to touch the network. They exist to detect a b
 third-party contract before our users do. Run nightly in CI, and by hand whenever a provider
 misbehaves.
 
-Usage:  uv run --with requests scripts/checks/contract_sources.py
+Every check that parses a body writes what it received into `packages/providers/fixtures/` as it
+goes (see `write_json_fixture` / `write_text_fixture` below) — T012's "capture frozen real
+responses" and the nightly contract run are the same act on purpose: a fixture that only a human
+remembers to refresh goes stale silently, one this script rewrites every night cannot. Provider unit
+tests read those files and never touch the network (`providers.md`); this script is the only thing
+that keeps them true.
+
+Usage:  uv run --with requests scripts/checks/contract_sources.py [--capture-fixtures]
 Exit:   0 all contracts hold, 1 at least one broke.
+
+`--capture-fixtures` additionally downloads one full replay body to verify it — a real zip, its
+inner filename, its inner byte count — and then discards it. Every other check already fetches the
+body it verifies, so recording it costs nothing extra; the replay endpoint is the one source where
+"verify" and "fetch a few megabytes just to prove the endpoint still works" are different amounts
+of work, so that one download stays opt-in and out of the nightly run (see `_replay_capture`
+below). Only the metadata the verification produces is written to
+`aoems/replay_200_meta.json` — the body itself is never committed (constitution IX: a third
+party's match data has no purpose recorded for it once the shape is already proven).
 """
 
 from __future__ import annotations
 
+import argparse
+import io
 import json
 import sys
 import time
+import zipfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -25,17 +46,46 @@ USER_AGENT = "aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)"
 RELIC = "https://aoe-api.worldsedgelink.com/community/leaderboard"
 REPLAY = "https://aoe.ms/replay/"
 COMPANION = "https://data.aoe2companion.com/api"
+STEAM_OPENID = "https://steamcommunity.com/openid/login"
 TIMEOUT = 30
 
 # A public, highly active professional profile. Only public leaderboard data is read.
 PROBE_STEAM_ID = "76561197984749679"
 PROBE_PROFILE_ID = 196240
+# A second real, active profile, only ever used alongside the first to exercise batching —
+# neither Relic endpoint accepts a single profile and calls it a contract.
+PROBE_PROFILE_ID_2 = 199325  # "VIT | Hera", pulled live from getLeaderBoard2 on 2026-08-19.
+# An arbitrary, syntactically valid steamid64 confirmed on 2026-08-19 to hold no AoE2 profile —
+# real, reproducible negative case for `ProfileProvider.resolve_profile` (FR-003).
+PROBE_STEAM_ID_NO_PROFILE = "76561197960287930"
+
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "packages" / "providers" / "fixtures"
+
+_args = argparse.ArgumentParser(add_help=True)
+_args.add_argument("--capture-fixtures", action="store_true")
+CAPTURE_FIXTURES = _args.parse_args().capture_fixtures
 
 failures: list[str] = []
 notes: list[str] = []
 
 session = requests.Session()
 session.headers["User-Agent"] = USER_AGENT
+
+
+def write_json_fixture(relative_path: str, payload: Any) -> None:
+    """Freeze a parsed JSON body into `packages/providers/fixtures/`, sorted and indented so a
+    schema change shows up as a small, readable diff rather than a one-line churn.
+    """
+    path = FIXTURES_DIR / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_text_fixture(relative_path: str, payload: str) -> None:
+    """Freeze a non-JSON body (Steam's `check_authentication` reply, aoe.ms's 404 plain text)."""
+    path = FIXTURES_DIR / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload, encoding="utf-8")
 
 
 def check(name: str, *, blocking: bool = True):
@@ -56,11 +106,13 @@ def check(name: str, *, blocking: bool = True):
                 fn()
                 print("   OK" if attempt == 1 else "   OK (second attempt)")
                 return fn
-            except (AssertionError, Exception) as exc:  # noqa: BLE001
+            except (AssertionError, Exception) as exc:
                 if attempt == 1:
                     time.sleep(5)
                     continue
-                label = f"{exc}" if isinstance(exc, AssertionError) else f"{type(exc).__name__}: {exc}"
+                label = (
+                    f"{exc}" if isinstance(exc, AssertionError) else f"{type(exc).__name__}: {exc}"
+                )
                 if blocking:
                     failures.append(f"{name}: {label}")
                     print(f"   FAIL: {label}")
@@ -70,6 +122,41 @@ def check(name: str, *, blocking: bool = True):
         return fn
 
     return deco
+
+
+def _trim_match_history(
+    body: dict[str, Any], *, keep: int, must_include_profile_ids: set[int] = frozenset()
+) -> dict[str, Any]:
+    """Cap a `getRecentMatchHistory` body to `keep` matches (most recent first) so the fixture
+    committed to the repository stays a reasonable size. Every kept match is byte-for-byte the
+    real entry Relic returned — this only reduces *how many* of them are kept, never what is in
+    one. `must_include_profile_ids` pulls in the nearest match for a profile the caller needs
+    represented (a batching fixture is worthless if trimming drops the second profile entirely).
+    `profiles` is filtered down to the ids the kept matches still reference.
+    """
+    matches = sorted(body["matchHistoryStats"], key=lambda m: m["completiontime"], reverse=True)
+    kept = list(matches[:keep])
+    kept_ids = {m["id"] for m in kept}
+    for profile_id in must_include_profile_ids:
+        if any(profile_id == r["profile_id"] for m in kept for r in m["matchhistoryreportresults"]):
+            continue
+        extra = next(
+            (
+                m
+                for m in matches
+                if m["id"] not in kept_ids
+                and any(r["profile_id"] == profile_id for r in m["matchhistoryreportresults"])
+            ),
+            None,
+        )
+        if extra is not None:
+            kept.append(extra)
+            kept_ids.add(extra["id"])
+    referenced_ids = {r["profile_id"] for m in kept for r in m["matchhistoryreportresults"]}
+    trimmed = dict(body)
+    trimmed["matchHistoryStats"] = kept
+    trimmed["profiles"] = [p for p in body.get("profiles", []) if p["profile_id"] in referenced_ids]
+    return trimmed
 
 
 @check("Relic: reliclink.com is still the wrong hostname")
@@ -115,6 +202,54 @@ def _personal_stat() -> None:
     for field in ("leaderboard_id", "rating", "wins", "losses", "streak", "lastmatchdate"):
         assert field in stats[0], f"leaderboardStats is missing {field!r}"
 
+    # ProfileProvider.resolve_profile's success case: a steamid64 that resolves to a profile.
+    write_json_fixture("relic/get_personal_stat.json", body)
+
+
+@check("Relic: getPersonalStat on a Steam id with no AoE2 profile")
+def _personal_stat_unregistered() -> None:
+    r = session.get(
+        f"{RELIC}/getPersonalStat",
+        params={
+            "title": "age2",
+            "profile_names": json.dumps([f"/steam/{PROBE_STEAM_ID_NO_PROFILE}"]),
+        },
+        timeout=TIMEOUT,
+    )
+    assert r.status_code == 200, f"expected 200, got {r.status_code}"
+    body = r.json()
+    assert body["result"]["code"] != 0, (
+        f"expected a non-zero result code for an unregistered profile, got {body['result']}"
+    )
+    assert not body.get("statGroups"), "expected no statGroups for an unregistered profile"
+
+    # ProfileProvider.resolve_profile returning None (FR-003): an ordinary outcome, not an error.
+    write_json_fixture("relic/get_personal_stat_unregistered.json", body)
+
+
+@check("Relic: getPersonalStat batches more than one profile per call")
+def _personal_stat_batch() -> None:
+    r = session.get(
+        f"{RELIC}/getPersonalStat",
+        params={
+            "title": "age2",
+            "profile_ids": json.dumps([PROBE_PROFILE_ID, PROBE_PROFILE_ID_2]),
+        },
+        timeout=TIMEOUT,
+    )
+    assert r.status_code == 200, f"expected 200, got {r.status_code}"
+    body = r.json()
+    assert body["result"]["code"] == 0, f"result code {body['result']}"
+
+    seen_ids = {m["profile_id"] for g in body["statGroups"] for m in g["members"]}
+    assert {PROBE_PROFILE_ID, PROBE_PROFILE_ID_2} <= seen_ids, (
+        f"batched call dropped a profile: expected both of "
+        f"{{{PROBE_PROFILE_ID}, {PROBE_PROFILE_ID_2}}}, got {seen_ids}"
+    )
+
+    # ProfileProvider.personal_stats: batching (providers.md — up to 50 profiles per call).
+    write_json_fixture("relic/get_personal_stat_batch.json", body)
+
 
 @check("Relic: getRecentMatchHistory shape and batching")
 def _recent_matches() -> None:
@@ -139,6 +274,43 @@ def _recent_matches() -> None:
     for field in ("profile_id", "resulttype", "teamid", "civilization_id"):
         assert field in results[0], f"report result is missing {field!r}"
 
+    # MatchHistoryProvider.recent_matches, single profile. Capped to 8 matches (real, untouched
+    # entries — see `_trim_match_history`) so a ~400 KB live response does not become a ~400 KB
+    # fixture committed to the repository for no gain in shape coverage.
+    write_json_fixture("relic/get_recent_match_history.json", _trim_match_history(body, keep=8))
+
+
+@check("Relic: getRecentMatchHistory batches more than one profile per call")
+def _recent_matches_batch() -> None:
+    r = session.get(
+        f"{RELIC}/getRecentMatchHistory",
+        params={
+            "title": "age2",
+            "profile_ids": json.dumps([PROBE_PROFILE_ID, PROBE_PROFILE_ID_2]),
+        },
+        timeout=TIMEOUT,
+    )
+    assert r.status_code == 200, f"expected 200, got {r.status_code}"
+    body = r.json()
+    assert body["result"]["code"] == 0, f"result code {body['result']}"
+
+    matches = body["matchHistoryStats"]
+    assert matches, "matchHistoryStats is empty"
+    reported_profile_ids = {
+        r["profile_id"] for m in matches for r in m["matchhistoryreportresults"]
+    }
+    assert {PROBE_PROFILE_ID, PROBE_PROFILE_ID_2} <= reported_profile_ids, (
+        "batched call dropped one of the requested profiles from every returned match"
+    )
+
+    # MatchHistoryProvider.recent_matches: batching (providers.md — up to 10 profiles per call).
+    write_json_fixture(
+        "relic/get_recent_match_history_batch.json",
+        _trim_match_history(
+            body, keep=6, must_include_profile_ids={PROBE_PROFILE_ID, PROBE_PROFILE_ID_2}
+        ),
+    )
+
 
 @check("aoe.ms: a recent replay is downloadable, an old one is not")
 def _replay_window() -> None:
@@ -147,9 +319,7 @@ def _replay_window() -> None:
         params={"title": "age2", "profile_ids": json.dumps([PROBE_PROFILE_ID])},
         timeout=TIMEOUT,
     )
-    matches = sorted(
-        r.json()["matchHistoryStats"], key=lambda m: m["completiontime"], reverse=True
-    )
+    matches = sorted(r.json()["matchHistoryStats"], key=lambda m: m["completiontime"], reverse=True)
     now = time.time()
     fresh = next(
         (m for m in matches if now - m["completiontime"] < 7 * 86400),
@@ -172,9 +342,7 @@ def _replay_window() -> None:
         ctype = resp.headers.get("content-type", "")
         assert "zip" in ctype, f"expected a zip, got content-type {ctype!r}"
         disp = resp.headers.get("content-disposition", "")
-        assert f"AgeIIDE_Replay_{fresh['id']}.zip" in disp, (
-            f"naming convention changed: {disp!r}"
-        )
+        assert f"AgeIIDE_Replay_{fresh['id']}.zip" in disp, f"naming convention changed: {disp!r}"
 
     old = next(
         (m for m in matches if now - m["completiontime"] > 40 * 86400),
@@ -192,6 +360,83 @@ def _replay_window() -> None:
         assert resp.status_code == 404, (
             f"a 40+ day old replay returned {resp.status_code}, expected 404. "
             "If retention grew, update docs/data-sources.md and the capture budget."
+        )
+        # 16-ish bytes of plain text — reading this body costs nothing extra, unlike the 200 case.
+        # ReplayProvider.fetch_replay's NotFound case; the caller's three-way reading of *why* is
+        # owned by capture.py (T056), never by this provider (providers.md).
+        write_json_fixture(
+            "aoems/replay_404.json",
+            {
+                "game_id": old["id"],
+                "profile_id": PROBE_PROFILE_ID,
+                "http_status": resp.status_code,
+                "content_type": resp.headers.get("content-type", ""),
+                "body": resp.text,
+            },
+        )
+
+
+if CAPTURE_FIXTURES:
+
+    @check("aoe.ms: a downloaded replay is a real zip with the expected inner file")
+    def _replay_capture() -> None:
+        """The one check that costs real bandwidth beyond verifying a contract, so it runs only
+        under `--capture-fixtures` (module docstring) — never in the nightly job. The body is
+        verified in memory and never written to disk: `ReplayProvider.fetch_replay`'s success case
+        (T039) needs the response *shape* — status, headers, inner filename, inner byte count —
+        and `replay_200_meta.json` carries every one of those without the body it was measured
+        from. A body-level fixture already exists for what actually reads one:
+        `tests/fixtures/replays/AgeIIDE_Replay_500546441.zip` (the parser engine, T079).
+        """
+        r = session.get(
+            f"{RELIC}/getRecentMatchHistory",
+            params={"title": "age2", "profile_ids": json.dumps([PROBE_PROFILE_ID])},
+            timeout=TIMEOUT,
+        )
+        matches = sorted(
+            r.json()["matchHistoryStats"], key=lambda m: m["completiontime"], reverse=True
+        )
+        now = time.time()
+        fresh = next((m for m in matches if now - m["completiontime"] < 7 * 86400), None)
+        assert fresh is not None, (
+            "probe profile has no match in the last 7 days; pick another probe"
+        )
+
+        resp = session.get(
+            REPLAY,
+            params={"gameId": fresh["id"], "profileId": PROBE_PROFILE_ID},
+            timeout=TIMEOUT,
+        )
+        assert resp.status_code == 200, f"expected 200, got {resp.status_code}"
+        assert len(resp.content) == int(resp.headers.get("content-length", -1)), (
+            "downloaded body length does not match Content-Length"
+        )
+
+        # A real zip, holding exactly one member — the .aoe2record — never written to disk.
+        archive = zipfile.ZipFile(io.BytesIO(resp.content))
+        assert zipfile.is_zipfile(io.BytesIO(resp.content)), "response body is not a valid zip"
+        members = archive.namelist()
+        assert len(members) == 1, f"expected exactly one member, got {members}"
+        inner_name = members[0]
+        assert inner_name == f"AgeIIDE_Replay_{fresh['id']}.aoe2record", (
+            f"unexpected inner filename: {inner_name!r}"
+        )
+        inner_size = archive.getinfo(inner_name).file_size
+
+        # ReplayProvider.fetch_replay's success case (T039): every field `ReplayBlob` and its
+        # caller need, without the megabytes the assertions above already consumed and verified.
+        write_json_fixture(
+            "aoems/replay_200_meta.json",
+            {
+                "game_id": fresh["id"],
+                "profile_id": PROBE_PROFILE_ID,
+                "http_status": resp.status_code,
+                "content_type": resp.headers.get("content-type", ""),
+                "content_disposition": resp.headers.get("content-disposition", ""),
+                "content_length": len(resp.content),
+                "inner_filename": inner_name,
+                "inner_byte_count": inner_size,
+            },
         )
 
 
@@ -221,13 +466,54 @@ def _companion() -> None:
     for field in ("profileId", "name", "civName"):
         assert field in player, f"player is missing {field!r}"
 
+    # EnrichmentProvider.enrich_matches (T041). Trimmed to the first 3 matches — every one kept is
+    # untouched real data, just fewer of them, per the same reasoning as `_trim_match_history`.
+    # A 403 here needs no fixture of its own: nothing about its *shape* is asserted (providers.md
+    # — the circuit breaker cares only about the status code), so `httpx.MockTransport` covers it.
+    trimmed = dict(body)
+    trimmed["matches"] = body["matches"][:3]
+    write_json_fixture("companion/matches.json", trimmed)
+
+
+@check("Steam: check_authentication rejects a forged assertion")
+def _steam_check_authentication_invalid() -> None:
+    """The one call `SteamAuthProvider.verify` makes that this script can freeze on its own: a
+    syntactically well-formed but never-issued assertion, which Steam must reject the same way a
+    replayed or tampered one is rejected (FR-001, FR-002 — quickstart scenario 1). A genuine
+    `is_valid:true` response cannot be captured by an unattended script: an assertion is single-use
+    and tied to a completed, interactive Steam login (research.md §2), which is why
+    `check_authentication_valid.txt` beside this fixture is hand-written from the OpenID 2.0 wire
+    format instead of frozen from a live call — see `fixtures/steam/README.md`.
+    """
+    params = {
+        "openid.ns": "http://specs.openid.net/auth/2.0",
+        "openid.mode": "check_authentication",
+        "openid.op_endpoint": STEAM_OPENID,
+        "openid.claimed_id": "https://steamcommunity.com/openid/id/76561197984749679",
+        "openid.identity": "https://steamcommunity.com/openid/id/76561197984749679",
+        "openid.return_to": "https://example.invalid/api/auth/steam/callback",
+        "openid.response_nonce": "2026-08-19T21:00:00Zcontract-source-probe",
+        "openid.assoc_handle": "never-issued",
+        "openid.signed": "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+        "openid.sig": "not-a-real-signature",
+    }
+    r = session.post(STEAM_OPENID, data=params, timeout=TIMEOUT)
+    assert r.status_code == 200, f"expected 200, got {r.status_code}"
+    assert "is_valid:false" in r.text, f"expected a rejection, got: {r.text!r}"
+
+    write_text_fixture("steam/check_authentication_invalid.txt", r.text)
+
 
 @check("aoestats: dumps are still empty (V2 corpus only)", blocking=False)
 def _aoestats() -> None:
     r = session.get("https://aoestats.io/api/db_dumps/", timeout=TIMEOUT)
     assert r.status_code == 200, f"expected 200, got {r.status_code}"
     dumps = r.json()["db_dumps"]
-    recent = [d for d in dumps if d["start_date"] >= (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")]
+    recent = [
+        d
+        for d in dumps
+        if d["start_date"] >= (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
+    ]
     if any(d["num_matches"] > 0 for d in recent):
         notes.append(
             "aoestats has started publishing data again. It may become usable as a live source; "
@@ -236,6 +522,8 @@ def _aoestats() -> None:
 
 
 print("\n" + "=" * 70)
+if CAPTURE_FIXTURES:
+    print(f"Fixtures written to {FIXTURES_DIR}")
 for n in notes:
     print(f"NOTE: {n}")
 if failures:
