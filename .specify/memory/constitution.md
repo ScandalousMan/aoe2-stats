@@ -14,9 +14,16 @@ end holds no business logic; it consumes the API.
 
 ### III. All External Data Goes Through a DataProvider
 `apps/*` and `packages/core` never open an outbound connection. Every external source is a provider
-in `packages/providers` with: explicit timeout, retry/backoff, rate limiting, verbatim persistence
-of the raw response, and real fixtures for tests. Unit tests never touch the network; only nightly
+in `packages/providers` with: explicit timeout, retry/backoff, rate limiting, a `provider_calls`
+record of every call, and real fixtures for tests. Unit tests never touch the network; only nightly
 contract tests do.
+
+Verbatim persistence of the raw response is owed to every source of **irrecoverable data** — data
+whose value cannot be obtained again once that source's window closes. A source that can be
+re-queried at any time is exempt: a second copy of something still available is a second thing to
+keep honest, for no gain. An authentication exchange is not a data source; what it proves is
+recorded, its wire form is not. Which sources are irrecoverable is a measured fact and lives in
+`docs/data-sources.md`. When it is unclear, the source is irrecoverable — principle I decides ties.
 
 ### IV. Raw Is Sacred, Derived Is Disposable
 The original replay zip and its HTTP response are stored byte-for-byte with a checksum, never
@@ -95,4 +102,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19
+**Version**: 1.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19

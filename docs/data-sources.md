@@ -18,6 +18,24 @@ file first: it is what the next person will trust.
 | `aoestats.io` | weekly aggregated parquet dumps | **broken since 2026-02** | realized | V2 historical corpus only |
 | `stats.ageofempires.com` | official web UI | real time | n/a | no public JSON API |
 
+### Recoverable or not
+
+Which responses must be kept verbatim, per constitution III. The test is whether the *data* can be
+obtained again later, not whether the request can be repeated.
+
+| Response | Recoverable? | Raw kept |
+| --- | --- | --- |
+| Relic match history (`getRecentMatchHistory`) | **No** — a match leaves the "recent" window and cannot be fetched back | `matches.raw_payload` |
+| `aoe.ms` replay zip | **No** — ~31-day retention, then gone for everyone | the object store, byte-for-byte |
+| Relic leaderboards and personal stats | Yes — current standing, re-queryable at any time | not kept |
+| aoe2companion enrichment | Yes — re-queryable, and degradable by design | not kept |
+| aoestats parquet dumps | Yes — published artifacts, re-downloadable | not kept (V2) |
+| Steam OpenID assertion | n/a — an authentication exchange, not a data source | not kept; `steam_identities.verified_at` records the outcome |
+
+The two "No" rows are the whole reason principle IV exists. Both are measured properties of the
+outside world and are re-checked by the nightly contract tests; if either becomes recoverable, this
+table changes before any code does.
+
 ## 1. Relic / World's Edge
 
 Base URL: `https://aoe-api.worldsedgelink.com`
