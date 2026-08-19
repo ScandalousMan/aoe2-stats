@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+.pnpm-store/
+storybook-static/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local scratch — replays are large and must never be committed
+tmp/
+scratch/
+*.aoe2record
+*.zip
+!tests/fixtures/**/*.zip
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

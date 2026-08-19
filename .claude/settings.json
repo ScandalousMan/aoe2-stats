@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/format-changed.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/test-scope.sh",
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "implementer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/gate-implementer.sh",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,152 @@
+name: PR
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      web: ${{ steps.filter.outputs.web }}
+      design: ${{ steps.filter.outputs.design }}
+      migrations: ${{ steps.filter.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'apps/api/**'
+              - 'apps/ingester/**'
+              - 'apps/parser/**'
+              - 'packages/core/**'
+              - 'packages/providers/**'
+              - 'packages/storage/**'
+              - 'api/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            web:
+              - 'apps/web/**'
+              - 'packages/design-system/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+            design:
+              - 'packages/design-system/**'
+            migrations:
+              - 'infra/migrations/**'
+
+  python:
+    name: Python — lint, types, tests
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages --dev
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      # Unit tests must never touch the network: providers are exercised through fixtures.
+      # Contract tests against real APIs live in nightly.yml.
+      - run: uv run pytest -q
+        env:
+          PYTEST_DISABLE_NETWORK: "1"
+
+  web:
+    name: Web — types, lint, unit tests
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+      - run: pnpm test
+
+  visual:
+    name: Visual regression — affected stories only
+    needs: changes
+    if: needs.changes.outputs.design == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - uses: actions/cache@v4
+        with:
+          path: packages/design-system/__screenshots__
+          key: visual-baselines-${{ runner.os }}-${{ github.base_ref || 'main' }}
+      - run: pnpm --filter design-system build-storybook
+      # Scoped on purpose: CI is a court, not a factory. Full coverage runs nightly.
+      - run: pnpm test:visual --changed
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: visual-diffs
+          path: |
+            playwright-report/
+            test-results/
+
+  migrations:
+    name: Migrations — up and down
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages --dev
+      - run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      - run: uv run alembic downgrade -1
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

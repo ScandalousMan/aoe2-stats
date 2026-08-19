@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["cdg1"],
+  "crons": [
+    {
+      "path": "/api/cron/ingest",
+      "schedule": "0 4 * * *"
+    }
+  ],
+  "functions": {
+    "api/cron/ingest.py": {
+      "maxDuration": 300
+    }
+  }
+}

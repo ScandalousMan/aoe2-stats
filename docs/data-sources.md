@@ -1,0 +1,130 @@
+# Data sources
+
+Reference sheet for every external system this project reads from. All figures were measured on
+**2026-08-19 between 16:06 and 16:40 UTC** from a residential connection, against public endpoints.
+
+Keep this file and `.claude/skills/aoe2-data-sources/SKILL.md` in sync: a change to one without the
+other is a review rejection.
+
+## Summary
+
+| Source | Covers | Freshness | Break risk | Role |
+| --- | --- | --- | --- | --- |
+| Relic `aoe-api.worldsedgelink.com` | Steam to profile_id, leaderboards, personal stats, match history | real time | Medium | **primary** |
+| `aoe.ms` / `api.ageofempires.com` | replay files (zip) | minutes after match end | Medium-high | **primary** (replays) |
+| `data.aoe2companion.com` | normalized match and profile data | ~30 s after match end | High | enrichment, degradable |
+| `aoestats.io` | weekly aggregated parquet dumps | **broken since 2026-02** | realized | V2 historical corpus only |
+| `stats.ageofempires.com` | official web UI | real time | n/a | no public JSON API |
+
+## 1. Relic / World's Edge
+
+Base URL: `https://aoe-api.worldsedgelink.com`
+
+> **Trap.** `aoe-api.reliclink.com` now serves a certificate for `CN=*.worldsedgelink.com`, so TLS
+> verification fails against that hostname. Community documentation still citing reliclink.com is
+> stale. Never disable certificate verification to work around it.
+
+Verified endpoints, all public and unauthenticated:
+
+```
+GET /community/leaderboard/getAvailableLeaderboards?title=age2
+GET /community/leaderboard/getPersonalStat?title=age2&profile_names=["/steam/{steamid64}"]
+GET /community/leaderboard/getRecentMatchHistory?title=age2&profile_ids=[a,b,c]
+GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&count=N&sortBy=1
+```
+
+- `getPersonalStat` resolves **steamid64 to profile_id** and returns, per leaderboard, `rating`,
+  `rank`, `wins`, `losses`, `streak`, `highestrating`, `lastmatchdate`. Payload ~8 KB.
+  Verified: `76561197984749679` resolves to profile `196240`.
+- `getRecentMatchHistory` returns `id` (the `gameId` the replay endpoint expects), `matchtype_id`,
+  `mapname`, `startgametime`, `completiontime`, and `matchhistoryreportresults[]` with one row per
+  player. Payload ~400 KB per profile.
+- Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
+- Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
+
+## 2. Replay download
+
+```
+GET https://aoe.ms/replay/?gameId={gameId}&profileId={profileId}
+  301 -> https://api.ageofempires.com/api/GameStats/AgeII/GetMatchReplay/?gameId=..&profileId=..&matchId=..
+```
+
+| Property | Measured |
+| --- | --- |
+| Authentication | none |
+| Success | `200`, `content-type: application/zip` |
+| Naming | `content-disposition: attachment; filename=AgeIIDE_Replay_{gameId}.zip` |
+| Contents | exactly one file, `AgeIIDE_Replay_{gameId}.aoe2record` |
+| Compression | 871 503 B zip to 6 909 299 B raw (x7.9) |
+| Sizes | ranked 1v1 ~0.87 MB; 8-player ~2.3-2.5 MB |
+| `HEAD` | `405` — no cheap existence probe |
+| `Range` | ignored — no partial probe |
+| Failure | `404`, `text/plain`, 16 bytes |
+| Access control | `(gameId, profileId)` must be a real participant pair; no ownership check |
+| Point of view | the recording is from that `profileId`'s perspective |
+| Availability | 33 min after match end verified (upper bound) |
+| Rate limits | undocumented; ~25 requests in 30 min saw no throttling |
+
+### Retention: approximately 31 days
+
+Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
+
+| gameId | match end | result |
+| --- | --- | --- |
+| 500572650 | 2026-08-19 15:46 | 200 (2.43 MB) |
+| 498525406 | 2026-08-10 | 200 (1.97 MB) |
+| 493630273 | 2026-07-20 12:06 | 200 (0.65 MB) |
+| **493452131** | **2026-07-19 15:09** | **200 (2.50 MB)** — last available |
+| **493398610** | **2026-07-19 10:46** | **404** — first missing |
+| 493217484 | 2026-07-18 18:00 | 404 |
+| 492740917 | 2026-07-16 18:27 | 404 |
+| 490086457 | 2026-07-04 | 404 |
+| 482532928 | 2026-06-03 | 404 |
+| 424374137 | 2025-10-09 | 404 |
+
+The boundary is sharp, inside a ~4 h interval, and is not patch-scoped: replays from patch 1800 sit
+on both sides of it. It is a rolling, time-based purge.
+
+**Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
+
+## 3. aoe2companion
+
+```
+GET https://data.aoe2companion.com/api/matches?profile_ids=a,b&page=N   (20 per page)
+GET https://data.aoe2companion.com/api/profiles/{profileId}
+GET https://data.aoe2companion.com/api/profiles?search={name}
+```
+
+Normalized map and civilisation names, game mode, speed, CDN images, `linkedProfiles`. Freshness
+measured at ~30 s: a match ending at 15:46:08Z reported `updated` 15:46:37Z.
+
+Risk is high and structural: single-maintainer project, **no licence on the repository**, no public
+API documentation, no announced rate limits, `/api` root returns 403. Use only for display
+enrichment, behind a cache and a circuit breaker, and degrade gracefully when unavailable.
+
+## 4. aoestats.io
+
+```
+GET https://aoestats.io/api/db_dumps/    <- trailing slash required
+```
+
+207 weekly parquet dumps, 30.7 M matches total. **The last dump containing any data covers
+2026-02-01 to 2026-02-07 (118 661 matches); all 28 dumps since contain 0 matches.** The outage
+coincides with the aoc-mgz breakage caused by the 2026-02-17 DLC and is very likely the same cause.
+
+Unusable for live data. Valuable in V2 as a historical benchmark corpus: `matches.parquet` and
+`players.parquet` already carry `feudal_age_uptime`, `castle_age_uptime`, `imperial_age_uptime` and
+`opening` per player, which is exactly what is needed to compare a player against their elo bracket.
+
+Terms: Microsoft Game Content Usage Rules, plus Liquipedia content under CC BY-SA 3.0.
+
+## 5. Official stats site
+
+`stats.ageofempires.com` has no public JSON API. `api.ageofempires.com` exposes `GetMatchReplay`;
+every other path probed returned 404.
+
+## Terms of use
+
+All of the above fall under Microsoft's **Game Content Usage Rules**: strictly non-commercial, a
+disclaimer is required, and no reverse engineering of the game. This is the same regime under which
+aoe4world, aoestats and aoe2companion operate.

@@ -1,0 +1,104 @@
+name: Nightly watchtower
+
+# The phase-1 stack has no always-on process, so this workflow is the monitor.
+# It is deliberately allowed to fail loudly: a red nightly means something upstream moved.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  contracts:
+    name: Third-party API contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Probe Relic, aoe.ms, aoe2companion and aoestats
+        run: uv run --with requests scripts/checks/contract_sources.py
+
+  parser-canary:
+    name: Parser canary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Parse the reference replay with every known engine
+        run: uv run --with aoe2rec-py --with mgz scripts/checks/parser_canary.py
+
+  # TODO(feature-1): enable once the ingester and its database exist.
+  #
+  # cron-liveness:
+  #   Reads the most recent `ingest_runs` row and FAILS if it is older than 30 h.
+  #   A silently stopped Vercel cron is the single most dangerous failure mode on this
+  #   stack — see docs/adr/0002-hosting.md.
+  #
+  # capture-audit:
+  #   Asserts expired_total == 0 and no replay_capture pending for more than 7 days,
+  #   and reports the capture_lag_hours p95.
+  #
+  # free-tier-watch:
+  #   Warns at 70% of any free allowance (R2 bytes stored, Neon storage, Vercel
+  #   invocations) so the phase-2 migration is planned, not forced.
+
+  visual-full:
+    name: Full visual regression
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('packages/design-system/package.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter design-system build-storybook
+      - run: pnpm test:visual
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: nightly-visual-diffs
+          path: |
+            playwright-report/
+            test-results/
+
+  report:
+    name: Open an issue on failure
+    runs-on: ubuntu-latest
+    needs: [contracts, parser-canary]
+    if: failure()
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Nightly watchtower failed (${new Date().toISOString().slice(0, 10)})`;
+            const body = [
+              'The nightly watchtower failed. Something upstream moved.',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Check, in order:',
+              '- a third-party API contract changed -> update `docs/data-sources.md` and the `aoe2-data-sources` skill',
+              '- a game patch broke a parser -> see `docs/adr/0001-replay-parser.md`',
+              '- the replay retention window moved -> the capture budget in `.env.example` may need revising',
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'watchtower',
+            });
+            if (existing.data.some(i => i.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ['watchtower'],
+            });
