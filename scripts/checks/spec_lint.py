@@ -243,6 +243,35 @@ def check_literals(sources: dict[str, str], env_values: dict[str, str], behaviou
                     )
 
 
+def check_register_commitments(tasks: str) -> None:
+    """Every launch item in the processing register names who delivers it, or is out of scope.
+
+    The register is the one file in the field of view whose content is a list of promises rather
+    than a description, and three separate findings came from it: a category declared after being
+    removed, a procedure promised and never written, a form promised and never built. Prose cannot
+    keep a promise; a reference to a task can be checked.
+    """
+    register = REPO / "docs/privacy/processing-register.md"
+    if not register.is_file():
+        return
+    defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
+    for line in read(register).splitlines():
+        item = re.match(r"^- \[([ x])\] (.+)$", line.strip())
+        if not item:
+            continue
+        text = item.group(2)
+        named = set(re.findall(r"\bT\d+[a-z]?\b", text))
+        if not named and "out of scope" not in text.lower():
+            fail(
+                "register-commitments",
+                f"launch item names no task and is not marked out of scope: {text[:80]!r}",
+            )
+            continue
+        for task in sorted(named - defined):
+            fail("register-commitments", f"launch item names {task}, which this feature does not define")
+    notes.append("register-commitments: every launch item is delivered by a named task or out of scope")
+
+
 def report_field_of_view(tasks: str) -> None:
     existing = sorted(p for p in paths_in(tasks) if (REPO / p).exists())
     if existing:
@@ -288,6 +317,7 @@ def main() -> int:
     check_alert_kinds(data_model, tasks)
     check_env(sources, tasks, env_values, behavioural)
     check_literals(sources, env_values, behavioural)
+    check_register_commitments(tasks)
     report_field_of_view(tasks)
 
     print(f"spec_lint: {feature_dir.relative_to(REPO)}\n")

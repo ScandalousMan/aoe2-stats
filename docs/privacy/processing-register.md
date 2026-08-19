@@ -47,7 +47,15 @@ in the system, which is why neither appears in the table below.
 
 ## Open items before public launch
 
-- [ ] Publish the privacy policy page and link it from the footer.
-- [ ] Publish the third-party objection form and document its handling procedure.
-- [ ] Record controller identity and contact details above.
-- [ ] Define and document the breach-notification procedure.
+Every item below names the task that delivers it, or says it is out of scope and why. This list is
+a set of commitments rather than a description, and an unowned commitment is how three of them came
+to be promised here and built nowhere. `scripts/checks/spec_lint.py` enforces the convention.
+
+- [ ] Publish the privacy policy page and link it from the footer — T093, T095, T098a.
+- [ ] Publish the third-party objection form and document its handling procedure — T092 writes the
+      procedure and the endpoint, T094 specifies the form, T095 builds it on a route outside the
+      session. The endpoint alone would not be a way for a non-user to object.
+- [ ] Record controller identity and contact details above — out of scope for any task: an act of
+      the controller, not of the code. Blocks public launch, not implementation.
+- [ ] Define and document the breach-notification procedure — out of scope: nothing in feature 001
+      defines one, and inventing it in passing would be worse than leaving it visibly open.
