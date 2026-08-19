@@ -113,7 +113,7 @@ The table the entire feature turns on.
 | `game_id` | bigint, fk matches | |
 | `profile_id` | bigint, fk | Whose point of view. **Unique on `(game_id, profile_id)`** — this constraint *is* the deduplication (FR-018) |
 | `status` | enum | See the state machine below |
-| `capture_deadline_at` | timestamptz | `completed_at + 21 days`. Computed on insert, never recomputed |
+| `capture_deadline_at` | timestamptz | `completed_at + CAPTURE_BUDGET_DAYS`, read from settings. Computed on insert, never recomputed, and never restated as a literal: the budget must be lowerable in one place the day the window is observed to shrink |
 | `attempts` | int | |
 | `next_attempt_at` | timestamptz | Backoff lives here, not in a scheduler |
 | `claimed_at` | timestamptz, null | Set when a run claims the row; a claim older than the maximum function duration is stale and reclaimable |
@@ -132,7 +132,7 @@ The table the entire feature turns on.
 | `pending` | Known, not yet fetched | yes, from `next_attempt_at` |
 | `downloading` | Claimed by a run; may already carry the blob and its checksum | reclaimed if the claim is stale — resumed at validation, not re-downloaded, when `zip_sha256` is set |
 | `stored` | Blob durable, checksum recorded | terminal |
-| `unavailable` | The source says this replay was never recorded | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS`. A 404 before that leaves the row `pending` (FR-019) |
+| `unavailable` | The source says this replay was never recorded | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS` **and at least two attempts have been made**. A 404 before either condition leaves the row `pending` (FR-019) |
 | `expired` | Past the retention window before we got it | no — **and this must never happen** |
 | `quarantined` | Stored and checksummed, but not a well-formed replay | no — needs a human |
 | `failed` | Attempts exhausted | no, needs a human |
@@ -142,8 +142,8 @@ that matters: `expired` counts our failures, `unavailable` counts the game's. Al
 would mean alert fatigue on the first, and silence on the second.
 
 The 404 is a **three-way** decision, not two. Younger than the publication grace: the replay may
-simply not be published yet — stay `pending`. Older than the grace but inside the retention window:
-`unavailable`. Past the window: `expired`. The first branch is the one that is easy to omit, and
+simply not be published yet — stay `pending`. Older than the grace but inside the retention window, and
+not on the strength of a single attempt: `unavailable`. Past the window: `expired`. The first branch is the one that is easy to omit, and
 omitting it converts a few hours of publisher latency into a permanent loss.
 
 `quarantined` is separated from `failed` for the same reason: `failed` means we never got the bytes,
@@ -212,6 +212,13 @@ engines side by side costs nothing.
 `expired_total`, `quarantined_total`, `alerts_raised`, `backlog_remaining`. Also
 `capture_lag_p50_seconds` and `capture_lag_p95_seconds`.
 
+The row is **inserted when the run starts**, carrying `started_at`, `trigger` and `budget_seconds`,
+and closed at the end with `finished_at` and the counters. Not written in one go at the end: every
+`alerts` row carries `ingest_run_id`, and four of the five producers fire during the drain or
+immediately after it, so a row that did not exist yet would orphan them and leave `alerts_raised`
+permanently short. A run that dies leaves an open row with a null `finished_at` — which is a fact
+worth having, and a second signal beside the absence of a row altogether.
+
 The lag counters are over newly discovered captures only. Including backfill would make the number
 describe how far back a rescue reached rather than how fast the cadence is, and SC-002 is a
 statement about the cadence.
@@ -229,9 +236,13 @@ this is checked from outside.
 `validation_failed`, `free_tier`), `severity` (smallint, 1 or 2), `detail` jsonb, `raised_at`,
 `ingest_run_id` (uuid, null, fk), `acknowledged_at` (timestamptz, null).
 
-Five kinds, five producers — T052 `rate_limited`, T056 `expired_capture`, T055 `validation_failed`,
-T059a `deadline_breach`, T100 `free_tier` — and constitution I makes a non-zero `expired_total` a
-severity-1 incident. But nothing in phase 1 is always-on, so an alert cannot be pushed from inside a process
+Five kinds, five producers, one severity each — T052 `rate_limited` (**2**), T056 `expired_capture`
+(**1**), T055 `validation_failed` (**2**), T059a `deadline_breach` (**1**), T100 `free_tier` (**2**).
+The severity is not decoration: the nightly audit fails only on an unacknowledged severity-1 row, so
+1 is reserved for the two kinds that mean a replay is gone or is about to be — constitution I makes a
+non-zero `expired_total` one of them. Being throttled by a source is a 2: it costs a cycle against a
+budget measured in days, and a source we are merely being polite to must not stop the check that
+watches for actual loss. But nothing in phase 1 is always-on, so an alert cannot be pushed from inside a process
 that may not be running. It is therefore **pulled**: the ingester writes a row, and the nightly
 GitHub Actions job fails when any severity-1 row is unacknowledged — the same job that already opens
 an issue on failure. No pager, no third-party service, no secret, and it behaves identically on a

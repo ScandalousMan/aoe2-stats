@@ -83,7 +83,7 @@ A `NotFound` is a **three-way** decision, and it belongs to the caller because o
 | Age of the match | Capture becomes | Alert |
 | --- | --- | --- |
 | younger than `REPLAY_PUBLICATION_GRACE_HOURS` | stays `pending`, retried next cycle | none |
-| older than the grace, inside the retention window | `unavailable` | none |
+| older than the grace, inside the retention window, **and at least two attempts made** | `unavailable` | none |
 | past the retention window | `expired` | severity-1 `expired_capture` |
 
 Getting this wrong means alert fatigue, silence on the one metric that matters, or — the branch that

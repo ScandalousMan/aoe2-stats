@@ -299,7 +299,11 @@ records or in storage.
   "Never recorded by the game" MUST NOT be concluded from the first attempt on a recent match. A
   replay is not always published the instant a match ends, and the source answers an identical 404
   for "not yet" and "never". Until the match is older than the publication grace, a 404 leaves the
-  capture awaiting a further attempt rather than closing it. Concluding otherwise turns a
+  capture awaiting a further attempt rather than closing it, and "never recorded" MUST NOT be
+  concluded from fewer than two attempts whatever the age: at a daily cadence a single poll can fall
+  on either side of the grace, so age alone would let one unlucky 404 close a capture that the next
+  poll would have caught. The grace itself MUST be at least twice the discovery cadence for the same
+  reason. Concluding otherwise turns a
   publication delay into a permanent loss, which is the one outcome this system exists to prevent.
 - **FR-020**: System MUST retry a failed capture with increasing delay, and MUST stop after a bounded
   number of attempts rather than retrying forever.
@@ -418,6 +422,12 @@ records or in storage.
   stays modest; quotas exist to keep it that way.
 - Match metadata is read from the source on demand and is not expected to be exhaustive further back
   than the source itself provides.
+- The publication grace and SC-002 pull in opposite directions, and the grace wins. A replay that
+  answers 404 on its first poll cannot be archived before the next cycle, so a grace wide enough to
+  survive a late publication puts those captures beyond SC-002's 48 hours. SC-002 tolerates 5% for
+  exactly this, and the trade is not close: a metric tail is a reporting inconvenience, a capture
+  closed as "never recorded" because one poll landed early is a permanent loss. Principle I decides
+  it, and the decision is recorded here so it is not rediscovered as a contradiction.
 - A capture budget of 21 days against an observed ~31-day retention window is deemed sufficient
   margin. If the window is ever observed to shrink, the budget is revised before anything else.
 - Only the consenting user's own point-of-view recording is captured. Recordings from other

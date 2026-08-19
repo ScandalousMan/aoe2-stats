@@ -19,6 +19,7 @@ jobs:
     outputs:
       python: ${{ steps.filter.outputs.python }}
       web: ${{ steps.filter.outputs.web }}
+      specs: ${{ steps.filter.outputs.specs }}
       design: ${{ steps.filter.outputs.design }}
       migrations: ${{ steps.filter.outputs.migrations }}
     steps:
@@ -33,6 +34,7 @@ jobs:
               - 'apps/parser/**'
               - 'packages/core/**'
               - 'packages/providers/**'
+              - 'packages/replay-engine/**'
               - 'packages/storage/**'
               - 'api/**'
               - 'pyproject.toml'
@@ -46,6 +48,33 @@ jobs:
               - 'packages/design-system/**'
             migrations:
               - 'infra/migrations/**'
+            specs:
+              - 'specs/**'
+              - '.env.example'
+              - 'scripts/checks/spec_lint.py'
+
+  specs:
+    name: Specs — cross-artifact lint
+    needs: changes
+    if: needs.changes.outputs.specs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Identifier coverage, task references, path agreement, alert vocabulary, configuration keys
+      # and duplicated literals. What this catches, /speckit-analyze no longer looks for by hand:
+      # a hand pass over prose samples and finds a different subset every time, which is what made
+      # that phase look non-convergent.
+      - name: Lint every feature that has reached tasks.md
+        run: |
+          status=0
+          for feature in specs/*/; do
+            [ -f "$feature/tasks.md" ] || continue
+            uv run scripts/checks/spec_lint.py --feature "$feature" || status=1
+          done
+          exit $status
 
   python:
     name: Python — lint, types, tests

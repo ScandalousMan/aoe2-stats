@@ -157,23 +157,34 @@ packages/
 │   ├── replay/validation.py       # the replay-engine Protocol only, never an engine
 │   └── alerting.py                # raise_alert() — a use case; the row is written
 │                                  # through the storage repository. Pulled, never pushed
-├── providers/src/aoe2stats_providers/
-│   ├── base.py                    # Protocols, timeout/retry/rate-limit wrappers
-│   ├── steam/                     # OpenID 2.0 verification
-│   ├── relic/                     # profile resolution, ratings, match history
-│   ├── aoems/                     # replay download
-│   ├── companion/                 # enrichment, behind a circuit breaker
-│   └── fixtures/                  # frozen real responses
+├── providers/
+│   ├── src/aoe2stats_providers/
+│   │   ├── base.py                # Protocols, timeout/retry/rate-limit wrappers
+│   │   ├── steam/                 # OpenID 2.0 verification
+│   │   ├── relic/                 # profile resolution, ratings, match history
+│   │   ├── aoems/                 # replay download
+│   │   └── companion/             # enrichment, behind a circuit breaker
+│   └── fixtures/                  # frozen real responses. Beside the package and not
+│                                  # inside it: fixtures are test data, not shipped code
 ├── replay-engine/src/aoe2stats_replay_engine/
 │   └── aoe2rec.py                 # the adapter. Out of core so the API, which imports
 │                                  # core, never loads an engine at all. The ingester
 │                                  # does load it, and contains it: the barrier in T055
-└── storage/src/aoe2stats_storage/
-    ├── models.py  repositories/   # SQLAlchemy
-    └── objects.py                 # S3 client and key scheme
+├── storage/src/aoe2stats_storage/
+│   ├── models.py  repositories/   # SQLAlchemy
+│   └── objects.py                 # S3 client and key scheme
+└── design-system/                 # pnpm rather than uv, and the only home of anything
+    ├── tokens/                    # renderable (constitution VI). Colour, spacing, radius,
+    ├── specs/                     # typography, elevation; product-designer specs written
+    ├── src/                       # before the components; every component with its story;
+    └── __screenshots__/           # and the Playwright visual baselines for them
 
 infra/migrations/                  # Alembic
 tests/fixtures/replays/            # the committed reference replay
+scripts/checks/                    # checks that run outside the application, because a system
+                                   # that has stopped cannot report that it has stopped: cron
+                                   # liveness, capture audit, alert audit, free-tier watch, and
+                                   # the cross-artifact spec lint that guards these documents
 ```
 
 **Structure Decision**: The monorepo laid out in `docs/adr/0002-hosting.md`, with three additions

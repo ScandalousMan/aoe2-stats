@@ -104,7 +104,9 @@ Covers FR-018, SC-006.
 
 1. Point the replay provider at a fixture returning 404 for a match completed three hours ago.
    Expect the capture to stay `pending`, no alert, and to be retried by the next cycle.
-2. Same fixture for a match completed four days ago. Expect `unavailable`, no alert.
+2. Same fixture for a match completed four days ago, polled twice. Expect `unavailable` on the
+   second attempt and not the first, and no alert: past the grace *and* past one attempt are both
+   required, because at a daily cadence a single poll can land either side of the grace.
 3. Same for a match completed forty days ago. Expect `expired` **and an alert**.
 4. Return 429. Expect the **whole run** to stop and alert, not just that capture.
 5. Return 500 three times. Expect backoff, then `failed` after the attempt limit.

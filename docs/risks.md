@@ -6,7 +6,7 @@ cannot be recreated by anyone, at any price.
 
 | # | Risk | Severity | Mitigation |
 | --- | --- | --- | --- |
-| **R1** | **31-day retention window.** An ingestion outage longer than the capture budget loses replays permanently | Critical | 21-day capture budget (10 days of slack); daily reconciliation over 25 days; alert when a capture stays pending > 48 h; `expired_total` treated as a severity-1 alert; full backfill on account linking |
+| **R1** | **31-day retention window.** An ingestion outage longer than the capture budget loses replays permanently | Critical | 21-day capture budget (10 days of slack); daily reconciliation over 25 days; alert when a capture passes its 21-day capture deadline, with ~10 days still left to act; `expired_total` treated as a severity-1 alert; full backfill on account linking |
 | **R2** | **`aoe.ms` rate limits or blocking.** Undocumented, and none observed so far — which is not the same as none existing | High | <= 1 req/s globally, serial downloads, jitter, honest identifying `User-Agent`; exponential backoff; on 429/403 stop the run and alert rather than pushing through; per-user quotas; strictly non-commercial use |
 | **R3** | **A game patch breaks the parser.** Demonstrated, not hypothetical: `aoc-mgz` has been broken since the 2026-02-17 DLC and unfixed for six months, which also killed aoestats | Medium | Downgraded from High by the switch to `aoe2rec-py`, which shipped a fix 4 days after that same DLC. Pluggable engine interface; nightly canary on both engines; versions recorded per parse; bulk re-parse designed into the schema. Fallbacks: build aoe2rec from source with maturin, `AoEInsights/mgz-fast`, or mgz PR #142 in a fork. See ADR 0001 |
 | **R4** | **A third-party API breaks.** Relic is undocumented and has already moved host (reliclink -> worldsedgelink); aoe2companion is unlicensed and returns 403 intermittently; aoestats has been dead since February | High | Abstract `DataProvider`, so a provider is replaced without touching the domain; Relic primary, companion as degradable enrichment; nightly contract tests; raw payloads retained verbatim so a transformation can be replayed after the fact |
@@ -55,8 +55,10 @@ properties a test plan has to establish.
 
 **Ingestion** — the real measure of the MVP
 
-- [ ] Linking an account enqueues every match in the 31-day window
-- [ ] After a real match, the stored object appears within 24 hours
+- [ ] Linking an account marks it for backfill, and the next cycle enqueues every match in the
+      31-day window
+- [ ] After a real match, the stored object appears within 48 hours — the daily cadence spends ~25 h
+      on detection before a capture is even attempted
 - [ ] A run interrupted by its time budget leaves nothing in progress and resumes cleanly
 - [ ] Replaying the same match creates no duplicate and rewrites no file
 - [ ] A network failure mid-download leaves no capture marked stored without its file
