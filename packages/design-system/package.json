@@ -1,0 +1,22 @@
+{
+  "name": "design-system",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Token-driven component library for aoe2-stats. Package skeleton only (T003) — design tokens, the Tailwind preset and the Storybook configuration land in T016; the first components and stories start at T035.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "~6.0.2"
+  }
+}

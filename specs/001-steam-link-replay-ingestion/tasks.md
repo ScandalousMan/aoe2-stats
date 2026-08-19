@@ -1,5 +1,5 @@
 ---
-description: "Task list for Steam account linking and automatic replay ingestion"
+description: 'Task list for Steam account linking and automatic replay ingestion'
 ---
 
 # Tasks: Steam Account Linking and Automatic Replay Ingestion
@@ -10,7 +10,7 @@ description: "Task list for Steam account linking and automatic replay ingestion
 [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
 
 **Tests**: Included, and mandatory. Constitution VII requires visual tests for every UI component,
-and the user story phases below place every test task *before* the implementation tasks it covers.
+and the user story phases below place every test task _before_ the implementation tasks it covers.
 The eleven scenarios in [quickstart.md](./quickstart.md) are the source for the integration tests;
 each test task names the scenario it encodes. A test task is done when the test exists **and fails**
 for the right reason.
@@ -32,19 +32,19 @@ Monorepo per [plan.md](./plan.md): `apps/api`, `apps/ingester`, `apps/web`, `pac
 
 ## Scenario coverage map
 
-| quickstart scenario | Story | Test task |
-| --- | --- | --- |
-| 1 — Linking works and cannot be forged | US1 | T021 |
-| 2 — Nothing happens without consent | US2 | T042 |
-| 3 — Backfill rescues the window | US2 | T043 |
-| 4 — Interruption loses nothing | US2 | T044 |
-| 5 — Deadline order under pressure | US2 | T045 |
-| 6 — Idempotency | US2 | T046 |
-| 7 — Failure classification | US2 | T047 |
-| 8 — Manual upload | US4 | T078 |
-| 9 — Multiple Steam accounts | US1 | T023 |
-| 10 — Data rights | US5 | T086, T087, T088 |
-| 11 — Liveness reports absence | US2 | T048 |
+| quickstart scenario                    | Story | Test task        |
+| -------------------------------------- | ----- | ---------------- |
+| 1 — Linking works and cannot be forged | US1   | T021             |
+| 2 — Nothing happens without consent    | US2   | T042             |
+| 3 — Backfill rescues the window        | US2   | T043             |
+| 4 — Interruption loses nothing         | US2   | T044             |
+| 5 — Deadline order under pressure      | US2   | T045             |
+| 6 — Idempotency                        | US2   | T046             |
+| 7 — Failure classification             | US2   | T047             |
+| 8 — Manual upload                      | US4   | T078             |
+| 9 — Multiple Steam accounts            | US1   | T023             |
+| 10 — Data rights                       | US5   | T086, T087, T088 |
+| 11 — Liveness reports absence          | US2   | T048             |
 
 quickstart has no scenario for US3: match history is the one story whose data can be re-fetched at
 any time, so its tests are derived from the acceptance scenarios in [spec.md](./spec.md) instead.
@@ -56,12 +56,12 @@ any time, so its tests are derived from the acceptance scenarios in [spec.md](./
 **Purpose**: Turn a repository that currently holds only documents, CI and one reference replay into
 a working uv + pnpm monorepo.
 
-- [ ] T001 Create the root `pyproject.toml` declaring the uv workspace members (`packages/core`, `packages/providers`, `packages/replay-engine`, `packages/storage`, `apps/api`, `apps/ingester`), Python 3.13, and the shared `ruff` and `mypy` (strict) configuration, in `pyproject.toml`
-- [ ] T002 [P] Create the six Python package skeletons with their own `pyproject.toml` and `src/` layout: `packages/core/`, `packages/providers/`, `packages/replay-engine/`, `packages/storage/`, `apps/api/`, `apps/ingester/`
-- [ ] T003 [P] Create the pnpm workspace — `package.json`, `pnpm-workspace.yaml` — plus the Vite + React 19 + TypeScript + TanStack Router/Query + Tailwind application in `apps/web/` and the Storybook package in `packages/design-system/`
-- [ ] T004 [P] Configure pytest in `pyproject.toml` — including `scripts/checks` in `testpaths`, since it is not a uv workspace member and T048's test would otherwise never be collected — and add the autouse fixture in `tests/conftest.py` that makes the network unavailable when `PYTEST_DISABLE_NETWORK=1`, so constitution III is enforced by the harness and not by discipline
-- [ ] T005 [P] Configure Playwright and the `test:visual` script for diff-scoped visual regression in `playwright.config.ts` and `package.json`
-- [ ] T006 [P] Implement typed settings loaded exclusively from environment variables, covering every key already declared in `.env.example`, in `apps/api/src/aoe2stats_api/settings.py`
+- [x] T001 Create the root `pyproject.toml` declaring the uv workspace members (`packages/core`, `packages/providers`, `packages/replay-engine`, `packages/storage`, `apps/api`, `apps/ingester`), Python 3.13, and the shared `ruff` and `mypy` (strict) configuration, in `pyproject.toml`
+- [x] T002 [P] Create the six Python package skeletons with their own `pyproject.toml` and `src/` layout: `packages/core/`, `packages/providers/`, `packages/replay-engine/`, `packages/storage/`, `apps/api/`, `apps/ingester/`
+- [x] T003 [P] Create the pnpm workspace — `package.json`, `pnpm-workspace.yaml` — plus the Vite + React 19 + TypeScript + TanStack Router/Query + Tailwind application in `apps/web/` and the Storybook package in `packages/design-system/`
+- [x] T004 [P] Configure pytest in `pyproject.toml` — including `scripts/checks` in `testpaths`, since it is not a uv workspace member and T048's test would otherwise never be collected — and add the autouse fixture in `tests/conftest.py` that makes the network unavailable when `PYTEST_DISABLE_NETWORK=1`, so constitution III is enforced by the harness and not by discipline
+- [x] T005 [P] Configure Playwright and the `test:visual` script for diff-scoped visual regression in `playwright.config.ts` and `package.json`
+- [x] T006 [P] Implement typed settings loaded exclusively from environment variables, covering every key already declared in `.env.example`, in `apps/api/src/aoe2stats_api/settings.py`
 
 ---
 
@@ -72,7 +72,7 @@ user story depends on all of it.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T007 Implement every SQLAlchemy model from [data-model.md](./data-model.md) — `users`, `steam_identities`, `aoe_profiles`, `profile_links`, `matches`, `match_players`, `rating_snapshots`, `replay_captures`, `replay_parses`, `ingest_runs`, `provider_calls`, `replay_access_log`, `data_requests`, `sessions`, `alerts` — including `replay_captures.claimed_at`, the `(game_id, profile_id)` unique constraint that *is* deduplication, the partial unique index enforcing one primary profile per user, the partial unique index `UNIQUE (profile_links.profile_id) WHERE unlinked_at IS NULL` so an unlinked profile does not block its own relink, and `profile_links.backfill_requested_at`, which is how a link asks for a 31-day sweep it cannot perform itself (T031a, T054), in `packages/storage/src/aoe2stats_storage/models.py`
+- [ ] T007 Implement every SQLAlchemy model from [data-model.md](./data-model.md) — `users`, `steam_identities`, `aoe_profiles`, `profile_links`, `matches`, `match_players`, `rating_snapshots`, `replay_captures`, `replay_parses`, `ingest_runs`, `provider_calls`, `replay_access_log`, `data_requests`, `sessions`, `alerts` — including `replay_captures.claimed_at`, the `(game_id, profile_id)` unique constraint that _is_ deduplication, the partial unique index enforcing one primary profile per user, the partial unique index `UNIQUE (profile_links.profile_id) WHERE unlinked_at IS NULL` so an unlinked profile does not block its own relink, and `profile_links.backfill_requested_at`, which is how a link asks for a 31-day sweep it cannot perform itself (T031a, T054), in `packages/storage/src/aoe2stats_storage/models.py`
 - [ ] T007a [P] Reconcile the processing register with the schema this feature actually creates, in `docs/privacy/processing-register.md`: add every personal data category the models introduce that the register does not already carry — the replay access log and the rating time series among them — as constitution IX requires in the same change, and **check the existing rows still describe categories that are collected**. The register is wrong in both directions: an undeclared category is a breach, and a declared category that no longer exists misdescribes the processing to a reader who has no way to check. Walk the table in [data-model.md](./data-model.md) column by column rather than trusting what the register already says
 - [ ] T008 Initialise Alembic and write the initial migration for those models, verifying `upgrade head` then `downgrade -1` both succeed as the `migrations` job in `.github/workflows/pr.yml` demands, in `infra/migrations/` and `alembic.ini`
 - [ ] T009 [P] Implement the async engine, session factory and repository base — `psycopg` 3 against the pooled connection string with server-side prepared statements disabled per research §4 — in `packages/storage/src/aoe2stats_storage/repositories/base.py`
@@ -111,7 +111,7 @@ and confirm rejection.
 - [ ] T021 [P] [US1] Integration test for quickstart scenario 1: sign-in resolves profile and ratings with no input; a replayed callback with identical parameters is **rejected**; a callback with one character of `openid.claimed_id` altered is rejected; a Steam account that has never played AoE2 online yields `no_aoe2_profile` and not a stack trace (FR-001, FR-002, FR-003) — in `apps/api/tests/test_auth_flow.py`
 - [ ] T022 [P] [US1] Integration test for the closed-beta allowlist (FR-005): a non-allowlisted visitor gets `not_allowlisted` with an explanation and no account row is created, in `apps/api/tests/test_allowlist.py`
 - [ ] T023 [P] [US1] Integration test for quickstart scenario 9: sign in as A, link B through `/api/auth/steam/start?link=1`, expect both profiles under one account with exactly one primary and both eligible for ingestion (FR-007); assert **no response of any endpoint** reveals that A and B are the same person (FR-045); assert `profile_already_linked` when B belongs to another account — in `apps/api/tests/test_multi_account.py`
-- [ ] T024 [P] [US1] Integration test for unlink and relink (FR-004): the unlink response states what becomes of archived replays *before* confirmation, ingestion stops for that profile, `unlinked_at` is set rather than the row deleted, and relinking the same profile works, in `apps/api/tests/test_unlink.py`
+- [ ] T024 [P] [US1] Integration test for unlink and relink (FR-004): the unlink response states what becomes of archived replays _before_ confirmation, ingestion stops for that profile, `unlinked_at` is set rather than the row deleted, and relinking the same profile works, in `apps/api/tests/test_unlink.py`
 - [ ] T025 [P] [US1] Integration test for consent (FR-034, FR-035): consent is a separate call that can be declined while the rest of the account works, `ingest_consent_at` is recorded, withdrawal sets `ingest_consent_withdrawn_at`, in `apps/api/tests/test_consent.py`
 
 ### Implementation for User Story 1
@@ -176,7 +176,7 @@ byte-for-byte identical.
 - [ ] T055 [US2] Implement capture: claim with `FOR UPDATE SKIP LOCKED` ordered by `capture_deadline_at` ascending, reclaim stale `downloading` rows older than the maximum function duration, download, upload the blob, verify the checksum, **commit `object_key`, `zip_bytes` and `zip_sha256` while the row is still `downloading`**, then validate through the engine interface behind the barrier below, **then** update the row to `stored` or `quarantined` (FR-017, FR-023, FR-026). The blob is uploaded before it is validated and is never discarded on a validation failure — after ~31 days the source has no replacement, so an unparsable capture is evidence, not garbage. A quarantine raises a severity-2 `validation_failed` alert through `raise_alert` (T014a), since nothing else would ever surface it. **Containment (constitution V):** the ingester runs the engine in-process, so an engine failure must not become the run's failure. Validation is called through a barrier that catches `BaseException` and enforces a wall-clock cap; either outcome is `quarantined` with `last_error`, never a failed run, and no exception leaves this module. The one failure the barrier cannot catch — a C-extension fault taking the process down — is survivable only because the bytes were committed one step earlier: the reclaim path resumes at validation for any stale `downloading` row that already carries `zip_sha256`, and never re-downloads a replay it already holds — in `apps/ingester/src/aoe2stats_ingester/capture.py`
 - [ ] T056 [US2] Implement the three-way reading of a 404 in the caller from `matches.completed_at`, since the endpoint answers identically in all three cases: younger than `REPLAY_PUBLICATION_GRACE_HOURS` leaves the row `pending` for the next cycle; older than the grace but inside the retention window is `unavailable`, **and only after at least two attempts**; past the window is `expired` and raises a severity-1 `expired_capture` alert through `raise_alert` (T014a). The first branch is the one FR-019 was corrected for: without it a replay published a few hours late is recorded as never recorded, and expires. The two-attempt floor is what makes the grace mean what it says: at a daily cadence a single poll can fall on either side of it, so age alone would let one unlucky 404 close a capture that a second poll would have caught (T012a) — in `apps/ingester/src/aoe2stats_ingester/capture.py`
 - [ ] T057 [US2] Implement bounded retries: `next_attempt_at` written on the row with increasing delay and a terminal `failed` status at the attempt limit, never an unbounded retry (FR-020), in `apps/ingester/src/aoe2stats_ingester/capture.py`
-- [ ] T058 [US2] Enforce the ingestion quota per user aggregated across all their profiles, never per profile, exempting any capture nearer to its deadline than `INGEST_QUOTA_EXEMPT_DAYS` so the fairness cap can never delay an expiring replay (FR-044). It lives in its own module and **not** in `budget.py`, which `plan.md` defines as the *time* budget — in `apps/ingester/src/aoe2stats_ingester/quota.py`
+- [ ] T058 [US2] Enforce the ingestion quota per user aggregated across all their profiles, never per profile, exempting any capture nearer to its deadline than `INGEST_QUOTA_EXEMPT_DAYS` so the fairness cap can never delay an expiring replay (FR-044). It lives in its own module and **not** in `budget.py`, which `plan.md` defines as the _time_ budget — in `apps/ingester/src/aoe2stats_ingester/quota.py`
 - [ ] T059 [US2] Complete `run_once(budget_seconds)`, defaulting to `INGEST_RUN_BUDGET_SECONDS`: **insert the `ingest_runs` row first**, carrying `started_at`, `trigger` and `budget_seconds` and nothing else; then discover, reconcile, drain; then close that same row with `finished_at` and every counter plus `capture_lag_p50_seconds` and `capture_lag_p95_seconds` (FR-024). The row is opened before any work rather than written after it because every alert carries `ingest_run_id`, and four of the five producers fire during the drain (T052, T055, T056) or immediately after it (T059a): a row that did not exist yet would leave them orphaned and `alerts_raised` permanently short. A run that dies leaves an open row with a null `finished_at`, which is a fact worth having rather than a row that was never written — in `apps/ingester/src/aoe2stats_ingester/run.py`
 - [ ] T059a [US2] Raise the deadline-breach alert at the end of `run_once`, after the drain and against the still-open `ingest_runs` row T059 inserted at the start, so the alert carries a real `ingest_run_id` and is counted in that row's `alerts_raised`: one aggregate severity-1 `deadline_breach` through `raise_alert` (T014a) carrying the offending capture ids in `detail`, for every capture past `capture_deadline_at` that is neither `stored`, `unavailable` nor `quarantined` (FR-025). One row per run, never one per capture: a backlog would otherwise bury the alert it is supposed to raise. This fires at day 21 with ~10 days left to act, which is the whole difference from `expired_capture` — that one is a post-mortem — in `apps/ingester/src/aoe2stats_ingester/run.py`
 - [ ] T060 [US2] Wire `POST /api/cron/ingest` to return 200 with the run report even when individual captures failed, reserving non-200 for a cycle that could not run at all. The logic lives in `run_once()`; this route is a ten-line caller like the cron file, not its authority (see T018) — in `apps/api/src/aoe2stats_api/routers/cron.py` and `api/cron/ingest.py`

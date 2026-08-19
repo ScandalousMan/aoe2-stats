@@ -1,0 +1,124 @@
+# Root of the uv workspace. This file has no source of its own — `[tool.uv] package = false`
+# keeps it un-built — and exists to declare the workspace members, the shared dev toolchain, and
+# the `ruff`/`mypy` configuration every member inherits. Per-package dependencies live in each
+# member's own `pyproject.toml` (created starting T002); nothing here should duplicate them.
+[project]
+name = "aoe2-stats"
+version = "0.1.0"
+description = "Workspace root for aoe2-stats. Not published."
+requires-python = ">=3.13,<3.14"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+  "packages/core",
+  "packages/providers",
+  "packages/replay-engine",
+  "packages/storage",
+  "apps/api",
+  "apps/ingester",
+]
+
+# Shared dev toolchain, installed once for the whole workspace by `uv sync --all-packages --dev`
+# (as `.github/workflows/pr.yml` does) rather than duplicated per member.
+[dependency-groups]
+dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3"]
+
+# --- pytest --------------------------------------------------------------------------------------
+# One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
+# `uv run pytest -q` from the repository root with `PYTEST_DISABLE_NETWORK=1`. `testpaths` lists
+# every workspace member's `tests/` directory plus `scripts/checks/tests` — the latter is not a uv
+# workspace member (it is deliberately excluded from `[tool.uv.workspace]` above, predating this
+# config), so without naming it here T048's liveness-check test would never be collected. Most of
+# these directories do not exist yet; pytest does not error on a `testpaths` entry that is missing,
+# it simply finds nothing there until the story that owns it lands.
+[tool.pytest.ini_options]
+testpaths = [
+  "packages/core/tests",
+  "packages/providers/tests",
+  "packages/replay-engine/tests",
+  "packages/storage/tests",
+  "apps/api/tests",
+  "apps/ingester/tests",
+  "scripts/checks/tests",
+]
+# `tests/conftest.py` (the network-blocking autouse fixture, constitution III) is not an ancestor
+# directory of any path above, so pytest would never load it as a plain per-directory conftest.
+# Registering it explicitly as a plugin makes it apply to every test in the workspace regardless of
+# which member owns it. `pythonpath` puts the repository root on `sys.path` so `tests` resolves as
+# an implicit namespace package (PEP 420) — no `tests/__init__.py` needed.
+addopts = ["-p", "tests.conftest"]
+pythonpath = ["."]
+
+# --- ruff --------------------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["apps", "packages"]
+# Ruff's default `include` also formats/lints fenced Python in every `*.md` file — the skills,
+# docs and specs directories are documentation, not code, and are not ours to reformat.
+# `scripts/checks/` and `scripts/hooks/` are deliberately outside the uv workspace (plan.md):
+# standalone tools run through `uv run --with`, predating this config, with their own style.
+# The `python` CI job's path filter never triggers on `scripts/**` either — this exclusion keeps
+# that boundary consistent instead of silently reaching past it the day this file starts existing.
+extend-exclude = ["*.md", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade — keep syntax current with the pinned Python
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "RUF", # ruff-specific rules
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "aoe2stats_core",
+  "aoe2stats_providers",
+  "aoe2stats_replay_engine",
+  "aoe2stats_storage",
+  "aoe2stats_api",
+  "aoe2stats_ingester",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# --- mypy (strict) ------------------------------------------------------------------------------
+# Scoped to the six workspace members' `src/` trees. Test suites and the standalone
+# `scripts/checks/` tools are covered by ruff but not by this strict gate.
+[tool.mypy]
+python_version = "3.13"
+strict = true
+explicit_package_bases = true
+warn_unused_configs = true
+mypy_path = [
+  "packages/core/src",
+  "packages/providers/src",
+  "packages/replay-engine/src",
+  "packages/storage/src",
+  "apps/api/src",
+  "apps/ingester/src",
+]
+files = [
+  "packages/core/src",
+  "packages/providers/src",
+  "packages/replay-engine/src",
+  "packages/storage/src",
+  "apps/api/src",
+  "apps/ingester/src",
+]
+
+[[tool.mypy.overrides]]
+# Third-party packages without inline types or published stubs. Extend this list rather than
+# disabling strict globally when a new untyped dependency is introduced.
+module = ["aoe2rec.*", "mgz.*"]
+ignore_missing_imports = true

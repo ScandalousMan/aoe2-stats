@@ -1,0 +1,3 @@
+/* Tailwind entry point. The token-driven preset that feeds this import is defined in
+ * packages/design-system (T016); until then this file stays a bare import so the build works. */
+@import 'tailwindcss';
