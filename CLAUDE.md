@@ -33,6 +33,26 @@ ingestion and raw archival ship in the MVP while parsing and analysis wait for V
 - `docs/adr/0002-hosting.md` — why Vercel Hobby works, and what it forbids in the code
 - `docs/risks.md` — the risk register and the verification checklist
 
+## Where things are written down
+
+Three homes, and the difference matters — putting something in the wrong one is how documentation
+starts lying.
+
+| Home | Holds | Lifetime |
+| --- | --- | --- |
+| `docs/` | **Facts and decisions that outlive any feature.** Measured properties of the outside world (`data-sources.md`), architecture decisions (`adr/`), the risk register. | Living. Must be true *today*; the nightly contract tests exist to keep it so. |
+| `specs/NNN-*/` | **One change.** What that feature must do, its plan, its data model, its contracts. Written once, then a historical record of what was decided and why. | Frozen at merge. |
+| `.claude/skills/` | **Judgment.** The rules, the traps, what not to do. Loaded into an agent's context on demand, so kept short. | Living, but points at `docs/` for every number. |
+
+The test: *does this need updating when the world changes?* If yes it belongs in `docs/`. If it
+describes one change, it belongs in `specs/`. If it tells someone how to behave, it belongs in a
+skill.
+
+**Never copy a measurement between them.** A number that exists in two files will be wrong in one of
+them. Skills and specs reference `docs/`; they do not restate it. Repeating a *constraint* where it
+governs a decision — the 21-day capture budget appears wherever something depends on it — is
+different and correct.
+
 ## Workflow
 
 Spec-Driven Development with Spec-Kit: `speckit-specify` -> `speckit-clarify` -> `speckit-plan` ->

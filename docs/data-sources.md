@@ -3,8 +3,10 @@
 Reference sheet for every external system this project reads from. All figures were measured on
 **2026-08-19 between 16:06 and 16:40 UTC** from a residential connection, against public endpoints.
 
-Keep this file and `.claude/skills/aoe2-data-sources/SKILL.md` in sync: a change to one without the
-other is a review rejection.
+**This file is the single source of truth for these measurements.** Nothing else in the repository
+restates them — `.claude/skills/aoe2-data-sources/SKILL.md` carries the rules and points here for
+every number, so there is nothing to keep in sync. When a nightly contract test fails, correct this
+file first: it is what the next person will trust.
 
 ## Summary
 

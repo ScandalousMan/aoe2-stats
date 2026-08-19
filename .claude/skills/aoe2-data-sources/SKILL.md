@@ -1,104 +1,64 @@
 ---
 name: aoe2-data-sources
-description: AoE2 DE data sources — Relic endpoints, replay download via aoe.ms, aoe2companion API, aoestats dumps, retention window and known traps. Load before any work on packages/providers or apps/ingester.
+description: How to talk to the AoE2 data sources — which one is authoritative, the traps that cost time, and the rules every provider follows. Load before any work on packages/providers or apps/ingester.
 ---
 
 # AoE2 DE data sources
 
-Everything below was measured on 2026-08-19. Any divergence found must be corrected here **and** in
-`docs/data-sources.md`, in the same PR.
+**Facts live in [`docs/data-sources.md`](../../../docs/data-sources.md): endpoints, payload shapes,
+measured sizes, the retention bisection, dated findings. Read it when you need a number.** This file
+carries the rules and the traps, which is what you need before writing code.
 
-## Relic host — trap #1
+Never copy a measurement from that document into another file. It is kept true by the nightly
+contract tests in `scripts/checks/contract_sources.py`; a copy is true only until the world moves.
 
-`aoe-api.reliclink.com` serves a `CN=*.worldsedgelink.com` certificate, so TLS verification fails.
-**Use `https://aoe-api.worldsedgelink.com`.** Every community document citing reliclink.com is
-stale. Never disable TLS verification to work around this.
+## Which source is authoritative
 
-## Relic endpoints (public, no auth)
+| Source | Role | If it fails |
+| --- | --- | --- |
+| **Relic** `aoe-api.worldsedgelink.com` | primary — profile resolution, ratings, match discovery | the feature stops; alert |
+| **aoe.ms** | primary — replay download | replays are being lost; alert loudly |
+| **aoe2companion** | enrichment only, degradable | render without it; **do not alert** |
+| **aoestats** | V2 historical corpus only | irrelevant to the MVP |
 
-```
-GET /community/leaderboard/getAvailableLeaderboards?title=age2
-GET /community/leaderboard/getPersonalStat?title=age2&profile_names=["/steam/{steamid64}"]
-GET /community/leaderboard/getRecentMatchHistory?title=age2&profile_ids=[a,b,c]
-GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&count=N&sortBy=1
-```
+## Traps that will cost you an afternoon
 
-- `getPersonalStat` is the **steamid64 -> profile_id** resolution path. It also returns, per
-  leaderboard, `rating`, `rank`, `wins`, `losses`, `streak`, `highestrating` and `lastmatchdate`
-  (~8 KB payload). Verified: `76561197984749679` -> `196240`.
-- `getRecentMatchHistory`: the `id` field is the `gameId` the replay endpoint expects.
-  `matchhistoryreportresults[]` holds one row per player (`profile_id`, `resulttype`, `teamid`,
-  `civilization_id`). About 400 KB per profile: never call it in a tight loop.
-- **Both accept an array of profiles** — always batch.
-- There is no official documentation. The contract can change without notice, which is why nightly
-  contract tests exist.
+- **`aoe-api.reliclink.com` fails TLS verification.** It serves a certificate for
+  `*.worldsedgelink.com`. Every community document naming that host is stale. Use
+  `aoe-api.worldsedgelink.com`, and **never** disable certificate verification to get past it.
+- **The replay endpoint rejects `HEAD` and ignores `Range`.** There is no cheap way to test whether a
+  replay exists. Every check is a full download. Design around it rather than discovering it.
+- **`(gameId, profileId)` must be a real participant pair**, otherwise 404. The same 404 is returned
+  whether the replay never existed or has expired — the caller distinguishes them from the match's
+  completion time, and getting that wrong means either alert fatigue or silence on the one metric
+  that matters.
+- **Archive the zip, never the extracted record.** The ratio is about eight to one.
+- **`aoestats.io/api/db_dumps/` needs the trailing slash**, or you get a 301 with an empty body.
+- **aoe2companion returns 403 at random.** Bot protection that trips intermittently, and it fails
+  from CI more often than from a laptop. This is normal operating noise, not an incident. Its contract
+  check is deliberately non-blocking.
 
-## Replay download — aoe.ms
+## Rules every provider follows
 
-```
-GET https://aoe.ms/replay/?gameId={gameId}&profileId={profileId}
-  -> 301 -> https://api.ageofempires.com/api/GameStats/AgeII/GetMatchReplay/?gameId=..&profileId=..&matchId=..
-```
-
-- 200 `application/zip`; `content-disposition: attachment; filename=AgeIIDE_Replay_{gameId}.zip`.
-- The zip holds **exactly one** file: `AgeIIDE_Replay_{gameId}.aoe2record`.
-- Compression ratio x7.9 (871 503 B zip -> 6 909 299 B raw): **archive the zip, never the extract**.
-- Typical sizes: ranked 1v1 ~0.9 MB; 8-player game ~2.3-2.5 MB.
-- `(gameId, profileId)` must be a **real participant pair**, otherwise 404. There is no ownership
-  check: any participant id works, including another player's.
-- The file is **that profileId's point of view**. We only ever capture the consenting user's.
-- **`HEAD` returns 405** and **`Range` is ignored**: there is no way to test existence without
-  downloading the whole body.
-- Retention is approximately **31 days**. Measured: available at 2026-07-19 15:09, gone at
-  2026-07-19 10:46, reference time 2026-08-19 16:09Z. Not patch-scoped — it is a rolling time-based
-  purge. **Internal capture budget: 21 days.**
-- A replay is available within minutes of match end (33 min verified as an upper bound).
-- Rate limits are unknown and undocumented. Use **<= 1 req/s globally**, serial downloads, jitter and
-  backoff. An unexpected 429 or 403 is an incident: stop the run and alert, never push through.
-
-## aoe2companion — enrichment only
-
-```
-GET https://data.aoe2companion.com/api/matches?profile_ids=a,b&page=N   (20 per page)
-GET https://data.aoe2companion.com/api/profiles/{profileId}
-GET https://data.aoe2companion.com/api/profiles?search={name}
-```
-
-Normalized data (map and civ names, mode, speed, CDN images, `linkedProfiles`), fresh about 30 s
-after match end. But: single-maintainer project, **no licence on the repository**, no public API
-documentation, no announced rate limits, `/api` root returns 403. **Never a primary source, never on
-the critical path.** Aggressive cache plus circuit breaker. When the circuit is open the application
-degrades its display; it does not fall over.
-
-**This source returns 403 intermittently** — observed 2026-08-19 from CI while the identical request
-succeeded from a residential connection, then alternating locally with no User-Agent pattern. Bot
-protection that trips at random. Treat a 403 here as normal operating noise, not an incident: its
-contract check is deliberately non-blocking. Whether it is reachable at all from Vercel's egress
-addresses is still unverified — the application must work either way.
-
-## aoestats.io — historical corpus only
-
-```
-GET https://aoestats.io/api/db_dumps/     <- the trailing slash is required (otherwise 301, empty body)
-```
-
-Weekly parquet dumps. **Every dump since the week of 2026-02-08 contains 0 matches**; the last usable
-dump is 2026-02-01 to 2026-02-07. The outage coincides with the aoc-mgz breakage caused by the
-2026-02-17 DLC and is very likely the same root cause.
-
-Useless for live data. Valuable in V2 as a reference corpus: 30.7 M matches from 2022-08 to 2026-02,
-with `feudal_age_uptime`, `castle_age_uptime`, `imperial_age_uptime` and `opening` precomputed, to
-benchmark a player by elo bracket and map.
-
-## Rules
-
-- All access to these sources goes through `packages/providers`. No exceptions.
-- Every outbound request sends an honest, identifying `User-Agent`:
+- All outbound access goes through `packages/providers`. No exceptions, authentication included.
+- Send an honest, identifying `User-Agent`:
   `aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)`. None of these APIs is documented
   or contractual; being recognisable is what lets a maintainer ask us to slow down instead of
   silently blocking us.
-- Every response is persisted verbatim (`raw_payload jsonb`) before any transformation.
-- The fixtures in `packages/providers/fixtures/` are frozen real responses: unit tests never touch
-  the network.
-- Nightly contract tests hit the real APIs and fail loudly on a schema change. That is how we learn
-  about a break before our users do.
+- **At most 1 request per second** to the replay endpoint, serially, with jitter and backoff. Its
+  rate limits are undocumented, so behave as a guest.
+- A 429 or an unexpected 403 from a primary source **stops the whole run** and alerts. It does not
+  skip one item and continue. The capture budget is 21 days; there is always tomorrow, and being
+  blocked by the source is not recoverable on the same timescale.
+- Persist every response verbatim before transforming it. After the retention window closes there
+  may be nothing left to re-fetch.
+- Validate strictly. An unexpected type is a contract violation, never a coerced value — silent
+  coercion is how wrong data becomes permanent.
+- Batch. Both Relic endpoints take arrays of profiles.
+
+## Testing
+
+Unit tests use frozen real responses in `packages/providers/fixtures/` and never touch the network.
+The nightly contract tests are the only thing that talks to the live APIs, and the only thing that
+will tell you a schema changed. When a contract test fails, fix `docs/data-sources.md` first and the
+code second — the document is what the next person will trust.
