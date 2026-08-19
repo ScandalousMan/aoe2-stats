@@ -6,10 +6,10 @@ by hand with `APIError`, but an unmatched route, a validation failure, or a genu
 exception too — and the router registration.
 
 Routers are wired with `app.include_router(<module>.router, prefix="/api")` and nothing more.
-That is deliberate: this task (T014) ships only `health.py`, but T018 adds the local cron trigger
-route and every user-story phase after it adds a router of its own (`auth.py`, `profiles.py`,
-`matches.py`, `replays.py`, `privacy.py`). Each one is a two-line addition here — one import, one
-`include_router` call — and never a change to this module's structure.
+That is deliberate: this task (T014) ships only `health.py`, T018 adds `cron.py` — the local cron
+trigger route — and every user-story phase after it adds a router of its own (`auth.py`,
+`profiles.py`, `matches.py`, `replays.py`, `privacy.py`). Each one is a two-line addition here —
+one import, one `include_router` call — and never a change to this module's structure.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
 from aoe2stats_api.errors import APIError, error_response
-from aoe2stats_api.routers import health
+from aoe2stats_api.routers import cron, health
 
 logger = logging.getLogger("aoe2stats_api")
 
@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(cron.router, prefix="/api")
 
     return app
 

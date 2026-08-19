@@ -8,10 +8,12 @@ dependencies = [
   "fastapi>=0.115",
   "httpx>=0.27",
   "aoe2stats-storage",
+  "aoe2stats-ingester",
 ]
 
 [tool.uv.sources]
 aoe2stats-storage = { workspace = true }
+aoe2stats-ingester = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from publication_delay import record_sample
 
 # An honest, identifying User-Agent. Several of these sources sit behind bot protection, and we
 # would rather be recognisable than anonymous if anyone ever wants to ask us to slow down.
@@ -60,6 +61,13 @@ PROBE_PROFILE_ID_2 = 199325  # "VIT | Hera", pulled live from getLeaderBoard2 on
 PROBE_STEAM_ID_NO_PROFILE = "76561197960287930"
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "packages" / "providers" / "fixtures"
+
+# T012a: where the publication-delay distribution lives — beside the retention window it
+# validates, per docs/data-sources.md's own "single source of truth" rule (see publication_delay.py).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_SOURCES_DOC = _REPO_ROOT / "docs" / "data-sources.md"
+PUBLICATION_DELAY_SAMPLES = _REPO_ROOT / "docs" / "data-sources" / "publication_delay_samples.jsonl"
+PUBLICATION_DELAY_SAMPLES_RELPATH = "docs/data-sources/publication_delay_samples.jsonl"
 
 _args = argparse.ArgumentParser(add_help=True)
 _args.add_argument("--capture-fixtures", action="store_true")
@@ -374,6 +382,56 @@ def _replay_window() -> None:
                 "body": resp.text,
             },
         )
+
+
+@check("aoe.ms: publication-delay sample (distribution, non-blocking)", blocking=False)
+def _publication_delay_sample() -> None:
+    """One sample per run, never a poll for `200` (module docstring, T012a): the age of the probe
+    profile's most recently completed match, and whether `aoe.ms` already answers `200` for it yet.
+    The single observation docs/data-sources.md used to carry — 33 min, n=1 — becomes a
+    distribution one point at a time; see "Publication delay: distribution" there.
+
+    Non-blocking on purpose: a late publication is a measurement, not a broken contract —
+    `_replay_window` above is what asserts the contract still holds for the case that matters
+    operationally (a match within the last week). `record_sample` (`publication_delay.py`) is what
+    turns this into something durable: it appends the sample and regenerates the summary in
+    `docs/data-sources.md` in the same call, so the two can never go out of step.
+    """
+    r = session.get(
+        f"{RELIC}/getRecentMatchHistory",
+        params={"title": "age2", "profile_ids": json.dumps([PROBE_PROFILE_ID])},
+        timeout=TIMEOUT,
+    )
+    assert r.status_code == 200, f"expected 200, got {r.status_code}"
+    matches = r.json()["matchHistoryStats"]
+    assert matches, "probe profile has no matches to sample from"
+    latest = max(matches, key=lambda m: m["completiontime"])
+    now = time.time()
+    age_hours = (now - latest["completiontime"]) / 3600
+
+    # stream=True: read the status only, never the body. Whether the body is a real zip is
+    # `_replay_window`'s and `_replay_capture`'s job; this check only ever needs the same boolean
+    # the caller in capture.py (T056) reads a 404 for.
+    with session.get(
+        REPLAY,
+        params={"gameId": latest["id"], "profileId": PROBE_PROFILE_ID},
+        timeout=TIMEOUT,
+        stream=True,
+    ) as resp:
+        assert resp.status_code in (200, 404), (
+            f"unexpected status sampling publication delay: {resp.status_code}"
+        )
+        available = resp.status_code == 200
+
+    record_sample(
+        PUBLICATION_DELAY_SAMPLES,
+        DATA_SOURCES_DOC,
+        observed_at_iso=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        game_id=latest["id"],
+        age_hours=age_hours,
+        available=available,
+        samples_relpath=PUBLICATION_DELAY_SAMPLES_RELPATH,
+    )
 
 
 if CAPTURE_FIXTURES:
