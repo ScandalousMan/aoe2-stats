@@ -205,10 +205,11 @@ records or in storage.
 
 - A user links a Steam account that owns AoE2 but has only ever played single-player: no online
   profile exists.
-- A player owns several AoE2 profiles under one Steam account, or has changed their in-game alias.
-- A user creates a new Steam account and starts playing on it: nothing can discover this, so the
-  onus is on the user to link it, and the consequence of not doing so — permanent loss — must be
-  stated where they would see it.
+- A player has changed their in-game alias: the stored alias is the last one observed, not a
+  history.
+- A player plays on a second Steam account. Only a completed sign-in on that account can reveal it
+  (FR-007, FR-045); nothing discovers it, and the cost of not linking it — permanent loss — must be
+  stated where the user would see it.
 - A user links a second Steam account that is already linked to a different aoe2-stats account.
 - A user loses access to their Steam account: by design there is no recovery path, and they were
   told so before consenting.
@@ -261,7 +262,10 @@ records or in storage.
   ratings and match history for that profile. Where a user has more than one profile, the interface
   MUST make the others reachable rather than hiding that they exist and are being archived.
 - **FR-044**: System MUST apply its ingestion quota per user, aggregated across all their profiles,
-  not per profile.
+  never per profile. The quota MUST NOT apply to a capture whose deadline is nearer than the
+  quota-exempt horizon: a fairness cap that delays an expiring replay in order to serve a fresh one
+  inverts the priority the whole system is built on. The quota exists for fairness between users,
+  not for politeness toward the source — rate limiting handles that.
 
 **Ratings and match data**
 
@@ -272,8 +276,11 @@ records or in storage.
   civilisation, result, rating change and duration.
 - **FR-011**: System MUST provide a match detail view listing every participant with their team,
   civilisation, result and rating change.
-- **FR-012**: System MUST preserve the exact response received from each external source, unmodified,
-  so that any later change in interpretation can be re-derived without re-fetching.
+- **FR-012**: System MUST preserve, unmodified, the exact response received from any external source
+  whose response is irrecoverable — match records above all — so that a later change in
+  interpretation can be re-derived without re-fetching. Sources that can be re-queried at any time,
+  such as current ratings, are exempt: a second verbatim copy of something still available is a
+  second thing to keep honest, for no gain.
 
 **Replay capture**
 
@@ -299,11 +306,18 @@ records or in storage.
 - **FR-024**: System MUST record, for every cycle, when it ran, what it attempted, what it achieved
   and what remains outstanding, so that a cycle failing to run at all is detectable from the outside.
 - **FR-025**: System MUST raise an alert when any replay passes its capture deadline unarchived. This
-  count is expected to be permanently zero.
-- **FR-026**: System MUST verify that an archived file is a well-formed replay before considering the
-  capture successful.
+  count is expected to be permanently zero. This alert fires at the **capture deadline** (day 21),
+  not at expiry (day ~31). By the time a capture is expired the replay is already gone and the alert
+  is a post-mortem; at the deadline there are still ~10 days in which a human can act.
+- **FR-026**: System MUST verify that a captured file is a well-formed replay and MUST record the
+  outcome of that verification. A file that fails verification MUST still be stored, and MUST be
+  marked for review rather than discarded or retried into oblivion: once the retention window has
+  closed the source holds no replacement, so a malformed capture is evidence, not garbage. A capture
+  in this state counts as neither archived nor lost.
 - **FR-027**: System MUST show the user, per match, the archival state and the time remaining before
-  the capture window closes.
+  the capture window closes. "Time remaining" means time to the **capture deadline** (the 21-day
+  internal budget), not to the source's ~31-day retention: the user is shown the deadline the system
+  commits to, not the one it refuses to rely on.
 - **FR-028**: Users MUST be able to download any of their archived replays.
 
 **Manual upload**
@@ -360,10 +374,13 @@ records or in storage.
 
 - **SC-001**: **Zero replays are lost.** Across any 30-day period of normal operation, the number of
   a consenting user's matches whose replay expired unarchived while it was still fetchable is 0.
-- **SC-002**: 95% of a linked user's new matches are archived within 24 hours of the match ending,
-  and 100% within 21 days.
-- **SC-003**: A newly linked account has every still-available replay from the preceding 31 days
-  archived within 24 hours of linking, across all of the user's profiles.
+- **SC-002**: 95% of a linked user's new matches are archived within **48 hours** of the match
+  ending, and 100% within 21 days. The floor is the daily ingestion cadence: detection lag alone is
+  up to ~25 h (`docs/adr/0002-hosting.md`), so anything under 48 h would be a promise the platform
+  cannot keep.
+- **SC-003**: A newly linked account has its backfill **queued within one ingestion cycle** of
+  linking, and every still-available replay from the preceding 31 days archived within **7 days**,
+  across all of the user's profiles, nearest deadline first.
 - **SC-004**: A user goes from arriving on the site to seeing their own ratings in under 60 seconds
   and without typing any identifier.
 - **SC-005**: Every archived replay is retrievable and byte-for-byte identical to what was captured,
@@ -398,6 +415,9 @@ records or in storage.
   margin. If the window is ever observed to shrink, the budget is revised before anything else.
 - Only the consenting user's own point-of-view recording is captured. Recordings from other
   participants' perspectives are deliberately out of scope, for volume and for privacy.
+- The 7-day backfill figure (SC-003) assumes users link a few at a time. Onboarding the whole beta
+  cohort at once exceeds a daily run's throughput for several days; if that is ever planned, stagger
+  the invitations rather than discovering it as a backlog.
 - Analysing the contents of a replay — build orders, age-up times, recommendations — is explicitly
   out of scope here. This feature must nonetheless leave the archive in a state where such analysis
   is possible later without re-fetching anything.

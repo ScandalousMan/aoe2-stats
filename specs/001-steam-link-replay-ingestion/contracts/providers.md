@@ -62,11 +62,14 @@ different outcomes in the database:
 
 | Result | Meaning | Caller does |
 | --- | --- | --- |
-| `ReplayBlob` | bytes, filename, content type | verify, store, mark `stored` |
+| `ReplayBlob` | bytes, filename, content type | store, checksum, **then** validate; mark `stored`, or `quarantined` if it is not a well-formed replay |
 | `Unavailable(reason="not_recorded")` | 404, match younger than the retention window | mark `unavailable`, stop |
 | `Unavailable(reason="expired")` | 404, match older than the window | mark `expired` — **and alert** |
 | `ProviderRateLimited` | 429 or an unexpected 403 | **stop the whole run** and alert |
 | `ProviderUnavailable` | 5xx, timeout | back off, retry later |
+
+The blob is stored before it is validated, and a validation failure never discards it (FR-026): after
+~31 days the source holds no replacement, so an unreadable capture is evidence rather than garbage.
 
 Distinguishing `not_recorded` from `expired` is done by the caller from `completed_at`, not by the
 provider: the endpoint returns an identical 404 for both. Getting this wrong means either alert

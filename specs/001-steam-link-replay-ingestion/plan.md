@@ -59,7 +59,7 @@ the system exists.
 - All compute and storage regions in the EU.
 
 **Scale/Scope**: Closed beta, on the order of 10 to 20 players. Roughly 2.7 GB of replays per active
-player per year against a 10 GB free allowance. Around 12 database tables, 5 user stories, 45
+player per year against a 10 GB free allowance. 15 database tables, 5 user stories, 45
 functional requirements.
 
 ## Constitution Check
@@ -118,8 +118,8 @@ specs/001-steam-link-replay-ingestion/
 
 ```text
 api/
-└── cron/ingest.py                 # Vercel cron entrypoint. Verifies the secret, calls
-                                   # run_once(240), returns the report. Nothing else.
+└── cron/ingest.py                 # Vercel cron entrypoint. A shim: it delegates to the
+                                   # FastAPI route, which is the one authority. Nothing else.
 
 apps/
 ├── api/src/aoe2stats_api/
@@ -136,8 +136,9 @@ apps/
 │   ├── run.py                     # run_once(budget_seconds) — the whole unit of work
 │   ├── discover.py                # ratings refresh + match discovery + enqueue
 │   ├── reconcile.py               # 25-day sweep for anything missed
-│   ├── capture.py                 # claim, download, verify, store, mark
+│   ├── capture.py                 # claim, download, store, checksum, validate, mark
 │   ├── budget.py                  # time budget, checked between items, never mid-item
+│   ├── quota.py                   # per-user fairness cap, with its deadline exemption
 │   ├── ratelimit.py               # token bucket + backoff
 │   └── worker.py                  # [phase 2] loop calling run_once()
 └── web/src/
@@ -146,6 +147,9 @@ apps/
 
 packages/
 ├── core/src/aoe2stats_core/       # entities, value objects, use cases. No I/O.
+│   ├── replay/validation.py       # the replay-engine Protocol only, never an engine
+│   └── alerting.py                # raise_alert() — a use case; the row is written
+│                                  # through the storage repository. Pulled, never pushed
 ├── providers/src/aoe2stats_providers/
 │   ├── base.py                    # Protocols, timeout/retry/rate-limit wrappers
 │   ├── steam/                     # OpenID 2.0 verification
@@ -153,6 +157,9 @@ packages/
 │   ├── aoems/                     # replay download
 │   ├── companion/                 # enrichment, behind a circuit breaker
 │   └── fixtures/                  # frozen real responses
+├── replay-engine/src/aoe2stats_replay_engine/
+│   └── aoe2rec.py                 # the adapter. Out of core so a parser crash
+│                                  # reaches neither the API nor the ingester
 └── storage/src/aoe2stats_storage/
     ├── models.py  repositories/   # SQLAlchemy
     └── objects.py                 # S3 client and key scheme
@@ -161,12 +168,14 @@ infra/migrations/                  # Alembic
 tests/fixtures/replays/            # the committed reference replay
 ```
 
-**Structure Decision**: The monorepo laid out in `docs/adr/0002-hosting.md`, with two additions this
-feature forces. `api/cron/ingest.py` sits at the repository root because Vercel's routing requires
-it — it is the one platform-shaped file in the tree, and it is kept to ten lines precisely so that
-constitution XII is not quietly violated by a file that cannot be moved. And `packages/providers`
-gains a `steam` provider, because Steam sign-in is an outbound call like any other and principle III
-admits no exception for authentication.
+**Structure Decision**: The monorepo laid out in `docs/adr/0002-hosting.md`, with three additions
+this feature forces. `api/cron/ingest.py` sits at the repository root because Vercel's routing
+requires it — it is the one platform-shaped file in the tree, and it is kept to ten delegating lines
+precisely so that constitution XII is not quietly violated by a file that cannot be moved.
+`packages/providers` gains a `steam` provider, because Steam sign-in is an outbound call like any
+other and principle III admits no exception for authentication. And `packages/replay-engine` exists
+so that `core` — which the API imports — holds the engine Protocol and never an engine: constitution
+V wants a parser crash contained where it happens.
 
 `apps/parser` is **not** created by this feature. Capture-time validation calls the engine interface
 directly; the worker, its queue and the analysis engine belong to V2.

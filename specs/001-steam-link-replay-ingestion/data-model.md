@@ -30,12 +30,24 @@ does not exist cannot leak.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `steam_id64` | text, pk | As returned by `openid.claimed_id`, digits only |
-| `user_id` | uuid, fk users, **unique per (user, steam_id)** | |
+| `user_id` | uuid, fk users | Many rows per user; `steam_id64` being the pk already makes a Steam identity unique service-wide |
 | `verified_at` | timestamptz | The moment `check_authentication` returned valid. Never inferred |
 | `last_sign_in_at` | timestamptz | |
 
 A user may hold several rows (FR-007). Each one is a completed sign-in. There is no path by which a
 row appears without one — FR-045.
+
+### `sessions`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | text, pk | Opaque, 256 bits of randomness. Never derived from anything about the user |
+| `user_id` | uuid, fk users | |
+| `created_at`, `expires_at` | timestamptz | |
+| `revoked_at` | timestamptz, null | Server-side revocation, so sign-out is real and not cookie theatre |
+
+No user data, no roles, no payload. FR-006 makes Steam the only key, which makes the session the
+only thing this service can actually revoke.
 
 ---
 
@@ -56,7 +68,7 @@ to track someone's name changes.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `user_id` | uuid, fk | |
-| `profile_id` | bigint, fk | Unique across the whole table, not just per user: a profile belongs to one account |
+| `profile_id` | bigint, fk | Unique across the whole table, not just per user: a profile belongs to one account. The index is **partial** — `UNIQUE (profile_id) WHERE unlinked_at IS NULL` — otherwise an unlinked profile blocks its own relink and reports `profile_already_linked` forever |
 | `steam_id64` | text, fk | The identity that proved it |
 | `is_primary` | boolean | Exactly one true per user, enforced by a partial unique index |
 | `linked_at` | timestamptz | |
@@ -103,6 +115,7 @@ The table the entire feature turns on.
 | `capture_deadline_at` | timestamptz | `completed_at + 21 days`. Computed on insert, never recomputed |
 | `attempts` | int | |
 | `next_attempt_at` | timestamptz | Backoff lives here, not in a scheduler |
+| `claimed_at` | timestamptz, null | Set when a run claims the row; a claim older than the maximum function duration is stale and reclaimable |
 | `first_seen_at`, `stored_at` | timestamptz | `stored_at - completed_at` is the capture lag |
 | `object_key` | text, null | |
 | `zip_bytes`, `zip_sha256` | bigint, text | Written before the status flips to `stored` |
@@ -120,11 +133,16 @@ The table the entire feature turns on.
 | `stored` | Blob durable, checksum recorded | terminal |
 | `unavailable` | The source says this replay was never recorded | no (FR-019) |
 | `expired` | Past the retention window before we got it | no — **and this must never happen** |
+| `quarantined` | Stored and checksummed, but not a well-formed replay | no — needs a human |
 | `failed` | Attempts exhausted | no, needs a human |
 
 `unavailable` and `expired` are separated deliberately. Blurring them would hide the only metric
 that matters: `expired` counts our failures, `unavailable` counts the game's. Alerting on the sum
 would mean alert fatigue on the first, and silence on the second.
+
+`quarantined` is separated from `failed` for the same reason: `failed` means we never got the bytes,
+`quarantined` means we have them and cannot read them. The first is a capture problem, the second is
+a parser problem, and V2 may well resolve a backlog of the second without re-fetching anything.
 
 **Claiming**, which is how an interrupted run resumes without losing work (FR-022):
 
@@ -149,14 +167,21 @@ replays we can still fetch tomorrow instead of the ones expiring tonight.
 between the two leaves an orphan object, which costs a fraction of a cent. The opposite ordering
 leaves a record claiming a replay is safe when it is not, which is a lie the user cannot detect.
 
+Validation runs **after** the upload, never before it. Uploading first costs an orphan object on a
+crash — a fraction of a cent. Validating first costs the only copy of a replay that no longer exists
+at the source. A file that fails validation is uploaded and marked `quarantined` (FR-026); it is
+never discarded.
+
 ### `replay_parses` — created now, populated in V2
 
 `(replay_capture_id, parser_name, parser_version)` unique, plus `engine_deps` jsonb, `status`,
 `error_class`, `error_message`, `duration_ms`, `output_key`, `finished_at`.
 
-Empty at the end of this feature except for capture-time validation rows. It exists now so that V2
-is an insert rather than a migration (constitution IV), and so that running two parser engines side
-by side costs nothing.
+Empty at the end of this feature. Capture-time validation does **not** write here: `validated_by`
+on the capture row already records the engine and version, and an empty table is a cleaner V2 seam
+than one seeded with rows that mean something different from every row V2 will add. It exists now so
+that V2 is an insert rather than a migration (constitution IV), and so that running two parser
+engines side by side costs nothing.
 
 ---
 
@@ -164,13 +189,30 @@ by side costs nothing.
 
 ### `ingest_runs`
 
-`id`, `started_at`, `finished_at`, `trigger`, `budget_seconds`, plus counters: profiles polled,
-matches discovered, captures attempted, stored, failed, and backlog remaining. Also
+`id`, `started_at`, `finished_at`, `trigger`, `budget_seconds`, plus counters: `profiles_polled`,
+`matches_discovered`, `captures_attempted`, `stored_total`, `failed_total`, `unavailable_total`,
+`expired_total`, `quarantined_total`, `alerts_raised`, `backlog_remaining`. Also
 `capture_lag_p50_seconds` and `capture_lag_p95_seconds`.
+
+`expired_total` is named here because constitution I names it. It is expected to be permanently
+zero, and the nightly audit asserts exactly that.
 
 **The absence of a row is the signal.** The nightly job reads the newest one and fails if it is
 older than 30 hours. Nothing inside a system that has stopped can report that it has stopped, so
 this is checked from outside.
+
+### `alerts`
+
+`id` uuid pk, `kind` (enum: `rate_limited`, `deadline_breach`, `expired_capture`,
+`validation_failed`, `free_tier`), `severity` (smallint, 1 or 2), `detail` jsonb, `raised_at`,
+`ingest_run_id` (uuid, null, fk), `acknowledged_at` (timestamptz, null).
+
+Four tasks say "raise an alert" and constitution I makes a non-zero `expired_total` a severity-1
+incident, but nothing in phase 1 is always-on, so an alert cannot be pushed from inside a process
+that may not be running. It is therefore **pulled**: the ingester writes a row, and the nightly
+GitHub Actions job fails when any severity-1 row is unacknowledged — the same job that already opens
+an issue on failure. No pager, no third-party service, no secret, and it behaves identically on a
+VPS (constitution XII).
 
 ### `provider_calls`
 
@@ -200,7 +242,8 @@ the same mechanism FR-039 gives third parties.
 
 - **A `replays` table separate from `replay_captures`.** The intent to capture and the result of
   capturing are one row. Splitting them creates a state where the two disagree.
-- **A `sessions` table with user data in it.** An opaque identifier and an expiry, nothing more.
+- **A `sessions` table with user data in it.** The table exists, but holds an opaque identifier, a
+  user id and timestamps — no roles, no payload, nothing worth stealing beyond the reference itself.
 - **Any table linking a user's several profiles to each other beyond `profile_links.user_id`.** The
   association exists only inside the account. Nothing exposed can reveal it (FR-045).
 - **Soft deletes on captures.** A capture record is either there or the user asked us to erase it.
