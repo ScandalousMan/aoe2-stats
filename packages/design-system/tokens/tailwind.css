@@ -1,0 +1,14 @@
+/* The Tailwind preset (T016): the one stylesheet every consumer imports — apps/web's global CSS
+ * and this package's own Storybook preview alike — so there is exactly one place that wires
+ * Tailwind to the tokens. Never import tokens/generated/preset.css directly: this file also owns
+ * the dark-mode variant, which has to sit beside the `tailwindcss` import itself.
+ *
+ * tokens/generated/{tokens.css,preset.css} are written by tokens/build-tokens.mjs from the JSON
+ * in this directory — see the design-system skill for why JSON stays the source of truth. */
+@import 'tailwindcss';
+@import './generated/preset.css';
+
+/* Theme is a serialised user choice (data-theme="dark" on <html>), not prefers-color-scheme
+ * sniffed at render time — the token pair in generated/tokens.css is what makes that possible: a
+ * component using `dark:bg-surface` never has to know which theme is active. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

@@ -1,0 +1,84 @@
+/* GENERATED FILE — do not hand-edit.
+ * Source: packages/design-system/tokens/*.json
+ * Regenerate with `pnpm --filter design-system tokens:build`. */
+@import './tokens.css';
+
+@theme inline {
+  /* space — the single multiplier every numeric utility (p-3, gap-4, ...) is computed from */
+  --spacing: var(--ds-space-unit);
+
+  /* color */
+  --color-background: var(--ds-color-background);
+  --color-surface: var(--ds-color-surface);
+  --color-surface-raised: var(--ds-color-surface-raised);
+  --color-surface-sunken: var(--ds-color-surface-sunken);
+  --color-border: var(--ds-color-border);
+  --color-border-strong: var(--ds-color-border-strong);
+  --color-text-primary: var(--ds-color-text-primary);
+  --color-text-secondary: var(--ds-color-text-secondary);
+  --color-text-disabled: var(--ds-color-text-disabled);
+  --color-text-inverse: var(--ds-color-text-inverse);
+  --color-accent: var(--ds-color-accent);
+  --color-accent-hover: var(--ds-color-accent-hover);
+  --color-accent-active: var(--ds-color-accent-active);
+  --color-accent-contrast: var(--ds-color-accent-contrast);
+  --color-success: var(--ds-color-success);
+  --color-success-contrast: var(--ds-color-success-contrast);
+  --color-warning: var(--ds-color-warning);
+  --color-warning-contrast: var(--ds-color-warning-contrast);
+  --color-danger: var(--ds-color-danger);
+  --color-danger-contrast: var(--ds-color-danger-contrast);
+  --color-info: var(--ds-color-info);
+  --color-info-contrast: var(--ds-color-info-contrast);
+  --color-focus-ring: var(--ds-color-focus-ring);
+  --color-overlay: var(--ds-color-overlay);
+
+  /* radius */
+  --radius-none: var(--ds-radius-none);
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+  --radius-xl: var(--ds-radius-xl);
+  --radius-2xl: var(--ds-radius-2xl);
+  --radius-full: var(--ds-radius-full);
+
+  /* font */
+  --font-sans: var(--ds-font-family-sans);
+  --font-display: var(--ds-font-family-display);
+  --font-mono: var(--ds-font-family-mono);
+  --text-xs: var(--ds-font-size-xs);
+  --text-xs--line-height: var(--ds-font-size-xs-line-height);
+  --text-sm: var(--ds-font-size-sm);
+  --text-sm--line-height: var(--ds-font-size-sm-line-height);
+  --text-md: var(--ds-font-size-md);
+  --text-md--line-height: var(--ds-font-size-md-line-height);
+  --text-lg: var(--ds-font-size-lg);
+  --text-lg--line-height: var(--ds-font-size-lg-line-height);
+  --text-xl: var(--ds-font-size-xl);
+  --text-xl--line-height: var(--ds-font-size-xl-line-height);
+  --text-2xl: var(--ds-font-size-2xl);
+  --text-2xl--line-height: var(--ds-font-size-2xl-line-height);
+  --text-3xl: var(--ds-font-size-3xl);
+  --text-3xl--line-height: var(--ds-font-size-3xl-line-height);
+  --text-4xl: var(--ds-font-size-4xl);
+  --text-4xl--line-height: var(--ds-font-size-4xl-line-height);
+  --font-weight-normal: var(--ds-font-weight-normal);
+  --font-weight-medium: var(--ds-font-weight-medium);
+  --font-weight-semibold: var(--ds-font-weight-semibold);
+  --font-weight-bold: var(--ds-font-weight-bold);
+  --tracking-tight: var(--ds-font-tracking-tight);
+  --tracking-normal: var(--ds-font-tracking-normal);
+  --tracking-wide: var(--ds-font-tracking-wide);
+
+  /* elevation */
+  --shadow-none: var(--ds-elevation-none);
+  --shadow-raised: var(--ds-elevation-raised);
+  --shadow-overlay: var(--ds-elevation-overlay);
+  --shadow-modal: var(--ds-elevation-modal);
+
+  /* motion — easings only; durations are used as bare Tailwind numbers (duration-120), see
+   * tokens/motion.json and tokens.ts for the closed set a component picks from */
+  --ease-standard: var(--ds-motion-easing-standard);
+  --ease-decelerate: var(--ds-motion-easing-decelerate);
+  --ease-accelerate: var(--ds-motion-easing-accelerate);
+}

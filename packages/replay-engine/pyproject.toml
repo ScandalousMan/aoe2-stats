@@ -3,7 +3,13 @@ name = "aoe2stats-replay-engine"
 version = "0.1.0"
 description = "The aoe2rec-py adapter satisfying the core replay-validation Protocol. Never imported by the API."
 requires-python = ">=3.13,<3.14"
-dependencies = []
+dependencies = [
+  "aoe2stats-core",
+  "aoe2rec-py==0.1.21",
+]
+
+[tool.uv.sources]
+aoe2stats-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

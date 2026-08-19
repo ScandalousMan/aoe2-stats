@@ -1,0 +1,10 @@
+{
+  "$comment": "Corner radius scale (T016). Names match Tailwind's own rounded-* vocabulary so the utility class stays familiar while the value stays ours. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "none": "0rem",
+  "sm": "0.125rem",
+  "md": "0.25rem",
+  "lg": "0.5rem",
+  "xl": "0.75rem",
+  "2xl": "1rem",
+  "full": "9999px"
+}

@@ -22,9 +22,11 @@ members = [
 ]
 
 # Shared dev toolchain, installed once for the whole workspace by `uv sync --all-packages --dev`
-# (as `.github/workflows/pr.yml` does) rather than duplicated per member.
+# (as `.github/workflows/pr.yml` does) rather than duplicated per member. `alembic` sits here and
+# not in `packages/storage`: it is the tool that runs `infra/migrations/` against `DATABASE_URL`,
+# never imported by application code, exactly like `ruff` and `mypy`.
 [dependency-groups]
-dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3"]
+dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3", "alembic>=1.13", "pytest-asyncio>=0.24"]
 
 # --- pytest --------------------------------------------------------------------------------------
 # One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
@@ -51,6 +53,10 @@ testpaths = [
 # an implicit namespace package (PEP 420) — no `tests/__init__.py` needed.
 addopts = ["-p", "tests.conftest"]
 pythonpath = ["."]
+# `async def test_...` needs no `@pytest.mark.asyncio` anywhere in the workspace: this feature's
+# backend is async throughout (async SQLAlchemy, the object store's worker-thread offload), so
+# opting each test in individually would be pure ceremony.
+asyncio_mode = "auto"
 
 # --- ruff --------------------------------------------------------------------------------------
 [tool.ruff]
@@ -120,5 +126,8 @@ files = [
 [[tool.mypy.overrides]]
 # Third-party packages without inline types or published stubs. Extend this list rather than
 # disabling strict globally when a new untyped dependency is introduced.
-module = ["aoe2rec.*", "mgz.*"]
+# `aoe2rec_py` (PyPI: `aoe2rec-py`, imported as `aoe2rec_py`, T013) ships a PyO3 extension module
+# with no `py.typed` marker and no stubs — `aoe2rec.*` alone never matched it, since mypy's module
+# globs are prefix-on-dot, not substring.
+module = ["aoe2rec.*", "aoe2rec_py.*", "mgz.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true

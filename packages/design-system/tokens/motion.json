@@ -1,0 +1,14 @@
+{
+  "$comment": "Motion tokens (T016). Tailwind's duration-<n> utility already takes a bare millisecond number, so these durations are the closed set a component picks from (duration-120, not duration-137) rather than a Tailwind theme namespace. Easings map onto Tailwind's ease-* namespace. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "duration": {
+    "instant": "0ms",
+    "fast": "120ms",
+    "normal": "200ms",
+    "slow": "320ms"
+  },
+  "easing": {
+    "standard": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "decelerate": "cubic-bezier(0, 0, 0.2, 1)",
+    "accelerate": "cubic-bezier(0.4, 0, 1, 1)"
+  }
+}

@@ -3,7 +3,7 @@ name = "aoe2stats-storage"
 version = "0.1.0"
 description = "SQLAlchemy models and repositories, plus the S3 object store client and key scheme."
 requires-python = ">=3.13,<3.14"
-dependencies = []
+dependencies = ["sqlalchemy>=2.0.36", "psycopg[binary]>=3.2", "boto3>=1.35"]
 
 [build-system]
 requires = ["hatchling"]

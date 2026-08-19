@@ -1,3 +1,4 @@
-/* Tailwind entry point. The token-driven preset that feeds this import is defined in
- * packages/design-system (T016); until then this file stays a bare import so the build works. */
-@import 'tailwindcss';
+/* Tailwind entry point. The token-driven preset (colour, spacing, radius, typography, elevation)
+ * lives in packages/design-system/tokens (T016) — this app never declares Tailwind or a token
+ * value of its own, it only consumes the one shared preset. */
+@import 'design-system/tokens/tailwind.css';
