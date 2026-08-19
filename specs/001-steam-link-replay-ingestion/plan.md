@@ -52,7 +52,7 @@ the system exists.
 
 - Capture budget of **21 days** against a measured ~31-day retention window. This is the only
   latency number that matters.
-- At most **1 request per second** to the replay endpoint, serially, with backoff. Its rate limits
+- At most **1 request per second** to the replay endpoint, serially, with jitter and backoff. Its rate limits
   are undocumented, so we behave as a guest.
 - 300 s maximum per function invocation; every unit of work must be interruptible and resumable.
 - One cron firing per day, ±59 minutes, no delivery guarantee.

@@ -11,7 +11,7 @@ here is a breach, and a row for a category that is not collected misdescribes th
 whoever reads it, with no way for them to tell. So a row is removed as carefully as it is added.
 
 A verified Steam sign-in is the sole credential. There is no password and no email address anywhere
-in the system, which is why neither appears above.
+in the system, which is why neither appears in the table below.
 
 ## Processing activities
 
