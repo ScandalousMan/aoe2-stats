@@ -70,9 +70,9 @@ functional requirements.
 | --- | --- | --- |
 | **I. Capture outranks analysis** | Capture is user story P2, above all presentation. The queue drains by nearest deadline. `expired_total` is a severity-1 alert. Parsing is deliberately absent. | PASS |
 | **II. Python backend** | FastAPI, SQLAlchemy, Alembic, Pydantic. The front end holds no business logic. | PASS |
-| **III. DataProvider boundary** | Four providers — `relic`, `aoems`, `steam`, `companion`. `apps/*` and `packages/core` make no outbound calls. Unit tests use frozen fixtures. | PASS |
-| **IV. Raw is sacred** | The zip is stored exactly as received with a sha256 recorded at capture. Every *irrecoverable* provider response is persisted verbatim — match history as `matches.raw_payload`, the replay as the blob itself; FR-012 exempts what can be re-queried. Nothing derived is authoritative. | PASS |
-| **V. Pluggable parser** | Only capture-time validation is in scope, and it goes through the same engine interface the V2 worker will use, so no second integration point is created. | PASS |
+| **III. DataProvider boundary** | Four providers — `relic`, `aoems`, `steam`, `companion`. `apps/*` and `packages/core` make no outbound calls. Unit tests use frozen fixtures. Raw responses persisted verbatim for the irrecoverable sources, per principle III's irrecoverable clause. | PASS |
+| **IV. Raw is sacred** | The zip is stored exactly as received with a sha256 recorded at capture. Every *irrecoverable* provider response is persisted verbatim — match history as `matches.raw_payload`, the replay as the blob itself; principle III's irrecoverable clause and FR-012 agree on the exemption. Nothing derived is authoritative. | PASS |
+| **V. Pluggable parser** | Only capture-time validation is in scope, through the same engine interface the V2 worker will use, so no second integration point is created. The API never loads an engine — `core` holds the Protocol only. The ingester does, and contains it: a `BaseException` barrier and a wall-clock cap turn any engine failure into `quarantined`, and the bytes are committed before validation so even an uncatchable crash costs one cycle, not a capture (T055). | PASS |
 | **VI. Tokens first** | Every front-end component is built from design-system tokens, from a product-designer spec, with a story. | PASS |
 | **VII. Visual tests** | Diff-scoped visual regression on pull requests; full coverage nightly. | PASS |
 | **VIII. No secrets in the clear** | Configuration entirely from environment variables. The cron endpoint requires a shared secret and returns 401 without it. Session cookies are opaque. | PASS |
@@ -148,8 +148,9 @@ apps/
 └── web/src/
     ├── routes/                    # sign-in, dashboard, matches, match detail, privacy
     ├── features/{auth,profile,matches,replays,privacy}/
-    └── components/                # shell only — Footer and layout. Anything with a story
-                                   # belongs in packages/design-system (constitution VI)
+    └── components/                # route composition only — no component lives here.
+                                   # Anything renderable has a story, and anything with a
+                                   # story belongs in packages/design-system (constitution VI)
 
 packages/
 ├── core/src/aoe2stats_core/       # entities, value objects, use cases. No I/O.
@@ -164,8 +165,9 @@ packages/
 │   ├── companion/                 # enrichment, behind a circuit breaker
 │   └── fixtures/                  # frozen real responses
 ├── replay-engine/src/aoe2stats_replay_engine/
-│   └── aoe2rec.py                 # the adapter. Out of core so a parser crash
-│                                  # reaches neither the API nor the ingester
+│   └── aoe2rec.py                 # the adapter. Out of core so the API, which imports
+│                                  # core, never loads an engine at all. The ingester
+│                                  # does load it, and contains it: the barrier in T055
 └── storage/src/aoe2stats_storage/
     ├── models.py  repositories/   # SQLAlchemy
     └── objects.py                 # S3 client and key scheme

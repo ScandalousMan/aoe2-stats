@@ -130,7 +130,7 @@ The table the entire feature turns on.
 | Status | Meaning | Retried? |
 | --- | --- | --- |
 | `pending` | Known, not yet fetched | yes, from `next_attempt_at` |
-| `downloading` | Claimed by a run | reclaimed if the claim is stale |
+| `downloading` | Claimed by a run; may already carry the blob and its checksum | reclaimed if the claim is stale — resumed at validation, not re-downloaded, when `zip_sha256` is set |
 | `stored` | Blob durable, checksum recorded | terminal |
 | `unavailable` | The source says this replay was never recorded | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS`. A 404 before that leaves the row `pending` (FR-019) |
 | `expired` | Past the retention window before we got it | no — **and this must never happen** |
@@ -177,6 +177,13 @@ replays we can still fetch tomorrow instead of the ones expiring tonight.
 **Write ordering** (FR-023): upload the blob, verify the checksum, *then* update the row. A crash
 between the two leaves an orphan object, which costs a fraction of a cent. The opposite ordering
 leaves a record claiming a replay is safe when it is not, which is a lie the user cannot detect.
+
+The write is in two steps, not one. `object_key`, `zip_bytes` and `zip_sha256` are committed as soon
+as the checksum verifies, while the row is still `downloading`; the status flip to `stored` or
+`quarantined` follows validation. A process that dies in between leaves bytes that are already
+durable and recorded, which the next run resumes at validation instead of re-fetching a replay it
+already holds. This is what keeps constitution V's containment true for the ingester, which runs the
+engine in-process (T055).
 
 Validation runs **after** the upload, never before it. Uploading first costs an orphan object on a
 crash — a fraction of a cent. Validating first costs the only copy of a replay that no longer exists

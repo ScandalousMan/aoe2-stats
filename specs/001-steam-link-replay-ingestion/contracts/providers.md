@@ -57,31 +57,37 @@ the parsed fields *and* the untouched payload.
 ## `ReplayProvider`
 
 ```python
-async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | Unavailable: ...
+async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | NotFound: ...
 ```
 
-The one interface where the failure taxonomy is part of the contract, because the caller must record
-different outcomes in the database:
+The provider reports what the wire said and nothing more. It holds no `completed_at`, and therefore
+cannot know what a 404 means:
 
-| Result | Meaning | Caller does |
+| Result | Wire condition | Returned or raised |
 | --- | --- | --- |
-| `ReplayBlob` | bytes, filename, content type | store, checksum, **then** validate; mark `stored`, or `quarantined` if it is not a well-formed replay |
-| `Unavailable(reason="not_recorded")` | 404, match older than the publication grace, younger than the retention window | mark `unavailable`, stop |
-| `Unavailable(reason="not_yet_published")` | 404, match younger than the publication grace | leave `pending`, retry next cycle, no alert |
-| `Unavailable(reason="expired")` | 404, match older than the window | mark `expired` — **and alert** |
-| `ProviderRateLimited` | 429 or an unexpected 403 | **stop the whole run** and alert |
-| `ProviderUnavailable` | 5xx, timeout | back off, retry later |
+| `ReplayBlob` | 200 — bytes, filename, content type | returned |
+| `NotFound` | 404, carrying the observed status and nothing interpretive | returned |
+| `ProviderRateLimited` | 429, or an unexpected 403 | raised |
+| `ProviderUnavailable` | 5xx, timeout | raised |
 
-The blob is stored before it is validated, and a validation failure never discards it (FR-026): after
-~31 days the source holds no replacement, so an unreadable capture is evidence rather than garbage.
+The returned results are ordinary outcomes the caller records. The raised ones are not states of a
+capture but conditions of the run, and the signature `ReplayBlob | NotFound` says so.
 
-Distinguishing `not_yet_published`, `not_recorded` and `expired` is done by the caller from
-`completed_at`, not by the provider: the endpoint returns an identical 404 for all three. Getting this wrong means either alert
-fatigue or silence on the one metric that matters.
+A `ReplayBlob` is stored and checksummed, **then** validated. A validation failure never discards it
+(FR-026): after ~31 days the source holds no replacement, so an unreadable capture is evidence
+rather than garbage. The caller marks `stored`, or `quarantined`.
 
-The first two rows are **returned** — they are ordinary outcomes the caller records. The last two
-are **raised**, per the shared obligations: they are not states of a capture but conditions of the
-run, and the signature `ReplayBlob | Unavailable` says so.
+A `NotFound` is a **three-way** decision, and it belongs to the caller because only the caller holds
+`matches.completed_at`. The endpoint answers an identical 404 in all three cases:
+
+| Age of the match | Capture becomes | Alert |
+| --- | --- | --- |
+| younger than `REPLAY_PUBLICATION_GRACE_HOURS` | stays `pending`, retried next cycle | none |
+| older than the grace, inside the retention window | `unavailable` | none |
+| past the retention window | `expired` | severity-1 `expired_capture` |
+
+Getting this wrong means alert fatigue, silence on the one metric that matters, or — the branch that
+is easiest to omit — a few hours of publisher latency recorded as a permanent absence.
 
 `ProviderRateLimited` stopping the entire run, rather than that one capture, is deliberate. The
 budget is 21 days; there is always tomorrow. Being blocked by the source is not recoverable on the
