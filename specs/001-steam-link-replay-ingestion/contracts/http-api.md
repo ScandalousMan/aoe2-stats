@@ -83,3 +83,8 @@ pseudonymise any profile on demand would be a denial-of-service vector against t
 `/api/cron/ingest` returns 200 with a report even when individual captures failed. A non-200 means
 the cycle could not run at all. The distinction matters: the scheduler retries the second, and the
 next cycle handles the first.
+
+In production Vercel routes `/api/cron/ingest` to `api/cron/ingest.py`, which holds the 300 s
+duration the cycle needs; the FastAPI route of the same path is the local and phase-2-VPS caller.
+Both are ten lines around `run_once()`. Neither calls the other: an HTTP hop between two functions
+would put the cycle in the one that has no extended duration.

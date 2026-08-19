@@ -73,6 +73,7 @@ to track someone's name changes.
 | `is_primary` | boolean | Exactly one true per user, enforced by a partial unique index |
 | `linked_at` | timestamptz | |
 | `unlinked_at` | timestamptz, null | Set rather than deleted, so capture history stays explicable |
+| `backfill_requested_at` | timestamptz, null | Set at link time, cleared when the 31-day sweep has run for this profile. The link cannot enqueue captures itself: there are no `matches` rows for a profile nobody has ever polled |
 
 ### `matches`
 
@@ -131,7 +132,7 @@ The table the entire feature turns on.
 | `pending` | Known, not yet fetched | yes, from `next_attempt_at` |
 | `downloading` | Claimed by a run | reclaimed if the claim is stale |
 | `stored` | Blob durable, checksum recorded | terminal |
-| `unavailable` | The source says this replay was never recorded | no (FR-019) |
+| `unavailable` | The source says this replay was never recorded | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS`. A 404 before that leaves the row `pending` (FR-019) |
 | `expired` | Past the retention window before we got it | no — **and this must never happen** |
 | `quarantined` | Stored and checksummed, but not a well-formed replay | no — needs a human |
 | `failed` | Attempts exhausted | no, needs a human |
@@ -140,9 +141,19 @@ The table the entire feature turns on.
 that matters: `expired` counts our failures, `unavailable` counts the game's. Alerting on the sum
 would mean alert fatigue on the first, and silence on the second.
 
+The 404 is a **three-way** decision, not two. Younger than the publication grace: the replay may
+simply not be published yet — stay `pending`. Older than the grace but inside the retention window:
+`unavailable`. Past the window: `expired`. The first branch is the one that is easy to omit, and
+omitting it converts a few hours of publisher latency into a permanent loss.
+
 `quarantined` is separated from `failed` for the same reason: `failed` means we never got the bytes,
 `quarantined` means we have them and cannot read them. The first is a capture problem, the second is
 a parser problem, and V2 may well resolve a backlog of the second without re-fetching anything.
+
+**One word per side of the boundary.** `stored` is the enum value and the only spelling in code, in
+the API and in tests. "Archived" is the user-facing label for the same state and appears only in
+component specs and copy. The spec uses "archived" throughout because it is written for a reader,
+not for a compiler; every requirement that says "archived" means `stored`.
 
 **Claiming**, which is how an interrupted run resumes without losing work (FR-022):
 
@@ -194,6 +205,10 @@ engines side by side costs nothing.
 `expired_total`, `quarantined_total`, `alerts_raised`, `backlog_remaining`. Also
 `capture_lag_p50_seconds` and `capture_lag_p95_seconds`.
 
+The lag counters are over newly discovered captures only. Including backfill would make the number
+describe how far back a rescue reached rather than how fast the cadence is, and SC-002 is a
+statement about the cadence.
+
 `expired_total` is named here because constitution I names it. It is expected to be permanently
 zero, and the nightly audit asserts exactly that.
 
@@ -207,8 +222,9 @@ this is checked from outside.
 `validation_failed`, `free_tier`), `severity` (smallint, 1 or 2), `detail` jsonb, `raised_at`,
 `ingest_run_id` (uuid, null, fk), `acknowledged_at` (timestamptz, null).
 
-Four tasks say "raise an alert" and constitution I makes a non-zero `expired_total` a severity-1
-incident, but nothing in phase 1 is always-on, so an alert cannot be pushed from inside a process
+Five kinds, five producers — T052 `rate_limited`, T056 `expired_capture`, T055 `validation_failed`,
+T059a `deadline_breach`, T100 `free_tier` — and constitution I makes a non-zero `expired_total` a
+severity-1 incident. But nothing in phase 1 is always-on, so an alert cannot be pushed from inside a process
 that may not be running. It is therefore **pulled**: the ingester writes a row, and the nightly
 GitHub Actions job fails when any severity-1 row is unacknowledged — the same job that already opens
 an issue on failure. No pager, no third-party service, no secret, and it behaves identically on a
@@ -221,6 +237,10 @@ VPS (constitution XII).
 The evidence base for whether we are being a good guest to undocumented APIs, and the first place to
 look when one starts refusing us.
 
+No response body. FR-012 exempts everything re-queryable, and the two irrecoverable sources have
+their own homes: `matches.raw_payload` and the object store. A generic body column here would be a
+third copy with no reader and a GDPR surface with no purpose.
+
 ### `replay_access_log`
 
 `id`, `replay_capture_id`, `user_id`, `accessed_at`, `purpose`. Required by FR-040. These files
@@ -231,7 +251,11 @@ contain other people's gameplay and chat; who opened one is a fact worth keeping
 `id`, `kind` (`export`, `erasure`, `third_party_objection`), `subject_user_id` (null for a
 non-user), `subject_profile_id`, `requested_at`, `completed_at`, `outcome`.
 
-**Erasure** deletes the user, their identities, links, captures and blobs. It does **not** delete
+**Erasure** deletes the user, their identities, sessions, links, captures, the access-log rows
+pointing at those captures, and the blobs. The access log goes with the captures it describes: it
+records who opened *this user's* replays, which is this user's own data, and SC-008 leaves no room
+for a surviving trace. It is not the accountability record for anyone else — nobody else's blob is
+reachable from these rows. It does **not** delete
 `matches` or `match_players`: those describe games other people also played, and removing them would
 corrupt other users' history. The departing user's `profile_id` is pseudonymised in place instead —
 the same mechanism FR-039 gives third parties.

@@ -62,8 +62,10 @@ far more surface than Steam's single fixed flow).
 identifier, with session state in Postgres.
 
 **Rationale**: A self-contained token would avoid the database read, but it cannot be revoked, and
-this application must be able to end a session immediately on erasure or on consent withdrawal
-(FR-035, FR-037). The cookie is opaque so nothing about the user leaks into browser storage. The
+this application must be able to end a session immediately on erasure (FR-037), and to end it
+without waiting for a token to expire on sign-out. Withdrawing ingestion consent is deliberately
+not in this list: FR-034 requires an account that keeps working when consent is declined, so a
+withdrawal that signed the user out would be punishing them for exercising the choice. The cookie is opaque so nothing about the user leaks into browser storage. The
 lookup is one indexed read on a request path that already touches the database.
 
 **Alternatives considered**: JWT in a cookie (revocation problem); JWT in local storage (adds XSS

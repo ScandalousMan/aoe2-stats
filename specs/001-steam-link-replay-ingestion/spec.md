@@ -294,8 +294,13 @@ records or in storage.
   at capture time and verifiable on retrieval.
 - **FR-018**: System MUST never store two copies of the same replay for the same user and match.
 - **FR-019**: System MUST distinguish, and report separately, these outcomes per match: not yet
-  attempted, archived, never recorded by the game, expired beyond the retention window, and failed
-  after repeated attempts.
+  attempted, archived, never recorded by the game, expired beyond the retention window, failed
+  after repeated attempts, and captured but unreadable (FR-026).
+  "Never recorded by the game" MUST NOT be concluded from the first attempt on a recent match. A
+  replay is not always published the instant a match ends, and the source answers an identical 404
+  for "not yet" and "never". Until the match is older than the publication grace, a 404 leaves the
+  capture awaiting a further attempt rather than closing it. Concluding otherwise turns a
+  publication delay into a permanent loss, which is the one outcome this system exists to prevent.
 - **FR-020**: System MUST retry a failed capture with increasing delay, and MUST stop after a bounded
   number of attempts rather than retrying forever.
 - **FR-021**: System MUST limit its request rate to external sources and MUST stop and raise an alert
@@ -354,8 +359,10 @@ records or in storage.
 - **Player profile**: an AoE2 player as the game knows them — identifier, alias, country. Exists for
   users and for third parties alike; only users' profiles are linked to an account.
 - **Profile link**: the association between a user and one of their player profiles, whether it is
-  the primary one for display, and the moment ingestion consent was given. A user may hold several;
-  all are ingested, one is presented.
+  the primary one for display, and when it was linked and unlinked. A user may hold several; all
+  are ingested, one is presented. Ingestion consent is **not** here: it is held once on the user,
+  because it is a decision about the person and not about one of their accounts, and because a
+  per-link consent would make FR-044's per-user quota ambiguous.
 - **Match**: one game — when it started and ended, map, leaderboard, game version, duration, plus the
   unaltered source record it came from.
 - **Match participant**: one player's part in one match — team, civilisation, result, rating before

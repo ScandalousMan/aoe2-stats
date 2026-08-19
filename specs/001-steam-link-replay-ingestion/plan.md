@@ -71,7 +71,7 @@ functional requirements.
 | **I. Capture outranks analysis** | Capture is user story P2, above all presentation. The queue drains by nearest deadline. `expired_total` is a severity-1 alert. Parsing is deliberately absent. | PASS |
 | **II. Python backend** | FastAPI, SQLAlchemy, Alembic, Pydantic. The front end holds no business logic. | PASS |
 | **III. DataProvider boundary** | Four providers — `relic`, `aoems`, `steam`, `companion`. `apps/*` and `packages/core` make no outbound calls. Unit tests use frozen fixtures. | PASS |
-| **IV. Raw is sacred** | The zip is stored exactly as received with a sha256 recorded at capture. Every provider response is persisted verbatim as `raw_payload`. Nothing derived is authoritative. | PASS |
+| **IV. Raw is sacred** | The zip is stored exactly as received with a sha256 recorded at capture. Every *irrecoverable* provider response is persisted verbatim — match history as `matches.raw_payload`, the replay as the blob itself; FR-012 exempts what can be re-queried. Nothing derived is authoritative. | PASS |
 | **V. Pluggable parser** | Only capture-time validation is in scope, and it goes through the same engine interface the V2 worker will use, so no second integration point is created. | PASS |
 | **VI. Tokens first** | Every front-end component is built from design-system tokens, from a product-designer spec, with a story. | PASS |
 | **VII. Visual tests** | Diff-scoped visual regression on pull requests; full coverage nightly. | PASS |
@@ -118,8 +118,10 @@ specs/001-steam-link-replay-ingestion/
 
 ```text
 api/
-└── cron/ingest.py                 # Vercel cron entrypoint. A shim: it delegates to the
-                                   # FastAPI route, which is the one authority. Nothing else.
+├── cron/ingest.py                 # Vercel cron entrypoint. ~10 lines: checks CRON_SECRET,
+│                                  # calls run_once(). maxDuration 300 in vercel.json.
+└── index.py                       # Vercel function entrypoint for the FastAPI app. ~5 lines:
+                                   # re-exports `app`. Reached through the /api/(.*) rewrite.
 
 apps/
 ├── api/src/aoe2stats_api/
@@ -131,7 +133,9 @@ apps/
 │       ├── matches.py             # history, detail
 │       ├── replays.py             # capture status, download, manual upload
 │       ├── privacy.py             # consent, export, erasure, third-party objection
-│       └── health.py
+│       ├── health.py
+│       └── cron.py                 # the local trigger. Ten lines around run_once(), like the
+│                                   # Vercel shim it deliberately does not call (see T018)
 ├── ingester/src/aoe2stats_ingester/
 │   ├── run.py                     # run_once(budget_seconds) — the whole unit of work
 │   ├── discover.py                # ratings refresh + match discovery + enqueue
@@ -143,7 +147,9 @@ apps/
 │   └── worker.py                  # [phase 2] loop calling run_once()
 └── web/src/
     ├── routes/                    # sign-in, dashboard, matches, match detail, privacy
-    └── features/{auth,profile,matches,replays,privacy}/
+    ├── features/{auth,profile,matches,replays,privacy}/
+    └── components/                # shell only — Footer and layout. Anything with a story
+                                   # belongs in packages/design-system (constitution VI)
 
 packages/
 ├── core/src/aoe2stats_core/       # entities, value objects, use cases. No I/O.
@@ -169,9 +175,9 @@ tests/fixtures/replays/            # the committed reference replay
 ```
 
 **Structure Decision**: The monorepo laid out in `docs/adr/0002-hosting.md`, with three additions
-this feature forces. `api/cron/ingest.py` sits at the repository root because Vercel's routing
-requires it — it is the one platform-shaped file in the tree, and it is kept to ten delegating lines
-precisely so that constitution XII is not quietly violated by a file that cannot be moved.
+this feature forces. `api/cron/ingest.py` and `api/index.py` sit at the repository root because Vercel's routing
+requires it — they are the only two platform-shaped files in the tree, and each is kept to ten lines
+or fewer precisely so that constitution XII is not quietly violated by a file that cannot be moved.
 `packages/providers` gains a `steam` provider, because Steam sign-in is an outbound call like any
 other and principle III admits no exception for authentication. And `packages/replay-engine` exists
 so that `core` — which the API imports — holds the engine Protocol and never an engine: constitution

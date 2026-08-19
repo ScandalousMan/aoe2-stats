@@ -102,14 +102,16 @@ Covers FR-018, SC-006.
 
 ## Scenario 7 — Failure classification
 
-1. Point the replay provider at a fixture returning 404 for a match completed two days ago. Expect
-   `unavailable`, no alert.
-2. Same for a match completed forty days ago. Expect `expired` **and an alert**.
-3. Return 429. Expect the **whole run** to stop and alert, not just that capture.
-4. Return 500 three times. Expect backoff, then `failed` after the attempt limit.
+1. Point the replay provider at a fixture returning 404 for a match completed three hours ago.
+   Expect the capture to stay `pending`, no alert, and to be retried by the next cycle.
+2. Same fixture for a match completed four days ago. Expect `unavailable`, no alert.
+3. Same for a match completed forty days ago. Expect `expired` **and an alert**.
+4. Return 429. Expect the **whole run** to stop and alert, not just that capture.
+5. Return 500 three times. Expect backoff, then `failed` after the attempt limit.
 
-Covers FR-019 to FR-021. The `unavailable`/`expired` distinction is the point: conflating them means
-either alert fatigue or silence on the only metric that matters.
+Covers FR-019 to FR-021. The three-way reading of a single 404 is the point: conflating any two of
+them means alert fatigue, silence on the only metric that matters, or a publication delay recorded
+as a permanent absence.
 
 ## Scenario 8 — Manual upload
 

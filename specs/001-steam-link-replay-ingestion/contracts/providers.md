@@ -13,7 +13,10 @@ Every provider, without exception:
 - takes an explicit timeout; there is no default that means "forever";
 - sends `User-Agent: aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)`;
 - passes through a token bucket before every request;
-- persists the raw response verbatim before any transformation (constitution IV);
+- persists the raw response verbatim before any transformation **when the source is irrecoverable**
+  — match history into `matches.raw_payload`, the replay bytes into the object store. Sources that
+  can be re-queried at any time (ratings, enrichment, the Steam assertion) are exempt per FR-012: a
+  second copy of something still available is a second thing to keep honest, for no gain;
 - records a `provider_calls` row;
 - raises a typed error — `ProviderUnavailable`, `ProviderRateLimited`, `ProviderContractViolation` —
   and never returns a partially-parsed object;
@@ -63,7 +66,8 @@ different outcomes in the database:
 | Result | Meaning | Caller does |
 | --- | --- | --- |
 | `ReplayBlob` | bytes, filename, content type | store, checksum, **then** validate; mark `stored`, or `quarantined` if it is not a well-formed replay |
-| `Unavailable(reason="not_recorded")` | 404, match younger than the retention window | mark `unavailable`, stop |
+| `Unavailable(reason="not_recorded")` | 404, match older than the publication grace, younger than the retention window | mark `unavailable`, stop |
+| `Unavailable(reason="not_yet_published")` | 404, match younger than the publication grace | leave `pending`, retry next cycle, no alert |
 | `Unavailable(reason="expired")` | 404, match older than the window | mark `expired` — **and alert** |
 | `ProviderRateLimited` | 429 or an unexpected 403 | **stop the whole run** and alert |
 | `ProviderUnavailable` | 5xx, timeout | back off, retry later |
@@ -71,9 +75,13 @@ different outcomes in the database:
 The blob is stored before it is validated, and a validation failure never discards it (FR-026): after
 ~31 days the source holds no replacement, so an unreadable capture is evidence rather than garbage.
 
-Distinguishing `not_recorded` from `expired` is done by the caller from `completed_at`, not by the
-provider: the endpoint returns an identical 404 for both. Getting this wrong means either alert
+Distinguishing `not_yet_published`, `not_recorded` and `expired` is done by the caller from
+`completed_at`, not by the provider: the endpoint returns an identical 404 for all three. Getting this wrong means either alert
 fatigue or silence on the one metric that matters.
+
+The first two rows are **returned** — they are ordinary outcomes the caller records. The last two
+are **raised**, per the shared obligations: they are not states of a capture but conditions of the
+run, and the signature `ReplayBlob | Unavailable` says so.
 
 `ProviderRateLimited` stopping the entire run, rather than that one capture, is deliberate. The
 budget is 21 days; there is always tomorrow. Being blocked by the source is not recoverable on the
