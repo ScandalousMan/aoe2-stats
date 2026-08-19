@@ -59,11 +59,25 @@ Spec-Driven Development with Spec-Kit: `speckit-specify` -> `speckit-clarify` ->
 `speckit-tasks` -> `speckit-analyze` -> `speckit-implement`.
 One task in `tasks.md` is one unit of work for the `implementer` agent.
 
+`/speckit-implement` is run **one phase at a time**, naming the task range and the stop condition.
+Its own completion criteria otherwise push it through every phase in one context, which is how the
+judgment in `tasks.md` gets flattened. Artifacts are amended by hand; `/speckit-plan` and
+`/speckit-tasks` are never re-run over a file that already exists.
+
 ## Model routing
 
-- **Opus**: constitution, specify, plan, reviews (`reviewer`), `product-designer`
-- **Sonnet**: implementation (`implementer`), `visual-reviewer`, session lead
-- **Haiku**: `researcher`, triage, mechanical tasks
+Automatic, not chosen per invocation. `.claude/settings.json` pins the session lead to Sonnet; each
+skill and agent declares its own `model:` in frontmatter, which overrides for that turn only and
+reverts afterwards. Changing routing means editing the frontmatter, never the model picker.
+
+- **Opus**: constitution, specify, clarify, plan, tasks, analyze, converge, `reviewer`,
+  `product-designer`
+- **Sonnet**: implement (`implementer`), `visual-reviewer`, session lead
+- **Haiku**: checklist, taskstoissues, `researcher`, triage, mechanical tasks
+
+One task in `tasks.md` is one `implementer` invocation. `/speckit-implement` orchestrates and does
+not write code itself: the `SubagentStop` hook matches `implementer` and refuses a hand-back on red
+tests, so code written outside an agent never meets that gate.
 
 ## Commands
 

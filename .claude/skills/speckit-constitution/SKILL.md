@@ -1,6 +1,7 @@
 ---
 name: "speckit-constitution"
 description: "Create or update the project constitution from interactive or provided principle inputs."
+model: opus
 argument-hint: "Principles or values for the project constitution"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
