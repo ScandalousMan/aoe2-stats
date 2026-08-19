@@ -70,6 +70,12 @@ documentation, no announced rate limits, `/api` root returns 403. **Never a prim
 the critical path.** Aggressive cache plus circuit breaker. When the circuit is open the application
 degrades its display; it does not fall over.
 
+**This source returns 403 intermittently** — observed 2026-08-19 from CI while the identical request
+succeeded from a residential connection, then alternating locally with no User-Agent pattern. Bot
+protection that trips at random. Treat a 403 here as normal operating noise, not an incident: its
+contract check is deliberately non-blocking. Whether it is reachable at all from Vercel's egress
+addresses is still unverified — the application must work either way.
+
 ## aoestats.io — historical corpus only
 
 ```
@@ -87,6 +93,10 @@ benchmark a player by elo bracket and map.
 ## Rules
 
 - All access to these sources goes through `packages/providers`. No exceptions.
+- Every outbound request sends an honest, identifying `User-Agent`:
+  `aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)`. None of these APIs is documented
+  or contractual; being recognisable is what lets a maintainer ask us to slow down instead of
+  silently blocking us.
 - Every response is persisted verbatim (`raw_payload jsonb`) before any transformation.
 - The fixtures in `packages/providers/fixtures/` are frozen real responses: unit tests never touch
   the network.

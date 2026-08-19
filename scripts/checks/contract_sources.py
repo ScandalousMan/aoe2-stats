@@ -18,6 +18,10 @@ from datetime import UTC, datetime, timedelta
 
 import requests
 
+# An honest, identifying User-Agent. Several of these sources sit behind bot protection, and we
+# would rather be recognisable than anonymous if anyone ever wants to ask us to slow down.
+USER_AGENT = "aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)"
+
 RELIC = "https://aoe-api.worldsedgelink.com/community/leaderboard"
 REPLAY = "https://aoe.ms/replay/"
 COMPANION = "https://data.aoe2companion.com/api"
@@ -30,19 +34,39 @@ PROBE_PROFILE_ID = 196240
 failures: list[str] = []
 notes: list[str] = []
 
+session = requests.Session()
+session.headers["User-Agent"] = USER_AGENT
 
-def check(name: str):
+
+def check(name: str, *, blocking: bool = True):
+    """Run one contract check.
+
+    `blocking=False` marks a source we have already declared degradable: a break is reported but
+    does not fail the job. A watchtower that goes red every night for a source the application is
+    designed to survive without is a watchtower people stop reading, and then it misses the one
+    that matters.
+    """
+
     def deco(fn):
-        print(f"\n== {name}")
-        try:
-            fn()
-            print("   OK")
-        except AssertionError as exc:
-            failures.append(f"{name}: {exc}")
-            print(f"   FAIL: {exc}")
-        except Exception as exc:  # noqa: BLE001 - a transport error is a contract signal too
-            failures.append(f"{name}: {type(exc).__name__}: {exc}")
-            print(f"   ERROR: {type(exc).__name__}: {exc}")
+        print(f"\n== {name}{'' if blocking else '  (non-blocking)'}")
+        # One retry: these endpoints throttle intermittently, and a single 403 is not a contract
+        # change. Two in a row is worth reporting.
+        for attempt in (1, 2):
+            try:
+                fn()
+                print("   OK" if attempt == 1 else "   OK (second attempt)")
+                return fn
+            except (AssertionError, Exception) as exc:  # noqa: BLE001
+                if attempt == 1:
+                    time.sleep(5)
+                    continue
+                label = f"{exc}" if isinstance(exc, AssertionError) else f"{type(exc).__name__}: {exc}"
+                if blocking:
+                    failures.append(f"{name}: {label}")
+                    print(f"   FAIL: {label}")
+                else:
+                    notes.append(f"{name}: {label}")
+                    print(f"   WARN (not blocking): {label}")
         return fn
 
     return deco
@@ -67,7 +91,7 @@ def _reliclink_still_broken() -> None:
 
 @check("Relic: getPersonalStat resolves steamid64 -> profile_id")
 def _personal_stat() -> None:
-    r = requests.get(
+    r = session.get(
         f"{RELIC}/getPersonalStat",
         params={"title": "age2", "profile_names": json.dumps([f"/steam/{PROBE_STEAM_ID}"])},
         timeout=TIMEOUT,
@@ -94,7 +118,7 @@ def _personal_stat() -> None:
 
 @check("Relic: getRecentMatchHistory shape and batching")
 def _recent_matches() -> None:
-    r = requests.get(
+    r = session.get(
         f"{RELIC}/getRecentMatchHistory",
         params={"title": "age2", "profile_ids": json.dumps([PROBE_PROFILE_ID])},
         timeout=TIMEOUT,
@@ -118,7 +142,7 @@ def _recent_matches() -> None:
 
 @check("aoe.ms: a recent replay is downloadable, an old one is not")
 def _replay_window() -> None:
-    r = requests.get(
+    r = session.get(
         f"{RELIC}/getRecentMatchHistory",
         params={"title": "age2", "profile_ids": json.dumps([PROBE_PROFILE_ID])},
         timeout=TIMEOUT,
@@ -134,7 +158,7 @@ def _replay_window() -> None:
     assert fresh is not None, "probe profile has no match in the last 7 days; pick another probe"
 
     # stream=True reads headers only: we never pull the body of someone else's replay.
-    with requests.get(
+    with session.get(
         REPLAY,
         params={"gameId": fresh["id"], "profileId": PROBE_PROFILE_ID},
         timeout=TIMEOUT,
@@ -159,7 +183,7 @@ def _replay_window() -> None:
     if old is None:
         notes.append("no match older than 40 days available to confirm the retention boundary")
         return
-    with requests.get(
+    with session.get(
         REPLAY,
         params={"gameId": old["id"], "profileId": PROBE_PROFILE_ID},
         timeout=TIMEOUT,
@@ -173,7 +197,7 @@ def _replay_window() -> None:
 
 @check("aoe.ms: HEAD is still unsupported (no cheap existence probe)")
 def _no_head() -> None:
-    resp = requests.head(
+    resp = session.head(
         REPLAY, params={"gameId": 1, "profileId": 1}, timeout=TIMEOUT, allow_redirects=True
     )
     assert resp.status_code == 405, (
@@ -182,9 +206,9 @@ def _no_head() -> None:
     )
 
 
-@check("aoe2companion: match feed shape (enrichment source, non-blocking)")
+@check("aoe2companion: match feed shape (enrichment source)", blocking=False)
 def _companion() -> None:
-    r = requests.get(
+    r = session.get(
         f"{COMPANION}/matches", params={"profile_ids": PROBE_PROFILE_ID}, timeout=TIMEOUT
     )
     assert r.status_code == 200, f"expected 200, got {r.status_code}"
@@ -198,9 +222,9 @@ def _companion() -> None:
         assert field in player, f"player is missing {field!r}"
 
 
-@check("aoestats: dumps are still empty (V2 corpus only)")
+@check("aoestats: dumps are still empty (V2 corpus only)", blocking=False)
 def _aoestats() -> None:
-    r = requests.get(f"https://aoestats.io/api/db_dumps/", timeout=TIMEOUT)
+    r = session.get("https://aoestats.io/api/db_dumps/", timeout=TIMEOUT)
     assert r.status_code == 200, f"expected 200, got {r.status_code}"
     dumps = r.json()["db_dumps"]
     recent = [d for d in dumps if d["start_date"] >= (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")]

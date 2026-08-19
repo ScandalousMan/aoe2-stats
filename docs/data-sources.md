@@ -102,6 +102,26 @@ Risk is high and structural: single-maintainer project, **no licence on the repo
 API documentation, no announced rate limits, `/api` root returns 403. Use only for display
 enrichment, behind a cache and a circuit breaker, and degrade gracefully when unavailable.
 
+### Observed 2026-08-19: intermittent 403
+
+The nightly watchtower's first real run got **403** from GitHub's runners while the same request
+returned 200 from a residential connection minutes earlier; repeated local calls then alternated
+between 403 and 200 with no pattern in the User-Agent. There is bot protection in front of this
+service and it trips intermittently. This is not a schema change and it is not a hard IP block.
+
+Consequences, all of which the architecture already anticipated:
+
+- Every provider sends an honest, identifying `User-Agent`
+  (`aoe2-stats/0.1 (+https://github.com/ScandalousMan/aoe2-stats)`). We would rather be recognisable
+  than anonymous if anyone wants to ask us to slow down.
+- The contract check for this source is **non-blocking**: it warns, it does not fail the nightly job.
+  A watchtower that goes red every night for a source the application is designed to survive without
+  is a watchtower people stop reading, and then it misses the one that matters.
+- Treat a 403 here as normal operating noise. The circuit breaker exists for exactly this.
+- **To verify once Vercel is provisioned**: whether this service is reachable at all from Vercel's
+  egress addresses. If it is not, the application must still work — it is enrichment only.
+
+
 ## 4. aoestats.io
 
 ```
