@@ -50,28 +50,12 @@ jobs:
   #   Warns at 70% of any free allowance (R2 bytes stored, Neon storage, Vercel
   #   invocations) so the phase-2 migration is planned, not forced.
 
-  visual-full:
-    name: Full visual regression
-    runs-on: ubuntu-latest
-    if: ${{ hashFiles('packages/design-system/package.json') != '' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm --filter design-system build-storybook
-      - run: pnpm test:visual
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: nightly-visual-diffs
-          path: |
-            playwright-report/
-            test-results/
+  # TODO(design-system): enable once packages/design-system exists.
+  #
+  # visual-full:
+  #   Full Playwright visual regression across every story, as opposed to the
+  #   diff-scoped run in pr.yml. CI is a court, not a factory: broad coverage
+  #   belongs here, not on every pull request.
 
   report:
     name: Open an issue on failure
