@@ -19,6 +19,23 @@ This feature exists to stop that loss. It is deliberately scoped to **capture an
 analysing what is inside a replay is a separate, later feature. That ordering is mandated by
 constitution principle I.
 
+## Clarifications
+
+### Session 2026-08-19
+
+- **Q: Is Steam sign-in the sole credential, or is there also an email-and-password account?**
+  A: Steam sign-in is the sole credential. No password is ever stored, and password reset, email
+  verification and account recovery are out of scope — Valve owns recovery. The reasoning is that a
+  user's AoE2 identity *is* their Steam account: losing Steam means losing the game profile anyway,
+  so a separate local account would survive only as an empty shell. Resolves FR-006.
+
+- **Q: A player can hold several AoE2 profiles under one Steam account. One profile or several?**
+  A: Capture all of them, present one. Ingestion covers every profile discovered for the Steam
+  identity; the interface shows a single primary profile chosen by the user. This follows
+  constitution principle I: a second profile's replays face the same ~31-day window, so not
+  capturing them destroys them permanently, whereas presenting them is a display problem that can be
+  solved at any later date. Resolves FR-007.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Link my Steam account and see who I am (Priority: P1)
@@ -42,8 +59,15 @@ and confirm the correct profile and current ratings appear without any manual en
 3. **Given** a Steam account whose owner has never played AoE2 II:DE online, **When** they sign in,
    **Then** the system explains clearly that no AoE2 profile could be found and offers to retry
    rather than leaving them on an empty screen.
-4. **Given** a signed-in user, **When** they choose to unlink their profile, **Then** automatic
-   ingestion stops and they are told plainly what happens to the replays already archived.
+4. **Given** a Steam account holding more than one AoE2 profile, **When** the user signs in,
+   **Then** all of them are discovered, the user picks which one to see, and they are told that all
+   of them are being archived.
+5. **Given** a signed-in user, **When** they choose to unlink, **Then** automatic ingestion stops for
+   every one of their profiles and they are told plainly what happens to the replays already
+   archived.
+6. **Given** a visitor about to consent, **When** they are shown what the service does, **Then** they
+   are told before consenting that access depends entirely on their Steam account and cannot be
+   recovered by any other means.
 
 ---
 
@@ -65,7 +89,7 @@ archived and can be downloaded back byte-for-byte identical to the original.
 
 1. **Given** a user who has just consented and linked their profile, **When** the first ingestion
    cycle completes, **Then** every one of their matches from the preceding 31 days whose replay is
-   still available has been archived.
+   still available has been archived, across **all** of their profiles and not only the primary one.
 2. **Given** a linked user who plays a new match, **When** the next ingestion cycle runs, **Then**
    that match's replay is archived, and in no case later than 21 days after the match ended.
 3. **Given** a replay that has already been archived, **When** ingestion runs again, **Then** no
@@ -167,6 +191,10 @@ records or in storage.
 - A user links a Steam account that owns AoE2 but has only ever played single-player: no online
   profile exists.
 - A player owns several AoE2 profiles under one Steam account, or has changed their in-game alias.
+- A user acquires a new AoE2 profile after linking: it must be discovered and archived without them
+  having to do anything.
+- A user loses access to their Steam account: by design there is no recovery path, and they were
+  told so before consenting.
 - The match discovery source is unreachable for several days: capture must catch up automatically,
   and the 21-day budget must absorb the outage without loss.
 - The replay source starts refusing requests: the system must back off and raise an alert rather
@@ -199,13 +227,19 @@ records or in storage.
   already-archived replays before the user confirms.
 - **FR-005**: System MUST restrict account creation to an allowlist during the closed beta, and MUST
   tell a non-allowlisted visitor why they cannot proceed.
-- **FR-006**: System MUST establish user identity via [NEEDS CLARIFICATION: is Steam sign-in the sole
-  credential, or does the user also get an email-and-password account? The first removes password
-  storage, reset flows and email verification from scope entirely; the second is needed if the user
-  must be reachable without Steam, or must keep their data if they lose Steam access.]
-- **FR-007**: System MUST support [NEEDS CLARIFICATION: one AoE2 profile per user, or several? A
-  player can hold multiple profiles under one Steam account. Supporting several changes the history,
-  the ratings view and the ingestion quota from single-profile to aggregated.]
+- **FR-006**: System MUST treat the verified Steam sign-in as the sole credential. It MUST NOT store
+  passwords, and MUST NOT offer password reset, email verification or account recovery: a user who
+  loses access to their Steam account loses access here, and this MUST be stated plainly before they
+  consent to anything being archived.
+- **FR-007**: System MUST discover every AoE2 profile belonging to the signed-in Steam identity, not
+  only the most active one.
+- **FR-042**: System MUST ingest replays for **all** of the user's discovered profiles, so that no
+  profile's matches expire uncaptured.
+- **FR-043**: System MUST let the user designate one discovered profile as primary, and MUST present
+  ratings and match history for that profile. Where a user has more than one profile, the interface
+  MUST make the others reachable rather than hiding that they exist and are being archived.
+- **FR-044**: System MUST apply its ingestion quota per user, aggregated across all their profiles,
+  not per profile.
 
 **Ratings and match data**
 
@@ -282,8 +316,9 @@ records or in storage.
 - **Steam identity**: the verified Steam account bound to a user.
 - **Player profile**: an AoE2 player as the game knows them — identifier, alias, country. Exists for
   users and for third parties alike; only users' profiles are linked to an account.
-- **Profile link**: the association between a user and a player profile, with the moment ingestion
-  consent was given.
+- **Profile link**: the association between a user and one of their player profiles, whether it is
+  the primary one for display, and the moment ingestion consent was given. A user may hold several;
+  all are ingested, one is presented.
 - **Match**: one game — when it started and ended, map, leaderboard, game version, duration, plus the
   unaltered source record it came from.
 - **Match participant**: one player's part in one match — team, civilisation, result, rating before
@@ -305,7 +340,7 @@ records or in storage.
 - **SC-002**: 95% of a linked user's new matches are archived within 24 hours of the match ending,
   and 100% within 21 days.
 - **SC-003**: A newly linked account has every still-available replay from the preceding 31 days
-  archived within 24 hours of linking.
+  archived within 24 hours of linking, across all of the user's profiles.
 - **SC-004**: A user goes from arriving on the site to seeing their own ratings in under 60 seconds
   and without typing any identifier.
 - **SC-005**: Every archived replay is retrievable and byte-for-byte identical to what was captured,
@@ -323,8 +358,11 @@ records or in storage.
 
 ## Assumptions
 
-- Steam is the only sign-in route in scope. Players on other platforms are out of scope for this
-  feature and this is stated to them explicitly rather than left to fail.
+- Steam is the only sign-in route in scope, and the only credential. Players on other platforms are
+  out of scope for this feature and this is stated to them explicitly rather than left to fail.
+- Because there is no second credential, there is no account recovery. This is a deliberate trade:
+  it removes password storage and every flow around it from the attack surface, and a user who has
+  lost their Steam account has lost the AoE2 profile the service is about.
 - The service is non-commercial and stays within the game publisher's content usage rules. No game
   assets are redistributed.
 - The user base during the closed beta is small enough that request volume against external sources
