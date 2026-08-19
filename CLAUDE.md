@@ -26,8 +26,12 @@ history, and automatic replay archival.
 ## Why the architecture looks like this
 
 The Microsoft replay retention window is about 31 days. An uncaptured replay is lost forever, so
-ingestion and raw archival ship in the MVP while parsing and analysis wait for V2. See
-`docs/data-sources.md` and `docs/adr/`.
+ingestion and raw archival ship in the MVP while parsing and analysis wait for V2.
+
+- `docs/data-sources.md` — every external source, measured, with its traps
+- `docs/adr/0001-replay-parser.md` — why aoe2rec-py replaced aoc-mgz
+- `docs/adr/0002-hosting.md` — why Vercel Hobby works, and what it forbids in the code
+- `docs/risks.md` — the risk register and the verification checklist
 
 ## Workflow
 
