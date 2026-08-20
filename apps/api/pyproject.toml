@@ -1,0 +1,36 @@
+[project]
+name = "aoe2stats-api"
+version = "0.1.0"
+description = "The FastAPI application — the ASGI entrypoint re-exported by api/index.py on Vercel."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "pydantic-settings>=2.6",
+  "fastapi>=0.115",
+  "aoe2stats-storage",
+  # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
+  # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
+  # stage — so keep this import lazy, inside that one handler, forever: a module-scope import
+  # anywhere on this path would drag the engine into every cold start of the API function, not
+  # only the request that actually triggers a cycle (T018c, constitution V).
+  "aoe2stats-ingester",
+]
+
+[dependency-groups]
+# `httpx` is not imported by any module under `src/` — Starlette's `TestClient` (`fastapi.
+# testclient`, `starlette.testclient`) wraps it, but only `tests/` uses `TestClient` (T014c,
+# T018). Declaring it under `dependencies` made it a *runtime* dependency of exactly the
+# component constitution III restricts from reaching the network (T018d). `uv sync --all-packages
+# --dev` (`.github/workflows/pr.yml`) installs every workspace member's own `dev` group in
+# addition to the root's, so this still installs in CI and locally with no new invocation needed.
+dev = ["httpx>=0.27"]
+
+[tool.uv.sources]
+aoe2stats-storage = { workspace = true }
+aoe2stats-ingester = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aoe2stats_api"]

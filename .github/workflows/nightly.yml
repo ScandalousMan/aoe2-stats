@@ -16,13 +16,60 @@ jobs:
   contracts:
     name: Third-party API contracts
     runs-on: ubuntu-latest
+    # T012b: this job is the only one that needs to see the publication-delay corpus, so its extra
+    # `actions: write` scope — used below to list, download and re-upload the chained artifact that
+    # *is* the corpus — stays out of every other job's plain `contents: read`. No production
+    # credential is involved at any point: `GITHUB_TOKEN` is all the chain ever needs.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Probe Relic, aoe.ms, aoe2companion and aoestats
+      - name: Restore the publication-delay corpus from the previous nightly run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p docs/data-sources
+          # Most recent non-expired upload named "publication-delay-corpus", across the whole
+          # repository — artifacts are not scoped to a branch or a workflow file, so this finds
+          # last night's upload regardless of which run produced it.
+          artifact_id=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=publication-delay-corpus&per_page=100" \
+            --jq '[.artifacts[] | select(.name == "publication-delay-corpus" and .expired == false)] | sort_by(.created_at) | last | .id // empty')
+          if [ -n "$artifact_id" ]; then
+            gh api "repos/${{ github.repository }}/actions/artifacts/${artifact_id}/zip" > /tmp/publication-delay-corpus.zip
+            unzip -o /tmp/publication-delay-corpus.zip -d docs/data-sources
+            rm /tmp/publication-delay-corpus.zip
+            echo "Restored corpus artifact ${artifact_id}: $(wc -l < docs/data-sources/publication_delay_samples.jsonl) sample(s) so far."
+          else
+            # The very first run ever, or every earlier artifact has already expired past its
+            # retention window: a normal case, not a failure. contract_sources.py and
+            # publication_delay.py both treat a missing corpus file as "zero samples so far"
+            # (see publication_delay.read_samples) and start it from nothing.
+            echo "No previous corpus artifact found; starting a fresh corpus."
+          fi
+          # Guarantee the file exists even on a first run, or if the probe step below fails before
+          # recording anything: the re-upload step needs something to upload either way.
+          touch docs/data-sources/publication_delay_samples.jsonl
+      - name: Probe Steam, Relic, aoe.ms, aoe2companion and aoestats
         run: uv run --with requests scripts/checks/contract_sources.py
+      - name: Re-upload the publication-delay corpus for the next nightly run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publication-delay-corpus
+          path: docs/data-sources/publication_delay_samples.jsonl
+          # This chain only ever needs to bridge one night — the workflow runs daily at 03:00 UTC,
+          # and every run re-seeds the artifact from the one before it, so the "previous" artifact
+          # the next run downloads is never more than ~24 h old. 90 days (GitHub's maximum) is pure
+          # insurance against the nightly being paused or failing outright for a stretch, not a
+          # claim that samples are discarded after that long: the corpus itself keeps growing
+          # forever, because each night's upload carries everything the last one held.
+          retention-days: 90
+          if-no-files-found: error
 
   parser-canary:
     name: Parser canary

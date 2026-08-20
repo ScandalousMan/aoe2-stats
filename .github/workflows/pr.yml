@@ -19,6 +19,7 @@ jobs:
     outputs:
       python: ${{ steps.filter.outputs.python }}
       web: ${{ steps.filter.outputs.web }}
+      specs: ${{ steps.filter.outputs.specs }}
       design: ${{ steps.filter.outputs.design }}
       migrations: ${{ steps.filter.outputs.migrations }}
     steps:
@@ -33,6 +34,7 @@ jobs:
               - 'apps/parser/**'
               - 'packages/core/**'
               - 'packages/providers/**'
+              - 'packages/replay-engine/**'
               - 'packages/storage/**'
               - 'api/**'
               - 'pyproject.toml'
@@ -46,12 +48,54 @@ jobs:
               - 'packages/design-system/**'
             migrations:
               - 'infra/migrations/**'
+            specs:
+              - 'specs/**'
+              - '.env.example'
+              - 'scripts/checks/spec_lint.py'
+
+  specs:
+    name: Specs — cross-artifact lint
+    needs: changes
+    if: needs.changes.outputs.specs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Identifier coverage, task references, path agreement, alert vocabulary, configuration keys
+      # and duplicated literals. What this catches, /speckit-analyze no longer looks for by hand:
+      # a hand pass over prose samples and finds a different subset every time, which is what made
+      # that phase look non-convergent.
+      - name: Lint every feature that has reached tasks.md
+        run: |
+          status=0
+          for feature in specs/*/; do
+            [ -f "$feature/tasks.md" ] || continue
+            uv run scripts/checks/spec_lint.py --feature "$feature" || status=1
+          done
+          exit $status
 
   python:
     name: Python — lint, types, tests
     needs: changes
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
+    # T015a: the same service the `migrations` job already runs Postgres 16 against, at the same
+    # credentials `tests/db.py` falls back to — so `apps/api/tests` and `apps/ingester/tests`
+    # (T015's throwaway-database harness, exercised from T021 on) actually run here instead of
+    # skipping. It is reached over loopback (`localhost:5432`), which `PYTEST_DISABLE_NETWORK=1`
+    # (constitution III, tests/conftest.py) explicitly still allows — only genuine outbound
+    # network access is blocked, so the two compose without weakening the guard.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -62,7 +106,9 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy
       # Unit tests must never touch the network: providers are exercised through fixtures.
-      # Contract tests against real APIs live in nightly.yml.
+      # Contract tests against real APIs live in nightly.yml. A reachable-but-empty database is
+      # now guaranteed here, so tests/db.py hard-fails rather than skips if it cannot find one —
+      # a skip exists only so a developer without Postgres running locally is not blocked.
       - run: uv run pytest -q
         env:
           PYTEST_DISABLE_NETWORK: "1"
@@ -80,7 +126,12 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc --noEmit
+      # T017a: `pnpm exec tsc --noEmit` from the root matches no package's scripts and no
+      # root tsconfig.json — under TypeScript 7 it fails outright. `pnpm typecheck` runs each
+      # workspace member's own `typecheck` script (`pnpm -r --if-present run typecheck`, the
+      # same idiom `lint` and `test` already use below); `apps/web`'s runs `tsr generate` first
+      # so TanStack's generated, uncommitted route tree exists before `tsc -b` checks it.
+      - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
 
@@ -134,6 +185,17 @@ jobs:
           enable-cache: true
       - run: uv sync --all-packages --dev
       - run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      # T008a: `alembic check` (a) compares `Base.metadata` in models.py against the database's
+      # *current* revision and fails outright if that revision is not `head`, and (b) only then
+      # autogenerates a diff to detect drift between the models and the migrations. It must run
+      # here, against the database `upgrade head` just brought to `head` — run after `downgrade
+      # -1` below it would report "Target database is not up to date" regardless of whether the
+      # models and migrations agree, catching nothing. Verified locally: at `head` it exits 0
+      # with "No new upgrade operations detected"; after `downgrade -1` it exits non-zero with
+      # "Target database is not up to date" even though nothing in models.py had changed.
+      - run: uv run alembic check
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
       - run: uv run alembic downgrade -1

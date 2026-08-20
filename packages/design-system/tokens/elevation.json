@@ -1,0 +1,15 @@
+{
+  "$comment": "Elevation (box-shadow) tokens (T016). Themed like colour: dark surfaces need a darker, less transparent shadow to read at all, so the same names carry different values per theme. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "light": {
+    "none": "none",
+    "raised": "0 1px 2px 0 rgb(43 32 19 / 12%)",
+    "overlay": "0 4px 12px 0 rgb(43 32 19 / 18%)",
+    "modal": "0 16px 32px -4px rgb(43 32 19 / 28%)"
+  },
+  "dark": {
+    "none": "none",
+    "raised": "0 1px 2px 0 rgb(0 0 0 / 40%)",
+    "overlay": "0 4px 12px 0 rgb(0 0 0 / 50%)",
+    "modal": "0 16px 32px -4px rgb(0 0 0 / 60%)"
+  }
+}

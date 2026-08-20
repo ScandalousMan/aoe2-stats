@@ -1,6 +1,7 @@
 ---
 name: "speckit-analyze"
 description: "Perform a non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md after task generation."
+model: opus
 argument-hint: "Optional focus areas for analysis"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
@@ -80,6 +81,24 @@ For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot
 
 ### 2. Load Artifacts (Progressive Disclosure)
 
+**The field of view is fixed and non-negotiable.** It is listed exhaustively below. An analysis that
+loads less than this is not a shorter analysis, it is a different one: two passes over two different
+scopes produce two different finding sets, and the phase never converges. Load every item, every
+time, whatever the apparent size of the change.
+
+**First, run the mechanical linter and read its output:**
+
+```bash
+uv run scripts/checks/spec_lint.py --feature <FEATURE_DIR>
+```
+
+Everything it checks is settled by the script and is **not** re-derived by hand: identifier
+coverage, task-id references, path agreement between plan and tasks, enum vocabulary, environment
+variables, and duplicated literals. Report its failures as findings by transcribing them, and spend
+the reading budget below on what it cannot decide — judgment, sequencing, and constitution
+alignment. A linter failure is at least HIGH: it means an artifact contradicts another artifact
+mechanically.
+
 Load only the minimal necessary context from each artifact:
 
 **From spec.md:**
@@ -107,7 +126,34 @@ Load only the minimal necessary context from each artifact:
 
 **From constitution:**
 
-- Load `.specify/memory/constitution.md` for principle validation
+- Load `.specify/memory/constitution.md` for principle validation. Walk all principles from the
+  source document, never from `plan.md`'s Constitution Check table: that table is the artifact under
+  test, and reading the principles through it means a principle it omits is a principle nobody
+  checks.
+
+**From the rest of the feature directory** — these are artifacts too, and a contract that disagrees
+with a task is a finding:
+
+- `data-model.md`, `research.md`, `quickstart.md`, and every file under `contracts/`
+
+**From the repository itself** — this is the part most easily skipped, and it is where the
+highest-severity findings have historically come from. A task that says *"in `path/to/file"`* has
+not been analysed until that file has been read:
+
+- **Every path named by a task that already exists on disk.** Enumerate them from `tasks.md`, test
+  each for existence, and read the ones that exist. A task amending an existing file must be checked
+  against what the file actually contains today — not against what its own prose assumes.
+- `.env.example` — the home of every tuned constant. A threshold that appears in an artifact but not
+  here, or here but in no task, is a finding.
+- `docs/` — `data-sources.md`, `risks.md` and the ADRs. `CLAUDE.md` makes these living documents that
+  must be true *today*; an artifact that contradicts one of them means one of the two is lying, and
+  the analysis must say which.
+- `.github/workflows/` — the checks the tasks claim to add or enable, and the jobs they must be
+  wired into.
+
+**Bounding the cost**: the repository files are read once, at their current state, and only the
+ones a task actually names. If that set is large, read the parts the tasks point at rather than
+whole files — but never substitute inference for reading.
 
 ### 3. Build Semantic Models
 
@@ -206,6 +252,32 @@ At end of report, output a concise Next Actions block:
 ### 8. Offer Remediation
 
 Ask the user: "Would you like me to suggest concrete remediation edits for the top N issues?" (Do NOT apply them automatically.)
+
+**Remediation discipline** — remediation is itself a source of defects, and historically the largest
+one: a pass that fixes a confusion in one task has repeatedly pasted the correction onto a
+neighbouring task where it is false. Two rules follow.
+
+1. **Edit the smallest span that carries the defect.** Do not rewrite a paragraph to accommodate a
+   clause. A correction that belongs to task X must not appear in task Y, however adjacent.
+2. **A decision is recorded, not re-litigated.** When a finding is a missing decision rather than a
+   contradiction — a constant nobody measured, a lifecycle nobody wrote down — the remediation is to
+   write the decision *and its reasoning* into the artifact that governs it. A decision recorded as
+   prose does not come back as a finding; a decision applied silently does, every pass.
+
+**Re-analysis after remediation is diff-scoped, not a fresh full pass.** Re-run `spec_lint.py` in
+full — it is cheap and deterministic — then re-read only the changed spans and every other location
+mentioning the identifiers they touch. A full re-read over unchanged prose does not find defects
+that were not there before; it resamples, and resampling is what makes this phase look
+non-convergent when it is not.
+
+**Convergence criteria.** The phase is done when both hold, and they are different kinds of claim:
+
+- `spec_lint.py` exits zero — a binary, reproducible fact that does not regress; and
+- no finding of judgment is left open — every one is either fixed or recorded as a decision in the
+  artifact that owns it.
+
+Zero findings from a hand pass over a large artifact set is not the target and is not reachable by
+trying harder. The two criteria above are.
 
 ### 9. Check for extension hooks
 

@@ -1,6 +1,7 @@
 ---
 name: "speckit-plan"
 description: "Execute the implementation planning workflow using the plan template to generate design artifacts."
+model: opus
 argument-hint: "Optional guidance for the planning phase"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:

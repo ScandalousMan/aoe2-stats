@@ -1,6 +1,7 @@
 ---
 name: "speckit-specify"
 description: "Create or update the feature specification from a natural language feature description."
+model: opus
 argument-hint: "Describe the feature you want to specify"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:

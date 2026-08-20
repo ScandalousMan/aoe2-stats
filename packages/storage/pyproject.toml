@@ -1,0 +1,21 @@
+[project]
+name = "aoe2stats-storage"
+version = "0.1.0"
+description = "SQLAlchemy models and repositories, plus the S3 object store client and key scheme."
+requires-python = ">=3.13,<3.14"
+# `sqlalchemy[asyncio]`, not plain `sqlalchemy`: SQLAlchemy's own metadata only requires
+# `greenlet` (needed to bridge every async ORM call, regardless of the driver's own native async
+# support) on a `platform_machine` allowlist that omits Apple Silicon's `arm64` — the `[asyncio]`
+# extra requires it unconditionally, which is the upstream-documented way to avoid depending on
+# that allowlist ever catching up. Without it, every fixture in `tests/db.py` (T015) that opens an
+# `AsyncEngine` fails on macOS arm64 with "the greenlet library is required to use this function",
+# while the same code silently works on CI's `ubuntu-latest`/`x86_64` runners — exactly the kind
+# of platform-shaped gap constitution XII exists to catch before a contributor's machine finds it.
+dependencies = ["sqlalchemy[asyncio]>=2.0.36", "psycopg[binary]>=3.2", "boto3>=1.35"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aoe2stats_storage"]

@@ -1,0 +1,22 @@
+{
+  "name": "aoe2-stats",
+  "private": true,
+  "description": "Workspace root for the aoe2-stats front end. Not published. Members declared in pnpm-workspace.yaml; per-package dependencies live in each member's own package.json.",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" --ignore-path .gitignore",
+    "lint": "pnpm -r --if-present run lint",
+    "test": "pnpm -r --if-present run test",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test:visual": "node scripts/visual/run.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "@playwright/test": "^1.62.1",
+    "http-server": "^14.1.1"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$comment": "Typography tokens (T016). Family stacks name free-licensed web fonts only — no font file is copied into the repository (constitution X); self-hosting them, if ever needed, is a separate decision with its licence documented. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "family": {
+    "sans": "'Inter', system-ui, sans-serif",
+    "display": "'Fraunces', Georgia, serif",
+    "mono": "'JetBrains Mono', ui-monospace, monospace"
+  },
+  "size": {
+    "xs": { "value": "0.75rem", "lineHeight": "1rem" },
+    "sm": { "value": "0.875rem", "lineHeight": "1.25rem" },
+    "md": { "value": "1rem", "lineHeight": "1.5rem" },
+    "lg": { "value": "1.125rem", "lineHeight": "1.75rem" },
+    "xl": { "value": "1.25rem", "lineHeight": "1.75rem" },
+    "2xl": { "value": "1.5rem", "lineHeight": "2rem" },
+    "3xl": { "value": "1.875rem", "lineHeight": "2.25rem" },
+    "4xl": { "value": "2.25rem", "lineHeight": "2.5rem" }
+  },
+  "weight": {
+    "normal": "400",
+    "medium": "500",
+    "semibold": "600",
+    "bold": "700"
+  },
+  "tracking": {
+    "tight": "-0.01em",
+    "normal": "0em",
+    "wide": "0.02em"
+  }
+}

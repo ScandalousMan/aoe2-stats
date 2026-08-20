@@ -8,15 +8,45 @@ restates them — `.claude/skills/aoe2-data-sources/SKILL.md` carries the rules 
 every number, so there is nothing to keep in sync. When a nightly contract test fails, correct this
 file first: it is what the next person will trust.
 
+One measurement accumulates rather than being taken once: §2's publication-delay distribution. Its
+raw samples are **not** kept in this repository — a repository file only changes by a commit, and
+the nightly job that takes the sample (the `contracts` job in `.github/workflows/nightly.yml`)
+deliberately makes none, so it never needs write access to anything beyond its own GitHub Actions
+run. Instead, each nightly run downloads the corpus accumulated so far as a chained GitHub Actions
+artifact (`publication-delay-corpus`), appends that run's one sample, and re-uploads the whole
+thing; the corpus lives only in that artifact chain. The block below is the _conclusion_ drawn from
+it, written by a human who has pulled the corpus and read it — not machine-regenerated on every
+run — using `render_summary` / `rewrite_summary_block` in `scripts/checks/publication_delay.py` as
+the tool for doing that by hand. It carries the date it was last written so a reader can judge
+whether it is still current.
+
 ## Summary
 
-| Source | Covers | Freshness | Break risk | Role |
-| --- | --- | --- | --- | --- |
-| Relic `aoe-api.worldsedgelink.com` | Steam to profile_id, leaderboards, personal stats, match history | real time | Medium | **primary** |
-| `aoe.ms` / `api.ageofempires.com` | replay files (zip) | minutes after match end | Medium-high | **primary** (replays) |
-| `data.aoe2companion.com` | normalized match and profile data | ~30 s after match end | High | enrichment, degradable |
-| `aoestats.io` | weekly aggregated parquet dumps | **broken since 2026-02** | realized | V2 historical corpus only |
-| `stats.ageofempires.com` | official web UI | real time | n/a | no public JSON API |
+| Source                             | Covers                                                           | Freshness                | Break risk  | Role                      |
+| ---------------------------------- | ---------------------------------------------------------------- | ------------------------ | ----------- | ------------------------- |
+| Relic `aoe-api.worldsedgelink.com` | Steam to profile_id, leaderboards, personal stats, match history | real time                | Medium      | **primary**               |
+| `aoe.ms` / `api.ageofempires.com`  | replay files (zip)                                               | minutes after match end  | Medium-high | **primary** (replays)     |
+| `data.aoe2companion.com`           | normalized match and profile data                                | ~30 s after match end    | High        | enrichment, degradable    |
+| `aoestats.io`                      | weekly aggregated parquet dumps                                  | **broken since 2026-02** | realized    | V2 historical corpus only |
+| `stats.ageofempires.com`           | official web UI                                                  | real time                | n/a         | no public JSON API        |
+
+### Recoverable or not
+
+Which responses must be kept verbatim, per constitution III. The test is whether the _data_ can be
+obtained again later, not whether the request can be repeated.
+
+| Response                                      | Recoverable?                                                           | Raw kept                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Relic match history (`getRecentMatchHistory`) | **No** — a match leaves the "recent" window and cannot be fetched back | `matches.raw_payload`                                        |
+| `aoe.ms` replay zip                           | **No** — ~31-day retention, then gone for everyone                     | the object store, byte-for-byte                              |
+| Relic leaderboards and personal stats         | Yes — current standing, re-queryable at any time                       | not kept                                                     |
+| aoe2companion enrichment                      | Yes — re-queryable, and degradable by design                           | not kept                                                     |
+| aoestats parquet dumps                        | Yes — published artifacts, re-downloadable                             | not kept (V2)                                                |
+| Steam OpenID assertion                        | n/a — an authentication exchange, not a data source                    | not kept; `steam_identities.verified_at` records the outcome |
+
+The two "No" rows are the whole reason principle IV exists. Both are measured properties of the
+outside world and are re-checked by the nightly contract tests; if either becomes recoverable, this
+table changes before any code does.
 
 ## 1. Relic / World's Edge
 
@@ -51,43 +81,72 @@ GET https://aoe.ms/replay/?gameId={gameId}&profileId={profileId}
   301 -> https://api.ageofempires.com/api/GameStats/AgeII/GetMatchReplay/?gameId=..&profileId=..&matchId=..
 ```
 
-| Property | Measured |
-| --- | --- |
-| Authentication | none |
-| Success | `200`, `content-type: application/zip` |
-| Naming | `content-disposition: attachment; filename=AgeIIDE_Replay_{gameId}.zip` |
-| Contents | exactly one file, `AgeIIDE_Replay_{gameId}.aoe2record` |
-| Compression | 871 503 B zip to 6 909 299 B raw (x7.9) |
-| Sizes | ranked 1v1 ~0.87 MB; 8-player ~2.3-2.5 MB |
-| `HEAD` | `405` — no cheap existence probe |
-| `Range` | ignored — no partial probe |
-| Failure | `404`, `text/plain`, 16 bytes |
+| Property       | Measured                                                                  |
+| -------------- | ------------------------------------------------------------------------- |
+| Authentication | none                                                                      |
+| Success        | `200`, `content-type: application/zip`                                    |
+| Naming         | `content-disposition: attachment; filename=AgeIIDE_Replay_{gameId}.zip`   |
+| Contents       | exactly one file, `AgeIIDE_Replay_{gameId}.aoe2record`                    |
+| Compression    | 871 503 B zip to 6 909 299 B raw (x7.9)                                   |
+| Sizes          | ranked 1v1 ~0.87 MB; 8-player ~2.3-2.5 MB                                 |
+| `HEAD`         | `405` — no cheap existence probe                                          |
+| `Range`        | ignored — no partial probe                                                |
+| Failure        | `404`, `text/plain`, 16 bytes                                             |
 | Access control | `(gameId, profileId)` must be a real participant pair; no ownership check |
-| Point of view | the recording is from that `profileId`'s perspective |
-| Availability | 33 min after match end verified (upper bound) |
-| Rate limits | undocumented; ~25 requests in 30 min saw no throttling |
+| Point of view  | the recording is from that `profileId`'s perspective                      |
+| Availability   | see "Publication delay: distribution" below                               |
+| Rate limits    | undocumented; ~25 requests in 30 min saw no throttling                    |
 
 ### Retention: approximately 31 days
 
 Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 
-| gameId | match end | result |
-| --- | --- | --- |
-| 500572650 | 2026-08-19 15:46 | 200 (2.43 MB) |
-| 498525406 | 2026-08-10 | 200 (1.97 MB) |
-| 493630273 | 2026-07-20 12:06 | 200 (0.65 MB) |
+| gameId        | match end            | result                             |
+| ------------- | -------------------- | ---------------------------------- |
+| 500572650     | 2026-08-19 15:46     | 200 (2.43 MB)                      |
+| 498525406     | 2026-08-10           | 200 (1.97 MB)                      |
+| 493630273     | 2026-07-20 12:06     | 200 (0.65 MB)                      |
 | **493452131** | **2026-07-19 15:09** | **200 (2.50 MB)** — last available |
-| **493398610** | **2026-07-19 10:46** | **404** — first missing |
-| 493217484 | 2026-07-18 18:00 | 404 |
-| 492740917 | 2026-07-16 18:27 | 404 |
-| 490086457 | 2026-07-04 | 404 |
-| 482532928 | 2026-06-03 | 404 |
-| 424374137 | 2025-10-09 | 404 |
+| **493398610** | **2026-07-19 10:46** | **404** — first missing            |
+| 493217484     | 2026-07-18 18:00     | 404                                |
+| 492740917     | 2026-07-16 18:27     | 404                                |
+| 490086457     | 2026-07-04           | 404                                |
+| 482532928     | 2026-06-03           | 404                                |
+| 424374137     | 2025-10-09           | 404                                |
 
 The boundary is sharp, inside a ~4 h interval, and is not patch-scoped: replays from patch 1800 sit
 on both sides of it. It is a rolling, time-based purge.
 
 **Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
+
+### Publication delay: distribution
+
+The single observation this section used to carry — 33 min after match end, one sample — is not a
+distribution. `scripts/checks/contract_sources.py` takes one non-blocking sample per nightly run:
+the age of the probe profile's most recently completed match, and whether `aoe.ms` already answers
+`200` for it. Never a poll that waits for `200` — the nightly job cannot sit on a request for hours,
+so this is one shot per night. The samples accumulate across nights in a chained GitHub Actions
+artifact rather than in this repository (see the note at the top of this file, and T012b) — pull
+`publication-delay-corpus` from a recent run of the `contracts` job to see the full corpus as of
+today; what follows is a point-in-time reading of it.
+
+`REPLAY_PUBLICATION_GRACE_HOURS` (defined once, in `.env.example` — `publication_delay.py` parses
+that file rather than restating the number, so this paragraph never needs to) is not sized on this
+delay: it is sized on the discovery cadence, at least twice the ~25 h cadence, so two polls always
+land inside the grace and no single 404 can close a capture on its own. What this distribution
+decides is whether that floor also sits comfortably above the real publication delay.
+
+<!-- publication-delay-summary:begin -->
+
+**Last written by hand: 2026-08-19**, from the one sample recorded before the corpus moved to the
+artifact chain (T012b). Re-run `publication_delay.render_summary` against a pulled corpus and update
+this block, including this date, whenever the conclusion below should move.
+
+- Samples recorded: **1**, from `2026-08-19T21:30:20.813595Z` to `2026-08-19T21:30:20.813595Z`.
+- Shortest match age observed with the replay already available (an upper bound on the real publication delay): **2.15 h**.
+- No sample has exceeded `REPLAY_PUBLICATION_GRACE_HOURS` (72 h).
+
+<!-- publication-delay-summary:end -->
 
 ## 3. aoe2companion
 
@@ -122,7 +181,6 @@ Consequences, all of which the architecture already anticipated:
 - Treat a 403 here as normal operating noise. The circuit breaker exists for exactly this.
 - **To verify once Vercel is provisioned**: whether this service is reachable at all from Vercel's
   egress addresses. If it is not, the application must still work — it is enrichment only.
-
 
 ## 4. aoestats.io
 

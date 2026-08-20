@@ -59,11 +59,48 @@ Spec-Driven Development with Spec-Kit: `speckit-specify` -> `speckit-clarify` ->
 `speckit-tasks` -> `speckit-analyze` -> `speckit-implement`.
 One task in `tasks.md` is one unit of work for the `implementer` agent.
 
+`/speckit-implement` is run **one phase at a time**, naming the task range and the stop condition.
+Its own completion criteria otherwise push it through every phase in one context, which is how the
+judgment in `tasks.md` gets flattened. Artifacts are amended by hand; `/speckit-plan` and
+`/speckit-tasks` are never re-run over a file that already exists.
+
+## Commits
+
+The commit unit is **the smallest set of tasks that was ever simultaneously green**. Sequential
+tasks are one commit each, as `tasks.md` asks. A parallel batch is one commit: agents sharing a
+working tree interleave in the same files, and splitting that afterwards invents commits that never
+existed as a working state and cannot be verified individually.
+
+That granularity only exists at the moment it exists. Commit when a task hands back, *before*
+dispatching the next one — a batch launched over an uncommitted predecessor absorbs it permanently,
+and no amount of care afterwards gets it back.
+
+Never commit a red tree. The `SubagentStop` gate proves each hand-back green on its own; the commit
+re-proves it for the whole batch, because "each passed alone" and "they pass together" are different
+claims — and the second is the one the next phase builds on.
+
+The `[x]` in `tasks.md` rides in the same commit as the code that earned it. A checkbox committed on
+its own is a claim with no evidence behind it, and it is the one lie this workflow cannot detect.
+
+Messages follow the history already in the log: `type(scope): subject`, lowercase, imperative, no
+trailing period. `feat(001):` for implementation work, alongside the existing `spec`, `plan`,
+`tasks`, `constitution`, `docs`, `fix` and `chore`. The body lists the task ids the commit closes,
+one per line, and any judgment a later reader would otherwise have to re-derive from the diff.
+
 ## Model routing
 
-- **Opus**: constitution, specify, plan, reviews (`reviewer`), `product-designer`
-- **Sonnet**: implementation (`implementer`), `visual-reviewer`, session lead
-- **Haiku**: `researcher`, triage, mechanical tasks
+Automatic, not chosen per invocation. `.claude/settings.json` pins the session lead to Sonnet; each
+skill and agent declares its own `model:` in frontmatter, which overrides for that turn only and
+reverts afterwards. Changing routing means editing the frontmatter, never the model picker.
+
+- **Opus**: constitution, specify, clarify, plan, tasks, analyze, converge, `reviewer`,
+  `product-designer`
+- **Sonnet**: implement (`implementer`), `visual-reviewer`, session lead
+- **Haiku**: checklist, taskstoissues, `researcher`, triage, mechanical tasks
+
+One task in `tasks.md` is one `implementer` invocation. `/speckit-implement` orchestrates and does
+not write code itself: the `SubagentStop` hook matches `implementer` and refuses a hand-back on red
+tests, so code written outside an agent never meets that gate.
 
 ## Commands
 

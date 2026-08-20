@@ -6,7 +6,7 @@ cannot be recreated by anyone, at any price.
 
 | # | Risk | Severity | Mitigation |
 | --- | --- | --- | --- |
-| **R1** | **31-day retention window.** An ingestion outage longer than the capture budget loses replays permanently | Critical | 21-day capture budget (10 days of slack); daily reconciliation over 25 days; alert when a capture stays pending > 48 h; `expired_total` treated as a severity-1 alert; full backfill on account linking |
+| **R1** | **31-day retention window.** An ingestion outage longer than the capture budget loses replays permanently | Critical | 21-day capture budget (10 days of slack); daily reconciliation over 25 days; alert when a capture passes its 21-day capture deadline, with ~10 days still left to act; `expired_total` treated as a severity-1 alert; full backfill on account linking |
 | **R2** | **`aoe.ms` rate limits or blocking.** Undocumented, and none observed so far — which is not the same as none existing | High | <= 1 req/s globally, serial downloads, jitter, honest identifying `User-Agent`; exponential backoff; on 429/403 stop the run and alert rather than pushing through; per-user quotas; strictly non-commercial use |
 | **R3** | **A game patch breaks the parser.** Demonstrated, not hypothetical: `aoc-mgz` has been broken since the 2026-02-17 DLC and unfixed for six months, which also killed aoestats | Medium | Downgraded from High by the switch to `aoe2rec-py`, which shipped a fix 4 days after that same DLC. Pluggable engine interface; nightly canary on both engines; versions recorded per parse; bulk re-parse designed into the schema. Fallbacks: build aoe2rec from source with maturin, `AoEInsights/mgz-fast`, or mgz PR #142 in a fork. See ADR 0001 |
 | **R4** | **A third-party API breaks.** Relic is undocumented and has already moved host (reliclink -> worldsedgelink); aoe2companion is unlicensed and returns 403 intermittently; aoestats has been dead since February | High | Abstract `DataProvider`, so a provider is replaced without touching the domain; Relic primary, companion as degradable enrichment; nightly contract tests; raw payloads retained verbatim so a transformation can be replayed after the fact |
@@ -55,8 +55,10 @@ properties a test plan has to establish.
 
 **Ingestion** — the real measure of the MVP
 
-- [ ] Linking an account enqueues every match in the 31-day window
-- [ ] After a real match, the stored object appears within 24 hours
+- [ ] Linking an account marks it for backfill, and the next cycle enqueues every match in the
+      31-day window
+- [ ] After a real match, the stored object appears within 48 hours — the daily cadence spends ~25 h
+      on detection before a capture is even attempted
 - [ ] A run interrupted by its time budget leaves nothing in progress and resumes cleanly
 - [ ] Replaying the same match creates no duplicate and rewrites no file
 - [ ] A network failure mid-download leaves no capture marked stored without its file
@@ -64,10 +66,26 @@ properties a test plan has to establish.
 
 **Hosting**
 
-- [ ] Functions report region `cdg1`; database and bucket are EU
-- [ ] A pull request gets a preview deployment; `main` deploys production
-- [ ] The cron endpoint returns 401 without its secret
-- [ ] The Python bundle stays under the 500 MB limit
+Verified against the live deployment on 2026-08-20. Each line records *how* it was checked, not
+only that it was: "the bucket is EU" was ticked-shaped but uncheckable, and that vagueness is what
+let a Western-Europe *location hint* pass for an EU *jurisdiction* — the two look alike in the
+Cloudflare UI and only the S3 endpoint tells them apart (`<account>.eu.r2...` carries the
+jurisdiction, `<account>.r2...` does not).
+
+- [x] Functions report region `cdg1`; database and bucket are EU — both functions report `cdg1` in
+      `vercel inspect` and in `x-vercel-id`; Neon runs in `eu-central-1`; the R2 bucket carries the
+      EU jurisdiction, confirmed by its `.eu.` endpoint
+- [ ] A pull request gets a preview deployment; `main` deploys production — half verified. The Git
+      integration builds pull requests: #2 carries a passing Vercel check and a preview deployment.
+      Its URLs answer `302`, which is Vercel's deployment protection and not an application fault —
+      reaching one from a script needs a bypass token. The `main`-deploys-production half is still
+      unobserved: every production deployment so far was driven from the CLI, so nothing has yet
+      proved a merge deploys on its own
+- [x] The cron endpoint returns 401 without its secret — verified in production for both `GET` (what
+      Vercel Cron actually sends) and `POST`, each returning the error envelope
+- [x] The Python bundle stays under the 500 MB limit — 43.69 MB per function, 8.7% of the ceiling.
+      Both functions carry the same bundle today; only the cron one grows when the replay engine
+      lands at T055
 
 **Front end**
 

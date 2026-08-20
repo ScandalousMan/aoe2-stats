@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["cdg1"],
+  "buildCommand": "pnpm --filter web build",
+  "outputDirectory": "apps/web/dist",
   "crons": [
     {
       "path": "/api/cron/ingest",
@@ -10,6 +12,15 @@
   "functions": {
     "api/cron/ingest.py": {
       "maxDuration": 300
+    },
+    "api/index.py": {
+      "maxDuration": 10
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    }
+  ]
 }

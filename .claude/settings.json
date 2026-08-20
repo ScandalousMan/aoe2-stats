@@ -1,4 +1,5 @@
 {
+  "model": "sonnet",
   "hooks": {
     "PostToolUse": [
       {
@@ -7,6 +8,11 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/format-changed.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/spec-lint-changed.sh",
             "timeout": 60
           }
         ]

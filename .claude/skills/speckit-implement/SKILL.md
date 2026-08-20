@@ -1,6 +1,7 @@
 ---
 name: "speckit-implement"
 description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md"
+model: sonnet
 argument-hint: "Optional implementation guidance or task filter"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
@@ -153,6 +154,17 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Execution flow**: Order and dependency requirements
 
 6. Execute implementation following the task plan:
+   - **Delegate every task to the `implementer` agent.** One task in `tasks.md` is one `implementer`
+     invocation, as `CLAUDE.md` requires. You orchestrate; you do not write the code yourself. This
+     is not a style preference: the `SubagentStop` hook in `.claude/settings.json` matches
+     `implementer` and runs `scripts/hooks/gate-implementer.sh`, which refuses a hand-back on red
+     tests. Code written directly in this session never passes through that gate.
+     - Give the agent the task's exact ID and full text, and the feature directory. It reads
+       `spec.md`, `plan.md` and the constitution itself — do not paste them.
+     - Tasks marked `[P]` in the same phase may be delegated in parallel. Tasks touching the same
+       file never are.
+     - When the agent reports back, mark the task `[X]` in `tasks.md` yourself and move on. Do not
+       re-read the files it changed to verify; the gate already ran the tests.
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
@@ -175,6 +187,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IMPORTANT** For completed tasks, make sure to mark the task off as [X] in the tasks file.
 
 9. Completion validation:
+   - **Scope**: "all required tasks" means every task in the range this invocation was given. If the
+     user scoped you to a phase or a task range, that range *is* the definition of done — stop at its
+     boundary and report, rather than continuing into the next phase.
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
@@ -223,7 +238,9 @@ Report final status with summary of completed work.
 
 ## Done When
 
-- [ ] All tasks in tasks.md completed and marked `[X]`
+- [ ] Every task in the requested scope completed and marked `[X]` in tasks.md (the whole file only
+      when no phase or range was given)
+- [ ] Each of those tasks was carried out by an `implementer` agent, not written in this session
 - [ ] Implementation validated against specification, plan, and test coverage
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with summary of completed work
