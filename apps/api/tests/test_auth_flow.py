@@ -274,7 +274,6 @@ def test_sign_in_resolves_profile_and_ratings_with_no_input(
     assert _HAPPY_LEADERBOARD_RATING in profiles.text
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_replayed_callback_with_identical_parameters_is_rejected(
     client: TestClient, fake_upstream: _FakeSteamAndRelic
 ) -> None:
@@ -303,7 +302,6 @@ def test_replayed_callback_with_identical_parameters_is_rejected(
     assert client.get("/api/me").json()["authenticated"] is False
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_callback_with_tampered_claimed_id_is_rejected(
     client: TestClient, fake_upstream: _FakeSteamAndRelic
 ) -> None:
@@ -329,7 +327,6 @@ def test_callback_with_tampered_claimed_id_is_rejected(
     assert client.get("/api/me").json()["authenticated"] is False
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_steam_account_with_no_aoe2_profile_yields_an_explanation_not_a_crash(
     client: TestClient, fake_upstream: _FakeSteamAndRelic
 ) -> None:

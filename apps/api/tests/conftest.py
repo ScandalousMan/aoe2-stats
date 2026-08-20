@@ -170,7 +170,15 @@ def client(
 ) -> Iterator[TestClient]:
     """A `TestClient` over a fresh `create_app()`, its `get_session` dependency pointed at the
     real throwaway database and its `get_object_store` dependency faked out. `clean_database` is
-    requested (and ignored) purely to order the truncation before the app is ever exercised."""
+    requested (and ignored) purely to order the truncation before the app is ever exercised.
+
+    `base_url="https://testserver"` (T015c): every cookie `security.py` sets carries
+    `secure=True` (constitution VIII), and a cookie jar never sends a secure cookie back over
+    plain HTTP. `TestClient`'s default `base_url` is `http://testserver`, so without this every
+    session and CSRF-state cookie a router sets would silently vanish before the next request in
+    the same test — a defect in the harness, not in the routers it drives, and not one to fix by
+    weakening `secure=True`.
+    """
     app = create_app()
 
     async def _get_session() -> AsyncIterator[AsyncSession]:
@@ -180,5 +188,5 @@ def client(
     app.dependency_overrides[get_session] = _get_session
     app.dependency_overrides[get_object_store] = lambda: _FakeObjectStore()
 
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client

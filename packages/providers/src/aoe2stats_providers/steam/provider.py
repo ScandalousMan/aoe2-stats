@@ -136,15 +136,19 @@ class SteamAuthProvider(SyncBaseProvider):
         match = _CLAIMED_ID_PATTERN.match(claimed_id)
         if match is None:
             return None
-        # `openid.identity` and `openid.claimed_id` are two views of the same signed assertion
-        # (OpenID 2.0 §11) and must agree. In the real flow a mismatch also breaks the
-        # `check_authentication` signature and Steam rejects it outright; this catches the same
-        # tampering (quickstart scenario 1: one character of `claimed_id` altered) even against a
-        # test double that answers `is_valid:true` unconditionally, regardless of the body sent.
-        if callback_params.get("openid.identity") != claimed_id:
-            return None
 
         if not self._check_authentication(callback_params):
+            return None
+
+        # `openid.identity` and `openid.claimed_id` are two views of the same signed assertion
+        # (OpenID 2.0 §11) and must agree. This check runs *after* the `check_authentication`
+        # round trip above, not instead of it: FR-002 requires that round trip for every
+        # assertion, and a tampered `claimed_id` is exactly the input it exists to catch — an
+        # early return on shape alone would skip Steam for precisely that case. In the real flow
+        # a mismatch also breaks the `check_authentication` signature and Steam rejects it
+        # outright (`is_valid:false`), so this is defence in depth once the round trip has
+        # already happened, not a substitute for it.
+        if callback_params.get("openid.identity") != claimed_id:
             return None
 
         return match.group(1)

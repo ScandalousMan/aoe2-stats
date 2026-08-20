@@ -12,6 +12,7 @@ alone could prove.
 from __future__ import annotations
 
 import uuid
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Response
@@ -70,14 +71,25 @@ def test_unsign_rejects_a_tampered_value() -> None:
 
 
 def test_unsign_rejects_a_tampered_signature() -> None:
-    session_id = security.generate_session_id()
-    signed = security._sign(session_id, _SECRET)
+    """A 32-byte HMAC-SHA256 digest base64url-encodes to 43 characters, and the final character
+    carries only 4 significant bits — the 2 bits beneath them are padding the decoder ignores. An
+    edit confined to that last character can therefore decode to the very same bytes it started
+    from (measured: ~1 in 16 signings), silently passing a "tampered" cookie the verifier never
+    actually saw change. Tamper the *decoded* signature bytes and re-encode instead, so every run
+    changes something `_unsign` actually reads, and repeat across many signings — this is exactly
+    the property that hid behind a single sample before."""
+    for _ in range(200):
+        session_id = security.generate_session_id()
+        signed = security._sign(session_id, _SECRET)
 
-    value, _sep, signature = signed.rpartition(".")
-    flipped_last_char = ("a" if signature[-1] != "a" else "b") if signature else "a"
-    tampered = f"{value}.{signature[:-1]}{flipped_last_char}"
+        value, _sep, encoded_signature = signed.rpartition(".")
+        padding = "=" * (-len(encoded_signature) % 4)
+        signature = bytearray(urlsafe_b64decode(encoded_signature + padding))
+        signature[0] ^= 0x01
+        tampered_signature = urlsafe_b64encode(bytes(signature)).rstrip(b"=").decode("ascii")
+        tampered = f"{value}.{tampered_signature}"
 
-    assert security._unsign(tampered, _SECRET) is None
+        assert security._unsign(tampered, _SECRET) is None
 
 
 def test_unsign_rejects_the_wrong_secret() -> None:

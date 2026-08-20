@@ -7,6 +7,17 @@ dependencies = [
   "pydantic-settings>=2.6",
   "fastapi>=0.115",
   "aoe2stats-storage",
+  # `routers/auth.py` (T029) builds the one `httpx.Client`/`httpx.AsyncClient` pair every
+  # per-request `SteamAuthProvider`/`RelicProfileProvider` instance shares, and hands them to
+  # `aoe2stats-providers` rather than issuing any request itself — constitution III's "apps/*
+  # ... never open an outbound connection" is about where a *request* is issued (inside
+  # `SyncBaseProvider._request`/`AsyncBaseProvider._request`, in `packages/providers`), not about
+  # which package is allowed to construct the client object a provider is built from — the same
+  # split `deps.py` already draws for `ObjectStore` and the database engine. `httpx` was
+  # previously dev-only, imported only by `TestClient` under `tests/`; T029 is what makes it a
+  # real runtime dependency of this package for the first time.
+  "httpx>=0.27",
+  "aoe2stats-providers",
   # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
   # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
   # stage — so keep this import lazy, inside that one handler, forever: a module-scope import
@@ -15,17 +26,9 @@ dependencies = [
   "aoe2stats-ingester",
 ]
 
-[dependency-groups]
-# `httpx` is not imported by any module under `src/` — Starlette's `TestClient` (`fastapi.
-# testclient`, `starlette.testclient`) wraps it, but only `tests/` uses `TestClient` (T014c,
-# T018). Declaring it under `dependencies` made it a *runtime* dependency of exactly the
-# component constitution III restricts from reaching the network (T018d). `uv sync --all-packages
-# --dev` (`.github/workflows/pr.yml`) installs every workspace member's own `dev` group in
-# addition to the root's, so this still installs in CI and locally with no new invocation needed.
-dev = ["httpx>=0.27"]
-
 [tool.uv.sources]
 aoe2stats-storage = { workspace = true }
+aoe2stats-providers = { workspace = true }
 aoe2stats-ingester = { workspace = true }
 
 [build-system]
