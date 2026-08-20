@@ -3,27 +3,54 @@
 Split out of `contract_sources.py` so it stays importable without that script's side effects: every
 `@check`-decorated function there fires a live network call the moment it is defined, and the module
 also parses `sys.argv` for `--capture-fixtures` at import time. Neither belongs anywhere near a unit
-test. Everything below is pure — given a sample it appends one line and rewrites a bounded summary
-block; given a list of rows it computes statistics. No network, no argv, no import-time effects.
+test. Everything below is pure — given a sample it appends one line and computes a bounded summary
+block from a corpus; given a list of rows it computes statistics. No network, no argv, no
+import-time effects beyond parsing `.env.example` for the one constant below.
 
-The raw corpus (`docs/data-sources/publication_delay_samples.jsonl`) and the summary regenerated
-into `docs/data-sources.md` are the same measurement in the same home (`docs/`, per CLAUDE.md): the
-summary is *derived* by this module from the raw file on every run, never hand-copied, so the two
-can never drift apart the way two independently maintained numbers would.
+T012b: the raw corpus no longer lives in this repository. `contract_sources.py`'s nightly run
+downloads it as a chained GitHub Actions artifact, appends this run's sample with `append_sample`,
+and re-uploads the whole thing — see the "Restore" / "Re-upload" steps around the `contracts` job in
+`.github/workflows/nightly.yml`. Nothing about that path touches `docs/data-sources.md`. The
+`render_summary` / `rewrite_summary_block` pair below still exists, but only as a tool a human runs
+by hand against a corpus they have pulled, when they choose to update the conclusion in
+`docs/data-sources.md` §2 — CLAUDE.md's "the difference matters": a summary a machine regenerates
+every night on data nobody reviewed is not a conclusion, and claiming it is one was exactly T012b's
+finding (b).
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-# Mirrors `.env.example`'s `REPLAY_PUBLICATION_GRACE_HOURS`. This is the floor the distribution
-# exists to check, not a value owned here — trust `.env.example` if the two ever disagree.
-# Restating it is the constraint carve-out CLAUDE.md allows ("repeating a constraint where it
-# governs a decision is different [from copying a measurement], and correct"): every sample is
-# compared against this floor to decide whether the floor should be raised.
-REPLAY_PUBLICATION_GRACE_HOURS = 72
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_ENV_EXAMPLE = _REPO_ROOT / ".env.example"
+
+
+def _read_grace_hours(env_example_path: Path = _ENV_EXAMPLE) -> int:
+    """`REPLAY_PUBLICATION_GRACE_HOURS` has exactly one home: `.env.example`. Every consumer reads
+    it from there rather than restating the digit — the running application through
+    `Settings` (`apps/api/src/aoe2stats_api/settings.py`, a required field with no default, so
+    production sets its own copy of this file's value the same way it sets every other
+    environment variable) and this script by parsing the same line a human edits. T012b's finding
+    (c): a module-level literal here could go stale the moment someone raised the grace in
+    `.env.example` without also editing this file, and the generated prose would then assert a
+    number that was no longer true. Parsing avoids that by construction — there is nothing here to
+    forget to update.
+    """
+    text = env_example_path.read_text(encoding="utf-8")
+    match = re.search(r"^REPLAY_PUBLICATION_GRACE_HOURS=(\d+)\s*$", text, re.MULTILINE)
+    if match is None:
+        raise RuntimeError(
+            f"{env_example_path} does not declare REPLAY_PUBLICATION_GRACE_HOURS as a plain "
+            "integer on its own line; publication_delay.py has nothing to compare samples against."
+        )
+    return int(match.group(1))
+
+
+REPLAY_PUBLICATION_GRACE_HOURS = _read_grace_hours()
 
 SUMMARY_BEGIN = "<!-- publication-delay-summary:begin -->"
 SUMMARY_END = "<!-- publication-delay-summary:end -->"
@@ -74,8 +101,9 @@ def render_summary(samples: list[dict[str, Any]], *, samples_relpath: str) -> st
     """
     if not samples:
         return (
-            "- No sample recorded yet. The nightly contract run (`contract_sources.py`) writes "
-            f"the first one to `{samples_relpath}`."
+            "- No sample recorded yet. The nightly contract run (`contract_sources.py`) appends "
+            "the first one to the chained `publication-delay-corpus` artifact "
+            f"(`.github/workflows/nightly.yml`); pulled locally, it lives at `{samples_relpath}`."
         )
 
     unavailable_ages = [s["age_hours"] for s in samples if not s["available"]]
@@ -144,9 +172,14 @@ def record_sample(
 ) -> dict[str, Any]:
     """Append the sample and regenerate the summary in the same call.
 
-    The two files never go out of step because nothing ever writes one without the other in the
-    same breath — there is no code path that appends a sample without also refreshing the summary
-    it changes.
+    Not used by the nightly run (T012b) — `contract_sources.py`'s automatic path calls
+    `append_sample` directly and never touches `doc_path`, because the corpus it appends to is
+    downloaded fresh from the artifact chain each run and no CI job may commit the result back to
+    the repository. This function is the tool a human runs locally, against a corpus they pulled
+    from the `publication-delay-corpus` artifact, when they decide the conclusion in
+    `docs/data-sources.md` §2 should move: the two files it touches never go out of step with each
+    other *in that one call*, because nothing here writes one without the other in the same
+    breath — but the call itself only happens when a person makes it.
     """
     row = append_sample(
         samples_path,

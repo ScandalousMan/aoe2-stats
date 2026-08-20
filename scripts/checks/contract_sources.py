@@ -7,10 +7,15 @@ misbehaves.
 
 Every check that parses a body writes what it received into `packages/providers/fixtures/` as it
 goes (see `write_json_fixture` / `write_text_fixture` below) — T012's "capture frozen real
-responses" and the nightly contract run are the same act on purpose: a fixture that only a human
-remembers to refresh goes stale silently, one this script rewrites every night cannot. Provider unit
-tests read those files and never touch the network (`providers.md`); this script is the only thing
-that keeps them true.
+responses" and this script's checks are the same act on purpose, run either nightly or by hand.
+Provider unit tests read those files and never touch the network (`providers.md`); this script is
+the only thing that can keep them true. "Can", not "does automatically": the nightly job runs with
+`permissions: contents: read` and makes no commit (T012b), so a nightly run's writes here verify
+that today's response still has the shape the committed fixture expects, but only refresh what unit
+tests actually read when a human runs this script locally and commits the diff — see
+`packages/providers/fixtures/README.md`. The one exception, spelled out below, is the
+publication-delay corpus (T012a, T012b), which does accumulate on its own across nightly runs, via
+a GitHub Actions artifact rather than a commit.
 
 Usage:  uv run --with requests scripts/checks/contract_sources.py [--capture-fixtures]
 Exit:   0 all contracts hold, 1 at least one broke.
@@ -38,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from publication_delay import record_sample
+from publication_delay import append_sample
 
 # An honest, identifying User-Agent. Several of these sources sit behind bot protection, and we
 # would rather be recognisable than anonymous if anyone ever wants to ask us to slow down.
@@ -62,12 +67,14 @@ PROBE_STEAM_ID_NO_PROFILE = "76561197960287930"
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "packages" / "providers" / "fixtures"
 
-# T012a: where the publication-delay distribution lives — beside the retention window it
-# validates, per docs/data-sources.md's own "single source of truth" rule (see publication_delay.py).
+# T012a / T012b: the local working copy of the publication-delay corpus. In CI this path is what
+# the "Restore the publication-delay corpus" step in `.github/workflows/nightly.yml` populates from
+# the previous nightly's `publication-delay-corpus` artifact before this script runs, and what the
+# following "Re-upload" step reads back afterwards — this script itself only ever appends to it, the
+# same way it would for a developer running it locally. It is git-ignored: the corpus's home is the
+# artifact chain, not the repository (see docs/data-sources.md §2).
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA_SOURCES_DOC = _REPO_ROOT / "docs" / "data-sources.md"
 PUBLICATION_DELAY_SAMPLES = _REPO_ROOT / "docs" / "data-sources" / "publication_delay_samples.jsonl"
-PUBLICATION_DELAY_SAMPLES_RELPATH = "docs/data-sources/publication_delay_samples.jsonl"
 
 _args = argparse.ArgumentParser(add_help=True)
 _args.add_argument("--capture-fixtures", action="store_true")
@@ -393,9 +400,14 @@ def _publication_delay_sample() -> None:
 
     Non-blocking on purpose: a late publication is a measurement, not a broken contract —
     `_replay_window` above is what asserts the contract still holds for the case that matters
-    operationally (a match within the last week). `record_sample` (`publication_delay.py`) is what
-    turns this into something durable: it appends the sample and regenerates the summary in
-    `docs/data-sources.md` in the same call, so the two can never go out of step.
+    operationally (a match within the last week). `append_sample` (`publication_delay.py`) is what
+    turns this into something durable: it appends the sample to `PUBLICATION_DELAY_SAMPLES`, the
+    local copy of the corpus this run restored from the `publication-delay-corpus` GitHub Actions
+    artifact — see the "Restore" / "Re-upload" steps around the `contracts` job in
+    `.github/workflows/nightly.yml`. T012b: this no longer touches `docs/data-sources.md`. That
+    file's conclusion is written by a human who has pulled the corpus and read it, not regenerated
+    by this script on every run — see `record_sample` in `publication_delay.py` for the tool that
+    does that, by hand.
     """
     r = session.get(
         f"{RELIC}/getRecentMatchHistory",
@@ -423,14 +435,12 @@ def _publication_delay_sample() -> None:
         )
         available = resp.status_code == 200
 
-    record_sample(
+    append_sample(
         PUBLICATION_DELAY_SAMPLES,
-        DATA_SOURCES_DOC,
         observed_at_iso=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         game_id=latest["id"],
         age_hours=age_hours,
         available=available,
-        samples_relpath=PUBLICATION_DELAY_SAMPLES_RELPATH,
     )
 
 

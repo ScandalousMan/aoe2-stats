@@ -298,12 +298,21 @@ def _reserve(
 
     Returns `(tokens_after, wait_seconds)`: the new token count, and how long the caller must wait
     (0 when a token was immediately available) before it may proceed.
+
+    Only the ceiling is clamped — to `capacity`, the burst allowance. The floor is deliberately
+    left to go negative: a negative balance is a debt, in seconds' worth of future refill, that the
+    *next* reservation must additionally wait out. An earlier version clamped a shortfall to zero
+    instead, which erased that debt — every caller that reserved while the bucket was empty then
+    computed its wait from the *same* zeroed state and got the *same* answer, so N concurrent
+    `acquire()` calls all fired together instead of `1 / rate_per_second` apart (measured: one
+    request at t=0 and four simultaneously at t=1.0 s against `rate_per_second=1`). Each successive
+    reservation now advances this cursor by exactly one more `1 / rate_per_second`, so N acquirers
+    — however they are interleaved by the lock — are spaced that far apart, not merely of that
+    magnitude.
     """
-    tokens = min(capacity, tokens + elapsed * rate_per_second)
-    if tokens >= 1:
-        return tokens - 1, 0.0
-    wait = (1 - tokens) / rate_per_second
-    return 0.0, wait
+    tokens = min(capacity, tokens + elapsed * rate_per_second) - 1
+    wait = -tokens / rate_per_second if tokens < 0 else 0.0
+    return tokens, wait
 
 
 class TokenBucket:

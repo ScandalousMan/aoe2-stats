@@ -8,8 +8,15 @@ to the live APIs, and they are also what wrote every file in this tree.
 
 **Refreshing this corpus**: `uv run --with requests scripts/checks/contract_sources.py
 [--capture-fixtures]`. Every check that already parses a body writes it here as a side effect — the
-same real call the nightly job makes anyway, so most of this corpus refreshes for free every night
-it runs (locally; the nightly CI run does not commit anything, it only verifies). The replay
+same real call the nightly job makes anyway, so most of this corpus refreshes for free every time a
+human runs the script locally and commits the diff. The nightly CI run makes the same calls and the
+same writes, but into an ephemeral runner workspace with `permissions: contents: read` and no commit
+step, so what it produces here verifies today's shape against what is already committed and is then
+discarded — it never updates what unit tests read on its own (T012b; see the module docstring in
+`contract_sources.py`). The one exception is the publication-delay corpus
+(`docs/data-sources/publication_delay_samples.jsonl`, not part of this fixtures tree): that one
+_does_ accumulate across nightly runs on its own, via a chained GitHub Actions artifact rather than
+a git commit — see `docs/data-sources.md` §2 and `scripts/checks/publication_delay.py`. The replay
 endpoint is the one exception: downloading a full replay body is real bandwidth beyond what
 verifying the contract needs, so that download only happens with `--capture-fixtures` passed
 explicitly, never in CI — and even then, only `aoems/replay_200_meta.json` is written. The body is
@@ -31,18 +38,18 @@ then re-run this script to refresh whichever fixture drifted, then update the co
 Every probe below is public data belonging to real, active players, read the same way any other
 visitor to the official leaderboard site would read it.
 
-| File                                        | Provider method it feeds                           | Source call                                                                   |
-| ------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `relic/get_personal_stat.json`              | `ProfileProvider.resolve_profile` (found)          | `getPersonalStat?profile_names=["/steam/76561197984749679"]`                  |
-| `relic/get_personal_stat_unregistered.json` | `ProfileProvider.resolve_profile` (`None`, FR-003) | `getPersonalStat` for a steamid64 with no AoE2 profile                        |
-| `relic/get_personal_stat_batch.json`        | `ProfileProvider.personal_stats` (batching)        | `getPersonalStat?profile_ids=[196240,199325]`                                 |
-| `relic/get_recent_match_history.json`       | `MatchHistoryProvider.recent_matches`              | `getRecentMatchHistory?profile_ids=[196240]`, capped to 8 real matches        |
-| `relic/get_recent_match_history_batch.json` | `MatchHistoryProvider.recent_matches` (batching)   | `getRecentMatchHistory?profile_ids=[196240,199325]`, capped to 6 real matches |
+| File                                        | Provider method it feeds                           | Source call                                                                                                                          |
+| ------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `relic/get_personal_stat.json`              | `ProfileProvider.resolve_profile` (found)          | `getPersonalStat?profile_names=["/steam/76561197984749679"]`                                                                         |
+| `relic/get_personal_stat_unregistered.json` | `ProfileProvider.resolve_profile` (`None`, FR-003) | `getPersonalStat` for a steamid64 with no AoE2 profile                                                                               |
+| `relic/get_personal_stat_batch.json`        | `ProfileProvider.personal_stats` (batching)        | `getPersonalStat?profile_ids=[196240,199325]`                                                                                        |
+| `relic/get_recent_match_history.json`       | `MatchHistoryProvider.recent_matches`              | `getRecentMatchHistory?profile_ids=[196240]`, capped to 8 real matches                                                               |
+| `relic/get_recent_match_history_batch.json` | `MatchHistoryProvider.recent_matches` (batching)   | `getRecentMatchHistory?profile_ids=[196240,199325]`, capped to 6 real matches                                                        |
 | `aoems/replay_200_meta.json`                | `ReplayProvider.fetch_replay` (200 → `ReplayBlob`) | headers + inner filename/byte count of a genuinely downloaded, currently-available replay (body verified, not committed — see above) |
-| `aoems/replay_404.json`                     | `ReplayProvider.fetch_replay` (404 → `NotFound`)   | a gameId past the ~31-day retention window                                    |
-| `companion/matches.json`                    | `EnrichmentProvider.enrich_matches`                | `data.aoe2companion.com/api/matches`, capped to 3 real matches                |
-| `steam/check_authentication_invalid.txt`    | `SteamAuthProvider.verify` (rejected)              | a syntactically valid, never-issued `check_authentication` POST               |
-| `steam/check_authentication_valid.txt`      | `SteamAuthProvider.verify` (accepted)              | **not captured — see `steam/README.md`**                                      |
+| `aoems/replay_404.json`                     | `ReplayProvider.fetch_replay` (404 → `NotFound`)   | a gameId past the ~31-day retention window                                                                                           |
+| `companion/matches.json`                    | `EnrichmentProvider.enrich_matches`                | `data.aoe2companion.com/api/matches`, capped to 3 real matches                                                                       |
+| `steam/check_authentication_invalid.txt`    | `SteamAuthProvider.verify` (rejected)              | a syntactically valid, never-issued `check_authentication` POST                                                                      |
+| `steam/check_authentication_valid.txt`      | `SteamAuthProvider.verify` (accepted)              | **not captured — see `steam/README.md`**                                                                                             |
 
 **"Capped to N real matches"** means the fixture holds fewer _entries_ than the live response, not
 different ones: `_trim_match_history` in `contract_sources.py` slices the real array and drops

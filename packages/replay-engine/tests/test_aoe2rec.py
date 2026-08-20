@@ -10,12 +10,14 @@ this task seeds it with the cases needed to prove the adapter's own logic is cor
 from __future__ import annotations
 
 import io
+import struct
 import zipfile
 from importlib import metadata
 from pathlib import Path
 
 import pytest
 
+import aoe2stats_replay_engine.aoe2rec as aoe2rec_module
 from aoe2stats_core.replay.validation import EngineParseError, MalformedArchiveError
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecValidator
 
@@ -111,3 +113,64 @@ def test_a_truncated_reference_replay_still_reaches_the_engine_uncaught(
         validator.validate(truncated)
 
     assert not isinstance(excinfo.value, Exception)
+
+
+def _lie_about_declared_size(zip_bytes: bytes, lie_size: int) -> bytes:
+    """Patch the uncompressed-size field in both headers to `lie_size`, leaving the compressed
+    bytes untouched.
+
+    Simulates an archive whose central directory under-declares `member.file_size` — attacker-
+    supplied, per T013a. The archive still decompresses to its true, larger size; only what it
+    *claims* about that size changes.
+    """
+    data = bytearray(zip_bytes)
+    assert data[0:4] == b"PK\x03\x04", "expected a local file header at offset 0"
+    # Local file header: signature(4) + 18 bytes of fixed fields precede the 4-byte
+    # uncompressed-size field, which sits at offset 22.
+    data[22:26] = struct.pack("<I", lie_size)
+    central_offset = zip_bytes.index(b"PK\x01\x02")
+    # Central directory header: signature(4) + 20 bytes of fixed fields precede its own
+    # uncompressed-size field, at a relative offset of 24.
+    data[central_offset + 24 : central_offset + 28] = struct.pack("<I", lie_size)
+    return bytes(data)
+
+
+def test_an_archive_that_under_declares_its_size_is_rejected_without_full_inflation(
+    validator: Aoe2RecValidator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T013a: `member.file_size` and `member.compress_size` come from the archive's own central
+    directory — attacker-supplied. An archive that under-declares `file_size` must still be
+    rejected, and rejected *before* the whole member has been decompressed into memory: the old
+    code called `archive.read(member.filename)`, an unbounded read, and only compared the result
+    against the declared size afterwards. The fix reads through `archive.open()` in small, fixed
+    chunks and stops the instant the cap is crossed, never trusting the header enough to ask for
+    more than one bounded chunk at a time.
+    """
+    small_cap = 64
+    monkeypatch.setattr(aoe2rec_module, "_MAX_INNER_BYTES", small_cap)
+
+    true_size = 5_000_000
+    zip_bytes = _zip_bytes({"AgeIIDE_Replay_1.aoe2record": b"\x00" * true_size})
+    lied_zip_bytes = _lie_about_declared_size(zip_bytes, lie_size=1)
+
+    # Generous slack for one legitimate chunk on top of the cap — anything requesting more than
+    # this in a single `.read()` call is not reading in bounded chunks.
+    max_single_read = small_cap + 1024 * 1024
+    original_read = zipfile.ZipExtFile.read
+
+    def _spying_read(
+        self: zipfile.ZipExtFile, n: int = -1, *args: object, **kwargs: object
+    ) -> bytes:
+        # `archive.read(name)` — the whole-member convenience method — calls exactly this, with no
+        # bound (`n == -1`), which is precisely the pattern that inflates the full member before
+        # an under-declared size is ever caught.
+        assert 0 < n <= max_single_read, (
+            f"ZipExtFile.read() was called with n={n!r}, not a small bounded chunk — the member "
+            "is being inflated without a cap"
+        )
+        return original_read(self, n, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipExtFile, "read", _spying_read)
+
+    with pytest.raises(MalformedArchiveError, match="cap"):
+        validator.validate(lied_zip_bytes)

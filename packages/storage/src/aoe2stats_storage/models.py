@@ -177,7 +177,10 @@ class AoeProfile(Base):
 
     __tablename__ = "aoe_profiles"
 
-    profile_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # Relic's identifier, not ours: a lone integer primary key is autoincrement by SQLAlchemy
+    # default, which would let an insert omitting `profile_id` silently fabricate one instead of
+    # failing (T007b).
+    profile_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     alias: Mapped[str] = mapped_column(Text, nullable=False)
     country: Mapped[str | None] = mapped_column(Text)
     first_seen_at: Mapped[datetime] = mapped_column(
@@ -254,7 +257,11 @@ class Match(Base):
 
     __tablename__ = "matches"
 
-    game_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # Relic's identifier, not ours: a lone integer primary key is autoincrement by SQLAlchemy
+    # default, which would let an insert omitting `game_id` silently fabricate one instead of
+    # failing, and the (game_id, profile_id) dedup constraint on `replay_captures` cannot see a
+    # duplicate hung off a phantom match (T007b).
+    game_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     leaderboard_id: Mapped[int] = mapped_column(Integer, nullable=False)
     map_name: Mapped[str | None] = mapped_column(Text)
     patch: Mapped[str | None] = mapped_column(Text)

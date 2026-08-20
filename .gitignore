@@ -39,6 +39,11 @@ scratch/
 *.zip
 !tests/fixtures/**/*.zip
 
+# T012b: the publication-delay corpus lives in the nightly workflow's chained GitHub Actions
+# artifact (`publication-delay-corpus`), never in the repository — this is the local working copy
+# a nightly run restores it into, or a developer accumulates by hand. See docs/data-sources.md §2.
+docs/data-sources/publication_delay_samples.jsonl
+
 # OS / editor
 .DS_Store
 .idea/

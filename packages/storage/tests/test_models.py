@@ -157,6 +157,16 @@ def test_matches_raw_payload_is_not_nullable() -> None:
     assert not _table("matches").columns["raw_payload"].nullable
 
 
+def test_externally_owned_ids_do_not_autoincrement() -> None:
+    # `matches.game_id` and `aoe_profiles.profile_id` hold Relic's identifiers, not ours. A lone
+    # integer primary key is autoincrement by SQLAlchemy default, which would let an insert that
+    # omits the id silently fabricate one (1, 2, 3...) instead of failing loudly — and the
+    # (game_id, profile_id) constraint that is FR-018's deduplication would then be unable to see
+    # that the real row is a duplicate (T007b).
+    assert _table("matches").columns["game_id"].autoincrement is False
+    assert _table("aoe_profiles").columns["profile_id"].autoincrement is False
+
+
 def test_erasure_cascades_from_users_to_identities_sessions_and_links() -> None:
     for table_name, fk_column in (
         ("steam_identities", "user_id"),

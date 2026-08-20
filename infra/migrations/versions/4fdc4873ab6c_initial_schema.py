@@ -72,7 +72,9 @@ def upgrade() -> None:
 
     op.create_table(
         "aoe_profiles",
-        sa.Column("profile_id", sa.BigInteger(), nullable=False),
+        # Relic's identifier, not ours (T007b): explicit `autoincrement=False`, or this single
+        # integer primary key becomes `BIGSERIAL` with a `nextval()` default.
+        sa.Column("profile_id", sa.BigInteger(), autoincrement=False, nullable=False),
         sa.Column("alias", sa.Text(), nullable=False),
         sa.Column("country", sa.Text(), nullable=True),
         sa.Column(
@@ -117,7 +119,9 @@ def upgrade() -> None:
     )
     op.create_table(
         "matches",
-        sa.Column("game_id", sa.BigInteger(), nullable=False),
+        # Relic's identifier, not ours (T007b): explicit `autoincrement=False`, or this single
+        # integer primary key becomes `BIGSERIAL` with a `nextval()` default.
+        sa.Column("game_id", sa.BigInteger(), autoincrement=False, nullable=False),
         sa.Column("leaderboard_id", sa.Integer(), nullable=False),
         sa.Column("map_name", sa.Text(), nullable=True),
         sa.Column("patch", sa.Text(), nullable=True),

@@ -12,6 +12,8 @@ worth it, because they assert the *wait duration* the bucket computes.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -429,6 +431,68 @@ def test_sync_token_bucket_makes_a_second_immediate_call_wait(
     bucket.acquire()
 
     assert slept == [pytest.approx(1.0)]
+
+
+async def test_token_bucket_spaces_genuinely_concurrent_acquirers_by_the_rate_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bug this guards against: `_reserve` used to clamp a shortfall to zero, so N concurrent
+    `acquire()` calls — as `AsyncBaseProvider._request` issues, one per in-flight provider call —
+    all computed the same wait from the same zeroed balance and fired together (measured: one
+    request at t=0 and four simultaneously at t=1.0 s). Every other token-bucket test above calls
+    `acquire()` sequentially, checking only the *second* call's wait, which is exactly why they
+    passed against that broken implementation — a *third* sequential call already exposes it, but
+    the review found this as a concurrency defect, so this test reproduces it that way:
+    `asyncio.gather` launches five acquirers that all race for the lock at (real-clock) t≈0, the
+    same shape as several ingest tasks calling `_request` around the same instant.
+
+    `asyncio.sleep` is mocked to record without blocking, so the test stays fast; the concurrency
+    under test is the five tasks' interleaved entry into `TokenBucket`'s critical section, not the
+    real wall-clock wait afterward.
+    """
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr("aoe2stats_providers.base.asyncio.sleep", fake_sleep)
+
+    bucket = TokenBucket(1.0, capacity=1.0)  # real clock: five acquisitions in near-zero elapsed
+
+    await asyncio.gather(*(bucket.acquire() for _ in range(5)))
+
+    # One caller proceeds immediately (no `sleep` call at all); the other four must be spaced
+    # 1/rate apart against the advancing cursor, not all told to wait the same ~1 s.
+    assert sorted(slept) == pytest.approx([1.0, 2.0, 3.0, 4.0], abs=0.05)
+
+
+def test_sync_token_bucket_spaces_genuinely_concurrent_acquirers_by_the_rate_interval() -> None:
+    """The threaded twin of the async proof above: real OS threads racing `SyncTokenBucket.acquire`
+    under `SteamAuthProvider`'s synchronous path.
+    """
+    bucket = SyncTokenBucket(1.0, capacity=1.0)
+    slept: list[float] = []
+    slept_lock = threading.Lock()
+
+    real_sleep = threading.Event().wait  # a real, interruptible wait — not `time.sleep(0)`
+
+    def fake_sleep(seconds: float) -> None:
+        with slept_lock:
+            slept.append(seconds)
+        real_sleep(min(seconds, 0.01))  # let other threads actually contend, without the real cost
+
+    threads = [threading.Thread(target=bucket.acquire) for _ in range(5)]
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("aoe2stats_providers.base.time.sleep", fake_sleep)
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5.0)
+
+    assert not any(thread.is_alive() for thread in threads)
+    # One caller proceeds immediately (no `sleep` call at all); the other four must be spaced
+    # 1/rate apart, not all told to wait the same ~1 s.
+    assert sorted(slept) == pytest.approx([1.0, 2.0, 3.0, 4.0], abs=0.1)
 
 
 # --- Typed errors --------------------------------------------------------------------------------

@@ -9,10 +9,16 @@ every number, so there is nothing to keep in sync. When a nightly contract test 
 file first: it is what the next person will trust.
 
 One measurement accumulates rather than being taken once: §2's publication-delay distribution. Its
-raw samples live in `docs/data-sources/publication_delay_samples.jsonl`, appended to on every
-nightly run; the summary below is regenerated from that file by the same run, never hand-copied, so
-the two can never drift apart. That block is machine-written — edit the samples file or the script,
-never the block itself.
+raw samples are **not** kept in this repository — a repository file only changes by a commit, and
+the nightly job that takes the sample (the `contracts` job in `.github/workflows/nightly.yml`)
+deliberately makes none, so it never needs write access to anything beyond its own GitHub Actions
+run. Instead, each nightly run downloads the corpus accumulated so far as a chained GitHub Actions
+artifact (`publication-delay-corpus`), appends that run's one sample, and re-uploads the whole
+thing; the corpus lives only in that artifact chain. The block below is the _conclusion_ drawn from
+it, written by a human who has pulled the corpus and read it — not machine-regenerated on every
+run — using `render_summary` / `rewrite_summary_block` in `scripts/checks/publication_delay.py` as
+the tool for doing that by hand. It carries the date it was last written so a reader can judge
+whether it is still current.
 
 ## Summary
 
@@ -116,24 +122,29 @@ on both sides of it. It is a rolling, time-based purge.
 ### Publication delay: distribution
 
 The single observation this section used to carry — 33 min after match end, one sample — is not a
-distribution. `scripts/checks/contract_sources.py` now takes one non-blocking sample per nightly
-run: the age of the probe profile's most recently completed match, and whether `aoe.ms` already
-answers `200` for it. Never a poll that waits for `200` — the nightly job cannot sit on a request
-for hours, so this is one shot per night, accumulated over many nights instead.
+distribution. `scripts/checks/contract_sources.py` takes one non-blocking sample per nightly run:
+the age of the probe profile's most recently completed match, and whether `aoe.ms` already answers
+`200` for it. Never a poll that waits for `200` — the nightly job cannot sit on a request for hours,
+so this is one shot per night. The samples accumulate across nights in a chained GitHub Actions
+artifact rather than in this repository (see the note at the top of this file, and T012b) — pull
+`publication-delay-corpus` from a recent run of the `contracts` job to see the full corpus as of
+today; what follows is a point-in-time reading of it.
 
-`REPLAY_PUBLICATION_GRACE_HOURS` (`.env.example`, currently 72 h) is not sized on this delay: it is
-sized on the discovery cadence, at least twice the ~25 h cadence, so two polls always land inside
-the grace and no single 404 can close a capture on its own. What this distribution decides is
-whether that floor also sits comfortably above the real publication delay — the summary below is
-regenerated from `docs/data-sources/publication_delay_samples.jsonl` on every run, and the grace
-rises the day a sample says it should.
+`REPLAY_PUBLICATION_GRACE_HOURS` (defined once, in `.env.example` — `publication_delay.py` parses
+that file rather than restating the number, so this paragraph never needs to) is not sized on this
+delay: it is sized on the discovery cadence, at least twice the ~25 h cadence, so two polls always
+land inside the grace and no single 404 can close a capture on its own. What this distribution
+decides is whether that floor also sits comfortably above the real publication delay.
 
 <!-- publication-delay-summary:begin -->
+
+**Last written by hand: 2026-08-19**, from the one sample recorded before the corpus moved to the
+artifact chain (T012b). Re-run `publication_delay.render_summary` against a pulled corpus and update
+this block, including this date, whenever the conclusion below should move.
 
 - Samples recorded: **1**, from `2026-08-19T21:30:20.813595Z` to `2026-08-19T21:30:20.813595Z`.
 - Shortest match age observed with the replay already available (an upper bound on the real publication delay): **2.15 h**.
 - No sample has exceeded `REPLAY_PUBLICATION_GRACE_HOURS` (72 h).
-- Raw samples: `docs/data-sources/publication_delay_samples.jsonl` (one JSON object per line, append-only).
 
 <!-- publication-delay-summary:end -->
 

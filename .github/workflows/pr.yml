@@ -187,6 +187,17 @@ jobs:
       - run: uv run alembic upgrade head
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      # T008a: `alembic check` (a) compares `Base.metadata` in models.py against the database's
+      # *current* revision and fails outright if that revision is not `head`, and (b) only then
+      # autogenerates a diff to detect drift between the models and the migrations. It must run
+      # here, against the database `upgrade head` just brought to `head` — run after `downgrade
+      # -1` below it would report "Target database is not up to date" regardless of whether the
+      # models and migrations agree, catching nothing. Verified locally: at `head` it exits 0
+      # with "No new upgrade operations detected"; after `downgrade -1` it exits non-zero with
+      # "Target database is not up to date" even though nothing in models.py had changed.
+      - run: uv run alembic check
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
       - run: uv run alembic downgrade -1
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
