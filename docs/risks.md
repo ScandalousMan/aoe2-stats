@@ -75,10 +75,12 @@ jurisdiction, `<account>.r2...` does not).
 - [x] Functions report region `cdg1`; database and bucket are EU — both functions report `cdg1` in
       `vercel inspect` and in `x-vercel-id`; Neon runs in `eu-central-1`; the R2 bucket carries the
       EU jurisdiction, confirmed by its `.eu.` endpoint
-- [ ] A pull request gets a preview deployment; `main` deploys production — **not satisfied**: every
-      deployment so far is a CLI-driven production one, and pull request #2 carries no Vercel check.
-      The Git integration is not building pull requests, so the preview environment its variables
-      were configured for does not exist yet
+- [ ] A pull request gets a preview deployment; `main` deploys production — half verified. The Git
+      integration builds pull requests: #2 carries a passing Vercel check and a preview deployment.
+      Its URLs answer `302`, which is Vercel's deployment protection and not an application fault —
+      reaching one from a script needs a bypass token. The `main`-deploys-production half is still
+      unobserved: every production deployment so far was driven from the CLI, so nothing has yet
+      proved a merge deploys on its own
 - [x] The cron endpoint returns 401 without its secret — verified in production for both `GET` (what
       Vercel Cron actually sends) and `POST`, each returning the error envelope
 - [x] The Python bundle stays under the 500 MB limit — 43.69 MB per function, 8.7% of the ceiling.
