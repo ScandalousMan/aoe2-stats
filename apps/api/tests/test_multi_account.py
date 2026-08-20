@@ -11,18 +11,18 @@ Sign in as A, add B through `GET /api/auth/steam/start?link=1`, and confirm
   `profile_already_linked` rather than silently reassigned (spec.md's edge case; contracts/
   http-api.md).
 
-**Current failure mode, and why it is the right one.** Nothing under `apps/api/src/aoe2stats_api/
-routers/auth.py` (T029) or `routers/profiles.py` (T031) exists yet — `create_app()` (`app.py`)
-wires only `health` and `cron` — so every request below to `/api/auth/steam/*` or `/api/profiles*`
-currently 404s through the framework's own catch-all `HTTPException` handler, rendered through the
-single error envelope as `code: "not_found"`. `_begin_link`'s first assertion is what turns that
-into an honest failure — a real one, not a skip: `tests/db.py`'s own docstring is explicit that a
-skip here "would silently report every integration test... as passed without having run" (T015a),
-which is exactly what let this class of test skip silently until that task closed the gap, and
-every sibling file in this batch (`test_auth_flow.py`, `test_allowlist.py`, `test_unlink.py`,
-`test_consent.py`) asserts directly against the real throwaway database for the same reason. T029
-and T031a are what turn this failure into the behaviour asserted here; this file is not expected
-to change once they land, only to stop failing.
+**Current failure mode, and why it is the right one.** The auth router (T029) and the backfill
+stamp it applies on link (T031a) now exist, but `routers/profiles.py` (T031) does not —
+`create_app()` (`app.py`) wires only `health`, `cron` and `auth` — so every request below to
+`/api/profiles*` still 404s through the framework's own catch-all `HTTPException` handler,
+rendered through the single error envelope as `code: "not_found"`. `_begin_link`'s first assertion
+is what turns that into an honest failure — a real one, not a skip: `tests/db.py`'s own docstring
+is explicit that a skip here "would silently report every integration test... as passed without
+having run" (T015a), which is exactly what let this class of test skip silently until that task
+closed the gap, and every sibling file in this batch (`test_auth_flow.py`, `test_allowlist.py`,
+`test_unlink.py`, `test_consent.py`) asserts directly against the real throwaway database for the
+same reason. T031 is what turns this failure into the behaviour asserted here; this file is not
+expected to change once it lands, only to stop failing.
 
 **How Steam and Relic are stood in for.** Following the same convention T021's `test_auth_flow.py`
 established for this batch: interception happens at `httpx.Client.send` / `httpx.AsyncClient.send`
@@ -59,18 +59,17 @@ from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import AoeProfile, ProfileLink, SteamIdentity, User
 from aoe2stats_storage.models import Session as UserSession
 
-# Every test in this file is expected to fail for exactly one reason — the auth and profiles
-# routers (T026, T027, T029, T031) do not exist yet — until they do. `strict=True` is what makes
-# that honest: the moment those tasks land and a test starts passing, `strict=True` turns the *run*
-# red instead of letting a stale xfail hide it, which is the whole point of marking these tests
-# failing rather than skipping them. Do not drop `strict=True`.
+# Every test in this file is expected to fail for exactly one reason — the profiles router (T031)
+# does not exist yet — until it does. `strict=True` is what makes that honest: the moment T031
+# lands and a test starts passing, `strict=True` turns the *run* red instead of letting a stale
+# xfail hide it, which is the whole point of marking these tests failing rather than skipping
+# them. Do not drop `strict=True`.
 pytestmark = [
     pytest.mark.usefixtures("environment"),
     pytest.mark.xfail(
         strict=True,
         reason=(
-            "the auth and profiles routers (T026, T027, T029, T031) are not implemented yet, "
-            "not this test-first task (T023)"
+            "the profiles router (T031) is not implemented yet, not this test-first task (T023)"
         ),
     ),
 ]

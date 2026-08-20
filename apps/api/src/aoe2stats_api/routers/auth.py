@@ -3,13 +3,8 @@
 
 Ties together `security.py` (T028, sessions and the CSRF `state` cookie), `SteamAuthProvider`
 (T026) and `RelicProfileProvider` (T027) into the one flow `contracts/http-api.md`'s
-Authentication section describes, plus the closed-beta allowlist (T030, FR-005, below). One thing
-this module deliberately does **not** do, because a later task owns it and edits this same file on
-top of what is here:
-
-- **T031a** — stamping `profile_links.backfill_requested_at` on a successful link. Every
-  `ProfileLink` this module inserts leaves that column `NULL`; T031a is what turns a link into a
-  queued 31-day sweep.
+Authentication section describes, plus the closed-beta allowlist (T030, FR-005, below) and the
+backfill request stamped on every successful link (T031a, below).
 
 **Why `state` is embedded in `return_to`'s own query string, not left as `begin()`'s throwaway
 top-level parameter.** `security.py`'s own docstring is explicit that the CSRF `state` is "embedded
@@ -58,6 +53,19 @@ router answered a CSRF failure by reading `openid.claimed_id` unverified off the
 checking *that* against the allowlist, which let anyone learn a Steam id's allowlist status with
 no signature, no session and no valid state; deleted for exactly that reason, along with the test
 that could only reach it by skipping `/start`).
+
+**The backfill request (T031a, FR-015, SC-003)** is stamped on every `ProfileLink` this module
+inserts, `backfill_requested_at = now`, whether that row is a brand-new link or a relink of a
+profile that was previously unlinked — both take the same `existing_link is None` branch below,
+because the partial unique index (`data-model.md`: `UNIQUE (profile_id) WHERE unlinked_at IS
+NULL`) means a relink always creates a fresh row rather than resurrecting the old one. This module
+cannot enqueue the sweep itself: a `replay_captures` row's deadline is computed from
+`matches.completed_at` (T053), and there are no `matches` rows yet for a profile nobody has ever
+polled. The flag is how a link asks the next ingestion cycle to do the sweep it cannot do itself —
+T054 reads it, enqueues the preceding 31 days, and clears it only once that sweep has actually run,
+so an interrupted cycle repeats it rather than skipping it. A link that failed to stamp this would
+silently lose everything the player played before signing up, which is exactly the loss this whole
+feature exists to prevent.
 
 **Ratings are resolved here, not deferred** (T033's `RatingsRepository.record_snapshot`): FR-009
 requires the rating history to start accumulating from the first sign-in, and sign-in is the one
@@ -385,8 +393,10 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
                 steam_id64=steam_id64,
                 is_primary=(not active_links),
                 linked_at=now,
-                # T031a stamps `backfill_requested_at`; left `NULL` here on purpose (module
-                # docstring) — this link cannot enqueue its own backfill sweep.
+                # FR-015, SC-003 (module docstring): this link cannot enqueue the 31-day sweep
+                # itself, since no `matches` rows exist yet for a profile nobody has ever polled.
+                # T054 consumes this flag and clears it once the sweep has actually run.
+                backfill_requested_at=now,
             )
         )
 
