@@ -145,11 +145,10 @@ Do not paint before 200 ms. After 10 s, fall through to the error state.
 
 Colour: `background`, `surface` (component), `surface-raised` (rating entries and menu surface),
 `surface-sunken` (proportion-bar track, disabled fills), `border` (entry boundaries, table rules),
-`border-strong` (interactive boundaries — gap DS-2), `text-primary` (aliases, ratings, ranks,
-records), `text-secondary` (leaderboard names, labels, profile id, freshness line), `success` and
-`danger` (win/loss bar, positive and negative deltas), `accent` / `accent-active` (the "Primary"
-badge label — see `Badge`), `info` / `warning` (callouts), `focus-ring`, `overlay` (mobile switcher
-sheet).
+`border-strong` (interactive boundaries), `text-primary` (aliases, ratings, ranks, records),
+`text-secondary` (leaderboard names, labels, profile id, freshness line), `success` and `danger`
+(win/loss bar, positive and negative deltas), `accent` / `accent-active` (the "Primary" badge label
+— see `Badge`), `info` / `warning` (callouts), `focus-ring`, `overlay` (mobile switcher sheet).
 
 Typography: family `mono` for every figure compared vertically — rating, rank, wins, losses, win
 rate, delta — and `sans` for labels and prose. `display` on nothing here: figures are the hierarchy
@@ -165,9 +164,9 @@ Motion `duration.fast` + `easing.standard` on interactive transitions; `duration
 `easing.decelerate` on the switcher opening. **No motion on any figure**: no count-up, no
 odometer, no entrance fade. Numbers are for reading, not for arriving.
 
-Gaps in play: **DS-2** (switcher trigger boundary), **DS-4** (focus ring), **DS-5** (the layout
-change at `lg`), **DS-8** (tabular alignment currently rides on `font-mono` being monospaced — this
-component is the reason that gap matters).
+Gaps in play: **DS-4** (focus ring), **DS-5** (the layout change at `lg`), **DS-8** (tabular
+alignment currently rides on `font-mono` being monospaced — this component is the reason that gap
+matters).
 
 ## 7. Spacing
 
@@ -228,7 +227,8 @@ breakpoint.
   moved: this component updates in place while the user is reading.
 - Every figure is selectable text, never an image or a canvas — a rating a user cannot copy is a
   rating they will retype by hand.
-- Contrast per the README table. `accent` is never used for a figure in the light theme (3.7:1).
+- Contrast per the README table. `accent` is never used for a figure in the light theme: figures are
+  `text-primary`, and `accent` stays reserved for the badge label.
 - 200% zoom and 320px logical width without horizontal scrolling; at 320px the desktop table is not
   in play, so no figure is ever truncated or ellipsised. Figures never ellipsise at any viewport.
 

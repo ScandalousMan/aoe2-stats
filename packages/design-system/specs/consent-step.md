@@ -175,8 +175,8 @@ Motion: `duration.fast` + `easing.standard` on buttons; `duration.normal` + `eas
 the status callout appearing; `duration.instant` under `prefers-reduced-motion`. **No entrance
 animation on the identity statement**: text that fades in can be answered before it is read.
 
-Gaps in play: **DS-1** (primary button in the light theme), **DS-2** (secondary button boundary),
-**DS-4** (focus ring), **DS-6** (reading measure — this block is long-form prose and needs one).
+Gaps in play: **DS-4** (focus ring), **DS-6** (reading measure — this block is long-form prose and
+needs one).
 
 ## 7. Spacing
 

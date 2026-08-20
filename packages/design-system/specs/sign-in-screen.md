@@ -124,9 +124,7 @@ Motion: `duration.fast` + `easing.standard` for button transitions; `duration.no
 `easing.decelerate` for an outcome appearing after a client-side transition. Under
 `prefers-reduced-motion`, `duration.instant`.
 
-Gaps in play: **DS-1** (light `accent` fill on the primary button — this screen is where it is most
-visible), **DS-2** (`secondary` button boundary), **DS-4** (focus ring), **DS-6** (panel max width
-and reading measure).
+Gaps in play: **DS-4** (focus ring), **DS-6** (panel max width and reading measure).
 
 ## 6. Spacing
 

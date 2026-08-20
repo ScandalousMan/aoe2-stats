@@ -22,6 +22,22 @@ them (T014e).
 | `POST` | `/api/auth/signout`        | Invalidates the session server-side, clears the cookie                                                                                                                 |
 | `GET`  | `/api/me`                  | Session, allowlist state, consent state, linked profiles, which is primary                                                                                             |
 
+**The session cookie is named `session_id`** (T028, `apps/api/src/aoe2stats_api/security.py`) —
+its value is `<sessions.id>.<hmac-sha256 signature>`, base64url-encoded and padding-stripped, so a
+tampered or fabricated cookie is rejected before it ever reaches the database. `sessions.id`
+itself, not the signed wrapper, is what every other part of this contract means by "the session":
+opaque, 256 bits of randomness (data-model.md), looked up fresh on every request so that
+revocation (`POST /api/auth/signout`, and later `POST /api/privacy/erase`) is immediate and
+server-side rather than something a client can outlast by keeping an unexpired token. `HttpOnly`,
+`Secure`, `SameSite=Lax`, path `/`.
+
+The short-lived state cookie `GET /api/auth/steam/start` sets is named `steam_oauth_state`,
+distinct from the session cookie and signed the same way. It carries the CSRF `state` value
+embedded in the outbound `return_to` Steam is asked to echo back (research.md §2): the callback
+accepts a `state` only if it matches what _this browser's own_ `steam_oauth_state` cookie says was
+minted for it, which is what ties the value to the browser session and refuses a `state` minted
+for one browser if replayed from another.
+
 `GET /api/me` returns 200 with `{"authenticated": false}` rather than 401 when signed out: it is the
 front end's bootstrap call, and an error status for the ordinary case makes every client log noise.
 

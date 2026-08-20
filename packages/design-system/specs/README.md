@@ -47,39 +47,41 @@ disabling it would be wrong, and here is what happens instead".
 
 ## Measured contrast pairs
 
-Computed 2026-08-20 from `tokens/color.json` with the WCAG 2.2 relative-luminance formula, rounded
-down to one decimal. **Component specs reference this table by pair; they do not restate the
-numbers.** Recompute on any change to `color.json` — the numbers below are the only reason the
-accessibility sections elsewhere can be short.
+Computed 2026-08-20, updated 2026-08-20 after T034a's fix, from `tokens/color.json` with the WCAG
+2.2 relative-luminance formula, rounded down to one decimal, and asserted in
+`tokens/build-tokens.test.mjs` for the pairs that carry an accessibility floor — a colour edit now
+fails a test rather than depending on this table being re-read. **Component specs reference this
+table by pair; they do not restate the numbers.** Recompute on any change to `color.json` — the
+numbers below are the only reason the accessibility sections elsewhere can be short.
 
 Thresholds: 4.5:1 for normal text, 3:1 for text at 24px+ (or 18.7px+ bold) and for the boundary,
 fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
 
 ### Light theme
 
-| Foreground        | Background       | Ratio | Verdict                                              |
-| ----------------- | ---------------- | ----- | ---------------------------------------------------- |
-| `text-primary`    | `surface`        | 15.3  | AAA                                                  |
-| `text-primary`    | `surface-raised` | 14.5  | AAA                                                  |
-| `text-primary`    | `background`     | 13.5  | AAA                                                  |
-| `text-primary`    | `surface-sunken` | 11.7  | AAA                                                  |
-| `text-secondary`  | `surface`        | 6.2   | AA                                                   |
-| `text-secondary`  | `surface-raised` | 5.9   | AA                                                   |
-| `text-secondary`  | `background`     | 5.5   | AA                                                   |
-| `text-secondary`  | `surface-sunken` | 4.7   | AA, thin margin                                      |
-| `info`            | `surface`        | 6.7   | AA                                                   |
-| `danger`          | `surface`        | 6.5   | AA                                                   |
-| `success`         | `surface`        | 5.9   | AA                                                   |
-| `focus-ring`      | `surface`        | 6.7   | passes non-text 3:1                                  |
-| `focus-ring`      | `background`     | 5.9   | passes non-text 3:1                                  |
-| `warning`         | `surface`        | 4.1   | **fails normal text**; large text and non-text only  |
-| `accent`          | `surface`        | 3.7   | **fails normal text**; large text and non-text only  |
-| `accent-contrast` | `accent`         | 3.7   | **fails** — see gap DS-1                             |
-| `accent-contrast` | `accent-hover`   | 5.0   | AA                                                   |
-| `accent-contrast` | `accent-active`  | 6.9   | AA                                                   |
-| `border-strong`   | `surface`        | 2.6   | **fails non-text 3:1** — see gap DS-2                |
-| `border`          | `surface`        | 1.6   | decorative separators only, never a control boundary |
-| `text-disabled`   | `surface`        | 2.6   | exempt (1.4.3, inactive) — see rule under DS-3       |
+| Foreground        | Background       | Ratio | Verdict                                                                                              |
+| ----------------- | ---------------- | ----- | ---------------------------------------------------------------------------------------------------- |
+| `text-primary`    | `surface`        | 15.3  | AAA                                                                                                  |
+| `text-primary`    | `surface-raised` | 14.5  | AAA                                                                                                  |
+| `text-primary`    | `background`     | 13.5  | AAA                                                                                                  |
+| `text-primary`    | `surface-sunken` | 11.7  | AAA                                                                                                  |
+| `text-secondary`  | `surface`        | 6.2   | AA                                                                                                   |
+| `text-secondary`  | `surface-raised` | 5.9   | AA                                                                                                   |
+| `text-secondary`  | `background`     | 5.5   | AA                                                                                                   |
+| `text-secondary`  | `surface-sunken` | 4.7   | AA, thin margin                                                                                      |
+| `info`            | `surface`        | 6.7   | AA                                                                                                   |
+| `danger`          | `surface`        | 6.5   | AA                                                                                                   |
+| `success`         | `surface`        | 5.9   | AA                                                                                                   |
+| `focus-ring`      | `surface`        | 6.7   | passes non-text 3:1                                                                                  |
+| `focus-ring`      | `background`     | 5.9   | passes non-text 3:1                                                                                  |
+| `warning`         | `surface`        | 4.1   | **fails normal text**; large text and non-text only, by design — see the rule after the gap register |
+| `accent`          | `surface`        | 4.9   | AA — passes normal text too now; still only used for large text and non-text                         |
+| `accent-contrast` | `accent`         | 4.9   | AA — fixed, gap DS-1 closed                                                                          |
+| `accent-contrast` | `accent-hover`   | 6.7   | AA                                                                                                   |
+| `accent-contrast` | `accent-active`  | 9.3   | AA                                                                                                   |
+| `border-strong`   | `surface`        | 3.4   | passes non-text 3:1 — fixed, gap DS-2 closed                                                         |
+| `border`          | `surface`        | 1.6   | decorative separators only, never a control boundary                                                 |
+| `text-disabled`   | `surface`        | 2.6   | exempt (1.4.3, inactive) — see rule under DS-3                                                       |
 
 ### Dark theme
 
@@ -95,11 +97,11 @@ fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
 | `success`             | `surface`        | 6.4   | AA                                                        |
 | `focus-ring` / `info` | `surface`        | 6.3   | AA, passes non-text 3:1                                   |
 | `danger`              | `surface`        | 5.1   | AA                                                        |
-| `border-strong`       | `surface`        | 2.4   | **fails non-text 3:1** — see gap DS-2                     |
+| `border-strong`       | `surface`        | 3.8   | passes non-text 3:1 — fixed, gap DS-2 closed              |
 
 The asymmetry is the thing to remember: **the dark theme is comfortable and the light theme is
-tight.** Three light-theme pairs fail, and every one of them is on a control a user has to hit.
-Judge light first.
+tight.** Light `warning` is the one deliberate exception left below 4.5:1 — see the rule below the
+gap register. Judge light first.
 
 ## Token gap register
 
@@ -107,16 +109,35 @@ Open items. Each names what is missing, what a component does until it exists, a
 An implementer who finds themselves needing a value not covered here stops and asks
 `product-designer`; they do not invent one.
 
-| Id       | Gap                                                                                                                                                                      | Impact                                                                                 | Interim                                                                                                                                                                                                                                        | Action owed                                                                                                                                                                                                                         |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **DS-1** | Light `accent` is too light to carry `accent-contrast` at 3.7:1. A solid primary button with a normal-size label fails AA in the light theme.                            | Blocks the primary action on every screen in this feature.                             | The solid primary button fills with `accent-hover` at rest, `accent-active` on hover **and** on active, in the light theme only, via token names — never a literal. Ugly, and deliberately so: it is meant to be removed.                      | Darken light `accent` until `accent-contrast` on it reaches 4.5:1, and re-derive `accent-hover` / `accent-active` below it. Owner: design-system. Due before T038.                                                                  |
-| **DS-2** | `border-strong` reaches only 2.6:1 (light) and 2.4:1 (dark) against `surface`, below the 3:1 WCAG 1.4.11 needs for the boundary of an input, checkbox or resting button. | Every bordered interactive control fails an automated a11y audit.                      | Interactive boundaries still use `border-strong` — the semantics are right and the value is wrong. Do not substitute `text-secondary` to game the audit.                                                                                       | Darken light `border-strong` and lighten dark `border-strong` to clear 3:1 against `surface`. Owner: design-system. Due before T038.                                                                                                |
-| **DS-3** | No opacity token family.                                                                                                                                                 | Disabled styling has no sanctioned dimming route.                                      | Disabled state is expressed with `text-disabled` on `surface-sunken` with `border`, never with an opacity value. `text-disabled` fails AA by design; a disabled control must therefore never be the only place a piece of information appears. | Decide whether an opacity family is wanted at all. Low priority: the colour route is better.                                                                                                                                        |
-| **DS-4** | No border-width, focus-ring-width or focus-ring-offset tokens.                                                                                                           | The focus ring — required on every interactive element — cannot be fully token-backed. | One uniform ring everywhere: Tailwind's `outline-2 outline-offset-2` with `outline-focus-ring`. No arbitrary values, no per-component variation.                                                                                               | Ratify Tailwind's built-in width scale as token-equivalent for hairlines and rings, and record that decision, **or** add a `border-width` family. Owner: design-system.                                                             |
-| **DS-5** | No breakpoint tokens.                                                                                                                                                    | Responsive sections cannot name breakpoints in our own vocabulary.                     | Specs name Tailwind's default breakpoints (`md` = 768px, `lg` = 1024px, `xl` = 1280px) and the review viewports stay 375 / 768 / 1280.                                                                                                         | Optional. Adopting Tailwind's defaults verbatim is a defensible answer; write it down either way.                                                                                                                                   |
-| **DS-6** | No container / max-width / reading-measure tokens.                                                                                                                       | Text columns and centred panels have no token-backed width.                            | Tailwind's `max-w-*` scale, and `max-w-prose` for any paragraph column.                                                                                                                                                                        | Add a `size` family if panel widths start diverging between routes.                                                                                                                                                                 |
-| **DS-7** | No icon-size tokens.                                                                                                                                                     | —                                                                                      | Icons size from the adjacent font-size token (`1em`) or from `space-4` / `space-5`.                                                                                                                                                            | Add if icon-only controls multiply.                                                                                                                                                                                                 |
-| **DS-8** | No numeric-typography role. Tabular alignment currently rides on `font.family.mono` being monospaced.                                                                    | A future change of mono family silently breaks column alignment on every rating table. | Numeric cells use `font-mono`.                                                                                                                                                                                                                 | Add a `font.role.numeric` alias, or a `font-variant-numeric: tabular-nums` utility, so the intent is recorded rather than inferred. Number legibility is this product's functional priority; it should not depend on a coincidence. |
+| Id       | Gap                                                                                                   | Impact                                                                                 | Interim                                                                                                                                                                                                                                        | Action owed                                                                                                                                                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DS-3** | No opacity token family.                                                                              | Disabled styling has no sanctioned dimming route.                                      | Disabled state is expressed with `text-disabled` on `surface-sunken` with `border`, never with an opacity value. `text-disabled` fails AA by design; a disabled control must therefore never be the only place a piece of information appears. | Decide whether an opacity family is wanted at all. Low priority: the colour route is better.                                                                                                                                        |
+| **DS-4** | No border-width, focus-ring-width or focus-ring-offset tokens.                                        | The focus ring — required on every interactive element — cannot be fully token-backed. | One uniform ring everywhere: Tailwind's `outline-2 outline-offset-2` with `outline-focus-ring`. No arbitrary values, no per-component variation.                                                                                               | Ratify Tailwind's built-in width scale as token-equivalent for hairlines and rings, and record that decision, **or** add a `border-width` family. Owner: design-system.                                                             |
+| **DS-5** | No breakpoint tokens.                                                                                 | Responsive sections cannot name breakpoints in our own vocabulary.                     | Specs name Tailwind's default breakpoints (`md` = 768px, `lg` = 1024px, `xl` = 1280px) and the review viewports stay 375 / 768 / 1280.                                                                                                         | Optional. Adopting Tailwind's defaults verbatim is a defensible answer; write it down either way.                                                                                                                                   |
+| **DS-6** | No container / max-width / reading-measure tokens.                                                    | Text columns and centred panels have no token-backed width.                            | Tailwind's `max-w-*` scale, and `max-w-prose` for any paragraph column.                                                                                                                                                                        | Add a `size` family if panel widths start diverging between routes.                                                                                                                                                                 |
+| **DS-7** | No icon-size tokens.                                                                                  | —                                                                                      | Icons size from the adjacent font-size token (`1em`) or from `space-4` / `space-5`.                                                                                                                                                            | Add if icon-only controls multiply.                                                                                                                                                                                                 |
+| **DS-8** | No numeric-typography role. Tabular alignment currently rides on `font.family.mono` being monospaced. | A future change of mono family silently breaks column alignment on every rating table. | Numeric cells use `font-mono`.                                                                                                                                                                                                                 | Add a `font.role.numeric` alias, or a `font-variant-numeric: tabular-nums` utility, so the intent is recorded rather than inferred. Number legibility is this product's functional priority; it should not depend on a coincidence. |
 
-Recommended, outside this directory's write zone: extend `tokens/build-tokens.test.mjs` with an
-assertion over the pairs above, so a colour edit that breaks AA fails a test instead of a review.
+`tokens/build-tokens.test.mjs` now asserts the pairs in the measured contrast table above that
+carry an accessibility floor, so a colour edit that breaks AA fails a test rather than depending on
+this table being re-read (T034a).
+
+**Closed — DS-1 and DS-2.** Light `accent` was too light to carry `accent-contrast` at AA, and
+`border-strong` missed the 3:1 non-text floor against `surface` in both themes. T034a darkened
+light `accent` and re-derived `accent-hover` / `accent-active` beneath it — rest, hover and active
+stay three distinct colours, never collapsed onto one another — and darkened light `border-strong`
+while lightening dark `border-strong`. The interim workarounds this register used to describe (the
+solid primary button filling with `accent-hover` at rest in the light theme; `text-secondary`
+never substituted for `border-strong`) no longer apply anywhere: every component builds against
+the real tokens from here on. See the measured contrast table above for the resulting ratios. The
+ids are kept rather than renumbered, so that this register and the commit history still line up
+with the defects they describe. T034b has removed the DS-1 and DS-2 citations from
+`shared-primitives.md`, `sign-in-screen.md`, `consent-step.md` and `profile-summary.md`, including
+the button table that had encoded the interim as the design; the gaps those files still list are
+the ones genuinely open.
+
+**The rule that answers light `warning` (4.1:1, deliberately unchanged).** `warning` colours only
+the stripe and the heading of a callout, never its body: callout body text is always
+`text-primary`, which is why 4.1:1 — below the 4.5:1 normal-text floor but above the 3:1 large-text
+and non-text floor `warning` actually has to clear — needed no token change. A component that ever
+put normal-size body text in `warning` would be the bug, not this ratio.

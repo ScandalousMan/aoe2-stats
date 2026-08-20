@@ -23,14 +23,18 @@ the button's width.
 
 **Variants**
 
-| Variant       | Use                                                              | Resting fill                                     | Resting label     | Resting boundary |
-| ------------- | ---------------------------------------------------------------- | ------------------------------------------------ | ----------------- | ---------------- |
-| `primary`     | the single recommended action of a view                          | `accent` (light theme: `accent-hover`, gap DS-1) | `accent-contrast` | none             |
-| `secondary`   | a real alternative, equal in legitimacy, lower in recommendation | `surface`                                        | `text-primary`    | `border-strong`  |
-| `ghost`       | tertiary, in-menu and in-toolbar actions                         | transparent                                      | `text-primary`    | none             |
-| `destructive` | unlink, withdraw consent, erase                                  | `surface`                                        | `danger`          | `danger`         |
+| Variant       | Use                                                              | Resting fill | Resting label     | Resting boundary |
+| ------------- | ---------------------------------------------------------------- | ------------ | ----------------- | ---------------- |
+| `primary`     | the single recommended action of a view                          | `accent`     | `accent-contrast` | none             |
+| `secondary`   | a real alternative, equal in legitimacy, lower in recommendation | `surface`    | `text-primary`    | `border-strong`  |
+| `ghost`       | tertiary, in-menu and in-toolbar actions                         | transparent  | `text-primary`    | none             |
+| `destructive` | unlink, withdraw consent, erase                                  | `surface`    | `danger`          | `danger`         |
 
 At most one `primary` per view. Two primaries mean the view has not decided what it is for.
+
+`primary` rests on `accent` in **both** themes and darkens through `accent-hover` and
+`accent-active`. The three are deliberately three distinct colours: a control whose hover looks
+identical to its rest has not told the user it responded.
 
 `destructive` deliberately does not fill with `danger`: there is no `danger-hover` or
 `danger-active` token, and inventing one is forbidden. Its hover deepens by swapping the fill to
@@ -44,7 +48,7 @@ extended to 44px by padding rather than by a transparent overlay.
 **States**
 
 - **default** — as tabled above.
-- **hover** — `primary`: fill `accent-hover` (light: `accent-active`). `secondary` / `ghost` /
+- **hover** — `primary`: fill `accent-hover`, in both themes. `secondary` / `ghost` /
   `destructive`: fill `surface-sunken`. Transition `motion.duration.fast` with `easing.standard`;
   colour only, no lift, no scale.
 - **focus-visible** — `outline-2 outline-offset-2` in `focus-ring` (gap DS-4), on top of whatever
@@ -77,11 +81,14 @@ and sit on one row.
 
 **Accessibility** — real `<button type="button">`, or `<a>` when it navigates (never a `<div>` with
 a click handler). Space and Enter activate. Touch target ≥ 44px. Label contrast per the README
-table; `primary` in the light theme is gap DS-1 and must be verified, not assumed.
+table; `accent-contrast` on `accent` in the light theme is the tightest pair `primary` depends on
+and must be verified, not assumed.
 
 **Acceptance** — exactly one `primary` per screenshot; focus ring visible and 2px offset from the
-edge on the keyboard-focused button; loading button shows a spinner and the same width as at rest;
-disabled button has visible explanatory text near it.
+edge on the keyboard-focused button; the `primary` button's hover fill is visibly darker than its
+resting fill and its active fill darker again, so the default, hover and active screenshots are
+three distinguishable frames; loading button shows a spinner and the same width as at rest; disabled
+button has visible explanatory text near it.
 
 ---
 
@@ -94,9 +101,10 @@ rather than in a toast that disappears.
 paragraphs / action row / optional dismiss control.
 
 **Variants** — `info`, `success`, `warning`, `danger`. Tone drives the stripe colour and the heading
-colour only. **Body text is always `text-primary`.** In the light theme `warning` at 4.1:1 and
-`accent` at 3.7:1 cannot carry normal-size text (README table), and the rule "body is always
-`text-primary`" is what keeps that from becoming a per-component judgement call.
+colour only. **Body text is always `text-primary`.** In the light theme `warning` sits below the
+normal-text floor by design (README table) — it owes only the large-text and non-text floor, because
+it never colours anything but a stripe and a heading — and the rule "body is always `text-primary`"
+is what keeps that from becoming a per-component judgement call.
 
 Tone is a claim about the world, not about volume:
 
