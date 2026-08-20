@@ -1,14 +1,12 @@
-"""The auth router (T029): `GET /api/auth/steam/start`, `GET /api/auth/steam/callback`,
+"""The auth router: `GET /api/auth/steam/start`, `GET /api/auth/steam/callback`,
 `POST /api/auth/signout`, `GET /api/me`.
 
 Ties together `security.py` (T028, sessions and the CSRF `state` cookie), `SteamAuthProvider`
 (T026) and `RelicProfileProvider` (T027) into the one flow `contracts/http-api.md`'s
-Authentication section describes. Two things this module deliberately does **not** do, because two
-later tasks own them and edit this same file on top of what is here:
+Authentication section describes, plus the closed-beta allowlist (T030, FR-005, below). One thing
+this module deliberately does **not** do, because a later task owns it and edits this same file on
+top of what is here:
 
-- **T030** — the closed-beta allowlist. `users.allowlisted_at` is never read or stamped below;
-  every resolved Steam identity is admitted. T030 adds the check and the stamping without needing
-  to touch the flow this module already gets right.
 - **T031a** — stamping `profile_links.backfill_requested_at` on a successful link. Every
   `ProfileLink` this module inserts leaves that column `NULL`; T031a is what turns a link into a
   queued 31-day sweep.
@@ -45,6 +43,22 @@ rejected before `SteamAuthProvider.verify()` is ever called, which is also what 
 replay of an already-consumed callback fail: the cookie is single-use, cleared on every callback
 this router answers (`clear_csrf_state_cookie`), successful or not.
 
+**The closed-beta allowlist (T030, FR-005) is enforced once `SteamAuthProvider.verify()` has
+returned a Steam id this router actually trusts:** `not link_mode and existing_identity is None
+and steam_id64 not in settings.beta_allowlist_steam_ids` raises `not_allowlisted` before anything
+is written. `link_mode` and an already-linked identity are both exempt — FR-005 restricts
+**account creation**, and neither case creates one: an existing user who returns, or who links a
+second Steam identity to the account they already have, is unaffected by whatever the allowlist
+currently says. This is also where `users.allowlisted_at` gets stamped, on the very `User` row
+this same branch inserts — the first sign-in that ever passed this gate for that identity.
+
+A CSRF-state failure never reaches this gate: it is rejected earlier, with the generic
+`steam_assertion_invalid`, before any Steam id is trusted (T030a — an earlier version of this
+router answered a CSRF failure by reading `openid.claimed_id` unverified off the query string and
+checking *that* against the allowlist, which let anyone learn a Steam id's allowlist status with
+no signature, no session and no valid state; deleted for exactly that reason, along with the test
+that could only reach it by skipping `/start`).
+
 **Ratings are resolved here, not deferred** (T033's `RatingsRepository.record_snapshot`): FR-009
 requires the rating history to start accumulating from the first sign-in, and sign-in is the one
 moment this feature already talks to Relic. The same call answers `resolve_profile` failing
@@ -58,7 +72,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
@@ -179,11 +193,24 @@ def _build_return_to(base_url: str, *, state: str, link: bool) -> str:
 
 def _error_redirect(response: Response, settings: Settings, code: str) -> Response:
     """302 back into the app carrying `?error=<code>` — the shape `contracts/http-api.md`'s
-    documented failure codes (`steam_assertion_invalid`, `no_aoe2_profile`,
-    `profile_already_linked`, and later T030's `not_allowlisted`) are delivered in."""
+    documented failure codes `steam_assertion_invalid`, `no_aoe2_profile` and
+    `profile_already_linked` are delivered in. `not_allowlisted` (T030) is deliberately not one of
+    these: `_raise_not_allowlisted` below answers with the plain JSON error envelope instead, since
+    a rejected visitor gets nothing to redirect back into."""
     response.status_code = 302
     response.headers["location"] = f"{settings.public_base_url}/?{urlencode({'error': code})}"
     return response
+
+
+def _raise_not_allowlisted() -> NoReturn:
+    """FR-005, as the plain JSON error envelope every domain error in this codebase raises through
+    (`errors.py`) — never `_error_redirect`, which this one code deliberately does not join
+    (see its own docstring)."""
+    raise APIError(
+        status_code=403,
+        code="not_allowlisted",
+        message="This is a closed beta. Your Steam account is not on the invite list yet.",
+    )
 
 
 async def _current_session_row(
@@ -270,6 +297,19 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
         link_target_user_id = session_row.user_id
 
     existing_identity = await db_session.get(SteamIdentity, steam_id64)
+
+    # T030 (FR-005): the closed beta gates account *creation* only. `link_mode` never creates a
+    # new aoe2-stats account (it attaches a second identity to the caller's existing session), and
+    # an identity that already owns an account is a returning sign-in, not a new one — both are
+    # unaffected by whatever `BETA_ALLOWLIST_STEAM_IDS` currently contains. Checked here, before
+    # `resolve_profile` below, so a visitor this closed beta will refuse never costs a Relic call.
+    if (
+        not link_mode
+        and existing_identity is None
+        and steam_id64 not in settings.beta_allowlist_steam_ids
+    ):
+        _raise_not_allowlisted()
+
     if link_mode:
         assert link_target_user_id is not None
         if existing_identity is not None and existing_identity.user_id != link_target_user_id:
@@ -301,7 +341,11 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
     # ever created for a flow that ends in an error.
     if existing_identity is None:
         if not link_mode:
-            db_session.add(User(id=user_id, created_at=now))
+            # The allowlist gate above already guarantees `steam_id64 in settings.
+            # beta_allowlist_steam_ids` for every `User` row created here — this is the first
+            # sign-in that ever passed it for this identity, which is exactly what
+            # `allowlisted_at` records (data-model.md: "Null means the closed beta refuses them").
+            db_session.add(User(id=user_id, created_at=now, allowlisted_at=now))
         db_session.add(
             SteamIdentity(
                 steam_id64=steam_id64, user_id=user_id, verified_at=now, last_sign_in_at=now
@@ -426,8 +470,8 @@ async def me(request: Request, db_session: SessionDep, settings: SettingsDep) ->
     return {
         "authenticated": True,
         "user_id": str(session_row.user_id),
-        # T030 stamps `allowlisted_at`; today this simply reports whatever the column already
-        # holds (always `NULL` until T030 lands).
+        # `allowlisted_at` is stamped once, at account creation (T030) — reported here exactly
+        # as the column holds it.
         "allowlisted": user.allowlisted_at is not None if user is not None else False,
         "ingest_consent": user.ingest_consent_at is not None if user is not None else False,
         "profiles": profiles,
