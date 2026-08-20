@@ -126,7 +126,12 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc --noEmit
+      # T017a: `pnpm exec tsc --noEmit` from the root matches no package's scripts and no
+      # root tsconfig.json — under TypeScript 7 it fails outright. `pnpm typecheck` runs each
+      # workspace member's own `typecheck` script (`pnpm -r --if-present run typecheck`, the
+      # same idiom `lint` and `test` already use below); `apps/web`'s runs `tsr generate` first
+      # so TanStack's generated, uncommitted route tree exists before `tsc -b` checks it.
+      - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
 

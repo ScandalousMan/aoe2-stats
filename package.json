@@ -11,6 +11,7 @@
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" --ignore-path .gitignore",
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",
+    "typecheck": "pnpm -r --if-present run typecheck",
     "test:visual": "node scripts/visual/run.mjs"
   },
   "devDependencies": {
