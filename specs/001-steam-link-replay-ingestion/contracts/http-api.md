@@ -7,6 +7,12 @@ Errors use a single shape — `{"error": {"code": "...", "message": "...", "deta
 stable machine-readable `code`. The front end branches on `code`, never on `message`, so wording can
 change without breaking a client.
 
+`detail` MUST NOT carry a configuration value, a credential, a connection string or a URL that
+embeds one, on any route — a health check above all, since `/api/health` is unauthenticated. It MAY
+carry a key _name_ (`S3_ENDPOINT_URL`) and a failure _class_ (`SignatureDoesNotMatch`,
+`OperationalError`): both are diagnosis an operator needs, and neither is the secret that produced
+them (T014e).
+
 ## Authentication
 
 | Method | Path                       | Notes                                                                                                                                                                  |
@@ -79,6 +85,11 @@ pseudonymise any profile on demand would be a denial-of-service vector against t
 | ------------- | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET`         | `/api/health`      | none                                 | Liveness plus database and object-store reachability                                                                                                                                 |
 | `GET`, `POST` | `/api/cron/ingest` | `Authorization: Bearer $CRON_SECRET` | Runs one cycle. **401 without a valid, non-empty secret** (constitution VIII — an unset `CRON_SECRET` refuses outright rather than matching an empty bearer). Returns the run report |
+
+A failing `/api/health` names, in `detail`, which dependency broke and why — `error_class` for a
+database or object-store probe (the exception class, or a `ClientError`'s S3 error code such as
+`SignatureDoesNotMatch`), `missing_or_invalid_keys` when `Settings` itself could not be built —
+never the value behind either (T014e, and the `detail` rule above).
 
 `/api/cron/ingest` returns 200 with a report even when individual captures failed. A non-200 means
 the cycle could not run at all. The distinction matters: the scheduler retries the second, and the

@@ -168,3 +168,89 @@ def test_missing_required_variable_raises(
 
     with pytest.raises(ValidationError):
         Settings()  # type: ignore[call-arg]
+
+
+def test_valid_configuration_is_unaffected_by_shape_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T006b: the new shape checks must not reject any value already in `REQUIRED_ENV` — a
+    correctly-formed configuration passes exactly as it did before this task."""
+    _set_all(monkeypatch)
+
+    settings = get_settings()
+
+    assert settings.database_url == REQUIRED_ENV["DATABASE_URL"]
+    assert settings.s3_endpoint_url == REQUIRED_ENV["S3_ENDPOINT_URL"]
+    assert settings.public_base_url == REQUIRED_ENV["PUBLIC_BASE_URL"]
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        "postgresql://user:password@host/dbname?sslmode=require",
+        "postgres://user:password@host/dbname",
+        "mysql+psycopg://user:password@host/dbname",
+    ],
+)
+def test_database_url_without_psycopg_scheme_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, database_url: str
+) -> None:
+    """The defect T006b fixes: Neon (and most managed Postgres providers) hand out the plain
+    `postgresql://` scheme, which silently selects the wrong SQLAlchemy dialect rather than
+    failing at startup."""
+    _set_all(monkeypatch, {"DATABASE_URL": database_url})
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings()  # type: ignore[call-arg]
+
+    message = str(exc_info.value)
+    assert "DATABASE_URL" in message
+    assert database_url not in message
+
+
+@pytest.mark.parametrize(
+    "s3_endpoint_url",
+    [
+        "https://account.eu.r2.cloudflarestorage.com/aoe2-stats-replays",
+        "https://account.eu.r2.cloudflarestorage.com?foo=bar",
+        "https://account.eu.r2.cloudflarestorage.com#fragment",
+    ],
+)
+def test_s3_endpoint_url_with_path_query_or_fragment_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, s3_endpoint_url: str
+) -> None:
+    """The defect T006b fixes: Cloudflare's bucket page displays an S3 API value that
+    *includes the bucket path*; pasting it produced a live outage whose only symptom was
+    `NoSuchKey 404` on a list call — an error naming a missing object, for a fault in the
+    host."""
+    _set_all(monkeypatch, {"S3_ENDPOINT_URL": s3_endpoint_url})
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings()  # type: ignore[call-arg]
+
+    message = str(exc_info.value)
+    assert "S3_ENDPOINT_URL" in message
+    assert s3_endpoint_url not in message
+
+
+def test_s3_endpoint_url_with_bare_trailing_slash_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A root path (`/`) carries no bucket segment and is not the double-bucket shape the
+    outage produced — equivalent to no path at all, and not worth rejecting."""
+    _set_all(monkeypatch, {"S3_ENDPOINT_URL": "https://account.eu.r2.cloudflarestorage.com/"})
+
+    settings = get_settings()
+
+    assert settings.s3_endpoint_url == "https://account.eu.r2.cloudflarestorage.com/"
+
+
+def test_public_base_url_with_trailing_slash_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A trailing slash breaks OpenID `return_to` validation, and only at sign-in time, long
+    after startup."""
+    _set_all(monkeypatch, {"PUBLIC_BASE_URL": "http://localhost:5173/"})
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings()  # type: ignore[call-arg]
+
+    assert "PUBLIC_BASE_URL" in str(exc_info.value)
