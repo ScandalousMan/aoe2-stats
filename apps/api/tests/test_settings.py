@@ -27,7 +27,7 @@ REQUIRED_ENV: dict[str, str] = {
     "APP_ENV": "development",
     "APP_SECRET_KEY": "test-app-secret",
     "PUBLIC_BASE_URL": "http://localhost:5173",
-    "CRON_SECRET": "test-cron-secret",
+    "CRON_SECRET": "not-a-real-secret-not-a-real-secret",
     "STEAM_API_KEY": "test-steam-api-key",
     "BETA_ALLOWLIST_STEAM_IDS": "76561198000000001,76561198000000002",
     "CAPTURE_BUDGET_DAYS": "21",
@@ -139,6 +139,22 @@ def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_all(monkeypatch)
 
     assert get_settings() is get_settings()
+
+
+def test_empty_cron_secret_is_rejected_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The defect T018b fixes: an empty `CRON_SECRET` must never validate — it authenticated a
+    bare `Authorization: Bearer ` header when `cron_secret` had no length floor."""
+    _set_all(monkeypatch, {"CRON_SECRET": ""})
+
+    with pytest.raises(ValidationError):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_short_cron_secret_is_rejected_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_all(monkeypatch, {"CRON_SECRET": "too-short"})
+
+    with pytest.raises(ValidationError):
+        Settings()  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize("missing_key", sorted(REQUIRED_ENV))

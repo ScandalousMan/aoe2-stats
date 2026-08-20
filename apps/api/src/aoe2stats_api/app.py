@@ -10,6 +10,15 @@ That is deliberate: this task (T014) ships only `health.py`, T018 adds `cron.py`
 trigger route — and every user-story phase after it adds a router of its own (`auth.py`,
 `profiles.py`, `matches.py`, `replays.py`, `privacy.py`). Each one is a two-line addition here —
 one import, one `include_router` call — and never a change to this module's structure.
+
+**T018c**: `import aoe2stats_api.app` must never load the replay engine — constitution V's "the
+API never loads an engine at all". `routers/cron.py` is the one router with a path down to it (via
+`apps/ingester`, which will depend on `packages/replay-engine` from T055 onward), and it imports
+`run_once` inside its handler rather than at module scope for exactly that reason; nothing in this
+module or any router it registers may import `aoe2stats_ingester.run` — or anything beneath it —
+at module scope. `apps/api/tests/test_engine_isolation.py` asserts this in a subprocess, since a
+regression here would still leave `aoe2rec_py` out of *this* process's already-populated
+`sys.modules` and pass silently in-process.
 """
 
 from __future__ import annotations

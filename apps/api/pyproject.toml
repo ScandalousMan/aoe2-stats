@@ -8,6 +8,11 @@ dependencies = [
   "fastapi>=0.115",
   "httpx>=0.27",
   "aoe2stats-storage",
+  # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
+  # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
+  # stage — so keep this import lazy, inside that one handler, forever: a module-scope import
+  # anywhere on this path would drag the engine into every cold start of the API function, not
+  # only the request that actually triggers a cycle (T018c, constitution V).
   "aoe2stats-ingester",
 ]
 

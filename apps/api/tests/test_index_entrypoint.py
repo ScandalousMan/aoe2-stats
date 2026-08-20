@@ -8,7 +8,8 @@ already relies on for `api/cron/ingest.py`.
 `api/index.py` does not build its own app the way `api/cron/ingest.py` builds its own Starlette
 one: it re-exports `aoe2stats_api.app.app` module-for-module, so the one thing worth asserting
 about it is that identity, plus that the module carries nothing of its own for application code to
-accidentally depend on.
+accidentally depend on. `_FakeSession`/`_FakeObjectStore` now live once in `conftest.py` (T015b),
+behind the `fake_session_class`/`fake_object_store_class` fixtures.
 """
 
 from __future__ import annotations
@@ -20,16 +21,6 @@ from fastapi.testclient import TestClient
 
 import aoe2stats_api.app as api_app_module
 from aoe2stats_api.deps import get_object_store, get_session
-
-
-class _FakeSession:
-    async def execute(self, _statement: object) -> None:
-        return None
-
-
-class _FakeObjectStore:
-    async def list_keys(self, prefix: str = "") -> list[str]:
-        return []
 
 
 def test_the_re_exported_app_is_the_same_object_the_fastapi_module_builds() -> None:
@@ -44,16 +35,18 @@ def test_the_module_exposes_nothing_besides_the_app() -> None:
     assert entrypoint.__all__ == ["app"]
 
 
-def test_the_re_exported_app_serves_a_real_request_through_the_error_envelope() -> None:
+def test_the_re_exported_app_serves_a_real_request_through_the_error_envelope(
+    fake_session_class: type, fake_object_store_class: type
+) -> None:
     import api.index as entrypoint
 
     app = entrypoint.app
 
     async def _fake_session() -> AsyncIterator[Any]:
-        yield _FakeSession()
+        yield fake_session_class()
 
     app.dependency_overrides[get_session] = _fake_session
-    app.dependency_overrides[get_object_store] = lambda: _FakeObjectStore()
+    app.dependency_overrides[get_object_store] = lambda: fake_object_store_class()
     try:
         with TestClient(app) as client:
             response = client.get("/api/health")

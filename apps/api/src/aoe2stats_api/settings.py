@@ -48,7 +48,13 @@ class Settings(BaseSettings):
     public_base_url: str = Field(alias="PUBLIC_BASE_URL")
 
     # Shared secret required by the cron endpoint. Requests without it are rejected.
-    cron_secret: SecretStr = Field(alias="CRON_SECRET")
+    # `min_length=32`: an empty or trivial value must fail loudly here, at process startup,
+    # rather than silently becoming a live "Bearer " that authenticates any request —
+    # constitution VIII's "never publicly invocable" is a startup-time guarantee, not
+    # something the request handler alone can be trusted to enforce. 32 characters is the
+    # length of a `secrets.token_hex(16)` / a 128-bit key, the floor below which comparing
+    # the secret costs an attacker less than generating one honestly.
+    cron_secret: SecretStr = Field(alias="CRON_SECRET", min_length=32)
 
     # --- Steam ---------------------------------------------------------------------------------
     steam_api_key: SecretStr = Field(alias="STEAM_API_KEY")
