@@ -48,3 +48,8 @@ docs/data-sources/publication_delay_samples.jsonl
 .DS_Store
 .idea/
 .vscode/
+.vercel
+# Local secrets. `.env.example` is the canonical key list — apps/api/tests/conftest.py
+# checks its own fixture against it at collection time — so it must stay committable.
+.env*
+!.env.example

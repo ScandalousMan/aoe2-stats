@@ -6,7 +6,6 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "pydantic-settings>=2.6",
   "fastapi>=0.115",
-  "httpx>=0.27",
   "aoe2stats-storage",
   # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
   # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
@@ -15,6 +14,15 @@ dependencies = [
   # only the request that actually triggers a cycle (T018c, constitution V).
   "aoe2stats-ingester",
 ]
+
+[dependency-groups]
+# `httpx` is not imported by any module under `src/` — Starlette's `TestClient` (`fastapi.
+# testclient`, `starlette.testclient`) wraps it, but only `tests/` uses `TestClient` (T014c,
+# T018). Declaring it under `dependencies` made it a *runtime* dependency of exactly the
+# component constitution III restricts from reaching the network (T018d). `uv sync --all-packages
+# --dev` (`.github/workflows/pr.yml`) installs every workspace member's own `dev` group in
+# addition to the root's, so this still installs in CI and locally with no new invocation needed.
+dev = ["httpx>=0.27"]
 
 [tool.uv.sources]
 aoe2stats-storage = { workspace = true }

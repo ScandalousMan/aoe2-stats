@@ -31,11 +31,14 @@ dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3", "alembic>=1.13", "pytest-asynci
 # --- pytest --------------------------------------------------------------------------------------
 # One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
 # `uv run pytest -q` from the repository root with `PYTEST_DISABLE_NETWORK=1`. `testpaths` lists
-# every workspace member's `tests/` directory plus `scripts/checks/tests` — the latter is not a uv
-# workspace member (it is deliberately excluded from `[tool.uv.workspace]` above, predating this
-# config), so without naming it here T048's liveness-check test would never be collected. Most of
-# these directories do not exist yet; pytest does not error on a `testpaths` entry that is missing,
-# it simply finds nothing there until the story that owns it lands.
+# every workspace member's `tests/` directory plus `scripts/checks/tests` and `tests/architecture`
+# — neither is a uv workspace member (both are deliberately excluded from `[tool.uv.workspace]`
+# above, predating this config for the former), so without naming them here T048's liveness-check
+# test and T018d's architecture guards would never be collected. `tests/architecture` holds only
+# import-graph guards that span more than one workspace member (constitution III, V, XII) and so
+# cannot live inside any single member's own `tests/`. Most of these directories do not exist yet;
+# pytest does not error on a `testpaths` entry that is missing, it simply finds nothing there until
+# the story that owns it lands.
 [tool.pytest.ini_options]
 testpaths = [
   "packages/core/tests",
@@ -45,6 +48,7 @@ testpaths = [
   "apps/api/tests",
   "apps/ingester/tests",
   "scripts/checks/tests",
+  "tests/architecture",
 ]
 # `tests/conftest.py` (the network-blocking autouse fixture, constitution III) is not an ancestor
 # directory of any path above, so pytest would never load it as a plain per-directory conftest.

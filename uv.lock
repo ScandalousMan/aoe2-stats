@@ -121,8 +121,12 @@ dependencies = [
     { name = "aoe2stats-ingester" },
     { name = "aoe2stats-storage" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "pydantic-settings" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
 ]
 
 [package.metadata]
@@ -130,9 +134,11 @@ requires-dist = [
     { name = "aoe2stats-ingester", editable = "apps/ingester" },
     { name = "aoe2stats-storage", editable = "packages/storage" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-settings", specifier = ">=2.6" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "aoe2stats-core"
