@@ -105,7 +105,6 @@ def _provider(
 # --- resolve_profile: found ------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_resolve_profile_returns_a_profile_ref() -> None:
     body = _load("get_personal_stat.json")
     seen: dict[str, Any] = {}
@@ -128,7 +127,6 @@ async def test_resolve_profile_returns_a_profile_ref() -> None:
 # --- resolve_profile: no AoE2 profile (FR-003, an ordinary outcome, never an error) ------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_resolve_profile_returns_none_for_a_steam_account_with_no_aoe2_profile() -> None:
     body = _load("get_personal_stat_unregistered.json")
     provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
@@ -142,7 +140,6 @@ async def test_resolve_profile_returns_none_for_a_steam_account_with_no_aoe2_pro
 # --- personal_stats: parses a genuine multi-profile response -----------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_personal_stats_parses_a_batched_response() -> None:
     body = _load("get_personal_stat_batch.json")
     seen: dict[str, Any] = {}
@@ -173,7 +170,6 @@ async def test_personal_stats_parses_a_batched_response() -> None:
 # --- personal_stats: caps every call at 50 profiles ---------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_personal_stats_batches_at_most_fifty_profiles_per_call() -> None:
     profile_ids = list(range(1, 56))  # 55 profiles: one full batch, one remainder
     batch_sizes: list[int] = []
@@ -204,7 +200,6 @@ async def test_personal_stats_batches_at_most_fifty_profiles_per_call() -> None:
 # --- Strict validation: an unexpected field type is a contract violation, never a coercion ------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_resolve_profile_raises_contract_violation_on_a_field_of_unexpected_type() -> None:
     """`fixtures/README.md`: "mutate a loaded copy of relic/get_personal_stat.json in Python
     rather than freezing a response that does not exist in the wild."

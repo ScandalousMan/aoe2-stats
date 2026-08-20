@@ -125,7 +125,6 @@ def _responds_with(body: str) -> Callable[[httpx.Request], httpx.Response]:
 # --- `check_authentication` — is_valid:true / is_valid:false ------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_a_valid_assertion_resolves_to_the_claimed_steam_id() -> None:
     provider = _provider(_responds_with(VALID_ASSERTION))
 
@@ -134,7 +133,6 @@ def test_a_valid_assertion_resolves_to_the_claimed_steam_id() -> None:
     assert steam_id == "76561197984749679"
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_check_authentication_is_posted_with_mode_replaced() -> None:
     """research.md §2: every returned parameter is POSTed back to Steam with `openid.mode`
     replaced by `check_authentication` — never the original `id_res`, which would just echo the
@@ -157,7 +155,6 @@ def test_check_authentication_is_posted_with_mode_replaced() -> None:
     assert "id_res" not in body
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_a_rejected_assertion_from_a_never_issued_callback_resolves_to_none() -> None:
     """`check_authentication_invalid.txt`: a real, captured Steam rejection of a syntactically
     well-formed but never-issued assertion — the same rejection a replayed or forged callback
@@ -190,7 +187,6 @@ def test_a_rejected_assertion_from_a_never_issued_callback_resolves_to_none() ->
         "76561197984749679",
     ],
 )
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_claimed_id_must_match_the_exact_pattern_not_a_substring(claimed_id: str) -> None:
     provider = _provider(_responds_with(VALID_ASSERTION))
 
@@ -202,7 +198,6 @@ def test_claimed_id_must_match_the_exact_pattern_not_a_substring(claimed_id: str
 # --- `return_to` — validated against configuration, not merely echoed ---------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_return_to_matching_configuration_is_accepted() -> None:
     provider = _provider(_responds_with(VALID_ASSERTION), return_to=RETURN_TO)
 
@@ -211,7 +206,6 @@ def test_return_to_matching_configuration_is_accepted() -> None:
     assert steam_id == "76561197984749679"
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_return_to_not_matching_configuration_is_rejected_even_when_steam_says_valid() -> None:
     """A callback asserting a different `return_to` than the one this deployment is configured
     for must never verify, even if Steam's own `check_authentication` says `is_valid:true` — the
@@ -227,7 +221,6 @@ def test_return_to_not_matching_configuration_is_rejected_even_when_steam_says_v
     assert steam_id is None
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_return_to_is_configured_once_and_not_taken_from_begin() -> None:
     """`begin(return_to, state)` builds the outbound redirect; `verify` validates the callback
     against the provider's *own* configuration (the deployment's one true callback URL), not
@@ -247,7 +240,6 @@ def test_return_to_is_configured_once_and_not_taken_from_begin() -> None:
 # --- `verify` never raises for an invalid assertion ----------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_verify_returns_none_rather_than_raising_on_missing_parameters() -> None:
     provider = _provider(_responds_with(INVALID_ASSERTION))
 
@@ -256,7 +248,6 @@ def test_verify_returns_none_rather_than_raising_on_missing_parameters() -> None
     assert steam_id is None
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_verify_returns_none_rather_than_raising_on_a_malformed_reply_body() -> None:
     """Neither `ns:` nor `is_valid:` present at all — not the shape OpenID 2.0 promises."""
     provider = _provider(_responds_with("not the openid wire format at all"))
@@ -266,7 +257,6 @@ def test_verify_returns_none_rather_than_raising_on_a_malformed_reply_body() -> 
     assert steam_id is None
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_verify_returns_none_when_steam_itself_is_unreachable() -> None:
     """A source outage is not the caller's problem to catch: `verify`'s signature is `SteamId64 |
     None`, with no exception in it, per `base.py`'s `SteamAuthProvider` Protocol docstring.
@@ -289,7 +279,6 @@ def test_verify_returns_none_when_steam_itself_is_unreachable() -> None:
     assert steam_id is None
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_begin_returns_a_url_pointed_at_steams_pinned_openid_endpoint() -> None:
     provider = _provider(_responds_with(VALID_ASSERTION))
 
