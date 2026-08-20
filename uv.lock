@@ -61,6 +61,10 @@ wheels = [
 name = "aoe2-stats"
 version = "0.1.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "aoe2stats-api" },
+    { name = "aoe2stats-ingester" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -72,6 +76,10 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "aoe2stats-api", editable = "apps/api" },
+    { name = "aoe2stats-ingester", editable = "apps/ingester" },
+]
 
 [package.metadata.requires-dev]
 dev = [
