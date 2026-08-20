@@ -66,10 +66,24 @@ properties a test plan has to establish.
 
 **Hosting**
 
-- [ ] Functions report region `cdg1`; database and bucket are EU
-- [ ] A pull request gets a preview deployment; `main` deploys production
-- [ ] The cron endpoint returns 401 without its secret
-- [ ] The Python bundle stays under the 500 MB limit
+Verified against the live deployment on 2026-08-20. Each line records *how* it was checked, not
+only that it was: "the bucket is EU" was ticked-shaped but uncheckable, and that vagueness is what
+let a Western-Europe *location hint* pass for an EU *jurisdiction* — the two look alike in the
+Cloudflare UI and only the S3 endpoint tells them apart (`<account>.eu.r2...` carries the
+jurisdiction, `<account>.r2...` does not).
+
+- [x] Functions report region `cdg1`; database and bucket are EU — both functions report `cdg1` in
+      `vercel inspect` and in `x-vercel-id`; Neon runs in `eu-central-1`; the R2 bucket carries the
+      EU jurisdiction, confirmed by its `.eu.` endpoint
+- [ ] A pull request gets a preview deployment; `main` deploys production — **not satisfied**: every
+      deployment so far is a CLI-driven production one, and pull request #2 carries no Vercel check.
+      The Git integration is not building pull requests, so the preview environment its variables
+      were configured for does not exist yet
+- [x] The cron endpoint returns 401 without its secret — verified in production for both `GET` (what
+      Vercel Cron actually sends) and `POST`, each returning the error envelope
+- [x] The Python bundle stays under the 500 MB limit — 43.69 MB per function, 8.7% of the ceiling.
+      Both functions carry the same bundle today; only the cron one grows when the replay engine
+      lands at T055
 
 **Front end**
 
