@@ -15,12 +15,15 @@ That distinction also matters for `infra/migrations/env.py`'s own comment on `al
 the root dev toolchain and "never imported by application code" — this module imports it, but it
 is a test harness, not `apps/*` or `packages/*` source.
 
-**Skips, never fails, when no database is reachable.** `.github/workflows/pr.yml`'s `python` job
-runs `apps/api/tests` and `apps/ingester/tests` with no Postgres service at all (only the
-`migrations` job has one, and that job never runs pytest) — a hard failure there would turn every
-PR red for a database this suite was never given. Reachability is checked once per session against
-`TEST_DATABASE_URL`, or the same local default `.github/workflows/pr.yml`'s `migrations` job
-already runs against, so a developer who has that Postgres running locally needs to set nothing.
+**Skips locally, fails in CI, when no database is reachable.** `.github/workflows/pr.yml`'s
+`python` job now runs a Postgres service (T015a) at the same credentials this module falls back
+to, so a developer who has that Postgres running locally needs to set nothing, and CI has it every
+time. A `pytest.skip` there would prove nothing — it is exactly what let every integration test
+from T021 on skip silently on every pull request until T015a's CI service was added — so this
+module fails hard instead when `CI` is set (the convention GitHub Actions and every other major CI
+runner exports), and only skips outside CI, where a contributor may legitimately not have Postgres
+running. Reachability is checked once per session against `TEST_DATABASE_URL`, or that same local
+default.
 """
 
 from __future__ import annotations
@@ -47,19 +50,33 @@ from aoe2stats_storage.repositories.base import (
     session_scope,
 )
 
-#: Overridable per environment. Falls back to the exact credentials `.github/workflows/pr.yml`'s
-#: `migrations` job already runs Postgres 16 against, so nothing extra needs setting there either
-#: — only the `python` job, which starts no Postgres service, ever fails the reachability check.
+#: Overridable per environment. Falls back to the exact credentials both `.github/workflows/
+#: pr.yml` jobs run Postgres 16 against (the `migrations` job, and — since T015a — the `python`
+#: job too), so nothing extra needs setting in either.
 TEST_DATABASE_URL_ENV = "TEST_DATABASE_URL"
 _DEFAULT_ADMIN_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres"
 _CONNECT_TIMEOUT_SECONDS = 2
+
+#: Set by GitHub Actions (and every other major CI runner) on every job. Distinguishes "no
+#: Postgres reachable because a contributor's machine legitimately has none running" — fine to
+#: skip — from "no Postgres reachable in a CI job that is supposed to have one" — never fine to
+#: skip, because a skip there is indistinguishable from a pass and is exactly what let T015's
+#: harness go unexercised from T021 onward until T015a gave the `python` job a service.
+_CI_ENV = "CI"
 
 _SKIP_REASON = (
     "No Postgres reachable for the integration-test harness (T015, tests/db.py). Set "
     f"{TEST_DATABASE_URL_ENV} to an admin connection string, or run one locally at the default "
     "this module falls back to (postgresql://postgres:postgres@localhost:5432/postgres) — the "
-    "same credentials .github/workflows/pr.yml's `migrations` job already uses. CI's `python` job "
-    "has no Postgres service, so this directory's integration tests are skipped there, not failed."
+    "same credentials .github/workflows/pr.yml's `python` and `migrations` jobs both use."
+)
+
+_CI_FAILURE_REASON = (
+    "No Postgres reachable for the integration-test harness (T015, tests/db.py), and CI is set "
+    "— .github/workflows/pr.yml's `python` job runs a Postgres service (T015a) precisely so this "
+    "never happens there. Failing instead of skipping: a skip here would silently report every "
+    "integration test from T021 onward as passed without having run, which is the gap T015a "
+    "closed. If you are seeing this in CI, the service itself is the thing to investigate."
 )
 
 
@@ -166,9 +183,15 @@ def database_url() -> Iterator[str]:
     whole test session and dropped when it ends. Every fixture below — and any Phase 3+ test
     that builds its own engine or its own `Stage` (T018's shape) against a plain DSN — starts
     here.
+
+    Unreachable is a hard failure under `CI` (T015a) and a skip everywhere else — see
+    `_CI_FAILURE_REASON` and `_SKIP_REASON` above for why the two environments are not held to
+    the same standard here.
     """
     with _throwaway_database() as url:
         if url is None:
+            if os.environ.get(_CI_ENV):
+                pytest.fail(_CI_FAILURE_REASON)
             pytest.skip(_SKIP_REASON)
         yield url
 
