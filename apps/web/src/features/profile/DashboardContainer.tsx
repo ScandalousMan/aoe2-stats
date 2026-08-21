@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { Button, Callout, ConsentStep, ProfileSummary } from 'design-system'
 import type { ProfileSummaryStatus } from 'design-system'
-import { isApiErrorCode, meQueryOptions } from '../../lib/api'
+import { isApiErrorCode, meQueryOptions, signOut } from '../../lib/api'
 import {
   type ArchivedReplaysPreview,
   confirmUnlink,
@@ -54,6 +54,30 @@ export function DashboardContainer() {
 
   const authenticated = session?.authenticated ?? false
   const profiles = profilesQuery.data?.profiles ?? []
+
+  // --- Sign out (T036b): `signOut` (lib/api.ts) is the client half of `POST /api/auth/signout`
+  // (T029) — implemented and tested from the day it shipped, but unreachable from the product
+  // until this handler existed, which is why quickstart.md's scenario 1 could not be walked
+  // through the UI. Mirrors the other mutations here: invalidate the session on success, redirect
+  // on a server-confirmed sign-out or on discovering the session was already dead either way.
+  const [signOutPending, setSignOutPending] = useState(false)
+  const [signOutError, setSignOutError] = useState<string | null>(null)
+
+  async function handleSignOut() {
+    setSignOutPending(true)
+    setSignOutError(null)
+    try {
+      await signOut()
+      await queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey })
+      void navigate({ to: '/sign-in' })
+    } catch (error) {
+      if (!redirectIfSessionExpired(error)) {
+        setSignOutError('We could not sign you out. Try again.')
+      }
+    } finally {
+      setSignOutPending(false)
+    }
+  }
 
   // FR-043: "viewing" is a session-level selection that writes nothing. `null` means "no explicit
   // selection yet" — the primary profile is what shows until the switcher is used, and it is what
@@ -203,6 +227,27 @@ export function DashboardContainer() {
 
   return (
     <main className="min-h-svh bg-background">
+      {authenticated && (
+        <div className="flex justify-end px-4 pt-4 md:px-6">
+          <Button
+            variant="ghost"
+            onClick={() => void handleSignOut()}
+            loading={signOutPending}
+            loadingLabel="Signing out…"
+          >
+            Sign out
+          </Button>
+        </div>
+      )}
+
+      {signOutError && (
+        <div className="px-4 md:px-6">
+          <Callout tone="danger" heading="We could not sign you out" headingLevel={3}>
+            {signOutError}
+          </Callout>
+        </div>
+      )}
+
       {showEmptyAccount ? (
         <div className="px-4 py-6 md:px-6">
           <Callout

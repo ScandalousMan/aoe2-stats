@@ -110,6 +110,9 @@ function installFakeApi(initial: { session: FakeSession; profiles: ApiProfile[] 
         archived_replays: archivedReplays,
       })
     }
+    if (path === '/api/auth/signout' && method === 'POST') {
+      return jsonResponse(null)
+    }
     if (path === '/api/privacy/consent' && method === 'POST') {
       const body = JSON.parse(String(init?.body)) as { granted: boolean }
       const recordedAt = '2026-08-10T00:00:00Z'
@@ -300,6 +303,28 @@ describe('DashboardContainer', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
     expect(screen.getByText('ArchonQueen')).toBeInTheDocument()
+  })
+
+  it('signing out calls POST /api/auth/signout and navigates to /sign-in — quickstart.md scenario 1', async () => {
+    const fake = installFakeApi({
+      session: baseSession({
+        profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
+      }),
+      profiles: [baseProfile()],
+    })
+    const user = userEvent.setup()
+    renderDashboard()
+
+    await screen.findByText('ArchonQueen')
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' })
+    })
+    expect(fake.fetchMock).toHaveBeenCalledWith(
+      '/api/auth/signout',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('a session that expires mid-mutation redirects to /sign-in instead of showing broken state', async () => {

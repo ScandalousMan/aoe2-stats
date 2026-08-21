@@ -245,3 +245,14 @@ export const meQueryOptions = queryOptions({
   queryFn: fetchMe,
   staleTime: 60_000,
 })
+
+// --- POST /api/auth/signout ----------------------------------------------------------------
+//
+// `routers/auth.py` (T029) revokes the session server-side and clears the cookie, and answers a
+// bare 200 with no body — `apiRequest`'s `response.json().catch(() => null)` already turns that
+// into `null`, so this is typed `Promise<void>` rather than declaring a payload shape nothing
+// ever sends. `DashboardContainer.tsx` (T036b) is the one caller: quickstart.md scenario 1 walks
+// through the product, and until this existed nothing in the UI reached this endpoint at all.
+export function signOut(): Promise<void> {
+  return api.post<void>('/api/auth/signout')
+}
