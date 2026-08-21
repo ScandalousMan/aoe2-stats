@@ -41,6 +41,10 @@ describe('SignInScreen', () => {
       <SignInScreen onContinueWithSteam={() => {}} outcome="not_allowlisted" />,
     )
     expect(screen.queryByRole('link', { name: 'Request access' })).not.toBeInTheDocument()
+    // FR-005: a rejected visitor is told why, not merely refused. The API (T030b) now delivers
+    // `not_allowlisted` as a redirect carrying only the code — this explanation is the front
+    // end's own copy, the one place it survives for the visitor to actually read.
+    expect(screen.getByText(/this steam account is not on the beta list/i)).toBeInTheDocument()
 
     rerender(
       <SignInScreen

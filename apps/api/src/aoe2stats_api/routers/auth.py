@@ -80,7 +80,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, NoReturn
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
@@ -201,24 +201,16 @@ def _build_return_to(base_url: str, *, state: str, link: bool) -> str:
 
 def _error_redirect(response: Response, settings: Settings, code: str) -> Response:
     """302 back into the app carrying `?error=<code>` — the shape `contracts/http-api.md`'s
-    documented failure codes `steam_assertion_invalid`, `no_aoe2_profile` and
-    `profile_already_linked` are delivered in. `not_allowlisted` (T030) is deliberately not one of
-    these: `_raise_not_allowlisted` below answers with the plain JSON error envelope instead, since
-    a rejected visitor gets nothing to redirect back into."""
+    documented failure codes `steam_assertion_invalid`, `no_aoe2_profile`, `profile_already_linked`
+    and `not_allowlisted` are all delivered in. `not_allowlisted` (T030, T030b) joins the other
+    three here rather than answering the plain JSON error envelope: the caller mid-callback is a
+    browser following a redirect chain from Steam, not an API client, and T036's sign-in screen now
+    has a `not_allowlisted` outcome — with its explanation and its retry — to send it back into.
+    A JSON body at an API address told a developer, not the rejected visitor FR-005 means to
+    inform."""
     response.status_code = 302
     response.headers["location"] = f"{settings.public_base_url}/?{urlencode({'error': code})}"
     return response
-
-
-def _raise_not_allowlisted() -> NoReturn:
-    """FR-005, as the plain JSON error envelope every domain error in this codebase raises through
-    (`errors.py`) — never `_error_redirect`, which this one code deliberately does not join
-    (see its own docstring)."""
-    raise APIError(
-        status_code=403,
-        code="not_allowlisted",
-        message="This is a closed beta. Your Steam account is not on the invite list yet.",
-    )
 
 
 async def _current_session_row(
@@ -316,7 +308,7 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
         and existing_identity is None
         and steam_id64 not in settings.beta_allowlist_steam_ids
     ):
-        _raise_not_allowlisted()
+        return _error_redirect(response, settings, "not_allowlisted")
 
     if link_mode:
         assert link_target_user_id is not None

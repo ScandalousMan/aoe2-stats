@@ -6,6 +6,14 @@ code this produces — `not_allowlisted` — among `GET /api/auth/steam/callback
 and `data-model.md`'s `users.allowlisted_at` records the opposite case ("Null means the closed beta
 refuses them").
 
+**T030b: `not_allowlisted` now travels as a redirect, not a JSON body.** A rejected visitor is a
+browser mid-redirect from Steam, not an API client, and T036 gave the sign-in screen a
+`not_allowlisted` outcome — with its explanation and its retry — to send it back into. This test
+now reads the failure code off `?error=<code>` in the `Location` header, the same way
+`test_auth_flow.py`'s `_error_code` reads every other callback failure; the user-facing explanation
+itself is asserted where it is actually rendered, `SignInScreen.test.tsx`'s `not_allowlisted`
+coverage, not here.
+
 The allowlist can only be evaluated once a Steam id is known, which means it sits *after* Steam's
 own verification in the callback handler and *before* anything is written for the visitor. That
 ordering is the actual thing this test proves: not merely that the response carries the right error
@@ -25,7 +33,7 @@ start` first, exactly as `test_auth_flow.py`'s `_begin_sign_in` does, so it carr
 `httpx.Client.send` boundary (`packages/providers/src/aoe2stats_providers/base.py`) with the
 frozen fixture T012 captured, the same mechanism `test_auth_flow.py`'s `_FakeSteamAndRelic` uses —
 network is unavailable here by construction otherwise (`tests/conftest.py`, T004; constitution
-III). Relic is never reached: the allowlist gate raises before `resolve_profile` is ever called.
+III). Relic is never reached: the allowlist gate returns before `resolve_profile` is ever called.
 """
 
 from __future__ import annotations
@@ -166,11 +174,19 @@ async def test_non_allowlisted_visitor_is_refused_and_creates_no_account(
     }
     response = client.get(_CALLBACK_PATH, params=params, follow_redirects=False)
 
-    body = response.json()
-    # FR-005: told why, not merely refused — `message` is the explanation, `code` is what the
-    # front end (T036) branches on.
-    assert body["error"]["code"] == "not_allowlisted"
-    assert body["error"]["message"]
+    # T030b: `not_allowlisted` travels the same way `steam_assertion_invalid`, `no_aoe2_profile`
+    # and `profile_already_linked` already do — a 302 back into the app carrying `?error=<code>`
+    # (`test_auth_flow.py`'s `_error_code` reads every callback failure the same way). The
+    # visitor's own explanation is rendered by the front end from that code, not carried in this
+    # response — asserted where it is actually shown, `SignInScreen.test.tsx`'s `not_allowlisted`
+    # coverage (FR-005: told why, not merely refused).
+    assert response.status_code == 302, (
+        f"GET /api/auth/steam/callback did not redirect back into the app for a non-allowlisted "
+        f"visitor — got {response.status_code}: {response.text}"
+    )
+    location = response.headers["location"]
+    query = dict(parse_qsl(urlsplit(location).query))
+    assert query.get("error") == "not_allowlisted"
 
     # No session was established: the bootstrap call sees this visitor exactly as it would see
     # someone who never attempted to sign in.
