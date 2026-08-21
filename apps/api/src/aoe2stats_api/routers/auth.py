@@ -85,7 +85,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -391,13 +393,59 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
             # The allowlist gate above already guarantees `steam_id64 in settings.
             # beta_allowlist_steam_ids` for every `User` row created here — this is the first
             # sign-in that ever passed it for this identity, which is exactly what
-            # `allowlisted_at` records (data-model.md: "Null means the closed beta refuses them").
+            # `allowlisted_at` records (data-model.md: "Null means the closed beta refuses
+            # them"). `user_id` is a freshly minted `uuid4()`, so this insert has nothing
+            # realistic to collide with; it must still run *before* the identity insert below,
+            # since `steam_identities.user_id` is a foreign key into this table. If the identity
+            # insert below then loses its own race, this provisional row is deleted again —
+            # a plain `DELETE` by its own freshly minted id, not a `SAVEPOINT`, is enough: nothing
+            # else in the whole system can yet know this id exists to reference it.
             db_session.add(User(id=user_id, created_at=now, allowlisted_at=now))
-        db_session.add(
-            SteamIdentity(
-                steam_id64=steam_id64, user_id=user_id, verified_at=now, last_sign_in_at=now
-            )
+            await db_session.flush()
+        # T029c: `steam_id64` is `steam_identities`' own primary key, and the read above and this
+        # insert are not atomic — a concurrent callback for this exact same brand-new Steam
+        # account (two tabs, a double-fired form, two devices signing into one Steam account for
+        # the first time ever) can commit its own `SteamIdentity` row in between, and a plain
+        # insert would then collide with it instead of the stale `None` this request read.
+        # `ON CONFLICT DO NOTHING` makes the insert itself conflict-tolerant rather than raising
+        # `IntegrityError` — caught mid-flush, that would poison the rest of *this* transaction
+        # too (verified against a real concurrent conflict, not assumed: a plain `try`/`except`
+        # around `db_session.flush()` here left every later statement on this same `db_session`
+        # answering `PendingRollbackError`, including the `AoeProfile`/`ProfileLink` writes still
+        # to come). `.returning(...)` reports whether this request's own values were the ones
+        # actually written, with nothing left on `db_session` to unwind either way.
+        insert_identity = (
+            pg_insert(SteamIdentity)
+            .values(steam_id64=steam_id64, user_id=user_id, verified_at=now, last_sign_in_at=now)
+            .on_conflict_do_nothing(index_elements=[SteamIdentity.steam_id64])
+            .returning(SteamIdentity.steam_id64)
         )
+        won_the_race = (await db_session.execute(insert_identity)).scalar_one_or_none() is not None
+        if not won_the_race:
+            if not link_mode:
+                # Undo the provisional `User` row above: a concurrent request won the identity
+                # and this account was never going to have anything pointing at it. Deleting it
+                # is what keeps this race honest about "no-op" — the alternative is a real,
+                # if empty, second account for every race this branch loses.
+                await db_session.execute(sa_delete(User).where(User.id == user_id))
+            # A concurrent request won: re-read the identity it actually created and finish this
+            # sign-in against it, exactly as though `existing_identity` had been read correctly
+            # in the first place, rather than answering the whole request with a 500.
+            existing_identity = await db_session.get(SteamIdentity, steam_id64)
+            assert existing_identity is not None, (
+                "on_conflict_do_nothing reported a conflict on steam_identities.steam_id64 but "
+                "no row exists to re-read"
+            )
+            if link_mode:
+                assert link_target_user_id is not None
+                if existing_identity.user_id != link_target_user_id:
+                    # The winner linked this identity to a different account than ours — the
+                    # same outcome the stale-read check above would have produced had it seen
+                    # the winner's row instead of `None`.
+                    return _error_redirect(response, settings, "profile_already_linked")
+            user_id = existing_identity.user_id
+            existing_identity.verified_at = now
+            existing_identity.last_sign_in_at = now
     else:
         existing_identity.verified_at = now
         existing_identity.last_sign_in_at = now
@@ -424,9 +472,20 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
             .select_from(ProfileLink)
             .where(ProfileLink.user_id == user_id, ProfileLink.unlinked_at.is_(None))
         )
-        db_session.add(
-            ProfileLink(
-                id=uuid.uuid4(),
+        new_link_id = uuid.uuid4()
+        # T029c: the `active_links` count above and this insert are not atomic — a concurrent
+        # link for this same account, arriving while it still had zero active links, can commit
+        # its own primary link in between and win `ix_profile_links_user_id_primary`
+        # (data-model.md), or a concurrent link of this exact profile can win `ix_profile_links_
+        # profile_id_active` first. `ON CONFLICT DO NOTHING` with no target catches either — the
+        # two indexes cover different columns, and only one of them can be the cause on any given
+        # insert, but which one is not this statement's business to know — leaving nothing on
+        # `db_session` to unwind and no `IntegrityError` to risk poisoning the rest of this
+        # transaction (see the identical reasoning above, for `steam_identities`).
+        insert_link = (
+            pg_insert(ProfileLink)
+            .values(
+                id=new_link_id,
                 user_id=user_id,
                 profile_id=profile_ref.profile_id,
                 steam_id64=steam_id64,
@@ -437,7 +496,44 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
                 # T054 consumes this flag and clears it once the sweep has actually run.
                 backfill_requested_at=now,
             )
+            .on_conflict_do_nothing()
+            .returning(ProfileLink.id)
         )
+        inserted_link_id = (await db_session.execute(insert_link)).scalar_one_or_none()
+        if inserted_link_id is None:
+            concurrent_link = await db_session.scalar(
+                select(ProfileLink).where(
+                    ProfileLink.profile_id == profile_ref.profile_id,
+                    ProfileLink.unlinked_at.is_(None),
+                )
+            )
+            if concurrent_link is not None:
+                # `ix_profile_links_profile_id_active`: a concurrent request linked this exact
+                # profile first — the same check `existing_link` performed above, re-run against
+                # the row that now actually exists instead of the stale `None` it saw.
+                if concurrent_link.user_id != user_id:
+                    return _error_redirect(response, settings, "profile_already_linked")
+                # Already linked to this same account by the request that won the race: nothing
+                # left to insert, this callback is a no-op success against that row.
+            else:
+                # `ix_profile_links_user_id_primary`: the account's zero-active-links count was
+                # stale. This link still succeeds, just not as primary — the concurrent request
+                # that won the race already holds the one primary slot FR-043 allows, and "exactly
+                # one primary" is the invariant that matters, not which of two simultaneous links
+                # happens to hold it.
+                await db_session.execute(
+                    pg_insert(ProfileLink)
+                    .values(
+                        id=new_link_id,
+                        user_id=user_id,
+                        profile_id=profile_ref.profile_id,
+                        steam_id64=steam_id64,
+                        is_primary=False,
+                        linked_at=now,
+                        backfill_requested_at=now,
+                    )
+                    .on_conflict_do_nothing()
+                )
 
     # FR-009: the rating history starts accumulating from the first sign-in.
     ratings_repo = RatingsRepository(db_session)
