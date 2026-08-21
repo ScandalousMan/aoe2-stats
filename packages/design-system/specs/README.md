@@ -47,15 +47,30 @@ disabling it would be wrong, and here is what happens instead".
 
 ## Measured contrast pairs
 
-Computed 2026-08-20, updated 2026-08-21 after T038a's fix, from `tokens/color.json` with the WCAG
-2.2 relative-luminance formula, rounded down to one decimal, and asserted in
-`tokens/build-tokens.test.mjs` for the pairs that carry an accessibility floor — a colour edit now
-fails a test rather than depending on this table being re-read. **Component specs reference this
-table by pair; they do not restate the numbers.** Recompute on any change to `color.json` — the
-numbers below are the only reason the accessibility sections elsewhere can be short.
+Computed 2026-08-20, updated 2026-08-21 after T038a's fix and again after T034c's, from
+`tokens/color.json` with the WCAG 2.2 relative-luminance formula, rounded down to one decimal, and
+asserted in `tokens/build-tokens.test.mjs` for the pairs that carry an accessibility floor — a
+colour edit now fails a test rather than depending on this table being re-read. **Component specs
+reference this table by pair; they do not restate the numbers.** Recompute on any change to
+`color.json` — the numbers below are the only reason the accessibility sections elsewhere can be
+short.
 
 Thresholds: 4.5:1 for normal text, 3:1 for text at 24px+ (or 18.7px+ bold) and for the boundary,
 fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
+
+**Pairing convention (T034c).** A row in this table names a foreground **and the background the
+component that carries it actually paints behind it** — never the background that happens to be
+"the" surface for that token elsewhere in the system. `border-strong` boundaries a `Button` or
+`Menu` control, and those controls are placed directly on `background` (`ConsentStep`'s decline
+control), on `surface` (`SignInScreen`'s card), and on `surface-raised` (any secondary `Button`
+inside a `Callout`) in different parts of the product — so it has three rows, not one, and the
+lowest of the three is the one that decides whether the token passes. `warning`, `info`, `success`
+and `danger` all colour `Callout` text, and `Callout` is unconditionally `bg-surface-raised`
+(`src/components/Callout/index.tsx`) regardless of what sits behind the callout itself — so those
+four have exactly one row each, against `surface-raised`, and a row against plain `surface` would
+be asserting a pair no component draws. Before adding or changing a row: find every component that
+actually renders the token, per file, and list the background each one paints behind it — the
+table is derived from usage, not from which background is conventionally "the" one for a token.
 
 ### Light theme
 
@@ -74,30 +89,42 @@ fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
 | `success`         | `surface`        | 5.9   | AA                                                                           |
 | `focus-ring`      | `surface`        | 6.7   | passes non-text 3:1                                                          |
 | `focus-ring`      | `background`     | 5.9   | passes non-text 3:1                                                          |
-| `warning`         | `surface`        | 4.7   | AA — fixed, see the rule after the gap register                              |
+| `warning`         | `surface`        | 4.7   | AA, but no component renders this pair — see `surface-raised` below          |
+| `warning`         | `surface-raised` | 4.5   | AA — the real `Callout` heading pair (T034c)                                 |
+| `info`            | `surface-raised` | 6.3   | AA — the real `Callout` heading pair (T034c)                                 |
+| `success`         | `surface-raised` | 5.6   | AA — the real `Callout` heading pair (T034c)                                 |
+| `danger`          | `surface-raised` | 6.2   | AA — the real `Callout` heading pair (T034c)                                 |
 | `accent`          | `surface`        | 4.9   | AA — passes normal text too now; still only used for large text and non-text |
 | `accent-contrast` | `accent`         | 4.9   | AA — fixed, gap DS-1 closed                                                  |
 | `accent-contrast` | `accent-hover`   | 6.7   | AA                                                                           |
 | `accent-contrast` | `accent-active`  | 9.3   | AA                                                                           |
-| `border-strong`   | `surface`        | 3.4   | passes non-text 3:1 — fixed, gap DS-2 closed                                 |
+| `border-strong`   | `background`     | 3.1   | passes non-text 3:1 — the `ConsentStep` decline control's real pair (T034c)  |
+| `border-strong`   | `surface`        | 3.5   | passes non-text 3:1 — fixed, gap DS-2 closed; re-measured after T034c        |
+| `border-strong`   | `surface-raised` | 3.4   | passes non-text 3:1 — a secondary `Button` inside a `Callout` (T034c)        |
 | `border`          | `surface`        | 1.6   | decorative separators only, never a control boundary                         |
 | `text-disabled`   | `surface`        | 2.6   | exempt (1.4.3, inactive) — see rule under DS-3                               |
 
 ### Dark theme
 
-| Foreground            | Background       | Ratio | Verdict                                                   |
-| --------------------- | ---------------- | ----- | --------------------------------------------------------- |
-| `text-primary`        | `surface`        | 13.3  | AAA                                                       |
-| `text-primary`        | `surface-raised` | 12.0  | AAA                                                       |
-| `text-secondary`      | `surface`        | 7.8   | AAA                                                       |
-| `text-secondary`      | `surface-raised` | 7.1   | AAA                                                       |
-| `accent-contrast`     | `accent`         | 8.2   | AA                                                        |
-| `accent`              | `surface`        | 7.7   | AA (unlike light — `accent` is legible as body text here) |
-| `warning`             | `surface`        | 6.8   | AA                                                        |
-| `success`             | `surface`        | 6.4   | AA                                                        |
-| `focus-ring` / `info` | `surface`        | 6.3   | AA, passes non-text 3:1                                   |
-| `danger`              | `surface`        | 5.1   | AA                                                        |
-| `border-strong`       | `surface`        | 3.8   | passes non-text 3:1 — fixed, gap DS-2 closed              |
+| Foreground            | Background       | Ratio | Verdict                                                                     |
+| --------------------- | ---------------- | ----- | --------------------------------------------------------------------------- |
+| `text-primary`        | `surface`        | 13.3  | AAA                                                                         |
+| `text-primary`        | `surface-raised` | 12.0  | AAA                                                                         |
+| `text-secondary`      | `surface`        | 7.8   | AAA                                                                         |
+| `text-secondary`      | `surface-raised` | 7.1   | AAA                                                                         |
+| `accent-contrast`     | `accent`         | 8.2   | AA                                                                          |
+| `accent`              | `surface`        | 7.7   | AA (unlike light — `accent` is legible as body text here)                   |
+| `warning`             | `surface`        | 6.8   | AA, but no component renders this pair — see below                          |
+| `warning`             | `surface-raised` | 6.2   | AA — the real `Callout` heading pair (T034c)                                |
+| `info`                | `surface-raised` | 5.7   | AA — the real `Callout` heading pair (T034c)                                |
+| `success`             | `surface-raised` | 5.8   | AA — the real `Callout` heading pair (T034c)                                |
+| `danger`              | `surface-raised` | 4.6   | AA — the real `Callout` heading pair (T034c), thin margin                   |
+| `success`             | `surface`        | 6.4   | AA                                                                          |
+| `focus-ring` / `info` | `surface`        | 6.3   | AA, passes non-text 3:1                                                     |
+| `danger`              | `surface`        | 5.1   | AA                                                                          |
+| `border-strong`       | `background`     | 4.0   | passes non-text 3:1 — the `ConsentStep` decline control's real pair (T034c) |
+| `border-strong`       | `surface`        | 3.8   | passes non-text 3:1 — fixed, gap DS-2 closed                                |
+| `border-strong`       | `surface-raised` | 3.4   | passes non-text 3:1 — a secondary `Button` inside a `Callout` (T034c)       |
 
 The asymmetry is the thing to remember: **the dark theme is comfortable and the light theme is
 tight.** Every light-theme pair above now clears the normal-text floor it owes — see the rule below
@@ -120,7 +147,7 @@ An implementer who finds themselves needing a value not covered here stops and a
 
 `tokens/build-tokens.test.mjs` now asserts the pairs in the measured contrast table above that
 carry an accessibility floor, so a colour edit that breaks AA fails a test rather than depending on
-this table being re-read (T034a, corrected by T038a below).
+this table being re-read (T034a, corrected by T038a and T034c below).
 
 **Closed — DS-1 and DS-2.** Light `accent` was too light to carry `accent-contrast` at AA, and
 `border-strong` missed the 3:1 non-text floor against `surface` in both themes. T034a darkened
@@ -150,3 +177,35 @@ raised the assertion in `tokens/build-tokens.test.mjs` to the 4.5:1 this pair ac
 pairing carries no component today (grep finds no use of it under `src/`), so it needed no
 correction, but it is not clear of even the 3:1 non-text floor and must be re-derived before
 anything is built against it.
+
+**Closed — T034c.** Both DS-2 and T038a's `warning` fix named a real pair — `border-strong` on
+`surface`, `warning` on `surface` — that was nonetheless not the one any component draws. `Button`'s
+`secondary`/`ghost`/`destructive` variants and `Menu`'s trigger place `border-strong` on
+`background` (`ConsentStep`'s decline control, via `DashboardContainer`'s `<main
+className="bg-background">`) and on `surface-raised` (a secondary `Button` inside a `Callout`) just
+as often as on `surface`, and the `background` pair measured 2.99:1 in the light theme — under the
+3:1 floor, on the control FR-034 requires be genuinely declinable. `warning` colours only `Callout`
+text, and `Callout` is unconditionally `bg-surface-raised`, never `surface`; the real pair measured
+4.52:1 — over the 4.5:1 floor, but by two hundredths, none of which the `surface` assertion's 4.75:1
+reading could have shown. This is the third contrast defect of the same shape: an assertion correct
+about the pair it names, wrong about which pair the component renders.
+
+Light `border-strong` moved from `#a28453` to `#9d8050` — darkened within its own hue, the same
+move T034a and T038a made — so the `background` pair clears 3:1 with a small margin (3.16:1) rather
+than sitting under it; the `surface` and `surface-raised` pairs, already passing, gained margin as a
+side effect. `warning` needed no colour change: the real pair already clears its floor, if only
+just, so `tokens/build-tokens.test.mjs` now asserts it against `surface-raised` instead of moving
+the colour again. `info`, `success` and `danger` colour the same `Callout` heading role and carried
+no assertion at all before this task; all three clear 4.5:1 against `surface-raised` in both themes
+without a colour change (dark `danger` is the tightest, at 4.6:1, and should be watched the next
+time `danger` or `surface-raised` moves).
+
+The pairing convention above — assert a token against every background a component actually paints
+behind it, found by reading the component — is what this task adds structurally, precisely so a
+fourth instance of this defect has to fail a test that already exists rather than waiting for a
+fourth review to notice by hand.
+
+Recapturing note: light `border-strong`'s change is a few points darker on every secondary `Button`
+and `Menu` trigger border, in both light-theme contexts. The Storybook baselines for `Button`,
+`Menu` and any story that renders a secondary/ghost/destructive control or a menu trigger in the
+light theme should be treated as needing a recapture; this task does not attempt it.

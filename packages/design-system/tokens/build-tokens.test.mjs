@@ -73,11 +73,13 @@ test('tokens.ts exports every family as a typed, var()-referencing const', () =>
   assert.match(ts, /'accent': 'var\(--ds-color-accent\)',/)
 })
 
-// --- Contrast assertions (T034a, corrected by T038a). These are the pairs the specs'
+// --- Contrast assertions (T034a, corrected by T038a and T034c). These are the pairs the specs'
 // measured-contrast table (DS-1, DS-2) names as failing, plus light `warning`, which T034a wrongly
 // judged exempt from the normal-text floor and T038a corrected. Each assertion encodes the actual
 // accessibility obligation on that pair — not a blanket 4.5:1 — so an edit to color.json is judged
-// the same way T034 judged it.
+// the same way T034 judged it. T034c corrected the background half of that obligation: several of
+// these pairs were asserted against a real but unused background, rather than the one the
+// component actually paints — see the "Real rendered pairs" block below.
 
 test('light accent-contrast on accent clears AA normal text (4.5:1) — DS-1, the primary button fill', () => {
   const { accent, 'accent-contrast': accentContrast } = color.light
@@ -110,32 +112,84 @@ test('light accent-hover and accent-active stay AA and stay distinct from accent
   assert.notStrictEqual(accent, active, 'accent and accent-active must not be the same colour')
 })
 
-test('border-strong clears the 3:1 non-text floor against surface in both themes — DS-2', () => {
+// --- Real rendered pairs (T034c) ---------------------------------------------------------------
+// A contrast obligation belongs to a *pair* — foreground and the background a component actually
+// paints behind it — not to a token read in isolation. Twice now (DS-2, then T038a's own warning
+// fix) an assertion here named a real pair that was nonetheless not the one any component draws,
+// and passed while the rendered control failed: `border-strong` was asserted against `surface`
+// (3.39:1) while `Button`'s secondary variant, placed directly on `ConsentStep`'s page background
+// by `DashboardContainer` (`apps/web/src/features/profile/DashboardContainer.tsx`, `<main
+// className="bg-background">`), draws against `background` and measured 2.99:1 there — under the
+// floor. `warning` was asserted against `surface` (4.75:1) while `Callout` — the only component
+// that ever colours text with `warning` — is unconditionally `bg-surface-raised`
+// (`src/components/Callout/index.tsx`), where the pair measures 4.52:1: over the floor, but by
+// two hundredths, none of which showed up in a test that checked a different background.
+//
+// The fix here is the same shape for both: assert every background the token is actually
+// rendered against, found by reading the component, not the one that first comes to mind. Below,
+// each assertion names the component and file that draws the pair it checks.
+function assertRealPair(theme, foreground, background, floor, label) {
+  const ratio = contrastRatio(foreground, background)
+  assert.ok(
+    ratio >= floor,
+    `${label} is ${ratio.toFixed(2)}:1 in the ${theme} theme, below the ${floor}:1 floor it owes`,
+  )
+}
+
+test('border-strong clears the 3:1 non-text floor against every background it is rendered on — DS-2, T034c', () => {
+  // `border-strong` boundaries `Button`'s `secondary`/`ghost`/`destructive` variants and `Menu`'s
+  // trigger (`src/components/Button/index.tsx`, `src/components/Menu/index.tsx`). Those controls
+  // are placed, across the product, directly on all three surfaces a page ever paints behind one:
+  //  - `background` — `ConsentStep`'s onboarding decline control ("Not now") on
+  //    `DashboardContainer`'s `<main className="bg-background">`. This is FR-034's genuinely-
+  //    declinable control, and the pair that measured 2.99:1 and moved light `border-strong`.
+  //  - `surface` — `SignInScreen`'s card (`bg-surface`) and the `Menu` trigger's own fill.
+  //  - `surface-raised` — every secondary `Button` rendered inside a `Callout`
+  //    (`SignInScreen`'s outcome actions, `ProfileSummary`'s "Back to primary").
   for (const theme of ['light', 'dark']) {
-    const { surface, 'border-strong': borderStrong } = color[theme]
-    const ratio = contrastRatio(borderStrong, surface)
-    assert.ok(
-      ratio >= 3,
-      `border-strong on surface is ${ratio.toFixed(2)}:1 in the ${theme} theme, below the 3:1 ` +
-        'WCAG 1.4.11 floor for the boundary of an interactive control',
-    )
+    const {
+      background,
+      surface,
+      'surface-raised': surfaceRaised,
+      'border-strong': borderStrong,
+    } = color[theme]
+    for (const [bgName, bg] of [
+      ['background', background],
+      ['surface', surface],
+      ['surface-raised', surfaceRaised],
+    ]) {
+      assertRealPair(theme, borderStrong, bg, 3, `border-strong on ${bgName}`)
+    }
   }
 })
 
-test('light warning clears the 4.5:1 normal-text floor it actually owes (T038a)', () => {
+test('warning clears the 4.5:1 normal-text floor against the surface its Callout heading actually renders on — T038a, corrected by T034c', () => {
   // Structural rule from T034 stays exactly as it was: callout body text is always
-  // `text-primary`; `warning` only colours the stripe and the heading. T034a asserted this pair
-  // against the 3:1 non-text/large-text floor on the stated basis that `warning` never carries
-  // normal-size text — but `Callout`'s heading renders `font-sans text-md font-semibold` (16px at
-  // weight 600, src/components/Callout/index.tsx), and WCAG's large-text allowance needs 24px, or
-  // 18.66px at weight 700+. The heading is normal-size text, so this pair owes 4.5:1 like any
-  // other, not 3:1. It measured 4.13:1 against that real floor; T038a darkened `warning` within
-  // its own hue (as T034a darkened `accent` for DS-1) to clear it.
-  const { surface, warning } = color.light
-  const ratio = contrastRatio(warning, surface)
-  assert.ok(
-    ratio >= 4.5,
-    `warning on surface is ${ratio.toFixed(2)}:1 in the light theme, below the 4.5:1 normal-text ` +
-      'floor its callout heading use actually owes',
-  )
+  // `text-primary`; `warning` only colours the stripe and the heading, and `Callout`'s heading
+  // renders `font-sans text-md font-semibold` (16px at weight 600) — normal-size text, so this
+  // pair owes 4.5:1. T038a corrected the threshold but asserted it against `surface`; `Callout`'s
+  // own container is unconditionally `bg-surface-raised` (`src/components/Callout/index.tsx`),
+  // never `surface`, so that is the pair every consumer actually draws.
+  for (const theme of ['light', 'dark']) {
+    const { warning, 'surface-raised': surfaceRaised } = color[theme]
+    assertRealPair(theme, warning, surfaceRaised, 4.5, 'warning on surface-raised')
+  }
+})
+
+test('info, success and danger clear the 4.5:1 floor their Callout heading use owes, in both themes — T034c', () => {
+  // The three tones nothing asserted before this task. They sit in the exact same component as
+  // `warning`, coloring the same heading role (`toneClasses` in `src/components/Callout/index.tsx`)
+  // in the same unconditional `bg-surface-raised` container — the fact that they happen to clear
+  // the floor comfortably today is not a reason to leave them unchecked; it is the same rule
+  // that let `border-strong` and `warning` regress silently in the first place.
+  for (const theme of ['light', 'dark']) {
+    const { 'surface-raised': surfaceRaised, info, success, danger } = color[theme]
+    for (const [name, hex] of [
+      ['info', info],
+      ['success', success],
+      ['danger', danger],
+    ]) {
+      assertRealPair(theme, hex, surfaceRaised, 4.5, `${name} heading text on surface-raised`)
+    }
+  }
 })
