@@ -130,7 +130,6 @@ dependencies = [
     { name = "aoe2stats-providers" },
     { name = "aoe2stats-storage" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "pydantic-settings" },
 ]
 
@@ -140,7 +139,6 @@ requires-dist = [
     { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-storage", editable = "packages/storage" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-settings", specifier = ">=2.6" },
 ]
 

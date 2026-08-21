@@ -8,15 +8,15 @@ dependencies = [
   "fastapi>=0.115",
   "aoe2stats-storage",
   # `routers/auth.py` (T029) builds the one `httpx.Client`/`httpx.AsyncClient` pair every
-  # per-request `SteamAuthProvider`/`RelicProfileProvider` instance shares, and hands them to
-  # `aoe2stats-providers` rather than issuing any request itself — constitution III's "apps/*
-  # ... never open an outbound connection" is about where a *request* is issued (inside
-  # `SyncBaseProvider._request`/`AsyncBaseProvider._request`, in `packages/providers`), not about
-  # which package is allowed to construct the client object a provider is built from — the same
-  # split `deps.py` already draws for `ObjectStore` and the database engine. `httpx` was
-  # previously dev-only, imported only by `TestClient` under `tests/`; T029 is what makes it a
-  # real runtime dependency of this package for the first time.
-  "httpx>=0.27",
+  # per-request `SteamAuthProvider`/`RelicProfileProvider` instance shares by calling
+  # `aoe2stats_providers.wiring.build_sync_client_resources`/`build_async_client_resources`
+  # rather than constructing an `httpx.Client` itself (T014f) — so this package needs no direct
+  # `httpx` dependency of its own: `aoe2stats-providers` already declares it as a runtime
+  # dependency, and `apps/api/tests/` gets it transitively through that, the same way it gets
+  # every other transitive requirement no package here restates. Declaring it again here would
+  # re-open the network boundary `tests/architecture/test_import_graph.py` (constitution III)
+  # checks by import graph, not by dependency list — this package must have no *reason* to write
+  # `import httpx` itself, and a declared dependency is exactly that reason.
   "aoe2stats-providers",
   # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
   # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
