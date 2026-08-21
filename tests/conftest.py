@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from tests.db import NO_DATABASE_SKIP_MARKER
 
 _real_connect = socket.socket.connect
 
@@ -58,3 +59,69 @@ def _block_network(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         return
     monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
     yield
+
+
+def _skip_reason_text(report: pytest.TestReport) -> str:
+    """`pytest.skip(reason)` reports its reason as the last element of a `(path, lineno, message)`
+    tuple in `report.longrepr`; anything else (a plain string, `None`) is stringified as-is."""
+    longrepr = report.longrepr
+    if isinstance(longrepr, tuple) and len(longrepr) >= 1:
+        return str(longrepr[-1])
+    return str(longrepr)
+
+
+_NO_DB_BANNER_PRINTED_ATTR = "_aoe2stats_no_db_banner_printed"
+
+
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter, exitstatus: int, config: pytest.Config
+) -> None:
+    """T015d: an unmissable banner when the database-backed suite skipped locally.
+
+    `tests/db.py` fails hard under `CI` (T015a) and skips everywhere else, because a contributor
+    genuinely without Postgres running must not be blocked from testing `packages/core` or
+    `packages/providers`, neither of which ever touches a database. That is the right call for
+    those tests, but the local exit code stays 0 whether or not a single database-backed test ran
+    — the same shape of defect T015a closed for CI, just outside it. This hook does not change the
+    exit code: doing so would fail a run for a contributor who has no reason to have Postgres
+    running today, which is exactly the case `tests/db.py` is designed to accommodate. It makes
+    the gap impossible to miss instead, which is the correct amount of friction for a run whose
+    other ~85% of tests (everything outside `apps/api`, `apps/ingester` and `tests/architecture`)
+    genuinely did pass clean.
+
+    The guard below is unrelated to that decision: `pyproject.toml` registers this file both
+    explicitly (`-p tests.conftest`) and implicitly, since `tests/architecture` is a `testpaths`
+    entry and this file is its ancestor conftest — pytest imports the same source file under two
+    different module names (`tests.conftest` and `conftest`), which are two separate module
+    objects with separate globals, so a plain module-level flag does not dedupe between them. The
+    one object pluggy hands both hook calls in common is `config` itself, so the flag lives there
+    instead. This also runs `_block_network` twice — harmless, since `monkeypatch.setattr` is
+    idempotent — but fixing that double registration is out of this task's scope.
+    """
+    if getattr(config, _NO_DB_BANNER_PRINTED_ATTR, False):
+        return
+    no_db_skips = [
+        report
+        for report in terminalreporter.stats.get("skipped", [])
+        if NO_DATABASE_SKIP_MARKER in _skip_reason_text(report)
+    ]
+    if not no_db_skips:
+        return
+    setattr(config, _NO_DB_BANNER_PRINTED_ATTR, True)
+    terminalreporter.write_sep("=", "NO DATABASE — THIS IS NOT A CLEAN PASS", red=True, bold=True)
+    terminalreporter.write_line(
+        f"{len(no_db_skips)} test(s) skipped for lack of a reachable Postgres database "
+        "(tests/db.py, T015): every database-backed integration test, including all of Phase 3 "
+        "and later, did NOT run. A green exit code here does not mean those routers passed — it "
+        "means they were never exercised.",
+        red=True,
+        bold=True,
+    )
+    terminalreporter.write_line(
+        "Start Postgres at the default tests/db.py falls back to "
+        "(postgresql://postgres:postgres@localhost:5432/postgres), or point TEST_DATABASE_URL at "
+        "one, then re-run.",
+        red=True,
+        bold=True,
+    )
+    terminalreporter.write_sep("=", red=True, bold=True)
