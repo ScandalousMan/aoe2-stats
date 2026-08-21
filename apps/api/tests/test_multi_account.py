@@ -55,24 +55,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import AoeProfile, ProfileLink, SteamIdentity, User
 from aoe2stats_storage.models import Session as UserSession
 
-# Every test in this file is expected to fail for exactly one reason — the profiles router (T031)
-# does not exist yet — until it does. `strict=True` is what makes that honest: the moment T031
-# lands and a test starts passing, `strict=True` turns the *run* red instead of letting a stale
-# xfail hide it, which is the whole point of marking these tests failing rather than skipping
-# them. Do not drop `strict=True`.
-pytestmark = [
-    pytest.mark.usefixtures("environment"),
-    pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "the profiles router (T031) is not implemented yet, not this test-first task (T023)"
-        ),
-    ),
-]
+pytestmark = [pytest.mark.usefixtures("environment")]
 
 #: See the module docstring. Not yet fixed by T028; shared with test_unlink.py and test_consent.py.
 SESSION_COOKIE_NAME = "session_id"
@@ -167,8 +155,12 @@ class _FakeUpstream:
             }
             for persona in self.personas.values()
         ]
+        # `code: 0` is Relic's "resolved" outcome (docs/data-sources.md; `RelicProfileProvider.
+        # resolve_profile` treats anything else, `1` included, as "no such profile" and returns
+        # `None` — the value this fake originally carried, which silently made every `resolve_
+        # profile` call in this file answer `no_aoe2_profile` regardless of the persona.
         body = {
-            "result": {"code": 1, "message": "OK"},
+            "result": {"code": 0, "message": "OK"},
             "statGroups": member_groups,
             "leaderboardStats": leaderboard_stats,
         }
@@ -258,7 +250,13 @@ async def _seed_linked_account(
 async def _sign_in_as(client: TestClient, db_session: AsyncSession, user: User) -> None:
     """Insert a `sessions` row directly and hand the client its cookie — see the module docstring:
     there is no auth router yet (T029) to sign in through for an account that must simply already
-    exist when a test begins."""
+    exist when a test begins.
+
+    Signed exactly as `security.issue_session_cookie` signs a real one (`<sessions.id>.<hmac-
+    sha256 signature>`, `security.py`) — `security.read_session_id` rejects anything else before a
+    query is ever issued, which an unsigned raw `session_id` — this helper's original form —
+    always was.
+    """
     session_id = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
     db_session.add(
@@ -267,7 +265,8 @@ async def _sign_in_as(client: TestClient, db_session: AsyncSession, user: User) 
         )
     )
     await db_session.commit()
-    client.cookies.set(SESSION_COOKIE_NAME, session_id)
+    secret = get_settings().app_secret_key.get_secret_value()
+    client.cookies.set(SESSION_COOKIE_NAME, security._sign(session_id, secret))
 
 
 # --- The flow actually under test: linking a second Steam account --------------------------------

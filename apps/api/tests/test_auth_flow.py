@@ -61,16 +61,6 @@ _NO_PROFILE_STEAM_ID64 = "76561197960287930"
 _START_PATH = "/api/auth/steam/start"
 _CALLBACK_PATH = "/api/auth/steam/callback"
 
-# Every test in this file is expected to fail for exactly one reason — the auth router (T029) and
-# the providers it calls (T026, T027) do not exist yet — until they do. `strict=True` is what makes
-# that honest: the moment those tasks land and a test starts passing, `strict=True` turns the *run*
-# red instead of letting a stale xfail hide it, which is the whole point of marking these tests
-# failing rather than skipping them. Do not drop `strict=True`.
-XFAIL_REASON = (
-    "the auth router (T029) and its providers (T026, T027) are not implemented yet, "
-    "not this test-first task (T021)"
-)
-
 
 # --- The fake upstream: the httpx transport boundary every provider is built on -----------------
 
@@ -245,7 +235,6 @@ def _sign_in(
 # --- Scenario 1 --------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_sign_in_resolves_profile_and_ratings_with_no_input(
     client: TestClient, fake_upstream: _FakeSteamAndRelic
 ) -> None:

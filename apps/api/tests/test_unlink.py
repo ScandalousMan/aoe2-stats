@@ -29,23 +29,29 @@ are the most literal reading of FR-004 and of the sibling `/api/privacy/erase` p
 Relinking is exercised through the plain (non-`?link=1`) callback, because the Steam identity that
 proves ownership of this profile already exists on the user from the initial link — relinking the
 *same* profile is a returning sign-in (FR-002, spec.md Acceptance Scenario 2), not the "add a
-second Steam account" flow `?link=1` covers (that is T023's scenario). Forging a real Steam OpenID
-assertion is out of reach here regardless of the route existing: `SteamAuthProvider.verify` (T026)
-is not written, so whatever request shape is sent below 404s the same way — the query parameters
-are representative of the real wire format (`docs/data-sources.md`, `packages/providers/fixtures/
-steam/`) rather than exact, since nothing yet parses them.
+second Steam account" flow `?link=1` covers (that is T023's scenario). `SteamAuthProvider.verify`
+(T026) and the auth router (T029) are both implemented as of this task, so a genuine round trip
+through `check_authentication` is exercised for real: `fake_relink_upstream` below intercepts at
+the `httpx.Client.send` / `httpx.AsyncClient.send` boundary every provider is built on
+(`packages/providers/src/aoe2stats_providers/base.py`), the same convention `test_auth_flow.py`
+and `test_multi_account.py` already use, rather than a hand-built parameter set that could only
+ever 404 or fail signature verification.
 """
 
 from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qsl, urlsplit
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aoe2stats_api import security
+from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
     AoeProfile,
     CaptureSource,
@@ -58,21 +64,7 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.models import Session as UserSession
 
-# Every test in this file is expected to fail for exactly one reason — the profiles and auth
-# routers (T029, T031) do not exist yet — until they do. `strict=True` is what makes that honest:
-# the moment those tasks land and a test starts passing, `strict=True` turns the *run* red instead
-# of letting a stale xfail hide it, which is the whole point of marking these tests failing rather
-# than skipping them. Do not drop `strict=True`.
-pytestmark = [
-    pytest.mark.usefixtures("environment"),
-    pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "the profiles and auth routers (T029, T031) are not implemented yet, "
-            "not this test-first task (T024)"
-        ),
-    ),
-]
+pytestmark = [pytest.mark.usefixtures("environment")]
 
 #: See the module docstring, point 1. Not yet fixed by T028.
 SESSION_COOKIE_NAME = "session_id"
@@ -116,7 +108,13 @@ async def _seed_linked_profile(
 
 async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> None:
     """Insert a `sessions` row directly and hand the client its cookie — see the module docstring,
-    point 1: there is no auth router yet (T029) to sign in through."""
+    point 1: there is no auth router yet (T029) to sign in through.
+
+    The cookie value must be signed exactly as `security.issue_session_cookie` signs a real one
+    (`<sessions.id>.<hmac-sha256 signature>`, `security.py`): `security.read_session_id` rejects
+    anything else before a query is ever issued, which an unsigned raw `session_id` — this
+    helper's original form — always was.
+    """
     session_id = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
     db_session.add(
@@ -128,7 +126,8 @@ async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> 
         )
     )
     await db_session.commit()
-    client.cookies.set(SESSION_COOKIE_NAME, session_id)
+    secret = get_settings().app_secret_key.get_secret_value()
+    client.cookies.set(SESSION_COOKIE_NAME, security._sign(session_id, secret))
 
 
 async def _seed_stored_replay(
@@ -161,6 +160,114 @@ async def _seed_stored_replay(
         )
     )
     await db_session.commit()
+
+
+# --- The fake upstream for the relink test's real callback round trip ----------------------------
+#
+# `test_auth_flow.py`'s and `test_multi_account.py`'s convention: intercept at `httpx.Client.send`
+# / `httpx.AsyncClient.send`, the one boundary every provider is built on (`packages/providers/
+# src/aoe2stats_providers/base.py`), rather than any dependency name internal to the router.
+
+_STEAM_CHECK_AUTH_VALID = "ns:http://specs.openid.net/auth/2.0\nis_valid:true"
+
+
+def _begin_sign_in(client: TestClient) -> tuple[str, dict[str, str]]:
+    """`GET /api/auth/steam/start`, returning the exact `openid.return_to` Steam would echo back
+    and its own query parameters — the CSRF `state` this feature embeds there is only known once
+    the server has issued it."""
+    response = client.get("/api/auth/steam/start", follow_redirects=False)
+    assert response.status_code == 302, (
+        f"GET /api/auth/steam/start did not redirect to Steam: {response.status_code} "
+        f"{response.text}"
+    )
+    location = response.headers["location"]
+    parsed = urlsplit(location)
+    assert parsed.hostname == "steamcommunity.com", f"expected a redirect to Steam, got {location}"
+    start_params = dict(parse_qsl(parsed.query))
+    return_to = start_params["openid.return_to"]
+    return_to_query = dict(parse_qsl(urlsplit(return_to).query))
+    return return_to, return_to_query
+
+
+def _relink_callback_params(steam_id64: str, return_to: str) -> dict[str, str]:
+    """A syntactically well-formed OpenID 2.0 `id_res` assertion for `steam_id64`."""
+    identity = f"https://steamcommunity.com/openid/id/{steam_id64}"
+    return {
+        "openid.ns": "http://specs.openid.net/auth/2.0",
+        "openid.mode": "id_res",
+        "openid.op_endpoint": "https://steamcommunity.com/openid/login",
+        "openid.claimed_id": identity,
+        "openid.identity": identity,
+        "openid.return_to": return_to,
+        "openid.response_nonce": f"2026-08-20T12:00:00Z{steam_id64}",
+        "openid.assoc_handle": "1234567890",
+        "openid.signed": (
+            "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle"
+        ),
+        "openid.sig": "dGVzdC1zaWduYXR1cmUtdmFsdWU=",
+    }
+
+
+@pytest.fixture
+def fake_relink_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Steam always verifies, and Relic resolves `_STEAM_ID64` back to `_PROFILE_ID` — just enough
+    of both wire shapes (`docs/data-sources.md`) for the relink test's callback to complete a
+    genuine, successful returning sign-in rather than 404 or fail signature verification against a
+    real network call."""
+    member = {
+        "profile_id": _PROFILE_ID,
+        "name": f"/steam/{_STEAM_ID64}",
+        "alias": "TestPlayer",
+        "country": "FR",
+        "personal_statgroup_id": _PROFILE_ID,
+        "clanlist_name": "",
+        "leaderboardregion_id": 0,
+        "level": 1,
+        "xp": 0,
+    }
+    personal_stat_body = {
+        "result": {"code": 0, "message": "OK"},
+        "statGroups": [{"id": _PROFILE_ID, "type": 1, "name": "", "members": [member]}],
+        "leaderboardStats": [
+            {
+                "statgroup_id": _PROFILE_ID,
+                "leaderboard_id": 3,
+                "rating": 1000,
+                "rank": -1,
+                "ranklevel": 0,
+                "ranktotal": 0,
+                "regionrank": -1,
+                "regionranktotal": 0,
+                "wins": 0,
+                "losses": 0,
+                "streak": 0,
+                "drops": 0,
+                "disputes": 0,
+                "highestrank": 0,
+                "highestranklevel": 0,
+                "highestrating": 1000,
+                "lastmatchdate": 0,
+            }
+        ],
+    }
+
+    def sync_send(self: httpx.Client, request: httpx.Request, **kwargs: object) -> httpx.Response:
+        if request.url.host == "steamcommunity.com":
+            return httpx.Response(200, text=_STEAM_CHECK_AUTH_VALID, request=request)
+        # `TestClient` itself is an `httpx.Client` under the hood — its own traffic to the FastAPI
+        # app must pass through untouched, only Steam is faked (test_auth_flow.py's convention).
+        return original_sync_send(self, request, **kwargs)  # type: ignore[no-any-return]
+
+    async def async_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != "aoe-api.worldsedgelink.com":
+            raise AssertionError(f"unexpected outbound async request to {request.url}")
+        return httpx.Response(200, json=personal_stat_body, request=request)
+
+    original_sync_send = httpx.Client.send
+    monkeypatch.setattr(httpx.Client, "send", sync_send)
+    monkeypatch.setattr(httpx.AsyncClient, "send", async_send)
 
 
 async def test_unlink_preview_states_replay_consequences_and_does_not_unlink(
@@ -260,7 +367,7 @@ async def test_unlink_confirmed_leaves_no_active_link_for_ingestion_to_select(
 
 
 async def test_relink_after_unlink_creates_a_new_active_link(
-    client: TestClient, db_session: AsyncSession
+    client: TestClient, db_session: AsyncSession, fake_relink_upstream: None
 ) -> None:
     """Edge case (spec.md): a user unlinks a profile and later relinks the same one. The partial
     unique index (`ix_profile_links_profile_id_active`, T007) exists exactly so this does not
@@ -272,31 +379,17 @@ async def test_relink_after_unlink_creates_a_new_active_link(
     unlink_response = client.delete(f"/api/profiles/{_PROFILE_ID}?confirm=true")
     assert unlink_response.status_code == 200
 
-    # Representative of the real wire format (docs/data-sources.md, packages/providers/fixtures/
-    # steam/) rather than a valid signed assertion: no `SteamAuthProvider` exists yet to verify
-    # one, and the route itself does not exist yet either, so this 404s regardless (see the
-    # module docstring).
+    return_to, return_to_query = _begin_sign_in(client)
+    params = {**return_to_query, **_relink_callback_params(_STEAM_ID64, return_to)}
     callback_response = client.get(
-        "/api/auth/steam/callback",
-        params={
-            "openid.ns": "http://specs.openid.net/auth/2.0",
-            "openid.mode": "id_res",
-            "openid.op_endpoint": "https://steamcommunity.com/openid/login",
-            "openid.claimed_id": f"https://steamcommunity.com/openid/id/{_STEAM_ID64}",
-            "openid.identity": f"https://steamcommunity.com/openid/id/{_STEAM_ID64}",
-            "openid.return_to": "http://localhost:5173/api/auth/steam/callback",
-            "openid.response_nonce": "2026-08-20T00:00:00Ztest-nonce",
-            "openid.assoc_handle": "test-assoc-handle",
-            "openid.signed": (
-                "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle"
-            ),
-            "openid.sig": "test-signature-not-real",
-        },
-        follow_redirects=False,
+        "/api/auth/steam/callback", params=params, follow_redirects=False
     )
-    assert callback_response.status_code in (200, 302), (
-        "a relink of the same profile must succeed through a returning sign-in"
+    assert callback_response.is_redirect, (
+        f"a relink of the same profile must succeed through a returning sign-in: "
+        f"{callback_response.status_code} {callback_response.text}"
     )
+    redirect_query = dict(parse_qsl(urlsplit(callback_response.headers.get("location", "")).query))
+    assert "error" not in redirect_query, f"relink callback failed: {redirect_query}"
 
     db_session.expire_all()
     links = (
