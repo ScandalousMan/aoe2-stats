@@ -7,6 +7,17 @@ dependencies = [
   "pydantic-settings>=2.6",
   "fastapi>=0.115",
   "aoe2stats-storage",
+  # `routers/auth.py` (T029) builds the one `httpx.Client`/`httpx.AsyncClient` pair every
+  # per-request `SteamAuthProvider`/`RelicProfileProvider` instance shares by calling
+  # `aoe2stats_providers.wiring.build_sync_client_resources`/`build_async_client_resources`
+  # rather than constructing an `httpx.Client` itself (T014f) — so this package needs no direct
+  # `httpx` dependency of its own: `aoe2stats-providers` already declares it as a runtime
+  # dependency, and `apps/api/tests/` gets it transitively through that, the same way it gets
+  # every other transitive requirement no package here restates. Declaring it again here would
+  # re-open the network boundary `tests/architecture/test_import_graph.py` (constitution III)
+  # checks by import graph, not by dependency list — this package must have no *reason* to write
+  # `import httpx` itself, and a declared dependency is exactly that reason.
+  "aoe2stats-providers",
   # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
   # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
   # stage — so keep this import lazy, inside that one handler, forever: a module-scope import
@@ -15,17 +26,9 @@ dependencies = [
   "aoe2stats-ingester",
 ]
 
-[dependency-groups]
-# `httpx` is not imported by any module under `src/` — Starlette's `TestClient` (`fastapi.
-# testclient`, `starlette.testclient`) wraps it, but only `tests/` uses `TestClient` (T014c,
-# T018). Declaring it under `dependencies` made it a *runtime* dependency of exactly the
-# component constitution III restricts from reaching the network (T018d). `uv sync --all-packages
-# --dev` (`.github/workflows/pr.yml`) installs every workspace member's own `dev` group in
-# addition to the root's, so this still installs in CI and locally with no new invocation needed.
-dev = ["httpx>=0.27"]
-
 [tool.uv.sources]
 aoe2stats-storage = { workspace = true }
+aoe2stats-providers = { workspace = true }
 aoe2stats-ingester = { workspace = true }
 
 [build-system]

@@ -65,9 +65,13 @@ GET /community/leaderboard/getRecentMatchHistory?title=age2&profile_ids=[a,b,c]
 GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&count=N&sortBy=1
 ```
 
-- `getPersonalStat` resolves **steamid64 to profile_id** and returns, per leaderboard, `rating`,
-  `rank`, `wins`, `losses`, `streak`, `highestrating`, `lastmatchdate`. Payload ~8 KB.
-  Verified: `76561197984749679` resolves to profile `196240`.
+- `getPersonalStat` resolves **steamid64 to profile_id** and returns, per leaderboard,
+  `leaderboard_id`, `rating`, `rank`, `wins`, `losses`, `streak`, `highestrating`, `lastmatchdate`
+  — an id, never a name. `getAvailableLeaderboards` could resolve one, but nothing in this
+  application calls it (constitution III: no provider call outside `packages/providers`, and none
+  is wired up); `apps/api/src/aoe2stats_api/leaderboards.py` names the standard ladders instead,
+  as static reference data rather than a value fetched per call. Payload ~8 KB. Verified:
+  `76561197984749679` resolves to profile `196240`.
 - `getRecentMatchHistory` returns `id` (the `gameId` the replay endpoint expects), `matchtype_id`,
   `mapname`, `startgametime`, `completiontime`, and `matchhistoryreportresults[]` with one row per
   player. Payload ~400 KB per profile.

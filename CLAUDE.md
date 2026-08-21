@@ -102,6 +102,32 @@ One task in `tasks.md` is one `implementer` invocation. `/speckit-implement` orc
 not write code itself: the `SubagentStop` hook matches `implementer` and refuses a hand-back on red
 tests, so code written outside an agent never meets that gate.
 
+### Test-first tasks and the green-tree gate
+
+A test task's own instruction ("write it, watch it fail") and the `SubagentStop` gate ("no red
+hand-back") contradict each other head-on. Resolve it with `@pytest.mark.xfail(strict=True,
+reason="<implementing task id> not implemented yet")`, never with a skip.
+
+The test body runs with every assertion intact, the expected failure keeps the suite green, and
+`strict=True` turns the run red the moment the implementation makes it pass — which forces the
+marker off instead of letting a stale `xfail` hide a regression. Import the not-yet-existent module
+*inside* the test body: a module-scope import of a missing module is a collection error that takes
+the whole workspace suite down with it.
+
+`pytest.importorskip` is the wrong tool here and was tried first. A skipped test proves nothing
+while reporting green — the same fault T015a was written to close — and six of the seven Phase 3
+test agents reached for it independently under gate pressure. That is a property of the squeeze, not
+of the agents: expect the next batch to reach for it too unless the dispatch says otherwise.
+
+### Dispatching a parallel `[P]` batch
+
+Every dispatch tells the agent: **do not modify a file outside your task's named paths.** If the
+shared gate fails because of a sibling's file, report it and hand back — do not fix it. Agents in a
+`[P]` batch share one working tree and cannot see each other's work, so an agent that "helpfully"
+repairs a neighbour's file silently overwrites work from a task it knows nothing about. This is not
+hypothetical: it cost four files' worth of rework in the Phase 3 test batch, and it was caught only
+because one agent noticed its own file being rewritten underneath it and said so.
+
 ## Commands
 
 - `uv run pytest` / `uv run ruff format .` / `uv run ruff check --fix .` / `uv run mypy`

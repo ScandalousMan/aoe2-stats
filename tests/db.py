@@ -24,6 +24,14 @@ module fails hard instead when `CI` is set (the convention GitHub Actions and ev
 runner exports), and only skips outside CI, where a contributor may legitimately not have Postgres
 running. Reachability is checked once per session against `TEST_DATABASE_URL`, or that same local
 default.
+
+**T015d**: a skip outside CI is legitimate but still looks identical to a clean pass in the exit
+code a developer actually sees, which is the same shape of defect T015a closed for CI. Rather than
+failing the whole local run — which would also punish someone working only on `packages/core` or
+`packages/providers`, whose tests never touch a database and must not be held hostage to one being
+installed — `tests/conftest.py`'s `pytest_terminal_summary` hook prints an unmissable banner
+whenever any test skipped for this reason, naming how many and that the run is not a clean pass.
+`NO_DATABASE_SKIP_MARKER` below is the string that connects the two files.
 """
 
 from __future__ import annotations
@@ -64,8 +72,13 @@ _CONNECT_TIMEOUT_SECONDS = 2
 #: harness go unexercised from T021 onward until T015a gave the `python` job a service.
 _CI_ENV = "CI"
 
+#: T015d: the substring `tests/conftest.py`'s `pytest_terminal_summary` hook looks for, to tell
+#: a skip that means "no database reachable" apart from every other reason a test can legitimately
+#: skip. Kept as one constant, imported rather than restated, so the two files cannot drift apart.
+NO_DATABASE_SKIP_MARKER = "T015, tests/db.py"
+
 _SKIP_REASON = (
-    "No Postgres reachable for the integration-test harness (T015, tests/db.py). Set "
+    f"No Postgres reachable for the integration-test harness ({NO_DATABASE_SKIP_MARKER}). Set "
     f"{TEST_DATABASE_URL_ENV} to an admin connection string, or run one locally at the default "
     "this module falls back to (postgresql://postgres:postgres@localhost:5432/postgres) — the "
     "same credentials .github/workflows/pr.yml's `python` and `migrations` jobs both use."

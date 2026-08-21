@@ -22,26 +22,58 @@ them (T014e).
 | `POST` | `/api/auth/signout`        | Invalidates the session server-side, clears the cookie                                                                                                                 |
 | `GET`  | `/api/me`                  | Session, allowlist state, consent state, linked profiles, which is primary                                                                                             |
 
+**The session cookie is named `session_id`** (T028, `apps/api/src/aoe2stats_api/security.py`) —
+its value is `<sessions.id>.<hmac-sha256 signature>`, base64url-encoded and padding-stripped, so a
+tampered or fabricated cookie is rejected before it ever reaches the database. `sessions.id`
+itself, not the signed wrapper, is what every other part of this contract means by "the session":
+opaque, 256 bits of randomness (data-model.md), looked up fresh on every request so that
+revocation (`POST /api/auth/signout`, and later `POST /api/privacy/erase`) is immediate and
+server-side rather than something a client can outlast by keeping an unexpired token. `HttpOnly`,
+`Secure`, `SameSite=Lax`, path `/`.
+
+The short-lived state cookie `GET /api/auth/steam/start` sets is named `steam_oauth_state`,
+distinct from the session cookie and signed the same way. It carries the CSRF `state` value
+embedded in the outbound `return_to` Steam is asked to echo back (research.md §2): the callback
+accepts a `state` only if it matches what _this browser's own_ `steam_oauth_state` cookie says was
+minted for it, which is what ties the value to the browser session and refuses a `state` minted
+for one browser if replayed from another. Single-use and its ten-minute expiry are both enforced
+server-side against the `csrf_states` table (data-model.md, T028b), never by trusting the cookie's
+own `max-age` or the fact that the callback response asks the client to clear it: a `state` this
+table already marked consumed, or one past its own `expires_at`, is refused even when the cookie
+that carries it still verifies.
+
 `GET /api/me` returns 200 with `{"authenticated": false}` rather than 401 when signed out: it is the
 front end's bootstrap call, and an error status for the ordinary case makes every client log noise.
 
+An authenticated `GET /api/me` answers `ingest_consent` as the state that is true **right now** —
+`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, the same predicate the
+ingester's own selection query uses (data-model.md) — never merely "consent was granted at some
+point", which `ingest_consent_at` alone cannot distinguish from a withdrawn consent (T032:
+`ingest_consent_at` is kept after withdrawal on purpose, as the record of what was agreed and
+when). `ingest_consent_at` and `ingest_consent_withdrawn_at` (both nullable ISO 8601 timestamps,
+or absent-as-`null` when there has never been a grant) are returned alongside it, in the same field
+names `POST /api/privacy/consent` already answers with, so a client can render "granted",
+"declined" or "withdrawn, previously granted at ..." from a single `GET /api/me` after a plain page
+reload, with no consent state of its own to carry between requests.
+
 Failure codes that carry product meaning, not just HTTP semantics:
 
-| Code                      | When                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| `steam_assertion_invalid` | `check_authentication` said no. Log it; this is either a bug or an attack                 |
-| `no_aoe2_profile`         | Steam verified, no AoE2 profile exists (FR-003). Not an error to the user, an explanation |
-| `not_allowlisted`         | Closed beta (FR-005)                                                                      |
-| `profile_already_linked`  | That profile belongs to another account                                                   |
+| Code                      | When                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `steam_assertion_invalid` | `check_authentication` said no. Log it; this is either a bug or an attack                                                                                                          |
+| `no_aoe2_profile`         | Steam verified, no AoE2 profile exists (FR-003). Not an error to the user, an explanation                                                                                          |
+| `not_allowlisted`         | Closed beta (FR-005)                                                                                                                                                               |
+| `profile_already_linked`  | That profile belongs to another account                                                                                                                                            |
+| `provider_unavailable`    | Relic rate-limited, errored, timed out, or answered a non-JSON body mid-callback (T029b). Recoverable — the caller retries; the failing call is still recorded in `provider_calls` |
 
 ## Profiles
 
-| Method   | Path                                 | Notes                                                                                            |
-| -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/profiles`                      | The caller's linked profiles with current ratings per leaderboard                                |
-| `POST`   | `/api/profiles/{profile_id}/primary` | Choose which profile the interface shows (FR-043)                                                |
-| `DELETE` | `/api/profiles/{profile_id}`         | Unlink. Response states what happens to archived replays **before** the client confirms (FR-004) |
-| `GET`    | `/api/profiles/{profile_id}/ratings` | Rating history from snapshots                                                                    |
+| Method   | Path                                 | Notes                                                                                                                                                                                                   |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/profiles`                      | The caller's linked profiles with current ratings per leaderboard, each carrying a `leaderboard_name` the API names (T033a) — Relic's own `getPersonalStat` returns only `leaderboard_id`, never a name |
+| `POST`   | `/api/profiles/{profile_id}/primary` | Choose which profile the interface shows (FR-043)                                                                                                                                                       |
+| `DELETE` | `/api/profiles/{profile_id}`         | Unlink. Response states what happens to archived replays **before** the client confirms (FR-004)                                                                                                        |
+| `GET`    | `/api/profiles/{profile_id}/ratings` | Rating history from snapshots                                                                                                                                                                           |
 
 ## Matches
 
@@ -78,6 +110,16 @@ replay contains other players' gameplay and chat.
 `/api/privacy/object` is the one unauthenticated write in the system. It is rate limited and it does
 not act immediately: it records a request for a human to resolve. An endpoint that let anyone
 pseudonymise any profile on demand would be a denial-of-service vector against the data.
+
+`POST /api/privacy/consent` takes `{"granted": bool}` (T032). `true` grants — recording
+`users.ingest_consent_at` the first time only, so a repeated grant never rewrites when consent was
+first given — and clears any prior withdrawal, since the ingester's selection query
+(data-model.md) is `ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`.
+`false` withdraws by setting `users.ingest_consent_withdrawn_at`, which is added on top of
+`ingest_consent_at` and never clears it (data-model.md: "Kept after withdrawal; erasure is a
+separate act") — and is a no-op, not an error, when there was never a grant to withdraw. Declining
+consent on an account that has not yet granted it (FR-034: separate from account creation) leaves
+the rest of the account untouched and still answers 200.
 
 ## Operations
 

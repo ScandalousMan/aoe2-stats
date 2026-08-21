@@ -127,26 +127,20 @@ version = "0.1.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "aoe2stats-ingester" },
+    { name = "aoe2stats-providers" },
     { name = "aoe2stats-storage" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "aoe2stats-ingester", editable = "apps/ingester" },
+    { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-storage", editable = "packages/storage" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "pydantic-settings", specifier = ">=2.6" },
 ]
-
-[package.metadata.requires-dev]
-dev = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "aoe2stats-core"

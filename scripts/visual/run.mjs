@@ -92,6 +92,12 @@ function main() {
       '.',
   )
 
+  // A story tagged `visual-full-page` names a subject that escapes the `#storybook-root` box —
+  // a `position: fixed` dialog (fixed positioning is relative to the viewport, not any ancestor
+  // box) or a popover that overflows its trigger's layout box (an absolutely positioned
+  // descendant does not enlarge that box, so a screenshot clipped to it never reaches the
+  // popover at all). Screenshotting the whole page instead of just the root element is the only
+  // way those baselines see the thing they are named for.
   const result = spawnSync(
     'pnpm',
     ['exec', 'playwright', 'test', '--config=playwright.config.ts'],
@@ -100,7 +106,12 @@ function main() {
       stdio: 'inherit',
       env: {
         ...process.env,
-        VISUAL_STORY_IDS: JSON.stringify(stories.map((entry) => entry.id)),
+        VISUAL_STORIES: JSON.stringify(
+          stories.map((entry) => ({
+            id: entry.id,
+            fullPage: (entry.tags ?? []).includes('visual-full-page'),
+          })),
+        ),
       },
     },
   )
