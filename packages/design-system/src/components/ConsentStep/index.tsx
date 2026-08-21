@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { useEffect, useRef } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
+import { Dialog } from '../Dialog'
 import { Skeleton } from '../Skeleton'
 
 // packages/design-system/specs/consent-step.md
@@ -327,69 +327,14 @@ function WithdrawConfirmDialog({
   onKeepOn?: () => void
   className?: string
 }) {
-  const headingRef = useRef<HTMLHeadingElement>(null)
-  const dialogRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    headingRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onKeepOn?.()
-      }
-      if (event.key === 'Tab' && dialogRef.current) {
-        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button, a[href], input, [tabindex]:not([tabindex="-1"])',
-        )
-        if (focusable.length === 0) return
-        const first = focusable[0]
-        const last = focusable[focusable.length - 1]
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault()
-          last.focus()
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault()
-          first.focus()
-        }
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onKeepOn])
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay md:items-center">
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="withdraw-confirm-heading"
-        className={cx(
-          'w-full max-w-sm rounded-t-xl bg-surface p-6 shadow-modal md:rounded-xl',
-          className,
-        )}
-      >
-        <h2
-          id="withdraw-confirm-heading"
-          ref={headingRef}
-          tabIndex={-1}
-          className="font-display text-xl font-semibold text-text-primary"
-        >
-          Turn off replay archival?
-        </h2>
-        <p className="mt-3 font-sans text-sm text-text-secondary">{consequenceLine}</p>
-        <div className="mt-6 flex flex-col gap-3 md:flex-row">
-          <Button variant="destructive" size="lg" onClick={onTurnOff} className="w-full md:w-auto">
-            Turn it off
-          </Button>
-          <Button variant="secondary" size="lg" onClick={onKeepOn} className="w-full md:w-auto">
-            Keep it on
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      heading="Turn off replay archival?"
+      primaryAction={{ label: 'Turn it off', onClick: onTurnOff }}
+      secondaryAction={{ label: 'Keep it on', onClick: onKeepOn }}
+      className={className}
+    >
+      {consequenceLine}
+    </Dialog>
   )
 }

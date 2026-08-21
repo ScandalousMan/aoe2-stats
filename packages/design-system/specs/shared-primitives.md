@@ -258,6 +258,55 @@ item; the trigger regains focus after Escape.
 
 ---
 
+## Dialog
+
+**Purpose** — force a decision on a single consequential action before it happens, blocking the
+rest of the page until it is made.
+
+**Anatomy** — backdrop / boxed surface / heading / body slot (arbitrary: paragraphs, an inline
+`Callout`, or both) / two-`Button` action row.
+
+**Variants** — none; every consumer supplies its own heading, body and action labels. Introduced by
+T035b: `ConsentStep`'s withdrawal confirmation and the profile unlink confirmation were the same
+markup maintained twice before it existed, so it is deliberately narrow — one heading, one body
+slot, exactly two actions — rather than generalised further than either consumer needs.
+
+**Sizes** — one: `max-w-sm`.
+
+**States**
+
+- **default** — backdrop `overlay`, surface `surface`, elevation `modal`, radius `xl` (`t-xl` on the
+  sheet's top corners only below `md`, all four corners from `md` up).
+- **loading** — the action in flight sets `loading` and `loadingLabel` on its own `Button`; the
+  other action disables via its own `disabled` rather than a dialog-wide flag, so a caller can
+  disable one without the other.
+- **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
+- **empty / hover / active** — not applicable; a dialog with no actions is a malformed call site,
+  and hover/active belong to the `Button`s inside it, not to the dialog itself.
+
+**Tokens** — `overlay` (backdrop), `surface` (fill), `text-primary` / `text-secondary` (heading /
+body), `focus-ring`. Radius `xl`. Elevation `modal`.
+
+**Spacing** — surface padding `space-6`; heading to body `space-3`; body to action row `space-6`;
+between the two actions `space-3`.
+
+**Responsive** — below `md`, a full-width bottom sheet anchored to the viewport edge. From `md` up,
+a centred, boxed dialog. Both actions render at `lg` (48px) and stack full-width below `md`, sit
+side by side from `md` up.
+
+**Accessibility** — `role="dialog"` with `aria-modal="true"` and `aria-labelledby` pointing at the
+heading; focus moves to the heading (`tabIndex={-1}`) on mount; Tab is trapped between the dialog's
+own focusable elements; Escape calls the **secondary** action, never the primary one — the
+accidental key must never be the one that takes the consequential path. The primary/secondary split
+is about position and default styling, not about who owns Escape: Escape always goes to
+`secondaryAction`, which is why that prop exists instead of a separate `onEscape`.
+
+**Acceptance** — heading is focused and announced on open; Escape reaches the secondary action's
+`onClick` and never the primary's; Tab cycles between exactly the dialog's own focusable elements
+and never escapes to the page behind the backdrop; both actions render at least 44px tall.
+
+---
+
 ## StatValue
 
 **Purpose** — present one number so it can be read, compared and trusted at a glance. This is the
