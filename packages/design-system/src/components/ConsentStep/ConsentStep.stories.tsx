@@ -37,6 +37,10 @@ export const SettingsLoading: Story = {
   args: { variant: 'settings', loadingCurrentState: true },
 }
 
+// `visual-full-page` (scripts/visual/run.mjs): this variant renders a `position: fixed` dialog,
+// which paints relative to the viewport rather than the story root — a screenshot clipped to that
+// root captures neither the dialog nor the overlay behind it.
 export const WithdrawConfirm: Story = {
+  tags: ['visual-full-page'],
   args: { variant: 'withdraw-confirm' },
 }

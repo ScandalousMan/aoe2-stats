@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 import { Menu } from './index'
 
 const meta: Meta<typeof Menu> = {
@@ -9,7 +10,23 @@ const meta: Meta<typeof Menu> = {
 export default meta
 type Story = StoryObj<typeof Menu>
 
+// The surface only exists once the trigger is clicked (index.tsx keeps `open` as internal state,
+// on purpose — see shared-primitives.md §Menu's "empty" state, which depends on the trigger being
+// unopenable). Every story below except `Empty` names an *open* state, so its baseline has to show
+// one: the play function opens it the same way a person would, rather than adding an `open` prop
+// to the component whose only consumer would be the visual test.
+async function openMenu({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  await userEvent.click(canvas.getByRole('button'))
+  await canvas.findByRole('menu')
+}
+
+// `visual-full-page` (scripts/visual/run.mjs): the open popover is absolutely positioned against
+// the trigger's own box, which does not grow to contain it, so a screenshot clipped to the story
+// root never reaches it — the visual run has to capture the whole page instead.
 export const ProfileSwitcher: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
   args: {
     variant: 'selection',
     triggerLabel: 'aoe2guy — profile ▾',
@@ -22,6 +39,8 @@ export const ProfileSwitcher: Story = {
 }
 
 export const SingleProfile: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
   args: {
     variant: 'selection',
     triggerLabel: 'aoe2guy — profile ▾',
@@ -31,6 +50,8 @@ export const SingleProfile: Story = {
 }
 
 export const ActionsWithDisabledItem: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
   args: {
     variant: 'actions',
     triggerLabel: 'Manage',
@@ -47,6 +68,8 @@ export const ActionsWithDisabledItem: Story = {
 }
 
 export const LoadingItem: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
   args: {
     variant: 'selection',
     triggerLabel: 'aoe2guy — profile ▾',
@@ -64,6 +87,8 @@ export const LoadingItem: Story = {
 }
 
 export const ItemError: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
   args: {
     variant: 'actions',
     triggerLabel: 'Manage',
@@ -73,6 +98,8 @@ export const ItemError: Story = {
   },
 }
 
+// No `play` here: an empty menu never opens (shared-primitives.md §Menu, "empty"), so its
+// baseline is meant to be the disabled trigger, not a surface.
 export const Empty: Story = {
   args: {
     variant: 'actions',
