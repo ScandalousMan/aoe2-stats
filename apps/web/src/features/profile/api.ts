@@ -4,11 +4,10 @@ import { api } from '../../lib/api'
 // `apps/api/.../routers/profiles.py` (T031) and `routers/privacy.py` (T032). Every field name
 // here is verbatim what those handlers put in the response body — snake_case, because neither
 // router builds a Pydantic response model with a camelCase alias generator, it hand-assembles a
-// `dict[str, Any]`. `lib/api.ts`'s `MeResponse` (T017) instead declares a camelCase shape
-// (`profileId`, `isPrimary`, `ingestConsentGranted`) that `GET /api/me` has never actually sent —
-// see `session.ts` in this directory for how that mismatch is read around rather than relied on.
-// This module does not repeat that mistake: every type below matches the wire, and the mapping to
-// `ProfileSummary`'s camelCase props happens once, in `mappers.ts`.
+// `dict[str, Any]`. `lib/api.ts`'s `MeResponse` follows the same convention (T037a: it used to
+// declare a camelCase shape — `profileId`, `isPrimary`, `ingestConsentGranted` — that `GET
+// /api/me` had never actually sent; both are now snake_case and `assertMeResponse` checks it at
+// the boundary). The mapping to `ProfileSummary`'s camelCase props happens once, in `mappers.ts`.
 
 export interface ApiRatingSnapshot {
   leaderboard_id: number

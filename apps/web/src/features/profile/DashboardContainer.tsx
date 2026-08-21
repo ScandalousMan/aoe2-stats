@@ -19,14 +19,12 @@ import {
   toRatingEntries,
   toViewedProfile,
 } from './mappers'
-import { readIngestConsent } from './session'
+import { type ConsentDecision, consentDecisionFromSession } from './session'
 import { UnlinkDialog } from './UnlinkDialog'
 
 // Wires `ProfileSummary` and `ConsentStep` (T035, packages/design-system) to this feature's real
 // effects and to nothing else — the same discipline `SignInContainer.tsx` (T036) established.
 // Every visual state lives in those components; this module owns the data and the handlers.
-
-type ConsentDecision = 'accepted' | 'declined' | 'unanswered'
 
 export function DashboardContainer() {
   const navigate = useNavigate()
@@ -145,34 +143,29 @@ export function DashboardContainer() {
   // --- Consent (FR-034 / FR-035) — onboarding variant only; `settings`/`withdraw-confirm` belong
   // to the privacy route (T095, consent-step.md's own consumer split) --------------------------
 
-  const [consentOverride, setConsentOverride] = useState<{
-    decision: 'accepted' | 'declined'
-    recordedAt?: string
-  } | null>(null)
   const [consentSubmitting, setConsentSubmitting] = useState(false)
   const [consentSubmittingChoice, setConsentSubmittingChoice] = useState<
     'accept' | 'decline' | undefined
   >(undefined)
   const [consentWriteFailed, setConsentWriteFailed] = useState(false)
 
-  // `readIngestConsent` can only ever say "granted at least once", never "currently withdrawn"
-  // (session.ts's own docstring) — `consentOverride`, set from this session's own write, is the
-  // one place a "declined" state is ever known accurately, and only for as long as this tab stays
-  // open on this session.
+  // T037a: `GET /api/me` now reports the consent state that is true *now* (`ingest_consent`,
+  // `ingest_consent_at`) — a withdrawal is visible on the very next request, so a page reload no
+  // longer loses it. `consentDecisionFromSession` (`session.ts`) is the one place this is derived;
+  // no session-local override is held here any more.
   const effectiveConsentDecision: ConsentDecision =
-    consentOverride?.decision ?? (session && readIngestConsent(session) ? 'accepted' : 'unanswered')
+    session && session.authenticated ? consentDecisionFromSession(session) : 'unanswered'
 
   async function submitConsent(granted: boolean) {
     setConsentSubmitting(true)
     setConsentSubmittingChoice(granted ? 'accept' : 'decline')
     setConsentWriteFailed(false)
     try {
-      const response = await setConsent(granted)
-      setConsentOverride({
-        decision: granted ? 'accepted' : 'declined',
-        recordedAt: granted && response.ingest_consent_at ? response.ingest_consent_at : undefined,
-      })
-      void queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey })
+      await setConsent(granted)
+      // Awaited, not fired-and-forgotten: `effectiveConsentDecision` is derived straight from
+      // `session` above, so the new decision (and, for "settings", the recorded-at timestamp)
+      // only appears once this refetch has actually landed.
+      await queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey })
     } catch (error) {
       if (!redirectIfSessionExpired(error)) {
         setConsentWriteFailed(true)
@@ -267,8 +260,8 @@ export function DashboardContainer() {
               variant="settings"
               decision={effectiveConsentDecision}
               recordedAt={
-                consentOverride?.recordedAt
-                  ? formatRecordedAt(consentOverride.recordedAt)
+                session && session.authenticated && session.ingest_consent_at
+                  ? formatRecordedAt(session.ingest_consent_at)
                   : undefined
               }
               submitting={consentSubmitting}

@@ -41,6 +41,17 @@ for one browser if replayed from another.
 `GET /api/me` returns 200 with `{"authenticated": false}` rather than 401 when signed out: it is the
 front end's bootstrap call, and an error status for the ordinary case makes every client log noise.
 
+An authenticated `GET /api/me` answers `ingest_consent` as the state that is true **right now** —
+`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, the same predicate the
+ingester's own selection query uses (data-model.md) — never merely "consent was granted at some
+point", which `ingest_consent_at` alone cannot distinguish from a withdrawn consent (T032:
+`ingest_consent_at` is kept after withdrawal on purpose, as the record of what was agreed and
+when). `ingest_consent_at` and `ingest_consent_withdrawn_at` (both nullable ISO 8601 timestamps,
+or absent-as-`null` when there has never been a grant) are returned alongside it, in the same field
+names `POST /api/privacy/consent` already answers with, so a client can render "granted",
+"declined" or "withdrawn, previously granted at ..." from a single `GET /api/me` after a plain page
+reload, with no consent state of its own to carry between requests.
+
 Failure codes that carry product meaning, not just HTTP semantics:
 
 | Code                      | When                                                                                      |

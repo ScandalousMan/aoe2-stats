@@ -469,12 +469,35 @@ async def me(request: Request, db_session: SessionDep, settings: SettingsDep) ->
     ]
 
     user = await db_session.get(User, session_row.user_id)
+    # T037a: `ingest_consent_at is not None` alone was reported here for as long as this route
+    # existed, which made `ingest_consent` true forever after the first grant — T032 (privacy.py,
+    # data-model.md) deliberately never clears `ingest_consent_at` on withdrawal, since it is the
+    # record of what was agreed and when, but that means it is *not* by itself the answer to "is
+    # ingestion happening right now". The router's own selection query for that
+    # (`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, privacy.py's module
+    # docstring, mirrored by the ingester's own row selection) is reproduced here so a withdrawn
+    # consent is reported as withdrawn on the very next `GET /api/me` — the request a page reload
+    # performs — rather than staying "granted" until the browser is told otherwise by some other
+    # means. Both timestamps are returned alongside the derived boolean, in the same field names
+    # `POST /api/privacy/consent` already answers with, so a reload can render "granted",
+    # "declined" or "withdrawn, previously granted at ..." without the front end needing to hold
+    # any consent state of its own between requests (`contracts/http-api.md`).
+    ingest_consent_at = user.ingest_consent_at if user is not None else None
+    ingest_consent_withdrawn_at = user.ingest_consent_withdrawn_at if user is not None else None
     return {
         "authenticated": True,
         "user_id": str(session_row.user_id),
         # `allowlisted_at` is stamped once, at account creation (T030) — reported here exactly
         # as the column holds it.
         "allowlisted": user.allowlisted_at is not None if user is not None else False,
-        "ingest_consent": user.ingest_consent_at is not None if user is not None else False,
+        "ingest_consent": ingest_consent_at is not None and ingest_consent_withdrawn_at is None,
+        "ingest_consent_at": ingest_consent_at.isoformat()
+        if ingest_consent_at is not None
+        else None,
+        "ingest_consent_withdrawn_at": (
+            ingest_consent_withdrawn_at.isoformat()
+            if ingest_consent_withdrawn_at is not None
+            else None
+        ),
         "profiles": profiles,
     }

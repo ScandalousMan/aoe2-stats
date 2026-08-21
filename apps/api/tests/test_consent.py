@@ -152,6 +152,36 @@ async def test_withdrawing_consent_sets_withdrawn_at_and_keeps_consent_at(
     assert stored.ingest_consent_withdrawn_at >= before_withdrawal
 
 
+async def test_withdrawn_consent_is_reported_as_withdrawn_on_a_subsequent_get_me(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T037a: exactly the scenario a page reload performs. `GET /api/me`'s `ingest_consent` used
+    to read `ingest_consent_at is not None`, which stayed `True` forever after the first grant
+    because T032 deliberately never clears that timestamp on withdrawal (it is the record of what
+    was agreed and when — data-model.md, constitution IX). That made a withdrawal invisible to a
+    reload: the user is told archival is still happening when it is not. `ingest_consent` must
+    instead answer the state that is true *now*, and both timestamps must still be present so a
+    client can tell "withdrawn" apart from "never granted"."""
+    await _seed_signed_in_user(client, db_session, consented=True)
+
+    before_withdrawal = client.get("/api/me")
+    assert before_withdrawal.status_code == 200
+    assert before_withdrawal.json()["ingest_consent"] is True
+
+    withdraw = client.post("/api/privacy/consent", json={"granted": False})
+    assert withdraw.status_code == 200
+
+    after_withdrawal = client.get("/api/me")
+    assert after_withdrawal.status_code == 200
+    body = after_withdrawal.json()
+    assert body["ingest_consent"] is False
+    # The grant timestamp survives — it is the auditable evidence consent was ever given — but
+    # the withdrawal timestamp is now set too, which is what `ingest_consent`'s `False` above is
+    # derived from.
+    assert body["ingest_consent_at"] is not None
+    assert body["ingest_consent_withdrawn_at"] is not None
+
+
 def test_consent_requires_a_signed_in_session(client: TestClient) -> None:
     """The Privacy section of `contracts/http-api.md` names exactly one unauthenticated route,
     `/api/privacy/object`, precisely because objecting is by definition not something a user does

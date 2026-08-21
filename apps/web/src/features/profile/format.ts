@@ -65,10 +65,10 @@ export function formatFreshness(
 
 const recordedAtFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** `ConsentStep`'s `recordedAt` (consent-step.md §4.4): only ever built from this session's own
- * `POST /api/privacy/consent` response (`ingest_consent_at`) — `GET /api/me` does not expose that
- * timestamp at all, see `session.ts`'s docstring for why the dashboard cannot show it after a
- * fresh page load. */
+/** `ConsentStep`'s `recordedAt` (consent-step.md §4.4), built from `ingest_consent_at` —
+ * `POST /api/privacy/consent`'s own response right after a write, or `GET /api/me`'s
+ * `AuthenticatedSession.ingest_consent_at` (T037a) on every later load, since both use the same
+ * field name for the same timestamp (contracts/http-api.md). */
 export function formatRecordedAt(iso: string): string {
   return recordedAtFormat.format(new Date(iso))
 }

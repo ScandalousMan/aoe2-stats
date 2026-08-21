@@ -120,19 +120,35 @@ export const api = {
 // state, linked profiles, which is primary", plus the documented `{"authenticated": false}` when
 // signed out — a 200, never a 401, because this is the bootstrap call every page makes and an
 // error status for the ordinary signed-out case would make every client log noise. The auth
-// router (T029) is authoritative once it exists; if its response ever disagrees with this type,
-// fix the type here rather than adding a second shape further down the tree.
+// router (`apps/api/.../routers/auth.py`) is authoritative once it exists; if its response ever
+// disagrees with this type, fix the type here rather than adding a second shape further down the
+// tree.
+//
+// T037a: this type used to declare camelCase fields (`profileId`, `isPrimary`,
+// `ingestConsentGranted`) that `GET /api/me` has never actually sent — the router hand-assembles
+// a plain `dict[str, Any]`, snake_case, the same convention `features/profile/api.ts` already
+// documents for `profiles.py` and `privacy.py`. Every field below is instead verbatim what the
+// router puts in the body, and `assertMeResponse` checks that at the boundary rather than trusting
+// a type the compiler cannot verify against a network response — the exact gap that let the old
+// camelCase fields sit unnoticed, always `undefined`, with the compiler agreeing throughout.
 
 export interface SessionProfile {
-  profileId: number
+  profile_id: number
   alias: string
-  isPrimary: boolean
+  country: string | null
+  is_primary: boolean
 }
 
 export interface AuthenticatedSession {
   authenticated: true
+  user_id: string
   allowlisted: boolean
-  ingestConsentGranted: boolean
+  // The state that is true *now* — `ingest_consent_at IS NOT NULL AND
+  // ingest_consent_withdrawn_at IS NULL` (contracts/http-api.md) — never merely "was granted at
+  // some point", which a withdrawal would otherwise leave indistinguishable from a live consent.
+  ingest_consent: boolean
+  ingest_consent_at: string | null
+  ingest_consent_withdrawn_at: string | null
   profiles: SessionProfile[]
 }
 
@@ -142,8 +158,81 @@ export interface UnauthenticatedSession {
 
 export type MeResponse = AuthenticatedSession | UnauthenticatedSession
 
-export function fetchMe(): Promise<MeResponse> {
-  return api.get<MeResponse>('/api/me')
+/** Thrown by `assertMeResponse` when `GET /api/me`'s body does not match the shape this module
+ * declares — a network response the compiler can never check on its own, so this is the one
+ * place that actually looks. Deliberately not an `ApiRequestError`: it is not one of the API's own
+ * documented failure codes, and a caller must not be able to `isApiErrorCode`-match it away and
+ * silently fall back to some default session state. */
+export class ApiResponseShapeError extends Error {
+  constructor(path: string, detail: string) {
+    super(`Unexpected response shape from ${path}: ${detail}`)
+    this.name = 'ApiResponseShapeError'
+  }
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
+function assertSessionProfile(value: unknown, index: number): asserts value is SessionProfile {
+  if (typeof value !== 'object' || value === null) {
+    throw new ApiResponseShapeError('/api/me', `profiles[${index}] was not an object`)
+  }
+  const profile = value as Record<string, unknown>
+  if (typeof profile.profile_id !== 'number') {
+    throw new ApiResponseShapeError('/api/me', `profiles[${index}].profile_id was not a number`)
+  }
+  if (typeof profile.alias !== 'string') {
+    throw new ApiResponseShapeError('/api/me', `profiles[${index}].alias was not a string`)
+  }
+  if (!isNullableString(profile.country)) {
+    throw new ApiResponseShapeError('/api/me', `profiles[${index}].country was not string|null`)
+  }
+  if (typeof profile.is_primary !== 'boolean') {
+    throw new ApiResponseShapeError('/api/me', `profiles[${index}].is_primary was not a boolean`)
+  }
+}
+
+/** Validates `payload` against `MeResponse` and narrows to it, or throws `ApiResponseShapeError`
+ * — loudly, not a silently-substituted default — the moment the response disagrees with what
+ * this module declares. `fetchMe` is the one caller; every consumer downstream of it (`__root.tsx`'s
+ * `beforeLoad`, `DashboardContainer.tsx`) can then trust the type without re-checking it. */
+export function assertMeResponse(payload: unknown): asserts payload is MeResponse {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new ApiResponseShapeError('/api/me', 'response body was not an object')
+  }
+  const body = payload as Record<string, unknown>
+  if (typeof body.authenticated !== 'boolean') {
+    throw new ApiResponseShapeError('/api/me', '"authenticated" was not a boolean')
+  }
+  if (body.authenticated === false) {
+    return
+  }
+  if (typeof body.user_id !== 'string') {
+    throw new ApiResponseShapeError('/api/me', '"user_id" was not a string')
+  }
+  if (typeof body.allowlisted !== 'boolean') {
+    throw new ApiResponseShapeError('/api/me', '"allowlisted" was not a boolean')
+  }
+  if (typeof body.ingest_consent !== 'boolean') {
+    throw new ApiResponseShapeError('/api/me', '"ingest_consent" was not a boolean')
+  }
+  if (!isNullableString(body.ingest_consent_at)) {
+    throw new ApiResponseShapeError('/api/me', '"ingest_consent_at" was not string|null')
+  }
+  if (!isNullableString(body.ingest_consent_withdrawn_at)) {
+    throw new ApiResponseShapeError('/api/me', '"ingest_consent_withdrawn_at" was not string|null')
+  }
+  if (!Array.isArray(body.profiles)) {
+    throw new ApiResponseShapeError('/api/me', '"profiles" was not an array')
+  }
+  body.profiles.forEach((profile, index) => assertSessionProfile(profile, index))
+}
+
+export async function fetchMe(): Promise<MeResponse> {
+  const payload = await api.get<unknown>('/api/me')
+  assertMeResponse(payload)
+  return payload
 }
 
 /**

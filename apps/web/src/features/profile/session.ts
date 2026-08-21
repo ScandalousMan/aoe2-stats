@@ -1,20 +1,26 @@
-import type { MeResponse } from '../../lib/api'
+import type { AuthenticatedSession } from '../../lib/api'
 
 /**
- * `GET /api/me` (`apps/api/.../routers/auth.py`) answers `{"ingest_consent": bool, ...}` —
- * snake_case, hand-assembled like every other dict that router returns (see `api.ts`'s module
- * docstring in this directory). `lib/api.ts`'s `MeResponse` type instead declares
- * `ingestConsentGranted`, a field the running backend has never sent. That mismatch predates this
- * task, lives in a file outside T037's scope (`apps/web/src/routes/dashboard.tsx` and
- * `apps/web/src/features/profile/` only), and is reported alongside this change rather than fixed
- * here.
+ * `ConsentStep`'s three-way decision (consent-step.md §4.4), derived from `GET /api/me`'s
+ * `ingest_consent` / `ingest_consent_at` (`lib/api.ts`'s `AuthenticatedSession`, T037a).
  *
- * This reads both the field the backend actually sends and the one `MeResponse` claims to, so the
- * dashboard's consent gating (FR-034) is correct against the real response today and keeps
- * working unmodified whichever shape `MeResponse` is eventually corrected to.
+ * `ingest_consent` is already the state that is true *now* — `ingest_consent_at IS NOT NULL AND
+ * ingest_consent_withdrawn_at IS NULL` (contracts/http-api.md) — so `'accepted'` follows it
+ * directly. A user who granted and then withdrew has `ingest_consent === false` but
+ * `ingest_consent_at !== null`: that is `'declined'` (the settings variant, "withdrawn"), not
+ * `'unanswered'`, which is reserved for a user who has never made either choice
+ * (`ingest_consent_at === null`).
+ *
+ * T037a note: this file previously held `readIngestConsent`, a workaround for `GET /api/me`
+ * never reporting a withdrawal (it read only "granted at least once", which a withdrawal cannot
+ * be told apart from). Now that the router reports the state that is true right now, a reload no
+ * longer needs a session-local override to show a withdrawal correctly — `DashboardContainer.tsx`
+ * calls this directly on `session` instead.
  */
-export function readIngestConsent(session: MeResponse): boolean {
-  if (!session.authenticated) return false
-  const raw = session as unknown as { ingest_consent?: unknown; ingestConsentGranted?: unknown }
-  return raw.ingest_consent === true || raw.ingestConsentGranted === true
+export type ConsentDecision = 'accepted' | 'declined' | 'unanswered'
+
+export function consentDecisionFromSession(session: AuthenticatedSession): ConsentDecision {
+  if (session.ingest_consent) return 'accepted'
+  if (session.ingest_consent_at !== null) return 'declined'
+  return 'unanswered'
 }
