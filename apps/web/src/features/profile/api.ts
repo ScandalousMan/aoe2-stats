@@ -11,6 +11,11 @@ import { api } from '../../lib/api'
 
 export interface ApiRatingSnapshot {
   leaderboard_id: number
+  /** Named by the API (`routers/profiles.py`, T033a), not looked up here — Relic's own
+   * `getPersonalStat` returns only `leaderboard_id`, never a name, so the backend's
+   * `leaderboards.py` is the one hand-maintained copy of this mapping (`docs/data-sources.md`
+   * §1). The front end no longer keeps a duplicate. */
+  leaderboard_name: string
   rating: number
   /** Relic's own convention, passed through unmodified from `getPersonalStat`
    * (`docs/data-sources.md` §1): `-1` means "not enough games for a rank yet", not "rank zero".

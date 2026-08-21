@@ -1,7 +1,7 @@
 import type { LinkedProfileOption, RatingEntryData, ViewedProfile } from 'design-system'
 import type { ApiProfile } from './api'
 import { formatRank, formatRating, formatStreak, formatWinRate } from './format'
-import { leaderboardName, leaderboardSortKey } from './leaderboards'
+import { leaderboardSortKey } from './leaderboards'
 
 // The one place `ApiProfile` (snake_case, `api.ts`) becomes what `ProfileSummary`
 // (packages/design-system) expects (camelCase, ids as strings). Nothing downstream of this file
@@ -35,7 +35,7 @@ export function toRatingEntries(profile: ApiProfile): RatingEntryData[] {
     .sort((a, b) => leaderboardSortKey(a.leaderboard_id) - leaderboardSortKey(b.leaderboard_id))
     .map((snapshot) => ({
       leaderboardId: String(snapshot.leaderboard_id),
-      leaderboardName: leaderboardName(snapshot.leaderboard_id),
+      leaderboardName: snapshot.leaderboard_name,
       rating: formatRating(snapshot.rating),
       // No delta: `GET /api/profiles` reports only the latest `rating_snapshots` row per
       // leaderboard (its own docstring, "most recent"), never the one before it, so there is

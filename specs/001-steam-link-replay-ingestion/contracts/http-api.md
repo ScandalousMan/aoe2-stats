@@ -68,12 +68,12 @@ Failure codes that carry product meaning, not just HTTP semantics:
 
 ## Profiles
 
-| Method   | Path                                 | Notes                                                                                            |
-| -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/profiles`                      | The caller's linked profiles with current ratings per leaderboard                                |
-| `POST`   | `/api/profiles/{profile_id}/primary` | Choose which profile the interface shows (FR-043)                                                |
-| `DELETE` | `/api/profiles/{profile_id}`         | Unlink. Response states what happens to archived replays **before** the client confirms (FR-004) |
-| `GET`    | `/api/profiles/{profile_id}/ratings` | Rating history from snapshots                                                                    |
+| Method   | Path                                 | Notes                                                                                                                                                                                                   |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/profiles`                      | The caller's linked profiles with current ratings per leaderboard, each carrying a `leaderboard_name` the API names (T033a) — Relic's own `getPersonalStat` returns only `leaderboard_id`, never a name |
+| `POST`   | `/api/profiles/{profile_id}/primary` | Choose which profile the interface shows (FR-043)                                                                                                                                                       |
+| `DELETE` | `/api/profiles/{profile_id}`         | Unlink. Response states what happens to archived replays **before** the client confirms (FR-004)                                                                                                        |
+| `GET`    | `/api/profiles/{profile_id}/ratings` | Rating history from snapshots                                                                                                                                                                           |
 
 ## Matches
 

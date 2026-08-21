@@ -57,6 +57,7 @@ describe('toRatingEntries', () => {
         ratings: [
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1500,
             rank: 250,
             wins: 10,
@@ -88,6 +89,7 @@ describe('toRatingEntries', () => {
         ratings: [
           {
             leaderboard_id: 1,
+            leaderboard_name: '1v1 Death Match',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -98,6 +100,7 @@ describe('toRatingEntries', () => {
           },
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -108,6 +111,7 @@ describe('toRatingEntries', () => {
           },
           {
             leaderboard_id: 13,
+            leaderboard_name: '1v1 Empire Wars',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -129,6 +133,7 @@ describe('toRatingEntries', () => {
         ratings: [
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -149,6 +154,7 @@ describe('toRatingEntries', () => {
         ratings: [
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -166,6 +172,27 @@ describe('toRatingEntries', () => {
   it('maps an empty ratings array to an empty entries array (never a fabricated one)', () => {
     expect(toRatingEntries(profile({ ratings: [] }))).toEqual([])
   })
+
+  it('passes leaderboard_name through verbatim, never looking it up itself (T033a)', () => {
+    const result = toRatingEntries(
+      profile({
+        ratings: [
+          {
+            leaderboard_id: 999,
+            leaderboard_name: 'Leaderboard 999',
+            rating: 1000,
+            rank: null,
+            wins: 0,
+            losses: 0,
+            streak: null,
+            highest_rating: null,
+            captured_at: '2026-08-01T00:00:00Z',
+          },
+        ],
+      }),
+    )
+    expect(result[0].leaderboardName).toBe('Leaderboard 999')
+  })
 })
 
 describe('latestCapturedAt', () => {
@@ -179,6 +206,7 @@ describe('latestCapturedAt', () => {
         ratings: [
           {
             leaderboard_id: 1,
+            leaderboard_name: '1v1 Death Match',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -189,6 +217,7 @@ describe('latestCapturedAt', () => {
           },
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -199,6 +228,7 @@ describe('latestCapturedAt', () => {
           },
           {
             leaderboard_id: 4,
+            leaderboard_name: 'Team Random Map',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -219,6 +249,7 @@ describe('latestCapturedAt', () => {
         ratings: [
           {
             leaderboard_id: 1,
+            leaderboard_name: '1v1 Death Match',
             rating: 1000,
             rank: null,
             wins: 0,
@@ -229,6 +260,7 @@ describe('latestCapturedAt', () => {
           },
           {
             leaderboard_id: 3,
+            leaderboard_name: '1v1 Random Map',
             rating: 1000,
             rank: null,
             wins: 0,

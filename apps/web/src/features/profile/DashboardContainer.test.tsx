@@ -59,6 +59,7 @@ function baseProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
     ratings: [
       {
         leaderboard_id: 3,
+        leaderboard_name: '1v1 Random Map',
         rating: 1500,
         rank: 200,
         wins: 10,

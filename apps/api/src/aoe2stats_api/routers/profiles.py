@@ -7,7 +7,10 @@ most recent standing on every leaderboard it has played. "Most recent" is read s
 `rating_snapshots` — append-only, one row per observation (`ratings.py`) — by grouping on
 `(profile_id, leaderboard_id)` and keeping the row whose `captured_at` is the group's maximum,
 rather than a second "current rating" column that `RatingsRepository` would then have to keep in
-lockstep with the history it already writes.
+lockstep with the history it already writes. Each entry also carries `leaderboard_name`
+(`leaderboards.py`, T033a) — Relic's own `getPersonalStat` never names a ladder, only its id, so
+this is the one place that does, and the front end reads the served name rather than
+hand-maintaining its own copy.
 
 **FR-043 — exactly one primary, and the others stay reachable.** `POST .../primary` moves the flag
 with two `UPDATE`s in sequence rather than one: unset whatever is currently primary for this user,
@@ -61,6 +64,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_api import security
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
+from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_storage.models import (
     AoeProfile,
     CaptureStatus,
@@ -173,6 +177,7 @@ async def _latest_ratings_by_profile(
         by_profile.setdefault(snapshot.profile_id, []).append(
             {
                 "leaderboard_id": snapshot.leaderboard_id,
+                "leaderboard_name": leaderboard_name(snapshot.leaderboard_id),
                 "rating": snapshot.rating,
                 "rank": snapshot.rank,
                 "wins": snapshot.wins,

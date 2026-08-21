@@ -1,15 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leaderboardName, leaderboardSortKey } from './leaderboards'
-
-describe('leaderboardName', () => {
-  it('names a known leaderboard id', () => {
-    expect(leaderboardName(3)).toBe('1v1 Random Map')
-  })
-
-  it('falls back to "Leaderboard <id>" for an id it does not recognise, never a guess', () => {
-    expect(leaderboardName(999)).toBe('Leaderboard 999')
-  })
-})
+import { leaderboardSortKey } from './leaderboards'
 
 describe('leaderboardSortKey', () => {
   it('orders 1v1 Random Map before Team Random Map', () => {
