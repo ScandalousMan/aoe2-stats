@@ -13,22 +13,21 @@ function validateIndexSearch(search: Record<string, unknown>): IndexSearch {
 // The minimum route-tree registration `routes/sign-in.tsx` (T036) needs to be reachable at all:
 // the callback always lands here, never on `/sign-in` directly, so an unauthenticated visitor —
 // which is exactly what every one of the four failure outcomes leaves them as — is forwarded to
-// the sign-in screen with the failure code intact. T037 (dashboard) is what the authenticated
-// branch below renders instead of this placeholder.
+// the sign-in screen with the failure code intact. An authenticated visitor is sent on to
+// `/dashboard` (T037, `routes/dashboard.tsx`) rather than rendered here: `beforeLoad` always
+// redirects one way or the other, so `Index` below never actually paints.
 export const Route = createFileRoute('/')({
   validateSearch: validateIndexSearch,
   beforeLoad: ({ context, search }) => {
     if (!context.session.authenticated) {
       throw redirect({ to: '/sign-in', search: { error: search.error } })
     }
+    throw redirect({ to: '/dashboard' })
   },
   component: Index,
 })
 
 function Index() {
-  return (
-    <main className="flex min-h-svh items-center justify-center">
-      <p>aoe2-stats</p>
-    </main>
-  )
+  // Unreachable — see `beforeLoad` above. `createFileRoute` still requires a component.
+  return null
 }
