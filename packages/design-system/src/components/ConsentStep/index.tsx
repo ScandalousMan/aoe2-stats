@@ -31,6 +31,16 @@ export interface ConsentStepProps {
   onAccept?: () => void
   onDecline?: () => void
   onTurnOnArchival?: () => void
+  /** `settings`/accepted only: the reader has just been told "you can change this whenever you
+   * like" — this is the control that makes that true. Requests turning it off; it does not itself
+   * withdraw consent, since that is the confirmation `withdraw-confirm` exists to ask for. */
+  onTurnOffArchival?: () => void
+  /** `withdraw-confirm` only. Named for the action performed, not mapped onto `onAccept` /
+   * `onDecline`: for this variant "accept" means "turn it off" and "decline" means "keep it on",
+   * so reusing the grant-consent names here is exactly backwards for a caller that applies their
+   * ordinary meaning. */
+  onConfirmWithdraw?: () => void
+  onCancelWithdraw?: () => void
   privacyNoticeHref?: string
   className?: string
 }
@@ -72,11 +82,20 @@ export function ConsentStep({
   onAccept,
   onDecline,
   onTurnOnArchival,
+  onTurnOffArchival,
+  onConfirmWithdraw,
+  onCancelWithdraw,
   privacyNoticeHref,
   className,
 }: ConsentStepProps) {
   if (variant === 'withdraw-confirm') {
-    return <WithdrawConfirmDialog onTurnOff={onAccept} onKeepOn={onDecline} className={className} />
+    return (
+      <WithdrawConfirmDialog
+        onConfirmWithdraw={onConfirmWithdraw}
+        onCancelWithdraw={onCancelWithdraw}
+        className={className}
+      />
+    )
   }
 
   const short = variant === 'settings'
@@ -122,6 +141,7 @@ export function ConsentStep({
           onAccept={onAccept}
           onDecline={onDecline}
           onTurnOnArchival={onTurnOnArchival}
+          onTurnOffArchival={onTurnOffArchival}
         />
       ) : (
         <OnboardingBody
@@ -225,10 +245,12 @@ function SettingsBody({
   onAccept,
   onDecline,
   onTurnOnArchival,
+  onTurnOffArchival,
 }: BodyCommon & {
   recordedAt?: ReactNode
   loading: boolean
   onTurnOnArchival?: () => void
+  onTurnOffArchival?: () => void
 }) {
   if (loading) {
     return (
@@ -260,7 +282,15 @@ function SettingsBody({
   if (decision === 'accepted') {
     return (
       <div className="mt-8">
-        <Callout tone="success" heading="Archival is on.">
+        <Callout
+          tone="success"
+          heading="Archival is on."
+          actions={
+            <Button variant="secondary" disabled={bothDisabled} onClick={onTurnOffArchival}>
+              Turn off archival
+            </Button>
+          }
+        >
           {recordedAt
             ? `Recorded ${recordedAt}. We started with the last 31 days. New matches are picked up automatically.`
             : 'Nothing has been archived yet. The first sweep runs within a day.'}
@@ -319,19 +349,19 @@ function StatusRegion({
 }
 
 function WithdrawConfirmDialog({
-  onTurnOff,
-  onKeepOn,
+  onConfirmWithdraw,
+  onCancelWithdraw,
   className,
 }: {
-  onTurnOff?: () => void
-  onKeepOn?: () => void
+  onConfirmWithdraw?: () => void
+  onCancelWithdraw?: () => void
   className?: string
 }) {
   return (
     <Dialog
       heading="Turn off replay archival?"
-      primaryAction={{ label: 'Turn it off', onClick: onTurnOff }}
-      secondaryAction={{ label: 'Keep it on', onClick: onKeepOn }}
+      primaryAction={{ label: 'Turn it off', onClick: onConfirmWithdraw }}
+      secondaryAction={{ label: 'Keep it on', onClick: onCancelWithdraw }}
       className={className}
     >
       {consequenceLine}

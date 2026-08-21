@@ -26,7 +26,12 @@ export const SettingsUnanswered: Story = {
 }
 
 export const SettingsAccepted: Story = {
-  args: { variant: 'settings', decision: 'accepted', recordedAt: '3 days ago' },
+  args: {
+    variant: 'settings',
+    decision: 'accepted',
+    recordedAt: '3 days ago',
+    onTurnOffArchival: () => {},
+  },
 }
 
 export const SettingsDeclined: Story = {
@@ -42,5 +47,5 @@ export const SettingsLoading: Story = {
 // root captures neither the dialog nor the overlay behind it.
 export const WithdrawConfirm: Story = {
   tags: ['visual-full-page'],
-  args: { variant: 'withdraw-confirm' },
+  args: { variant: 'withdraw-confirm', onConfirmWithdraw: () => {}, onCancelWithdraw: () => {} },
 }

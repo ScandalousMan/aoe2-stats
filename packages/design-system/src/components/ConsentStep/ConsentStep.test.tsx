@@ -105,6 +105,21 @@ describe('ConsentStep — settings', () => {
     expect(region).toHaveTextContent('Archival is on.')
   })
 
+  it('accepted state renders the control the withdrawal line promises, and calls onTurnOffArchival', async () => {
+    const user = userEvent.setup()
+    const onTurnOffArchival = vi.fn()
+    render(
+      <ConsentStep
+        variant="settings"
+        decision="accepted"
+        recordedAt="3 days ago"
+        onTurnOffArchival={onTurnOffArchival}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Turn off archival' }))
+    expect(onTurnOffArchival).toHaveBeenCalledTimes(1)
+  })
+
   it('shows loading skeletons before /api/me resolves, without skeletoning the identity statement', () => {
     render(<ConsentStep variant="settings" loadingCurrentState decision="declined" />)
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
@@ -120,14 +135,43 @@ describe('ConsentStep — withdraw-confirm', () => {
     expect(screen.getByRole('heading', { name: 'Turn off replay archival?' })).toHaveFocus()
   })
 
-  it('Escape calls onKeepOn (Escape never turns archival off) and never onTurnOff', async () => {
+  it('Escape calls onCancelWithdraw (Escape never turns archival off) and never onConfirmWithdraw', async () => {
     const user = userEvent.setup()
-    const onTurnOff = vi.fn()
-    const onKeepOn = vi.fn()
-    render(<ConsentStep variant="withdraw-confirm" onAccept={onTurnOff} onDecline={onKeepOn} />)
+    const onConfirmWithdraw = vi.fn()
+    const onCancelWithdraw = vi.fn()
+    render(
+      <ConsentStep
+        variant="withdraw-confirm"
+        onConfirmWithdraw={onConfirmWithdraw}
+        onCancelWithdraw={onCancelWithdraw}
+      />,
+    )
     await user.keyboard('{Escape}')
-    expect(onKeepOn).toHaveBeenCalledTimes(1)
-    expect(onTurnOff).not.toHaveBeenCalled()
+    expect(onCancelWithdraw).toHaveBeenCalledTimes(1)
+    expect(onConfirmWithdraw).not.toHaveBeenCalled()
+  })
+
+  it('calls onConfirmWithdraw and onCancelWithdraw from the respective buttons, never onAccept/onDecline', async () => {
+    const user = userEvent.setup()
+    const onConfirmWithdraw = vi.fn()
+    const onCancelWithdraw = vi.fn()
+    const onAccept = vi.fn()
+    const onDecline = vi.fn()
+    render(
+      <ConsentStep
+        variant="withdraw-confirm"
+        onConfirmWithdraw={onConfirmWithdraw}
+        onCancelWithdraw={onCancelWithdraw}
+        onAccept={onAccept}
+        onDecline={onDecline}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Turn it off' }))
+    expect(onConfirmWithdraw).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Keep it on' }))
+    expect(onCancelWithdraw).toHaveBeenCalledTimes(1)
+    expect(onAccept).not.toHaveBeenCalled()
+    expect(onDecline).not.toHaveBeenCalled()
   })
 
   it('renders a destructive "Turn it off" and a secondary "Keep it on"', () => {

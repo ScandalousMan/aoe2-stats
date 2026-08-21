@@ -111,7 +111,10 @@ or erase everything at any time._
 ### 4.4 Recorded states
 
 - Accepted (`Callout/success`): **Archival is on.** _We started with the last 31 days. New matches
-  are picked up automatically._
+  are picked up automatically._ Action: **Turn off archival**. This is the control the
+  `WithdrawalLine` promises below it ("you can change this whenever you like") — it requests the
+  `withdraw-confirm` dialog rather than withdrawing on its own click, since turning archival off is
+  the one decision here that asks for confirmation before it takes effect.
 - Declined (`Callout/info`): **Archival is off.** _Your profile, ratings and match history still
   work. Nothing of yours is being downloaded or stored._ Action: **Turn on archival**.
 

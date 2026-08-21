@@ -140,14 +140,19 @@ export function DashboardContainer() {
     setUnlinkConfirmError(null)
   }
 
-  // --- Consent (FR-034 / FR-035) — onboarding variant only; `settings`/`withdraw-confirm` belong
-  // to the privacy route (T095, consent-step.md's own consumer split) --------------------------
+  // --- Consent (FR-034 / FR-035): `onboarding` and `settings` are wired here; the privacy route
+  // (T095) is the other consumer consent-step.md's variant split anticipates, for the account's
+  // notice and export/erasure surface rather than for this in-line summary ---------------------
 
   const [consentSubmitting, setConsentSubmitting] = useState(false)
   const [consentSubmittingChoice, setConsentSubmittingChoice] = useState<
     'accept' | 'decline' | undefined
   >(undefined)
   const [consentWriteFailed, setConsentWriteFailed] = useState(false)
+  // `withdraw-confirm` (consent-step.md §3): a real dialog asked for before turning archival off,
+  // never before turning it on — the settings/accepted `onTurnOffArchival` control opens it rather
+  // than withdrawing directly, so the "Turn off archival" button T032a added is not a dead control.
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false)
 
   // T037a: `GET /api/me` now reports the consent state that is true *now* (`ingest_consent`,
   // `ingest_consent_at`) — a withdrawal is visible on the very next request, so a page reload no
@@ -155,6 +160,11 @@ export function DashboardContainer() {
   // no session-local override is held here any more.
   const effectiveConsentDecision: ConsentDecision =
     session && session.authenticated ? consentDecisionFromSession(session) : 'unanswered'
+
+  async function handleConfirmWithdraw() {
+    setWithdrawConfirmOpen(false)
+    await submitConsent(false)
+  }
 
   async function submitConsent(granted: boolean) {
     setConsentSubmitting(true)
@@ -268,9 +278,18 @@ export function DashboardContainer() {
               submittingChoice={consentSubmittingChoice}
               writeFailed={consentWriteFailed}
               onTurnOnArchival={() => void submitConsent(true)}
+              onTurnOffArchival={() => setWithdrawConfirmOpen(true)}
             />
           )}
         </div>
+      )}
+
+      {withdrawConfirmOpen && (
+        <ConsentStep
+          variant="withdraw-confirm"
+          onConfirmWithdraw={() => void handleConfirmWithdraw()}
+          onCancelWithdraw={() => setWithdrawConfirmOpen(false)}
+        />
       )}
 
       {unlinkTarget && unlinkPreview && (
