@@ -38,7 +38,7 @@ export const Warning: Story = {
     tone: 'warning',
     heading: 'These figures could not be refreshed',
     children:
-      'Body text stays the primary text colour even in the warning tone, which is the one deliberately below the normal-text contrast floor.',
+      'Body text stays the primary text colour in every tone, so no tone has to carry normal-size body text on its own.',
     actions: <Button variant="primary">Try again</Button>,
   },
 }

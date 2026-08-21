@@ -73,10 +73,11 @@ test('tokens.ts exports every family as a typed, var()-referencing const', () =>
   assert.match(ts, /'accent': 'var\(--ds-color-accent\)',/)
 })
 
-// --- Contrast assertions (T034a). These are the pairs the specs' measured-contrast table (DS-1,
-// DS-2) names as failing, plus the one this repository decided does not need a token change
-// (light `warning`). Each assertion encodes the actual accessibility obligation on that pair —
-// not a blanket 4.5:1 — so an edit to color.json is judged the same way T034 judged it.
+// --- Contrast assertions (T034a, corrected by T038a). These are the pairs the specs'
+// measured-contrast table (DS-1, DS-2) names as failing, plus light `warning`, which T034a wrongly
+// judged exempt from the normal-text floor and T038a corrected. Each assertion encodes the actual
+// accessibility obligation on that pair — not a blanket 4.5:1 — so an edit to color.json is judged
+// the same way T034 judged it.
 
 test('light accent-contrast on accent clears AA normal text (4.5:1) — DS-1, the primary button fill', () => {
   const { accent, 'accent-contrast': accentContrast } = color.light
@@ -121,16 +122,20 @@ test('border-strong clears the 3:1 non-text floor against surface in both themes
   }
 })
 
-test('light warning clears the 3:1 non-text floor it actually owes, not 4.5:1', () => {
-  // Structural rule from T034: callout body text is always `text-primary`; `warning` only colours
-  // the stripe and the heading, both large-text-or-non-text uses. `warning` therefore only ever
-  // needs to clear WCAG's 3:1 non-text/large-text floor — asserting 4.5:1 here would encode an
-  // obligation this token was never meant to meet (it reaches 4.1:1, deliberately left as-is).
+test('light warning clears the 4.5:1 normal-text floor it actually owes (T038a)', () => {
+  // Structural rule from T034 stays exactly as it was: callout body text is always
+  // `text-primary`; `warning` only colours the stripe and the heading. T034a asserted this pair
+  // against the 3:1 non-text/large-text floor on the stated basis that `warning` never carries
+  // normal-size text — but `Callout`'s heading renders `font-sans text-md font-semibold` (16px at
+  // weight 600, src/components/Callout/index.tsx), and WCAG's large-text allowance needs 24px, or
+  // 18.66px at weight 700+. The heading is normal-size text, so this pair owes 4.5:1 like any
+  // other, not 3:1. It measured 4.13:1 against that real floor; T038a darkened `warning` within
+  // its own hue (as T034a darkened `accent` for DS-1) to clear it.
   const { surface, warning } = color.light
   const ratio = contrastRatio(warning, surface)
   assert.ok(
-    ratio >= 3,
-    `warning on surface is ${ratio.toFixed(2)}:1 in the light theme, below the 3:1 floor it still ` +
-      'owes as a stripe/heading colour',
+    ratio >= 4.5,
+    `warning on surface is ${ratio.toFixed(2)}:1 in the light theme, below the 4.5:1 normal-text ` +
+      'floor its callout heading use actually owes',
   )
 })

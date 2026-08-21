@@ -47,7 +47,7 @@ disabling it would be wrong, and here is what happens instead".
 
 ## Measured contrast pairs
 
-Computed 2026-08-20, updated 2026-08-20 after T034a's fix, from `tokens/color.json` with the WCAG
+Computed 2026-08-20, updated 2026-08-21 after T038a's fix, from `tokens/color.json` with the WCAG
 2.2 relative-luminance formula, rounded down to one decimal, and asserted in
 `tokens/build-tokens.test.mjs` for the pairs that carry an accessibility floor — a colour edit now
 fails a test rather than depending on this table being re-read. **Component specs reference this
@@ -59,29 +59,29 @@ fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
 
 ### Light theme
 
-| Foreground        | Background       | Ratio | Verdict                                                                                              |
-| ----------------- | ---------------- | ----- | ---------------------------------------------------------------------------------------------------- |
-| `text-primary`    | `surface`        | 15.3  | AAA                                                                                                  |
-| `text-primary`    | `surface-raised` | 14.5  | AAA                                                                                                  |
-| `text-primary`    | `background`     | 13.5  | AAA                                                                                                  |
-| `text-primary`    | `surface-sunken` | 11.7  | AAA                                                                                                  |
-| `text-secondary`  | `surface`        | 6.2   | AA                                                                                                   |
-| `text-secondary`  | `surface-raised` | 5.9   | AA                                                                                                   |
-| `text-secondary`  | `background`     | 5.5   | AA                                                                                                   |
-| `text-secondary`  | `surface-sunken` | 4.7   | AA, thin margin                                                                                      |
-| `info`            | `surface`        | 6.7   | AA                                                                                                   |
-| `danger`          | `surface`        | 6.5   | AA                                                                                                   |
-| `success`         | `surface`        | 5.9   | AA                                                                                                   |
-| `focus-ring`      | `surface`        | 6.7   | passes non-text 3:1                                                                                  |
-| `focus-ring`      | `background`     | 5.9   | passes non-text 3:1                                                                                  |
-| `warning`         | `surface`        | 4.1   | **fails normal text**; large text and non-text only, by design — see the rule after the gap register |
-| `accent`          | `surface`        | 4.9   | AA — passes normal text too now; still only used for large text and non-text                         |
-| `accent-contrast` | `accent`         | 4.9   | AA — fixed, gap DS-1 closed                                                                          |
-| `accent-contrast` | `accent-hover`   | 6.7   | AA                                                                                                   |
-| `accent-contrast` | `accent-active`  | 9.3   | AA                                                                                                   |
-| `border-strong`   | `surface`        | 3.4   | passes non-text 3:1 — fixed, gap DS-2 closed                                                         |
-| `border`          | `surface`        | 1.6   | decorative separators only, never a control boundary                                                 |
-| `text-disabled`   | `surface`        | 2.6   | exempt (1.4.3, inactive) — see rule under DS-3                                                       |
+| Foreground        | Background       | Ratio | Verdict                                                                      |
+| ----------------- | ---------------- | ----- | ---------------------------------------------------------------------------- |
+| `text-primary`    | `surface`        | 15.3  | AAA                                                                          |
+| `text-primary`    | `surface-raised` | 14.5  | AAA                                                                          |
+| `text-primary`    | `background`     | 13.5  | AAA                                                                          |
+| `text-primary`    | `surface-sunken` | 11.7  | AAA                                                                          |
+| `text-secondary`  | `surface`        | 6.2   | AA                                                                           |
+| `text-secondary`  | `surface-raised` | 5.9   | AA                                                                           |
+| `text-secondary`  | `background`     | 5.5   | AA                                                                           |
+| `text-secondary`  | `surface-sunken` | 4.7   | AA, thin margin                                                              |
+| `info`            | `surface`        | 6.7   | AA                                                                           |
+| `danger`          | `surface`        | 6.5   | AA                                                                           |
+| `success`         | `surface`        | 5.9   | AA                                                                           |
+| `focus-ring`      | `surface`        | 6.7   | passes non-text 3:1                                                          |
+| `focus-ring`      | `background`     | 5.9   | passes non-text 3:1                                                          |
+| `warning`         | `surface`        | 4.7   | AA — fixed, see the rule after the gap register                              |
+| `accent`          | `surface`        | 4.9   | AA — passes normal text too now; still only used for large text and non-text |
+| `accent-contrast` | `accent`         | 4.9   | AA — fixed, gap DS-1 closed                                                  |
+| `accent-contrast` | `accent-hover`   | 6.7   | AA                                                                           |
+| `accent-contrast` | `accent-active`  | 9.3   | AA                                                                           |
+| `border-strong`   | `surface`        | 3.4   | passes non-text 3:1 — fixed, gap DS-2 closed                                 |
+| `border`          | `surface`        | 1.6   | decorative separators only, never a control boundary                         |
+| `text-disabled`   | `surface`        | 2.6   | exempt (1.4.3, inactive) — see rule under DS-3                               |
 
 ### Dark theme
 
@@ -100,8 +100,8 @@ fill or icon of any interactive control (WCAG 1.4.3 and 1.4.11).
 | `border-strong`       | `surface`        | 3.8   | passes non-text 3:1 — fixed, gap DS-2 closed              |
 
 The asymmetry is the thing to remember: **the dark theme is comfortable and the light theme is
-tight.** Light `warning` is the one deliberate exception left below 4.5:1 — see the rule below the
-gap register. Judge light first.
+tight.** Every light-theme pair above now clears the normal-text floor it owes — see the rule below
+the gap register for `warning`'s history. Judge light first.
 
 ## Token gap register
 
@@ -120,7 +120,7 @@ An implementer who finds themselves needing a value not covered here stops and a
 
 `tokens/build-tokens.test.mjs` now asserts the pairs in the measured contrast table above that
 carry an accessibility floor, so a colour edit that breaks AA fails a test rather than depending on
-this table being re-read (T034a).
+this table being re-read (T034a, corrected by T038a below).
 
 **Closed — DS-1 and DS-2.** Light `accent` was too light to carry `accent-contrast` at AA, and
 `border-strong` missed the 3:1 non-text floor against `surface` in both themes. T034a darkened
@@ -136,8 +136,17 @@ with the defects they describe. T034b has removed the DS-1 and DS-2 citations fr
 the button table that had encoded the interim as the design; the gaps those files still list are
 the ones genuinely open.
 
-**The rule that answers light `warning` (4.1:1, deliberately unchanged).** `warning` colours only
-the stripe and the heading of a callout, never its body: callout body text is always
-`text-primary`, which is why 4.1:1 — below the 4.5:1 normal-text floor but above the 3:1 large-text
-and non-text floor `warning` actually has to clear — needed no token change. A component that ever
-put normal-size body text in `warning` would be the bug, not this ratio.
+**Closed — light `warning` (T038a).** `warning` colours only the stripe and the heading of a
+callout, never its body: callout body text is always `text-primary`. That structural rule is
+T034's and is unchanged. T034a then asserted the pair against the 3:1 large-text/non-text floor, on
+the stated basis that `warning` never carries normal-size text — but `Callout`'s heading renders at
+16px, weight 600 (`font-sans text-md font-semibold`,
+`src/components/Callout/index.tsx`), and WCAG's large-text allowance needs 24px, or 18.66px at
+weight 700 and above. The heading is normal-size text, so this pair owes 4.5:1 like any other, and
+4.1:1 sat under it. T038a darkened light `warning` within its own hue, the same way T034a darkened
+`accent` for DS-1, to 4.7:1 — clearing the floor with a margin rather than sitting on it — and
+raised the assertion in `tokens/build-tokens.test.mjs` to the 4.5:1 this pair actually owes. Light
+`warning-contrast` on `warning` moved from 3.99:1 to 3.47:1 as a side effect of the darkening; that
+pairing carries no component today (grep finds no use of it under `src/`), so it needed no
+correction, but it is not clear of even the 3:1 non-text floor and must be re-derived before
+anything is built against it.
