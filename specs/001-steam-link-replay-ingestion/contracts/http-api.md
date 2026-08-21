@@ -36,7 +36,11 @@ distinct from the session cookie and signed the same way. It carries the CSRF `s
 embedded in the outbound `return_to` Steam is asked to echo back (research.md §2): the callback
 accepts a `state` only if it matches what _this browser's own_ `steam_oauth_state` cookie says was
 minted for it, which is what ties the value to the browser session and refuses a `state` minted
-for one browser if replayed from another.
+for one browser if replayed from another. Single-use and its ten-minute expiry are both enforced
+server-side against the `csrf_states` table (data-model.md, T028b), never by trusting the cookie's
+own `max-age` or the fact that the callback response asks the client to clear it: a `state` this
+table already marked consumed, or one past its own `expires_at`, is refused even when the cookie
+that carries it still verifies.
 
 `GET /api/me` returns 200 with `{"authenticated": false}` rather than 401 when signed out: it is the
 front end's bootstrap call, and an error status for the ordinary case makes every client log noise.

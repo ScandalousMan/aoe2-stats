@@ -29,14 +29,17 @@ travels the identical path — folded into `return_to`'s query, protected by the
 computes over `openid.signed`'s `return_to` entry. No second cookie, no server-side flow table.
 
 **CSRF binding is cookie-presence, not a second independently-sourced token beyond `state`
-itself.** `verify_csrf_state(cookie_value, callback_state, secret)` compares the raw `state` this
-request's own query carries (extracted independently of `openid.return_to`'s field, directly from
-`request.query_params`) against what the signed `steam_oauth_state` cookie says was minted for
-*this browser* (`security.py`). A captured, genuine callback URL replayed against a browser that
-never completed its own `/start` — or completed a different one — carries no matching cookie and is
-rejected before `SteamAuthProvider.verify()` is ever called, which is also what makes an exact
-replay of an already-consumed callback fail: the cookie is single-use, cleared on every callback
-this router answers (`clear_csrf_state_cookie`), successful or not.
+itself.** `verify_csrf_state(cookie_value, callback_state, secret, db_session)` compares the raw
+`state` this request's own query carries (extracted independently of `openid.return_to`'s field,
+directly from `request.query_params`) against what the signed `steam_oauth_state` cookie says was
+minted for *this browser* (`security.py`). A captured, genuine callback URL replayed against a
+browser that never completed its own `/start` — or completed a different one — carries no matching
+cookie and is rejected before `SteamAuthProvider.verify()` is ever called. An exact replay of an
+already-consumed callback fails too, but no longer because the cookie was cleared: `clear_csrf_
+state_cookie` only ever told *this* browser to stop offering it, which is a request the browser is
+free to ignore. What actually rejects the replay, whatever the cookie still claims, is the
+`csrf_states` row `verify_csrf_state` marks consumed server-side the first time (T028b) — the same
+discipline `get_active_session` already gives a session, now given to the `state` too.
 
 **The closed-beta allowlist (T030, FR-005) is enforced once `SteamAuthProvider.verify()` has
 returned a Steam id this router actually trusts:** `not link_mode and existing_identity is None
@@ -280,7 +283,7 @@ async def start(request: Request, db_session: SessionDep, settings: SettingsDep)
             )
 
     response = Response(status_code=302)
-    state = security.issue_csrf_state_cookie(response, secret)
+    state = await security.issue_csrf_state_cookie(response, secret, db_session)
     return_to = _build_return_to(settings.public_base_url, state=state, link=link_mode)
     steam_provider = _build_steam_provider(return_to=return_to, db_session=db_session)
     response.headers["location"] = steam_provider.begin(return_to, state)
@@ -304,7 +307,7 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
     link_mode = request.query_params.get("link") == "1"
     csrf_cookie = request.cookies.get(security.CSRF_STATE_COOKIE_NAME)
 
-    if not security.verify_csrf_state(csrf_cookie, incoming_state, secret):
+    if not await security.verify_csrf_state(csrf_cookie, incoming_state, secret, db_session):
         return _error_redirect(response, settings, "steam_assertion_invalid")
     # `verify_csrf_state` already rejects a `None` `incoming_state` (security.py), so it is a
     # plain `str` from here on — asserted for mypy rather than defended against again.

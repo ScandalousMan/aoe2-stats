@@ -157,20 +157,28 @@ def test_clear_session_cookie_expires_it() -> None:
 # --- The CSRF `state` cookie, tied to the browser ---------------------------------------------
 
 
-def test_csrf_state_round_trips_for_the_browser_that_received_it() -> None:
-    response = Response()
-
-    state = security.issue_csrf_state_cookie(response, _SECRET)
-
+def _csrf_cookie_value(response: Response) -> str:
     cookie_header = response.headers["set-cookie"]
-    signed_value = cookie_header.split(f"{security.CSRF_STATE_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
-    assert security.verify_csrf_state(signed_value, state, _SECRET) is True
+    return cookie_header.split(f"{security.CSRF_STATE_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
 
 
-def test_csrf_state_cookie_carries_the_required_attributes() -> None:
+async def test_csrf_state_round_trips_for_the_browser_that_received_it(
+    db_session: AsyncSession,
+) -> None:
     response = Response()
 
-    security.issue_csrf_state_cookie(response, _SECRET)
+    state = await security.issue_csrf_state_cookie(response, _SECRET, db_session)
+
+    signed_value = _csrf_cookie_value(response)
+    assert await security.verify_csrf_state(signed_value, state, _SECRET, db_session) is True
+
+
+async def test_csrf_state_cookie_carries_the_required_attributes(
+    db_session: AsyncSession,
+) -> None:
+    response = Response()
+
+    await security.issue_csrf_state_cookie(response, _SECRET, db_session)
 
     cookie_header = response.headers["set-cookie"].lower()
     assert "httponly" in cookie_header
@@ -178,44 +186,75 @@ def test_csrf_state_cookie_carries_the_required_attributes() -> None:
     assert "samesite=lax" in cookie_header
 
 
-def test_csrf_state_minted_for_one_browser_cannot_be_replayed_in_another() -> None:
+async def test_csrf_state_minted_for_one_browser_cannot_be_replayed_in_another(
+    db_session: AsyncSession,
+) -> None:
     """The property this task exists to guarantee: a `state` minted for browser A, replayed with
     browser B's own (different) cookie, must never verify — CSRF protection tied to the browser,
     not to the value alone."""
     response_a = Response()
-    state_a = security.issue_csrf_state_cookie(response_a, _SECRET)
-    cookie_a = (
-        response_a.headers["set-cookie"]
-        .split(f"{security.CSRF_STATE_COOKIE_NAME}=", 1)[1]
-        .split(";", 1)[0]
-    )
+    state_a = await security.issue_csrf_state_cookie(response_a, _SECRET, db_session)
+    cookie_a = _csrf_cookie_value(response_a)
 
     response_b = Response()
-    security.issue_csrf_state_cookie(response_b, _SECRET)
-    cookie_b = (
-        response_b.headers["set-cookie"]
-        .split(f"{security.CSRF_STATE_COOKIE_NAME}=", 1)[1]
-        .split(";", 1)[0]
-    )
+    await security.issue_csrf_state_cookie(response_b, _SECRET, db_session)
+    cookie_b = _csrf_cookie_value(response_b)
 
     # Browser B replays browser A's *state value* (the part an attacker could read off a shared
     # link or a referrer header) but only has its own cookie — the one thing CSRF protection
     # relies on the attacker not having.
-    assert security.verify_csrf_state(cookie_b, state_a, _SECRET) is False
-    # And, for completeness, the reverse never matches either.
-    assert security.verify_csrf_state(cookie_a, state_a, _SECRET) is True
+    assert await security.verify_csrf_state(cookie_b, state_a, _SECRET, db_session) is False
+    # And, for completeness, the reverse verifies — and consumes it, so it is asserted last: every
+    # other assertion in this test still needs `state_a` spendable.
+    assert await security.verify_csrf_state(cookie_a, state_a, _SECRET, db_session) is True
 
 
-def test_verify_csrf_state_rejects_missing_or_mismatched_values() -> None:
+async def test_verify_csrf_state_rejects_missing_or_mismatched_values(
+    db_session: AsyncSession,
+) -> None:
     response = Response()
-    state = security.issue_csrf_state_cookie(response, _SECRET)
-    cookie_header = response.headers["set-cookie"]
-    signed_value = cookie_header.split(f"{security.CSRF_STATE_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    state = await security.issue_csrf_state_cookie(response, _SECRET, db_session)
+    signed_value = _csrf_cookie_value(response)
 
-    assert security.verify_csrf_state(None, state, _SECRET) is False
-    assert security.verify_csrf_state(signed_value, None, _SECRET) is False
-    assert security.verify_csrf_state(signed_value, "not-the-real-state", _SECRET) is False
-    assert security.verify_csrf_state(signed_value, state, _OTHER_SECRET) is False
+    assert await security.verify_csrf_state(None, state, _SECRET, db_session) is False
+    assert await security.verify_csrf_state(signed_value, None, _SECRET, db_session) is False
+    assert (
+        await security.verify_csrf_state(signed_value, "not-the-real-state", _SECRET, db_session)
+        is False
+    )
+    assert await security.verify_csrf_state(signed_value, state, _OTHER_SECRET, db_session) is False
+
+
+# --- The `csrf_states` table: single use and expiry, enforced server-side (T028b) --------------
+
+
+async def test_a_replayed_csrf_state_is_rejected_on_its_second_use(
+    db_session: AsyncSession,
+) -> None:
+    """The property this task exists to guarantee: an identical `state`, presented twice with the
+    same still-valid cookie, verifies once and is refused the second time — server-side, so it
+    does not depend on the client ever having obeyed `clear_csrf_state_cookie`."""
+    response = Response()
+    state = await security.issue_csrf_state_cookie(response, _SECRET, db_session)
+    signed_value = _csrf_cookie_value(response)
+
+    assert await security.verify_csrf_state(signed_value, state, _SECRET, db_session) is True
+    # Same cookie, same state, presented again — exactly what a captured callback URL replayed a
+    # second time looks like from this function's point of view.
+    assert await security.verify_csrf_state(signed_value, state, _SECRET, db_session) is False
+
+
+async def test_an_expired_csrf_state_is_rejected_even_before_any_use(
+    db_session: AsyncSession,
+) -> None:
+    """A `state` past `CSRF_STATE_TTL` must fail even on its very first presentation — expiry is a
+    property of the row, not of whether the cookie's own `max-age` has been respected."""
+    response = Response()
+    minted_at = datetime.now(UTC) - security.CSRF_STATE_TTL - timedelta(minutes=1)
+    state = await security.issue_csrf_state_cookie(response, _SECRET, db_session, now=minted_at)
+    signed_value = _csrf_cookie_value(response)
+
+    assert await security.verify_csrf_state(signed_value, state, _SECRET, db_session) is False
 
 
 # --- The `sessions` table: creation, lookup, immediate server-side revocation ------------------

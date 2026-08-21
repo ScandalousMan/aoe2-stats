@@ -30,6 +30,7 @@ EXPECTED_TABLES = {
     "replay_access_log",
     "data_requests",
     "sessions",
+    "csrf_states",
     "alerts",
 }
 
@@ -66,6 +67,15 @@ def test_users_carries_no_credential_columns() -> None:
 def test_sessions_hold_only_an_opaque_reference() -> None:
     columns = set(_table("sessions").columns.keys())
     assert columns == {"id", "user_id", "created_at", "expires_at", "revoked_at"}
+
+
+def test_csrf_states_hold_no_user_reference_and_track_consumption() -> None:
+    """T028b: the table exists solely so a `state` can be marked consumed and checked for expiry
+    server-side — it is minted before any session or user exists, so it must carry neither."""
+    columns = set(_table("csrf_states").columns.keys())
+    assert columns == {"id", "created_at", "expires_at", "consumed_at"}
+    for forbidden in ("user_id", "session_id"):
+        assert forbidden not in columns
 
 
 def test_replay_captures_has_claimed_at_and_the_dedup_constraint() -> None:

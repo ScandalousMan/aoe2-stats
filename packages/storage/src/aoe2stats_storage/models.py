@@ -165,6 +165,32 @@ class Session(Base):
     user: Mapped[User] = relationship(back_populates="sessions")
 
 
+class CsrfState(Base):
+    """`csrf_states` — server-side tracking for the OAuth CSRF `state` value (T028b).
+
+    Minted before any session exists (`security.issue_csrf_state_cookie`), so — unlike `Session`
+    above — it cannot be tied to a `user_id`. It gets the same discipline anyway: a row here, not
+    only a claim the client's own cookie makes, is what lets `security.verify_csrf_state` refuse a
+    `state` that has already been consumed or has simply expired, regardless of whether the
+    browser ever obeyed `clear_csrf_state_cookie` and actually dropped its copy.
+    """
+
+    __tablename__ = "csrf_states"
+
+    # The raw (unsigned) `state` value `generate_csrf_state` mints — opaque, 256 bits, same
+    # entropy floor as a session id.
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Set the moment a callback consumes this state; `None` until then. A second callback carrying
+    # the same value — even one whose cookie still verifies — finds this already set and is
+    # refused, which is the check the client's own cookie-clearing behaviour cannot be trusted to
+    # enforce on its own.
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # --- Profiles and matches — caches. Everything here can be re-fetched. ---------------------------
 
 

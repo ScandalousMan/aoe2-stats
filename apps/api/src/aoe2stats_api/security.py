@@ -38,6 +38,22 @@ it: a `state` issued to one browser is never present in another browsers's `Cook
 can never be replayed there (research.md §2, "A `state` value tied to the browser session guards
 the callback against CSRF").
 
+**Single-use and expiry are enforced server-side, in the `csrf_states` table — not merely by the
+cookie (T028b).** Both properties look, at a glance, like something the cookie already gives for
+free: `clear_csrf_state_cookie` deletes it on every callback, and `max_age=CSRF_STATE_TTL` bounds
+how long a browser keeps offering it. Neither is actually a guarantee this service makes, because
+both live entirely in the client: a browser (or a captured cookie replayed with a crafted `Cookie:`
+header, `HttpOnly` notwithstanding on the wire) is free to keep sending a cookie this module told it
+to delete, and free to ignore `max-age` altogether. `issue_csrf_state_cookie` now also inserts a row
+into `csrf_states` alongside the cookie, and `verify_csrf_state` consumes it with a single
+conditional `UPDATE ... WHERE consumed_at IS NULL AND expires_at > now`: the *database's* row, not
+the *client's* cookie, is what decides whether a `state` may still be spent. A second callback
+carrying the identical `state` — cookie intact, signature intact — now fails here, and so does one
+whose `expires_at` has passed even though it was never used at all. This is the discipline sessions
+already had (`get_active_session`, below, is a query re-evaluated on every request, not a claim the
+cookie gets to make); the CSRF `state` had it backwards until this task, granting the browser a
+guarantee that belonged to the service.
+
 This module is deliberately decoupled from `aoe2stats_api.settings.Settings` — every function
 below takes a plain `secret: str`, the same discipline `packages/storage`'s `build_engine` and
 `ObjectStore` already follow (`deps.py`'s docstring: "settings meet storage here and nowhere
@@ -51,12 +67,15 @@ import hmac
 import secrets
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import Response
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aoe2stats_storage.models import CsrfState as CsrfStateRow
 from aoe2stats_storage.models import Session as SessionRow
 
 # --- Names, decided here and nowhere else -------------------------------------------------------
@@ -177,12 +196,21 @@ def read_session_id(cookie_value: str | None, secret: str) -> str | None:
 # --- The CSRF `state` cookie, tied to the browser and not to any session -------------------------
 
 
-def issue_csrf_state_cookie(response: Response, secret: str) -> str:
-    """Mint a fresh CSRF `state`, set it (signed) on `CSRF_STATE_COOKIE_NAME`, and return the raw
-    value for the caller to embed in the outbound Steam request. The state this returns and the
-    state this cookie carries are the same value by construction — `verify_csrf_state` is what
-    ties them back together on the way back."""
+async def issue_csrf_state_cookie(
+    response: Response, secret: str, db_session: AsyncSession, *, now: datetime | None = None
+) -> str:
+    """Mint a fresh CSRF `state`, set it (signed) on `CSRF_STATE_COOKIE_NAME`, insert its
+    server-side tracking row (T028b: `csrf_states`, `CSRF_STATE_TTL` from now), and return the raw
+    value for the caller to embed in the outbound Steam request. The state this returns, the state
+    this cookie carries, and the state `csrf_states.id` now names are the same value by
+    construction — `verify_csrf_state` is what ties all three back together on the way back.
+
+    Not committed here, by the same discipline `create_session` documents: the caller's
+    request-scoped `session_scope` (`aoe2stats_api.deps.get_session`) commits it.
+    """
+    moment = now or datetime.now(UTC)
     state = generate_csrf_state()
+    db_session.add(CsrfStateRow(id=state, created_at=moment, expires_at=moment + CSRF_STATE_TTL))
     response.set_cookie(
         key=CSRF_STATE_COOKIE_NAME,
         value=_sign(state, secret),
@@ -196,8 +224,10 @@ def issue_csrf_state_cookie(response: Response, secret: str) -> str:
 
 
 def clear_csrf_state_cookie(response: Response) -> None:
-    """Expire the CSRF `state` cookie — a `state` is single-use by construction once the callback
-    consumes it, so nothing should keep offering it to a later request."""
+    """Expire the CSRF `state` cookie — the client-side half of single-use. The server-side half,
+    the one this service can actually rely on, is the `csrf_states` row `verify_csrf_state`
+    consumes (T028b): a browser that ignores this and keeps sending the cookie anyway still finds
+    the `state` it names already spent."""
     response.delete_cookie(
         key=CSRF_STATE_COOKIE_NAME,
         path="/",
@@ -207,20 +237,51 @@ def clear_csrf_state_cookie(response: Response) -> None:
     )
 
 
-def verify_csrf_state(cookie_value: str | None, callback_state: str | None, secret: str) -> bool:
-    """Whether `callback_state` — the value the Steam callback carries back — matches the `state`
-    minted for *this browser*: the one whose own `CSRF_STATE_COOKIE_NAME` cookie is passed as
-    `cookie_value`. A `state` minted for one browser is never present in another browser's
-    `Cookie:` header, so it can never be replayed there (research.md §2). `False` for a missing
-    cookie, a missing callback value, or a cookie that does not verify under `secret` — the same
-    undifferentiated rejection `_unsign` already gives a tampered session cookie.
+async def verify_csrf_state(
+    cookie_value: str | None,
+    callback_state: str | None,
+    secret: str,
+    db_session: AsyncSession,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Whether `callback_state` — the value the Steam callback carries back — both matches the
+    `state` minted for *this browser* and is still a live, unconsumed `csrf_states` row (T028b).
+
+    Two checks, in order, each independently sufficient to reject: first, that `callback_state`
+    matches what *this browser's own cookie* (`cookie_value`) says was minted for it — a `state`
+    minted for one browser is never present in another browser's `Cookie:` header, so it can never
+    be replayed there (research.md §2). Second, that the database still considers this `state`
+    spendable: `False` for a missing cookie, a missing callback value, a cookie that does not
+    verify under `secret` (the same undifferentiated rejection `_unsign` already gives a tampered
+    session cookie), or a `state` that this exact `UPDATE` cannot mark consumed because it was
+    already consumed, never issued, or has outlived `expires_at` — whatever the cookie, which does
+    not control any of that, still claims. The `UPDATE`'s own `WHERE` clause is what makes this
+    safe under two concurrent callbacks racing the identical `state`: at most one of them updates
+    the row and gets `True` back, never both.
     """
     if not cookie_value or not callback_state:
         return False
     expected = _unsign(cookie_value, secret)
     if expected is None:
         return False
-    return hmac.compare_digest(expected, callback_state)
+    if not hmac.compare_digest(expected, callback_state):
+        return False
+
+    moment = now or datetime.now(UTC)
+    result = cast(
+        CursorResult[Any],
+        await db_session.execute(
+            update(CsrfStateRow)
+            .where(
+                CsrfStateRow.id == callback_state,
+                CsrfStateRow.consumed_at.is_(None),
+                CsrfStateRow.expires_at > moment,
+            )
+            .values(consumed_at=moment)
+        ),
+    )
+    return result.rowcount == 1
 
 
 # --- The `sessions` table: creation, lookup, revocation ------------------------------------------

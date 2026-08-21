@@ -14,40 +14,52 @@ capture records, and the blobs they point at.
 
 ### `users`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid, pk | |
-| `created_at` | timestamptz | |
-| `allowlisted_at` | timestamptz, null | Null means the closed beta refuses them (FR-005) |
-| `ingest_consent_at` | timestamptz, null | Null means capture nothing. Enforced in the query that selects work, not in a later branch |
-| `ingest_consent_withdrawn_at` | timestamptz, null | Kept after withdrawal; erasure is a separate act |
+| Field                         | Type              | Notes                                                                                      |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `id`                          | uuid, pk          |                                                                                            |
+| `created_at`                  | timestamptz       |                                                                                            |
+| `allowlisted_at`              | timestamptz, null | Null means the closed beta refuses them (FR-005)                                           |
+| `ingest_consent_at`           | timestamptz, null | Null means capture nothing. Enforced in the query that selects work, not in a later branch |
+| `ingest_consent_withdrawn_at` | timestamptz, null | Kept after withdrawal; erasure is a separate act                                           |
 
 No password column, no email column, no reset token. FR-006 removes the entire family. A column that
 does not exist cannot leak.
 
 ### `steam_identities`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `steam_id64` | text, pk | As returned by `openid.claimed_id`, digits only |
-| `user_id` | uuid, fk users | Many rows per user; `steam_id64` being the pk already makes a Steam identity unique service-wide |
-| `verified_at` | timestamptz | The moment `check_authentication` returned valid. Never inferred |
-| `last_sign_in_at` | timestamptz | |
+| Field             | Type           | Notes                                                                                            |
+| ----------------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| `steam_id64`      | text, pk       | As returned by `openid.claimed_id`, digits only                                                  |
+| `user_id`         | uuid, fk users | Many rows per user; `steam_id64` being the pk already makes a Steam identity unique service-wide |
+| `verified_at`     | timestamptz    | The moment `check_authentication` returned valid. Never inferred                                 |
+| `last_sign_in_at` | timestamptz    |                                                                                                  |
 
 A user may hold several rows (FR-007). Each one is a completed sign-in. There is no path by which a
 row appears without one — FR-045.
 
 ### `sessions`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | text, pk | Opaque, 256 bits of randomness. Never derived from anything about the user |
-| `user_id` | uuid, fk users | |
-| `created_at`, `expires_at` | timestamptz | |
-| `revoked_at` | timestamptz, null | Server-side revocation, so sign-out is real and not cookie theatre |
+| Field                      | Type              | Notes                                                                      |
+| -------------------------- | ----------------- | -------------------------------------------------------------------------- |
+| `id`                       | text, pk          | Opaque, 256 bits of randomness. Never derived from anything about the user |
+| `user_id`                  | uuid, fk users    |                                                                            |
+| `created_at`, `expires_at` | timestamptz       |                                                                            |
+| `revoked_at`               | timestamptz, null | Server-side revocation, so sign-out is real and not cookie theatre         |
 
 No user data, no roles, no payload. FR-006 makes Steam the only key, which makes the session the
 only thing this service can actually revoke.
+
+### `csrf_states`
+
+| Field                      | Type              | Notes                                                                |
+| -------------------------- | ----------------- | -------------------------------------------------------------------- |
+| `id`                       | text, pk          | The raw OAuth CSRF `state` value, same entropy floor as a session id |
+| `created_at`, `expires_at` | timestamptz       | `expires_at` bounds the Steam OpenID round trip, minutes not days    |
+| `consumed_at`              | timestamptz, null | Set the moment a callback spends this `state`; null until then       |
+
+Minted before any session exists (`GET /api/auth/steam/start`), so it cannot carry a `user_id` the
+way `sessions` does. It exists so single-use and expiry are properties this table enforces on
+lookup — not properties the client's own cookie merely claims (T028b).
 
 ---
 
@@ -65,15 +77,15 @@ to track someone's name changes.
 
 ### `profile_links`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `user_id` | uuid, fk | |
-| `profile_id` | bigint, fk | Unique across the whole table, not just per user: a profile belongs to one account. The index is **partial** — `UNIQUE (profile_id) WHERE unlinked_at IS NULL` — otherwise an unlinked profile blocks its own relink and reports `profile_already_linked` forever |
-| `steam_id64` | text, fk | The identity that proved it |
-| `is_primary` | boolean | Exactly one true per user, enforced by a partial unique index |
-| `linked_at` | timestamptz | |
-| `unlinked_at` | timestamptz, null | Set rather than deleted, so capture history stays explicable |
-| `backfill_requested_at` | timestamptz, null | Set at link time, cleared when the 31-day sweep has run for this profile. The link cannot enqueue captures itself: there are no `matches` rows for a profile nobody has ever polled |
+| Field                   | Type              | Notes                                                                                                                                                                                                                                                             |
+| ----------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`               | uuid, fk          |                                                                                                                                                                                                                                                                   |
+| `profile_id`            | bigint, fk        | Unique across the whole table, not just per user: a profile belongs to one account. The index is **partial** — `UNIQUE (profile_id) WHERE unlinked_at IS NULL` — otherwise an unlinked profile blocks its own relink and reports `profile_already_linked` forever |
+| `steam_id64`            | text, fk          | The identity that proved it                                                                                                                                                                                                                                       |
+| `is_primary`            | boolean           | Exactly one true per user, enforced by a partial unique index                                                                                                                                                                                                     |
+| `linked_at`             | timestamptz       |                                                                                                                                                                                                                                                                   |
+| `unlinked_at`           | timestamptz, null | Set rather than deleted, so capture history stays explicable                                                                                                                                                                                                      |
+| `backfill_requested_at` | timestamptz, null | Set at link time, cleared when the 31-day sweep has run for this profile. The link cannot enqueue captures itself: there are no `matches` rows for a profile nobody has ever polled                                                                               |
 
 ### `matches`
 
@@ -107,35 +119,35 @@ produce, and it is enough to draw a rating curve.
 
 The table the entire feature turns on.
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid, pk | |
-| `game_id` | bigint, fk matches | |
-| `profile_id` | bigint, fk | Whose point of view. **Unique on `(game_id, profile_id)`** — this constraint *is* the deduplication (FR-018) |
-| `status` | enum | See the state machine below |
-| `capture_deadline_at` | timestamptz | `completed_at + CAPTURE_BUDGET_DAYS`, read from settings. Computed on insert, never recomputed, and never restated as a literal: the budget must be lowerable in one place the day the window is observed to shrink |
-| `attempts` | int | |
-| `next_attempt_at` | timestamptz | Backoff lives here, not in a scheduler |
-| `claimed_at` | timestamptz, null | Set when a run claims the row; a claim older than the maximum function duration is stale and reclaimable |
-| `first_seen_at`, `stored_at` | timestamptz | `stored_at - completed_at` is the capture lag |
-| `object_key` | text, null | |
-| `zip_bytes`, `zip_sha256` | bigint, text | Written before the status flips to `stored` |
-| `inner_filename`, `inner_bytes` | text, bigint | From validation |
-| `source` | enum | `automatic` or `manual` (FR-033) |
-| `http_status`, `last_error` | int, text | For diagnosis, never for control flow |
-| `validated_by` | text, null | Parser engine and version used at capture time |
+| Field                           | Type               | Notes                                                                                                                                                                                                               |
+| ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                            | uuid, pk           |                                                                                                                                                                                                                     |
+| `game_id`                       | bigint, fk matches |                                                                                                                                                                                                                     |
+| `profile_id`                    | bigint, fk         | Whose point of view. **Unique on `(game_id, profile_id)`** — this constraint _is_ the deduplication (FR-018)                                                                                                        |
+| `status`                        | enum               | See the state machine below                                                                                                                                                                                         |
+| `capture_deadline_at`           | timestamptz        | `completed_at + CAPTURE_BUDGET_DAYS`, read from settings. Computed on insert, never recomputed, and never restated as a literal: the budget must be lowerable in one place the day the window is observed to shrink |
+| `attempts`                      | int                |                                                                                                                                                                                                                     |
+| `next_attempt_at`               | timestamptz        | Backoff lives here, not in a scheduler                                                                                                                                                                              |
+| `claimed_at`                    | timestamptz, null  | Set when a run claims the row; a claim older than the maximum function duration is stale and reclaimable                                                                                                            |
+| `first_seen_at`, `stored_at`    | timestamptz        | `stored_at - completed_at` is the capture lag                                                                                                                                                                       |
+| `object_key`                    | text, null         |                                                                                                                                                                                                                     |
+| `zip_bytes`, `zip_sha256`       | bigint, text       | Written before the status flips to `stored`                                                                                                                                                                         |
+| `inner_filename`, `inner_bytes` | text, bigint       | From validation                                                                                                                                                                                                     |
+| `source`                        | enum               | `automatic` or `manual` (FR-033)                                                                                                                                                                                    |
+| `http_status`, `last_error`     | int, text          | For diagnosis, never for control flow                                                                                                                                                                               |
+| `validated_by`                  | text, null         | Parser engine and version used at capture time                                                                                                                                                                      |
 
 **Status values and what each one means operationally:**
 
-| Status | Meaning | Retried? |
-| --- | --- | --- |
-| `pending` | Known, not yet fetched | yes, from `next_attempt_at` |
-| `downloading` | Claimed by a run; may already carry the blob and its checksum | reclaimed if the claim is stale — resumed at validation, not re-downloaded, when `zip_sha256` is set |
-| `stored` | Blob durable, checksum recorded | terminal |
-| `unavailable` | The source says this replay was never recorded | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS` **and at least two attempts have been made**. A 404 before either condition leaves the row `pending` (FR-019) |
-| `expired` | Past the retention window before we got it | no — **and this must never happen** |
-| `quarantined` | Stored and checksummed, but not a well-formed replay | no — needs a human |
-| `failed` | Attempts exhausted | no, needs a human |
+| Status        | Meaning                                                       | Retried?                                                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pending`     | Known, not yet fetched                                        | yes, from `next_attempt_at`                                                                                                                                                                         |
+| `downloading` | Claimed by a run; may already carry the blob and its checksum | reclaimed if the claim is stale — resumed at validation, not re-downloaded, when `zip_sha256` is set                                                                                                |
+| `stored`      | Blob durable, checksum recorded                               | terminal                                                                                                                                                                                            |
+| `unavailable` | The source says this replay was never recorded                | no — but only concluded once the match is older than `REPLAY_PUBLICATION_GRACE_HOURS` **and at least two attempts have been made**. A 404 before either condition leaves the row `pending` (FR-019) |
+| `expired`     | Past the retention window before we got it                    | no — **and this must never happen**                                                                                                                                                                 |
+| `quarantined` | Stored and checksummed, but not a well-formed replay          | no — needs a human                                                                                                                                                                                  |
+| `failed`      | Attempts exhausted                                            | no, needs a human                                                                                                                                                                                   |
 
 `unavailable` and `expired` are separated deliberately. Blurring them would hide the only metric
 that matters: `expired` counts our failures, `unavailable` counts the game's. Alerting on the sum
@@ -174,7 +186,7 @@ the maximum function duration. No broker, no lease service, no lost work.
 The `ORDER BY` is the single most consequential line in the schema. Under a backlog it sheds the
 replays we can still fetch tomorrow instead of the ones expiring tonight.
 
-**Write ordering** (FR-023): upload the blob, verify the checksum, *then* update the row. A crash
+**Write ordering** (FR-023): upload the blob, verify the checksum, _then_ update the row. A crash
 between the two leaves an orphan object, which costs a fraction of a cent. The opposite ordering
 leaves a record claiming a replay is safe when it is not, which is a lie the user cannot detect.
 
@@ -271,7 +283,7 @@ non-user), `subject_profile_id`, `requested_at`, `completed_at`, `outcome`.
 
 **Erasure** deletes the user, their identities, sessions, links, captures, the access-log rows
 pointing at those captures, and the blobs. The access log goes with the captures it describes: it
-records who opened *this user's* replays, which is this user's own data, and SC-008 leaves no room
+records who opened _this user's_ replays, which is this user's own data, and SC-008 leaves no room
 for a surviving trace. It is not the accountability record for anyone else — nobody else's blob is
 reachable from these rows. It does **not** delete
 `matches` or `match_players`: those describe games other people also played, and removing them would
