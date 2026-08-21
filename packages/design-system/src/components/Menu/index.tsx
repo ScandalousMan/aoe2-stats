@@ -137,10 +137,12 @@ export function Menu({
         onClick={() => !isEmpty && setOpen((value) => !value)}
         onKeyDown={onTriggerKeyDown}
         className={cx(
-          'inline-flex h-10 items-center gap-2 rounded-md border border-border-strong bg-surface px-4 font-sans text-sm text-text-primary',
-          'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+          'inline-flex h-10 items-center gap-2 rounded-md border border-border-strong bg-surface px-4 font-sans text-sm',
+          'transition-colors duration-120 ease-standard',
           'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
-          isEmpty && 'cursor-default text-text-disabled',
+          isEmpty
+            ? 'cursor-default text-text-disabled'
+            : 'text-text-primary hover:bg-surface-sunken',
         )}
       >
         {triggerLabel}

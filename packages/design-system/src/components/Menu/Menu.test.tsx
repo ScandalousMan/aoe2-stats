@@ -18,6 +18,23 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('an empty trigger actually renders the disabled text colour, not the primary one', () => {
+    render(<Menu variant="actions" triggerLabel="Manage" items={[]} />)
+    const trigger = screen.getByRole('button', { name: 'Manage' })
+    // The disabled colour must be the only one emitted: a naive concatenation of the primary
+    // and disabled colour classes leaves the winner decided by stylesheet emission order rather
+    // than by the component (T035c).
+    expect(trigger.className).toMatch(/\btext-text-disabled\b/)
+    expect(trigger.className).not.toMatch(/\btext-text-primary\b/)
+  })
+
+  it('a non-empty trigger renders the primary text colour, never the disabled one', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\btext-text-primary\b/)
+    expect(trigger.className).not.toMatch(/\btext-text-disabled\b/)
+  })
+
   it('opens on click and marks the checked item with role=menuitemradio and aria-checked', async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
