@@ -33,8 +33,11 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api.settings import get_settings
+from aoe2stats_storage.models import ProfileLink, ProviderCall, SteamIdentity
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "providers" / "fixtures"
 
@@ -77,6 +80,11 @@ class _FakeSteamAndRelic:
         self._consumed: set[frozenset[tuple[str, str]]] = set()
         self.check_authentication_calls = 0
         self.resolve_profile_calls = 0
+        # T029b: from the `relic_calls_before_failure`-th call onward (1-indexed, counting every
+        # call to `getPersonalStat` — `resolve_profile` and `personal_stats` alike), answer
+        # `relic_failure_mode` instead of a fixture. `None` (the default) never fails.
+        self.relic_failure_mode: str | None = None
+        self.relic_calls_before_failure: int | None = None
 
     def issue(self, params: dict[str, str]) -> None:
         """Record the one parameter set a real Steam login would have genuinely signed.
@@ -100,6 +108,18 @@ class _FakeSteamAndRelic:
 
     def relic_response(self, request: httpx.Request) -> httpx.Response:
         self.resolve_profile_calls += 1
+        if (
+            self.relic_failure_mode is not None
+            and self.relic_calls_before_failure is not None
+            and self.resolve_profile_calls > self.relic_calls_before_failure
+        ):
+            if self.relic_failure_mode == "rate_limited":
+                return httpx.Response(429, request=request)
+            if self.relic_failure_mode == "server_error":
+                return httpx.Response(500, request=request)
+            if self.relic_failure_mode == "non_json":
+                return httpx.Response(200, text="not a JSON body at all", request=request)
+            raise AssertionError(f"unknown relic_failure_mode {self.relic_failure_mode!r}")
         haystack = request.url.query.decode() + (request.content or b"").decode(errors="ignore")
         if _NO_PROFILE_STEAM_ID64 in haystack:
             return httpx.Response(200, json=_RELIC_PERSONAL_STAT_UNREGISTERED, request=request)
@@ -329,3 +349,81 @@ def test_steam_account_with_no_aoe2_profile_yields_an_explanation_not_a_crash(
     assert fake_upstream.resolve_profile_calls == 1
     assert _error_code(response) == "no_aoe2_profile"
     assert client.get("/api/me").json()["authenticated"] is False
+
+
+# --- T029b: a Relic failure mid-callback -----------------------------------------------------
+
+
+async def _relic_provider_calls(db_session: AsyncSession) -> list[ProviderCall]:
+    result = await db_session.execute(select(ProviderCall).where(ProviderCall.provider == "relic"))
+    return list(result.scalars().all())
+
+
+async def test_relic_rate_limit_on_resolve_profile_redirects_with_provider_unavailable(
+    client: TestClient, fake_upstream: _FakeSteamAndRelic, db_session: AsyncSession
+) -> None:
+    """A rate limit on the very first Relic call (`resolve_profile`) must answer the documented
+    `provider_unavailable` redirect (contracts/http-api.md), never the raw internal-error body the
+    catch-all in `app.py` would otherwise send to a browser mid-redirect from Steam — exactly what
+    T030b already fixed for a rejected beta visitor, reintroduced here for a Relic outage.
+    """
+    fake_upstream.relic_failure_mode = "rate_limited"
+    fake_upstream.relic_calls_before_failure = 0
+
+    response = _sign_in(client, fake_upstream, _HAPPY_STEAM_ID64)
+
+    assert response.status_code < 500, (
+        f"a Relic rate limit must yield the documented redirect, not a raw error — "
+        f"got {response.status_code}: {response.text}"
+    )
+    assert "Traceback" not in response.text
+    assert _error_code(response) == "provider_unavailable"
+    assert client.get("/api/me").json()["authenticated"] is False
+
+    # Constitution III: "a provider_calls record of every call" — the failing call is not exempt,
+    # and it is the one an operator most needs (T029b).
+    relic_calls = await _relic_provider_calls(db_session)
+    assert relic_calls, (
+        "the failing Relic call must still be recorded in provider_calls, even though the "
+        "sign-in it was part of never completes"
+    )
+    assert any(call.rate_limited for call in relic_calls)
+
+
+async def test_relic_failure_on_personal_stats_rolls_back_the_link_but_records_the_call(
+    client: TestClient, fake_upstream: _FakeSteamAndRelic, db_session: AsyncSession
+) -> None:
+    """`resolve_profile` (the first Relic call) succeeds, so by the time `personal_stats` (the
+    second) fails, a `User`/`SteamIdentity`/`ProfileLink` row is already staged on the request's
+    session. That staged work must be rolled back wholesale — a sign-in with no rating history is
+    not a smaller version of success — and the failing call's `provider_calls` row must survive
+    that rollback regardless (T029b).
+    """
+    fake_upstream.relic_failure_mode = "non_json"
+    fake_upstream.relic_calls_before_failure = 1
+
+    response = _sign_in(client, fake_upstream, _HAPPY_STEAM_ID64)
+
+    assert response.status_code < 500, (
+        f"a non-JSON Relic body must yield the documented redirect, not a raw error — "
+        f"got {response.status_code}: {response.text}"
+    )
+    assert "Traceback" not in response.text
+    assert _error_code(response) == "provider_unavailable"
+    assert client.get("/api/me").json()["authenticated"] is False
+
+    identity = await db_session.get(SteamIdentity, _HAPPY_STEAM_ID64)
+    assert identity is None, (
+        "a Relic failure after the identity row was staged must roll the whole attempt back — "
+        "nothing may be left half-signed-in"
+    )
+    links = await db_session.execute(
+        select(ProfileLink).where(ProfileLink.profile_id == int(_HAPPY_PROFILE_ID))
+    )
+    assert links.scalar_one_or_none() is None
+
+    relic_calls = await _relic_provider_calls(db_session)
+    assert len(relic_calls) >= 2, (
+        "both the successful resolve_profile call and the failing personal_stats call must be "
+        "recorded, despite the second call's own transaction rolling back"
+    )

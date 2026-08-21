@@ -36,6 +36,7 @@ from aoe2stats_providers.base import (
     AsyncProviderCallSink,
     LeaderboardSnapshot,
     ProfileRef,
+    ProviderContractViolation,
     RetryPolicy,
     TokenBucket,
     parse_strict,
@@ -158,5 +159,16 @@ class RelicProfileProvider(AsyncBaseProvider):
             endpoint="getPersonalStat",
             params={"title": "age2", **extra_params},
         )
-        result: dict[str, Any] = response.json()
+        # A non-JSON body is a fourth way this endpoint can fail, alongside the status-code-driven
+        # `ProviderUnavailable`/`ProviderRateLimited` `_request` already raises: `response.json()`
+        # otherwise leaks a bare `json.JSONDecodeError`, a shape no caller of a `DataProvider` is
+        # contracted to expect (T029b — every failure this class can produce is a `ProviderError`).
+        try:
+            result: dict[str, Any] = response.json()
+        except ValueError as exc:
+            raise ProviderContractViolation(
+                f"{self._provider} returned a non-JSON body from getPersonalStat",
+                provider=self._provider,
+                endpoint="getPersonalStat",
+            ) from exc
         return result

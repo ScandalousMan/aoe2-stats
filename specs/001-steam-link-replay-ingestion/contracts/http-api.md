@@ -54,12 +54,13 @@ reload, with no consent state of its own to carry between requests.
 
 Failure codes that carry product meaning, not just HTTP semantics:
 
-| Code                      | When                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| `steam_assertion_invalid` | `check_authentication` said no. Log it; this is either a bug or an attack                 |
-| `no_aoe2_profile`         | Steam verified, no AoE2 profile exists (FR-003). Not an error to the user, an explanation |
-| `not_allowlisted`         | Closed beta (FR-005)                                                                      |
-| `profile_already_linked`  | That profile belongs to another account                                                   |
+| Code                      | When                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `steam_assertion_invalid` | `check_authentication` said no. Log it; this is either a bug or an attack                                                                                                          |
+| `no_aoe2_profile`         | Steam verified, no AoE2 profile exists (FR-003). Not an error to the user, an explanation                                                                                          |
+| `not_allowlisted`         | Closed beta (FR-005)                                                                                                                                                               |
+| `profile_already_linked`  | That profile belongs to another account                                                                                                                                            |
+| `provider_unavailable`    | Relic rate-limited, errored, timed out, or answered a non-JSON body mid-callback (T029b). Recoverable — the caller retries; the failing call is still recorded in `provider_calls` |
 
 ## Profiles
 

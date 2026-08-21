@@ -85,13 +85,14 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.settings import Settings
-from aoe2stats_providers.base import ProviderCallRecord
+from aoe2stats_providers.base import ProviderCallRecord, ProviderError
 from aoe2stats_providers.relic.profile import RelicProfileProvider
 from aoe2stats_providers.steam.provider import SteamAuthProvider
 from aoe2stats_providers.wiring import build_async_client_resources, build_sync_client_resources
@@ -148,17 +149,41 @@ def _sync_call_sink(db_session: AsyncSession) -> Callable[[ProviderCallRecord], 
 
 
 def _async_call_sink(db_session: AsyncSession) -> Callable[[ProviderCallRecord], Awaitable[None]]:
+    """Writes a `provider_calls` row on its **own** short-lived session, committed immediately —
+    never queued onto `db_session` itself (T029b). Relic is the one provider this router calls
+    that can fail mid-request (`resolve_profile`, `personal_stats`): `session_scope` (`deps.py`)
+    rolls the whole request transaction back on any unhandled exception, and a row added to
+    `db_session` for the very call that raised would be rolled back with it — losing exactly the
+    call an operator most needs recorded (constitution III: "a `provider_calls` record of every
+    call"). Built against `db_session.get_bind()` rather than `deps.get_engine()` so this reaches
+    whatever database the request's own session is actually bound to — the real one in
+    production, the throwaway test database under `apps/api/tests/conftest.py`'s `client`
+    fixture, which overrides `get_session` but not `deps.get_engine()`. `get_bind()` hands back the
+    plain sync `Engine` `AsyncSession` wraps internally, so it is re-wrapped in an new `AsyncEngine`
+    facade before use — SQLAlchemy caches that facade per sync engine, so this creates no new
+    connection pool, only a new logical session against the pool that already exists.
+    """
+
     async def _sink(record: ProviderCallRecord) -> None:
-        db_session.add(
-            ProviderCall(
-                provider=record.provider,
-                endpoint=record.endpoint,
-                status_code=record.status_code,
-                duration_ms=record.duration_ms,
-                called_at=record.called_at,
-                rate_limited=record.rate_limited,
+        bind = db_session.get_bind()
+        # `get_bind()` types as `Engine | Connection` for the general case (a session bound to a
+        # single already-open `Connection` instead of an `Engine`), which this application never
+        # does — every session here comes from an `async_sessionmaker` bound to an `Engine`
+        # (`packages/storage/.../repositories/base.py::build_session_factory`).
+        assert isinstance(bind, Engine), f"expected an Engine bind, got {type(bind)}"
+        audit_engine = AsyncEngine(bind)
+        async with AsyncSession(bind=audit_engine) as audit_session:
+            audit_session.add(
+                ProviderCall(
+                    provider=record.provider,
+                    endpoint=record.endpoint,
+                    status_code=record.status_code,
+                    duration_ms=record.duration_ms,
+                    called_at=record.called_at,
+                    rate_limited=record.rate_limited,
+                )
             )
-        )
+            await audit_session.commit()
 
     return _sink
 
@@ -201,13 +226,18 @@ def _build_return_to(base_url: str, *, state: str, link: bool) -> str:
 
 def _error_redirect(response: Response, settings: Settings, code: str) -> Response:
     """302 back into the app carrying `?error=<code>` — the shape `contracts/http-api.md`'s
-    documented failure codes `steam_assertion_invalid`, `no_aoe2_profile`, `profile_already_linked`
-    and `not_allowlisted` are all delivered in. `not_allowlisted` (T030, T030b) joins the other
-    three here rather than answering the plain JSON error envelope: the caller mid-callback is a
-    browser following a redirect chain from Steam, not an API client, and T036's sign-in screen now
-    has a `not_allowlisted` outcome — with its explanation and its retry — to send it back into.
-    A JSON body at an API address told a developer, not the rejected visitor FR-005 means to
-    inform."""
+    documented failure codes `steam_assertion_invalid`, `no_aoe2_profile`, `profile_already_linked`,
+    `not_allowlisted` and `provider_unavailable` are all delivered in. `not_allowlisted` (T030,
+    T030b) joins the other three here rather than answering the plain JSON error envelope: the
+    caller mid-callback is a browser following a redirect chain from Steam, not an API client, and
+    T036's sign-in screen now has a `not_allowlisted` outcome — with its explanation and its retry
+    — to send it back into. A JSON body at an API address told a developer, not the rejected
+    visitor FR-005 means to inform. `provider_unavailable` (T029b) joins the same way: a Relic
+    rate limit, a 5xx, a transport failure or a non-JSON body — all `ProviderError` — used to raise
+    straight through this handler to the catch-all in `app.py`, answering the same raw internal-
+    error JSON to a browser mid-redirect from Steam. `apps/web/src/features/auth/outcome.ts` maps
+    it onto `SignInScreen`'s existing `unreachable` outcome, which already had copy and baselines
+    for exactly this and nothing to receive it before."""
     response.status_code = 302
     response.headers["location"] = f"{settings.public_base_url}/?{urlencode({'error': code})}"
     return response
@@ -321,7 +351,14 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
         user_id = uuid.uuid4()
 
     relic_provider = _build_relic_provider(db_session)
-    profile_ref = await relic_provider.resolve_profile(steam_id64)
+    # T029b: a rate limit, a 5xx, a transport failure or a non-JSON body from Relic are all
+    # `ProviderError` (`ProviderUnavailable` / `ProviderRateLimited` / `ProviderContractViolation`,
+    # `packages/providers/src/aoe2stats_providers/base.py`). Nothing has been written yet at this
+    # point in the flow, so there is nothing to roll back — unlike the second call below.
+    try:
+        profile_ref = await relic_provider.resolve_profile(steam_id64)
+    except ProviderError:
+        return _error_redirect(response, settings, "provider_unavailable")
     if profile_ref is None:
         return _error_redirect(response, settings, "no_aoe2_profile")
 
@@ -394,7 +431,16 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
 
     # FR-009: the rating history starts accumulating from the first sign-in.
     ratings_repo = RatingsRepository(db_session)
-    for snapshot in await relic_provider.personal_stats([profile_ref.profile_id]):
+    # T029b: unlike the `resolve_profile` call above, the User/SteamIdentity/AoeProfile/ProfileLink
+    # rows above are already staged on `db_session` by this point — a caught `ProviderError` here
+    # must roll them back explicitly, since returning normally instead of re-raising would
+    # otherwise let `session_scope` (`deps.py`) commit a sign-in with no rating history at all.
+    try:
+        snapshots = await relic_provider.personal_stats([profile_ref.profile_id])
+    except ProviderError:
+        await db_session.rollback()
+        return _error_redirect(response, settings, "provider_unavailable")
+    for snapshot in snapshots:
         await ratings_repo.record_snapshot(
             profile_id=snapshot.profile_id,
             leaderboard_id=snapshot.leaderboard_id,
