@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,6 +9,49 @@ const items = [
   { id: 'p1', label: 'aoe2guy', checked: true },
   { id: 'p2', label: 'aoe2alt', checked: false },
 ]
+
+// jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here,
+// which is why the touch-target assertion below cannot render a real box and measure it directly.
+// The next best thing — and the one this repo already reaches for when a test would otherwise
+// stand in for a real value (tokens/build-tokens.test.mjs reads color.json the same way) — is to
+// read the actual spacing scale from its single source of truth, `tokens/space.json` (T016), and
+// compute the pixel height a `min-h-<n>` utility resolves to from *that* number, not from a
+// literal copied into the test. A class-name match (`toMatch(/min-h-12/)`) keeps passing even if
+// the spacing unit that "12" multiplies shrinks; this fails the moment it would (T035d).
+const SPACE_TOKENS_PATH = path.resolve(__dirname, '../../../tokens/space.json')
+const ROOT_FONT_SIZE_PX = 16 // jsdom's default <html> font-size, same as an un-overridden browser.
+
+function spacingUnitPx(): number {
+  const { unit } = JSON.parse(readFileSync(SPACE_TOKENS_PATH, 'utf8')) as { unit: string }
+  const remMatch = /^([\d.]+)rem$/.exec(unit)
+  if (!remMatch) throw new Error(`tokens/space.json "unit" is not a rem value: ${unit}`)
+  return Number.parseFloat(remMatch[1]) * ROOT_FONT_SIZE_PX
+}
+
+/** Stands in for jsdom's missing layout engine: derives the height a rendered element's own
+ * `min-h-<n>` utility actually resolves to, from the real spacing token, instead of hardcoding a
+ * pixel count in the test. An element with no such class measures as 0, so a component that stops
+ * setting a minimum height at all fails loudly rather than reading as compliant. */
+function mockMinHeightLayout() {
+  const unitPx = spacingUnitPx()
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    const match = /\bmin-h-(\d+)\b/.exec(this.className)
+    const height = match ? Number.parseInt(match[1], 10) * unitPx : 0
+    return {
+      height,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect
+  })
+}
 
 describe('Menu', () => {
   it('a menu with no items does not open and the trigger is aria-disabled', async () => {
@@ -110,11 +155,16 @@ describe('Menu', () => {
   })
 
   it('every item is at least 44px tall', async () => {
-    const user = userEvent.setup()
-    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
-    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
-    for (const item of screen.getAllByRole('menuitemradio')) {
-      expect(item.className).toMatch(/min-h-12/)
+    const getBoundingClientRect = mockMinHeightLayout()
+    try {
+      const user = userEvent.setup()
+      render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+      await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+      for (const item of screen.getAllByRole('menuitemradio')) {
+        expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+      }
+    } finally {
+      getBoundingClientRect.mockRestore()
     }
   })
 })

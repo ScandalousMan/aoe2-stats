@@ -49,6 +49,7 @@ anything.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -107,7 +108,7 @@ def _profile_not_found() -> APIError:
 
 
 async def _owned_active_link(
-    db_session: AsyncSession, *, profile_id: int, user_id: Any
+    db_session: AsyncSession, *, profile_id: int, user_id: uuid.UUID
 ) -> ProfileLink:
     """The caller's own active `profile_links` row for `profile_id`, or the single `not_found`
     error FR-045 requires for every other case (module docstring)."""
