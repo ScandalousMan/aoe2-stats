@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Token-driven component library for aoe2-stats. Design tokens, the Tailwind preset and the Storybook configuration (T016) are in place; the first components and stories start at T035.",
+  "description": "Token-driven component library for aoe2-stats. Design tokens, the Tailwind preset, the Storybook configuration (T016) and the first components (T035) are in place.",
   "exports": {
     ".": "./src/index.ts",
     "./tokens/tailwind.css": "./tokens/tailwind.css"
@@ -13,7 +13,7 @@
     "tokens:build": "node tokens/build-tokens.mjs",
     "storybook": "pnpm tokens:build && storybook dev -p 6006",
     "build-storybook": "pnpm tokens:build && storybook build -o storybook-static",
-    "test": "node --test tokens/*.test.mjs"
+    "test": "node --test tokens/*.test.mjs && vitest run"
   },
   "peerDependencies": {
     "react": "^19.2.8",
@@ -23,12 +23,17 @@
     "@storybook/addon-a11y": "^10.5.9",
     "@storybook/react-vite": "^10.5.9",
     "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^25.0.1",
     "storybook": "^10.5.9",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^3.2.4"
   }
 }
