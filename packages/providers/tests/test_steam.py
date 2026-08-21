@@ -2,16 +2,15 @@
 `packages/providers/fixtures/steam/` — the shared machinery this exercises is already proven by
 `test_provider_base.py`; this file is about `SteamAuthProvider`'s own logic on top of it.
 
-Written before `packages/providers/src/aoe2stats_providers/steam/provider.py` exists (T026): every
-test below is `@pytest.mark.xfail(strict=True, ...)` until that adapter exists. The import of
-`aoe2stats_providers.steam.provider` lives inside `_provider()` (and the one test that builds a
-`SteamAuthProvider` directly), never at module scope — a module-scope `ModuleNotFoundError` would
-abort the *entire* workspace suite's collection rather than failing one test (`tool.pytest.
-ini_options.testpaths` in the root `pyproject.toml` collects this file workspace-wide). Deferred to
-test-call time, the same `ModuleNotFoundError` instead fails just that one test call,
-which `strict=True` xfail turns into an expected, green result — and turns red again, forcing the
-marker's removal, the moment T026 makes the import succeed. This test defines the contract T026
-must satisfy, not a bug to work around.
+Written before `packages/providers/src/aoe2stats_providers/steam/provider.py` existed (T026), so
+every test below carried `@pytest.mark.xfail(strict=True, ...)` until that adapter landed. T026 has
+since landed and the markers are gone: `strict=True` is what forced their removal, by turning the
+run red the moment the tests began to pass. The import of `aoe2stats_providers.steam.provider`
+still lives inside `_provider()` (and the one test that builds a `SteamAuthProvider` directly)
+rather than at module scope, which is worth keeping — a module-scope `ModuleNotFoundError` aborts
+the *entire* workspace suite's collection rather than failing one test (`tool.pytest.
+ini_options.testpaths` in the root `pyproject.toml` collects this file workspace-wide). This test
+defines the contract T026 must satisfy, not a bug to work around.
 
 What `contracts/providers.md` and research.md §2 require, each covered below:
 

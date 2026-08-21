@@ -31,7 +31,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
 from aoe2stats_api.errors import APIError, error_response
-from aoe2stats_api.routers import auth, cron, health, profiles
+from aoe2stats_api.routers import auth, cron, health, privacy, profiles
 
 logger = logging.getLogger("aoe2stats_api")
 
@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(cron.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(profiles.router, prefix="/api")
+    app.include_router(privacy.router, prefix="/api")
 
     return app
 

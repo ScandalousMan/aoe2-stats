@@ -95,6 +95,16 @@ replay contains other players' gameplay and chat.
 not act immediately: it records a request for a human to resolve. An endpoint that let anyone
 pseudonymise any profile on demand would be a denial-of-service vector against the data.
 
+`POST /api/privacy/consent` takes `{"granted": bool}` (T032). `true` grants — recording
+`users.ingest_consent_at` the first time only, so a repeated grant never rewrites when consent was
+first given — and clears any prior withdrawal, since the ingester's selection query
+(data-model.md) is `ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`.
+`false` withdraws by setting `users.ingest_consent_withdrawn_at`, which is added on top of
+`ingest_consent_at` and never clears it (data-model.md: "Kept after withdrawal; erasure is a
+separate act") — and is a no-op, not an error, when there was never a grant to withdraw. Declining
+consent on an account that has not yet granted it (FR-034: separate from account creation) leaves
+the rest of the account untouched and still answers 200.
+
 ## Operations
 
 | Method        | Path               | Auth                                 | Notes                                                                                                                                                                                |

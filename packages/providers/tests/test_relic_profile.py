@@ -7,15 +7,14 @@ shapes measured in `docs/data-sources.md` §1. Every request in this file goes t
 forbids the network in unit tests, and `tests/conftest.py` blocks any real socket connection under
 `PYTEST_DISABLE_NETWORK=1` regardless.
 
-This is a test-first task: `aoe2stats_providers.relic.profile` does not exist yet (T027). Every
-test below is `@pytest.mark.xfail(strict=True, ...)` until that adapter is built to satisfy exactly
-the four behaviours below. The import of `aoe2stats_providers.relic.profile` lives inside
-`_provider()`, never at module scope — a module-scope `ModuleNotFoundError` would abort the
-*entire* workspace suite's collection rather than failing one test (`pytest -q` interrupts
-collection on any import error, workspace-wide, per `tool.pytest.ini_options.testpaths` in the root
-`pyproject.toml`). Deferred to test-call time, the same `ModuleNotFoundError` instead fails just
-that one test call, which `strict=True` xfail turns into an expected, green result — and turns red
-again, forcing the marker's removal, the moment T027 makes the import succeed.
+Written as a test-first task, before `aoe2stats_providers.relic.profile` existed (T027), so every
+test below carried `@pytest.mark.xfail(strict=True, ...)` until that adapter was built to satisfy
+exactly the four behaviours below. T027 has since landed and the markers are gone: `strict=True` is
+what forced their removal, by turning the run red the moment the tests began to pass. The import of
+`aoe2stats_providers.relic.profile` still lives inside `_provider()` rather than at module scope,
+which is worth keeping — a module-scope `ModuleNotFoundError` aborts the *entire* workspace suite's
+collection rather than failing one test (`pytest -q` interrupts collection on any import error,
+workspace-wide, per `tool.pytest.ini_options.testpaths` in the root `pyproject.toml`).
 
 Four behaviours, matching `contracts/providers.md`'s `ProfileProvider`:
 
