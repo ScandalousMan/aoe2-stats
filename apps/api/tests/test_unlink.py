@@ -106,6 +106,32 @@ async def _seed_linked_profile(
     return user, steam_identity, profile_link
 
 
+async def _add_active_link(
+    db_session: AsyncSession,
+    *,
+    user: User,
+    steam_id64: str,
+    profile_id: int,
+    linked_at: datetime,
+    is_primary: bool = False,
+) -> ProfileLink:
+    """A second (non-primary, by default) active `profile_links` row on `user` — same identity is
+    fine here, since `profile_links.steam_id64` carries no uniqueness of its own (module docstring
+    point 2 concerns the endpoint shape, not this)."""
+    db_session.add(AoeProfile(profile_id=profile_id, alias="SecondPlayer", country="DE"))
+    await db_session.flush()
+    link = ProfileLink(
+        user_id=user.id,
+        profile_id=profile_id,
+        steam_id64=steam_id64,
+        is_primary=is_primary,
+        linked_at=linked_at,
+    )
+    db_session.add(link)
+    await db_session.commit()
+    return link
+
+
 async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> None:
     """Insert a `sessions` row directly and hand the client its cookie — see the module docstring,
     point 1: there is no auth router yet (T029) to sign in through.
@@ -364,6 +390,51 @@ async def test_unlink_confirmed_leaves_no_active_link_for_ingestion_to_select(
         .all()
     )
     assert active_links == [], "no active link must remain for an unlinked profile"
+
+
+async def test_unlink_confirmed_promotes_oldest_surviving_link_to_primary(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T031b / data-model.md's "exactly one primary per user" and FR-043: a user with two active
+    links who unlinks the primary one must not end with none — the surviving link is promoted in
+    the same transaction, and it must be reachable through `GET /api/profiles`, not merely correct
+    in the database."""
+    second_profile_id = _PROFILE_ID + 1
+    user, _steam_identity, primary_link = await _seed_linked_profile(db_session)
+    second_link = await _add_active_link(
+        db_session,
+        user=user,
+        steam_id64=_STEAM_ID64,
+        profile_id=second_profile_id,
+        linked_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    # Captured now, before `expire_all()` below — reading an id off an expired ORM instance
+    # outside of an `await` triggers SQLAlchemy's async lazy-load with no greenlet to run it in.
+    primary_link_id, second_link_id = primary_link.id, second_link.id
+    await _sign_in(client, db_session, user)
+
+    response = client.delete(f"/api/profiles/{_PROFILE_ID}?confirm=true")
+    assert response.status_code == 200
+
+    db_session.expire_all()
+    unlinked = (
+        await db_session.execute(select(ProfileLink).where(ProfileLink.id == primary_link_id))
+    ).scalar_one()
+    assert unlinked.unlinked_at is not None
+    assert unlinked.is_primary is True, "unlink never rewrites the row it just deactivated"
+
+    promoted = (
+        await db_session.execute(select(ProfileLink).where(ProfileLink.id == second_link_id))
+    ).scalar_one()
+    assert promoted.unlinked_at is None
+    assert promoted.is_primary is True, "the oldest surviving active link must become primary"
+
+    profiles_response = client.get("/api/profiles")
+    assert profiles_response.status_code == 200
+    profiles = {p["profile_id"]: p for p in profiles_response.json()["profiles"]}
+    assert second_profile_id in profiles, "the surviving profile must stay reachable"
+    assert profiles[second_profile_id]["is_primary"] is True
+    assert _PROFILE_ID not in profiles, "the unlinked profile must not be listed as active"
 
 
 async def test_relink_after_unlink_creates_a_new_active_link(

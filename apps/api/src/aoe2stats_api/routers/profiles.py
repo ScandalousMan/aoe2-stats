@@ -17,6 +17,15 @@ same user even for the instant between statements. `GET /api/profiles` already a
 half of FR-043 on its own: it lists every active link, primary or not, so a non-primary profile is
 never hidden — promoting it is not the only way to see that it exists and is being archived.
 
+**Unlinking the primary link promotes another one.** `is_primary` is otherwise untouched by
+`DELETE`, but a user with two links who unlinks the primary one must not end with zero: the partial
+unique index enforces *at most* one primary per user, not *exactly* one, and nothing later can
+recover from "none" — every new link's own `is_primary` is `not active_links` (`auth.py`), which is
+already false once any active link remains. If the unlinked link was primary and another active
+link survives, the oldest surviving one (by `linked_at`) is promoted in the same transaction as the
+unlink itself, so the two writes commit or roll back together. If none survives there is nothing to
+promote to, and `is_primary` is left as-is on the now-inactive row.
+
 **FR-004 — the `DELETE` preview.** Unlinking never deletes a `profile_links` row (data-model.md:
 "Set rather than deleted, so capture history stays explicable") and never touches the
 `replay_captures` rows a profile already earned — those keep archiving nothing further only
@@ -281,6 +290,27 @@ async def unlink_profile(
     await db_session.execute(
         update(ProfileLink).where(ProfileLink.id == link.id).values(unlinked_at=now)
     )
+
+    if link.is_primary:
+        # The invariant is "at most one primary", not "exactly one" — but nothing later can
+        # recover from zero (module docstring), so promote the oldest surviving active link in
+        # the same transaction as the unlink itself.
+        oldest_survivor_id = await db_session.scalar(
+            select(ProfileLink.id)
+            .where(
+                ProfileLink.user_id == session_row.user_id,
+                ProfileLink.unlinked_at.is_(None),
+                ProfileLink.id != link.id,
+            )
+            .order_by(ProfileLink.linked_at)
+            .limit(1)
+        )
+        if oldest_survivor_id is not None:
+            await db_session.execute(
+                update(ProfileLink)
+                .where(ProfileLink.id == oldest_survivor_id)
+                .values(is_primary=True)
+            )
 
     return {
         "confirmed": True,
