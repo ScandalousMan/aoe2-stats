@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
@@ -85,6 +86,16 @@ class _FakeSteamAndRelic:
         # `relic_failure_mode` instead of a fixture. `None` (the default) never fails.
         self.relic_failure_mode: str | None = None
         self.relic_calls_before_failure: int | None = None
+        # T026b: which OS thread each side of the fake upstream was actually called from.
+        # `relic_response` is reached from inside an `await`ed coroutine (`RelicProfileProvider`
+        # is `AsyncBaseProvider`-built), so it always runs on the app's one event loop thread —
+        # a reference point free for the taking, not something this test has to construct. If
+        # `SteamAuthProvider.verify` (the synchronous, `SyncBaseProvider`-built round trip) is
+        # ever offloaded to a worker thread, `steam_call_threads` and `relic_call_threads` are
+        # disjoint; if it runs inline on the event loop like every other call in the same
+        # request, they share the exact same thread id.
+        self.steam_call_threads: set[int] = set()
+        self.relic_call_threads: set[int] = set()
 
     def issue(self, params: dict[str, str]) -> None:
         """Record the one parameter set a real Steam login would have genuinely signed.
@@ -98,6 +109,7 @@ class _FakeSteamAndRelic:
         self._genuine = _snapshot(params)
 
     def steam_response(self, request: httpx.Request) -> httpx.Response:
+        self.steam_call_threads.add(threading.get_ident())
         self.check_authentication_calls += 1
         snapshot = _snapshot(_request_params(request))
         valid = snapshot == self._genuine and snapshot not in self._consumed
@@ -107,6 +119,7 @@ class _FakeSteamAndRelic:
         return httpx.Response(200, text=body, request=request)
 
     def relic_response(self, request: httpx.Request) -> httpx.Response:
+        self.relic_call_threads.add(threading.get_ident())
         self.resolve_profile_calls += 1
         if (
             self.relic_failure_mode is not None
@@ -281,6 +294,34 @@ def test_sign_in_resolves_profile_and_ratings_with_no_input(
     assert _HAPPY_PROFILE_ID in profiles.text
     assert _HAPPY_ALIAS in profiles.text
     assert _HAPPY_LEADERBOARD_RATING in profiles.text
+
+
+def test_steam_verification_runs_off_the_event_loop_thread(
+    client: TestClient, fake_upstream: _FakeSteamAndRelic
+) -> None:
+    """T026b: `SteamAuthProvider.verify` is a blocking call (`httpx.Client`, a blocking retry
+    sleep, a blocking rate-limit wait — `packages/providers/src/aoe2stats_providers/steam/
+    provider.py`). Run directly from the `async def` callback, it would occupy the one event
+    loop thread the whole process shares for as long as Steam takes to answer; offloaded with
+    `asyncio.to_thread` (`apps/api/src/aoe2stats_api/routers/auth.py`), the same mechanism
+    `packages/storage/src/aoe2stats_storage/objects.py` already uses for `boto3`, it must not.
+
+    `relic_call_threads` is the reference point: `RelicProfileProvider` is built on
+    `AsyncBaseProvider` (constitution III) and `resolve_profile` is `await`ed directly inside
+    this same callback, so it always runs on the app's event loop thread — whichever thread that
+    turns out to be for this `TestClient`. If Steam's verification is offloaded, its own calling
+    thread is a distinct worker thread, never that one.
+    """
+    callback = _sign_in(client, fake_upstream, _HAPPY_STEAM_ID64)
+
+    assert callback.is_redirect, f"expected a redirect back into the app, got {callback.text}"
+    assert fake_upstream.steam_call_threads, "check_authentication was never reached"
+    assert fake_upstream.relic_call_threads, "getPersonalStat was never reached"
+    assert fake_upstream.steam_call_threads.isdisjoint(fake_upstream.relic_call_threads), (
+        "SteamAuthProvider.verify ran on the same thread as the awaited Relic calls — the "
+        "blocking check_authentication round trip (client call, retry sleep, rate-limit wait) "
+        "is running inline on the event loop instead of being offloaded with asyncio.to_thread"
+    )
 
 
 def test_replayed_callback_with_identical_parameters_is_rejected(

@@ -77,6 +77,7 @@ completed sign-in.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -315,7 +316,16 @@ async def callback(request: Request, db_session: SessionDep, settings: SettingsD
     callback_params = {
         key: value for key, value in request.query_params.items() if key.startswith("openid.")
     }
-    steam_id64 = steam_provider.verify(callback_params)
+    # T026b: `SteamAuthProvider.verify` is `SyncBaseProvider`-built (constitution III) — a
+    # blocking `httpx.Client` call, a blocking retry `time.sleep` and a blocking
+    # `SyncTokenBucket.acquire` wait, all synchronous by the Protocol's own design (`base.py`:
+    # "the OpenID 2.0 round trip runs inline in the callback route"). Called directly from this
+    # `async def` handler, that inline call runs on the one event loop thread the whole process
+    # shares — one slow or rate-limited Steam response would freeze every other request for up
+    # to `timeout * retry_count`. `asyncio.to_thread` is the same offload
+    # `packages/storage/src/aoe2stats_storage/objects.py` already uses for `boto3`, the other
+    # synchronous client this codebase wraps for exactly this reason.
+    steam_id64 = await asyncio.to_thread(steam_provider.verify, callback_params)
     if steam_id64 is None:
         return _error_redirect(response, settings, "steam_assertion_invalid")
 
