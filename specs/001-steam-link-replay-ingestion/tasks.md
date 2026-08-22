@@ -353,7 +353,7 @@ the official stats page and that each row's archival state reflects reality.
 - [x] T074 [US3] Build those components from tokens, each with a story, in `packages/design-system/src/` and their `*.stories.tsx`
 - [x] T075 [US3] Build the match history route with its empty state, in `apps/web/src/routes/matches.index.tsx` and `apps/web/src/features/matches/`. The file is `matches.index.tsx` and **not** `matches.tsx`: under the flat file convention the generator applies, a `matches.tsx` beside T076's `matches.$gameId.tsx` is not a sibling but its **parent layout** — verified against `@tanstack/router-cli`, which emits `getParentRoute: () => MatchesRoute` and wraps it as `MatchesRouteWithChildren`. The list would then have to render an `<Outlet/>` for the detail to appear at all, and a match list wrapping a match detail is not the layout this story wants. With `matches.index.tsx` instead, and no `matches.tsx` at any point, both routes hang off the root, `/matches` resolves to the list and `/matches/$gameId` to the detail, and neither knows about the other
 - [x] T076 [US3] Build the match detail route with the participant table and the replay download, in `apps/web/src/routes/matches.$gameId.tsx` and `apps/web/src/features/replays/`. A standalone route, not a child of the list — see T075 for why no `matches.tsx` is created
-- [ ] T077 [US3] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T074, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T077 [US3] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T074, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
 
 ### Phase 5 remediation (post-T075)
 
