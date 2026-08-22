@@ -114,7 +114,7 @@ jobs:
           PYTEST_DISABLE_NETWORK: "1"
 
   web:
-    name: Web — types, lint, unit tests
+    name: Web — types, lint, unit tests, built stylesheet
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
@@ -134,6 +134,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      # T107: none of the three checks above ever builds apps/web, so none of them could have
+      # caught the production defect this step exists for — Tailwind's automatic source detection
+      # excludes the workspace-resolved preset import, and the bundle shipped tokens with almost
+      # none of the utilities the components use. `built-css.mjs` asserts on the actual utilities,
+      # not a byte-size floor: the token block alone already clears any plausible floor, which is
+      # exactly why the broken bundle looked healthy.
+      - run: pnpm --filter web build
+      - run: node scripts/checks/built-css.mjs
 
   visual:
     name: Visual regression — affected stories only

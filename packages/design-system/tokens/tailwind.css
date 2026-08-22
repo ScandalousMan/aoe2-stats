@@ -12,3 +12,14 @@
  * sniffed at render time — the token pair in generated/tokens.css is what makes that possible: a
  * component using `dark:bg-surface` never has to know which theme is active. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* T107: Tailwind's automatic source detection walks outward from the stylesheet that imports it,
+ * but stops at anything resolved through node_modules — which is exactly how every consumer
+ * outside this package reaches this file (apps/web depends on `design-system` as a workspace
+ * package, so its import of this stylesheet is a node_modules resolution even though pnpm
+ * symlinks it back to this very directory). Left implicit, no consumer of the shared preset ever
+ * scans the components this preset is meant to style, and the production bundle ships the token
+ * variables with almost none of the utilities they're used with. Declaring this package's own
+ * `src` here means every consumer of the preset (T016) scans it too, without each of them having
+ * to know to. */
+@source '../src';

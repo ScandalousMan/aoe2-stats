@@ -2,3 +2,11 @@
  * lives in packages/design-system/tokens (T016) — this app never declares Tailwind or a token
  * value of its own, it only consumes the one shared preset. */
 @import 'design-system/tokens/tailwind.css';
+
+/* T107: the import above is resolved through node_modules (pnpm's workspace symlink for
+ * `design-system`), which is precisely what Tailwind's automatic source detection excludes — so
+ * without this line, nothing ever scans this app's own routes and components either, and the
+ * built stylesheet carries the tokens with none of the utilities this app's markup actually
+ * uses. Declared explicitly rather than relied on, same as the design-system package now does
+ * for its own components. */
+@source '.';
