@@ -105,7 +105,22 @@ def check_requirement_coverage(spec: str, tasks: str) -> None:
     missing = sorted(key for key in defined if key not in tasks)
     for key in missing:
         fail("requirement-coverage", f"{key} is defined in spec.md but named by no task")
-    notes.append(f"requirement-coverage: {len(defined) - len(missing)}/{len(defined)} requirements named by a task")
+    notes.append(
+        f"requirement-coverage: {len(defined) - len(missing)}/{len(defined)} "
+        "requirements named by a task"
+    )
+
+
+def _task_number(key: str) -> int:
+    """The numeric part of a task id (`T061a` -> `61`), for sorting and gap detection.
+
+    `key` is only ever a value already matched by `T\\d+[a-z]?` (`check_task_references`'s own
+    `defined` set), so the leading digits are always present — the assert documents that
+    invariant instead of asking mypy to trust an `Optional` that can never actually be `None`.
+    """
+    match = re.match(r"T(\d+)", key)
+    assert match is not None, f"malformed task id {key!r}"
+    return int(match.group(1))
 
 
 def check_task_references(feature_dir: Path, tasks: str) -> None:
@@ -119,7 +134,7 @@ def check_task_references(feature_dir: Path, tasks: str) -> None:
             referenced.add(match)
     for key in sorted(referenced - defined):
         fail("task-refs", f"{key} is referenced but defined by no task")
-    numbers = sorted({int(re.match(r"T(\d+)", key).group(1)) for key in defined})
+    numbers = sorted({_task_number(key) for key in defined})
     gaps = [n for n in range(numbers[0], numbers[-1] + 1) if n not in numbers]
     if gaps:
         notes.append(
@@ -150,7 +165,7 @@ def check_path_collisions(sources: dict[str, str], tree: set[str]) -> None:
     """
     groups: dict[tuple[str, str], dict[str, set[str]]] = {}
     for name, text in {**sources, "plan.md (tree)": ""}.items():
-        for path in (tree if name == "plan.md (tree)" else paths_in(text)):
+        for path in tree if name == "plan.md (tree)" else paths_in(text):
             if has_extension(path) or "/" not in path:
                 continue
             segments = path.split("/")
@@ -159,9 +174,14 @@ def check_path_collisions(sources: dict[str, str], tree: set[str]) -> None:
     for (prefix, leaf), variants in sorted(groups.items()):
         if len(variants) > 1:
             rendered = "; ".join(
-                f"{path} (in {', '.join(sorted(where))})" for path, where in sorted(variants.items())
+                f"{path} (in {', '.join(sorted(where))})"
+                for path, where in sorted(variants.items())
             )
-            fail("path-collisions", f"'{leaf}' under {prefix} is declared as {len(variants)} different paths: {rendered}")
+            fail(
+                "path-collisions",
+                f"'{leaf}' under {prefix} is declared as {len(variants)} "
+                f"different paths: {rendered}",
+            )
 
 
 def check_alert_kinds(data_model: str, tasks: str) -> None:
@@ -170,11 +190,11 @@ def check_alert_kinds(data_model: str, tasks: str) -> None:
         fail("alert-kinds", "no `kind` enum found in data-model.md")
         return
     canonical = set(re.findall(r"`([a-z_]+)`", enum_match.group(1)))
-    producers = dict(
-        (kind, task)
+    producers = {
+        kind: task
         for task, kind in re.findall(r"(T\d+[a-z]?) `([a-z_]+)`", data_model)
         if kind in canonical
-    )
+    }
     for kind in sorted(canonical - set(producers)):
         fail("alert-kinds", f"`{kind}` is in the enum but data-model.md names no producing task")
     task_bodies = dict(re.findall(r"^- \[[ x]\] (T\d+[a-z]?) (.+)$", tasks, re.MULTILINE))
@@ -182,7 +202,9 @@ def check_alert_kinds(data_model: str, tasks: str) -> None:
         if task not in task_bodies:
             fail("alert-kinds", f"`{kind}` names producer {task}, which is defined by no task")
         elif kind not in task_bodies[task]:
-            fail("alert-kinds", f"`{kind}` names producer {task}, whose task text never mentions it")
+            fail(
+                "alert-kinds", f"`{kind}` names producer {task}, whose task text never mentions it"
+            )
     for kind in sorted(set(re.findall(r"severity-\d `([a-z_]+)`", tasks)) - canonical):
         fail("alert-kinds", f"tasks.md raises `{kind}`, which is not in data-model.md's enum")
     notes.append(f"alert-kinds: {len(canonical)} kinds, each with a declared producer")
@@ -202,7 +224,9 @@ def parse_env(env_text: str) -> tuple[dict[str, str], set[str]]:
     return values, behavioural
 
 
-def check_env(sources: dict[str, str], tasks: str, env_values: dict[str, str], behavioural: set[str]) -> None:
+def check_env(
+    sources: dict[str, str], tasks: str, env_values: dict[str, str], behavioural: set[str]
+) -> None:
     used: set[str] = set()
     for text in sources.values():
         used |= set(re.findall(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b", text))
@@ -210,11 +234,16 @@ def check_env(sources: dict[str, str], tasks: str, env_values: dict[str, str], b
         fail("env-declared", f"{token} is used by an artifact but declared in no .env.example key")
     for key in sorted(behavioural):
         if key not in tasks:
-            fail("env-consumed", f"{key} tunes behaviour but is named by no task, so nothing reads it")
+            fail(
+                "env-consumed",
+                f"{key} tunes behaviour but is named by no task, so nothing reads it",
+            )
     notes.append(f"env: {len(behavioural)} behavioural keys, {len(env_values)} keys total")
 
 
-def check_literals(sources: dict[str, str], env_values: dict[str, str], behavioural: set[str]) -> None:
+def check_literals(
+    sources: dict[str, str], env_values: dict[str, str], behavioural: set[str]
+) -> None:
     """A behavioural constant restated as a literal tells the implementer to hard-code it.
 
     Scoped to the two artifacts an implementer reads as instructions — tasks.md and data-model.md.
@@ -239,7 +268,8 @@ def check_literals(sources: dict[str, str], env_values: dict[str, str], behaviou
                 if (match := pattern.search(line)) and key not in line:
                     fail(
                         "literals",
-                        f"{where} states '{match.group(0)}' as a literal; it is the value of {key} and must be read from it",
+                        f"{where} states '{match.group(0)}' as a literal; it is the value "
+                        f"of {key} and must be read from it",
                     )
 
 
@@ -268,8 +298,13 @@ def check_register_commitments(tasks: str) -> None:
             )
             continue
         for task in sorted(named - defined):
-            fail("register-commitments", f"launch item names {task}, which this feature does not define")
-    notes.append("register-commitments: every launch item is delivered by a named task or out of scope")
+            fail(
+                "register-commitments",
+                f"launch item names {task}, which this feature does not define",
+            )
+    notes.append(
+        "register-commitments: every launch item is delivered by a named task or out of scope"
+    )
 
 
 def report_field_of_view(tasks: str) -> None:

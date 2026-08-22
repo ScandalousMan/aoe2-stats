@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -47,21 +48,41 @@ _DATABASE_URL_ENV = "DATABASE_URL"
 
 
 class _ReadOnlyAlertSink:
-    """The read half of `aoe2stats_core.alerting.AlertSink`, structurally satisfying the Protocol
-    for `find_unacknowledged_severity_one_alerts` alone.
+    """Satisfies `aoe2stats_core.alerting.AlertSink`'s full shape, but only ever exercises its
+    read half.
 
-    No `write` method: this script never raises an alert, only reads them, so implementing the
-    write side would be dead code with no call site — unlike `apps/ingester/src/
-    aoe2stats_ingester/run.py`'s `_AlertSink` and `capture.py`'s `_DatabaseAlertSink`, each of which
-    is a real producer and needs both halves. `find_unacknowledged_severity_one_alerts` only ever
-    calls `unacknowledged_severity_one`, so this satisfies its actual runtime contract; it is not
-    imported from either of those two internal, underscore-prefixed classes because `scripts/
-    checks` is deliberately outside the uv workspace (plan.md) and does not reach into
-    `apps/ingester`'s internals.
+    `find_unacknowledged_severity_one_alerts` only ever calls `unacknowledged_severity_one`
+    at runtime, so this class's actual runtime contract is the read side alone — unlike
+    `apps/ingester/src/aoe2stats_ingester/run.py`'s `_AlertSink` and `capture.py`'s
+    `_DatabaseAlertSink`, each of which is a real producer and needs both halves for real (this
+    script never raises an alert, only reads them, and is not imported from either of those two
+    internal, underscore-prefixed classes because `scripts/checks` is deliberately outside the uv
+    workspace (plan.md) and does not reach into `apps/ingester`'s internals).
+
+    `write` still has to exist below (T061a): `AlertSink` is a `Protocol`, and
+    `find_unacknowledged_severity_one_alerts` is typed to take the whole of it, not a narrower
+    read-only protocol — mypy strict checks structural conformance against the full shape a
+    parameter declares, regardless of which members a caller actually invokes, so leaving `write`
+    out fails `[arg-type]` even though nothing here ever reaches it. It raises rather than writing
+    a real row: a `write` that could plausibly run and silently diverge from `raise_alert`'s own
+    validation would be worse than one that fails loudly the moment something starts calling it.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def write(
+        self,
+        *,
+        kind: str,
+        severity: int,
+        detail: Mapping[str, Any] | None,
+        ingest_run_id: uuid.UUID | None,
+    ) -> AlertRecord:
+        raise NotImplementedError(
+            "alert_audit.py only ever reads alerts; see the class docstring for why this exists "
+            "at all."
+        )
 
     async def unacknowledged_severity_one(self) -> Sequence[AlertRecord]:
         async with self._session_factory() as session:

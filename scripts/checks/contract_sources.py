@@ -38,6 +38,7 @@ import json
 import sys
 import time
 import zipfile
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -103,7 +104,9 @@ def write_text_fixture(relative_path: str, payload: str) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
-def check(name: str, *, blocking: bool = True):
+def check(
+    name: str, *, blocking: bool = True
+) -> Callable[[Callable[[], None]], Callable[[], None]]:
     """Run one contract check.
 
     `blocking=False` marks a source we have already declared degradable: a break is reported but
@@ -112,7 +115,7 @@ def check(name: str, *, blocking: bool = True):
     that matters.
     """
 
-    def deco(fn):
+    def deco(fn: Callable[[], None]) -> Callable[[], None]:
         print(f"\n== {name}{'' if blocking else '  (non-blocking)'}")
         # One retry: these endpoints throttle intermittently, and a single 403 is not a contract
         # change. Two in a row is worth reporting.
@@ -140,7 +143,7 @@ def check(name: str, *, blocking: bool = True):
 
 
 def _trim_match_history(
-    body: dict[str, Any], *, keep: int, must_include_profile_ids: set[int] = frozenset()
+    body: dict[str, Any], *, keep: int, must_include_profile_ids: Collection[int] = frozenset()
 ) -> dict[str, Any]:
     """Cap a `getRecentMatchHistory` body to `keep` matches (most recent first) so the fixture
     committed to the repository stays a reasonable size. Every kept match is byte-for-byte the
@@ -562,7 +565,9 @@ def _steam_check_authentication_invalid() -> None:
         "openid.return_to": "https://example.invalid/api/auth/steam/callback",
         "openid.response_nonce": "2026-08-19T21:00:00Zcontract-source-probe",
         "openid.assoc_handle": "never-issued",
-        "openid.signed": "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+        "openid.signed": (
+            "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle"
+        ),
         "openid.sig": "not-a-real-signature",
     }
     r = session.post(STEAM_OPENID, data=params, timeout=TIMEOUT)

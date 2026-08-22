@@ -56,7 +56,7 @@ def try_aoe2rec(data: bytes) -> tuple[bool, str]:
         start = time.perf_counter()
         rec = native.parse_rec(data)
         elapsed = time.perf_counter() - start
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"{version}: {type(exc).__name__}: {exc}"
 
     ops = rec["operations"]
@@ -79,7 +79,7 @@ def try_mgz(data: bytes) -> tuple[bool, str]:
         start = time.perf_counter()
         match = parse_match(io.BytesIO(data))
         elapsed = time.perf_counter() - start
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, f"{v}: {type(exc).__name__}: {str(exc).strip() or '(no message)'}"
     return True, f"{v}: map {match.map.name} in {elapsed:.2f}s"
 

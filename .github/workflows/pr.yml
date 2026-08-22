@@ -37,6 +37,7 @@ jobs:
               - 'packages/replay-engine/**'
               - 'packages/storage/**'
               - 'api/**'
+              - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
             web:
