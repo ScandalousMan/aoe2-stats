@@ -61,6 +61,64 @@ def test_build_ingest_stages_wires_the_fairness_quota_from_settings() -> None:
     assert drain._quota_exempt_days == settings.ingest_quota_exempt_days
 
 
+def test_build_ingest_stages_reuses_the_process_wide_client_engine_and_bucket() -> None:
+    """T060a: `build_ingest_stages` used to build a fresh `httpx.AsyncClient`, a fresh
+    `AsyncEngine` and a fresh `TokenBucket` on *every* call — never released on a long-lived
+    process (`routers/cron.py`'s own entrypoint, the local and phase-2-VPS path ADR-0002 names),
+    and, worse, silently re-arming the AOEMS token bucket's burst allowance on every invocation,
+    which defeats "at most 1 request per second, serially" the moment two invocations happen in
+    the same process (`docs/data-sources.md` §2, `contracts/providers.md`).
+
+    Two consecutive calls with the same `Settings` must share one client, one engine and one
+    AOEMS rate limiter — asserted by identity, not merely by equal configuration, since two
+    distinct `TokenBucket` instances at the same rate would still each start full.
+    """
+    settings = get_settings()
+
+    first_discover, _, first_drain = build_ingest_stages(settings)
+    second_discover, _, second_drain = build_ingest_stages(settings)
+
+    assert (
+        first_discover._match_history_provider._client
+        is second_discover._match_history_provider._client
+    )
+    assert first_drain._replay_provider._client is second_drain._replay_provider._client
+    assert first_drain._replay_provider._rate_limiter is second_drain._replay_provider._rate_limiter
+    assert first_discover._session_factory.kw["bind"] is second_discover._session_factory.kw["bind"]
+
+
+def test_build_ingest_stages_keys_the_cache_by_settings_so_a_different_database_url_does_not_reuse_the_engine() -> (  # noqa: E501
+    None
+):
+    """The cache must not key on `Settings` identity alone: a second, differently built
+    `Settings` (a different `DATABASE_URL`) must get its own engine rather than silently reusing
+    one built for another database.
+    """
+    import os
+
+    settings = get_settings()
+    first_discover, _, _ = build_ingest_stages(settings)
+
+    other_env = dict(os.environ)
+    other_env["DATABASE_URL"] = (
+        "postgresql+psycopg://user:password@other-host/other-dbname?sslmode=require"
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        for key, value in other_env.items():
+            monkeypatch.setenv(key, value)
+        get_settings.cache_clear()
+        try:
+            other_settings = get_settings()
+            second_discover, _, _ = build_ingest_stages(other_settings)
+        finally:
+            get_settings.cache_clear()
+
+    assert (
+        first_discover._session_factory.kw["bind"]
+        is not second_discover._session_factory.kw["bind"]
+    )
+
+
 def test_build_ingest_stages_never_imports_the_replay_engine_at_module_scope() -> None:
     """T018c's discipline, restated for this module: importing `aoe2stats_api.ingest_stages`
     itself must never load `aoe2rec_py` — only calling `build_ingest_stages` does. Run in a
