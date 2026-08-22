@@ -20,6 +20,7 @@ function row(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
     completed_at: '2026-08-22T10:34:00Z',
     map_name: 'Arabia',
     leaderboard_id: 3,
+    leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
     civilisation: 7,
     civilisation_name: 'Japanese',
@@ -151,6 +152,7 @@ function detail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
     completed_at: '2026-08-22T10:34:00Z',
     map_name: 'Arabia',
     leaderboard_id: 3,
+    leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
     participants: [
       participant({ profile_id: 1, team_id: 1, alias: 'Me', result: 'win', rating_diff: 12 }),
@@ -248,8 +250,10 @@ describe('toMatchDetailData', () => {
     expect(toMatchDetailData(detail({ map_name: null })).map).toBe('Unknown map')
   })
 
-  it('formats the leaderboard id as a stand-in name (T076 — no server name for this field yet)', () => {
-    expect(toMatchDetailData(detail({ leaderboard_id: 3 })).leaderboardName).toBe('Leaderboard 3')
+  it('passes the server-named leaderboard through unmodified (T070f)', () => {
+    expect(toMatchDetailData(detail({ leaderboard_name: 'Team Random Map' })).leaderboardName).toBe(
+      'Team Random Map',
+    )
   })
 
   it('formats duration in minutes', () => {

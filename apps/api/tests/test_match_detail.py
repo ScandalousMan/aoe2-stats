@@ -30,7 +30,9 @@ participant is therefore expected to carry `profile_id` and `alias` (there is no
 the seeded values rather than asserting dict equality, so an implementation that also returns
 `color_id` or `rating` is not penalised for doing more than the four FR-011 requires. T070c adds
 one further key, `civ_name` — `civilisation_name` from `aoe2stats_api.civilizations`, the same
-precedent `leaderboard_name` (T033a) set for a hand-maintained id-to-name table.
+precedent `leaderboard_name` (T033a) set for a hand-maintained id-to-name table. T070f applies
+that same precedent to the top-level `leaderboard_id` itself, which now carries a `leaderboard_name`
+resolved with the identical helper `GET /api/profiles` already reads.
 
 **Ownership.** The contract states plainly: "Only matches involving one of the caller's linked
 profiles are reachable." Mirrors `replays.py`'s `_owned_active_link`/`_profile_not_found` FR-045
@@ -375,6 +377,10 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
     assert response.status_code == 200
     body = response.json()
     assert body["game_id"] == _GAME_ID
+    # T070f: `leaderboard_name` alongside `leaderboard_id`, the same `leaderboards.py` mapping
+    # `GET /api/profiles` already reads — never re-derived by the client.
+    assert body["leaderboard_id"] == 3
+    assert body["leaderboard_name"] == "1v1 Random Map"
 
     by_profile = _participants_by_profile_id(body)
     assert set(by_profile) == {

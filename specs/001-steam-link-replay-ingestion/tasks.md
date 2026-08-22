@@ -407,7 +407,7 @@ arriving one phase later.
       than inventing a second path. T064 asserts the participants and never the capture state, which
       is why nothing caught it — assert both, and assert the download control's precondition
 
-- [ ] T070f Name the leaderboard in the two match routes, in
+- [x] T070f Name the leaderboard in the two match routes, in
       `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
       Both routes return `leaderboard_id` with no name, so T076 added `formatLeaderboardName` in the
       front end as a stand-in, falling back exactly as the server's own helper does. That is the

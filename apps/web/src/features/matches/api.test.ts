@@ -16,6 +16,7 @@ function validRow() {
     completed_at: '2026-08-22T10:34:00Z',
     map_name: 'Arabia',
     leaderboard_id: 3,
+    leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
     civilisation: 7,
     civilisation_name: 'Japanese',
@@ -63,6 +64,15 @@ describe('assertMatchesResponse', () => {
     )
   })
 
+  it('rejects a row with a non-string leaderboard_name (T070f)', () => {
+    const row = validRow()
+    // @ts-expect-error deliberately malformed for the assertion under test
+    row.leaderboard_name = null
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).toThrow(
+      MatchesResponseShapeError,
+    )
+  })
+
   it('rejects a non-string, non-null next_cursor', () => {
     expect(() => assertMatchesResponse({ matches: [], next_cursor: 42 })).toThrow(
       MatchesResponseShapeError,
@@ -93,6 +103,7 @@ function validDetail() {
     completed_at: '2026-08-22T10:34:00Z',
     map_name: 'Arabia',
     leaderboard_id: 3,
+    leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
     participants: [validParticipant()],
     capture_status: 'stored',
@@ -122,6 +133,11 @@ describe('assertMatchDetailResponse', () => {
     const body = validDetail()
     // @ts-expect-error deliberately malformed for the assertion under test
     delete body.game_id
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a body with a non-string "leaderboard_name" (T070f)', () => {
+    const body = { ...validDetail(), leaderboard_name: null }
     expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
   })
 

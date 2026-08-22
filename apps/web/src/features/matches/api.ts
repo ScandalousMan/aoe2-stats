@@ -23,6 +23,10 @@ export interface ApiMatchListRow {
   completed_at: string
   map_name: string | null
   leaderboard_id: number
+  /** `leaderboard_id`'s name, computed server-side (`matches.py`'s `_match_row_json`, T070f) —
+   * the same `aoe2stats_api.leaderboards.leaderboard_name` helper `GET /api/profiles` already
+   * reads (T033a), never a client-side stand-in table. */
+  leaderboard_name: string
   duration_seconds: number | null
   /** The caller's own `civ_id` for this match (`matches.py`'s module docstring: "FR-010 says
    * 'civilisation', meaning the caller's, never an opponent's"). */
@@ -116,6 +120,9 @@ function assertMatchListRow(value: unknown, index: number): asserts value is Api
   }
   if (typeof row.leaderboard_id !== 'number') {
     throw new MatchesResponseShapeError(`${path}.leaderboard_id was not a number`)
+  }
+  if (typeof row.leaderboard_name !== 'string') {
+    throw new MatchesResponseShapeError(`${path}.leaderboard_name was not a string`)
   }
   if (!isNullableNumber(row.duration_seconds)) {
     throw new MatchesResponseShapeError(`${path}.duration_seconds was not number|null`)
@@ -219,6 +226,9 @@ export interface ApiMatchDetail {
   completed_at: string
   map_name: string | null
   leaderboard_id: number
+  /** `leaderboard_id`'s name, computed server-side (`matches.py`'s `_match_detail_json`, T070f) —
+   * same field and same helper as `ApiMatchListRow.leaderboard_name` above. */
+  leaderboard_name: string
   duration_seconds: number | null
   participants: ApiMatchParticipant[]
   /** `null` only for a match with no `replay_captures` row yet for any of the caller's linked
@@ -298,6 +308,9 @@ export function assertMatchDetailResponse(payload: unknown): asserts payload is 
   }
   if (typeof body.leaderboard_id !== 'number') {
     throw new MatchDetailResponseShapeError('"leaderboard_id" was not a number')
+  }
+  if (typeof body.leaderboard_name !== 'string') {
+    throw new MatchDetailResponseShapeError('"leaderboard_name" was not a string')
   }
   if (!isNullableNumber(body.duration_seconds)) {
     throw new MatchDetailResponseShapeError('"duration_seconds" was not number|null')

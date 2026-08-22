@@ -19,6 +19,12 @@ three-homes rule, so it is computed here and served, never re-derived by the cli
 why this lookup lives at the router layer exactly like `leaderboard_name` did, rather than on the
 repository's own dataclasses.
 
+**Leaderboard names (T070f).** The same reasoning applies to `leaderboard_id`, and the same table
+already exists — `aoe2stats_api.leaderboards.leaderboard_name`, the one `profiles.py` already reads
+for `GET /api/profiles`. Both routes below carry a `leaderboard_name` alongside `leaderboard_id`
+computed with that same helper, so the client reads the identical vocabulary from every route
+rather than deriving a third copy of the mapping client-side.
+
 **FR-045 / FR-038 — one error, indistinguishable causes**, the same discipline `replays.py`'s and
 `profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already establish, and this
 module keeps its own copy of rather than importing (`replays.py`'s own module docstring: "each
@@ -66,6 +72,7 @@ from aoe2stats_api import security
 from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
+from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_storage.models import ProfileLink
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
@@ -176,6 +183,7 @@ def _match_row_json(row: MatchListRow) -> dict[str, Any]:
         "completed_at": row.completed_at.isoformat(),
         "map_name": row.map_name,
         "leaderboard_id": row.leaderboard_id,
+        "leaderboard_name": leaderboard_name(row.leaderboard_id),
         "duration_seconds": row.duration_seconds,
         "civilisation": row.civilisation,
         "civilisation_name": civilisation_name(row.civilisation),
@@ -198,6 +206,7 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
         "completed_at": detail.completed_at.isoformat(),
         "map_name": detail.map_name,
         "leaderboard_id": detail.leaderboard_id,
+        "leaderboard_name": leaderboard_name(detail.leaderboard_id),
         "duration_seconds": detail.duration_seconds,
         "participants": [
             {

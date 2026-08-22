@@ -20,6 +20,7 @@ expected to need adjusting once T070 actually lands:
 - `{"matches": [...], "next_cursor": <opaque string> | null}` — a `matches` array plus an opaque
   cursor for the next page, `null` once there is no more.
 - Each row: `game_id`, `started_at`, `completed_at` (ISO 8601), `map_name`, `leaderboard_id`,
+  `leaderboard_name` (T070f, resolved server-side via `aoe2stats_api.leaderboards`),
   `duration_seconds`, `civilisation` (the caller's own `civ_id`), `result` (the caller's own),
   `rating_diff` (the caller's own rating change), `opponents` (every participant on a different
   team than the caller's own — T070d: never a teammate — with their `profile_id`, `alias`,
@@ -295,10 +296,17 @@ async def _seed_full_match(
     caller_result: str = "win",
     caller_rating_diff: int = 18,
     map_name: str = "Arabia",
+    leaderboard_id: int = 3,
 ) -> None:
     """One match, both `match_players` rows, and a `stored` capture for the caller — the shape
     every happy-path test in this file needs."""
-    await _seed_match(db_session, game_id=game_id, completed_at=completed_at, map_name=map_name)
+    await _seed_match(
+        db_session,
+        game_id=game_id,
+        completed_at=completed_at,
+        map_name=map_name,
+        leaderboard_id=leaderboard_id,
+    )
     await _seed_match_players(
         db_session,
         game_id=game_id,
@@ -391,6 +399,10 @@ async def test_matches_list_newest_first_with_fr010_fields(
     # T070c: a name alongside the raw id, resolved server-side rather than left for the client to
     # hand-map (the precedent `leaderboard_name`, T033a, already established for leaderboards).
     assert newest_row["civilisation_name"] == "Turks"
+    # T070f: `leaderboard_name` alongside `leaderboard_id`, the same `leaderboards.py` mapping
+    # `GET /api/profiles` already reads — never re-derived by the client.
+    assert newest_row["leaderboard_id"] == 3
+    assert newest_row["leaderboard_name"] == "1v1 Random Map"
     assert newest_row["result"] == "win"
     assert newest_row["rating_diff"] == 16
     assert newest_row["duration_seconds"] == 1800
@@ -471,6 +483,29 @@ async def test_matches_list_civilisation_name_falls_back_for_an_unrecognised_civ
     row = response.json()["matches"][0]
     assert row["civilisation"] == 999
     assert row["civilisation_name"] == "Civilisation 999"
+
+
+async def test_matches_list_leaderboard_name_falls_back_for_an_unrecognised_leaderboard_id(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T070f: an id `aoe2stats_api.leaderboards` does not recognise still renders — as
+    "Leaderboard <id>", never a guessed name, the same fallback `leaderboard_name` already
+    established for `GET /api/profiles` (T033a)."""
+    user = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, user)
+    await _seed_opponent_profile(db_session)
+
+    now = datetime.now(UTC)
+    game_id = 2_060
+    await _seed_full_match(db_session, game_id=game_id, completed_at=now, leaderboard_id=999)
+    await db_session.commit()
+
+    response = client.get(f"/api/matches?profile_id={_CALLER_PROFILE_ID}")
+
+    assert response.status_code == 200
+    row = response.json()["matches"][0]
+    assert row["leaderboard_id"] == 999
+    assert row["leaderboard_name"] == "Leaderboard 999"
 
 
 async def test_matches_list_respects_limit_and_returns_a_next_cursor(

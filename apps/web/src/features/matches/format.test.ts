@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   formatCivilisation,
   formatDuration,
-  formatLeaderboardName,
   formatOutcome,
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
@@ -72,15 +71,5 @@ describe('formatCivilisation', () => {
 
   it('reads as unknown for a null civilisation name', () => {
     expect(formatCivilisation(null)).toBe('Unknown civilisation')
-  })
-})
-
-describe('formatLeaderboardName', () => {
-  it('is a stand-in for a name the API does not send yet (T076), never a duplicated id table', () => {
-    expect(formatLeaderboardName(3)).toBe('Leaderboard 3')
-  })
-
-  it('mirrors the exact fallback shape the API uses for an id it does not recognise', () => {
-    expect(formatLeaderboardName(999)).toBe('Leaderboard 999')
   })
 })

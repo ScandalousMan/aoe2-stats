@@ -9,7 +9,6 @@ import type { ApiMatchDetail, ApiMatchListRow, ApiMatchParticipant, ApiOpponent 
 import {
   formatCivilisation,
   formatDuration,
-  formatLeaderboardName,
   formatOutcome,
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
@@ -119,7 +118,10 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
   return {
     gameId: String(detail.game_id),
     map: detail.map_name ?? 'Unknown map',
-    leaderboardName: formatLeaderboardName(detail.leaderboard_id),
+    // T070f: `leaderboard_name` computed server-side (`matches.py`'s `_match_detail_json`), the
+    // same `leaderboards.py` mapping `GET /api/profiles` already reads — passed straight through,
+    // never re-derived here.
+    leaderboardName: detail.leaderboard_name,
     durationLabel: formatDuration(detail.duration_seconds),
     // "Played-on date/time" (match-history.md §2) reads most naturally as when the match started;
     // `started_at` can be `null` (module docstring on `ApiMatchDetail`), so this falls back to
