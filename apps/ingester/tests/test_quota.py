@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_storage.models import (
@@ -120,7 +119,6 @@ async def _seed_capture(
     return capture
 
 
-@pytest.mark.xfail(strict=True, reason="T058 not implemented yet")
 async def test_quota_defers_a_capture_once_the_per_user_cap_is_reached(
     db_session: AsyncSession,
 ) -> None:
@@ -155,7 +153,6 @@ async def test_quota_defers_a_capture_once_the_per_user_cap_is_reached(
     assert [row.id for row in allowed] == [c1.id, c2.id]
 
 
-@pytest.mark.xfail(strict=True, reason="T058 not implemented yet")
 async def test_quota_is_aggregated_across_all_of_a_users_linked_profiles(
     db_session: AsyncSession,
 ) -> None:
@@ -192,7 +189,6 @@ async def test_quota_is_aggregated_across_all_of_a_users_linked_profiles(
     assert [row.id for row in allowed] == [on_first_profile.id]
 
 
-@pytest.mark.xfail(strict=True, reason="T058 not implemented yet")
 async def test_quota_exemption_runs_a_near_deadline_capture_despite_the_cap(
     db_session: AsyncSession,
 ) -> None:
@@ -238,7 +234,6 @@ async def test_quota_exemption_runs_a_near_deadline_capture_despite_the_cap(
     assert [row.id for row in allowed] == [c1.id, c2.id, exempt.id]
 
 
-@pytest.mark.xfail(strict=True, reason="T058 not implemented yet")
 async def test_quota_exemption_does_not_itself_spend_the_cap(
     db_session: AsyncSession,
 ) -> None:
@@ -282,7 +277,6 @@ async def test_quota_exemption_does_not_itself_spend_the_cap(
     assert [row.id for row in allowed] == [exempt.id, c1.id, c2.id]
 
 
-@pytest.mark.xfail(strict=True, reason="T058 not implemented yet")
 async def test_quota_is_independent_between_users(db_session: AsyncSession) -> None:
     """FR-044: the cap belongs to one user's own captures. A second user's captures must be
     allowed up to their own `max_per_user`, unaffected by however much of the first user's quota
