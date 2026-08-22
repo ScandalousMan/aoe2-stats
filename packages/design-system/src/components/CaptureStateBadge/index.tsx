@@ -26,6 +26,15 @@ export interface CaptureStateBadgeProps {
   captureDeadlineAt?: string | null
   /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). */
   context?: CaptureStateBadgeContext
+  /** Force the pill and `SecondaryLine` to always stack, regardless of the *window's* width.
+   * `context="compact"`'s own default (`sm:flex-row` at 640px-equivalent) reads the window, which
+   * is the right approximation for a full-width `MatchRow` card but the wrong one for a caller
+   * whose own box is narrower than the window — e.g. `MatchRow`'s bounded trailing table column
+   * (match-history.md §8: "`SecondaryLine` beneath the pill rather than beside it, column width
+   * is bounded"). Rather than have this component infer a container width it cannot observe, the
+   * caller that knows its own box is bounded tells it so. No effect on `context="detail"`, which
+   * already always stacks. */
+  stacked?: boolean
   /** The owning row has not received `capture_status` yet: renders a `Skeleton` matching the
    * pill's own footprint in place of the badge (§6 "loading"). Takes priority over every other
    * prop, including a `captureStatus` left over from a previous render. */
@@ -93,6 +102,7 @@ export function CaptureStateBadge({
   captureStatus,
   captureDeadlineAt = null,
   context = 'compact',
+  stacked = false,
   loading = false,
   className,
 }: CaptureStateBadgeProps) {
@@ -125,16 +135,19 @@ export function CaptureStateBadge({
     context,
   )
 
+  // `detail` always stacks, `space-1` between pill and SecondaryLine (§4, §9). `compact` stacks
+  // either because the caller told it to (`stacked` — a box it knows is bounded, like MatchRow's
+  // trailing table column) or, absent that, by its own best guess from the window's width (§10) —
+  // right for a full-width card, wrong for a bounded column, which is exactly why `stacked`
+  // exists. Both compact cases keep `space-2` (§9's own "inline, compact" row; no dedicated
+  // "stacked, compact" row exists, so this reuses the one pair the spec already gives compact).
+  const layoutClassName =
+    context === 'detail'
+      ? 'flex-col items-start gap-1'
+      : cx('flex-col items-start gap-2', !stacked && 'sm:flex-row sm:items-center')
+
   return (
-    <div
-      className={cx(
-        'flex',
-        context === 'detail'
-          ? 'flex-col items-start gap-1'
-          : 'flex-col items-start gap-2 sm:flex-row sm:items-center',
-        className,
-      )}
-    >
+    <div className={cx('flex', layoutClassName, className)}>
       <span aria-describedby={secondary ? secondaryId : undefined}>
         <Badge variant={known.variant}>{known.label}</Badge>
       </span>

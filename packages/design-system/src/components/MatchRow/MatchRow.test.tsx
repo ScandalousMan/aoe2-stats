@@ -140,11 +140,13 @@ describe('MatchList', () => {
     expect(screen.getByText('Needs review')).toBeInTheDocument()
   })
 
-  it('renders a real ruled table with a caption from `lg` up, never both layouts at once', () => {
+  function mockMatchMediaAt(widthPx: number): () => void {
     const original = window.matchMedia
-    window.matchMedia = (query: string) =>
-      ({
-        matches: query.includes('1024'),
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: widthPx >= threshold,
         media: query,
         onchange: null,
         addListener: () => {},
@@ -152,10 +154,29 @@ describe('MatchList', () => {
         addEventListener: () => {},
         removeEventListener: () => {},
         dispatchEvent: () => false,
-      }) as MediaQueryList
+      } as MediaQueryList
+    }
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  it('renders a real ruled table with a caption from `xl` (1280) up, never both layouts at once', () => {
+    const restore = mockMatchMediaAt(1280)
     render(<MatchList matches={[match]} />)
     expect(screen.getByRole('table', { name: 'Your recent matches' })).toBeInTheDocument()
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
-    window.matchMedia = original
+    restore()
+  })
+
+  // Regression: `lg` (1024) previously drove this switch, so a viewport of 1100 — above `lg`,
+  // below the `xl` (1280) the spec actually reserves for the table (match-history.md §8) —
+  // rendered a table when it should still show cards.
+  it('still renders cards, not a table, at 1100 — below `xl`', () => {
+    const restore = mockMatchMediaAt(1100)
+    render(<MatchList matches={[match]} />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    restore()
   })
 })

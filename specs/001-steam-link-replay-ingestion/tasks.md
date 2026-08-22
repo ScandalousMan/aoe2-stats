@@ -432,7 +432,7 @@ that exists to catch it, and every later run then reports green for the thing it
 is T038b's failure, and the reason this section exists at all is that the review caught it one step
 before it became permanent.
 
-- [ ] T074a Give the layout the breakpoints and the tier its spec asks for, in
+- [x] T074a Give the layout the breakpoints and the tier its spec asks for, in
       `packages/design-system/src/components/MatchRow/index.tsx`,
       `packages/design-system/src/components/MatchDetailPanel/index.tsx` and
       `packages/design-system/src/components/CaptureStateBadge/index.tsx`. Three faults, one theme —

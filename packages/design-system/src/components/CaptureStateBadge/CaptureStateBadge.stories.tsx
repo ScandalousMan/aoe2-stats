@@ -65,6 +65,24 @@ export const NeedsReview: Story = {
   args: { captureStatus: 'quarantined' },
 }
 
+// `stacked`: told to stack rather than inferring it from the window, for a caller whose own box
+// is bounded regardless of how wide the page is — `MatchRow`'s trailing table column
+// (match-history.md §8). Rendered inside a narrow, fixed-width wrapper so the effect (SecondaryLine
+// beneath the pill, not beside it) is visible at any viewport this story is captured at, unlike the
+// prop-less default which would only stack below a wide window.
+export const CompactStacked: Story = {
+  name: 'Compact context, stacked (told to, not inferred — e.g. MatchRow’s bounded column)',
+  render: () => (
+    <div className="w-32 rounded-sm border border-dashed border-border p-2">
+      <CaptureStateBadge
+        captureStatus="pending"
+        captureDeadlineAt={inFromNow(6 * DAY_MS)}
+        stacked
+      />
+    </div>
+  ),
+}
+
 export const DetailContext: Story = {
   name: 'Detail context — stacked, full-sentence SecondaryLine',
   args: { captureStatus: 'expired', context: 'detail' },

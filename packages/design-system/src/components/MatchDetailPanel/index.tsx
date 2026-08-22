@@ -187,7 +187,11 @@ function ParticipantsTable({ teams }: { teams: TeamGroupData[] }) {
 }
 
 function TeamGroup({ team }: { team: TeamGroupData }) {
-  const isTable = useBreakpoint('lg')
+  // §8 names three tiers: 375 one card per participant, 768 two participants side by side, 1280 a
+  // real table. `xl` is the named breakpoint for the table (`lg` is 1024, reserved by §8 for
+  // cards — see `useMediaQuery.ts`'s own DS-5 table); `md` (768) is the middle tier.
+  const isTable = useBreakpoint('xl')
+  const isTwoColumn = useBreakpoint('md')
   const headingId = `match-detail-team-${team.id}`
 
   return (
@@ -234,7 +238,10 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
           </tbody>
         </table>
       ) : (
-        <ul className="flex flex-col gap-2">
+        // §8's 768 tier: two participants side by side within a `TeamGroup`, still cards (never
+        // a table below `xl`). `gap-2` reused rather than a new column-gap value invented for a
+        // register match-history.md §7 does not name.
+        <ul className={isTwoColumn ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-2'}>
           {team.participants.map((participant) => (
             <li
               key={participant.id}

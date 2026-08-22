@@ -131,4 +131,26 @@ describe('CaptureStateBadge', () => {
       expect(screen.getByText('Captures automatically within 6 days.')).toBeInTheDocument()
     })
   })
+
+  describe('`stacked` — told to stack, rather than inferring the window is its own box', () => {
+    it('stacks the pill and SecondaryLine in compact context when `stacked` is set', () => {
+      render(<CaptureStateBadge captureStatus="expired" context="compact" stacked />)
+      const wrapper = screen.getByText('Lost').closest('div')
+      expect(wrapper?.className).toContain('flex-col')
+      expect(wrapper?.className).not.toContain('sm:flex-row')
+    })
+
+    it('leaves compact context free to respond to the window when `stacked` is not set', () => {
+      render(<CaptureStateBadge captureStatus="expired" context="compact" />)
+      const wrapper = screen.getByText('Lost').closest('div')
+      expect(wrapper?.className).toContain('sm:flex-row')
+    })
+
+    it('has no effect on detail context, which already always stacks', () => {
+      render(<CaptureStateBadge captureStatus="expired" context="detail" stacked={false} />)
+      const wrapper = screen.getByText('Lost').closest('div')
+      expect(wrapper?.className).toContain('flex-col')
+      expect(wrapper?.className).not.toContain('sm:flex-row')
+    })
+  })
 })

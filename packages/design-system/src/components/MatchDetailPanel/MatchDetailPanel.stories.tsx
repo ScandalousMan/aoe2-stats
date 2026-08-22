@@ -125,6 +125,12 @@ export const NeedsReview: Story = {
   args: { match: { ...baseMatch, gameId: '1005', captureStatus: 'quarantined' } },
 }
 
+// Two participants per team: the one shape that can show all three of §8's tiers — one card each
+// at 375, two side by side at 768, a ruled table from `xl` (1280) — depending on which width this
+// is captured at. `useBreakpoint` reads the real browser window, which this file cannot force (no
+// viewport addon is installed here), so this story does not claim to render a single named tier —
+// it is the data that makes each tier visible to whoever resizes the window or the review browser
+// to it.
 export const TeamMatch: Story = {
   name: 'Team match — every participant grouped under its team heading',
   args: { match: teamMatch },

@@ -81,7 +81,7 @@ function MatchMeta({ match }: { match: MatchRowData }) {
 
 /** One match, the whole card is a single link (§2, §9): everything inside — including
  * `CaptureStateBadge` — is non-interactive text, so the row has exactly one focus stop. Used
- * directly below `lg`; `MatchList` renders a real `<table>` above it instead (§8). */
+ * directly below `xl`; `MatchList` renders a real `<table>` above it instead (§8). */
 export function MatchRow({ match, className }: MatchRowProps) {
   return (
     <a
@@ -130,7 +130,9 @@ export function MatchList({
   onRetry,
   className,
 }: MatchListProps) {
-  const isTable = useBreakpoint('lg')
+  // §8 reserves everything below 1280 for cards; `xl` is the named breakpoint at that width
+  // (`lg` is 1024 — see `useMediaQuery.ts`'s own DS-5 table), not `lg`.
+  const isTable = useBreakpoint('xl')
 
   if (status === 'loading') {
     return (
@@ -253,8 +255,12 @@ function MatchTableRow({ match }: { match: MatchRowData }) {
         {match.playedAtRelative}
       </td>
       <td className="py-3">
+        {/* `stacked`: this column's width is bounded by the table, not by the window
+         * (match-history.md §8) — told to stack rather than left to infer a container width the
+         * badge cannot observe (§8, capture-state-badge.md's own `stacked` prop). */}
         <CaptureStateBadge
           context="compact"
+          stacked
           captureStatus={match.captureStatus}
           captureDeadlineAt={match.captureDeadlineAt}
         />

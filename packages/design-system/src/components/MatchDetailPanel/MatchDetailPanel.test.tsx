@@ -126,3 +126,61 @@ describe('MatchDetailPanel', () => {
     expect(screen.queryByRole('button', { name: /Download/ })).not.toBeInTheDocument()
   })
 })
+
+describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history.md §8)', () => {
+  function mockMatchMediaAt(widthPx: number): () => void {
+    const original = window.matchMedia
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: widthPx >= threshold,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      } as MediaQueryList
+    }
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  it('renders one card per participant at 375, no table', () => {
+    const restore = mockMatchMediaAt(375)
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    restore()
+  })
+
+  it('still renders cards, not a table, at 1100 — below `xl`, the breakpoint the spec names for the table', () => {
+    const restore = mockMatchMediaAt(1100)
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    restore()
+  })
+
+  it('renders participant cards two-up (a 2-column grid) at 768, still no table', () => {
+    const restore = mockMatchMediaAt(768)
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const lists = screen.getAllByRole('list')
+    expect(lists).toHaveLength(2)
+    for (const list of lists) {
+      expect(list.className).toContain('grid-cols-2')
+    }
+    restore()
+  })
+
+  it('renders a real ruled table with a caption per team from `xl` (1280) up', () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.getAllByRole('table', { name: /Team/ })).toHaveLength(2)
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    restore()
+  })
+})
