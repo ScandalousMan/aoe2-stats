@@ -142,7 +142,13 @@ class _FakeObjectStore:
     """Stands in for `ObjectStore` (T010): no test built on this harness reaches for a real
     bucket yet, and constitution III's unit tests never touch the network — `list_keys` is the
     one method `GET /api/health` calls today. `fails=True` raises the way a real outage would,
-    for `test_health.py`'s checks; every other caller takes the default and gets an empty list."""
+    for `test_health.py`'s checks; every other caller takes the default and gets an empty list.
+
+    `signed_get_url` (T066) never touches the network either: it deterministically encodes `key`
+    and `expires_in` into the returned string, so a test can assert on the redirect target alone
+    without needing the same instance the route handler received — the `client` fixture builds a
+    fresh one per request through a bare lambda, so nothing can be asserted on shared state here.
+    """
 
     def __init__(self, *, fails: bool = False) -> None:
         self._fails = fails
@@ -151,6 +157,11 @@ class _FakeObjectStore:
         if self._fails:
             raise RuntimeError("simulated object store outage")
         return []
+
+    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
 
 
 @pytest.fixture
