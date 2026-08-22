@@ -25,6 +25,28 @@ timeout both raise `ProviderUnavailable` — both already `AsyncBaseProvider._re
 with every other provider (`base.py`'s `treat_403_as_rate_limited=True` default is used as-is: this
 endpoint documents neither 429 nor 403, so both are read the same way every other provider reads
 them).
+
+`_request` deliberately classifies only those two families (429/403 and 5xx/timeout) and returns
+every other status untouched — "the concrete provider decides how to read a 200 or a 404"
+(`base.py`'s own docstring). That leaves this module the one place a `400`, a `410`, or any 2xx
+that is not exactly `200` would otherwise fall through the `if 404 / else blob` shape below and be
+read as a replay. `docs/data-sources.md` §2 measures exactly two response shapes for this
+endpoint — `200` with the zip body, and `404`, `text/plain`, 16 bytes — and nothing in between or
+outside them; there is no observed `201`, `202`, `204` or partial-content response to reason about,
+so "a genuine 200" means literally status `200` and nothing else is granted the same reading. A
+status this endpoint has never been measured to return is therefore not a third ordinary outcome to
+special-case; it is the source answering oddly, which is exactly what `ProviderUnavailable` means
+one layer up (`base.py`'s own docstring: "Recoverable on a later run"). It is deliberately not
+`ProviderContractViolation`: that error means the response *parsed* into the wrong shape, and
+`_process_one`/`_handle_provider_unavailable` (`apps/ingester/.../capture.py`, T057) do not know how
+to act on it — a contract violation has no bounded-retry path and would fall straight through the
+drain uncaught. `ProviderUnavailable` does have one: the row goes back to `pending`, retried on a
+later cycle, exactly like a `5xx`, until FR-020's bounded ceiling is reached — which is the right
+outcome for a status this endpoint was never measured to send, since treating it as a captured
+replay would upload the unexpected body under the real `replay_object_key` and quarantine it
+permanently, forfeiting a replay a later cycle could still have fetched. The raised error carries
+the observed `status_code` so `last_error` on the row records what actually happened, exactly as a
+`5xx` already does.
 """
 
 from __future__ import annotations
@@ -37,6 +59,7 @@ from aoe2stats_providers.base import (
     AsyncBaseProvider,
     AsyncProviderCallSink,
     NotFound,
+    ProviderUnavailable,
     ReplayBlob,
     RetryPolicy,
     TokenBucket,
@@ -96,7 +119,9 @@ class AoemsReplayProvider(AsyncBaseProvider):
         """A 200 becomes a `ReplayBlob`; a 404 is returned as `NotFound`, never raised, and
         carries no reading of what it means (see the module docstring). `_request` already raises
         `ProviderRateLimited` on 429/403 and `ProviderUnavailable` on 5xx/timeout, so neither is
-        handled here.
+        handled here. Any other status — a 400, a 410, or a 2xx that is not exactly 200 — is not a
+        third ordinary outcome (see the module docstring for why): it raises `ProviderUnavailable`
+        (T049a) rather than falling into the `else` branch and being read as a replay.
         """
         response = await self._request(
             "GET",
@@ -108,8 +133,18 @@ class AoemsReplayProvider(AsyncBaseProvider):
         if response.status_code == 404:
             return NotFound(http_status=response.status_code)
 
-        return ReplayBlob(
-            content=response.content,
-            filename=_parse_filename(response.headers.get("content-disposition"), game_id=game_id),
-            content_type=response.headers.get("content-type", _DEFAULT_CONTENT_TYPE),
+        if response.status_code == 200:
+            return ReplayBlob(
+                content=response.content,
+                filename=_parse_filename(
+                    response.headers.get("content-disposition"), game_id=game_id
+                ),
+                content_type=response.headers.get("content-type", _DEFAULT_CONTENT_TYPE),
+            )
+
+        raise ProviderUnavailable(
+            f"{self._provider} returned an unnamed status {response.status_code} from {_ENDPOINT}",
+            provider=self._provider,
+            endpoint=_ENDPOINT,
+            status_code=response.status_code,
         )

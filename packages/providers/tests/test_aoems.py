@@ -30,6 +30,11 @@ Six behaviours, matching `contracts/providers.md`'s `ReplayProvider` table:
    `fetch_replay`'s own signature admits no `completed_at` (or anything else time-based) from which
    one could be derived. The three-way classification (pending / unavailable / expired) is the
    *caller's* job, tested at T047 against `matches.completed_at`, which this provider never sees.
+6. (T049a) `fetch_replay` raises `ProviderUnavailable`, carrying the observed status, for any
+   status this table does not name — a 400 or a 410, neither ever measured against this endpoint —
+   rather than reading it as a 200 and returning a `ReplayBlob` built around whatever bytes the body
+   happened to carry. See the bottom of this file and the module docstring of
+   `aoems/provider.py` for why this is `ProviderUnavailable`, not `ProviderContractViolation`.
 
 The 200 case is built from the real, byte-for-byte reference replay committed at
 `tests/fixtures/replays/AgeIIDE_Replay_500546441.zip` (`tests/fixtures/replays/README.md`) rather
@@ -284,3 +289,43 @@ async def test_fetch_replay_raises_provider_unavailable_on_timeout() -> None:
 
     assert len(recorder.calls) == FAST_RETRY.max_attempts
     assert all(call.status_code is None for call in recorder.calls)
+
+
+# --- fetch_replay: an unnamed status (T049a) raises ProviderUnavailable, never a ReplayBlob -------
+#
+# `contracts/providers.md`'s `ReplayProvider` table names exactly five outcomes: 200, 404, 429, an
+# unexpected 403, and 5xx/timeout. `AsyncBaseProvider._request` (`base.py`) only classifies 429/403
+# and 5xx/timeout — everything else, including a 400 or a 410 neither `docs/data-sources.md` §2 nor
+# the contract has ever observed this endpoint send, reaches `fetch_replay` untouched. Before T049a
+# the `if 404 / else blob` shape below read any such status as a 200 and returned a `ReplayBlob`
+# built around whatever bytes the error body happened to carry — which `_process_one`
+# (`apps/ingester/.../capture.py`) would then upload to R2 under the real `replay_object_key` and
+# quarantine permanently, forfeiting a replay a later cycle could still have fetched. These two
+# statuses are not retried by `RetryPolicy` (unlike 5xx), so a plain `httpx.Response(400)` handler
+# is enough — no retry-exhaustion loop needed, unlike the 5xx test above.
+
+
+async def test_fetch_replay_raises_provider_unavailable_on_an_unnamed_400() -> None:
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(400), recorder=recorder)
+
+    with pytest.raises(ProviderUnavailable) as excinfo:
+        await provider.fetch_replay(REFERENCE_GAME_ID, REFERENCE_PROFILE_ID)
+
+    assert excinfo.value.status_code == 400
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 400
+    assert not recorder.calls[0].rate_limited
+
+
+async def test_fetch_replay_raises_provider_unavailable_on_an_unnamed_410() -> None:
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(410), recorder=recorder)
+
+    with pytest.raises(ProviderUnavailable) as excinfo:
+        await provider.fetch_replay(REFERENCE_GAME_ID, REFERENCE_PROFILE_ID)
+
+    assert excinfo.value.status_code == 410
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 410
+    assert not recorder.calls[0].rate_limited
