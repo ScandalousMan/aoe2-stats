@@ -7,15 +7,16 @@ export interface SignInSearch {
    * `beforeLoad`. `undefined` is the ordinary first visit or a successful sign-in. */
   error?: string
   /** Mirrors `?link=1` (contracts/http-api.md, FR-007): add a second Steam account instead of
-   * replacing the session. Normalised to a boolean here so the rest of this route never compares
-   * against the literal string `'1'` again. */
+   * replacing the session. Resolved to `true` only when the incoming value asks for linking (the
+   * literal string `'1'` or `true`); left `undefined` otherwise, including when the parameter is
+   * absent, so the router does not serialise it back onto the URL of an ordinary first visit. */
   link?: boolean
 }
 
-function validateSignInSearch(search: Record<string, unknown>): SignInSearch {
+export function validateSignInSearch(search: Record<string, unknown>): SignInSearch {
   return {
     error: typeof search.error === 'string' ? search.error : undefined,
-    link: search.link === '1' || search.link === true,
+    link: search.link === '1' || search.link === true ? true : undefined,
   }
 }
 
