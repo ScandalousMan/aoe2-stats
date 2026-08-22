@@ -19,8 +19,21 @@ capture records, and the blobs they point at.
 | `id`                          | uuid, pk          |                                                                                            |
 | `created_at`                  | timestamptz       |                                                                                            |
 | `allowlisted_at`              | timestamptz, null | Null means the closed beta refuses them (FR-005)                                           |
-| `ingest_consent_at`           | timestamptz, null | Null means capture nothing. Enforced in the query that selects work, not in a later branch |
+| `ingest_consent_at`           | timestamptz, null | Set on the first grant and never rewritten. Enforced in the query that selects work, not in a later branch — see the consent predicate below |
 | `ingest_consent_withdrawn_at` | timestamptz, null | Kept after withdrawal; erasure is a separate act                                           |
+
+**The consent predicate is two clauses, never one.** Everything that selects work on a user's behalf
+reads:
+
+```sql
+ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL
+```
+
+`ingest_consent_at` alone is not the question. It is deliberately *kept* after a withdrawal, as the
+record of what was agreed and when (T032), so a one-clause test answers "consented" forever from the
+first grant onward and withdrawal (FR-035) becomes a column nothing reads. `contracts/http-api.md`
+already states both halves of this predicate and cites this file for it; it is written here so the
+citation resolves.
 
 No password column, no email column, no reset token. FR-006 removes the entire family. A column that
 does not exist cannot leak.
@@ -179,6 +192,12 @@ WHERE id IN (
   LIMIT :batch
 ) RETURNING *;
 ```
+
+The claim joins through `profile_links` to `users` and applies the consent predicate above. Consent
+is checked **here as well as at discovery**, and the second check is not redundant: discovery decides
+whose matches are *found*, the claim decides whose bytes are *fetched*, and between the two sits a
+queue that can be days deep. A user who withdraws with captures already `pending` is exactly the case
+FR-035 is about, and only this clause answers it (T089a).
 
 A run that dies leaves rows in `downloading`; the next run reclaims anything claimed longer ago than
 the maximum function duration. No broker, no lease service, no lost work.

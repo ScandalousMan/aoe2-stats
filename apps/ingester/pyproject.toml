@@ -3,7 +3,19 @@ name = "aoe2stats-ingester"
 version = "0.1.0"
 description = "The ingestion library exposing run_once(budget_seconds), behind the cron handler and the worker loop."
 requires-python = ">=3.13,<3.14"
-dependencies = []
+# T059a: `run.py`'s own `raise_alert(...)` call (FR-025's `deadline_breach` sweep) is the first
+# module-scope use, anywhere in this package's own `src/`, of `aoe2stats_core` reachable from
+# `api/cron/ingest.py`'s `from aoe2stats_ingester.run import run_once` — `capture.py` (T056) already
+# imported `aoe2stats_core.alerting` for its own `expired_capture`/`validation_failed` alerts, but
+# `run.py` never imported `capture.py`, so a plain `uv sync --no-dev` never needed this declared to
+# satisfy that entrypoint's own import graph (`tests/architecture/test_deployment_install.py`,
+# T014d) before this. Declared here, not merely relied on transitively through `aoe2stats-api`'s own
+# dependency on this package, for the same reason T014d's own root `[project]` docstring gives:
+# a dependency this package's own code imports belongs on this package's own manifest.
+dependencies = ["aoe2stats-core"]
+
+[tool.uv.sources]
+aoe2stats-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

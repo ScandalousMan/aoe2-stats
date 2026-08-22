@@ -49,9 +49,20 @@ members = [
 # Shared dev toolchain, installed once for the whole workspace by `uv sync --all-packages --dev`
 # (as `.github/workflows/pr.yml` does) rather than duplicated per member. `alembic` sits here and
 # not in `packages/storage`: it is the tool that runs `infra/migrations/` against `DATABASE_URL`,
-# never imported by application code, exactly like `ruff` and `mypy`.
+# never imported by application code, exactly like `ruff` and `mypy`. `types-requests` is a
+# stub-only package (T061a): `requests` itself is never a runtime dependency of any workspace
+# member — only `scripts/checks/contract_sources.py` imports it, via `uv run --with requests`, the
+# nightly contract job's own way of installing it — but that script is now under `[tool.mypy]`'s
+# `files`, and mypy needs the stub package to type-check a call to `requests` at all.
 [dependency-groups]
-dev = ["ruff>=0.8", "mypy>=1.13", "pytest>=8.3", "alembic>=1.13", "pytest-asyncio>=0.24"]
+dev = [
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "pytest>=8.3",
+  "alembic>=1.13",
+  "pytest-asyncio>=0.24",
+  "types-requests>=2.32",
+]
 
 # --- pytest --------------------------------------------------------------------------------------
 # One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
@@ -94,11 +105,14 @@ line-length = 100
 src = ["apps", "packages"]
 # Ruff's default `include` also formats/lints fenced Python in every `*.md` file — the skills,
 # docs and specs directories are documentation, not code, and are not ours to reformat.
-# `scripts/checks/` and `scripts/hooks/` are deliberately outside the uv workspace (plan.md):
-# standalone tools run through `uv run --with`, predating this config, with their own style.
-# The `python` CI job's path filter never triggers on `scripts/**` either — this exclusion keeps
-# that boundary consistent instead of silently reaching past it the day this file starts existing.
-extend-exclude = ["*.md", "scripts"]
+# `scripts/checks/` is deliberately outside `[tool.uv.workspace]` (plan.md) — its tools are run
+# through `uv run --with` rather than `uv run` from an installed package — but that is a packaging
+# distinction, not a licence to skip the gate: `cron_liveness.py`, `capture_audit.py` and
+# `alert_audit.py` import `aoe2stats_storage` directly, and `.github/workflows/pr.yml`'s `python`
+# job's path filter now includes `scripts/**` and runs `ruff format --check` / `ruff check` over
+# it same as every workspace member (T061a). `scripts/hooks/` is shell, not Python, and ruff never
+# touched it either way; it stays out of this list because there is nothing here for it to exclude.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [
@@ -128,8 +142,19 @@ quote-style = "double"
 indent-style = "space"
 
 # --- mypy (strict) ------------------------------------------------------------------------------
-# Scoped to the six workspace members' `src/` trees. Test suites and the standalone
-# `scripts/checks/` tools are covered by ruff but not by this strict gate.
+# Scoped to the six workspace members' `src/` trees, plus the whole `scripts/checks/` directory
+# (T061a, widened by T061c): `files` names the directory rather than enumerating its scripts one by
+# one, so a script added later (T100's `free_tier_watch.py`, and whatever follows it) is under this
+# gate the moment it exists, with nothing to remember to update here. `exclude` then carves
+# `scripts/checks/tests/` back out, because test suites are excluded from this gate everywhere else
+# in the tree (only ruff runs over them), and the same holds here — without it, naming the directory
+# in `files` would pull its tests under strict mypy too. `scripts/checks` is listed in `mypy_path`
+# (not only `files`) for a different reason: `contract_sources.py` imports its sibling
+# `publication_delay.py` as a bare top-level module (`from publication_delay import
+# append_sample`, matching how `uv run scripts/checks/contract_sources.py` actually resolves it —
+# the script's own directory on `sys.path`), and `explicit_package_bases` needs that directory
+# declared as a root to resolve it the same way. `scripts/hooks/` is shell, not Python, and mypy has
+# nothing to check there.
 [tool.mypy]
 python_version = "3.13"
 strict = true
@@ -142,6 +167,7 @@ mypy_path = [
   "packages/storage/src",
   "apps/api/src",
   "apps/ingester/src",
+  "scripts/checks",
 ]
 files = [
   "packages/core/src",
@@ -150,6 +176,10 @@ files = [
   "packages/storage/src",
   "apps/api/src",
   "apps/ingester/src",
+  "scripts/checks",
+]
+exclude = [
+  "^scripts/checks/tests/",
 ]
 
 [[tool.mypy.overrides]]

@@ -82,20 +82,61 @@ jobs:
       - name: Parse the reference replay with every known engine
         run: uv run --with aoe2rec-py --with mgz scripts/checks/parser_canary.py
 
-  # TODO(feature-1): enable once the ingester and its database exist.
-  #
-  # cron-liveness:
-  #   Reads the most recent `ingest_runs` row and FAILS if it is older than 30 h.
-  #   A silently stopped Vercel cron is the single most dangerous failure mode on this
-  #   stack — see docs/adr/0002-hosting.md.
-  #
-  # capture-audit:
-  #   Asserts expired_total == 0 and no replay_capture pending for more than 7 days,
-  #   and reports the capture_lag_hours p95.
+  # T061: each of the three jobs below connects to the production database with `DATABASE_URL`
+  # (a repository secret, never a value checked in — constitution VIII/XII) and needs nothing else
+  # installed beyond `uv sync`'s own resolution of the workspace, since `aoe2stats-storage` and
+  # `aoe2stats-core` are already transitive dependencies of `aoe2stats-api`/`aoe2stats-ingester`
+  # (the root `pyproject.toml`'s own `[project].dependencies`). Every job here is also in the
+  # `report` job's own `needs:` list below — a job absent from it fails in silence, since `report`
+  # is the only thing that turns a red job into a GitHub issue a human sees (this feature's
+  # alerting is pull-based by design, per constitution I and `packages/core/src/aoe2stats_core/
+  # alerting.py`'s own module docstring).
+  cron-liveness:
+    name: Cron liveness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Fail if the newest ingest_runs row started more than 30 hours ago (SC-007)
+        run: uv run scripts/checks/cron_liveness.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  capture-audit:
+    name: Capture audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: expired_total == 0, no capture past its own deadline, SC-002 lag under 48h
+        run: uv run scripts/checks/capture_audit.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  alert-audit:
+    name: Alert audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Fail on any unacknowledged severity-1 alert
+        run: uv run scripts/checks/alert_audit.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  # TODO(feature-1): enable once T100 lands.
   #
   # free-tier-watch:
   #   Warns at 70% of any free allowance (R2 bytes stored, Neon storage, Vercel
-  #   invocations) so the phase-2 migration is planned, not forced.
+  #   invocations) so the phase-2 migration is planned, not forced. Raises a severity-2
+  #   `free_tier` alert through `raise_alert` rather than only printing a warning
+  #   (T100) — this job's own `needs:` entry on `report` follows in the same task.
 
   # TODO(design-system): enable once packages/design-system exists.
   #
@@ -107,7 +148,7 @@ jobs:
   report:
     name: Open an issue on failure
     runs-on: ubuntu-latest
-    needs: [contracts, parser-canary]
+    needs: [contracts, parser-canary, cron-liveness, capture-audit, alert-audit]
     if: failure()
     steps:
       - uses: actions/github-script@v7
@@ -123,6 +164,9 @@ jobs:
               '- a third-party API contract changed -> update `docs/data-sources.md` and the `aoe2-data-sources` skill',
               '- a game patch broke a parser -> see `docs/adr/0001-replay-parser.md`',
               '- the replay retention window moved -> the capture budget in `.env.example` may need revising',
+              '- cron-liveness failed -> the Vercel cron has likely stopped firing; see `docs/adr/0002-hosting.md`',
+              '- capture-audit failed -> a replay expired unarchived, is stuck past its capture deadline, or SC-002\'s archival lag has slipped; see `docs/risks.md`',
+              '- alert-audit failed -> an unacknowledged severity-1 alert is sitting in `alerts`; investigate before acknowledging it',
             ].join('\n');
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner, repo: context.repo.repo,

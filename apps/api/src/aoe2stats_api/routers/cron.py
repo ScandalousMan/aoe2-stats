@@ -75,7 +75,12 @@ async def ingest(
         )
 
     # Imported here, not at module scope — see this module's docstring (T018c).
+    from aoe2stats_api.ingest_stages import build_ingest_stages
     from aoe2stats_ingester.run import run_once
 
-    report = await run_once(settings.ingest_run_budget_seconds, trigger="local")
+    report = await run_once(
+        settings.ingest_run_budget_seconds,
+        trigger="local",
+        stages=build_ingest_stages(settings),
+    )
     return report.to_dict()

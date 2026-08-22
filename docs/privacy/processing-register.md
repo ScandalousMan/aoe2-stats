@@ -70,7 +70,10 @@ to be promised here and built nowhere. `scripts/checks/spec_lint.py` enforces th
 - [ ] Publish the privacy policy page and link it from the footer — T093, T095, T098a.
 - [ ] Publish the third-party objection form and document its handling procedure — T092 writes the
       procedure and the endpoint, T094 specifies the form, T095 builds it on a route outside the
-      session. The endpoint alone would not be a way for a non-user to object.
+      session. The endpoint alone would not be a way for a non-user to object. The procedure T092
+      writes must name the *instrument* as well as the actor and the delay: recording an objection
+      is not pseudonymising one, and no task in feature 001 currently gives whoever resolves it a
+      way to carry the act out.
 - [ ] Record controller identity and contact details above — out of scope for any task: an act of
       the controller, not of the code. Blocks public launch, not implementation.
 - [ ] Define and document the breach-notification procedure — out of scope: nothing in feature 001

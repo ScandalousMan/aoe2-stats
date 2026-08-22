@@ -9,10 +9,12 @@ dependency.
 
 from __future__ import annotations
 
+import io
 import threading
 from typing import Any
 
 import pytest
+from botocore.exceptions import ClientError
 
 from aoe2stats_storage import objects
 from aoe2stats_storage.objects import (
@@ -37,18 +39,30 @@ class _FakeS3Client:
 
     def __init__(self, pages: list[dict[str, Any]] | None = None) -> None:
         self.put_calls: list[dict[str, Any]] = []
+        self.get_calls: list[dict[str, Any]] = []
         self.delete_calls: list[dict[str, Any]] = []
         self.presign_calls: list[dict[str, Any]] = []
         self.calling_threads: set[int] = set()
         self._pages = pages if pages is not None else [{"Contents": []}]
+        self._objects: dict[str, bytes] = {}
 
     def put_object(self, **kwargs: Any) -> None:
         self.calling_threads.add(threading.get_ident())
         self.put_calls.append(kwargs)
+        self._objects[kwargs["Key"]] = kwargs["Body"]
+
+    def get_object(self, **kwargs: Any) -> dict[str, Any]:
+        self.calling_threads.add(threading.get_ident())
+        self.get_calls.append(kwargs)
+        key = kwargs["Key"]
+        if key not in self._objects:
+            raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject")
+        return {"Body": io.BytesIO(self._objects[key])}
 
     def delete_object(self, **kwargs: Any) -> None:
         self.calling_threads.add(threading.get_ident())
         self.delete_calls.append(kwargs)
+        self._objects.pop(kwargs["Key"], None)
 
     def generate_presigned_url(self, client_method: str, **kwargs: Any) -> str:
         self.calling_threads.add(threading.get_ident())
@@ -124,6 +138,28 @@ async def test_put_accepts_an_explicit_content_type(config: ObjectStoreConfig) -
     await store.put("some/key", b"data", content_type="text/plain")
 
     assert client.put_calls[0]["ContentType"] == "text/plain"
+
+
+# --- get -------------------------------------------------------------------------------------
+
+
+async def test_get_reads_back_the_body_previously_put(config: ObjectStoreConfig) -> None:
+    client = _FakeS3Client()
+    store = ObjectStore(config, client=client)
+    await store.put("replays/1/2.zip", b"zip-bytes")
+
+    body = await store.get("replays/1/2.zip")
+
+    assert body == b"zip-bytes"
+    assert client.get_calls == [{"Bucket": "aoe2-stats-replays", "Key": "replays/1/2.zip"}]
+
+
+async def test_get_raises_for_a_key_never_written(config: ObjectStoreConfig) -> None:
+    client = _FakeS3Client()
+    store = ObjectStore(config, client=client)
+
+    with pytest.raises(ClientError):
+        await store.get("never/written.zip")
 
 
 # --- signed_get_url ----------------------------------------------------------------------------
@@ -224,6 +260,7 @@ async def test_every_call_runs_off_the_event_loop_thread(config: ObjectStoreConf
     event_loop_thread = threading.get_ident()
 
     await store.put("k", b"body")
+    await store.get("k")
     await store.signed_get_url("k")
     await store.delete("k")
     await store.list_keys()

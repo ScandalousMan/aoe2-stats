@@ -76,6 +76,7 @@ class S3Client(Protocol):
     """
 
     def put_object(self, **kwargs: Any) -> Any: ...
+    def get_object(self, **kwargs: Any) -> Any: ...
     def delete_object(self, **kwargs: Any) -> Any: ...
     def generate_presigned_url(self, client_method: str, **kwargs: Any) -> Any: ...
     def get_paginator(self, operation_name: str) -> Any: ...
@@ -96,10 +97,12 @@ def _build_client(config: ObjectStoreConfig) -> S3Client:
 
 
 class ObjectStore:
-    """Put, sign, delete and list replay blobs, without blocking the event loop.
+    """Put, get, sign, delete and list replay blobs, without blocking the event loop.
 
-    The bucket is never public (contracts/http-api.md): every read goes through a freshly
-    signed, short-expiry URL, never a stored or reused one.
+    The bucket is never public (contracts/http-api.md): every read a browser or an external
+    client is ever handed goes through a freshly signed, short-expiry URL, never a stored or
+    reused one. `get` is the one exception, and it is not exposed to any of them — it is a direct,
+    in-process read for the application's own use (see its docstring).
     """
 
     def __init__(self, config: ObjectStoreConfig, *, client: S3Client | None = None) -> None:
@@ -120,6 +123,25 @@ class ObjectStore:
             Body=body,
             ContentType=content_type,
         )
+
+    async def get(self, key: str) -> bytes:
+        """Download the full body stored under `key`.
+
+        The counterpart to `put`: capture's reclaim path (`apps/ingester/src/
+        aoe2stats_ingester/capture.py`) is what this exists for — a stale `downloading` row that
+        already carries a committed `object_key`/`zip_sha256` needs its bytes back in-process to
+        verify them and run them through validation a second time, rather than trusting the
+        checksum an earlier, now-dead run recorded without ever re-checking it. Every other caller
+        of this class reaches for `signed_get_url` instead, which is the only path a browser or an
+        external client is ever handed (the bucket is never public); this method is for the one
+        caller that is the application itself.
+        """
+        return await asyncio.to_thread(self._get_sync, key)
+
+    def _get_sync(self, key: str) -> bytes:
+        response = self._client.get_object(Bucket=self._bucket, Key=key)
+        body: bytes = response["Body"].read()
+        return body
 
     async def signed_get_url(
         self, key: str, *, expires_in: int = DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS

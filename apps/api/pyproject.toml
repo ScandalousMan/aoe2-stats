@@ -18,18 +18,23 @@ dependencies = [
   # checks by import graph, not by dependency list — this package must have no *reason* to write
   # `import httpx` itself, and a declared dependency is exactly that reason.
   "aoe2stats-providers",
-  # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018). From T055
-  # onward, `aoe2stats-ingester` itself depends on `aoe2stats-replay-engine` for its capture
-  # stage — so keep this import lazy, inside that one handler, forever: a module-scope import
-  # anywhere on this path would drag the engine into every cold start of the API function, not
-  # only the request that actually triggers a cycle (T018c, constitution V).
+  # `routers/cron.py`'s local-trigger route needs this to call `run_once()` (T018) — always
+  # imported lazily, inside that one handler, so a module-scope import never drags the engine
+  # into every cold start of the API function (T018c, constitution V).
   "aoe2stats-ingester",
+  # `ingest_stages.py` (T060) is the one place this package constructs a real `ReplayValidator`
+  # (`Aoe2RecValidator`) to hand to `CaptureDrain` — imported lazily, inside
+  # `build_ingest_stages`, for the identical reason `aoe2stats-ingester`'s own `run_once` is:
+  # a module-scope import anywhere reachable from `aoe2stats_api.app` would drag `aoe2rec_py`
+  # into every cold start (T018c, constitution V; `apps/api/tests/test_engine_isolation.py`).
+  "aoe2stats-replay-engine",
 ]
 
 [tool.uv.sources]
 aoe2stats-storage = { workspace = true }
 aoe2stats-providers = { workspace = true }
 aoe2stats-ingester = { workspace = true }
+aoe2stats-replay-engine = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
