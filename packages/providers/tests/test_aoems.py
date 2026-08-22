@@ -141,7 +141,6 @@ def _provider(
 # --- fetch_replay: 200 -> ReplayBlob -------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_returns_a_replay_blob_on_200() -> None:
     content = REPLAY_ZIP.read_bytes()
     seen: dict[str, Any] = {}
@@ -180,7 +179,6 @@ async def test_fetch_replay_returns_a_replay_blob_on_200() -> None:
 # --- fetch_replay: 404 -> NotFound, returned rather than raised, and un-classified ----------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_returns_not_found_on_404_without_raising() -> None:
     fixture = _load_404_fixture()
 
@@ -204,7 +202,6 @@ async def test_fetch_replay_returns_not_found_on_404_without_raising() -> None:
     assert not recorder.calls[0].rate_limited
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_not_found_carries_no_reason_and_the_signature_admits_no_completed_at() -> None:
     """The three-way reading (pending / unavailable / expired) is the *caller's*, tested at T047 —
     this provider must not be able to perform it even by accident. Two structural guarantees:
@@ -235,7 +232,6 @@ async def test_not_found_carries_no_reason_and_the_signature_admits_no_completed
 # --- fetch_replay: 429 and an unexpected 403 both raise ProviderRateLimited -----------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_raises_provider_rate_limited_on_429() -> None:
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(429), recorder=recorder)
@@ -248,7 +244,6 @@ async def test_fetch_replay_raises_provider_rate_limited_on_429() -> None:
     assert recorder.calls[0].rate_limited
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_raises_provider_rate_limited_on_an_unexpected_403() -> None:
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(403), recorder=recorder)
@@ -264,7 +259,6 @@ async def test_fetch_replay_raises_provider_rate_limited_on_an_unexpected_403() 
 # --- fetch_replay: 5xx exhausting retries and a timeout both raise ProviderUnavailable ------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_raises_provider_unavailable_on_5xx() -> None:
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(503), recorder=recorder)
@@ -278,7 +272,6 @@ async def test_fetch_replay_raises_provider_unavailable_on_5xx() -> None:
     assert all(call.status_code == 503 for call in recorder.calls)
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_fetch_replay_raises_provider_unavailable_on_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("no reply", request=request)

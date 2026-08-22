@@ -145,7 +145,6 @@ def _provider(
 # --- Baseline: a genuine 200 parses, so the failure tests below are a real contrast --------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_enrich_matches_parses_a_genuine_response_keyed_by_game_id() -> None:
     body = _load_matches_fixture()
     provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
@@ -163,7 +162,6 @@ async def test_enrich_matches_parses_a_genuine_response_keyed_by_game_id() -> No
 # --- A 403 is expected noise: never raised, never classified as rate limiting --------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_a_403_is_expected_noise_and_does_not_raise() -> None:
     """`docs/data-sources.md` §3: "Treat a 403 here as normal operating noise." Unlike every other
     provider (`test_provider_base.py::test_unexpected_403_is_treated_as_rate_limited_by_default`),
@@ -189,7 +187,6 @@ async def test_a_403_is_expected_noise_and_does_not_raise() -> None:
 # --- Repeated failures open the circuit breaker ---------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_repeated_failures_open_the_circuit_breaker() -> None:
     request_count = 0
 
@@ -226,7 +223,6 @@ async def test_repeated_failures_open_the_circuit_breaker() -> None:
 # --- Any failure, not only a 403, leaves the caller with nothing rather than an exception ---------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_a_full_outage_also_returns_nothing_so_the_application_still_renders() -> None:
     """providers.md: "the application must render correctly with this provider returning
     nothing, and that case gets a test." A 5xx that exhausts the retry budget is the ordinary
@@ -250,7 +246,6 @@ async def test_a_full_outage_also_returns_nothing_so_the_application_still_rende
 # --- FR-045: `linkedProfiles` is never read, wherever the read would happen ----------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) -> None:
     """`contracts/providers.md`: "Its `linkedProfiles` field is not to be consumed." FR-045: only a
     completed sign-in establishes that two profiles belong to one person, so a third-party mapping

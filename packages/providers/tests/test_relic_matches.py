@@ -7,13 +7,12 @@ the frozen responses in `packages/providers/fixtures/relic/` — constitution II
 in unit tests, and `tests/conftest.py` blocks any real socket connection under
 `PYTEST_DISABLE_NETWORK=1` regardless.
 
-Written as a test-first task, before `aoe2stats_providers.relic.matches` exists (T050): every test
-below carries `@pytest.mark.xfail(strict=True, ...)`, matching `test_relic_profile.py`'s (T020)
-pattern for the same situation. `strict=True` is what makes that honest — the moment T050 lands and
-a test starts passing, the run turns red instead of a stale xfail hiding it, which forces the
-marker off rather than letting it linger. The import of `aoe2stats_providers.relic.matches` lives
-inside `_provider()` rather than at module scope for the same reason `test_relic_profile.py`
-explains: a module-scope `ModuleNotFoundError` would abort the *entire* workspace suite's
+Written as a test-first task, before `aoe2stats_providers.relic.matches` existed (T050), so every
+test below carried `@pytest.mark.xfail(strict=True, ...)`, matching `test_relic_profile.py`'s
+(T020) pattern for the same situation. T050 has since landed and the markers are gone: `strict=True`
+is what forced their removal, by turning the run red the moment the tests began to pass. The import
+of `aoe2stats_providers.relic.matches` still lives inside `_provider()` rather than at module scope,
+which is worth keeping — a module-scope `ModuleNotFoundError` aborts the *entire* workspace suite's
 collection, not just fail this one file's tests.
 
 Two behaviours, matching `contracts/providers.md`'s `MatchHistoryProvider`:
@@ -38,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
-import pytest
 
 from aoe2stats_providers.base import ProviderCallRecord, RawMatch, TokenBucket
 
@@ -94,7 +92,6 @@ def _provider(
 # --- recent_matches: parsed fields, alongside the untouched raw payload -------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_recent_matches_returns_raw_matches_with_parsed_fields_and_untouched_payload() -> (
     None
 ):
@@ -143,7 +140,6 @@ async def test_recent_matches_returns_raw_matches_with_parsed_fields_and_untouch
 # --- recent_matches: caps every call at 10 profiles ----------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_recent_matches_batches_at_most_ten_profiles_per_call() -> None:
     profile_ids = list(range(1, 24))  # 23 profiles: two full batches, one remainder
     batch_sizes: list[int] = []
@@ -167,7 +163,6 @@ async def test_recent_matches_batches_at_most_ten_profiles_per_call() -> None:
 # --- recent_matches: a genuinely multi-profile response parses every match, once per entry -------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_recent_matches_parses_a_genuine_multi_profile_response() -> None:
     body = _load("get_recent_match_history_batch.json")
     raw_entries = body["matchHistoryStats"]
