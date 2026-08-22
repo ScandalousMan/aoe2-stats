@@ -7,16 +7,18 @@ none of them redundant with the other two or with `alert_audit.py`.
   `ingest_runs` row ever closed, not only the newest: a single non-zero cycle, even a stale one, is
   a replay that was lost and stays a fact worth catching regardless of how long ago it happened.
 - **No capture pending past its own deadline.** The same condition `apps/ingester/src/
-  aoe2stats_ingester/run.py`'s `_raise_deadline_breach_alert` (T059a) raises `deadline_breach`
+  aoe2stats_ingester/run.py`'s `_raise_deadline_breach_alert` (T059a/T059b) raises `deadline_breach`
   against — every `replay_captures` row whose `capture_deadline_at` (`completed_at +
   CAPTURE_BUDGET_DAYS`, computed once at insert by `discover.py`) has passed, and whose `status` is
-  none of `stored`/`unavailable`/`quarantined` — computed independently here, straight from the
-  table, rather than by reading `alerts`. That independence is the entire point (see the module
-  docstring's overlap note below): this assertion still catches the breach even if the ingester
-  never ran a single cycle to raise the alert in the first place. `CAPTURE_BUDGET_DAYS` itself is
-  never restated here as a literal — `capture_deadline_at` already carries it, computed once on
-  insert, and the informational message below reads the same environment variable `Settings`
-  does (`CAPTURE_BUDGET_DAYS`) rather than a second hard-coded threshold.
+  none of `stored`/`unavailable`/`quarantined`/`expired`/`failed` (the last two are terminal — see
+  `_RESOLVED_STATUSES`'s own comment — and were alerted once already, by `expired_capture` or by
+  their own terminal counter) — computed independently here, straight from the table, rather than
+  by reading `alerts`. That independence is the entire point (see the module docstring's overlap
+  note below): this assertion still catches the breach even if the ingester never ran a single
+  cycle to raise the alert in the first place. `CAPTURE_BUDGET_DAYS` itself is never restated here
+  as a literal — `capture_deadline_at` already carries it, computed once on insert, and the
+  informational message below reads the same environment variable `Settings` does
+  (`CAPTURE_BUDGET_DAYS`) rather than a second hard-coded threshold.
 - **SC-002's lag target**: p95 of `stored_at - completed_at`, over the trailing seven days, under
   48 hours — computed over *newly discovered* captures only (`first_seen_at` inside the trailing
   window), excluding any whose `first_seen_at` lands more than 48 h after its own `completed_at`:
@@ -66,10 +68,18 @@ _SC002_TARGET_HOURS = 48
 #: per-run window, and this script's own scope alone.
 _TRAILING_WINDOW_DAYS = 7
 
-#: Mirrors `run.py`'s `_DEADLINE_BREACH_EXCLUDED_STATUSES` exactly: a capture in one of these
-#: states has already been resolved one way or another and must never count as pending, however
-#: far past its own `capture_deadline_at` it now sits.
-_RESOLVED_STATUSES = (CaptureStatus.STORED, CaptureStatus.UNAVAILABLE, CaptureStatus.QUARANTINED)
+#: Mirrors `run.py`'s `_DEADLINE_BREACH_EXCLUDED_STATUSES` exactly (T059b keeps this comment true
+#: after adding the two terminal statuses there — `EXPIRED` and `FAILED` — kept in sync by hand
+#: since this script deliberately sits outside the uv workspace and does not import `run.py`): a
+#: capture in one of these states has already been resolved one way or another and must never count
+#: as pending, however far past its own `capture_deadline_at` it now sits.
+_RESOLVED_STATUSES = (
+    CaptureStatus.STORED,
+    CaptureStatus.UNAVAILABLE,
+    CaptureStatus.QUARANTINED,
+    CaptureStatus.EXPIRED,
+    CaptureStatus.FAILED,
+)
 
 
 def _nearest_rank(sorted_values: Sequence[int], fraction: float) -> int:

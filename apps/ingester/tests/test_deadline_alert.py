@@ -52,7 +52,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from aoe2stats_storage.models import (
@@ -281,3 +281,176 @@ async def test_deadline_breach_fires_at_the_capture_deadline_and_not_before(
         "deadline, must not be swept in early, and this alert must never wait for anything "
         "resembling the source's ~31-day retention expiry"
     )
+
+
+async def test_deadline_breach_is_not_raised_for_a_terminal_expired_or_failed_capture(
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """T059b: `expired` and `failed` are terminal — nothing ever moves a row out of either, and
+    both sit permanently past their own `capture_deadline_at` by construction (an `expired` capture
+    was already past its deadline by the time `_classify_not_found`, T056, closed it that way; a
+    `failed` capture only reaches that status after `_MAX_ATTEMPTS`, T057, which itself only fires
+    once `next_attempt_at`'s backoff has run past the deadline in every realistic case). Sweeping
+    either in here would raise a fresh severity-1 `deadline_breach` every single cycle forever, for
+    a loss already reported once — by `expired_capture` (T056) for `expired`, or by the run's own
+    `failed_total` counter for `failed` — which is exactly the unbounded flood T059b exists to
+    close.
+    """
+    from aoe2stats_ingester.run import run_once
+
+    profile_id = 700_000_004
+    await _seed_profile(session_factory, profile_id, "Terminal")
+
+    past_deadline = datetime.now(UTC) - timedelta(days=1)
+    for game_id, status in (
+        (704_000_001, CaptureStatus.EXPIRED),
+        (704_000_002, CaptureStatus.FAILED),
+    ):
+        await _seed_capture(
+            session_factory,
+            game_id=game_id,
+            profile_id=profile_id,
+            status=status,
+            capture_deadline_at=past_deadline,
+        )
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert alerts == [], (
+        "a capture that is `expired` or `failed` is terminal — nothing ever moves it out of that "
+        "state, and it was already alerted once by its own terminal producer, so it must never "
+        "raise `deadline_breach` on top, however many cycles run afterwards"
+    )
+
+
+async def test_deadline_breach_is_raised_once_across_two_runs_over_the_same_unresolved_breach(
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """T059b's suppression rule: the sweep re-runs every cycle, but must not insert a second
+    severity-1 row for a capture an unacknowledged `deadline_breach` already names. Two consecutive
+    cycles over the exact same unresolved breach must produce exactly one alert row, not two —
+    otherwise acknowledging today's is answered by tomorrow's, and `alert_audit.py`'s nightly gate
+    can never be returned to green by any action short of deleting rows.
+    """
+    from aoe2stats_ingester.run import run_once
+
+    profile_id = 700_000_005
+    await _seed_profile(session_factory, profile_id, "Repeat")
+
+    past_deadline = datetime.now(UTC) - timedelta(days=1)
+    breached_id = await _seed_capture(
+        session_factory,
+        game_id=705_000_001,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=past_deadline,
+    )
+
+    first_report = await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+    second_report = await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert len(alerts) == 1, (
+        "the breach is still unresolved and still unacknowledged the second cycle around — the "
+        "sweep must recognise it already named this capture and raise nothing new for it"
+    )
+    assert alerts[0].detail is not None
+    assert set(alerts[0].detail.get("capture_ids", [])) == {str(breached_id)}
+
+    assert second_report.ingest_run_id != first_report.ingest_run_id, (
+        "sanity: the two calls really are two separate runs, not one counted twice"
+    )
+
+
+async def test_deadline_breach_raises_again_when_a_new_capture_breaches(
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """The suppression rule must not swallow a genuinely new incident: a second capture breaching
+    its own deadline while an earlier one is still unacknowledged is a new loss, not a repeat of the
+    same one, and must raise a second alert.
+    """
+    from aoe2stats_ingester.run import run_once
+
+    profile_id = 700_000_006
+    await _seed_profile(session_factory, profile_id, "Growing")
+
+    past_deadline = datetime.now(UTC) - timedelta(days=1)
+    first_breached_id = await _seed_capture(
+        session_factory,
+        game_id=706_000_001,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=past_deadline,
+    )
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    second_breached_id = await _seed_capture(
+        session_factory,
+        game_id=706_000_002,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=past_deadline,
+    )
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert len(alerts) == 2, (
+        "a newly breaching capture is a new incident even while an older, unacknowledged one is "
+        "still open — the suppression rule must not swallow it"
+    )
+    all_carried_ids: set[str] = set()
+    for alert in alerts:
+        assert alert.detail is not None
+        all_carried_ids.update(alert.detail.get("capture_ids", []))
+    assert all_carried_ids == {str(first_breached_id), str(second_breached_id)}
+
+
+async def test_deadline_breach_raises_again_once_the_prior_alert_is_acknowledged(
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """The suppression rule must not become permanent: once a human has acknowledged the previous
+    alert and the breach is still unresolved, the next cycle raises again — an acknowledged alert
+    that nothing ever follows up on would silently downgrade FR-025 from "act inside ~10 days" to
+    "was told once, eventually".
+    """
+    from aoe2stats_ingester.run import run_once
+
+    profile_id = 700_000_007
+    await _seed_profile(session_factory, profile_id, "Acknowledged")
+
+    past_deadline = datetime.now(UTC) - timedelta(days=1)
+    breached_id = await _seed_capture(
+        session_factory,
+        game_id=707_000_001,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=past_deadline,
+    )
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    async with session_factory() as session:
+        await session.execute(
+            update(Alert)
+            .where(Alert.kind == AlertKind.DEADLINE_BREACH)
+            .values(acknowledged_at=datetime.now(UTC))
+        )
+        await session.commit()
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert len(alerts) == 2, (
+        "the breach is still unresolved after the acknowledgement — the next cycle must raise a "
+        "fresh alert rather than treating an acknowledged row as still-active suppression"
+    )
+    for alert in alerts:
+        assert alert.detail is not None
+        assert set(alert.detail.get("capture_ids", [])) == {str(breached_id)}

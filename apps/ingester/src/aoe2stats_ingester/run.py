@@ -303,10 +303,24 @@ _DEADLINE_BREACH_ALERT_SEVERITY = 1
 #: `replay_captures.status` values a capture is already resolved under — `deadline_breach` must
 #: never fire for one of these, however far past its own `capture_deadline_at` it now sits (FR-025,
 #: T059a's own task text: "neither `stored`, `unavailable` nor `quarantined`").
+#:
+#: T059b adds `EXPIRED` and `FAILED`: both are terminal — nothing in this codebase ever moves a row
+#: out of either — and both sit permanently past their own `capture_deadline_at` by construction (an
+#: `expired` capture was already past its deadline by the time `_classify_not_found`, T056, closed
+#: it that way; `failed` only follows exhausting `_MAX_ATTEMPTS`, T057). Leaving them out of this
+#: tuple meant every cycle re-swept the same terminal loss forever and inserted a fresh severity-1
+#: row for it every time — the row was never wrong, but a loss already reported once, by
+#: `expired_capture` (T056) for `expired` or by the run's own `failed_total` counter for `failed`,
+#: is not a second incident. `scripts/checks/capture_audit.py`'s `_RESOLVED_STATUSES` mirrors this
+#: tuple exactly — see that constant's own comment — and must be kept in sync by hand for the same
+#: reason `_nearest_rank` is: that script deliberately sits outside the uv workspace and does not
+#: import this module.
 _DEADLINE_BREACH_EXCLUDED_STATUSES = (
     CaptureStatus.STORED,
     CaptureStatus.UNAVAILABLE,
     CaptureStatus.QUARANTINED,
+    CaptureStatus.EXPIRED,
+    CaptureStatus.FAILED,
 )
 
 
@@ -374,6 +388,36 @@ class _AlertSink:
         ]
 
 
+async def _already_named_capture_ids(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> set[str]:
+    """T059b's suppression rule, its read half: the union of `capture_ids` carried by every
+    unacknowledged `deadline_breach` row that already exists.
+
+    Filtered to `acknowledged_at IS NULL` on purpose, and this is the whole rule: a capture named
+    only by an *acknowledged* alert is not suppressed, because an operator acknowledging a `1`
+    row is the explicit "seen, will follow up" signal FR-025 exists for — an unresolved breach must
+    surface again the next cycle, not stay silent forever because someone once looked at it. A
+    capture named only by an unacknowledged one is exactly the flood T059b closes: `capture_ids` is
+    already the sweep's own record of what it raised for, so re-reading it here needs no new column
+    and no new table.
+    """
+    async with session_factory() as session:
+        result = await session.execute(
+            select(AlertRow.detail).where(
+                AlertRow.kind == _DEADLINE_BREACH_ALERT_KIND,
+                AlertRow.acknowledged_at.is_(None),
+            )
+        )
+        details = result.scalars().all()
+
+    already_named: set[str] = set()
+    for detail in details:
+        if detail:
+            already_named.update(detail.get("capture_ids", []))
+    return already_named
+
+
 async def _raise_deadline_breach_alert(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -391,8 +435,24 @@ async def _raise_deadline_breach_alert(
     against — a different kind, at a different time, with roughly ten days still left to act by the
     time this one fires.
 
-    Returns `1` if the alert was raised, `0` if there was nothing to raise it for — the amount
-    `run_once` folds into its own still-open `ingest_runs` row's `alerts_raised`, never per capture.
+    **T059b — suppressed, not merely repeated.** The sweep above re-runs every cycle and, before
+    this addition, inserted a fresh row for whatever it found every time, with no memory of what it
+    had already raised. Two terminal statuses aside (`_DEADLINE_BREACH_EXCLUDED_STATUSES`), that is
+    unbounded: acknowledging today's row is answered by tomorrow's, and `alert_audit.py`'s nightly
+    gate can never be returned to green by any action short of deleting rows. The fix compares the
+    current offending set against `_already_named_capture_ids` — every id already carried by an
+    *unacknowledged* `deadline_breach` row — and raises nothing new when the current set is already
+    a subset of that: nothing about this run's own findings is news. It still raises when the
+    offending set has *grown* (a new capture past its own deadline is a new incident, whatever else
+    is still open) and again once a human has acknowledged the prior alert and the breach is still
+    unresolved (acknowledging removes it from `_already_named_capture_ids`'s query, by construction
+    — see that function's own docstring). Both are the entire point of the alert; a suppression rule
+    that swallowed either would be worse than the flood it replaces.
+
+    Returns `1` if a new alert was raised, `0` if there was nothing to raise it for or everything
+    found was already named by an unacknowledged alert — the amount `run_once` folds into its own
+    still-open `ingest_runs` row's `alerts_raised`, so a suppressed run's counter says truthfully
+    that this run raised nothing, never that it raised the alert it merely re-found.
     """
     async with session_factory() as session:
         result = await session.execute(
@@ -404,6 +464,11 @@ async def _raise_deadline_breach_alert(
         offending_ids = [row[0] for row in result.all()]
 
     if not offending_ids:
+        return 0
+
+    current_ids = {str(capture_id) for capture_id in offending_ids}
+    already_named = await _already_named_capture_ids(session_factory)
+    if current_ids <= already_named:
         return 0
 
     await raise_alert(
