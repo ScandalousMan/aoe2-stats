@@ -9,24 +9,82 @@ same setting down from both callers is what keeps the platform's 300 s function 
 budget this code actually honours from becoming two numbers maintained apart: there is exactly one
 place (`.env.example`) that number is written down.
 
-**T018 ships the skeleton only.** The actual stages — discovery (T053), the 25-day reconciliation
-sweep and 31-day backfill (T054), and the capture drain (T055, completed by T059) — are Phase 4
-work; this module is the shape they plug into, not their implementation. `DEFAULT_STAGES` starts
-empty and each of those tasks appends its stage to it in the order plan.md names them (discover,
-reconcile, drain), so a cycle run today does real, honest nothing rather than a placeholder
-pretending to be one. T059 also adds what this skeleton deliberately does not: the `ingest_runs`
-row opened before any work and closed after, and the counters (`capture_lag_p50_seconds`, ...)
-FR-024 needs.
+**T059 — the `ingest_runs` row.** Every field on that row but `id` is either open-before or
+closed-after, never written in one go (data-model.md's own `ingest_runs` section, quoted here
+because it is this function's actual contract): the row is **inserted when the run starts**,
+carrying `started_at`, `trigger` and `budget_seconds` and nothing else, *before* `stages` is ever
+touched. It is opened this early, rather than assembled once at the end, because every `alerts` row
+carries `ingest_run_id`, and four of the five producers fire during the drain (`ratelimit.py`'s
+`rate_limited`, `capture.py`'s `validation_failed` and `expired_capture`) or immediately after it
+(T059a's `deadline_breach`) — a row that did not exist yet would leave every one of them orphaned
+and `alerts_raised` permanently short of the truth. `stages` then runs exactly as the T018 skeleton
+always did: each one only ever *started* while budget remains, never interrupted mid-stage once
+started. The row is **closed** once every stage that started has finished (or the loop stopped
+early for want of budget) with `finished_at` and every counter `stage_reports` carries in
+`ingest_runs`' own vocabulary (`_aggregate_counters`), plus `capture_lag_p50_seconds` and
+`capture_lag_p95_seconds` (FR-024, `_capture_lag_seconds`).
+
+**A run that dies leaves an open row.** Nothing here ever catches an exception a stage raises (a
+`ReconcileStage` outage after three unreachable cycles, T054a, is the concrete case this is written
+for) and closes the row anyway — that would be a row claiming a cycle finished when it did not, a
+lie no dashboard reading `ingest_runs` could ever detect. The exception propagates out of
+`run_once` exactly as it would have before this task, and the row it opened is left with a null
+`finished_at` — "a fact worth having rather than a row that was never written" (data-model.md), and
+the second of the two signals the nightly liveness check (T048, T061) reads: the row's absence
+means nothing ran at all, its open `finished_at` means something did and did not finish.
+
+**`session_factory` is the one thing about this function's own database access that is not handed
+down from a `Settings` instance a caller already resolved**, unlike `budget_seconds`/`trigger`/
+`stages` (see the paragraph above, and every one of those three names in the signature below).
+A caller that wants this function's own writes to land against a database it controls — every
+integration test in this package (`test_deadline_alert.py`, `test_run.py`) — passes
+`session_factory=` explicitly, built exactly as `tests/db.py` builds one for the rest of this
+package's tests. A caller that does not — both production entrypoints today, neither of which is
+this task's to change — gets `_default_session_factory()`: an `AsyncEngine` built once, this call
+only, straight from `DATABASE_URL` in `os.environ` (`packages/storage/src/aoe2stats_storage/
+repositories/base.py`'s own docstring names this call out directly: "the ingester's `run_once()`
+... build[s] ... an engine from it"). This is deliberate, not an oversight of the "never re-read a
+setting from the environment inside `run_once`" rule stated above: that rule is about the three
+values a caller already resolved through its own `Settings` and would otherwise resolve a second,
+possibly-divergent way inside this function; the database connection this function's own direct
+writes need is not one of those three, and `apps/ingester` cannot import `apps/api`'s `Settings` to
+resolve it any other way (`test_backfill.py`'s own module docstring: `packages/storage` — and
+everything beneath it, including this module — is a library `apps/api` depends on, not the
+reverse). Building a fresh engine per call rather than holding one across calls is exactly what
+`build_engine`'s own `NullPool` choice is for (research §4): every process this code runs in is
+short-lived and connects through Neon's pooled endpoint, so there is nothing here to amortise.
+
+**Not this task's job: populating `DEFAULT_STAGES` with real, provider-backed stage instances.**
+`DiscoverStage` (`discover.py`, T053), `ReconcileStage` (`reconcile.py`, T054) and `CaptureDrain`
+(`capture.py`, T055-T058) all exist now, but none of them can be constructed without a real
+`MatchHistoryProvider`/`ProfileProvider`/`ReplayProvider`/`ObjectStore`/`ReplayValidator` and the
+`Settings` values those need — and `Settings` lives in `apps/api`, which this package cannot import
+(see the paragraph above). Wiring those together is therefore necessarily a caller's job, not this
+module's, and no task through T062 does it: `apps/api/src/aoe2stats_api/routers/cron.py` still
+calls `run_once(settings.ingest_run_budget_seconds, trigger="local")` with no `stages=` at all
+(T018, unchanged by this task), so `DEFAULT_STAGES` stays `()` and a cycle run through either
+production entrypoint today still does real, honest nothing beyond opening and closing its own
+`ingest_runs` row — exactly as empty a cycle as before this task, just no longer an invisible one.
+`test_cron.py`'s and `test_cron_ingest_entrypoint.py`'s own `stages_completed == []` assertions are
+what would catch this module quietly starting to build stages that gap has no settings to fill.
 """
 
 from __future__ import annotations
 
+import math
+import os
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from aoe2stats_ingester.budget import Budget
+from aoe2stats_storage.models import IngestRun, Match, ReplayCapture
+from aoe2stats_storage.repositories.base import build_engine, build_session_factory
 
 
 @runtime_checkable
@@ -46,19 +104,208 @@ class Stage(Protocol):
     async def __call__(self, budget: Budget) -> Mapping[str, Any]: ...
 
 
-#: Populated by later tasks as each stage lands — T053 (discovery), T054 (reconciliation), T055/
-#: T059 (the capture drain) — in that order. Empty here is deliberate, not an oversight: see the
-#: module docstring on why T018 builds only the shape.
+#: Empty today and not this task's to populate — see the module docstring's closing paragraph for
+#: why: every real stage exists, but none of them can be constructed without settings and
+#: providers only `apps/api` holds, and no caller through T062 hands any of that down to this
+#: function. A caller that wants real work done builds its own stage instances and passes them as
+#: `stages=`, exactly as this package's own integration tests do.
 DEFAULT_STAGES: tuple[Stage, ...] = ()
+
+#: `DATABASE_URL` (`.env.example`): read directly from the environment only when a caller does not
+#: hand this function its own `session_factory` — see the module docstring's paragraph on why this
+#: one value is the deliberate exception to "never re-read a setting from the environment inside
+#: `run_once`".
+_DATABASE_URL_ENV = "DATABASE_URL"
+
+#: SC-002 (spec.md) / T061's own stated exclusion rule for the identical measure computed at a
+#: different scope (a trailing seven days there, this one run here): a capture whose
+#: `first_seen_at` lands more than this many hours after its match's `completed_at` was already
+#: old the moment this system first saw it — a 31-day backfill (T031a), or a reconciliation sweep
+#: catching up after an outage (T054a) — and folding it into this run's own lag counters would
+#: report how far back a rescue reached rather than how fast the day-to-day cadence is
+#: (data-model.md's `ingest_runs` section: "the lag counters are over newly discovered captures
+#: only. Including backfill would make the number describe how far back a rescue reached rather
+#: than how fast the cadence is").
+_NEWLY_DISCOVERED_LAG_WINDOW_HOURS = 48
+
+#: `ingest_runs`' own counter vocabulary that `stage_reports` fills in, summed across every stage
+#: that reports a given key — `discover.py` and `reconcile.py` both report `profiles_polled` and
+#: `matches_discovered` (a cycle running both counts both), while the rest (`captures_attempted`
+#: through `backlog_remaining`) are `capture.py`'s drain alone. Any other key a stage report
+#: carries (`captures_enqueued`, `rating_snapshots_recorded`, `backfills_cleared`, ...) has no
+#: column on `ingest_runs` and is left in `RunReport.stage_reports` only, per-stage, uncollapsed —
+#: `test_quarantine.py`'s own docstring is the reason this list exists at all: "a stage report that
+#: already speaks that vocabulary is what lets T059 fold it in with no per-key translation."
+_COUNTER_KEYS: tuple[str, ...] = (
+    "profiles_polled",
+    "matches_discovered",
+    "captures_attempted",
+    "stored_total",
+    "failed_total",
+    "unavailable_total",
+    "expired_total",
+    "quarantined_total",
+    "alerts_raised",
+    "backlog_remaining",
+)
+
+
+def _now() -> datetime:
+    """The one place `run_once` reads the wall clock for its own `started_at`/`finished_at` (and,
+    through them, the capture-lag window) — a thin wrapper for exactly one reason: a test can
+    monkeypatch this name to control both timestamps precisely, the same way `test_run.py`'s
+    existing `FakeClock` already controls `budget.py`'s `monotonic` for the time *budget*. Real
+    production code never patches this; `datetime.now(UTC)` is exactly what it calls.
+    """
+    return datetime.now(UTC)
+
+
+def _aggregate_counters(stage_reports: Mapping[str, Mapping[str, Any]]) -> dict[str, int]:
+    """Sum `_COUNTER_KEYS` across every stage's report — see that constant's own docstring for why
+    summing, rather than picking one stage's value, is correct: `profiles_polled` and
+    `matches_discovered` are the only two keys more than one stage ever reports, and a cycle that
+    ran both discovery and reconciliation really did poll/discover the total of what each did.
+    A stage that never ran, or never reported a given key, contributes nothing (the default is 0,
+    never a stage-shaped placeholder), so a cycle that stopped early before the drain ever started
+    still closes its row with the counters the stages that *did* run actually produced.
+    """
+    totals = dict.fromkeys(_COUNTER_KEYS, 0)
+    for report in stage_reports.values():
+        for key in _COUNTER_KEYS:
+            value = report.get(key)
+            if isinstance(value, int):
+                totals[key] += value
+    return totals
+
+
+def _nearest_rank(sorted_values: Sequence[int], fraction: float) -> int:
+    """The nearest-rank percentile over an already-sorted, non-empty sequence: the smallest value
+    at or beyond the `ceil(fraction * n)`-th position (1-indexed), clamped to at least the first
+    and at most the last element. `fraction=0.5` is the median (`capture_lag_p50_seconds`),
+    `fraction=0.95` is `capture_lag_p95_seconds` — the same statistic SC-002 and T061's own nightly
+    check are stated in terms of, computed here over one run's own newly discovered captures rather
+    than a trailing seven-day window.
+    """
+    rank = max(1, math.ceil(fraction * len(sorted_values)))
+    return sorted_values[min(rank, len(sorted_values)) - 1]
+
+
+async def _capture_lag_seconds(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> tuple[int | None, int | None]:
+    """`(capture_lag_p50_seconds, capture_lag_p95_seconds)` over every capture this run newly
+    discovered and has already stored — `None, None` when there is nothing to measure (no capture
+    both first seen in `[window_start, window_end]` and `stored_at` non-null by the time this is
+    called, `finished_at`, the overwhelmingly common case for a capture discovered the same cycle
+    it is measured in).
+
+    "Newly discovered" is `ReplayCapture.first_seen_at` falling inside this run's own
+    `[started_at, finished_at]` window — the row did not exist before this cycle inserted it — with
+    `_NEWLY_DISCOVERED_LAG_WINDOW_HOURS` excluding anything whose `first_seen_at` is later than its
+    own `matches.completed_at` plus that many hours, the same exclusion T061's own trailing-window
+    measure applies, and for the same reason: a row that old the moment it was first seen is a
+    backfill or a reconciliation catch-up, not the day-to-day cadence SC-002 is a statement about
+    (see `_NEWLY_DISCOVERED_LAG_WINDOW_HOURS`'s own docstring).
+    """
+    cutoff = timedelta(hours=_NEWLY_DISCOVERED_LAG_WINDOW_HOURS)
+    async with session_factory() as session:
+        result = await session.execute(
+            select(ReplayCapture.stored_at, Match.completed_at)
+            .join(Match, Match.game_id == ReplayCapture.game_id)
+            .where(
+                ReplayCapture.first_seen_at >= window_start,
+                ReplayCapture.first_seen_at <= window_end,
+                ReplayCapture.first_seen_at <= Match.completed_at + cutoff,
+                ReplayCapture.stored_at.is_not(None),
+            )
+        )
+        rows = result.all()
+
+    if not rows:
+        return None, None
+
+    lags = sorted(
+        int((stored_at - completed_at).total_seconds()) for stored_at, completed_at in rows
+    )
+    return _nearest_rank(lags, 0.50), _nearest_rank(lags, 0.95)
+
+
+async def _open_ingest_run(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: uuid.UUID,
+    started_at: datetime,
+    trigger: str,
+    budget_seconds: float,
+) -> None:
+    """Insert the `ingest_runs` row, carrying `started_at`, `trigger` and `budget_seconds` and
+    nothing else — see the module docstring for why this happens before any stage ever runs.
+    `budget_seconds` is stored as the column's own `Integer` type; `run_once`'s own parameter stays
+    a `float` (matching `RunReport.budget_seconds` and `Budget`, both already `float`-typed), so
+    the narrowing happens here, at the one write site, rather than at the signature.
+    """
+    async with session_factory() as session:
+        session.add(
+            IngestRun(
+                id=run_id,
+                started_at=started_at,
+                trigger=trigger,
+                budget_seconds=int(budget_seconds),
+            )
+        )
+        await session.commit()
+
+
+async def _close_ingest_run(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: uuid.UUID,
+    finished_at: datetime,
+    counters: Mapping[str, int],
+    capture_lag_p50_seconds: int | None,
+    capture_lag_p95_seconds: int | None,
+) -> None:
+    """Close the row `_open_ingest_run` inserted, with `finished_at` and every counter — see the
+    module docstring for why this only ever runs once every stage that started has finished, never
+    from a handler that also has to decide whether a stage raised.
+    """
+    async with session_factory() as session:
+        await session.execute(
+            update(IngestRun)
+            .where(IngestRun.id == run_id)
+            .values(
+                finished_at=finished_at,
+                capture_lag_p50_seconds=capture_lag_p50_seconds,
+                capture_lag_p95_seconds=capture_lag_p95_seconds,
+                **counters,
+            )
+        )
+        await session.commit()
+
+
+def _default_session_factory() -> async_sessionmaker[AsyncSession]:
+    """`run_once`'s own database access when no caller supplies `session_factory` — see the module
+    docstring's paragraph on why this is the one deliberate exception to reading a setting from the
+    environment inside this function.
+    """
+    database_url = os.environ.get(_DATABASE_URL_ENV)
+    if not database_url:
+        raise RuntimeError(
+            f"run_once() needs either session_factory= or {_DATABASE_URL_ENV} set in the "
+            "environment to reach its own ingest_runs bookkeeping."
+        )
+    return build_session_factory(build_engine(database_url))
 
 
 @dataclass(frozen=True, slots=True)
 class RunReport:
-    """What one call to `run_once` produced.
-
-    Not yet the `ingest_runs` row itself — T059 persists a version of this to storage and adds the
-    FR-024 counters an `ingest_runs` row carries. This is the in-process shape that extends into,
-    and the shape both entrypoints render directly as their HTTP response today.
+    """What one call to `run_once` produced — the in-process shape both entrypoints render
+    directly as their HTTP response, and a near-mirror of the `ingest_runs` row `run_once` itself
+    opens and closes (`ingest_run_id` is that row's own primary key, so a caller — or a human
+    reading a response body — can go straight from this report to the row FR-024 asks for).
     """
 
     trigger: str
@@ -68,6 +315,7 @@ class RunReport:
     stages_completed: tuple[str, ...]
     stopped_early: bool
     stage_reports: Mapping[str, Mapping[str, Any]]
+    ingest_run_id: uuid.UUID
 
     def to_dict(self) -> dict[str, Any]:
         """The JSON-serialisable form the two entrypoints render as their run report."""
@@ -79,6 +327,7 @@ class RunReport:
             "stages_completed": list(self.stages_completed),
             "stopped_early": self.stopped_early,
             "stage_reports": {name: dict(report) for name, report in self.stage_reports.items()},
+            "ingest_run_id": str(self.ingest_run_id),
         }
 
 
@@ -87,22 +336,39 @@ async def run_once(
     *,
     trigger: str = "cron",
     stages: Sequence[Stage] = DEFAULT_STAGES,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> RunReport:
     """Run one ingest cycle, honouring `budget_seconds` between stages and never mid-stage.
 
     `budget_seconds` is always `Settings.ingest_run_budget_seconds` in production. `trigger`
     records which entrypoint asked for the cycle (`"cron"` for the Vercel schedule, `"local"` for
-    the quickstart trigger, `"worker"` for the phase-2 loop) — T059 carries it onto the
-    `ingest_runs` row; this skeleton only carries it onto the report.
+    the quickstart trigger, `"worker"` for the phase-2 loop). See the module docstring for
+    `session_factory` (this function's own database access) and for why `stages` still defaults to
+    empty in production today.
 
     Each stage is only ever *started* while budget remains; once one is running it is never
     interrupted mid-stage, exactly as `iter_within_budget` never interrupts mid-item within one.
     A stage that starts late in the budget can still overrun it slightly — that is the price of
     never leaving a claim, a download or an upload half-done, and is why the reclaim path (T055)
     exists for the one row a hard process kill can still catch.
+
+    Nothing here catches an exception a stage raises: it propagates out of this call exactly as it
+    would have before this task, leaving the `ingest_runs` row this call opened exactly as open as
+    the module docstring describes — a fact worth having, never papered over with a `finished_at`
+    the cycle never actually reached.
     """
-    started_at = datetime.now(UTC)
+    resolved_session_factory = session_factory or _default_session_factory()
+
+    started_at = _now()
     budget = Budget(seconds=budget_seconds)
+    run_id = uuid.uuid4()
+    await _open_ingest_run(
+        resolved_session_factory,
+        run_id=run_id,
+        started_at=started_at,
+        trigger=trigger,
+        budget_seconds=budget_seconds,
+    )
 
     stages_completed: list[str] = []
     stage_reports: dict[str, Mapping[str, Any]] = {}
@@ -115,7 +381,20 @@ async def run_once(
         stage_reports[stage.name] = await stage(budget)
         stages_completed.append(stage.name)
 
-    finished_at = datetime.now(UTC)
+    finished_at = _now()
+    counters = _aggregate_counters(stage_reports)
+    capture_lag_p50_seconds, capture_lag_p95_seconds = await _capture_lag_seconds(
+        resolved_session_factory, window_start=started_at, window_end=finished_at
+    )
+    await _close_ingest_run(
+        resolved_session_factory,
+        run_id=run_id,
+        finished_at=finished_at,
+        counters=counters,
+        capture_lag_p50_seconds=capture_lag_p50_seconds,
+        capture_lag_p95_seconds=capture_lag_p95_seconds,
+    )
+
     return RunReport(
         trigger=trigger,
         budget_seconds=budget_seconds,
@@ -124,4 +403,5 @@ async def run_once(
         stages_completed=tuple(stages_completed),
         stopped_early=stopped_early,
         stage_reports=stage_reports,
+        ingest_run_id=run_id,
     )

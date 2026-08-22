@@ -1,12 +1,22 @@
 """Tests for `POST /api/cron/ingest` (`routers/cron.py`) — T018's local trigger.
 
 Ahead of the shared throwaway-database harness `client` fixture (T015) in intent — this route
-does not touch the database or the object store at all (`run_once`'s stages are still empty at
-this stage of the feature; see `aoe2stats_ingester.run`'s module docstring) — but built on that
-same `conftest.py` (T015b) for its environment and its fakes: `required_env`/`environment` set
-up `Settings` exactly as `test_settings.py` does by hand, and `fake_session_class`/
-`fake_object_store_class` override `get_session`/`get_object_store` exactly as `test_health.py`
-does, all three shared rather than redefined here.
+never reaches `get_session`/`get_object_store` at all, since `run_once`'s stages are still empty
+(`aoe2stats_ingester.run`'s module docstring: no task through T062 wires production stages into
+`routers/cron.py`) — but built on that same `conftest.py` (T015b) for its environment and its
+fakes: `required_env`/`environment` set up `Settings` exactly as `test_settings.py` does by hand,
+and `fake_session_class`/`fake_object_store_class` override `get_session`/`get_object_store`
+exactly as `test_health.py` does, all three shared rather than redefined here.
+
+**T059**: `run_once()` itself now always opens and closes its own `ingest_runs` row (FR-024),
+regardless of `stages` — a real write this route's fake `get_session`/`get_object_store`
+overrides do not, and cannot, reach, since `run_once` builds its own database access straight
+from `DATABASE_URL` rather than through this app's FastAPI dependencies (`run.py`'s own module
+docstring). `REQUIRED_ENV`'s `DATABASE_URL` is a deliberately unreachable placeholder, which is
+exactly why every test below that actually invokes a full cycle now also asks for the real
+throwaway database (`database_url`, `clean_database` — `tests/db.py`, T015) and points
+`DATABASE_URL` at it for the duration of the call, rather than the placeholder every other value
+in `REQUIRED_ENV` is content to stay.
 """
 
 from __future__ import annotations
@@ -71,8 +81,18 @@ def test_ingest_rejects_a_malformed_authorization_header(
 
 
 def test_ingest_runs_and_returns_the_report_with_the_correct_secret(
-    fake_session_class: type, fake_object_store_class: type, required_env: dict[str, str]
+    fake_session_class: type,
+    fake_object_store_class: type,
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
 ) -> None:
+    # `run_once()` (T059) always opens and closes its own `ingest_runs` row, straight from
+    # `DATABASE_URL` — see this module's docstring. `REQUIRED_ENV`'s own value is an unreachable
+    # placeholder, so this one call needs the real throwaway database in its place.
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
     with _client(fake_session_class, fake_object_store_class) as client:
         response = client.post(
             "/api/cron/ingest",

@@ -12,6 +12,13 @@ The environment (`REQUIRED_ENV`/`_environment` — T018b raised `CRON_SECRET` to
 floor) is `test_cron.py`'s byte-for-byte, so it now lives once in `conftest.py`'s `required_env`/
 `environment` fixtures (T015b); this file opts in the same way, with
 `pytestmark = pytest.mark.usefixtures("environment")`.
+
+**T059**: `run_once()` now always opens and closes its own `ingest_runs` row (FR-024) straight
+from `DATABASE_URL`, regardless of `stages` — see `test_cron.py`'s own module docstring for the
+full explanation, which applies here byte-for-byte. Every test below that actually reaches
+`run_once` (the two "correct secret" happy paths) points `DATABASE_URL` at the real throwaway
+database for the duration of its own call rather than `REQUIRED_ENV`'s deliberately unreachable
+placeholder.
 """
 
 from __future__ import annotations
@@ -50,7 +57,14 @@ def test_ingest_rejects_a_request_with_the_wrong_secret() -> None:
 
 def test_ingest_runs_and_returns_the_report_with_the_correct_secret(
     required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
 ) -> None:
+    # See this module's docstring (T059): `run_once()`'s own `ingest_runs` bookkeeping needs a
+    # reachable `DATABASE_URL`, not `REQUIRED_ENV`'s unreachable placeholder.
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
     with _client() as client:
         response = client.post(
             "/api/cron/ingest",
@@ -74,9 +88,18 @@ def test_ingest_never_reveals_the_configured_secret_in_the_response(
     assert required_env["CRON_SECRET"] not in response.text
 
 
-def test_ingest_accepts_get_with_the_correct_secret(required_env: dict[str, str]) -> None:
+def test_ingest_accepts_get_with_the_correct_secret(
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
+) -> None:
     """The defect T018b fixes: Vercel Cron Jobs invoke a scheduled function with **GET**,
     attaching the bearer itself. `methods=["POST"]` alone made the nightly cycle 405 forever."""
+    # See this module's docstring (T059): `run_once()`'s own `ingest_runs` bookkeeping needs a
+    # reachable `DATABASE_URL`, not `REQUIRED_ENV`'s unreachable placeholder.
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
     with _client() as client:
         response = client.get(
             "/api/cron/ingest",

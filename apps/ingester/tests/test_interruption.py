@@ -350,7 +350,7 @@ async def test_a_short_budget_stops_cleanly_leaving_none_downloading(
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(2, trigger="test", stages=[stage])
+    await run_once(2, trigger="test", stages=[stage], session_factory=session_factory)
 
     rows = await _all_capture_rows(session_factory)
     statuses = [row.status for row in rows]
@@ -397,7 +397,7 @@ async def test_a_stale_downloading_claim_without_bytes_is_reclaimed_and_complete
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(30, trigger="test", stages=[stage])
+    await run_once(30, trigger="test", stages=[stage], session_factory=session_factory)
 
     assert provider.calls == [(game_id, profile_id)]
     row = await _capture_row(session_factory, game_id)
@@ -452,7 +452,7 @@ async def test_a_stale_downloading_claim_with_bytes_already_committed_resumes_at
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(30, trigger="test", stages=[stage])
+    await run_once(30, trigger="test", stages=[stage], session_factory=session_factory)
 
     # No request to the replay endpoint at all: the row already carried `zip_sha256`.
     assert provider.calls == []
@@ -514,7 +514,7 @@ async def test_a_stale_downloading_claim_with_stored_bytes_failing_validation_is
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(30, trigger="test", stages=[stage])
+    await run_once(30, trigger="test", stages=[stage], session_factory=session_factory)
 
     # No re-download and no re-upload: the bytes were already durable.
     assert provider.calls == []
@@ -555,7 +555,7 @@ async def test_the_blob_is_durably_written_before_the_row_is_ever_marked_stored(
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(30, trigger="test", stages=[stage])
+    await run_once(30, trigger="test", stages=[stage], session_factory=session_factory)
 
     key = replay_object_key(game_id, profile_id)
     assert key in status_before_upload, "the upload never happened at all"
@@ -599,7 +599,7 @@ async def test_every_stored_capture_has_exactly_one_matching_retrievable_object(
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    await run_once(30, trigger="test", stages=[stage])
+    await run_once(30, trigger="test", stages=[stage], session_factory=session_factory)
 
     rows = await _all_capture_rows(session_factory)
     assert all(row.status == CaptureStatus.STORED for row in rows)
@@ -655,8 +655,8 @@ async def test_two_concurrent_cycles_claim_disjoint_captures_and_neither_blocks_
 
     started = asyncio.get_event_loop().time()
     await asyncio.gather(
-        run_once(30, trigger="cycle-a", stages=[stage_a]),
-        run_once(30, trigger="cycle-b", stages=[stage_b]),
+        run_once(30, trigger="cycle-a", stages=[stage_a], session_factory=session_factory),
+        run_once(30, trigger="cycle-b", stages=[stage_b], session_factory=session_factory),
     )
     elapsed = asyncio.get_event_loop().time() - started
 
@@ -716,11 +716,11 @@ async def test_a_capture_enqueued_mid_cycle_is_picked_up_by_the_next_cycle_with_
             await session.commit()
 
     await asyncio.gather(
-        run_once(30, trigger="cycle-1", stages=[stage]),
+        run_once(30, trigger="cycle-1", stages=[stage], session_factory=session_factory),
         _enqueue_more_once_the_first_cycle_has_started(),
     )
     # Whatever cycle 1 did or did not see, cycle 2 discovers what remains `pending`.
-    await run_once(30, trigger="cycle-2", stages=[stage])
+    await run_once(30, trigger="cycle-2", stages=[stage], session_factory=session_factory)
 
     all_seeds = [(first_game_id, first_profile_id), *later_seeds]
     assert sorted(provider.calls) == sorted(all_seeds)

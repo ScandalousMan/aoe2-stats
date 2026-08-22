@@ -201,7 +201,19 @@ async def test_deadline_breach_produces_one_row_carrying_every_offending_capture
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T059a not implemented yet")
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "T059a not implemented yet. Unlike this file's other two xfails, this one asserts an "
+        "absence (`alerts == []`), which T059 (landing `run_once(..., session_factory=...)` and "
+        "the `ingest_runs` row lifecycle, but deliberately not T059a's alert itself) already makes "
+        "trivially true: nothing raises any `deadline_breach` yet, for any input, so `strict=True` "
+        "would XPASS the moment `run_once` merely stopped erroring on `session_factory=` and "
+        "`stages=()` — before T059a exists to make the assertion mean anything. `strict=False` "
+        "keeps this running for real against the real database rather than skipping it; restore "
+        "`strict=True` once T059a lands, at which point this assertion becomes meaningful again."
+    ),
+)
 async def test_deadline_breach_is_not_raised_for_stored_unavailable_or_quarantined_captures(
     session_factory: async_sessionmaker,
     clean_database: None,

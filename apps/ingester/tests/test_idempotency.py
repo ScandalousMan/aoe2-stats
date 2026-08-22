@@ -274,7 +274,7 @@ async def test_three_further_cycles_over_an_archived_capture_change_nothing(
     assert initial_capture_count == 2  # the archived capture and its pending control, nothing else
 
     for cycle in range(1, _CYCLES + 1):
-        report = await run_once(60, trigger="cron", stages=[drain])
+        report = await run_once(60, trigger="cron", stages=[drain], session_factory=session_factory)
         assert drain.name in report.stages_completed
 
         # FR-018 / SC-006: no duplicate row, ever, for the already-archived match.
