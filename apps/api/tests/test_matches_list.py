@@ -237,7 +237,6 @@ async def _seed_full_match(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_requires_authentication(client: TestClient) -> None:
     """No session cookie at all: 401, the same shape every other router in this feature answers
     with (`test_replay_status.py`)."""
@@ -247,7 +246,6 @@ async def test_matches_list_requires_authentication(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "not_authenticated"
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_requires_profile_id_query_param(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -261,7 +259,6 @@ async def test_matches_list_requires_profile_id_query_param(
     assert response.json()["error"]["code"] == "validation_error"
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_newest_first_with_fr010_fields(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -329,7 +326,6 @@ async def test_matches_list_newest_first_with_fr010_fields(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_respects_limit_and_returns_a_next_cursor(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -356,7 +352,6 @@ async def test_matches_list_respects_limit_and_returns_a_next_cursor(
     assert body["next_cursor"] is not None
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_cursor_pagination_is_stable_across_insertions(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -407,7 +402,6 @@ async def test_matches_list_cursor_pagination_is_stable_across_insertions(
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_matches_list_empty_history_returns_empty_list_not_an_error(
     client: TestClient, db_session: AsyncSession
 ) -> None:

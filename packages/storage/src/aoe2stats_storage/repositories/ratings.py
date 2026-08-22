@@ -25,16 +25,19 @@ observation and never skips a write because the value did not move. Two things f
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from ..models import RatingSnapshot
 from .base import Repository
 
 
 class RatingsRepository(Repository):
-    """Appends observations to `rating_snapshots`. Never updates or deletes a row: the table is
-    append-only by design (data-model.md), and this repository is the only thing permitted to
-    write to it.
+    """Appends observations to `rating_snapshots`, and reads them back as a curve. Never updates
+    or deletes a row: the table is append-only by design (data-model.md), and this repository is
+    the only thing permitted to write to it.
     """
 
     async def record_snapshot(
@@ -77,3 +80,18 @@ class RatingsRepository(Repository):
         # run next.
         await self.session.flush()
         return snapshot
+
+    async def history_for_profile(self, *, profile_id: int) -> Sequence[RatingSnapshot]:
+        """Every `rating_snapshots` row for `profile_id`, across every leaderboard it has played,
+        oldest first — `captured_at` ascending, `leaderboard_id` ascending as a tiebreaker — the
+        order a rating curve is drawn in (FR-009). `profile_id` is assumed already proven to
+        belong to the caller, the same division of labour `MatchesRepository.list_matches`
+        applies elsewhere in this feature: an ownership check first (`_owned_active_link`), then a
+        query scoped to that `profile_id` alone here.
+        """
+        result = await self.session.execute(
+            select(RatingSnapshot)
+            .where(RatingSnapshot.profile_id == profile_id)
+            .order_by(RatingSnapshot.captured_at.asc(), RatingSnapshot.leaderboard_id.asc())
+        )
+        return result.scalars().all()

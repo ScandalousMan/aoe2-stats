@@ -173,6 +173,14 @@ communicated by colour or shape alone.
 **Acceptance** — the badge reads as a word at 375px without truncation; it is never the only
 difference between two rows in a screenshot.
 
+**Tone variants (US3, `capture-state-badge.md`)** — `Badge` grows four more variants,
+`success` / `warning` / `danger` / `info`, each a `surface-raised` fill with a tone-coloured label
+and a transparent boundary, the same shape `accent` already established. Full spec — including why
+the fill stays neutral rather than tone-tinted, and the one theme-branching exception `accent`
+needed that these four do not — lives in
+[`capture-state-badge.md`](./capture-state-badge.md#5-badge-tone-variants-new-added-to-shared-primitivesmds-badge),
+which is also where `CaptureStateBadge`, the composite that actually chooses a tone, is specified.
+
 ---
 
 ## Skeleton

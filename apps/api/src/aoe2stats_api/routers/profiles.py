@@ -73,6 +73,7 @@ from aoe2stats_storage.models import (
     ReplayCapture,
 )
 from aoe2stats_storage.models import Session as SessionRow
+from aoe2stats_storage.repositories.ratings import RatingsRepository
 
 router = APIRouter(tags=["profiles"])
 
@@ -322,4 +323,46 @@ async def unlink_profile(
         "confirmed": True,
         "unlinked_at": now.isoformat(),
         "archived_replays": archived_replays,
+    }
+
+
+# --- GET /api/profiles/{profile_id}/ratings -----------------------------------------------------
+
+
+@router.get("/profiles/{profile_id}/ratings")
+async def profile_rating_history(
+    profile_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
+) -> dict[str, Any]:
+    """FR-009: the rating curve from `rating_snapshots` for the caller's own `profile_id`, oldest
+    first — the order a chart reads left to right — across every leaderboard it has played.
+
+    Ownership follows the identical `_owned_active_link` / `_profile_not_found` discipline every
+    other route in this router already applies (module docstring, FR-045): a `profile_id` naming
+    no active link, an unlinked one, or one belonging to a different account all answer the same
+    `not_found`, never a differentiated 403 that would itself be the "public directory of players"
+    FR-038 forbids (T067). A profile the caller does own but with no snapshots yet — freshly
+    linked, before the first discovery cycle — gets an empty list, not an error: the profile is
+    real and owned, the history is simply not there yet.
+    """
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+    await _owned_active_link(db_session, profile_id=profile_id, user_id=session_row.user_id)
+
+    snapshots = await RatingsRepository(db_session).history_for_profile(profile_id=profile_id)
+
+    return {
+        "ratings": [
+            {
+                "leaderboard_id": snapshot.leaderboard_id,
+                "leaderboard_name": leaderboard_name(snapshot.leaderboard_id),
+                "rating": snapshot.rating,
+                "rank": snapshot.rank,
+                "wins": snapshot.wins,
+                "losses": snapshot.losses,
+                "streak": snapshot.streak,
+                "highest_rating": snapshot.highest_rating,
+                "captured_at": snapshot.captured_at.isoformat(),
+            }
+            for snapshot in snapshots
+        ]
     }

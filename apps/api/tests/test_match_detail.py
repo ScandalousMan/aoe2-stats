@@ -209,7 +209,6 @@ def _participants_by_profile_id(body: dict[str, object]) -> dict[int, dict[str, 
     return {int(p["profile_id"]): p for p in participants}
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_detail_requires_authentication(client: TestClient) -> None:
     """No session cookie at all: 401, never a leak of whether `game_id` exists."""
     response = client.get(f"/api/matches/{_GAME_ID}")
@@ -218,7 +217,6 @@ async def test_match_detail_requires_authentication(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "not_authenticated"
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_detail_unknown_game_id_returns_not_found(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -243,7 +241,6 @@ async def test_match_detail_unknown_game_id_returns_not_found(
     assert body["error"]["message"] != "Not Found"
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_detail_match_not_involving_caller_returns_the_identical_not_found(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -290,7 +287,6 @@ async def test_match_detail_match_not_involving_caller_returns_the_identical_not
     assert body["error"]["message"] != "Not Found"
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_detail_lists_every_participant_with_team_civ_result_and_rating_change(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -407,7 +403,6 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
     assert by_profile[_CALLER_PROFILE_ID]["team_id"] != by_profile[_OPPONENT_PROFILE_ID]["team_id"]
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_detail_reachable_via_a_non_primary_linked_profile(
     client: TestClient, db_session: AsyncSession
 ) -> None:

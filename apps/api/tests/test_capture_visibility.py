@@ -81,6 +81,7 @@ from aoe2stats_storage.models import (
     CaptureSource,
     CaptureStatus,
     Match,
+    MatchPlayer,
     ProfileLink,
     ReplayCapture,
     SteamIdentity,
@@ -156,6 +157,13 @@ async def _seed_match_with_capture(
     completed_at: datetime,
     capture_deadline_at: datetime,
 ) -> None:
+    """A `matches` row, a `match_players` row for `profile_id` and a `replay_captures` row for
+    the same pair — the shape T053's discovery always produces together, and the one
+    `MatchesRepository.list_matches` (T069) requires to surface a match for `profile_id` at all:
+    its own docstring notes the restriction to the caller's profile is the `INNER JOIN` to
+    `match_players` on that exact id, so a capture with no matching `match_players` row is not a
+    match this profile is on record as having played and correctly stays invisible to
+    `GET /api/matches`."""
     db_session.add(
         Match(
             game_id=game_id,
@@ -163,6 +171,17 @@ async def _seed_match_with_capture(
             completed_at=completed_at,
             source="relic",
             raw_payload={},
+        )
+    )
+    db_session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=profile_id,
+            team_id=1,
+            civ_id=1,
+            result="win",
+            rating=1500,
+            rating_diff=15,
         )
     )
     db_session.add(
@@ -306,16 +325,13 @@ async def test_replays_status_reports_zero_counts_not_an_error_for_a_profile_wit
     assert body["nearest_deadline"] is None
 
 
-# --- xfail: per-match capture state, GET /api/matches (T069/T070, not implemented yet) ----------
+# --- per-match capture state, GET /api/matches (T069/T070) -------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_row_reports_archived_for_a_stored_capture(
     client: TestClient, db_session: AsyncSession
 ) -> None:
     """The safe / archived state (SC-010's word for `stored`)."""
-    from aoe2stats_api.routers import matches  # noqa: F401  (T070 does not exist yet)
-
     user = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, user)
     now = datetime.now(UTC)
@@ -336,14 +352,11 @@ async def test_match_row_reports_archived_for_a_stored_capture(
     assert row["capture_status"] == CaptureStatus.STORED.value
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_row_reports_pending_with_the_time_remaining_to_the_capture_deadline(
     client: TestClient, db_session: AsyncSession
 ) -> None:
     """The still-catchable state, carrying `capture_deadline_at` so the client can render the time
     remaining before the capture window closes (FR-027) — never the source's own retention."""
-    from aoe2stats_api.routers import matches  # noqa: F401  (T070 does not exist yet)
-
     user = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, user)
     now = datetime.now(UTC)
@@ -367,7 +380,6 @@ async def test_match_row_reports_pending_with_the_time_remaining_to_the_capture_
     assert row["capture_deadline_at"] == capture_deadline_at.isoformat()
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_row_reports_the_lost_statuses_intact_and_distinct(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -375,7 +387,6 @@ async def test_match_row_reports_the_lost_statuses_intact_and_distinct(
     badge, but travel to the client **intact** rather than pre-collapsed by the API, so the badge
     can still tell "never recorded" from "existed and we missed it" (T073's own reasoning for why
     a manual upload, US4, is worth the user's trouble for two of the three and not the first)."""
-    from aoe2stats_api.routers import matches  # noqa: F401  (T070 does not exist yet)
 
     user = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, user)
@@ -407,14 +418,12 @@ async def test_match_row_reports_the_lost_statuses_intact_and_distinct(
         )
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_row_reports_needs_review_for_a_quarantined_capture(
     client: TestClient, db_session: AsyncSession
 ) -> None:
     """FR-026: the fourth badge state. A quarantined capture is neither archived nor lost — it is
     evidence a human should look at, and a per-match view that only knows three states leaves this
     one with nothing to show the user."""
-    from aoe2stats_api.routers import matches  # noqa: F401  (T070 does not exist yet)
 
     user = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, user)
@@ -442,7 +451,6 @@ async def test_match_row_reports_needs_review_for_a_quarantined_capture(
     }
 
 
-@pytest.mark.xfail(strict=True, reason="T070 not implemented yet")
 async def test_match_history_is_a_clear_empty_state_for_a_user_with_no_matches(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -450,7 +458,6 @@ async def test_match_history_is_a_clear_empty_state_for_a_user_with_no_matches(
     their history, Then they get a clear empty state, not a broken or blank page." — a linked
     profile that nothing has been discovered for yet must answer 200 with an empty list, never a
     404, a 500, or a response shape a client has to special-case."""
-    from aoe2stats_api.routers import matches  # noqa: F401  (T070 does not exist yet)
 
     user = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, user)

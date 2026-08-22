@@ -272,7 +272,6 @@ async def _seed_scenario(db_session: AsyncSession) -> User:
     return caller
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON_MATCHES)
 async def test_matches_list_never_returns_the_history_of_a_profile_the_caller_has_not_linked(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -283,8 +282,7 @@ async def test_matches_list_never_returns_the_history_of_a_profile_the_caller_ha
     caller = await _seed_scenario(db_session)
     await _sign_in(client, db_session, caller)
 
-    # Positive control: the caller's own history must actually come back — the assertion that
-    # forces this test to fail today, since T070 does not exist yet (module docstring).
+    # Positive control: the caller's own history must actually come back.
     own_response = client.get(f"/api/matches?profile_id={_CALLER_PROFILE_ID}")
     assert own_response.status_code == 200
     own_game_ids = [row["game_id"] for row in own_response.json()["matches"]]
@@ -301,7 +299,6 @@ async def test_matches_list_never_returns_the_history_of_a_profile_the_caller_ha
     assert str(_NEVER_LINKED_GAME_ID) not in never_linked_response.text
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON_MATCHES)
 async def test_match_detail_never_reveals_a_match_the_caller_did_not_play(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -332,7 +329,6 @@ async def test_match_detail_never_reveals_a_match_the_caller_did_not_play(
     assert "NeverLinkedAlias" not in never_linked_response.text
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON_RATINGS)
 async def test_ratings_never_returns_the_curve_of_a_profile_the_caller_has_not_linked(
     client: TestClient, db_session: AsyncSession
 ) -> None:

@@ -1,4 +1,5 @@
-"""The replays router (T062): `GET /api/replays/status?profile_id=`.
+"""The replays router (T062, T071): `GET /api/replays/status?profile_id=` and
+`GET /api/replays/{game_id}/download`.
 
 `contracts/http-api.md`: "Counts per status, oldest pending, nearest deadline" — a dashboard-level
 summary of one profile's capture backlog, distinct from the per-match archival state `GET
@@ -31,6 +32,19 @@ captures still gets `"quarantined": 0` rather than an absent key, so a client ca
 without first checking it exists — the same reasoning `_status_counts` below applies is why
 `profiles.py`'s rating list is built from a `dict.get(..., [])` rather than requiring the caller to
 handle a missing leaderboard entry.
+
+**`GET /api/replays/{game_id}/download` (T071, FR-028, FR-038, FR-040, FR-045).** The bucket is
+never public (constitution IV, `ObjectStore`'s own docstring): the only path a caller ever reaches
+is a freshly signed, short-expiry `ObjectStore.signed_get_url` — never a hand-built bucket URL —
+and every successful download writes one `replay_access_log` row (FR-040). Ownership is resolved
+the same way `_owned_active_link` resolves it above, except the row being reached for is a
+`replay_captures` one addressed by `(game_id, profile_id)` rather than a `profile_links` one
+addressed by `profile_id` alone: `_stored_capture_for_caller` joins `replay_captures` to the
+caller's own active `profile_links` rows, so a `game_id` that names no match, a match the caller
+did not play, or a match whose replay is not yet `stored` all answer the identical `not_found`
+FR-045 requires (module docstring, `profiles.py`'s own note on why a differentiated answer would
+itself be the leak — here, whether the match exists at all). Never a 403: that would already
+disclose the match exists. A refusal is not an access and writes nothing to `replay_access_log`.
 """
 
 from __future__ import annotations
@@ -38,13 +52,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
-from aoe2stats_api.deps import SessionDep, SettingsDep
+from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
-from aoe2stats_storage.models import CaptureStatus, ProfileLink, ReplayCapture
+from aoe2stats_storage.models import CaptureStatus, ProfileLink, ReplayAccessLog, ReplayCapture
 from aoe2stats_storage.models import Session as SessionRow
 
 router = APIRouter(tags=["replays"])
@@ -184,3 +199,70 @@ async def replay_status(
             else None
         ),
     }
+
+
+# --- GET /api/replays/{game_id}/download -----------------------------------------------------
+
+
+def _replay_not_found() -> APIError:
+    """FR-045: the identical `not_found` answer, whatever the underlying reason — no such match,
+    a match the caller did not play, or a replay not yet `stored` (module docstring). Never a
+    403, which would itself disclose that the match exists."""
+    return APIError(
+        status_code=404,
+        code="not_found",
+        message="No archived replay was found for that match.",
+    )
+
+
+async def _stored_capture_for_caller(
+    db_session: AsyncSession, *, game_id: int, user_id: Any
+) -> tuple[ReplayCapture, str]:
+    """The caller's own `stored` capture for `game_id`, joined through their active
+    `profile_links` rows, and its `object_key` narrowed to `str` — or the single `not_found`
+    error FR-045 requires for every other case (module docstring)."""
+    result = await db_session.execute(
+        select(ReplayCapture)
+        .join(ProfileLink, ProfileLink.profile_id == ReplayCapture.profile_id)
+        .where(
+            ReplayCapture.game_id == game_id,
+            ReplayCapture.status == CaptureStatus.STORED,
+            ProfileLink.user_id == user_id,
+            ProfileLink.unlinked_at.is_(None),
+        )
+    )
+    capture = result.scalars().first()
+    if capture is None or capture.object_key is None:
+        raise _replay_not_found()
+    return capture, capture.object_key
+
+
+@router.get("/replays/{game_id}/download")
+async def download_replay(
+    game_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    object_store: ObjectStoreDep,
+) -> RedirectResponse:
+    """FR-028, FR-038, FR-040, FR-045 (module docstring): a 302 to a freshly signed, short-expiry
+    URL for the caller's own archived replay from `game_id`, logging the access. The signed URL
+    always comes from `ObjectStore.signed_get_url` — the bucket is never public — and a refusal
+    writes nothing to `replay_access_log`, since it is not an access."""
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+    capture, object_key = await _stored_capture_for_caller(
+        db_session, game_id=game_id, user_id=session_row.user_id
+    )
+
+    signed_url = await object_store.signed_get_url(object_key)
+
+    db_session.add(
+        ReplayAccessLog(
+            replay_capture_id=capture.id,
+            user_id=session_row.user_id,
+            purpose="download",
+        )
+    )
+
+    return RedirectResponse(url=signed_url, status_code=302)

@@ -3,14 +3,6 @@
 and "The bucket is never public. A download is always a freshly signed URL with a short expiry,
 because a replay contains other players' gameplay and chat."
 
-**Test-first (CLAUDE.md "Test-first tasks and the green-tree gate")**: T071 does not exist yet, so
-every assertion below is written as if it did and is expected to fail today — `pytest.mark.xfail
-(strict=True)` keeps the suite green until T071 lands and turns the marker off by making the test
-pass. Nothing imported here is missing at module scope (the models, the router module and its
-`GET /api/replays/status` sibling all already exist from T007/T062); only the download *route*
-itself is absent, so no deferred import is needed — the redness comes from behaviour, not from a
-collection error.
-
 Follows `test_replay_status.py`'s harness conventions verbatim: `client`/`db_session` against the
 real throwaway database (`conftest.py`), a `sessions` row inserted directly and signed exactly as
 `security.issue_session_cookie` would, and `pytestmark`'s `environment` fixture for the full
@@ -49,10 +41,7 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.models import Session as UserSession
 
-pytestmark = [
-    pytest.mark.usefixtures("environment"),
-    pytest.mark.xfail(strict=True, reason="T071 not implemented yet"),
-]
+pytestmark = [pytest.mark.usefixtures("environment")]
 
 #: See `test_replay_status.py`'s module docstring — this suite's working assumption, not yet fixed
 #: by a contract document beyond T028's own implementation.

@@ -161,7 +161,6 @@ async def _seed_snapshot(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_requires_authentication(client: TestClient) -> None:
     """No session cookie at all: 401, never a leak of whether `profile_id` exists."""
     response = client.get(f"/api/profiles/{_PROFILE_ID}/ratings")
@@ -170,7 +169,6 @@ async def test_ratings_requires_authentication(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "not_authenticated"
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_unknown_profile_returns_not_found(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -185,7 +183,6 @@ async def test_ratings_unknown_profile_returns_not_found(
     assert response.json()["error"]["message"] == _NOT_FOUND_MESSAGE
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_other_users_profile_returns_the_identical_not_found(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -206,7 +203,6 @@ async def test_ratings_other_users_profile_returns_the_identical_not_found(
     assert response.json()["error"]["message"] == _NOT_FOUND_MESSAGE
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_unlinked_profile_returns_the_identical_not_found(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -225,7 +221,6 @@ async def test_ratings_unlinked_profile_returns_the_identical_not_found(
     assert response.json()["error"]["message"] == _NOT_FOUND_MESSAGE
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_profile_with_no_snapshots_returns_an_empty_curve(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -241,7 +236,6 @@ async def test_ratings_profile_with_no_snapshots_returns_an_empty_curve(
     assert response.json()["ratings"] == []
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_ratings_returns_the_curve_ordered_chronologically(
     client: TestClient, db_session: AsyncSession
 ) -> None:
