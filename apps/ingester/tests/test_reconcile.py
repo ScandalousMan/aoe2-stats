@@ -182,7 +182,6 @@ async def _all_captures(db_session: AsyncSession) -> dict[int, ReplayCapture]:
 # --- The outage: three failed cycles, then a sweep that recovers everything ---------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_reconciliation_sweep_recovers_every_match_missed_during_a_multi_day_outage(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -263,7 +262,6 @@ async def test_reconciliation_sweep_recovers_every_match_missed_during_a_multi_d
 # --- A match discovery skipped entirely, with no outage in sight --------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_reconciliation_sweep_picks_up_a_match_discovery_skipped_without_touching_the_rest(
     db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
