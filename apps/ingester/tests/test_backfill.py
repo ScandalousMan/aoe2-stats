@@ -1,11 +1,12 @@
 """Integration test for quickstart scenario 3 (T043): "Backfill rescues the window".
 
-Targets the reconciliation stage T054 ships in `aoe2stats_ingester.reconcile` — not implemented
-yet at this point in the sequence, hence the module-level `pytestmark` below. Neither module it
-needs (`aoe2stats_ingester.reconcile`, `aoe2stats_ingester.capture`) exists on disk yet; both are
-imported *inside* the test body rather than at module scope, per this project's test-first
-convention (CLAUDE.md: a module-scope import of a not-yet-existent module is a collection error
-that takes the whole workspace suite down, not merely this file's tests).
+Targets the reconciliation stage T054 ships in `aoe2stats_ingester.reconcile` together with T056's
+three-way 404 reading in `aoe2stats_ingester.capture` — both now implemented. `reconcile` and
+`capture` are still imported *inside* the test body rather than at module scope, per this project's
+test-first convention (CLAUDE.md: a module-scope import of a not-yet-existent module is a
+collection error that takes the whole workspace suite down, not merely this file's tests) — kept
+that way even now that both modules exist, since nothing about the convention requires reverting it
+once the module it protected against does land.
 
 The requirement under test (quickstart.md scenario 3; FR-013 to FR-019, FR-042; SC-003, SC-005):
 once a profile carries `profile_links.backfill_requested_at` (T031a), repeated cycles must drain
@@ -117,8 +118,6 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.objects import ObjectStore, ObjectStoreConfig, replay_object_key
-
-pytestmark = pytest.mark.xfail(strict=True, reason="T054 not implemented yet")
 
 _CAPTURE_BUDGET_DAYS = 21
 _REPLAY_PUBLICATION_GRACE_HOURS = 72

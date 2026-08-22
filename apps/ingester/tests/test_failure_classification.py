@@ -2,15 +2,22 @@
 `matches.completed_at`, the bounded-retry `failed` path, and the run-stopping treatment of
 `ProviderRateLimited` — FR-019, FR-020, FR-021.
 
-Targets `aoe2stats_ingester.capture`, which T056 (the three-way 404 reading) and T057 (bounded
-retries) have not written yet — this whole module is marked `xfail(strict=True)` for that reason
-and the not-yet-existent import happens inside every test body, never at module scope, so a
-missing module fails only the one test rather than every test this workspace collects. Every other
-import below (`aoe2stats_storage`, `aoe2stats_providers`, `aoe2stats_ingester.budget`) already
-exists and is safe at module scope.
+Targets `aoe2stats_ingester.capture`. T056 (the three-way 404 reading) landed the four scenarios
+above the backoff one — the three `NotFound` branches (young match stays `pending`; past the
+grace but short of the two-attempt floor stays `pending`, then `unavailable`; past
+`capture_deadline_at` is `expired` and alerts) and the pre-existing 429 scenario, which needed no
+new classification but did need the row a rate limit interrupts mid-claim to be handed back
+unattempted rather than left stranded. Only the last scenario below, three
+consecutive 5xx producing backoff then a terminal `failed`, is T057's own bounded-retry ceiling and
+stays `xfail(strict=True, reason="T057 not implemented yet")` until that task lands; it is the one
+test in this module still importing `aoe2stats_ingester.capture` inside its own body rather than at
+module scope, for exactly the reason every test here originally did — a missing name a whole-module
+import would turn into a collection error taking every other test in this file down with it. Every
+other import below (`aoe2stats_storage`, `aoe2stats_providers`, `aoe2stats_ingester.budget`) is
+safe at module scope regardless.
 
-**The interface this test assumes of `capture.py`**, since none of it exists yet to read: a
-`CaptureStage` (matching the `Stage` protocol `run.py` already defines — `name: str` plus
+**The interface this test assumes of `capture.py`**: a `CaptureStage` (matching the `Stage`
+protocol `run.py` already defines — `name: str` plus
 `async def __call__(self, budget: Budget) -> Mapping[str, Any]`), constructed with the same
 `session_factory` every other Phase 4 stage reaches its own database through (per
 `apps/ingester/tests/conftest.py`'s module docstring), a `ReplayProvider`, the publication grace
@@ -182,7 +189,6 @@ def _budget() -> Budget:
     return Budget(seconds=30)
 
 
-@pytest.mark.xfail(strict=True, reason="T056 not implemented yet")
 async def test_404_on_a_very_recent_match_stays_pending_and_raises_nothing(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -212,7 +218,6 @@ async def test_404_on_a_very_recent_match_stays_pending_and_raises_nothing(
     assert await _get_alerts(session_factory) == []
 
 
-@pytest.mark.xfail(strict=True, reason="T056 not implemented yet")
 async def test_404_past_the_grace_needs_two_attempts_before_unavailable(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -248,7 +253,6 @@ async def test_404_past_the_grace_needs_two_attempts_before_unavailable(
     assert await _get_alerts(session_factory) == []
 
 
-@pytest.mark.xfail(strict=True, reason="T056 not implemented yet")
 async def test_404_past_the_retention_window_is_expired_and_raises_an_alert(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -286,7 +290,6 @@ async def test_404_past_the_retention_window_is_expired_and_raises_an_alert(
     assert alerts[0].kind != AlertKind.DEADLINE_BREACH
 
 
-@pytest.mark.xfail(strict=True, reason="T056 not implemented yet")
 async def test_429_stops_the_whole_run_and_alerts_not_just_the_offending_capture(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -341,7 +344,7 @@ async def test_429_stops_the_whole_run_and_alerts_not_just_the_offending_capture
         assert capture.attempts == 0
 
 
-@pytest.mark.xfail(strict=True, reason="T056 not implemented yet")
+@pytest.mark.xfail(strict=True, reason="T057 not implemented yet")
 async def test_three_consecutive_5xx_produce_backoff_then_failed_at_the_attempt_limit(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:

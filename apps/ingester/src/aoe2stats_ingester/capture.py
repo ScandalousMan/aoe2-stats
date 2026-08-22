@@ -50,16 +50,37 @@ serially and, the moment `ProviderRateLimited` is raised, alerts once and stops 
 never the one capture it fired on. `CaptureDrain` only supplies the handler and reacts to whether
 the guard reports it stopped early.
 
-**The three-way 404 reading is a seam, not this task's job** (T056). `AoemsReplayProvider`
-answers `NotFound` rather than raising, and does not itself classify what a 404 means —
-"not yet published", "genuinely never recorded", or "past the retention window" all produce the
-identical wire condition, and only a caller holding `matches.completed_at` can tell them apart
-(`contracts/providers.md`). Until that classification lands, a `NotFound` here is read the only
-way that never destroys anything: the row reverts to `pending` and is picked up again on a later
-cycle, and none of `unavailable_total`/`expired_total`/`failed_total` is ever incremented by this
-module — data-model.md's state machine calls a non-zero `expired_total` the one thing that "must
-never happen", and reverting to `pending` on every 404, without ever concluding otherwise, is what
-keeps that vacuously true here.
+**The three-way 404 reading** (T056). `AoemsReplayProvider` answers `NotFound` rather than
+raising, and does not itself classify what a 404 means — "not yet published", "genuinely never
+recorded", or "past the retention window" all produce the identical wire condition, and only a
+caller holding `matches.completed_at` can tell them apart (`contracts/providers.md`).
+`_classify_not_found` is that caller: it reads `matches.completed_at` for the claimed row's own
+`game_id` and compares it against two thresholds, in order.
+
+- **Younger than `REPLAY_PUBLICATION_GRACE_HOURS`**: the row reverts to `pending` and is picked up
+  again on a later cycle, exactly as every 404 used to be read before this task. This is the
+  branch FR-019 was corrected for — without it, a replay published a few hours late is recorded as
+  never recorded, and eventually expires for no reason.
+- **Older than the grace, but `capture_deadline_at` (`completed_at + CAPTURE_BUDGET_DAYS`,
+  computed once at insert — `discover.py`) has not yet passed**: `unavailable`, but *only once
+  `attempts` has reached at least two*. The grace is sized on the discovery cadence (at least
+  twice ~25 h — T012a) precisely so two polls always fall on either side of it; age alone would let
+  one unlucky 404 close a capture a second poll would have caught, so a single attempt past the
+  grace still reverts to `pending` exactly like the first branch, and only the second attempt (or
+  later) may conclude `unavailable`.
+- **Past `capture_deadline_at`**: `expired`, concluded on the very first attempt — the two-attempt
+  floor governs only "never recorded" (`unavailable`), not "past the window" — and raises a
+  severity-1 `expired_capture` alert through `raise_alert` (T014a), the one alert kind that means a
+  replay is now provably gone rather than merely not yet available. This is a different kind, with
+  a different timing, from `deadline_breach` (T059a): that one fires at day 21 while there is still
+  time to act, a warning; `expired_capture` fires only once a 404 past that same deadline proves
+  the loss actually happened, a post-mortem. Neither subsumes the other.
+
+None of `unavailable_total`/`expired_total` was ever incremented before this task landed —
+data-model.md's state machine calls a non-zero `expired_total` the one thing that "must never
+happen" in the steady state, and reverting every 404 to `pending` without ever concluding
+otherwise is what kept that vacuously true. It is no longer vacuous: an `expired_total` (or
+`unavailable_total`) that never moves now means what it says.
 
 **Why this module exports three names for one class.** `test_interruption.py` (T044),
 `test_quarantine.py` (T047a) and `test_deadline_order.py` (T045) each committed to this module's
@@ -88,8 +109,9 @@ from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
-from aoe2stats_providers.base import NotFound, ReplayBlob, ReplayProvider
-from aoe2stats_storage.models import CaptureStatus, ReplayCapture
+from aoe2stats_providers.base import NotFound, ProviderRateLimited, ReplayBlob, ReplayProvider
+from aoe2stats_storage.models import Alert as AlertRow
+from aoe2stats_storage.models import CaptureStatus, Match, ReplayCapture
 from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
 
 #: `alerts.kind` for a quarantine (`AlertKind.VALIDATION_FAILED` in
@@ -102,6 +124,24 @@ VALIDATION_FAILED_ALERT_KIND = "validation_failed"
 #: not garbage), so this is not the "a replay is gone" incident constitution I reserves severity 1
 #: for. The nightly audit (T061) fails only on an unacknowledged severity-1 row.
 VALIDATION_FAILED_ALERT_SEVERITY = 2
+
+#: `alerts.kind` for `_classify_not_found`'s `expired` conclusion (`AlertKind.EXPIRED_CAPTURE` in
+#: `packages/storage/src/aoe2stats_storage/models.py`, named as a plain string for the same reason
+#: `VALIDATION_FAILED_ALERT_KIND` above is).
+EXPIRED_CAPTURE_ALERT_KIND = "expired_capture"
+
+#: Severity 1, never 2: this is the "a replay is gone" incident constitution I reserves severity 1
+#: for — the one alert kind meaning a capture is now provably, permanently lost rather than merely
+#: not yet available. The nightly audit (T061) fails the build on any unacknowledged row of this
+#: severity.
+EXPIRED_CAPTURE_ALERT_SEVERITY = 1
+
+#: FR-019/T012a's two-attempt floor: a 404 past the publication grace may only conclude
+#: `unavailable` once `ReplayCapture.attempts` has reached this many — never on age alone, since a
+#: single poll can fall on either side of the grace at a daily cadence. Not a setting: the floor
+#: reflects the grace's own sizing rationale (at least two discovery-cadence polls), not a value an
+#: operator would ever want to tune independently of it.
+_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE = 2
 
 #: A claim held longer than this is treated as abandoned by a run that died mid-cycle. 300 s is
 #: the Vercel function ceiling `run.py`'s module docstring and `test_interruption.py` both name as
@@ -123,11 +163,26 @@ DEFAULT_BATCH_SIZE = 1
 #: a setting nothing else reads.
 DEFAULT_VALIDATION_TIMEOUT_SECONDS = 30.0
 
-#: Accepted for forward compatibility with T056's three-way 404 reading (`CAPTURE_BUDGET_DAYS` /
-#: `REPLAY_PUBLICATION_GRACE_HOURS` in `.env.example`) and stored, but not read by this module —
-#: see the module docstring's "three-way 404 reading is a seam" paragraph.
+#: `CAPTURE_BUDGET_DAYS` (`.env.example`). Accepted and stored, but still not read by this module:
+#: `_classify_not_found` compares against the claimed row's own `capture_deadline_at`
+#: (`completed_at + CAPTURE_BUDGET_DAYS`, computed once at insert by `discover.py`) rather than
+#: recomputing the same threshold from this value a second time — a row's deadline is fixed at the
+#: budget in effect when it was enqueued, even if this setting changes later (`discover.py`'s own
+#: docstring), and reading `self._capture_budget_days` here instead would silently apply *today's*
+#: budget to a row enqueued under a different one.
 DEFAULT_CAPTURE_BUDGET_DAYS = 21
+
+#: `REPLAY_PUBLICATION_GRACE_HOURS` (`.env.example`). Read by `_classify_not_found` (T056) as the
+#: first of its two thresholds — see the module docstring's "three-way 404 reading" paragraph.
 DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS = 72
+
+#: The bounded-retry ceiling T057 owns (no `.env.example` name yet — that task introduces one).
+#: Accepted here and threaded through the constructor because `test_failure_classification.py`
+#: (T047) already constructs `CaptureStage` with `max_attempts=` for scenarios this task *does*
+#: own (the three 404 branches), not only for the backoff/`failed` scenario that is T057's; stored,
+#: not read by this module — see the module docstring's "three-way 404 reading" paragraph, which
+#: covers only the 404 branches, and T057's own task text for the retry ceiling itself.
+DEFAULT_MAX_ATTEMPTS = 3
 
 #: `ingest_runs`' own counter vocabulary (data-model.md) that this stage's report can ever move —
 #: the rest of that row's counters belong to discovery and reconciliation, not to the drain.
@@ -156,12 +211,21 @@ class _ObjectPut(Protocol):
     async def get(self, key: str) -> bytes: ...
 
 
-class _NoOpAlertSink:
-    """The default `alert_sink` for a caller that never supplies one (`test_interruption.py`'s
-    `CaptureStage`, whose fixtures never quarantine anything). Satisfies `AlertSink` structurally
-    without persisting anything — a quarantine that somehow occurred under this default would
-    still leave `last_error` on the row itself, just with no alert row to go with it.
+class _DatabaseAlertSink:
+    """The default `alert_sink` for a caller that never supplies one — `CaptureStage` (T056),
+    `test_failure_classification.py`'s own construction, never passes one and then reads the
+    `expired_capture`/`rate_limited` rows straight back out of the real `alerts` table
+    (`test_failure_classification.py`'s module docstring: "this test only ever reads the outcome
+    back from `replay_captures` and `alerts`, never how `CaptureStage` got there"). Writes and
+    reads through the same `session_factory` every other part of this class uses, so no caller
+    needs its own database-backed `AlertSink` merely to let `CaptureDrain`'s alerts land somewhere
+    real. `test_interruption.py`'s fixtures also construct `CaptureStage` without one, but never
+    quarantine anything, so they exercise `write` here either never or not at all in a way their
+    own assertions depend on.
     """
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
 
     async def write(
         self,
@@ -171,18 +235,45 @@ class _NoOpAlertSink:
         detail: Mapping[str, Any] | None,
         ingest_run_id: uuid.UUID | None,
     ) -> AlertRecord:
-        return AlertRecord(
+        row = AlertRow(
             id=uuid.uuid4(),
             kind=kind,
             severity=severity,
-            detail=detail,
-            raised_at=datetime.now(UTC),
+            detail=dict(detail) if detail is not None else None,
             ingest_run_id=ingest_run_id,
-            acknowledged_at=None,
         )
+        async with self._session_factory() as session:
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return AlertRecord(
+                id=row.id,
+                kind=row.kind,
+                severity=row.severity,
+                detail=row.detail,
+                raised_at=row.raised_at,
+                ingest_run_id=row.ingest_run_id,
+                acknowledged_at=row.acknowledged_at,
+            )
 
     async def unacknowledged_severity_one(self) -> list[AlertRecord]:
-        return []
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AlertRow).where(AlertRow.severity == 1, AlertRow.acknowledged_at.is_(None))
+            )
+            rows = result.scalars().all()
+        return [
+            AlertRecord(
+                id=row.id,
+                kind=row.kind,
+                severity=row.severity,
+                detail=row.detail,
+                raised_at=row.raised_at,
+                ingest_run_id=row.ingest_run_id,
+                acknowledged_at=row.acknowledged_at,
+            )
+            for row in rows
+        ]
 
 
 async def _validate_with_barrier(
@@ -219,7 +310,7 @@ class CaptureDrain:
         *,
         session_factory: async_sessionmaker[AsyncSession],
         replay_provider: ReplayProvider,
-        object_store: _ObjectPut,
+        object_store: _ObjectPut | None = None,
         validator: ReplayValidator | None = None,
         engine: ReplayValidator | None = None,
         alert_sink: AlertSink | None = None,
@@ -228,31 +319,49 @@ class CaptureDrain:
         max_claim_age_seconds: float = DEFAULT_MAX_CLAIM_AGE_SECONDS,
         capture_budget_days: int = DEFAULT_CAPTURE_BUDGET_DAYS,
         replay_publication_grace_hours: int = DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         # `test_idempotency.py` names this keyword argument `engine`; every other test file names
         # it `validator`. Both are the same `ReplayValidator` (`aoe2stats_core.replay.validation`)
         # — see the module docstring's closing paragraph on why this module accepts both spellings
         # of one constructor rather than picking a winner and breaking three already-landed tests.
-        resolved_validator = validator if validator is not None else engine
-        if resolved_validator is None:
-            raise TypeError("CaptureDrain requires either `validator` or `engine`")
+        #
+        # Neither `object_store` nor a validator is required at construction time: T056's own
+        # `test_failure_classification.py` constructs `CaptureStage` with neither, because none of
+        # its scenarios ever reach a `ReplayBlob` (200) — only `NotFound`/`ProviderRateLimited`/
+        # `ProviderUnavailable` (see that file's own module docstring). `_require_object_store` and
+        # `_require_validator` below raise a clear error the moment the download/validate path
+        # actually needs either and finds it missing, rather than forcing every caller of the 404
+        # classification path to supply machinery it will never use.
         self._session_factory = session_factory
         self._replay_provider = replay_provider
         self._object_store = object_store
-        self._validator = resolved_validator
-        self._alert_sink: AlertSink = alert_sink if alert_sink is not None else _NoOpAlertSink()
+        self._validator = validator if validator is not None else engine
+        self._alert_sink: AlertSink = (
+            alert_sink if alert_sink is not None else _DatabaseAlertSink(session_factory)
+        )
         self._validation_timeout_seconds = validation_timeout_seconds
         self._batch_size = batch_size
         self._max_claim_age_seconds = max_claim_age_seconds
-        # Accepted, stored, not read — see the module-level constants' own docstring.
-        self._capture_budget_days = capture_budget_days
+        self._capture_budget_days = capture_budget_days  # accepted, stored, not read — see above
         self._replay_publication_grace_hours = replay_publication_grace_hours
+        self._max_attempts = max_attempts  # accepted, stored, not read — T057 owns using it
+
+    def _require_object_store(self) -> _ObjectPut:
+        if self._object_store is None:
+            raise TypeError("CaptureDrain requires `object_store` to process a downloaded replay")
+        return self._object_store
+
+    def _require_validator(self) -> ReplayValidator:
+        if self._validator is None:
+            raise TypeError("CaptureDrain requires either `validator` or `engine`")
+        return self._validator
 
     async def __call__(self, budget: Budget) -> Mapping[str, Any]:
         report: dict[str, int] = dict(_ZERO_COUNTERS)
         # A row a 404 reverts to `pending` (`_revert_to_pending`) is immediately eligible again by
         # its own `next_attempt_at` — T057's bounded-retry backoff is not this task's to add (see
-        # the module docstring's "three-way 404 reading is a seam" paragraph). Without this set,
+        # the module docstring's "three-way 404 reading" paragraph). Without this set,
         # the very next `_claim_batch` in *this same* `__call__` would re-claim that identical row
         # and hammer it for the rest of the budget instead of moving on to the rest of the queue —
         # every id this cycle has already attempted, whatever the outcome, is excluded from every
@@ -266,7 +375,10 @@ class CaptureDrain:
             report["captures_attempted"] += 1
             if outcome in report:
                 report[outcome] += 1
-            if outcome == "quarantined_total":
+            # `quarantined_total` (T055) and `expired_total` (T056) are the two outcomes that
+            # always carry an alert of their own — `unavailable_total` deliberately does not
+            # (`_classify_not_found`'s own docstring: the game's failure, not ours).
+            if outcome in ("quarantined_total", "expired_total"):
                 report["alerts_raised"] += 1
 
         # Budget checked between claims and never mid-claim (the module docstring's
@@ -344,9 +456,10 @@ class CaptureDrain:
 
     async def _process_one(self, capture_id: uuid.UUID) -> str:
         """Download (unless already resumed), upload, commit the blob metadata, then validate and
-        mark. Returns the report key this outcome belongs under, or `"not_found"` for a 404 — not
-        a report key itself, since T056 owns what a 404 ultimately counts as (see the module
-        docstring).
+        mark. Returns the report key this outcome belongs under. A 404 that reverts to `pending`
+        (still inside the grace, or past it but short of the two-attempt floor —
+        `_classify_not_found`) answers `"not_found"`, which is not itself a report key: nothing
+        this cycle concluded, so nothing in `report` moves for it.
         """
         async with self._session_factory() as session:
             capture = await session.get(ReplayCapture, capture_id)
@@ -367,10 +480,27 @@ class CaptureDrain:
                 profile_id=profile_id,
             )
 
-        fetched = await self._replay_provider.fetch_replay(game_id, profile_id)
+        try:
+            fetched = await self._replay_provider.fetch_replay(game_id, profile_id)
+        except ProviderRateLimited:
+            # A rate limit is a condition of the run, not an outcome of the capture it happened to
+            # interrupt (`test_failure_classification.py`'s 429 scenario): undo the claim's own
+            # attempt increment and hand the row back to `pending`, immediately eligible again,
+            # rather than stranding it in `downloading` having silently counted an attempt it
+            # never actually got to make. `drain_with_rate_limit_guard` (`ratelimit.py`) is what
+            # turns this exception into the alert and the run-stopping decision; re-raising here
+            # keeps that the one place either happens.
+            await self._revert_claim_after_rate_limit(capture_id)
+            raise
         if isinstance(fetched, NotFound):
-            await self._revert_to_pending(capture_id, fetched.http_status)
-            return "not_found"
+            return await self._classify_not_found(
+                capture_id,
+                fetched.http_status,
+                attempts=capture.attempts,
+                capture_deadline_at=capture.capture_deadline_at,
+                game_id=game_id,
+                profile_id=profile_id,
+            )
 
         blob: ReplayBlob = fetched
         content = blob.content
@@ -380,13 +510,13 @@ class CaptureDrain:
         # Upload before any mark, never the reverse (the module docstring's non-negotiable
         # ordering). `object_key`/`zip_bytes`/`zip_sha256` are committed immediately after, while
         # the row is still `downloading`.
-        await self._object_store.put(
+        await self._require_object_store().put(
             key, content, content_type=blob.content_type or REPLAY_CONTENT_TYPE
         )
         await self._commit_blob_metadata(capture_id, key, len(content), sha256)
 
         result, error = await _validate_with_barrier(
-            self._validator, content, timeout_seconds=self._validation_timeout_seconds
+            self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
             await self._mark_stored(capture_id, result)
@@ -430,7 +560,7 @@ class CaptureDrain:
         bytes it already has do not check out.
         """
         try:
-            content = await self._object_store.get(object_key)
+            content = await self._require_object_store().get(object_key)
         except Exception as exc:
             reason = (
                 f"reclaim could not read back {object_key!r} from the object store: "
@@ -451,7 +581,7 @@ class CaptureDrain:
             )
 
         result, error = await _validate_with_barrier(
-            self._validator, content, timeout_seconds=self._validation_timeout_seconds
+            self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
             await self._mark_stored(capture_id, result)
@@ -480,6 +610,65 @@ class CaptureDrain:
             run_id=None,
         )
         return "quarantined_total"
+
+    async def _classify_not_found(
+        self,
+        capture_id: uuid.UUID,
+        http_status: int,
+        *,
+        attempts: int,
+        capture_deadline_at: datetime,
+        game_id: int,
+        profile_id: int,
+    ) -> str:
+        """T056: the three-way reading of a 404 from `matches.completed_at` — see the module
+        docstring's "three-way 404 reading" paragraph for the full rationale, summarized here:
+
+        1. Younger than `REPLAY_PUBLICATION_GRACE_HOURS`: revert to `pending`.
+        2. Older than the grace but `capture_deadline_at` has not yet passed: revert to `pending`
+           unless `attempts` has already reached `_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE`, in which
+           case `unavailable` — the game's failure, not ours, so no alert.
+        3. Past `capture_deadline_at`: `expired`, on the first attempt that observes it, with a
+           severity-1 `expired_capture` alert (`raise_alert`, T014a) — a replay now provably lost.
+
+        `attempts` and `capture_deadline_at` are read from the same row `_process_one` already
+        fetched for this claim (the claim itself already incremented `attempts`), so this method
+        takes them as plain values rather than re-fetching the row a second time; only
+        `matches.completed_at` — the one value `ReplayCapture` itself does not carry — is looked up
+        here, by `game_id`.
+        """
+        async with self._session_factory() as session:
+            completed_at = await session.scalar(
+                select(Match.completed_at).where(Match.game_id == game_id)
+            )
+        # `replay_captures.game_id` is a `NOT NULL` foreign key to `matches.game_id` (models.py):
+        # a claimed row's match is guaranteed to exist.
+        assert completed_at is not None  # pragma: no cover - defensive, guaranteed by the FK
+
+        now = datetime.now(UTC)
+        grace_boundary = completed_at + timedelta(hours=self._replay_publication_grace_hours)
+
+        if now < grace_boundary:
+            await self._revert_to_pending(capture_id, http_status)
+            return "not_found"
+
+        if now > capture_deadline_at:
+            await self._mark_expired(capture_id, http_status)
+            await raise_alert(
+                self._alert_sink,
+                EXPIRED_CAPTURE_ALERT_KIND,
+                EXPIRED_CAPTURE_ALERT_SEVERITY,
+                {"capture_id": str(capture_id), "game_id": game_id, "profile_id": profile_id},
+                run_id=None,
+            )
+            return "expired_total"
+
+        if attempts >= _MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE:
+            await self._mark_unavailable(capture_id, http_status)
+            return "unavailable_total"
+
+        await self._revert_to_pending(capture_id, http_status)
+        return "not_found"
 
     # --- Row writes ---------------------------------------------------------------------------
 
@@ -523,9 +712,10 @@ class CaptureDrain:
             await session.commit()
 
     async def _revert_to_pending(self, capture_id: uuid.UUID, http_status: int) -> None:
-        """A 404 with no classification yet (T056's seam — see the module docstring): the row goes
-        straight back to `pending` so a later cycle tries again, rather than ever guessing
-        `unavailable`/`expired`/`failed` from here.
+        """A 404 `_classify_not_found` (T056) read as inconclusive — still inside the publication
+        grace, or past it but short of the two-attempt floor: the row goes straight back to
+        `pending`, immediately eligible (`next_attempt_at=now`), so a later cycle tries again
+        rather than this one guessing `unavailable`/`expired` too early.
         """
         async with self._session_factory() as session:
             await session.execute(
@@ -537,9 +727,68 @@ class CaptureDrain:
                     http_status=http_status,
                     next_attempt_at=datetime.now(UTC),
                     last_error=(
-                        "replay not found at source (404); classification deferred to a later "
-                        "attempt (T056)"
+                        "replay not found at source (404); too soon to conclude unavailable or "
+                        "expired (T056)"
                     ),
+                )
+            )
+            await session.commit()
+
+    async def _mark_expired(self, capture_id: uuid.UUID, http_status: int) -> None:
+        """`_classify_not_found` (T056), third branch: past `capture_deadline_at` with no replay
+        ever found — a provable, permanent loss. `attempts`/`claimed_at` are left as the claim
+        already set them, exactly as `_mark_stored`/`_mark_quarantined` do for their own terminal
+        outcomes; only `status`, `http_status` and `last_error` change here.
+        """
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(
+                    status=CaptureStatus.EXPIRED,
+                    http_status=http_status,
+                    last_error=(
+                        "replay never became available at source before capture_deadline_at (404)"
+                    ),
+                )
+            )
+            await session.commit()
+
+    async def _mark_unavailable(self, capture_id: uuid.UUID, http_status: int) -> None:
+        """`_classify_not_found` (T056), second branch: past the publication grace, still inside
+        `capture_deadline_at`, and at least `_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE` attempts have
+        each found nothing — the game's own failure to ever publish the replay, not this system's,
+        so unlike `_mark_expired` this raises no alert.
+        """
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(
+                    status=CaptureStatus.UNAVAILABLE,
+                    http_status=http_status,
+                    last_error=(
+                        "replay not found at source after the publication grace and at least "
+                        f"{_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE} attempts (404)"
+                    ),
+                )
+            )
+            await session.commit()
+
+    async def _revert_claim_after_rate_limit(self, capture_id: uuid.UUID) -> None:
+        """The `ProviderRateLimited` branch of `_process_one`'s fetch: undo `_claim_batch`'s own
+        `status`/`claimed_at`/`attempts` writes for exactly the one row that happened to be
+        claimed right before the whole run stopped, so a rate limit never counts as, or looks
+        like, an attempt at capturing that replay.
+        """
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(
+                    status=CaptureStatus.PENDING,
+                    claimed_at=None,
+                    attempts=ReplayCapture.attempts - 1,
                 )
             )
             await session.commit()
