@@ -355,6 +355,43 @@ the official stats page and that each row's archival state reflects reality.
 - [ ] T076 [US3] Build the match detail route with the participant table and the replay download, in `apps/web/src/routes/matches.$gameId.tsx` and `apps/web/src/features/replays/`. A standalone route, not a child of the list — see T075 for why no `matches.tsx` is created
 - [ ] T077 [US3] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T074, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
 
+### Phase 5 remediation (post-T075)
+
+Added by hand after T075 handed back. Both are defects in the response shape T069 and T070 already
+landed as `[x]` above, found only because T075 was the first task to render that shape to a user.
+They are listed here rather than edited into the original task text, so the record shows what was
+built, what was wrong with it, and when that was found. Both run **before** T077: that task captures
+the visual baselines, and a baseline photographed against a placeholder label or a wrong participant
+count freezes the defect into the very check that exists to catch it — which is the T038b failure
+arriving one phase later.
+
+- [ ] T070c Return the civilisation name from `GET /api/matches` and `GET /api/matches/{game_id}`,
+      in `apps/api/src/aoe2stats_api/routers/matches.py`,
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py` and `docs/data-sources.md`.
+      Both routes answer with the numeric civilisation id and nothing else, so the front end cannot
+      name a civilisation without a hand-maintained id-to-name table in a component module — which
+      is the precise thing T033a already removed once, moving the leaderboard names out of
+      `apps/web/src/features/profile/leaderboards.ts` on the grounds that a hand-maintained measured
+      fact about an external service has no business in the front end. `CLAUDE.md`'s three-homes
+      rule is the general form: the mapping is a fact about the game, it belongs in `docs/`, and the
+      API is what carries it to a client. T075 renders the placeholder "Civilisation" followed by
+      the id today and says so in a comment pointing at this precedent. Do for civilisations exactly
+      what T033a did for leaderboards rather than inventing a second pattern, and note that the
+      detail route needs the same field for every participant, not only for the caller
+
+- [ ] T070d Carry `team_id` on each opponent returned by `GET /api/matches`, in
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
+      `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
+      The list route returns every other participant under the name `opponents`, teammates included,
+      because the row carries nothing by which a client could tell the two apart. In a team game the
+      match row therefore names an arbitrary participant and counts the caller's own teammates in
+      its "and N others", which contradicts `packages/design-system/specs/match-history.md` and
+      misreports who the player actually faced. The detail route already returns `team_id` per
+      participant, so the fault is confined to the list. The name is wrong in the same way the
+      absent field is: either carry the team and let the client separate them, or return genuine
+      opponents under that name. T063 asserts the row's fields and never seeds a team match, which
+      is why this survived a test written to cover exactly this response — seed a 2v2
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
