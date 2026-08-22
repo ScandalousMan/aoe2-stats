@@ -493,6 +493,23 @@ before it became permanent.
       two fixtures and asserts the table agrees turns this from a table someone typed into a fact
       this repository checks on every run, and is what would have caught T070c on the day it landed
 
+- [ ] T070h Guard the whole civilisation table, not the fifth of it the fixtures happen to reach, in
+      `apps/api/tests/test_civilizations.py` and `apps/api/src/aoe2stats_api/civilizations.py`.
+      T070g's test re-derives 21 pairs from the frozen fixtures and asserts the table against them,
+      which anchors 21 of 45 entries. The other 24 are guarded by nothing: changing id 12 from
+      `Cumans` to `Turks` leaves the suite green, verified by doing it. Among the unguarded are
+      `Britons`, `Chinese`, `Franks`, `Goths`, `Saracens` and `Spanish` — ordinary civilisations a
+      beta player will pick in their first evening, and the ones a careless edit is most likely to
+      touch. The table is not two kinds of data, though: every entry, guarded or not, comes from one
+      ordering rule, and the 21 measured pairs are what establish that the rule is the right one.
+      Express it that way. Derive the 45 names in the test from the rule — the roster, sorted, with
+      `Indians` at its original spelling — assert the module's table equals that derivation entry
+      for entry, and keep the fixture join as the separate check that the rule itself is sound. Then
+      one perturbation anywhere in the table fails, and the roster the rule sorts becomes the single
+      thing a reader has to agree with. Say plainly in both files which claim rests on measurement
+      and which on the rule, because "verified" over a table where half the entries are untested is
+      the kind of half-true a later reader relies on completely
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
