@@ -452,7 +452,7 @@ before it became permanent.
       rather than introduced here, so decide deliberately whether it moves with these two, and say
       which in the hand-back rather than changing it silently
 
-- [ ] T074b Meet the spacing scale and the touch floor, in
+- [x] T074b Meet the spacing scale and the touch floor, in
       `packages/design-system/src/components/MatchRow/index.tsx` and
       `packages/design-system/src/components/MatchDetailPanel/index.tsx`. Three spacing values sit
       one step off the table in `packages/design-system/specs/match-history.md`: the row's table

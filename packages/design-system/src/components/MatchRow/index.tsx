@@ -150,7 +150,7 @@ export function MatchList({
         tone="danger"
         heading="We could not load your match history"
         actions={
-          <Button variant="primary" onClick={onRetry}>
+          <Button variant="primary" size="lg" onClick={onRetry}>
             Try again
           </Button>
         }
@@ -188,25 +188,25 @@ function MatchTable({ matches, className }: { matches: MatchRowData[]; className
       <caption className="sr-only">Your recent matches</caption>
       <thead>
         <tr className="border-b border-border">
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
             Result
           </th>
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
             Opponent
           </th>
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
             Map
           </th>
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
             Civilisation
           </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 text-right font-normal text-text-secondary">
             Change
           </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 text-right font-normal text-text-secondary">
             Duration
           </th>
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
+          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
             When
           </th>
           <th scope="col" className="py-3 font-normal text-text-secondary">
@@ -230,7 +230,7 @@ function MatchTableRow({ match }: { match: MatchRowData }) {
   const won = match.outcome === 'win'
   return (
     <tr className="group relative border-b border-border transition-colors duration-120 ease-standard hover:bg-surface-sunken">
-      <th scope="row" className="py-3 pr-6 font-normal">
+      <th scope="row" className="py-3 pr-5 font-normal">
         <a
           href={match.href}
           className={cx(
@@ -242,16 +242,16 @@ function MatchTableRow({ match }: { match: MatchRowData }) {
           {won ? 'Win' : 'Loss'}
         </a>
       </th>
-      <td className="py-3 pr-6 text-text-primary">
+      <td className="py-3 pr-5 text-text-primary">
         <OpponentLabel opponent={match.opponent} />
       </td>
-      <td className="py-3 pr-6 text-text-primary">{match.map}</td>
-      <td className="py-3 pr-6 text-text-primary">{match.civilisation}</td>
-      <td className="py-3 pr-6 text-right font-mono text-sm">
+      <td className="py-3 pr-5 text-text-primary">{match.map}</td>
+      <td className="py-3 pr-5 text-text-primary">{match.civilisation}</td>
+      <td className="py-3 pr-5 text-right font-mono text-sm">
         {match.ratingChange && <TableRatingChange delta={match.ratingChange} />}
       </td>
-      <td className="py-3 pr-6 text-right font-mono text-text-primary">{match.durationLabel}</td>
-      <td className="py-3 pr-6 text-text-secondary" title={match.playedAtAbsolute}>
+      <td className="py-3 pr-5 text-right font-mono text-text-primary">{match.durationLabel}</td>
+      <td className="py-3 pr-5 text-text-secondary" title={match.playedAtAbsolute}>
         {match.playedAtRelative}
       </td>
       <td className="py-3">

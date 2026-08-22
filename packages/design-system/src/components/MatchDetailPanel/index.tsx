@@ -90,7 +90,7 @@ export function MatchDetailPanel({
         tone="danger"
         heading="We could not load this match"
         actions={
-          <Button variant="primary" onClick={onRetry}>
+          <Button variant="primary" size="lg" onClick={onRetry}>
             Try again
           </Button>
         }
@@ -107,7 +107,7 @@ export function MatchDetailPanel({
         tone="danger"
         heading="This match could not be found."
         actions={
-          <Button variant="secondary" href={matchListHref}>
+          <Button variant="secondary" size="lg" href={matchListHref}>
             Back to the match list
           </Button>
         }
@@ -134,42 +134,49 @@ export function MatchDetailPanel({
 
   return (
     <div className={cx('flex flex-col gap-6', className)}>
-      <header className="flex flex-col gap-3">
-        <div>
-          {/* `<h2>`, not `<h1>`: this panel is a section of a page that already carries its own
-           * page-level heading (T076's route) — matching `Callout`'s own "keeps a sane outline"
-           * reasoning for a component that is always nested. */}
-          <h2 className="font-display text-xl font-semibold text-text-primary">{match.map}</h2>
-          <p className="mt-1 font-sans text-sm text-text-secondary">
-            {match.leaderboardName}
-            <span aria-hidden="true"> · </span>
-            {match.durationLabel}
-            <span aria-hidden="true"> · </span>
-            {match.playedAtLabel}
-          </p>
-        </div>
-        <CaptureStateBadge
-          context="detail"
-          captureStatus={match.captureStatus}
-          captureDeadlineAt={match.captureDeadlineAt}
-        />
-      </header>
+      {/* Header, `DownloadAction` and its own error callout share `space-4` (§7 "Panel header to
+       * `DownloadAction`"); the group as a whole keeps `space-6` from `ParticipantsTable` (§7
+       * "`DownloadAction` to `ParticipantsTable`"). A single uniform gap on the outer container
+       * cannot express two different steps, so the header-to-action run gets its own wrapper. */}
+      <div className="flex flex-col gap-4">
+        <header className="flex flex-col gap-3">
+          <div>
+            {/* `<h2>`, not `<h1>`: this panel is a section of a page that already carries its own
+             * page-level heading (T076's route) — matching `Callout`'s own "keeps a sane outline"
+             * reasoning for a component that is always nested. */}
+            <h2 className="font-display text-xl font-semibold text-text-primary">{match.map}</h2>
+            <p className="mt-1 font-sans text-sm text-text-secondary">
+              {match.leaderboardName}
+              <span aria-hidden="true"> · </span>
+              {match.durationLabel}
+              <span aria-hidden="true"> · </span>
+              {match.playedAtLabel}
+            </p>
+          </div>
+          <CaptureStateBadge
+            context="detail"
+            captureStatus={match.captureStatus}
+            captureDeadlineAt={match.captureDeadlineAt}
+          />
+        </header>
 
-      {match.captureStatus === 'stored' && (
-        <Button
-          variant="secondary"
-          loading={downloadState === 'loading'}
-          loadingLabel="Preparing your download…"
-          onClick={onDownload}
-          className="self-start"
-        >
-          Download replay
-        </Button>
-      )}
+        {match.captureStatus === 'stored' && (
+          <Button
+            variant="secondary"
+            size="lg"
+            loading={downloadState === 'loading'}
+            loadingLabel="Preparing your download…"
+            onClick={onDownload}
+            className="self-start"
+          >
+            Download replay
+          </Button>
+        )}
 
-      {downloadState === 'error' && (
-        <Callout tone="danger" heading="The download link could not be created. Try again." />
-      )}
+        {downloadState === 'error' && (
+          <Callout tone="danger" heading="The download link could not be created. Try again." />
+        )}
+      </div>
 
       <ParticipantsTable teams={match.teams} />
     </div>
@@ -204,16 +211,16 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
           <caption className="sr-only">{team.name}</caption>
           <thead>
             <tr className="border-b border-border">
-              <th scope="col" className="py-2 pr-4 font-normal text-text-secondary">
+              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
                 Player
               </th>
-              <th scope="col" className="py-2 pr-4 font-normal text-text-secondary">
+              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
                 Civilisation
               </th>
-              <th scope="col" className="py-2 pr-4 font-normal text-text-secondary">
+              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
                 Result
               </th>
-              <th scope="col" className="py-2 text-right font-normal text-text-secondary">
+              <th scope="col" className="py-3 text-right font-normal text-text-secondary">
                 Change
               </th>
             </tr>
@@ -221,14 +228,14 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
           <tbody>
             {team.participants.map((participant) => (
               <tr key={participant.id} className="border-b border-border">
-                <th scope="row" className="py-2 pr-4 font-normal text-text-primary">
+                <th scope="row" className="py-3 pr-4 font-normal text-text-primary">
                   {participant.alias}
                 </th>
-                <td className="py-2 pr-4 text-text-primary">{participant.civilisation}</td>
-                <td className="py-2 pr-4">
+                <td className="py-3 pr-4 text-text-primary">{participant.civilisation}</td>
+                <td className="py-3 pr-4">
                   <ResultLabel result={participant.result} />
                 </td>
-                <td className="py-2 text-right font-mono text-sm">
+                <td className="py-3 text-right font-mono text-sm">
                   {participant.ratingChange && (
                     <TableRatingChange delta={participant.ratingChange} />
                   )}

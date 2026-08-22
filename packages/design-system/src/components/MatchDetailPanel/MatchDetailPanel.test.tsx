@@ -1,7 +1,51 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchDetailPanel } from './index'
 import type { MatchDetailData } from './index'
+
+// jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here, so
+// the touch-target assertions below cannot render a real box and measure it. The next best thing —
+// `Menu.test.tsx`'s own precedent for T035d — is to read the real spacing scale from its single
+// source of truth, `tokens/space.json`, and derive the pixel height a `Button`'s `h-<n>` utility
+// actually resolves to from *that* number, not from a literal copied into the test. A class-name
+// match (`toMatch(/h-12/)`) keeps passing even if the spacing unit that "12" multiplies shrinks;
+// this fails the moment it would.
+const SPACE_TOKENS_PATH = path.resolve(__dirname, '../../../tokens/space.json')
+const ROOT_FONT_SIZE_PX = 16 // jsdom's default <html> font-size, same as an un-overridden browser.
+
+function spacingUnitPx(): number {
+  const { unit } = JSON.parse(readFileSync(SPACE_TOKENS_PATH, 'utf8')) as { unit: string }
+  const remMatch = /^([\d.]+)rem$/.exec(unit)
+  if (!remMatch) throw new Error(`tokens/space.json "unit" is not a rem value: ${unit}`)
+  return Number.parseFloat(remMatch[1]) * ROOT_FONT_SIZE_PX
+}
+
+/** Stands in for jsdom's missing layout engine: derives the height a rendered element's own
+ * `h-<n>` utility actually resolves to, from the real spacing token, instead of hardcoding a pixel
+ * count in the test. An element with no such class measures as 0, so a `Button` that stops setting
+ * an explicit height at all fails loudly rather than reading as compliant. */
+function mockButtonHeightLayout() {
+  const unitPx = spacingUnitPx()
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    const match = /\bh-(\d+)\b/.exec(this.className)
+    const height = match ? Number.parseInt(match[1], 10) * unitPx : 0
+    return {
+      height,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect
+  })
+}
 
 const match: MatchDetailData = {
   gameId: '1001',
@@ -182,5 +226,82 @@ describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history
     expect(screen.getAllByRole('table', { name: /Team/ })).toHaveLength(2)
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
     restore()
+  })
+})
+
+// T074b: every button reachable on a touch viewport must clear the 44px floor
+// (shared-primitives.md's Button rule). Measured, not matched against a class name (T035d) — see
+// `mockButtonHeightLayout` above.
+describe('MatchDetailPanel — touch target floor (shared-primitives.md Button rule)', () => {
+  it("DownloadAction's rendered box clears the 44px touch floor", () => {
+    const getBoundingClientRect = mockButtonHeightLayout()
+    try {
+      render(<MatchDetailPanel match={match} />)
+      const button = screen.getByRole('button', { name: 'Download replay' })
+      expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
+
+  it("'Back to the match list' rendered box clears the 44px touch floor", () => {
+    const getBoundingClientRect = mockButtonHeightLayout()
+    try {
+      render(<MatchDetailPanel status="not-found" matchListHref="/matches" />)
+      const link = screen.getByRole('link', { name: 'Back to the match list' })
+      expect(link.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
+
+  it("the load-failure 'Try again' rendered box clears the 44px touch floor", () => {
+    const getBoundingClientRect = mockButtonHeightLayout()
+    try {
+      render(<MatchDetailPanel status="error" onRetry={() => {}} />)
+      const button = screen.getByRole('button', { name: 'Try again' })
+      expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
+})
+
+// T074b: the spacing scale (match-history.md §7). Asserted against the class the utility actually
+// renders, then cross-checked against the real token value it resolves to — a component that
+// swapped `gap-4`/`gap-6` for two literal pixel values would still fail this the same way a
+// class-name match alone could not distinguish `space-4` from a coincidentally-equal literal.
+describe('MatchDetailPanel — spacing scale (match-history.md §7)', () => {
+  it("keeps the header-to-DownloadAction run at space-4, distinct from DownloadAction's own space-6 to ParticipantsTable", () => {
+    const { container } = render(<MatchDetailPanel match={match} />)
+    const headerGroup = container.querySelector('header')?.parentElement
+    expect(headerGroup?.className).toMatch(/\bgap-4\b/)
+    expect(headerGroup?.className).not.toMatch(/\bgap-6\b/)
+
+    const outer = headerGroup?.parentElement
+    expect(outer?.className).toMatch(/\bgap-6\b/)
+  })
+
+  it('renders ParticipantsTable row padding-block at space-3 (py-3), not space-2', () => {
+    const original = window.matchMedia
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: 1280 >= threshold,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      } as MediaQueryList
+    }
+    const { container } = render(<MatchDetailPanel match={match} />)
+    const cell = container.querySelector('td')
+    expect(cell?.className).toMatch(/\bpy-3\b/)
+    expect(cell?.className).not.toMatch(/\bpy-2\b/)
+    window.matchMedia = original
   })
 })

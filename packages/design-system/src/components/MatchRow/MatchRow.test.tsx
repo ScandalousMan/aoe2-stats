@@ -1,7 +1,51 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchList, MatchRow } from './index'
 import type { MatchRowData } from './index'
+
+// jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here, so
+// the touch-target assertion below cannot render a real box and measure it. The next best thing —
+// `Menu.test.tsx`'s own precedent for T035d — is to read the real spacing scale from its single
+// source of truth, `tokens/space.json`, and derive the pixel height a `Button`'s `h-<n>` utility
+// actually resolves to from *that* number, not from a literal copied into the test. A class-name
+// match (`toMatch(/h-12/)`) keeps passing even if the spacing unit that "12" multiplies shrinks;
+// this fails the moment it would.
+const SPACE_TOKENS_PATH = path.resolve(__dirname, '../../../tokens/space.json')
+const ROOT_FONT_SIZE_PX = 16 // jsdom's default <html> font-size, same as an un-overridden browser.
+
+function spacingUnitPx(): number {
+  const { unit } = JSON.parse(readFileSync(SPACE_TOKENS_PATH, 'utf8')) as { unit: string }
+  const remMatch = /^([\d.]+)rem$/.exec(unit)
+  if (!remMatch) throw new Error(`tokens/space.json "unit" is not a rem value: ${unit}`)
+  return Number.parseFloat(remMatch[1]) * ROOT_FONT_SIZE_PX
+}
+
+/** Stands in for jsdom's missing layout engine: derives the height a rendered element's own
+ * `h-<n>` utility actually resolves to, from the real spacing token, instead of hardcoding a pixel
+ * count in the test. An element with no such class measures as 0, so a `Button` that stops setting
+ * an explicit height at all fails loudly rather than reading as compliant. */
+function mockButtonHeightLayout() {
+  const unitPx = spacingUnitPx()
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    const match = /\bh-(\d+)\b/.exec(this.className)
+    const height = match ? Number.parseInt(match[1], 10) * unitPx : 0
+    return {
+      height,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect
+  })
+}
 
 const match: MatchRowData = {
   gameId: '1001',
@@ -177,6 +221,30 @@ describe('MatchList', () => {
     render(<MatchList matches={[match]} />)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    restore()
+  })
+
+  // T074b: the error-state retry control is reachable on a touch viewport and must clear the 44px
+  // floor (shared-primitives.md's Button rule). Measured, not matched against a class name (T035d)
+  // — see `mockButtonHeightLayout` above.
+  it("the error-state 'Try again' rendered box clears the 44px touch floor", () => {
+    const getBoundingClientRect = mockButtonHeightLayout()
+    try {
+      render(<MatchList status="error" onRetry={() => {}} />)
+      const button = screen.getByRole('button', { name: 'Try again' })
+      expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
+
+  // T074b: the table column gap (match-history.md §7).
+  it('renders the table column gap at space-5 (pr-5), not space-6', () => {
+    const restore = mockMatchMediaAt(1280)
+    const { container } = render(<MatchList matches={[match]} />)
+    const headerCell = container.querySelector('th')
+    expect(headerCell?.className).toMatch(/\bpr-5\b/)
+    expect(headerCell?.className).not.toMatch(/\bpr-6\b/)
     restore()
   })
 })
