@@ -18,11 +18,45 @@ profiles are split across multiple calls rather than sent as one oversized reque
 Every field pulled out of a raw dict is re-validated through `parse_strict` against `RawMatch`
 (a `StrictModel`) before it leaves this module: a field of an unexpected type becomes a
 `ProviderContractViolation`, never a silently coerced value.
+
+T050a: one bad entry does not cost the batch. `recent_matches` used to call `parse_strict` inside a
+bare loop, so a single entry that failed validation raised out of the provider and took discovery,
+reconciliation and the drain down with it, once per cycle, for as long as the offending match stayed
+in the "recent" window. Two conditions are now contained to the one entry that triggers them, and
+each leaves a `provider_calls` row of its own (via the existing `call_sink`) so a batch that skipped
+entries is distinguishable from one that had none — "countable rather than silent":
+
+- an **unfinished match** — Relic's *recent* match history reports games that have not finished yet
+  two ways: `completiontime` absent, which `_epoch_seconds_to_datetime` maps to `None`, and
+  `completiontime: 0`, which does not — `_epoch_seconds_to_datetime(0)` is the Unix epoch, a real
+  `datetime`, and would otherwise sail through `parse_strict` as a perfectly valid `RawMatch` with
+  `completed_at = 1970-01-01`. That is silent rather than loud: `capture_deadline_at` is derived
+  from it (`capture_deadline_at = completed_at + CAPTURE_BUDGET_DAYS`, T053), the fabricated 1970
+  deadline sorts first in every claim order ahead of every real capture, and reads as expired
+  decades early — a false severity-1 `expired_capture` alert for a match still being played. Both
+  shapes are read the same way: with no genuine `completed_at`, the match can carry no
+  `capture_deadline_at` either, is not yet capturable, and belongs in neither `matches` nor
+  `replay_captures`. This is checked *before* `parse_strict` runs, deliberately, so it reads as
+  the ordinary and expected condition it is, not as an accidental contract violation the parser
+  happens to catch.
+- a **malformed entry** — any other field that fails `RawMatch`'s strict validation. Caught the same
+  way `CompanionEnrichmentProvider._parse_matches` already does it
+  (`except ProviderContractViolation: continue`), applied here to the provider that can least afford
+  a bare loop.
+
+Both skips are recorded as their own `provider_calls` row rather than folded into a new field on
+`ProviderCallRecord`/`provider_calls`: that shape is shared across every provider
+(`aoe2stats_providers.base`, `packages/storage`) and widening it for one provider's skip counter
+is out of this module's reach. The synthetic row's `endpoint` carries a `#skipped_...` suffix
+instead of the real endpoint name, and `status_code=None`/`rate_limited=False` mark it as
+something other than an HTTP response — an operator reading `provider_calls` for `relic` can tell
+"no calls succeeded" from "calls succeeded but kept rejecting entries" apart.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -45,6 +79,11 @@ RELIC_BASE_URL = "https://aoe-api.worldsedgelink.com/community/leaderboard"
 # response is roughly 400 KB per profile."
 MATCH_HISTORY_BATCH_SIZE = 10
 
+# T050a: synthetic `provider_calls.endpoint` values for a skipped entry — see the module docstring
+# for why a suffixed endpoint, rather than a new field, is what makes a skip countable here.
+_SKIPPED_UNFINISHED_MATCH_ENDPOINT = "getRecentMatchHistory#skipped_unfinished_match"
+_SKIPPED_MALFORMED_ENTRY_ENDPOINT = "getRecentMatchHistory#skipped_malformed_entry"
+
 
 def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
     """Split `items` into consecutive slices of at most `size`, preserving order."""
@@ -59,6 +98,27 @@ def _epoch_seconds_to_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
     return datetime.fromtimestamp(int(value), tz=UTC)
+
+
+def _completed_at(entry: Mapping[str, Any]) -> datetime | None:
+    """The entry's `completed_at`, or `None` if the match has not finished.
+
+    Relic represents an in-progress match two ways in `completiontime`, and both must read as
+    "not finished": absent, which `_epoch_seconds_to_datetime` already maps to `None`, and `0`,
+    which it does not — `_epoch_seconds_to_datetime(0)` is a real `datetime` (the Unix epoch), not
+    a sentinel, so a caller that only checked "is it `None`" would silently accept it as a genuine
+    completion (see the module docstring's "unfinished match" bullet for why that is worse than a
+    raised `ProviderContractViolation`). A non-positive `completiontime` is therefore read exactly
+    like a `None` one, here, before it ever reaches `_epoch_seconds_to_datetime`.
+
+    `startgametime` is not given the same treatment: nothing downstream derives a deadline from
+    it, `completed_at` is (module docstring: "`completed_at` is the one that is load-bearing"), so
+    it keeps going through `_epoch_seconds_to_datetime` directly.
+    """
+    value = entry.get("completiontime")
+    if value is None or (isinstance(value, int | float) and value <= 0):
+        return None
+    return _epoch_seconds_to_datetime(value)
 
 
 class RelicMatchHistoryProvider(AsyncBaseProvider):
@@ -87,22 +147,35 @@ class RelicMatchHistoryProvider(AsyncBaseProvider):
     async def recent_matches(self, profile_ids: Sequence[int]) -> list[RawMatch]:
         """`MatchHistoryProvider.recent_matches`. Splits more than `MATCH_HISTORY_BATCH_SIZE`
         profiles across multiple calls rather than sending one oversized request. Returns one
-        `RawMatch` per source entry, in order — none dropped, none invented.
+        `RawMatch` per source entry that is both finished and well-formed — an in-progress match
+        or a malformed entry (T050a) is skipped rather than aborting the whole batch, so nothing
+        valid is dropped and nothing is invented, but the entry count is not a guarantee.
         """
         matches: list[RawMatch] = []
         for batch in _chunk(profile_ids, MATCH_HISTORY_BATCH_SIZE):
             body = await self._get_recent_match_history({"profile_ids": json.dumps(list(batch))})
 
             for entry in body.get("matchHistoryStats", []):
+                completed_at = _completed_at(entry)
+                if completed_at is None:
+                    # T050a: an unfinished match (module docstring) — expected traffic, not
+                    # malformed data. Checked ahead of `parse_strict` so it never reaches, and is
+                    # never counted as, a contract violation.
+                    await self._record(
+                        _SKIPPED_UNFINISHED_MATCH_ENDPOINT,
+                        None,
+                        time.monotonic(),
+                        rate_limited=False,
+                    )
+                    continue
+
                 player_profile_ids = tuple(
                     member.get("profile_id") for member in entry.get("matchhistorymember", [])
                 )
                 started_at = _epoch_seconds_to_datetime(entry.get("startgametime"))
-                completed_at = _epoch_seconds_to_datetime(entry.get("completiontime"))
                 duration_seconds = (
                     entry.get("completiontime") - entry.get("startgametime")
-                    if entry.get("completiontime") is not None
-                    and entry.get("startgametime") is not None
+                    if entry.get("startgametime") is not None
                     else None
                 )
                 fields = {
@@ -116,11 +189,26 @@ class RelicMatchHistoryProvider(AsyncBaseProvider):
                     "player_profile_ids": player_profile_ids,
                     "raw_payload": entry,
                 }
-                matches.append(
-                    parse_strict(
-                        RawMatch, fields, provider=self._provider, endpoint="getRecentMatchHistory"
+                try:
+                    matches.append(
+                        parse_strict(
+                            RawMatch,
+                            fields,
+                            provider=self._provider,
+                            endpoint="getRecentMatchHistory",
+                        )
                     )
-                )
+                except ProviderContractViolation:
+                    # T050a: one malformed entry does not throw away the rest of the batch — the
+                    # same shape as `CompanionEnrichmentProvider._parse_matches`, applied to the
+                    # provider that can least afford a bare loop (module docstring).
+                    await self._record(
+                        _SKIPPED_MALFORMED_ENTRY_ENDPOINT,
+                        None,
+                        time.monotonic(),
+                        rate_limited=False,
+                    )
+                    continue
         return matches
 
     async def _get_recent_match_history(self, extra_params: Mapping[str, Any]) -> dict[str, Any]:

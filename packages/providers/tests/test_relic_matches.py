@@ -180,3 +180,120 @@ async def test_recent_matches_parses_a_genuine_multi_profile_response() -> None:
         assert match.raw_payload == raw
         expected_players = {member["profile_id"] for member in raw["matchhistorymember"]}
         assert set(match.player_profile_ids) == expected_players
+
+
+# --- recent_matches: an unfinished match is skipped, not fatal to the batch (T050a) --------------
+
+
+async def test_recent_matches_skips_an_unfinished_entry_and_keeps_the_rest_of_the_batch() -> None:
+    """Relic's *recent* match history endpoint reports games that have not finished, whose
+    `completiontime` is absent — `_epoch_seconds_to_datetime` maps that to `None`, and
+    `RawMatch.completed_at` is required. Before T050a, `parse_strict` rejected that row and the
+    resulting `ProviderContractViolation` escaped `recent_matches` uncaught, taking the whole
+    batch — and, one call up, the whole cycle — down on one in-progress game.
+
+    An unfinished match carries no `completed_at`, so it can carry no `capture_deadline_at`
+    either (`capture_deadline_at = completed_at + CAPTURE_BUDGET_DAYS`, T053): it is not yet
+    capturable and belongs in neither `matches` nor `replay_captures` until a later cycle
+    observes it complete. It is skipped deliberately, not parsed with an invented timestamp.
+    """
+    body = _load("get_recent_match_history.json")
+    unfinished_index = 1
+    body["matchHistoryStats"][unfinished_index] = {
+        **body["matchHistoryStats"][unfinished_index],
+        "completiontime": None,
+    }
+    raw_entries = body["matchHistoryStats"]
+    unfinished_game_id = raw_entries[unfinished_index]["id"]
+
+    provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
+
+    matches = await provider.recent_matches([196240])
+
+    # Every other entry still parses; only the unfinished one is missing.
+    assert len(matches) == len(raw_entries) - 1
+    assert unfinished_game_id not in {match.game_id for match in matches}
+
+    # Countable, not silent (T050a): the skip leaves its own `provider_calls` row alongside the
+    # one already recorded for the HTTP request, so a batch that skipped entries is
+    # distinguishable — by anyone reading `provider_calls` — from one that had none. A source
+    # that starts rejecting everything must not read as a quiet, empty cycle.
+    assert len(recorder.calls) == 2
+    assert recorder.calls[0].status_code == 200
+    skip_record = recorder.calls[1]
+    assert skip_record.provider == "relic"
+    assert skip_record.status_code is None
+    assert skip_record.rate_limited is False
+    assert "skipped" in skip_record.endpoint
+    assert "unfinished" in skip_record.endpoint
+
+
+async def test_recent_matches_treats_completiontime_zero_as_unfinished_too() -> None:
+    """Relic represents an in-progress match not only with an absent `completiontime` but also
+    with `completiontime: 0`. `_epoch_seconds_to_datetime(0)` is a real, non-`None` `datetime`
+    (the Unix epoch), so a guard that only checks "is `completiontime` absent" lets this shape
+    sail straight through `parse_strict` as a perfectly valid `RawMatch` with
+    `completed_at = 1970-01-01` — silently, no `ProviderContractViolation` at all. That is worse
+    than the crash T050a fixed: downstream, `capture_deadline_at` is derived from that fabricated
+    `completed_at`, sorts first in every claim order ahead of every real capture, and reads as
+    long past its deadline — an `expired_capture` alert for a match still being played. A
+    non-positive `completiontime` must be read exactly like a `None` one.
+    """
+    body = _load("get_recent_match_history.json")
+    unfinished_index = 1
+    body["matchHistoryStats"][unfinished_index] = {
+        **body["matchHistoryStats"][unfinished_index],
+        "completiontime": 0,
+    }
+    raw_entries = body["matchHistoryStats"]
+    unfinished_game_id = raw_entries[unfinished_index]["id"]
+
+    provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
+
+    matches = await provider.recent_matches([196240])
+
+    assert len(matches) == len(raw_entries) - 1
+    assert unfinished_game_id not in {match.game_id for match in matches}
+    assert all(match.completed_at.year != 1970 for match in matches)
+
+    assert len(recorder.calls) == 2
+    skip_record = recorder.calls[1]
+    assert skip_record.status_code is None
+    assert "skipped" in skip_record.endpoint
+    assert "unfinished" in skip_record.endpoint
+
+
+# --- recent_matches: a malformed entry is skipped, not fatal to the batch (T050a) -----------------
+
+
+async def test_recent_matches_skips_a_malformed_entry_and_keeps_the_rest_of_the_batch() -> None:
+    """A `ProviderContractViolation` on one entry — here `matchtype_id` arriving as a string
+    rather than the `int` the contract requires — must not throw away the rest of the batch,
+    matching `CompanionEnrichmentProvider._parse_matches`'s existing
+    `except ProviderContractViolation: continue` shape.
+    """
+    body = _load("get_recent_match_history.json")
+    malformed_index = 0
+    body["matchHistoryStats"][malformed_index] = {
+        **body["matchHistoryStats"][malformed_index],
+        "matchtype_id": "not-an-int",
+    }
+    raw_entries = body["matchHistoryStats"]
+    malformed_game_id = raw_entries[malformed_index]["id"]
+
+    provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
+
+    matches = await provider.recent_matches([196240])
+
+    assert len(matches) == len(raw_entries) - 1
+    assert malformed_game_id not in {match.game_id for match in matches}
+
+    # Countable, not silent (T050a), and distinguishable from the "unfinished match" skip above —
+    # the two are different conditions and an operator reading `provider_calls` should be able to
+    # tell them apart.
+    assert len(recorder.calls) == 2
+    skip_record = recorder.calls[1]
+    assert skip_record.provider == "relic"
+    assert skip_record.status_code is None
+    assert "skipped" in skip_record.endpoint
+    assert "malformed" in skip_record.endpoint
