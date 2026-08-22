@@ -12,14 +12,19 @@ One cycle of discovery does three things, in this order, over the same set of pr
    so the run that lowers `CAPTURE_BUDGET_DAYS` changes every capture enqueued from that moment on
    (FR-014).
 
-**Consent is a `WHERE` clause, not a branch (FR-013, FR-034, FR-042).** `_consenting_profile_ids`
-is the *only* place this module decides whose profiles exist for this cycle: a user with no
-`ingest_consent_at` never appears in the list it returns, so neither the rating refresh nor the
-match-history call nor the enqueue step ever sees that user's profile at all — there is no later
-`if not consented: continue` for a new code path to route around. FR-042 is the same query's other
-half: every linked profile a consenting user holds is selected, not only the one `is_primary`
-marks, because `profile_links.unlinked_at IS NULL` is the only per-link condition, and nothing here
-also filters on `is_primary`.
+**Consent is a `WHERE` clause, not a branch (FR-013, FR-034, FR-035, FR-042).**
+`_consenting_profile_ids` is the *only* place this module decides whose profiles exist for this
+cycle: a user who never granted consent, or who granted it and then withdrew it, never appears in
+the list it returns, so neither the rating refresh nor the match-history call nor the enqueue step
+ever sees that user's profile at all — there is no later `if not consented: continue` for a new
+code path to route around. The predicate is the two clauses data-model.md states —
+`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL` — never the first clause
+alone: T032 deliberately never clears `ingest_consent_at` on withdrawal, keeping it as the record
+of what was agreed and when, so a query that tests only that column would answer "consented"
+forever from the first grant onward and FR-035's withdrawal would do nothing at all to ingestion
+(T053a). FR-042 is the same query's other half: every linked profile a consenting user holds is
+selected, not only the one `is_primary` marks, because `profile_links.unlinked_at IS NULL` is the
+only per-link condition, and nothing here also filters on `is_primary`.
 
 **Every write below is an upsert, never a plain `INSERT`.** A discovery cycle runs daily against
 profiles whose match history and roster keep changing, and the same match is very often discovered
@@ -167,11 +172,15 @@ class DiscoverStage:
         }
 
     async def _consenting_profile_ids(self) -> list[int]:
-        """FR-013/FR-034/FR-042 in one query: every profile still actively linked
-        (`unlinked_at IS NULL`) to a user who has granted ingestion consent
-        (`ingest_consent_at IS NOT NULL`) — the condition this whole module's docstring is about,
-        expressed once, here, as the thing that selects work rather than as a filter applied to it
-        afterwards.
+        """FR-013/FR-034/FR-035/FR-042 in one query: every profile still actively linked
+        (`unlinked_at IS NULL`) to a user whose ingestion consent is granted **right now** —
+        `ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, the two-clause
+        predicate data-model.md states and contracts/http-api.md cites twice — the condition this
+        whole module's docstring is about, expressed once, here, as the thing that selects work
+        rather than as a filter applied to it afterwards. The first clause alone is not enough:
+        `ingest_consent_at` is never cleared on withdrawal (T032), so it stays true forever from
+        the first grant onward, and only the second clause makes a withdrawal (FR-035) actually
+        stop a user's matches from being discovered and their captures from being enqueued.
         """
         async with self._session_factory() as session:
             statement = (
@@ -179,6 +188,7 @@ class DiscoverStage:
                 .join(User, User.id == ProfileLink.user_id)
                 .where(ProfileLink.unlinked_at.is_(None))
                 .where(User.ingest_consent_at.is_not(None))
+                .where(User.ingest_consent_withdrawn_at.is_(None))
                 .distinct()
             )
             result = await session.execute(statement)

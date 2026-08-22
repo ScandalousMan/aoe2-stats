@@ -6,11 +6,16 @@ this point in the sequence, hence the module-level `pytestmark` below. The modul
 missing module at import time must fail one test, not take the whole `apps/ingester/tests`
 collection down with it.
 
-The requirement under test (quickstart.md scenario 2, FR-034, and the part of FR-016 that is
-easiest to get wrong): a user who never granted ingestion consent must produce zero
-`replay_captures` rows and zero requests to the replay endpoint recorded in `provider_calls` after
-a cycle. "Consent must be a condition of the query that selects work, not a branch somewhere
-downstream — a branch can be bypassed by a new code path, a `WHERE` clause cannot."
+The requirement under test (quickstart.md scenario 2, FR-034, FR-035, and the part of FR-016 that
+is easiest to get wrong): a user who never granted ingestion consent, **or who granted it and then
+withdrew it**, must produce zero `replay_captures` rows and zero requests to the replay endpoint
+recorded in `provider_calls` after a cycle. "Consent must be a condition of the query that selects
+work, not a branch somewhere downstream — a branch can be bypassed by a new code path, a `WHERE`
+clause cannot." The two-clause predicate this proves — `ingest_consent_at IS NOT NULL AND
+ingest_consent_withdrawn_at IS NULL` — is stated in data-model.md and cited twice from
+contracts/http-api.md; T032 deliberately never clears `ingest_consent_at` on withdrawal, so a
+query that tests only that column answers "consented" forever from the first grant onward and
+FR-035's withdrawal does nothing at all to ingestion (T053a).
 
 A downstream branch and a selecting `WHERE` clause are indistinguishable by inspecting rows alone
 — both can honestly produce zero `replay_captures` rows. What tells them apart is whether the
@@ -87,14 +92,21 @@ class _RaisingMatchHistoryProvider:
 
 
 async def _seed_linked_user(
-    db_session: AsyncSession, *, profile_id: int, consented: bool
+    db_session: AsyncSession, *, profile_id: int, consented: bool, withdrawn: bool = False
 ) -> uuid.UUID:
     """Insert a fully linked user — `users`, `steam_identities`, `aoe_profiles`,
     `profile_links` — and commit, exactly the shape discovery's own query walks. The only
-    difference between the two users this test seeds is `ingest_consent_at`; everything else
-    (allowlisted, a primary linked profile) is identical, so a leak cannot be explained by
-    anything but the consent column itself.
+    difference between the users this test seeds is `ingest_consent_at` and
+    `ingest_consent_withdrawn_at`; everything else (allowlisted, a primary linked profile) is
+    identical, so a leak cannot be explained by anything but the consent columns themselves.
+
+    `withdrawn=True` requires `consented=True`: data-model.md's two-clause predicate
+    (`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`) is meaningless
+    against a user who never granted in the first place, and T032 never clears
+    `ingest_consent_at` on withdrawal — it stays set as the record of what was agreed and when,
+    which is exactly what makes the one-clause query pass forever after the first grant.
     """
+    assert consented or not withdrawn, "withdrawn=True requires consented=True"
     now = datetime.now(UTC)
     user_id = uuid.uuid4()
     steam_id64 = f"76561198{profile_id:010d}"
@@ -105,6 +117,7 @@ async def _seed_linked_user(
             created_at=now,
             allowlisted_at=now,
             ingest_consent_at=now if consented else None,
+            ingest_consent_withdrawn_at=now if withdrawn else None,
         )
     )
     db_session.add(
@@ -156,16 +169,28 @@ async def test_declined_consent_produces_no_captures_and_no_replay_provider_call
     """quickstart.md scenario 2: decline consent, trigger a cycle, expect zero `replay_captures`
     rows and zero requests to the replay endpoint in `provider_calls` — proven here by showing the
     declined user's profile is never even handed to the match-history provider, let alone the
-    replay one (FR-034, and the easiest-to-get-wrong part of FR-016)."""
+    replay one (FR-034, and the easiest-to-get-wrong part of FR-016).
+
+    A third, **withdrawn** user is seeded alongside the never-granted one (T053a): they hold
+    `ingest_consent_at` set, exactly as a currently-consenting user does, but also
+    `ingest_consent_withdrawn_at` set. A discovery query that tests only `ingest_consent_at`
+    would treat them as consenting forever — FR-035's withdrawal doing nothing at all to
+    ingestion — which is the defect this case exists to catch."""
     from aoe2stats_ingester.budget import Budget
     from aoe2stats_ingester.discover import DiscoverStage
 
     declined_profile_id = 100_000_001
     consenting_profile_id = 100_000_002
+    withdrawn_profile_id = 100_000_003
     await _seed_linked_user(db_session, profile_id=declined_profile_id, consented=False)
     await _seed_linked_user(db_session, profile_id=consenting_profile_id, consented=True)
+    await _seed_linked_user(
+        db_session, profile_id=withdrawn_profile_id, consented=True, withdrawn=True
+    )
 
-    provider = _RaisingMatchHistoryProvider(forbidden_profile_ids={declined_profile_id})
+    provider = _RaisingMatchHistoryProvider(
+        forbidden_profile_ids={declined_profile_id, withdrawn_profile_id}
+    )
     stage = DiscoverStage(
         session_factory=session_factory,
         match_history_provider=provider,
@@ -174,8 +199,8 @@ async def test_declined_consent_produces_no_captures_and_no_replay_provider_call
 
     await stage(Budget(seconds=60))
 
-    # The declined profile was never requested, and the consenting one was — proving the
-    # exclusion is the consent condition and not a discovery stage that quietly does nothing for
+    # Only the currently-consenting profile was requested — proving the exclusion is the
+    # two-clause consent condition and not a discovery stage that quietly does nothing for
     # anybody, which would pass the assertion inside the fake for the wrong reason.
     assert provider.requested_profile_ids == [consenting_profile_id]
 
