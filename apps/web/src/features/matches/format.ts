@@ -56,3 +56,16 @@ export function formatOutcome(result: string | null): 'win' | 'loss' {
 export function formatCivilisation(civilisationName: string | null): string {
   return civilisationName ?? 'Unknown civilisation'
 }
+
+/** `MatchDetailData.leaderboardName` (T076). Unlike `civilisation_name` (T070c), no server-side
+ * computed name exists yet for a match's `leaderboard_id` on either `GET /api/matches` or `GET
+ * /api/matches/{game_id}` — `apps/api/.../routers/matches.py` never calls its own
+ * `aoe2stats_api.leaderboards.leaderboard_name`, unlike `routers/profiles.py`'s rating rows.
+ * Mirrors that function's exact fallback string for an id it does not recognise
+ * (`f"Leaderboard {leaderboard_id}"`) rather than inventing a second, client-side id-to-name
+ * table: `matches.py`'s own rule for `civilisation_name` — a hand-maintained mapping for a
+ * measured fact about the game has no business in a front-end module — applies here too, so this
+ * is a stand-in for a field the API does not send, never a duplicate of one it does. */
+export function formatLeaderboardName(leaderboardId: number): string {
+  return `Leaderboard ${leaderboardId}`
+}

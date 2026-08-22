@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { assertMatchesResponse, MatchesResponseShapeError } from './api'
+import {
+  assertMatchDetailResponse,
+  assertMatchesResponse,
+  MatchDetailResponseShapeError,
+  MatchesResponseShapeError,
+} from './api'
 
 // T037a's rule, applied here for `GET /api/matches`: a type that describes the wire is a comment
 // the compiler cannot verify — this is the one place that actually looks at the response body.
@@ -62,5 +67,77 @@ describe('assertMatchesResponse', () => {
     expect(() => assertMatchesResponse({ matches: [], next_cursor: 42 })).toThrow(
       MatchesResponseShapeError,
     )
+  })
+})
+
+// T076: `GET /api/matches/{game_id}`'s response shape (`api.ts`'s own `ApiMatchDetail`).
+
+function validParticipant() {
+  return {
+    profile_id: 2,
+    alias: 'Rival',
+    team_id: 2,
+    civ_id: 3,
+    civ_name: 'Celts',
+    color_id: 2,
+    result: 'loss',
+    rating: 1500,
+    rating_diff: -12,
+  }
+}
+
+function validDetail() {
+  return {
+    game_id: 700_800_900,
+    started_at: '2026-08-22T10:00:00Z',
+    completed_at: '2026-08-22T10:34:00Z',
+    map_name: 'Arabia',
+    leaderboard_id: 3,
+    duration_seconds: 2040,
+    participants: [validParticipant()],
+  }
+}
+
+describe('assertMatchDetailResponse', () => {
+  it('accepts a well-formed match detail', () => {
+    expect(() => assertMatchDetailResponse(validDetail())).not.toThrow()
+  })
+
+  it('accepts an empty participants array', () => {
+    expect(() => assertMatchDetailResponse({ ...validDetail(), participants: [] })).not.toThrow()
+  })
+
+  it('accepts a null started_at', () => {
+    expect(() => assertMatchDetailResponse({ ...validDetail(), started_at: null })).not.toThrow()
+  })
+
+  it('rejects a body that is not an object', () => {
+    expect(() => assertMatchDetailResponse(null)).toThrow(MatchDetailResponseShapeError)
+    expect(() => assertMatchDetailResponse('nope')).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a body missing "game_id"', () => {
+    const body = validDetail()
+    // @ts-expect-error deliberately malformed for the assertion under test
+    delete body.game_id
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a body whose "participants" is not an array', () => {
+    expect(() => assertMatchDetailResponse({ ...validDetail(), participants: {} })).toThrow(
+      MatchDetailResponseShapeError,
+    )
+  })
+
+  it('rejects a participant with the wrong shape', () => {
+    const body = validDetail()
+    body.participants = [{ ...validParticipant(), profile_id: 'not-a-number' as unknown as number }]
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a participant with a non-nullable-number team_id', () => {
+    const body = validDetail()
+    body.participants = [{ ...validParticipant(), team_id: 'two' as unknown as number }]
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
   })
 })

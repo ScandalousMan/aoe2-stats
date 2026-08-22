@@ -1,8 +1,15 @@
-import type { MatchRowData, MatchRowOpponent } from 'design-system'
-import type { ApiMatchListRow, ApiOpponent } from './api'
+import type {
+  MatchDetailData,
+  MatchRowData,
+  MatchRowOpponent,
+  ParticipantData,
+  TeamGroupData,
+} from 'design-system'
+import type { ApiMatchDetail, ApiMatchListRow, ApiMatchParticipant, ApiOpponent } from './api'
 import {
   formatCivilisation,
   formatDuration,
+  formatLeaderboardName,
   formatOutcome,
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
@@ -53,4 +60,71 @@ export function toMatchRowData(row: ApiMatchListRow): MatchRowData {
 
 export function toMatchRowDataList(rows: readonly ApiMatchListRow[]): MatchRowData[] {
   return rows.map(toMatchRowData)
+}
+
+// --- GET /api/matches/{game_id} -> MatchDetailPanel (T076) --------------------------------------
+
+/** One `ApiMatchParticipant` (`api.ts`) as `MatchDetailPanel`'s `ParticipantData`
+ * (match-history.md §2's `ParticipantsTable`) — team grouping happens one level up, in
+ * `toTeamGroups`, since a single participant carries only its own `team_id`, never its
+ * teammates. */
+export function toParticipantData(participant: ApiMatchParticipant): ParticipantData {
+  return {
+    id: String(participant.profile_id),
+    alias: participant.alias ?? 'Unknown player',
+    civilisation: formatCivilisation(participant.civ_name),
+    result: formatOutcome(participant.result),
+    ratingChange:
+      participant.rating_diff != null
+        ? { value: participant.rating_diff, formatted: String(Math.abs(participant.rating_diff)) }
+        : undefined,
+  }
+}
+
+/** Groups every participant of one match by `team_id`, in the order each team is first seen —
+ * `MatchDetailPanel`'s `TeamGroup`s (match-history.md §2). A `null` `team_id` (no team recorded
+ * for that participant — should not happen for a ranked match, but a wire response is never
+ * trusted blindly per T037a) is its own trailing group rather than silently dropped or merged
+ * into a real team. */
+export function toTeamGroups(participants: readonly ApiMatchParticipant[]): TeamGroupData[] {
+  const order: (number | null)[] = []
+  const byTeam = new Map<number | null, ApiMatchParticipant[]>()
+  for (const participant of participants) {
+    const key = participant.team_id
+    if (!byTeam.has(key)) {
+      order.push(key)
+      byTeam.set(key, [])
+    }
+    byTeam.get(key)?.push(participant)
+  }
+  // Real teams first, in the order first seen; the no-team group (if any) always trails, so an
+  // exceptional match never pushes real teams out of their natural reading order.
+  const realTeams = order.filter((teamId) => teamId !== null)
+  const orderedKeys = order.includes(null) ? [...realTeams, null] : realTeams
+
+  return orderedKeys.map((teamId) => ({
+    id: teamId !== null ? `team-${teamId}` : 'team-none',
+    name: teamId !== null ? `Team ${teamId}` : 'No team recorded',
+    participants: (byTeam.get(teamId) ?? []).map(toParticipantData),
+  }))
+}
+
+/** `ApiMatchDetail` (`api.ts`) to `MatchDetailPanel`'s `MatchDetailData`. `captureStatus` and
+ * `captureDeadlineAt` are deliberately left `undefined`, never guessed: `api.ts`'s own note above
+ * `ApiMatchDetail` records why `GET /api/matches/{game_id}` carries neither field today. Left
+ * `undefined`, `CaptureStateBadge` renders nothing (capture-state-badge.md §6 "empty") and
+ * `MatchDetailPanel`'s `DownloadAction` gate (`captureStatus === 'stored'`) never fires — the
+ * honest outcome for data this route does not have, not a fabricated one. */
+export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
+  return {
+    gameId: String(detail.game_id),
+    map: detail.map_name ?? 'Unknown map',
+    leaderboardName: formatLeaderboardName(detail.leaderboard_id),
+    durationLabel: formatDuration(detail.duration_seconds),
+    // "Played-on date/time" (match-history.md §2) reads most naturally as when the match started;
+    // `started_at` can be `null` (module docstring on `ApiMatchDetail`), so this falls back to
+    // `completed_at` — always present — rather than showing nothing.
+    playedAtLabel: formatPlayedAtAbsolute(detail.started_at ?? detail.completed_at),
+    teams: toTeamGroups(detail.participants),
+  }
 }

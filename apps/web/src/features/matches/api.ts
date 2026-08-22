@@ -189,3 +189,138 @@ export function matchesQueryOptions(profileId: number, cursor: string | null = n
     enabled: profileId > 0,
   })
 }
+
+// --- GET /api/matches/{game_id} (T076) ------------------------------------------------------
+//
+// `apps/api/.../routers/matches.py`'s `_match_detail_json`: every field name here is again
+// verbatim off the wire, snake_case, the same convention this module already documents above for
+// `GET /api/matches`. **Not** included: `capture_status` / `capture_deadline_at`. `list_matches`
+// (T070) carries both per row, but `get_match_detail` (`packages/storage`'s
+// `MatchesRepository`) and `_match_detail_json` never compute or return either one — confirmed
+// against the router source and `apps/api/tests/test_match_detail.py`, which asserts nothing
+// about capture state at all. `mappers.ts`'s `toMatchDetailData` documents the consequence: this
+// route cannot populate `MatchDetailPanel`'s `captureStatus`/`captureDeadlineAt` props, so neither
+// `CaptureStateBadge` nor `DownloadAction` can render, until a remediation task extends
+// `_match_detail_json` to compute them the way T070c did for `civilisation_name`.
+
+export interface ApiMatchParticipant {
+  profile_id: number
+  alias: string | null
+  team_id: number | null
+  civ_id: number | null
+  /** `matches.py`'s `_match_detail_json`, same shape T070c already gave `ApiOpponent.civ_name`
+   * and `ApiMatchListRow.civilisation_name` above. */
+  civ_name: string | null
+  color_id: number | null
+  result: string | null
+  rating: number | null
+  rating_diff: number | null
+}
+
+export interface ApiMatchDetail {
+  game_id: number
+  started_at: string | null
+  completed_at: string
+  map_name: string | null
+  leaderboard_id: number
+  duration_seconds: number | null
+  participants: ApiMatchParticipant[]
+}
+
+/** Thrown by `assertMatchDetailResponse` when `GET /api/matches/{game_id}`'s body does not match
+ * the shape this module declares — mirrors `MatchesResponseShapeError` above and `lib/api.ts`'s
+ * `ApiResponseShapeError` (T037a). */
+export class MatchDetailResponseShapeError extends Error {
+  constructor(detail: string) {
+    super(`Unexpected response shape from /api/matches/{game_id}: ${detail}`)
+    this.name = 'MatchDetailResponseShapeError'
+  }
+}
+
+function assertMatchParticipant(
+  value: unknown,
+  index: number,
+): asserts value is ApiMatchParticipant {
+  const path = `participants[${index}]`
+  if (typeof value !== 'object' || value === null) {
+    throw new MatchDetailResponseShapeError(`${path} was not an object`)
+  }
+  const participant = value as Record<string, unknown>
+  if (typeof participant.profile_id !== 'number') {
+    throw new MatchDetailResponseShapeError(`${path}.profile_id was not a number`)
+  }
+  if (!isNullableString(participant.alias)) {
+    throw new MatchDetailResponseShapeError(`${path}.alias was not string|null`)
+  }
+  if (!isNullableNumber(participant.team_id)) {
+    throw new MatchDetailResponseShapeError(`${path}.team_id was not number|null`)
+  }
+  if (!isNullableNumber(participant.civ_id)) {
+    throw new MatchDetailResponseShapeError(`${path}.civ_id was not number|null`)
+  }
+  if (!isNullableString(participant.civ_name)) {
+    throw new MatchDetailResponseShapeError(`${path}.civ_name was not string|null`)
+  }
+  if (!isNullableNumber(participant.color_id)) {
+    throw new MatchDetailResponseShapeError(`${path}.color_id was not number|null`)
+  }
+  if (!isNullableString(participant.result)) {
+    throw new MatchDetailResponseShapeError(`${path}.result was not string|null`)
+  }
+  if (!isNullableNumber(participant.rating)) {
+    throw new MatchDetailResponseShapeError(`${path}.rating was not number|null`)
+  }
+  if (!isNullableNumber(participant.rating_diff)) {
+    throw new MatchDetailResponseShapeError(`${path}.rating_diff was not number|null`)
+  }
+}
+
+/** Validates `payload` against `ApiMatchDetail` and narrows to it, or throws
+ * `MatchDetailResponseShapeError` — loudly, not a silently-substituted default (T037a's rule).
+ * `fetchMatchDetail` is the one caller. */
+export function assertMatchDetailResponse(payload: unknown): asserts payload is ApiMatchDetail {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new MatchDetailResponseShapeError('response body was not an object')
+  }
+  const body = payload as Record<string, unknown>
+  if (typeof body.game_id !== 'number') {
+    throw new MatchDetailResponseShapeError('"game_id" was not a number')
+  }
+  if (!isNullableString(body.started_at)) {
+    throw new MatchDetailResponseShapeError('"started_at" was not string|null')
+  }
+  if (typeof body.completed_at !== 'string') {
+    throw new MatchDetailResponseShapeError('"completed_at" was not a string')
+  }
+  if (!isNullableString(body.map_name)) {
+    throw new MatchDetailResponseShapeError('"map_name" was not string|null')
+  }
+  if (typeof body.leaderboard_id !== 'number') {
+    throw new MatchDetailResponseShapeError('"leaderboard_id" was not a number')
+  }
+  if (!isNullableNumber(body.duration_seconds)) {
+    throw new MatchDetailResponseShapeError('"duration_seconds" was not number|null')
+  }
+  if (!Array.isArray(body.participants)) {
+    throw new MatchDetailResponseShapeError('"participants" was not an array')
+  }
+  body.participants.forEach((participant, index) => assertMatchParticipant(participant, index))
+}
+
+/** `GET /api/matches/{game_id}` (`contracts/http-api.md`'s Matches table) — reachable through any
+ * of the caller's linked profiles, not only the primary one (FR-043); the router itself decides
+ * that, this client names no `profile_id` at all. */
+export function fetchMatchDetail(gameId: number): Promise<ApiMatchDetail> {
+  return api.get<unknown>(`/api/matches/${gameId}`).then((payload) => {
+    assertMatchDetailResponse(payload)
+    return payload
+  })
+}
+
+export function matchDetailQueryOptions(gameId: number) {
+  return queryOptions({
+    queryKey: ['matches', 'detail', gameId] as const,
+    queryFn: () => fetchMatchDetail(gameId),
+    enabled: gameId > 0,
+  })
+}
