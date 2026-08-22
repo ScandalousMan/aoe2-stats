@@ -467,6 +467,32 @@ before it became permanent.
       rendered box rather than match a class name; this is the first time that measurement has
       found a real violation, and it found four
 
+- [ ] T070g Correct the civilisation table, which names every id wrongly, in
+      `apps/api/src/aoe2stats_api/civilizations.py`, a new test beside it, and `docs/data-sources.md`.
+      T070c named ids 1 to 13 with the original roster in **alphabetical** order and called that the
+      one range it could assert with confidence. It is wrong for all thirteen, and wrong in the worst
+      available way: a confident incorrect name rather than a placeholder. Measured against this
+      repository's own frozen fixtures, id 1 is Aztecs and not Britons, id 9 is Byzantines and not
+      Persians, id 12 is Cumans and not Turks — Britons is 5, Turks is 42, Vikings is 44. A player
+      who picked Aztecs is told they played Britons, which is worse than being told nothing.
+      **The mapping is derivable and was derived, not guessed.** Joining
+      `packages/providers/fixtures/relic/get_recent_match_history.json` to
+      `packages/providers/fixtures/companion/matches.json` on match id and profile id pairs Relic's
+      numeric `civilization_id` against the enrichment source's own civilisation name, for the same
+      player in the same game: 21 distinct pairs, no conflict, and three of them repeated across two
+      different matches. Those 21 are measured fact. They are reproduced exactly, 21 of 21, by one
+      rule — the zero-based alphabetical position of the civilisation over the 45-name roster that
+      predates the Three Kingdoms and the South American additions, taking `Indians` at its original
+      spelling rather than the later `Hindustanis`, which re-sorts under H and would move six ids.
+      That the rule reproduces every measured pair including the hole at 21, where `Indians` sorts
+      between `Incas` and `Italians`, is what makes it a reading of the id space rather than a
+      coincidence. Carry ids 0 to 44 from it, display id 21 under the name the game uses today, and
+      leave 45 upward to the existing fallback: the eight newest civilisations are outside every
+      pair we can check, and this task exists because a plausible order was asserted once already.
+      **Write the join as the test, not as a comment.** A test that re-derives the pairs from the
+      two fixtures and asserts the table agrees turns this from a table someone typed into a fact
+      this repository checks on every run, and is what would have caught T070c on the day it landed
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
