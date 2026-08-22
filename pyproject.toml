@@ -142,16 +142,19 @@ quote-style = "double"
 indent-style = "space"
 
 # --- mypy (strict) ------------------------------------------------------------------------------
-# Scoped to the six workspace members' `src/` trees, plus the seven scripts under `scripts/checks/`
-# (T061a) — named individually in `files` below rather than as the `scripts/checks` directory, so
-# that adding this does not also pull `scripts/checks/tests/` under strict mypy: test suites are
-# excluded from this gate everywhere else in the tree (only ruff runs over them), and the same
-# holds here. `scripts/checks` is listed in `mypy_path` (not `files`) for the same reason it needs
-# to be there at all: `contract_sources.py` imports its sibling `publication_delay.py` as a bare
-# top-level module (`from publication_delay import append_sample`, matching how `uv run
-# scripts/checks/contract_sources.py` actually resolves it — the script's own directory on
-# `sys.path`), and `explicit_package_bases` needs that directory declared as a root to resolve it
-# the same way. `scripts/hooks/` is shell, not Python, and mypy has nothing to check there.
+# Scoped to the six workspace members' `src/` trees, plus the whole `scripts/checks/` directory
+# (T061a, widened by T061c): `files` names the directory rather than enumerating its scripts one by
+# one, so a script added later (T100's `free_tier_watch.py`, and whatever follows it) is under this
+# gate the moment it exists, with nothing to remember to update here. `exclude` then carves
+# `scripts/checks/tests/` back out, because test suites are excluded from this gate everywhere else
+# in the tree (only ruff runs over them), and the same holds here — without it, naming the directory
+# in `files` would pull its tests under strict mypy too. `scripts/checks` is listed in `mypy_path`
+# (not only `files`) for a different reason: `contract_sources.py` imports its sibling
+# `publication_delay.py` as a bare top-level module (`from publication_delay import
+# append_sample`, matching how `uv run scripts/checks/contract_sources.py` actually resolves it —
+# the script's own directory on `sys.path`), and `explicit_package_bases` needs that directory
+# declared as a root to resolve it the same way. `scripts/hooks/` is shell, not Python, and mypy has
+# nothing to check there.
 [tool.mypy]
 python_version = "3.13"
 strict = true
@@ -173,13 +176,10 @@ files = [
   "packages/storage/src",
   "apps/api/src",
   "apps/ingester/src",
-  "scripts/checks/alert_audit.py",
-  "scripts/checks/capture_audit.py",
-  "scripts/checks/contract_sources.py",
-  "scripts/checks/cron_liveness.py",
-  "scripts/checks/parser_canary.py",
-  "scripts/checks/publication_delay.py",
-  "scripts/checks/spec_lint.py",
+  "scripts/checks",
+]
+exclude = [
+  "^scripts/checks/tests/",
 ]
 
 [[tool.mypy.overrides]]
