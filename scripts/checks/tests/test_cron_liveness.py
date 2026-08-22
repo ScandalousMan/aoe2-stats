@@ -8,10 +8,9 @@ runs`"), so this is exercised from outside — against the real throwaway databa
 T015), the same way the ingester itself will write the row, not against a hand-rolled stand-in for
 one.
 
-`cron_liveness.py` does not exist yet — T061 implements it. Every test below is `xfail(strict=True)`
-for that reason (CLAUDE.md's "Test-first tasks and the green-tree gate") and imports the module
-inside the test body so a missing module is a caught failure, not a collection error that would take
-the rest of the workspace suite down with it.
+`cron_liveness.py` is implemented by T061. Every test below still imports the module inside the
+test body rather than at module scope, matching the rest of this batch's convention even now that
+the module exists — nothing here depends on `xfail` any more.
 
 Scenario 11, verbatim: "Note the newest `ingest_runs` row. Run the nightly cron-liveness check.
 Expect pass. Backdate that row by 31 hours. Expect the check to fail." Every assertion below traces
@@ -22,7 +21,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
@@ -54,7 +52,6 @@ async def _insert_run(session: AsyncSession, *, started_at: datetime) -> IngestR
     return run
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 def test_is_live_passes_for_a_run_that_just_started() -> None:
     """The pure boundary logic, exercised with no database at all: a run that started this instant
     is live."""
@@ -64,7 +61,6 @@ def test_is_live_passes_for_a_run_that_just_started() -> None:
     assert is_live(now - _FRESH_AGE, now=now) is True
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 def test_is_live_fails_for_a_run_backdated_by_31_hours() -> None:
     """The same pure logic, on the exact backdating quickstart scenario 11 specifies."""
     from scripts.checks.cron_liveness import is_live
@@ -73,7 +69,6 @@ def test_is_live_fails_for_a_run_backdated_by_31_hours() -> None:
     assert is_live(now - _BACKDATED_AGE, now=now) is False
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 def test_is_live_fails_when_no_run_has_ever_been_recorded() -> None:
     """data-model.md: "the absence of a row is the signal." `is_live` must treat "no run yet" as
     not live rather than raising, since the very first cycle in a fresh environment must show up as
@@ -84,7 +79,6 @@ def test_is_live_fails_when_no_run_has_ever_been_recorded() -> None:
     assert is_live(None, now=now) is False
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 async def test_check_liveness_passes_against_a_fresh_ingest_runs_row(
     db_session: AsyncSession,
 ) -> None:
@@ -98,7 +92,6 @@ async def test_check_liveness_passes_against_a_fresh_ingest_runs_row(
     assert await check_liveness(db_session, now=now) is True
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 async def test_check_liveness_fails_once_that_row_is_backdated_by_31_hours(
     db_session: AsyncSession,
 ) -> None:
@@ -117,7 +110,6 @@ async def test_check_liveness_fails_once_that_row_is_backdated_by_31_hours(
     assert await check_liveness(db_session, now=now) is False
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 async def test_check_liveness_fails_when_no_run_has_ever_been_recorded(
     db_session: AsyncSession,
 ) -> None:
@@ -130,7 +122,6 @@ async def test_check_liveness_fails_when_no_run_has_ever_been_recorded(
     assert await check_liveness(db_session, now=datetime.now(UTC)) is False
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 async def test_check_liveness_reads_the_newest_row_not_an_older_one(
     db_session: AsyncSession,
 ) -> None:
@@ -145,7 +136,6 @@ async def test_check_liveness_reads_the_newest_row_not_an_older_one(
     assert await check_liveness(db_session, now=now) is True
 
 
-@pytest.mark.xfail(strict=True, reason="T061 not implemented yet")
 async def test_check_liveness_ignores_a_newer_but_still_backdated_row(
     db_session: AsyncSession,
 ) -> None:
