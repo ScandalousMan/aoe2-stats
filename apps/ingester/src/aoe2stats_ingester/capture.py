@@ -31,6 +31,20 @@ uncaught native panic, or a timeout — is folded into the same `quarantined` ou
 `last_error` set: no exception ever leaves `CaptureDrain.__call__`, which is the property
 constitution V and this module's own containment paragraph require.
 
+**One deliberate exception to "no exception ever leaves" (T055a).** `asyncio.CancelledError`
+inherits `BaseException` directly, exactly as `pyo3_runtime.PanicException` does, so the barrier
+described above could catch it too — and, before T055a, did: a task cancelled from outside (a
+graceful shutdown, `apps/api/src/aoe2stats_api/routers/cron.py` running `run_once` inside an
+ordinary request that a restart interrupts) was folded into the same `quarantined` outcome as a
+genuine engine panic, terminally writing off a replay whose bytes were already durable
+(`_commit_blob_metadata` has already run at that point — see the write-ordering paragraph above)
+to nothing more than a server restart. `_validate_with_barrier` re-raises `CancelledError` instead
+of containing it; see that function's own docstring for the exact clause ordering this depends on
+and why it must not be reordered. `CaptureDrain.__call__` does not catch it either, so it does
+leave the call — into the caller's own cancellation, exactly as an ordinary `await` would behave
+without this module in the way at all — leaving the row `downloading` with its committed
+`object_key` for the next cycle's reclaim to resume at validation.
+
 **The reclaim path resumes at validation, not at the download.** A stale `downloading` row that
 already carries `object_key`/`zip_sha256` (the previous run committed the blob and was killed
 before validation ever ran, or before the status flip) is resumed *without* re-downloading —
@@ -337,8 +351,34 @@ async def _validate_with_barrier(
     """Run `validator.validate` behind the containment barrier the module docstring describes.
 
     Returns `(result, None)` on success or `(None, reason)` on any failure at all — a well-formed
-    `ReplayValidationError`, a raw engine panic (a `BaseException` the Protocol deliberately never
-    catches itself), or a timeout. Never raises: that is the whole point of a barrier.
+    `ReplayValidationError`, or a raw engine panic (a `BaseException` the Protocol deliberately
+    never catches itself). Never *returns* by raising for either of those: that is the whole point
+    of a barrier.
+
+    `asyncio.CancelledError` is the one exception this barrier does not fold in (T055a) — it is
+    re-raised, not swallowed. It inherits `BaseException` directly, exactly as `pyo3_runtime.
+    PanicException` does, which is why a bare `except BaseException` looked correct here and is
+    exactly what caught it before this was fixed: a task cancelled by the caller (a graceful
+    shutdown, `apps/api/src/aoe2stats_api/routers/cron.py` returning mid-request) was folded into
+    the same `quarantined` outcome as a genuine engine panic, terminally writing off a replay whose
+    bytes were already durably committed (`_process_one`'s `_commit_blob_metadata`, this module's
+    own write-ordering paragraph) to a server restart. Re-raising instead leaves the row exactly
+    where that commit left it — `downloading`, `object_key`/`zip_sha256` already set — for the next
+    cycle's reclaim (`_resume_reclaim`) to resume at validation, the sequence T044 and the
+    write-ordering paragraph are built around.
+
+    Clause order is the fix and must not change:
+
+    1. `TimeoutError` first — `asyncio.wait_for`'s *own* wall-clock cap firing. This is the barrier
+       containing a hung engine, not the barrier being cancelled, and must keep quarantining: the
+       inner `asyncio.to_thread` call is cancelled by `wait_for` itself, not by anything external,
+       and `wait_for` raises `TimeoutError` for that case specifically — never `CancelledError`.
+    2. `asyncio.CancelledError` next, re-raised. Reached only when the coroutine *awaiting this
+       call* — not `wait_for`'s internal timeout — was cancelled from outside. Must be checked
+       ahead of the catch-all below, or it is caught there instead and this whole fix is silently
+       undone by a reordering.
+    3. `BaseException` last: everything else, including a `pyo3_runtime.PanicException` — the
+       barrier proper.
     """
     try:
         result = await asyncio.wait_for(
@@ -346,6 +386,8 @@ async def _validate_with_barrier(
         )
     except TimeoutError:
         return None, f"validation exceeded the {timeout_seconds}s wall-clock cap"
+    except asyncio.CancelledError:
+        raise
     except BaseException as exc:
         reason = str(exc)
         return None, f"{type(exc).__name__}: {reason}" if reason else type(exc).__name__

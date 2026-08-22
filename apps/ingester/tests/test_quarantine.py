@@ -31,9 +31,19 @@ engine:
    hangs cannot be asked nicely to stop; the barrier's timeout is what has to win the race. The
    fake validator below blocks for far longer than the configured cap, and the test asserts the
    drain call returns well before the hang would have finished on its own.
+4. **The one exception the barrier must not contain (T055a).** `asyncio.CancelledError` inherits
+   `BaseException` directly too, exactly like a native panic — but folding a cancelled *task* into
+   `quarantined` terminally writes off a replay whose bytes are already durable to nothing more
+   than a server restart (`apps/api/src/aoe2stats_api/routers/cron.py` runs `run_once` inside an
+   ordinary request). `test_cancelling_the_run_mid_validation_leaves_the_capture_downloading_
+   not_quarantined` below asserts the opposite of every scenario above: the row stays
+   `downloading` with its `object_key` intact, no `validation_failed` alert is raised, and the
+   `CancelledError` propagates out of the drain call rather than being swallowed.
 
-In every case "the run completes rather than failing" is the point: `CaptureDrain.__call__` itself
-must never raise, whatever the engine underneath it does.
+In every case but the fourth, "the run completes rather than failing" is the point:
+`CaptureDrain.__call__` itself must never raise, whatever the engine underneath it does. The
+fourth is the deliberate exception to that rule — see this module's own containment paragraph and
+`capture.py`'s module and `_validate_with_barrier` docstrings for why.
 
 ## The contract this test defines for T055
 
@@ -57,12 +67,15 @@ written down, the same way a test-first task always is in this workflow:
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.alerting import AlertRecord
@@ -202,6 +215,27 @@ class _HangingValidator:
     def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
         time.sleep(self._sleep_seconds)
         raise AssertionError("must never return: the wall-clock cap must win the race")
+
+
+class _CancellableHangingValidator:
+    """A `ReplayValidator` that blocks synchronously until told to stop, signalling
+    `validate_started` the instant it begins — so a test can cancel the enclosing task only once
+    validation is genuinely in flight inside `_validate_with_barrier`'s `asyncio.wait_for`, never
+    before the barrier has even entered it.
+
+    `validate_started` is a plain `threading.Event`, not `asyncio.Event`: `validate` runs in a
+    worker thread (`asyncio.to_thread`, `_validate_with_barrier`), and only a threading primitive
+    is safe to signal from there back to the event loop's own thread.
+    """
+
+    def __init__(self, validate_started: threading.Event, *, sleep_seconds: float) -> None:
+        self._validate_started = validate_started
+        self._sleep_seconds = sleep_seconds
+
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        self._validate_started.set()
+        time.sleep(self._sleep_seconds)
+        raise AssertionError("must never return: the test cancels the task before this")
 
 
 class _MixedFailureValidator:
@@ -512,3 +546,93 @@ async def test_run_completes_when_every_capture_in_the_batch_fails_validation_di
     assert report["stored_total"] == 0
     assert report["expired_total"] == 0
     assert report["quarantined_total"] == 3
+
+
+async def test_cancelling_the_run_mid_validation_leaves_the_capture_downloading_not_quarantined(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T055a: `asyncio.CancelledError` inherits `BaseException` directly, exactly as
+    `pyo3_runtime.PanicException` does (the previous three tests), so a barrier that merely
+    catches `BaseException` folds a *cancelled task* into the same `quarantined` outcome as a
+    genuine engine panic. It must not: the blob is already durably committed
+    (`_commit_blob_metadata`, `capture.py`'s own write-ordering paragraph) while the row is still
+    `downloading` by the time validation ever starts, so a graceful shutdown or a restart
+    cancelling mid-validation must leave the row exactly there — for the next cycle's reclaim to
+    resume at validation — never terminally write off a replay whose bytes are already safe.
+
+    The task running `drain(...)` is cancelled only once `validate()` has actually started (the
+    `threading.Event` handshake below), so this exercises cancellation genuinely arriving inside
+    `_validate_with_barrier`'s `asyncio.wait_for`, not before the barrier is ever entered.
+    """
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    game_id, profile_id = 900_104, 196_104
+    capture_id = await _seed_pending_capture(db_session, game_id=game_id, profile_id=profile_id)
+
+    blob_content = b"irrelevant bytes: cancellation happens before the engine ever finishes"
+    blob = ReplayBlob(
+        content=blob_content,
+        filename="AgeIIDE_Replay_900104.aoe2record",
+        content_type="application/zip",
+    )
+    replay_provider = _FakeReplayProvider({game_id: blob})
+    fake_client = _FakeS3Client()
+    object_store = _object_store(fake_client)
+    alert_sink = _FakeAlertSink()
+
+    # Long enough for the assertion below (elapsed well under it) to prove cancellation actually
+    # short-circuited the wait rather than the engine simply finishing its own sleep first; short
+    # enough that the abandoned thread (Python cannot kill a running thread — the module docstring
+    # on the wall-clock cap says as much) does not stall the rest of the suite at interpreter exit.
+    hang_seconds = 2.0
+    validate_started = threading.Event()
+
+    drain = CaptureDrain(
+        session_factory=session_factory,
+        object_store=object_store,
+        replay_provider=replay_provider,
+        validator=_CancellableHangingValidator(validate_started, sleep_seconds=hang_seconds),
+        alert_sink=alert_sink,
+        validation_timeout_seconds=30.0,
+    )
+
+    task = asyncio.ensure_future(drain(Budget(seconds=30)))
+    # Cross-thread wait for the signal: `threading.Event.wait` blocks the calling thread, so it is
+    # itself run off the event loop via `asyncio.to_thread` rather than stalling it.
+    started_in_time = await asyncio.to_thread(validate_started.wait, hang_seconds)
+    assert started_in_time, "validate() never started: nothing to cancel mid-validation"
+
+    started_cancel_at = time.monotonic()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    elapsed = time.monotonic() - started_cancel_at
+
+    assert elapsed < hang_seconds, (
+        f"cancelling took {elapsed:.3f}s against a {hang_seconds}s engine sleep: cancellation "
+        "must short-circuit the wait, not be masked behind the engine eventually finishing on "
+        "its own"
+    )
+
+    expected_key = replay_object_key(game_id, profile_id)
+    assert fake_client.puts.get(expected_key) == blob_content, (
+        "the blob is durably committed before validation ever runs (write ordering); "
+        "cancellation must not discard it"
+    )
+
+    capture = await _reload_capture(db_session, capture_id)
+    assert capture.status == CaptureStatus.DOWNLOADING, (
+        "a cancellation reaching the barrier mid-validation must leave the row exactly where the "
+        "blob commit left it, not fold it into `quarantined` alongside a genuine engine panic "
+        "(T055a)"
+    )
+    assert capture.object_key == expected_key
+    assert capture.zip_sha256 is not None, (
+        "the checksum committed before validation must survive the cancellation intact — this is "
+        "what lets the next cycle's reclaim resume at validation instead of re-downloading"
+    )
+
+    assert alert_sink.records == [], (
+        "cancellation is not a validation failure: no `validation_failed` alert must be raised"
+    )
