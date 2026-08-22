@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from aoe2stats_api.ingest_stages import build_ingest_stages
 from aoe2stats_api.settings import get_settings
 from aoe2stats_ingester.run import run_once
 
@@ -60,7 +61,11 @@ async def _ingest(request: Request) -> JSONResponse:
             status_code=401,
         )
 
-    report = await run_once(settings.ingest_run_budget_seconds, trigger="cron")
+    report = await run_once(
+        settings.ingest_run_budget_seconds,
+        trigger="cron",
+        stages=build_ingest_stages(settings),
+    )
     return JSONResponse(report.to_dict())
 
 

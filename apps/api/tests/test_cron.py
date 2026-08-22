@@ -1,22 +1,37 @@
 """Tests for `POST /api/cron/ingest` (`routers/cron.py`) — T018's local trigger.
 
 Ahead of the shared throwaway-database harness `client` fixture (T015) in intent — this route
-never reaches `get_session`/`get_object_store` at all, since `run_once`'s stages are still empty
-(`aoe2stats_ingester.run`'s module docstring: no task through T062 wires production stages into
-`routers/cron.py`) — but built on that same `conftest.py` (T015b) for its environment and its
-fakes: `required_env`/`environment` set up `Settings` exactly as `test_settings.py` does by hand,
-and `fake_session_class`/`fake_object_store_class` override `get_session`/`get_object_store`
-exactly as `test_health.py` does, all three shared rather than redefined here.
+never reaches `get_session`/`get_object_store` at all, since neither `run_once`'s own bookkeeping
+nor the stages `build_ingest_stages` (T060, `ingest_stages.py`) builds go through this app's
+FastAPI dependencies at all: both build their own database access straight from `DATABASE_URL`
+(`run.py`'s and `ingest_stages.py`'s own module docstrings) — but built on that same
+`conftest.py` (T015b) for its environment and its fakes: `required_env`/`environment` set up
+`Settings` exactly as `test_settings.py` does by hand, and `fake_session_class`/
+`fake_object_store_class` override `get_session`/`get_object_store` exactly as `test_health.py`
+does, all three shared rather than redefined here.
 
-**T059**: `run_once()` itself now always opens and closes its own `ingest_runs` row (FR-024),
-regardless of `stages` — a real write this route's fake `get_session`/`get_object_store`
-overrides do not, and cannot, reach, since `run_once` builds its own database access straight
-from `DATABASE_URL` rather than through this app's FastAPI dependencies (`run.py`'s own module
-docstring). `REQUIRED_ENV`'s `DATABASE_URL` is a deliberately unreachable placeholder, which is
-exactly why every test below that actually invokes a full cycle now also asks for the real
-throwaway database (`database_url`, `clean_database` — `tests/db.py`, T015) and points
+**T059**: `run_once()` itself always opens and closes its own `ingest_runs` row (FR-024),
+regardless of `stages`. `REQUIRED_ENV`'s `DATABASE_URL` is a deliberately unreachable placeholder,
+which is exactly why every test below that actually invokes a full cycle now also asks for the
+real throwaway database (`database_url`, `clean_database` — `tests/db.py`, T015) and points
 `DATABASE_URL` at it for the duration of the call, rather than the placeholder every other value
 in `REQUIRED_ENV` is content to stay.
+
+**T060**: `test_ingest_runs_and_returns_the_report_with_the_correct_secret` now exercises the real
+`DiscoverStage`/`ReconcileStage`/`CaptureDrain` `build_ingest_stages` constructs from `Settings` —
+against a genuinely empty throwaway database (no consenting profile exists), so every provider
+call each stage would otherwise make is skipped by the stage's own "nothing to do" path before it
+ever reaches the network (`DiscoverStage._consenting_profile_ids` returns `[]`, `CaptureDrain`
+claims no row) — the `_block_network` fixture (`tests/conftest.py`) would fail the run loudly if
+that were not so. Its `stages_completed == []` assertion, true only because `run.py`'s
+`DEFAULT_STAGES` was empty, is corrected here to the three real stage names — see tasks.md's T060
+entry for why updating that specific assertion is this task's own job, not a regression.
+`test_ingest_returns_a_non_200_status_when_the_cycle_cannot_run_at_all` covers the sibling half of
+T060: `run_once` never catches an exception a stage raises (`run.py`'s own module docstring), so a
+cycle that cannot run at all — as opposed to one where individual captures failed, which `run_once`
+folds into the report's own counters and still returns 200 for — reaches this route as an
+ordinary unhandled exception, which `app.py`'s generic `Exception` handler already turns into a
+500. Nothing about that path is new code; this is the test that proves it.
 """
 
 from __future__ import annotations
@@ -103,8 +118,56 @@ def test_ingest_runs_and_returns_the_report_with_the_correct_secret(
     body = response.json()
     assert body["trigger"] == "local"
     assert body["budget_seconds"] == 5
-    assert body["stages_completed"] == []
+    # T060: real, provider-backed stages, not the empty `DEFAULT_STAGES` tuple `run.py` falls
+    # back to — see this module's own docstring for why an empty database never reaches out.
+    assert body["stages_completed"] == ["discover", "reconcile", "drain"]
     assert body["stopped_early"] is False
+
+
+def test_ingest_returns_a_non_200_status_when_the_cycle_cannot_run_at_all(
+    fake_session_class: type,
+    fake_object_store_class: type,
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
+) -> None:
+    """T060's other half: a stage that raises — the shape of a source unreachable for the whole
+    cycle, never one capture's own failure — must surface as a non-200 response, since `run_once`
+    never catches it (`run.py`'s own module docstring). This never reaches `stored_total`/
+    `failed_total`/... on the report; those are for per-capture outcomes the drain already
+    resolved without raising."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    class _AlwaysFailsStage:
+        name = "discover"
+
+        async def __call__(self, budget: object) -> dict[str, int]:
+            raise RuntimeError("the discovery source is unreachable for this whole cycle")
+
+    monkeypatch.setattr(
+        "aoe2stats_api.ingest_stages.build_ingest_stages",
+        lambda settings: (_AlwaysFailsStage(),),
+    )
+
+    app = create_app()
+
+    async def _fake_session() -> AsyncIterator[Any]:
+        yield fake_session_class()
+
+    app.dependency_overrides[get_session] = _fake_session
+    app.dependency_overrides[get_object_store] = lambda: fake_object_store_class()
+
+    # `raise_server_exceptions=False`: FastAPI's `TestClient` otherwise re-raises an unhandled
+    # exception into the test itself instead of returning the 500 `app.py`'s own generic
+    # `Exception` handler renders — the response this test is actually about.
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/cron/ingest",
+            headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
+        )
+
+    assert response.status_code == 500
 
 
 def test_ingest_never_reveals_the_configured_secret_in_the_response(

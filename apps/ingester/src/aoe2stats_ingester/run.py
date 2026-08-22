@@ -54,19 +54,20 @@ reverse). Building a fresh engine per call rather than holding one across calls 
 `build_engine`'s own `NullPool` choice is for (research §4): every process this code runs in is
 short-lived and connects through Neon's pooled endpoint, so there is nothing here to amortise.
 
-**Not this task's job: populating `DEFAULT_STAGES` with real, provider-backed stage instances.**
-`DiscoverStage` (`discover.py`, T053), `ReconcileStage` (`reconcile.py`, T054) and `CaptureDrain`
-(`capture.py`, T055-T058) all exist now, but none of them can be constructed without a real
+**`DEFAULT_STAGES` staying `()` was never this module's fix to make — and, as of T060, it no
+longer needs to be.** `DiscoverStage` (`discover.py`, T053), `ReconcileStage` (`reconcile.py`,
+T054) and `CaptureDrain` (`capture.py`, T055-T058) cannot be constructed without a real
 `MatchHistoryProvider`/`ProfileProvider`/`ReplayProvider`/`ObjectStore`/`ReplayValidator` and the
 `Settings` values those need — and `Settings` lives in `apps/api`, which this package cannot import
-(see the paragraph above). Wiring those together is therefore necessarily a caller's job, not this
-module's, and no task through T062 does it: `apps/api/src/aoe2stats_api/routers/cron.py` still
-calls `run_once(settings.ingest_run_budget_seconds, trigger="local")` with no `stages=` at all
-(T018, unchanged by this task), so `DEFAULT_STAGES` stays `()` and a cycle run through either
-production entrypoint today still does real, honest nothing beyond opening and closing its own
-`ingest_runs` row — exactly as empty a cycle as before this task, just no longer an invisible one.
-`test_cron.py`'s and `test_cron_ingest_entrypoint.py`'s own `stages_completed == []` assertions are
-what would catch this module quietly starting to build stages that gap has no settings to fill.
+(see the paragraph above) — so composition was always necessarily a caller's job, never this
+module's. T060 is that caller: `apps/api/src/aoe2stats_api/ingest_stages.py`'s
+`build_ingest_stages(settings)` builds all three from `Settings` alone, and both production
+entrypoints (`apps/api/src/aoe2stats_api/routers/cron.py`, `api/cron/ingest.py`) now pass its
+result as `stages=` — so `DEFAULT_STAGES` itself stays `()` (there is still no `Settings`-free way
+to build a real stage, and there should not be one), but a production cycle run through either
+entrypoint today discovers, reconciles and drains for real. `apps/api/tests/test_cron.py`'s and
+`test_cron_ingest_entrypoint.py`'s `stages_completed` assertions now name the three real stages
+rather than asserting `[]`, which is what caught this gap while it existed.
 """
 
 from __future__ import annotations

@@ -19,6 +19,18 @@ full explanation, which applies here byte-for-byte. Every test below that actual
 `run_once` (the two "correct secret" happy paths) points `DATABASE_URL` at the real throwaway
 database for the duration of its own call rather than `REQUIRED_ENV`'s deliberately unreachable
 placeholder.
+
+**T060**: this file's own `_ingest` builds its stages from `aoe2stats_api.ingest_stages.
+build_ingest_stages` at module scope (`api/cron/ingest.py` — the dedicated cron function, always
+allowed to load the full pipeline, unlike `routers/cron.py`'s lazy import), so the two "correct
+secret" happy paths below now exercise the real `DiscoverStage`/`ReconcileStage`/`CaptureDrain`
+against a genuinely empty throwaway database — see `test_cron.py`'s own module docstring for why
+that reaches no provider at all, and why `stages_completed == []` is corrected here to the three
+real stage names. `test_ingest_returns_a_non_200_status_when_the_cycle_cannot_run_at_all` covers
+the sibling half of T060 for this entrypoint: a stage that raises must surface as non-200, since
+`run_once` never catches it. `TestClient(..., raise_server_exceptions=False)` is what lets that
+one test observe the 500 Starlette's own default `ServerErrorMiddleware` renders instead of the
+exception propagating into the test itself, which is Starlette's `TestClient` default.
 """
 
 from __future__ import annotations
@@ -75,7 +87,9 @@ def test_ingest_runs_and_returns_the_report_with_the_correct_secret(
     body = response.json()
     assert body["trigger"] == "cron"
     assert body["budget_seconds"] == 5
-    assert body["stages_completed"] == []
+    # T060: real, provider-backed stages, not the empty `DEFAULT_STAGES` tuple `run.py` falls
+    # back to — see this module's own docstring for why an empty database never reaches out.
+    assert body["stages_completed"] == ["discover", "reconcile", "drain"]
     assert body["stopped_early"] is False
 
 
@@ -110,7 +124,9 @@ def test_ingest_accepts_get_with_the_correct_secret(
     body = response.json()
     assert body["trigger"] == "cron"
     assert body["budget_seconds"] == 5
-    assert body["stages_completed"] == []
+    # T060: real, provider-backed stages, not the empty `DEFAULT_STAGES` tuple `run.py` falls
+    # back to — see this module's own docstring for why an empty database never reaches out.
+    assert body["stages_completed"] == ["discover", "reconcile", "drain"]
     assert body["stopped_early"] is False
 
 
@@ -153,3 +169,35 @@ def test_ingest_refuses_a_bare_bearer_prefix_when_the_configured_secret_is_empty
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
+
+
+def test_ingest_returns_a_non_200_status_when_the_cycle_cannot_run_at_all(
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
+) -> None:
+    """T060's other half: a stage that raises — the shape of a source unreachable for the whole
+    cycle, never one capture's own failure — must surface as a non-200 response, since `run_once`
+    never catches it (`run.py`'s own module docstring)."""
+    import api.cron.ingest as ingest_module
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    class _AlwaysFailsStage:
+        name = "discover"
+
+        async def __call__(self, budget: object) -> dict[str, int]:
+            raise RuntimeError("the discovery source is unreachable for this whole cycle")
+
+    monkeypatch.setattr(
+        ingest_module, "build_ingest_stages", lambda settings: (_AlwaysFailsStage(),)
+    )
+
+    with TestClient(ingest_module.app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/cron/ingest",
+            headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
+        )
+
+    assert response.status_code == 500
