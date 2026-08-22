@@ -33,6 +33,17 @@ lie no dashboard reading `ingest_runs` could ever detect. The exception propagat
 the second of the two signals the nightly liveness check (T048, T061) reads: the row's absence
 means nothing ran at all, its open `finished_at` means something did and did not finish.
 
+**T059c — the id actually reaches the alerts it was opened for.** T059's own paragraph above states
+the reason this row is opened early: four of the five alert producers fire during the drain or
+immediately after it. Opening the row early is necessary but was not, on its own, sufficient —
+`Stage.__call__` took only a `Budget`, and `CaptureDrain`'s constructor had no run-id parameter, so
+`rate_limited`, `validation_failed` and `expired_capture` each wrote `ingest_run_id=None`
+regardless. `RunScoped` (below) and `run_once`'s own loop closing this gap: any stage that
+implements it has `bind_run(run_id)` called on it immediately before it runs, so a `CaptureDrain`
+handed the same `run_id` this call's own `ingest_runs` row was opened with can carry it into every
+alert it raises. `_raise_deadline_breach_alert`, the fourth producer, needed no such change — it
+already closes over `run_id` directly, being a local function of this module rather than a stage.
+
 **`session_factory` is the one thing about this function's own database access that is not handed
 down from a `Settings` instance a caller already resolved**, unlike `budget_seconds`/`trigger`/
 `stages` (see the paragraph above, and every one of those three names in the signature below).
@@ -105,6 +116,32 @@ class Stage(Protocol):
     name: str
 
     async def __call__(self, budget: Budget) -> Mapping[str, Any]: ...
+
+
+@runtime_checkable
+class RunScoped(Protocol):
+    """A `Stage` that needs to know which `ingest_runs` row the current call belongs to, so any
+    alert it raises inside `__call__` carries a real `ingest_run_id` instead of orphaning it
+    (T059c). `run_once` below binds the id onto every stage that implements this, immediately
+    before starting it.
+
+    Deliberately **not** a widening of `Stage.__call__`'s own signature. `DiscoverStage`
+    (`discover.py`, T053) and `ReconcileStage` (`reconcile.py`, T054) also implement `Stage` and
+    raise no alerts today, so adding a `run_id` parameter to every stage's call signature would
+    touch both files for a need neither of them has. `CaptureDrain` (`capture.py`, T055-T058) is
+    the only stage this protocol exists for; `run_once` checks with `isinstance` rather than
+    assuming every `Stage` satisfies it.
+
+    Also deliberately **not** a constructor argument on `CaptureDrain`. `build_ingest_stages`
+    (`apps/api/src/aoe2stats_api/ingest_stages.py`) is the one place production ever constructs a
+    `CaptureDrain`, and nothing about that call site guarantees the instance is built fresh for
+    every single run — a value fixed at construction would be correct for the first call handed to
+    it and silently stale for every one after it, since the run id is necessarily per run. A method
+    called once per run, right before `__call__`, is correct regardless of how long the instance
+    that implements it lives.
+    """
+
+    def bind_run(self, run_id: uuid.UUID) -> None: ...
 
 
 #: Empty today and not this task's to populate — see the module docstring's closing paragraph for
@@ -573,6 +610,14 @@ async def run_once(
         if budget.expired:
             stopped_early = True
             break
+        # T059c: bind this run's own id onto every stage that carries alerts of its own
+        # (`RunScoped`, currently `CaptureDrain` alone) before it ever runs, so a `rate_limited`,
+        # `validation_failed` or `expired_capture` alert raised inside this call lands with a real
+        # `ingest_run_id` rather than the `None` every one of them used to be handed — see
+        # `RunScoped`'s own docstring for why this is a per-call bind rather than a constructor
+        # argument or a widening of `Stage.__call__` itself.
+        if isinstance(stage, RunScoped):
+            stage.bind_run(run_id)
         stage_reports[stage.name] = await stage(budget)
         stages_completed.append(stage.name)
 

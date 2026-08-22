@@ -398,6 +398,17 @@ class CaptureDrain:
     """A `Stage` (`aoe2stats_ingester.run.Stage`): claim, download, store, checksum, validate,
     mark. See the module docstring for the write ordering, the containment barrier and how the
     reclaim path resumes at validation.
+
+    Also a `RunScoped` (`aoe2stats_ingester.run.RunScoped`, T059c): the three alerts this class
+    can raise (`rate_limited` via `drain_with_rate_limit_guard`, `validation_failed` via
+    `_quarantine`, `expired_capture` via `_classify_not_found`) each need the calling run's own
+    `ingest_run_id`, which `run_once` hands over through `bind_run` immediately before starting
+    this stage — never through the constructor, since a `CaptureDrain` built once by
+    `build_ingest_stages` (`apps/api/src/aoe2stats_api/ingest_stages.py`) can outlive the one run
+    whose id a constructor argument would fix it to. `self._run_id` stays `None` for any caller
+    that constructs this class directly and never calls `bind_run` — every already-landed test
+    file that does exactly that keeps writing `ingest_run_id=None`, precisely its previous
+    behaviour.
     """
 
     name = "drain"
@@ -457,6 +468,19 @@ class CaptureDrain:
             )
         self._max_captures_per_user_per_run = max_captures_per_user_per_run
         self._quota_exempt_days = quota_exempt_days
+
+        # T059c: unset until `run_once` (`run.py`) binds it — see the class docstring's `RunScoped`
+        # paragraph. Every alert this class raises reads this attribute rather than a literal
+        # `None`, so a caller that never binds a run id gets exactly the prior behaviour.
+        self._run_id: uuid.UUID | None = None
+
+    def bind_run(self, run_id: uuid.UUID) -> None:
+        """Satisfies `aoe2stats_ingester.run.RunScoped` (T059c): called once by `run_once`,
+        immediately before this stage's own `__call__`, so every alert this call raises carries
+        the real `ingest_run_id` of the run it belongs to. See the class docstring for why this is
+        a per-run bind rather than a constructor argument.
+        """
+        self._run_id = run_id
 
     def _quota_enabled(self) -> bool:
         return self._max_captures_per_user_per_run is not None
@@ -521,7 +545,7 @@ class CaptureDrain:
                     continue
 
             stopped = await drain_with_rate_limit_guard(
-                to_process, handle_item, sink=self._alert_sink, run_id=None
+                to_process, handle_item, sink=self._alert_sink, run_id=self._run_id
             )
             if stopped:
                 report["alerts_raised"] += 1
@@ -794,7 +818,7 @@ class CaptureDrain:
                 "profile_id": profile_id,
                 "reason": reason,
             },
-            run_id=None,
+            run_id=self._run_id,
         )
         return "quarantined_total"
 
@@ -846,7 +870,7 @@ class CaptureDrain:
                 EXPIRED_CAPTURE_ALERT_KIND,
                 EXPIRED_CAPTURE_ALERT_SEVERITY,
                 {"capture_id": str(capture_id), "game_id": game_id, "profile_id": profile_id},
-                run_id=None,
+                run_id=self._run_id,
             )
             return "expired_total"
 
