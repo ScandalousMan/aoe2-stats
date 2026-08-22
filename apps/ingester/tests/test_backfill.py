@@ -311,17 +311,15 @@ async def _seed_user_with_two_linked_profiles(
     )
 
     async with session_factory() as session:
-        session.add_all(
-            [
-                user,
-                steam_primary,
-                steam_secondary,
-                profile_primary,
-                profile_secondary,
-                link_primary,
-                link_secondary,
-            ]
-        )
+        session.add_all([user, steam_primary, steam_secondary, profile_primary, profile_secondary])
+        # Flushed here, before `ProfileLink` is added below: `ProfileLink.steam_id64` has a
+        # column-level `ForeignKey` to `steam_identities` (models.py) but no ORM `relationship()`
+        # connects the two classes, so the unit of work's automatic dependency sort — which orders
+        # inserts by *mapper* relationships, not by raw table foreign keys — has no edge telling it
+        # `steam_identities` must land first (the same gap `test_consent_gate.py`'s own seeding
+        # helper documents and works around identically, commit c7f2516).
+        await session.flush()
+        session.add_all([link_primary, link_secondary])
         await session.commit()
 
     return user.id

@@ -31,17 +31,18 @@ uncaught native panic, or a timeout — is folded into the same `quarantined` ou
 `last_error` set: no exception ever leaves `CaptureDrain.__call__`, which is the property
 constitution V and this module's own containment paragraph require.
 
-**The reclaim path's one known gap.** A stale `downloading` row that already carries
-`object_key`/`zip_sha256` (the previous run committed the blob and was killed before validation
-ever ran, or before the status flip) is resumed *without* re-downloading — `AoemsReplayProvider`
-is never called for it. It is, however, also resumed without re-running validation: `ObjectStore`
-(`packages/storage/src/aoe2stats_storage/objects.py`) exposes `put`, `signed_get_url`, `delete`
-and `list_keys`, and deliberately no `get` — there is no supported way to read the bytes back into
-this process to hand them to the engine a second time. The row is therefore marked `stored`
-directly, on the strength of the checksum already verified and committed by the run that first
-wrote it. Widening `ObjectStore` with a download method is a genuine future improvement, not this
-task's to make (it is outside `capture.py`, the one file this task may touch); until then, this is
-the honest boundary of what "resumes at validation" can mean without it.
+**The reclaim path resumes at validation, not at the download.** A stale `downloading` row that
+already carries `object_key`/`zip_sha256` (the previous run committed the blob and was killed
+before validation ever ran, or before the status flip) is resumed *without* re-downloading —
+`AoemsReplayProvider` is never called for it. `ObjectStore.get` (`packages/storage/src/
+aoe2stats_storage/objects.py`) reads the already-durable bytes back into this process; `_resume_
+reclaim` re-hashes them against the row's own committed `zip_sha256` and, only if that still
+matches, runs them through the exact same containment barrier (`_validate_with_barrier`) the
+normal path uses, marking `stored` or `quarantined` from that outcome exactly as the normal path
+does. A missing object or a checksum that no longer matches is not retried — the row already
+believes it holds a specific blob, and a retry would silently paper over evidence that it does
+not — both instead fold into `quarantined`, the same terminal outcome every other kind of
+validation failure produces, with `last_error` explaining which of the two it was.
 
 **Rate limiting is delegated, not reimplemented** (T052, `ratelimit.py`): each claimed batch is
 handed to `drain_with_rate_limit_guard`, which calls this module's own per-capture handler
@@ -142,13 +143,17 @@ _ZERO_COUNTERS: Mapping[str, int] = {
 
 
 class _ObjectPut(Protocol):
-    """The one `ObjectStore` method this module calls. Named as its own Protocol, structurally
-    satisfied by the real `aoe2stats_storage.objects.ObjectStore` and by every fake the five test
-    files construct, several of which implement `put` alone (`test_idempotency.py`'s
-    `_FakeObjectStore`) rather than the whole class.
+    """The `ObjectStore` methods this module calls: `put` for a freshly downloaded blob, `get` to
+    read previously committed bytes back for the reclaim path's re-validation (see the module
+    docstring). Named as its own Protocol, structurally satisfied by the real
+    `aoe2stats_storage.objects.ObjectStore` and by every fake the test files construct.
+    `test_idempotency.py`'s `_FakeObjectStore` implements `put` alone — that test's traffic never
+    exercises a reclaim, so its `object_store` never needs `get` at runtime even though the type
+    hint below now names both.
     """
 
     async def put(self, key: str, body: bytes, *, content_type: str = ...) -> None: ...
+    async def get(self, key: str) -> bytes: ...
 
 
 class _NoOpAlertSink:
@@ -203,8 +208,8 @@ async def _validate_with_barrier(
 
 class CaptureDrain:
     """A `Stage` (`aoe2stats_ingester.run.Stage`): claim, download, store, checksum, validate,
-    mark. See the module docstring for the write ordering, the containment barrier and the
-    reclaim path's one known gap.
+    mark. See the module docstring for the write ordering, the containment barrier and how the
+    reclaim path resumes at validation.
     """
 
     name = "drain"
@@ -351,11 +356,16 @@ class CaptureDrain:
         game_id, profile_id = capture.game_id, capture.profile_id
 
         if capture.object_key is not None and capture.zip_sha256 is not None:
-            # Resumed reclaim: the bytes are already durable (FR-023's write ordering is what
-            # makes this survivable at all). See the module docstring's "reclaim path's one known
-            # gap" for why this does not re-run validation.
-            await self._mark_stored(capture_id, None)
-            return "stored_total"
+            # Resumed reclaim: the previous, now-dead run's upload already committed the blob and
+            # its metadata (FR-023's write ordering is what makes this survivable at all). See the
+            # module docstring's "reclaim resumes at validation" paragraph.
+            return await self._resume_reclaim(
+                capture_id,
+                object_key=capture.object_key,
+                expected_sha256=capture.zip_sha256,
+                game_id=game_id,
+                profile_id=profile_id,
+            )
 
         fetched = await self._replay_provider.fetch_replay(game_id, profile_id)
         if isinstance(fetched, NotFound):
@@ -383,6 +393,79 @@ class CaptureDrain:
             return "stored_total"
 
         reason = error or "validation failed for an unspecified reason"
+        return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
+
+    async def _resume_reclaim(
+        self,
+        capture_id: uuid.UUID,
+        *,
+        object_key: str,
+        expected_sha256: str,
+        game_id: int,
+        profile_id: int,
+    ) -> str:
+        """Resume a stale `downloading` row at validation, never at the download.
+
+        `AoemsReplayProvider` is never called here — the whole point of a reclaim is that the
+        bytes are already durable (the module docstring's non-negotiable write ordering). Reading
+        them back and re-running them through the exact same containment barrier
+        (`_validate_with_barrier`) the normal path uses is what closes the gap the module docstring
+        used to describe: a process killed between the metadata commit and validation must not
+        leave a row that reports `stored` with `validated_by` left null, and a malformed archive
+        must still end up `quarantined` (FR-026) rather than silently counted in `stored_total`.
+
+        Two failure shapes are possible here that the normal path never sees, because both are
+        about bytes a *previous*, now-dead run wrote, not this run's own I/O — neither is allowed
+        to crash the drain, so both fold into the same `quarantined` outcome the validation
+        barrier itself uses for every other kind of failure:
+
+        - the object is missing from the store entirely (deleted out from under the row, or never
+          actually landed despite the row claiming it did);
+        - the bytes read back do not hash to the `zip_sha256` already committed for this row
+          (corruption at rest, or a record that was simply wrong).
+
+        Either is treated as evidence the capture cannot be trusted, not as a reason to retry the
+        download: `object_key`/`zip_sha256` are already committed, so a retry would only refetch
+        and re-store a replay this row already believes it holds, without ever explaining why the
+        bytes it already has do not check out.
+        """
+        try:
+            content = await self._object_store.get(object_key)
+        except Exception as exc:
+            reason = (
+                f"reclaim could not read back {object_key!r} from the object store: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return await self._quarantine(
+                capture_id, reason, game_id=game_id, profile_id=profile_id
+            )
+
+        actual_sha256 = hashlib.sha256(content).hexdigest()
+        if actual_sha256 != expected_sha256:
+            reason = (
+                f"reclaim checksum mismatch for {object_key!r}: row records {expected_sha256}, "
+                f"object store holds {actual_sha256}"
+            )
+            return await self._quarantine(
+                capture_id, reason, game_id=game_id, profile_id=profile_id
+            )
+
+        result, error = await _validate_with_barrier(
+            self._validator, content, timeout_seconds=self._validation_timeout_seconds
+        )
+        if result is not None:
+            await self._mark_stored(capture_id, result)
+            return "stored_total"
+
+        reason = error or "validation failed for an unspecified reason"
+        return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
+
+    async def _quarantine(
+        self, capture_id: uuid.UUID, reason: str, *, game_id: int, profile_id: int
+    ) -> str:
+        """Mark `capture_id` `quarantined` with `reason` and raise the severity-2 alert every
+        quarantine outcome carries, whichever path (normal validation or reclaim) produced it.
+        """
         await self._mark_quarantined(capture_id, reason)
         await raise_alert(
             self._alert_sink,

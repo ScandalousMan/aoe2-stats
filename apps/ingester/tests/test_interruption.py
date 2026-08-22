@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -40,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
 import aoe2stats_ingester.budget as budget_module
-from aoe2stats_core.replay.validation import ReplayValidationResult
+from aoe2stats_core.replay.validation import MalformedArchiveError, ReplayValidationResult
 from aoe2stats_ingester.run import run_once
 from aoe2stats_providers.base import ReplayBlob
 from aoe2stats_storage.models import AoeProfile, CaptureSource, CaptureStatus, Match, ReplayCapture
@@ -119,6 +120,12 @@ class _FakeS3Client:
         key = kwargs["Key"]
         self.put_calls.append(key)
         self.objects[key] = kwargs["Body"]
+
+    def get_object(self, **kwargs: Any) -> Any:
+        key = kwargs["Key"]
+        if key not in self.objects:
+            raise KeyError(f"no object stored under {key!r}")
+        return {"Body": io.BytesIO(self.objects[key])}
 
     def delete_object(self, **kwargs: Any) -> Any:
         self.objects.pop(kwargs["Key"], None)
@@ -218,6 +225,17 @@ class _FakeValidator:
             engine_name="fake-engine",
             engine_version="0.0.0",
         )
+
+
+class _AlwaysMalformedValidator:
+    """A `ReplayValidator` that rejects every archive it is handed. Used only by the reclaim test
+    that proves a stale `downloading` row is resumed *at validation*, not simply marked `stored`
+    on the strength of a checksum already committed by a previous, now-dead run — the gap
+    `apps/ingester/src/aoe2stats_ingester/capture.py`'s `_resume_reclaim` closes.
+    """
+
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        raise MalformedArchiveError("not a zip: missing local file header")
 
 
 async def _seed_pending_capture(
@@ -443,6 +461,68 @@ async def test_a_stale_downloading_claim_with_bytes_already_committed_resumes_at
     row = await _capture_row(session_factory, game_id)
     assert row.status == CaptureStatus.STORED
     assert row.zip_sha256 == sha256
+    # Real validation ran — this is not merely a checksum-trusting mark — because only a run
+    # through `_validate_with_barrier` ever sets `validated_by` (`_mark_stored`'s own contract).
+    assert row.validated_by is not None
+
+
+async def test_a_stale_downloading_claim_with_stored_bytes_failing_validation_is_quarantined(
+    clean_database: None, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The reclaim path resumes *at validation*, it does not skip it: closes the gap left in
+    T055's committed `capture.py`, where a stale `downloading` row carrying `zip_sha256` was
+    marked `stored` outright, on the strength of a checksum a previous, now-dead run had already
+    verified once and never re-checked. A malformed archive read back from the store must end
+    `quarantined` (FR-026), exactly as it would if this were the first time it was ever validated.
+    """
+    from aoe2stats_ingester.capture import CaptureStage
+
+    now = datetime.now(UTC)
+    game_id, profile_id = 90_211, 40_011
+    content = _replay_bytes(game_id, profile_id)
+    key = replay_object_key(game_id, profile_id)
+    sha256 = hashlib.sha256(content).hexdigest()
+
+    fake_client = _FakeS3Client()
+    # The earlier, now-dead run's own upload — already durable and already committed, exactly the
+    # state a process kill between the metadata commit and validation leaves behind.
+    fake_client.objects[key] = content
+    fake_client.put_calls.append(key)
+
+    async with session_factory() as session:
+        await _seed_pending_capture(
+            session, game_id=game_id, profile_id=profile_id, completed_at=now - timedelta(hours=2)
+        )
+        await session.commit()
+        await _mark_stale_downloading(
+            session,
+            game_id=game_id,
+            claimed_seconds_ago=_MAX_CLAIM_AGE_SECONDS * 3,
+            object_key=key,
+            zip_bytes=len(content),
+            zip_sha256=sha256,
+        )
+        await session.commit()
+
+    provider = _FakeReplayProvider()
+    stage = CaptureStage(
+        session_factory=session_factory,
+        replay_provider=provider,
+        object_store=ObjectStore(_object_store_config(), client=fake_client),
+        validator=_AlwaysMalformedValidator(),
+        batch_size=10,
+        max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
+    )
+
+    await run_once(30, trigger="test", stages=[stage])
+
+    # No re-download and no re-upload: the bytes were already durable.
+    assert provider.calls == []
+    assert fake_client.put_calls.count(key) == 1
+    row = await _capture_row(session_factory, game_id)
+    assert row.status == CaptureStatus.QUARANTINED
+    assert row.status != CaptureStatus.STORED
+    assert row.last_error is not None
 
 
 # --- the one ordering that is not negotiable: upload before mark, never the reverse --------------
