@@ -21,8 +21,9 @@ expected to need adjusting once T070 actually lands:
   cursor for the next page, `null` once there is no more.
 - Each row: `game_id`, `started_at`, `completed_at` (ISO 8601), `map_name`, `leaderboard_id`,
   `duration_seconds`, `civilisation` (the caller's own `civ_id`), `result` (the caller's own),
-  `rating_diff` (the caller's own rating change), `opponents` (every other participant: their
-  `profile_id`, `alias`, `civ_id`), `capture_status` and `capture_deadline_at` — the latter two per
+  `rating_diff` (the caller's own rating change), `opponents` (every participant on a different
+  team than the caller's own — T070d: never a teammate — with their `profile_id`, `alias`,
+  `civ_id`), `capture_status` and `capture_deadline_at` — the latter two per
   the contract line quoted above, `data-model.md`'s `replay_captures` row for
   `(game_id, profile_id)`. Assertions below check this subset of keys with the values each test
   seeds, not the full dict, so a reasonable implementation is free to add further fields (`patch`,
@@ -212,6 +213,79 @@ async def _seed_capture(
     )
 
 
+async def _seed_2v2_match(
+    db_session: AsyncSession,
+    *,
+    game_id: int,
+    completed_at: datetime,
+    caller_profile_id: int = _CALLER_PROFILE_ID,
+    teammate_profile_id: int,
+    teammate_alias: str = "Teammate",
+    opponent_one_profile_id: int = _OPPONENT_PROFILE_ID,
+    opponent_one_alias: str = "Opponent One",
+    opponent_two_profile_id: int,
+    opponent_two_alias: str = "Opponent Two",
+) -> None:
+    """A 2v2: the caller and one teammate on `team_id=1`, two opponents on `team_id=2` — the
+    shape T070d's own regression test needs (`test_matches_list.py`'s module docstring never
+    seeded one before, which is exactly how a teammate leaking into `opponents` survived)."""
+    await _seed_match(db_session, game_id=game_id, completed_at=completed_at)
+    db_session.add(AoeProfile(profile_id=teammate_profile_id, alias=teammate_alias, country="FR"))
+    db_session.add(
+        AoeProfile(profile_id=opponent_one_profile_id, alias=opponent_one_alias, country="DE")
+    )
+    db_session.add(
+        AoeProfile(profile_id=opponent_two_profile_id, alias=opponent_two_alias, country="DE")
+    )
+    db_session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=caller_profile_id,
+            team_id=1,
+            civ_id=1,
+            result="win",
+            rating=1500,
+            rating_diff=18,
+        )
+    )
+    db_session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=teammate_profile_id,
+            team_id=1,
+            civ_id=5,
+            result="win",
+            rating=1500,
+            rating_diff=18,
+        )
+    )
+    db_session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=opponent_one_profile_id,
+            team_id=2,
+            civ_id=2,
+            result="loss",
+            rating=1480,
+            rating_diff=-18,
+        )
+    )
+    db_session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=opponent_two_profile_id,
+            team_id=2,
+            civ_id=3,
+            result="loss",
+            rating=1480,
+            rating_diff=-18,
+        )
+    )
+    await _seed_capture(
+        db_session, game_id=game_id, capture_deadline_at=completed_at + timedelta(days=21)
+    )
+
+
 async def _seed_full_match(
     db_session: AsyncSession,
     *,
@@ -336,6 +410,45 @@ async def test_matches_list_newest_first_with_fr010_fields(
     # not only the caller's own row.
     assert opponent_row["civ_id"] == 2
     assert opponent_row["civ_name"] == "Byzantines"
+
+
+async def test_matches_list_opponents_excludes_the_callers_own_teammate(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T070d: a 2v2's `opponents` must hold exactly the two players on the *other* team — the
+    caller's own teammate, on the caller's own team, must never be reported there, and the two
+    genuine opponents must be distinguishable from that teammate. Before T070d, `opponents` was
+    every other participant regardless of team, so this same seed would have returned all three
+    other players — teammate included — under the name `opponents`."""
+    user = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, user)
+
+    now = datetime.now(UTC)
+    game_id = 5_001
+    teammate_profile_id = 611222555
+    opponent_two_profile_id = 611222666
+
+    await _seed_2v2_match(
+        db_session,
+        game_id=game_id,
+        completed_at=now,
+        teammate_profile_id=teammate_profile_id,
+        opponent_two_profile_id=opponent_two_profile_id,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches?profile_id={_CALLER_PROFILE_ID}")
+
+    assert response.status_code == 200
+    row = response.json()["matches"][0]
+    opponent_ids = {opponent["profile_id"] for opponent in row["opponents"]}
+
+    assert opponent_ids == {_OPPONENT_PROFILE_ID, opponent_two_profile_id}, (
+        "opponents must be exactly the other team's two players, no more and no fewer"
+    )
+    assert teammate_profile_id not in opponent_ids, (
+        "the caller's own teammate must never be counted among their opponents"
+    )
 
 
 async def test_matches_list_civilisation_name_falls_back_for_an_unrecognised_civ_id(

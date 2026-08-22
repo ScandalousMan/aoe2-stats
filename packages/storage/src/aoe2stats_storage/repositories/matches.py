@@ -63,7 +63,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import and_, literal, select, tuple_
+from sqlalchemy import and_, literal, or_, select, tuple_
+from sqlalchemy.orm import aliased
 
 from ..models import AoeProfile, CaptureStatus, Match, MatchPlayer, ReplayCapture
 from .base import Repository
@@ -81,7 +82,9 @@ _CURSOR_SEPARATOR = "|"
 class Opponent:
     """One other participant in a match, as `list_matches` reports it — never the caller's own
     row (`_seed_full_match`'s own assertion in `test_matches_list.py`: "the caller's own row is
-    never listed among their own opponents")."""
+    never listed among their own opponents"), and, since T070d, never a teammate's row either
+    (`_opponents_by_game`'s own docstring): the field is named `opponents`, so it holds only
+    participants on a different team than the caller's."""
 
     profile_id: int
     alias: str | None
@@ -278,20 +281,50 @@ class MatchesRepository(Repository):
     async def _opponents_by_game(
         self, game_ids: Sequence[int], *, exclude_profile_id: int
     ) -> dict[int, list[Opponent]]:
-        """Every `match_players` row for `game_ids` other than `exclude_profile_id`'s own — one
-        query for the whole page rather than one per row, joined to `aoe_profiles` for the alias
-        FR-010 asks for ("opponents")."""
+        """Every `match_players` row for `game_ids` that is on a **different team** than
+        `exclude_profile_id`'s own — one query for the whole page rather than one per row, joined
+        to `aoe_profiles` for the alias FR-010 asks for ("opponents").
+
+        T070d: before this, the filter was only `profile_id != exclude_profile_id`, so a
+        teammate came back under the same name as a genuine opponent — the field was named
+        `opponents` but held every other participant, teammates included. Fixed here, at the
+        query, rather than by carrying `team_id` on the wire and asking the client to separate
+        them: `MatchRow` (`packages/design-system/specs/match-history.md` §4) never needs a
+        teammate's row, so there is nothing for the client to do with one, and a field that
+        already holds only opponents needs no further disambiguation to be honest about its name.
+        `caller_row` is a second join to `match_players` for the same game, `exclude_profile_id`'s
+        own — always exactly one row, because every `game_id` here came from a query that already
+        inner-joined `match_players` on that exact `profile_id` (`list_matches`). A participant is
+        kept when its `team_id` is distinct from the caller's; `is_distinct_from` rather than
+        `!=` because plain SQL equality against `NULL` evaluates to `NULL`, never `TRUE` — a
+        `!=` would silently drop every participant of a match with no team data recorded at all.
+        When the caller's own `team_id` is itself `NULL` there is nothing to compare against, so
+        nothing is excluded: the same behaviour this method had before this fix, for the one case
+        it still cannot resolve, rather than a stricter one invented here.
+        """
         if not game_ids:
             return {}
 
+        caller_row = aliased(MatchPlayer)
         result = await self.session.execute(
             select(
                 MatchPlayer.game_id, MatchPlayer.profile_id, MatchPlayer.civ_id, AoeProfile.alias
             )
             .join(AoeProfile, AoeProfile.profile_id == MatchPlayer.profile_id)
+            .join(
+                caller_row,
+                and_(
+                    caller_row.game_id == MatchPlayer.game_id,
+                    caller_row.profile_id == exclude_profile_id,
+                ),
+            )
             .where(
                 MatchPlayer.game_id.in_(game_ids),
                 MatchPlayer.profile_id != exclude_profile_id,
+                or_(
+                    caller_row.team_id.is_(None),
+                    MatchPlayer.team_id.is_distinct_from(caller_row.team_id),
+                ),
             )
         )
         by_game: dict[int, list[Opponent]] = {}

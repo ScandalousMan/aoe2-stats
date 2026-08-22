@@ -37,10 +37,9 @@ export interface ApiMatchListRow {
    * strict `'win' | 'loss'` union, defensively). */
   result: string | null
   rating_diff: number | null
-  /** Every other participant, own team included — `matches.py`'s repository does not filter by
-   * team (its own `_opponents_by_game` docstring: "every `match_players` row ... other than
-   * `exclude_profile_id`'s own"), so this is not yet restricted to the opposing team alone. See
-   * `mappers.ts`'s own note on the team-game gap this leaves. */
+  /** Every other participant on a **different team** than the caller's own — `matches.py`'s
+   * `_opponents_by_game` excludes the caller's own teammates at the query (T070d), so this never
+   * includes anyone from the caller's own side, in a 1v1 or a team match alike. */
   opponents: ApiOpponent[]
   /** `null` only for a match with no `replay_captures` row yet (module docstring) — every raw
    * `CaptureStatus` value otherwise, unmodified: the four-state collapse is `CaptureStateBadge`'s

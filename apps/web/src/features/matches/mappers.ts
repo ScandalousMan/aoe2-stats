@@ -14,11 +14,10 @@ import {
 // shape again.
 
 /** match-history.md §4: "the first opposing-team participant's alias" plus `"and N others"` for
- * the remainder. **Known gap**: `ApiOpponent` carries no `team_id` (`matches.py`'s repository
- * returns every other participant regardless of team, its own `_opponents_by_game` docstring) —
- * so for a 1v1 this is exact, but for a team match the "others" count includes the caller's own
- * teammates, not only the opposing team, until the API grows a `team_id` per opponent. Reported
- * rather than silently worked around. */
+ * the remainder. `row.opponents` (`api.ts`) is already restricted to the opposing team(s) —
+ * `matches.py`'s `_opponents_by_game` excludes the caller's own teammates at the query (T070d) —
+ * so for both a 1v1 and a team match, every entry here is a genuine opponent and `rest.length`
+ * is exactly the "and N others" count FR-010 asks for. */
 export function toMatchRowOpponent(opponents: readonly ApiOpponent[]): MatchRowOpponent {
   const [first, ...rest] = opponents
   if (!first) {

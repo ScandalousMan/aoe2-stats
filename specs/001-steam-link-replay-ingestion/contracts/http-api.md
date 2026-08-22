@@ -77,10 +77,10 @@ Failure codes that carry product meaning, not just HTTP semantics:
 
 ## Matches
 
-| Method | Path                                      | Notes                                                                                                                                                                                       |
-| ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/matches?profile_id=&cursor=&limit=` | Newest first, cursor paginated. Each row carries its capture status and `capture_deadline_at` (FR-027), and a `civilisation_name` the API names (T070c) alongside the raw `civilisation` id |
-| `GET`  | `/api/matches/{game_id}`                  | All participants, teams, civs, results, rating changes — each participant's `civ_id` is named as `civ_name` the same way (T070c)                                                            |
+| Method | Path                                      | Notes                                                                                                                                                                                                                                                                                                             |
+| ------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/matches?profile_id=&cursor=&limit=` | Newest first, cursor paginated. Each row carries its capture status and `capture_deadline_at` (FR-027), a `civilisation_name` the API names (T070c) alongside the raw `civilisation` id, and an `opponents` array restricted to participants on a different team than the caller's own — never a teammate (T070d) |
+| `GET`  | `/api/matches/{game_id}`                  | All participants, teams, civs, results, rating changes — each participant's `civ_id` is named as `civ_name` the same way (T070c)                                                                                                                                                                                  |
 
 Only matches involving one of the caller's linked profiles are reachable. There is no endpoint that
 takes an arbitrary `profile_id` and returns its history: FR-038 forbids exposing non-users, and an

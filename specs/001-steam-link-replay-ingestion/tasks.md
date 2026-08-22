@@ -379,7 +379,7 @@ arriving one phase later.
       what T033a did for leaderboards rather than inventing a second pattern, and note that the
       detail route needs the same field for every participant, not only for the caller
 
-- [ ] T070d Carry `team_id` on each opponent returned by `GET /api/matches`, in
+- [x] T070d Carry `team_id` on each opponent returned by `GET /api/matches`, in
       `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
       `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
       The list route returns every other participant under the name `opponents`, teammates included,
