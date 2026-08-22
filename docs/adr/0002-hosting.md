@@ -20,7 +20,7 @@ More frequent expressions fail at deploy time. That looks fatal for an ingestion
 It is not, because of ADR-adjacent measurement: the replay retention window is ~31 days
 (see `docs/data-sources.md`) and the internal capture budget is 21 days. A daily job produces at most
 ~25 h of detection lag, leaving about 20 days of margin. Live stats and match history are read from
-the Relic API per request, so nothing the user *sees* is delayed — only archival is batched.
+the Relic API per request, so nothing the user _sees_ is delayed — only archival is batched.
 
 ## Corrections to widely-cited limits
 
@@ -36,14 +36,14 @@ the Relic API per request, so nothing the user *sees* is delayed — only archiv
 
 **Phase 1 — 0 EUR/month:**
 
-| Layer | Choice | Free allowance |
-| --- | --- | --- |
-| Front end | Vercel Hobby, Vite + React static build | 100 GB transfer |
-| API | Vercel Python Function, FastAPI, region `cdg1` | 1 M invocations |
-| Ingestion | Vercel Cron, once daily, `maxDuration: 300` | — |
-| Database | Neon free, EU region | 0.5 GB storage, 100 CU-hours/month |
-| Replay storage | **Cloudflare R2**, EU jurisdiction | **10 GB, 1 M writes, 10 M reads, zero egress** |
-| Domain | registered at OVH, DNS pointed at Vercel | — |
+| Layer          | Choice                                         | Free allowance                                 |
+| -------------- | ---------------------------------------------- | ---------------------------------------------- |
+| Front end      | Vercel Hobby, Vite + React static build        | 100 GB transfer                                |
+| API            | Vercel Python Function, FastAPI, region `cdg1` | 1 M invocations                                |
+| Ingestion      | Vercel Cron, once daily, `maxDuration: 300`    | —                                              |
+| Database       | Neon free, EU region                           | 0.5 GB storage, 100 CU-hours/month             |
+| Replay storage | **Cloudflare R2**, EU jurisdiction             | **10 GB, 1 M writes, 10 M reads, zero egress** |
+| Domain         | registered at OVH, DNS pointed at Vercel       | —                                              |
 
 Vercel Blob was rejected for replay storage: its Hobby allowance is about **1 GB**, roughly 660
 replays. R2's 10 GB covers ~6 600 replays, about 3.5 years for a single heavy player.
@@ -66,6 +66,16 @@ Constitution principle XII exists because of this ADR. In particular:
   is four environment variables plus a bulk copy.
 - No local filesystem state. Serverless filesystems are ephemeral and read-only outside `/tmp`.
 - A run interrupted by its time budget must leave no row in `downloading` and resume cleanly.
+
+## The single-page fallback is a host requirement, not a Vercel setting
+
+Every route the client-side router owns must resolve to `index.html` on a direct request — a
+reload, a bookmark, a shared link, a browser restore — not only on an in-app navigation, which
+never reaches the origin at all. On Vercel this is one rewrite entry in `vercel.json`, placed below
+the `/api/(.*)` rewrite so the API keeps winning; `scripts/checks/spa-routing.mjs` asserts the
+ordering holds. Phase 2's OVH reverse proxy does not read `vercel.json` and inherits none of this:
+its own configuration needs the equivalent fallback (nginx's `try_files ... /index.html`, or
+Caddy's `try_files`), or the same routes will 404 again on the new host, for the same reason.
 
 ## Regions: EU only
 
