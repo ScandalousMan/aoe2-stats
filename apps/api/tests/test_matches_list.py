@@ -398,7 +398,7 @@ async def test_matches_list_newest_first_with_fr010_fields(
     assert newest_row["civilisation"] == 12
     # T070c: a name alongside the raw id, resolved server-side rather than left for the client to
     # hand-map (the precedent `leaderboard_name`, T033a, already established for leaderboards).
-    assert newest_row["civilisation_name"] == "Turks"
+    assert newest_row["civilisation_name"] == "Cumans"
     # T070f: `leaderboard_name` alongside `leaderboard_id`, the same `leaderboards.py` mapping
     # `GET /api/profiles` already reads — never re-derived by the client.
     assert newest_row["leaderboard_id"] == 3
@@ -421,7 +421,7 @@ async def test_matches_list_newest_first_with_fr010_fields(
     # `_seed_match_players`' default `opponent_civ_id=2` — every opponent is named too (T070c),
     # not only the caller's own row.
     assert opponent_row["civ_id"] == 2
-    assert opponent_row["civ_name"] == "Byzantines"
+    assert opponent_row["civ_name"] == "Bengalis"
 
 
 async def test_matches_list_opponents_excludes_the_callers_own_teammate(

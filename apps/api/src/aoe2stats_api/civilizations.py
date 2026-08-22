@@ -1,4 +1,4 @@
-"""The civilisation id-to-name mapping for AoE2 DE (T070c).
+"""The civilisation id-to-name mapping for AoE2 DE (T070c, corrected T070g).
 
 `getRecentMatchHistory`'s per-player rows (`matchhistorymember[].civilization_id`,
 `docs/data-sources.md` §1) carry a bare integer, never a name — Relic does not return one from this
@@ -10,35 +10,92 @@ established for leaderboard ids, and this module is deliberately shaped the same
 inventing a second pattern: a `KNOWN_*` table plus a lookup function that falls back to
 "Civilisation <id>" for anything it does not recognise.
 
-**Why only thirteen entries.** Unlike `leaderboards.py`'s ladders, AoE2 DE's civilisation roster has
-grown across many expansions since this feature's own `docs/data-sources.md` was last measured, and
-this module has no verified source to check a later id against — asserting one anyway is exactly
-the failure `docs/data-sources.md`'s own opening rule exists to prevent ("a number that exists in
-two files will be wrong in one of them" applies just as much to a number this repository has never
-actually measured). The thirteen listed below are the game's original roster, present since its
-first release and unchanged by every expansion since (the standard ids repeated identically across
-essentially every AoE2 tool and documented civilisation list) — the one range this module can name
-with genuine confidence. An id outside it still gets a response, never a guess: it renders as
-"Civilisation <id>", identical in shape to `leaderboard_name`'s own fallback. Extending this table
-is future work, not a gap this module hides.
+**T070c's table was wrong, not incomplete.** It named ids 1-13 with the original thirteen-strong
+roster taken in alphabetical order and called that its one confidently-known range. Every one of
+those thirteen entries was wrong: id 1 is Aztecs, not Britons; id 9 is Byzantines, not Persians;
+id 12 is Cumans, not Turks. A confident wrong name is worse than the "Civilisation <id>" fallback
+it was meant to avoid, because nothing about it looks unverified.
+
+**How ids 0-44 below were actually established.** `packages/providers/fixtures/relic/
+get_recent_match_history.json` (`matchHistoryStats[].matchhistorymember[]`, keyed by
+`(match id, profile_id)`, carrying the bare `civilization_id`) was joined against
+`packages/providers/fixtures/companion/matches.json` (`matches[].teams[].players[]`, same key,
+carrying the enrichment source's own `civName`) — two independently captured, frozen fixtures for
+the same real matches, one naming what the other only numbers. The join recovers 21 distinct
+`civilization_id -> civName` pairs with zero conflicts (three ids recur across two different
+matches and agree both times). All 21 are reproduced exactly by one rule: the civilisation's
+zero-based position in the 45-name roster that predates the Three Kingdoms and Dynasties of India
+civilisations, sorted alphabetically, with `Indians` kept at its *original* spelling rather than
+the later renamed `Hindustanis` — `Hindustanis` would re-sort under H and move six ids. That the
+rule reproduces the hole at id 21 too, where `Indians` alphabetises between `Incas` and `Italians`,
+is what makes it a reading of the id space rather than a coincidence fitted to it. Id 21 is
+therefore the one entry in this table whose *position* comes from one name (`Indians`, for sort
+order) and whose *label* comes from another (`Hindustanis`, the name the game uses today) — do not
+"fix" that mismatch; it is the derivation working as intended, not a leftover typo. See
+`apps/api/tests/test_civilizations.py` for the join re-run as an executable check, and
+`docs/data-sources.md` §1 for where this derivation is recorded.
+
+**Why ids stop at 44.** The eight civilisations added since (Jurchens, Khitans, Mapuche, Muisca,
+Shu, Tupi, Wei, Wu) sit outside every pair the fixtures above can check — no captured match in this
+repository's evidence uses one. Asserting a plausible order for them anyway is exactly what
+produced T070c's original error, so this module does not: an id of 45 or higher still gets a
+response, never a guess, rendered as "Civilisation <id>", identical in shape to
+`leaderboard_name`'s own fallback. Extending this table past 44 is future work gated on a fixture
+that actually exercises one of those ids, not on guesswork.
 """
 
 from __future__ import annotations
 
 KNOWN_CIVILISATION_NAMES: dict[int, str] = {
-    1: "Britons",
-    2: "Byzantines",
-    3: "Celts",
-    4: "Chinese",
-    5: "Franks",
-    6: "Goths",
-    7: "Japanese",
-    8: "Mongols",
-    9: "Persians",
-    10: "Saracens",
-    11: "Teutons",
-    12: "Turks",
-    13: "Vikings",
+    0: "Armenians",
+    1: "Aztecs",
+    2: "Bengalis",
+    3: "Berbers",
+    4: "Bohemians",
+    5: "Britons",
+    6: "Bulgarians",
+    7: "Burgundians",
+    8: "Burmese",
+    9: "Byzantines",
+    10: "Celts",
+    11: "Chinese",
+    12: "Cumans",
+    13: "Dravidians",
+    14: "Ethiopians",
+    15: "Franks",
+    16: "Georgians",
+    17: "Goths",
+    18: "Gurjaras",
+    19: "Huns",
+    20: "Incas",
+    # id 21 was assigned when this civilisation was still called "Indians" — that original
+    # spelling is what places it here, between Incas and Italians, rather than under H. The game
+    # renamed it "Hindustanis"; this table follows the id's *sort position* from the old name but
+    # its *display label* from the current one. See the module docstring before "fixing" this.
+    21: "Hindustanis",
+    22: "Italians",
+    23: "Japanese",
+    24: "Khmer",
+    25: "Koreans",
+    26: "Lithuanians",
+    27: "Magyars",
+    28: "Malay",
+    29: "Malians",
+    30: "Mayans",
+    31: "Mongols",
+    32: "Persians",
+    33: "Poles",
+    34: "Portuguese",
+    35: "Romans",
+    36: "Saracens",
+    37: "Sicilians",
+    38: "Slavs",
+    39: "Spanish",
+    40: "Tatars",
+    41: "Teutons",
+    42: "Turks",
+    43: "Vietnamese",
+    44: "Vikings",
 }
 
 

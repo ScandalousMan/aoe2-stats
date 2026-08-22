@@ -467,7 +467,7 @@ before it became permanent.
       rendered box rather than match a class name; this is the first time that measurement has
       found a real violation, and it found four
 
-- [ ] T070g Correct the civilisation table, which names every id wrongly, in
+- [x] T070g Correct the civilisation table, which names every id wrongly, in
       `apps/api/src/aoe2stats_api/civilizations.py`, a new test beside it, and `docs/data-sources.md`.
       T070c named ids 1 to 13 with the original roster in **alphabetical** order and called that the
       one range it could assert with confidence. It is wrong for all thirteen, and wrong in the worst

@@ -75,10 +75,19 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
 - `getRecentMatchHistory` returns `id` (the `gameId` the replay endpoint expects), `matchtype_id`,
   `mapname`, `startgametime`, `completiontime`, and `matchhistorymember[]` with one row per player,
   each carrying `civilization_id` — an id, never a name, the same gap `getPersonalStat` has for
-  `leaderboard_id` above. `apps/api/src/aoe2stats_api/civilizations.py` names the game's original
-  thirteen civilisations as static reference data for the same reason `leaderboards.py` does
-  (T033a, T070c); ids added by later expansions are a known, documented gap in that module rather
-  than a guessed name. Payload ~400 KB per profile.
+  `leaderboard_id` above. `apps/api/src/aoe2stats_api/civilizations.py` names civilisations as
+  static reference data for the same reason `leaderboards.py` does (T033a), but unlike that
+  module's ladder ids, this mapping is not simply known: it was established by joining this
+  fixture's `matchhistorymember[].civilization_id` against
+  `packages/providers/fixtures/companion/matches.json`'s own `civName`, keyed on match id and
+  profile id, for real captured matches, then checking a single ordering rule (alphabetical
+  position in the pre-Three-Kingdoms/pre-Dynasties-of-India 45-name roster) against every pair the
+  join recovers (T070c named this range wrong, in the worst way — confidently — and T070g
+  re-derived and checked it; see that module's docstring for the full derivation and
+  `apps/api/tests/test_civilizations.py` for the join re-run as an executable test). It covers ids
+  0-44. The eight civilisations added since sit outside every pair these two fixtures can check,
+  so this module does not guess an order for them; they fall back to a bare id, matching
+  `leaderboard_name`'s own fallback shape. Payload ~400 KB per profile.
 - Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
 - Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
 

@@ -364,7 +364,7 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
         db_session,
         profile_id=_OTHER_OPPONENT_PROFILE_ID,
         team_id=2,
-        civ_id=20,
+        civ_id=999,
         color_id=4,
         result="loss",
         rating=1490,
@@ -395,8 +395,8 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "CallerAlias",
             "team_id": 1,
             "civ_id": 5,
-            # T070c: every participant is named, not only the caller — `civ_id=5` is Franks.
-            "civ_name": "Franks",
+            # T070g: every participant is named, not only the caller — `civ_id=5` is Britons.
+            "civ_name": "Britons",
             "result": "win",
             "rating_diff": 15,
         },
@@ -404,7 +404,7 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "AllyAlias",
             "team_id": 1,
             "civ_id": 7,
-            "civ_name": "Japanese",
+            "civ_name": "Burgundians",
             "result": "win",
             "rating_diff": 14,
         },
@@ -412,17 +412,17 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "OpponentAlias",
             "team_id": 2,
             "civ_id": 10,
-            "civ_name": "Saracens",
+            "civ_name": "Celts",
             "result": "loss",
             "rating_diff": -14,
         },
         _OTHER_OPPONENT_PROFILE_ID: {
             "alias": "OtherOpponent",
             "team_id": 2,
-            "civ_id": 20,
-            # `civilizations.py` (T070c) only names the game's original thirteen civs with
-            # confidence (module docstring) — id 20 falls back honestly rather than guessing.
-            "civ_name": "Civilisation 20",
+            "civ_id": 999,
+            # `civilizations.py` (T070g) only names ids 0-44 with confidence (module docstring) —
+            # an id outside that range falls back honestly rather than guessing.
+            "civ_name": "Civilisation 999",
             "result": "loss",
             "rating_diff": -15,
         },
