@@ -91,6 +91,17 @@ class ReconcileStage:
 
     async def __call__(self, budget: Budget) -> Mapping[str, Any]:
         profile_ids = await self._discover._consenting_profile_ids()
+        # Same rule, same reason, as `DiscoverStage.__call__`'s own `consenting_profile_ids`
+        # (`discover.py`): whether a discovered match's participant gets a `replay_captures` row is
+        # checked against the *whole* cycle's consenting set, never against whichever batch
+        # happened to trigger the fetch. Two profiles sharing a match can land in different
+        # batches (`test_shared_match.py`), and here the two batches can even disagree about
+        # whether the match is "recent" at all — a source that answers per profile can return it
+        # for one participant's batch and not the other's, once it has aged out of that other
+        # participant's own recent-history window (T054b). This sweep exists to catch what
+        # discovery missed (FR-015); scoping the check to the batch would silently drop exactly
+        # the case it exists for.
+        consenting_profile_ids = set(profile_ids)
 
         profiles_polled = 0
         matches_discovered = 0
@@ -99,7 +110,6 @@ class ReconcileStage:
 
         for batch in iter_within_budget(list(_chunk(profile_ids, self._batch_size)), budget):
             profiles_polled += len(batch)
-            batch_profile_ids = set(batch)
 
             # Deliberately uncaught: see the module docstring. A source unreachable for this batch
             # must fail the whole cycle, not be absorbed into a report that looks like success.
@@ -114,7 +124,7 @@ class ReconcileStage:
                         await self._discover._upsert_match_player(
                             session, raw_match.game_id, player_profile_id
                         )
-                        if player_profile_id in batch_profile_ids:
+                        if player_profile_id in consenting_profile_ids:
                             enqueued = await self._discover._enqueue_capture(
                                 session, raw_match, player_profile_id
                             )

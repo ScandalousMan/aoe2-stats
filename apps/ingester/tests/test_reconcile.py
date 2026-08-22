@@ -50,6 +50,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_ingester.budget import Budget
+from aoe2stats_ingester.discover import _DISCOVERY_BATCH_SIZE
 from aoe2stats_providers.base import MatchHistoryProvider, ProviderUnavailable, RawMatch
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -98,9 +99,10 @@ class FakeMatchHistoryProvider:
 
 def _stage(
     session_factory: async_sessionmaker[AsyncSession],
-    provider: FakeMatchHistoryProvider,
+    provider: FakeMatchHistoryProvider | MatchHistoryProvider,
     *,
     capture_budget_days: int = CAPTURE_BUDGET_DAYS,
+    batch_size: int = _DISCOVERY_BATCH_SIZE,
 ) -> ReconcileStage:
     """Imports `aoe2stats_ingester.reconcile` here, at call time, rather than at module scope —
     see the module docstring: this is the one place every test below reaches the not-yet-existent
@@ -113,6 +115,7 @@ def _stage(
         session_factory=session_factory,
         match_history_provider=provider,
         capture_budget_days=capture_budget_days,
+        batch_size=batch_size,
     )
 
 
@@ -343,3 +346,86 @@ async def test_reconciliation_sweep_picks_up_a_match_discovery_skipped_without_t
     assert recovered.status == CaptureStatus.PENDING
     expected_deadline = skipped.completed_at + timedelta(days=CAPTURE_BUDGET_DAYS)
     assert abs((recovered.capture_deadline_at - expected_deadline).total_seconds()) < 1
+
+
+# --- Two consenting participants, one match, two different batches (T054b) ----------------------
+
+
+class _SharedMatchOnlyForOneParticipantsBatchProvider:
+    """A `MatchHistoryProvider` double for the case `discover.py`'s own module docstring names by
+    name and `test_shared_match.py` established the rule for: two consenting profiles who share
+    one match, each polled in its own batch (`batch_size=1` below), where the source answers with
+    the match only for `_answering_profile_id`'s own query — exactly what a source that reports
+    whatever it itself considers "recent" per profile does once the match has aged out of the
+    other participant's own recent-history window, long before the reconciliation sweep gets to
+    it. `test_shared_match.py`'s `_FakeMatchHistoryProvider` is the model this mirrors, membership
+    -based rather than call-order-based so it does not depend on `_consenting_profile_ids`'
+    unspecified row order.
+    """
+
+    def __init__(self, raw_match: RawMatch, *, answering_profile_id: int) -> None:
+        self._raw_match = raw_match
+        self._answering_profile_id = answering_profile_id
+        self.calls: list[tuple[int, ...]] = []
+
+    async def recent_matches(self, profile_ids: Sequence[int]) -> list[RawMatch]:
+        self.calls.append(tuple(profile_ids))
+        if self._answering_profile_id in profile_ids:
+            return [self._raw_match]
+        return []
+
+
+async def test_reconciliation_sweep_enqueues_captures_for_both_participants_across_batches(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The same hazard `discover.py`'s own comment names for itself, now for the reconciliation
+    sweep: two consenting users share one match but land in different batches
+    (`ReconcileStage(batch_size=1)`), and the source only returns the match through the first
+    participant's own batch. Both consenting participants played it, so the sweep must enqueue a
+    capture for both — not only for whichever profile happened to be in the batch that triggered
+    the fetch. Before T054b this failed: `batch_profile_ids = set(batch)` saw only the profile that
+    triggered the call and enqueued nothing for the other.
+    """
+    now = datetime.now(UTC)
+    profile_a = 900_400
+    profile_b = 900_401
+    await _seed_consenting_linked_profile(
+        db_session, profile_id=profile_a, steam_id64="76500000000000401"
+    )
+    await _seed_consenting_linked_profile(
+        db_session, profile_id=profile_b, steam_id64="76500000000000402"
+    )
+
+    shared_match = RawMatch(
+        game_id=993_001,
+        leaderboard_id=3,
+        completed_at=now - timedelta(days=2),
+        player_profile_ids=(profile_a, profile_b),
+        raw_payload={"id": 993_001, "matchtype_id": 3},
+    )
+    provider = _SharedMatchOnlyForOneParticipantsBatchProvider(
+        shared_match, answering_profile_id=profile_a
+    )
+    assert isinstance(provider, MatchHistoryProvider)
+    # `batch_size=1` is the natural way to force two consenting profiles into different batches —
+    # see the module docstring above.
+    stage = _stage(session_factory, provider, batch_size=1)
+
+    await stage(Budget(seconds=60))
+
+    # Both batches were actually polled separately.
+    assert {profile_a} in [set(call) for call in provider.calls]
+    assert {profile_b} in [set(call) for call in provider.calls]
+
+    result = await db_session.execute(
+        select(ReplayCapture).where(ReplayCapture.game_id == shared_match.game_id)
+    )
+    captures = {capture.profile_id: capture for capture in result.scalars().all()}
+    assert set(captures) == {profile_a, profile_b}, (
+        "Both consenting participants played this match, so both must get a pending "
+        "`replay_captures` row from the sweep regardless of which batch's fetch actually "
+        "returned it (T054b)."
+    )
+    for capture in captures.values():
+        assert capture.status == CaptureStatus.PENDING
+        assert capture.source == CaptureSource.AUTOMATIC
