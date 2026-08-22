@@ -1,4 +1,4 @@
-"""Tests for the nightly cron-liveness check (T048, quickstart scenario 11).
+"""Tests for the nightly cron-liveness check (T048, T061b, quickstart scenario 11).
 
 FR-024 requires every ingestion cycle to leave a trace an outside observer can read; SC-007 turns
 that into a number — a cron that stops firing must be detected within 30 hours. `cron_liveness.py`
@@ -15,6 +15,16 @@ the module exists — nothing here depends on `xfail` any more.
 Scenario 11, verbatim: "Note the newest `ingest_runs` row. Run the nightly cron-liveness check.
 Expect pass. Backdate that row by 31 hours. Expect the check to fail." Every assertion below traces
 back to one clause of that.
+
+T061b adds the second signal: `check_liveness` now returns a `LivenessStatus` rather than a bare
+bool, because a newest row that is still open (`finished_at is None`) and has been open for
+implausibly long relative to `INGEST_RUN_BUDGET_SECONDS` is its own failure (`STALLED`), distinct
+from a `started_at` that is simply too old (`STALE`). Every row `_insert_run` produces below is open
+by construction unless `finished_at` is passed explicitly — exactly like T059's own row, whose
+`finished_at` stays at its default until the run that opened it closes it — so the five pre-existing
+scenarios below (all using `started_at` ages of 0 h, 31 h, 48 h and 72 h, orders of magnitude away
+from any plausible `run_budget_seconds` threshold) resolve identically to before; only their
+assertions now name the `LivenessStatus` member rather than a bool.
 """
 
 from __future__ import annotations
@@ -40,12 +50,25 @@ __all__ = ["clean_database", "database_url", "db_session", "engine", "session_fa
 _FRESH_AGE = timedelta(hours=0)
 _BACKDATED_AGE = timedelta(hours=31)
 
+# T061b: a `run_budget_seconds` used only by the stalled-row tests below, picked round and small so
+# the "well past" and "still inside" ages can be orders of magnitude apart without coupling any
+# test to `cron_liveness.py`'s own `_STALLED_RUN_BUDGET_MULTIPLIER` — the same reasoning
+# `_BACKDATED_AGE` above already applies to `LIVENESS_BUDGET_HOURS`.
+_RUN_BUDGET_SECONDS = 60.0
+_WELL_PAST_BUDGET_AGE = timedelta(hours=1)
+_WELL_WITHIN_BUDGET_AGE = timedelta(seconds=5)
 
-async def _insert_run(session: AsyncSession, *, started_at: datetime) -> IngestRun:
+
+async def _insert_run(
+    session: AsyncSession, *, started_at: datetime, finished_at: datetime | None = None
+) -> IngestRun:
     """One `ingest_runs` row, carrying only what T059 says is written when a run starts
     (`started_at`, `trigger`, `budget_seconds`) — `finished_at` and every counter stay at their
-    defaults, exactly like a row for a cycle that is still in flight or has just begun."""
-    run = IngestRun(started_at=started_at, trigger="cron", budget_seconds=240)
+    defaults, exactly like a row for a cycle that is still in flight or has just begun, unless a
+    caller passes `finished_at` explicitly to model a run that closed cleanly (T061b)."""
+    run = IngestRun(
+        started_at=started_at, finished_at=finished_at, trigger="cron", budget_seconds=240
+    )
     session.add(run)
     await session.commit()
     await session.refresh(run)
@@ -84,12 +107,13 @@ async def test_check_liveness_passes_against_a_fresh_ingest_runs_row(
 ) -> None:
     """Quickstart scenario 11, step 1-2: a freshly inserted row is enough on its own for the check
     to pass, exercised against the real `ingest_runs` table rather than a stand-in for it."""
-    from scripts.checks.cron_liveness import check_liveness
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
 
     now = datetime.now(UTC)
     await _insert_run(db_session, started_at=now)
 
-    assert await check_liveness(db_session, now=now) is True
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.LIVE
 
 
 async def test_check_liveness_fails_once_that_row_is_backdated_by_31_hours(
@@ -97,17 +121,21 @@ async def test_check_liveness_fails_once_that_row_is_backdated_by_31_hours(
 ) -> None:
     """Quickstart scenario 11 end to end, in the order the scenario states it: the same row that
     just passed must fail once backdated, with nothing else about the database changed in between —
-    the only variable this test moves is the row's age."""
-    from scripts.checks.cron_liveness import check_liveness
+    the only variable this test moves is the row's age. Backdated by 31 h (T061b: well past
+    `LIVENESS_BUDGET_HOURS`), this reads as `STALE` — "the cron stopped firing" — rather than
+    `STALLED`, exactly as it did before this task."""
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
 
     now = datetime.now(UTC)
     run = await _insert_run(db_session, started_at=now)
-    assert await check_liveness(db_session, now=now) is True
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.LIVE
 
     run.started_at = now - _BACKDATED_AGE
     await db_session.commit()
 
-    assert await check_liveness(db_session, now=now) is False
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.STALE
 
 
 async def test_check_liveness_fails_when_no_run_has_ever_been_recorded(
@@ -115,11 +143,14 @@ async def test_check_liveness_fails_when_no_run_has_ever_been_recorded(
 ) -> None:
     """The check must fail against a genuinely empty `ingest_runs` table — the first cycle in a new
     environment, or every row somehow having been lost — and not merely against a stale one."""
-    from scripts.checks.cron_liveness import check_liveness
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
 
     assert (await db_session.execute(select(IngestRun))).first() is None
 
-    assert await check_liveness(db_session, now=datetime.now(UTC)) is False
+    status = await check_liveness(
+        db_session, now=datetime.now(UTC), run_budget_seconds=_RUN_BUDGET_SECONDS
+    )
+    assert status is LivenessStatus.STALE
 
 
 async def test_check_liveness_reads_the_newest_row_not_an_older_one(
@@ -127,13 +158,14 @@ async def test_check_liveness_reads_the_newest_row_not_an_older_one(
 ) -> None:
     """data-model.md: "the nightly job reads the newest one." A stale row sitting alongside a fresh
     one must not drag the check down — only the most recent `started_at` decides the outcome."""
-    from scripts.checks.cron_liveness import check_liveness
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
 
     now = datetime.now(UTC)
     await _insert_run(db_session, started_at=now - timedelta(hours=48))
     await _insert_run(db_session, started_at=now)
 
-    assert await check_liveness(db_session, now=now) is True
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.LIVE
 
 
 async def test_check_liveness_ignores_a_newer_but_still_backdated_row(
@@ -142,10 +174,115 @@ async def test_check_liveness_ignores_a_newer_but_still_backdated_row(
     """The mirror image of the previous test: an old row still sitting there does not rescue the
     outcome once the newest row is itself stale — the check reads the newest row's own age, not
     merely "does a row exist that was once live"."""
-    from scripts.checks.cron_liveness import check_liveness
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
 
     now = datetime.now(UTC)
     await _insert_run(db_session, started_at=now - timedelta(hours=72))
     await _insert_run(db_session, started_at=now - _BACKDATED_AGE)
 
-    assert await check_liveness(db_session, now=now) is False
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.STALE
+
+
+def test_is_stalled_is_false_for_an_open_row_still_inside_its_budget() -> None:
+    """The pure boundary logic behind T061b's new signal: an open row that has not yet outlived
+    `_STALLED_RUN_BUDGET_MULTIPLIER` x `run_budget_seconds` is simply a run still in progress, and
+    is evidence of nothing."""
+    from scripts.checks.cron_liveness import is_stalled
+
+    now = datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC)
+    assert (
+        is_stalled(
+            now - _WELL_WITHIN_BUDGET_AGE,
+            None,
+            now=now,
+            run_budget_seconds=_RUN_BUDGET_SECONDS,
+        )
+        is False
+    )
+
+
+def test_is_stalled_is_true_for_an_open_row_well_past_its_budget() -> None:
+    """The same logic on the other side of the boundary: an open row that has sat far longer than a
+    completed run could plausibly need is stalled."""
+    from scripts.checks.cron_liveness import is_stalled
+
+    now = datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC)
+    assert (
+        is_stalled(
+            now - _WELL_PAST_BUDGET_AGE,
+            None,
+            now=now,
+            run_budget_seconds=_RUN_BUDGET_SECONDS,
+        )
+        is True
+    )
+
+
+def test_is_stalled_is_false_once_the_row_has_a_finished_at() -> None:
+    """A closed row is never stalled, however long ago it started: `finished_at` being set already
+    answers the question `is_stalled` exists to ask, and `is_live` — the separate, 30-hour
+    question — is what governs a row this old instead."""
+    from scripts.checks.cron_liveness import is_stalled
+
+    now = datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC)
+    started_at = now - _WELL_PAST_BUDGET_AGE
+    assert (
+        is_stalled(
+            started_at,
+            started_at + timedelta(seconds=1),
+            now=now,
+            run_budget_seconds=_RUN_BUDGET_SECONDS,
+        )
+        is False
+    )
+
+
+async def test_check_liveness_fails_for_an_open_row_well_past_its_run_budget(
+    db_session: AsyncSession,
+) -> None:
+    """T061b's actual case: a `started_at` recent enough to pass the old, `started_at`-only check
+    (SC-007's front door), paired with a row that never closed. A cron that fires on schedule and
+    dies in a stage every cycle looks exactly like this every single night — the failure this task
+    exists to stop the check from missing."""
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
+
+    now = datetime.now(UTC)
+    await _insert_run(db_session, started_at=now - _WELL_PAST_BUDGET_AGE)
+
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.STALLED
+
+
+async def test_check_liveness_passes_for_an_open_row_still_inside_its_run_budget(
+    db_session: AsyncSession,
+) -> None:
+    """A run genuinely still in progress — open, but young relative to `run_budget_seconds` — must
+    not be mistaken for a dead one: `is_stalled`'s whole reason to exist is telling these two apart.
+    """
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
+
+    now = datetime.now(UTC)
+    await _insert_run(db_session, started_at=now - _WELL_WITHIN_BUDGET_AGE)
+
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.LIVE
+
+
+async def test_check_liveness_passes_for_a_recent_closed_row_even_past_the_run_budget(
+    db_session: AsyncSession,
+) -> None:
+    """A run that closed cleanly is never stalled, however long its own `started_at` ->
+    `finished_at` span was — `is_stalled` only ever looks at rows still open. This is the case
+    T061b's own text calls out: "the newest row is still the one that decides" stays true, and a
+    completed run is not a failure just because it took a while."""
+    from scripts.checks.cron_liveness import LivenessStatus, check_liveness
+
+    now = datetime.now(UTC)
+    started_at = now - _WELL_PAST_BUDGET_AGE
+    await _insert_run(
+        db_session, started_at=started_at, finished_at=started_at + timedelta(seconds=1)
+    )
+
+    status = await check_liveness(db_session, now=now, run_budget_seconds=_RUN_BUDGET_SECONDS)
+    assert status is LivenessStatus.LIVE
