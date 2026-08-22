@@ -493,7 +493,7 @@ before it became permanent.
       two fixtures and asserts the table agrees turns this from a table someone typed into a fact
       this repository checks on every run, and is what would have caught T070c on the day it landed
 
-- [ ] T070h Guard the whole civilisation table, not the fifth of it the fixtures happen to reach, in
+- [x] T070h Guard the whole civilisation table, not the fifth of it the fixtures happen to reach, in
       `apps/api/tests/test_civilizations.py` and `apps/api/src/aoe2stats_api/civilizations.py`.
       T070g's test re-derives 21 pairs from the frozen fixtures and asserts the table against them,
       which anchors 21 of 45 entries. The other 24 are guarded by nothing: changing id 12 from

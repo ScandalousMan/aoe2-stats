@@ -31,9 +31,20 @@ rule reproduces the hole at id 21 too, where `Indians` alphabetises between `Inc
 is what makes it a reading of the id space rather than a coincidence fitted to it. Id 21 is
 therefore the one entry in this table whose *position* comes from one name (`Indians`, for sort
 order) and whose *label* comes from another (`Hindustanis`, the name the game uses today) — do not
-"fix" that mismatch; it is the derivation working as intended, not a leftover typo. See
-`apps/api/tests/test_civilizations.py` for the join re-run as an executable check, and
-`docs/data-sources.md` §1 for where this derivation is recorded.
+"fix" that mismatch; it is the derivation working as intended, not a leftover typo.
+
+**What is measured and what is derived.** `apps/api/tests/test_civilizations.py` guards this table
+with two tests that check different things. `test_table_matches_the_fixture_derived_join` re-runs
+the join above and checks it against the table — this is the measurement, and it only ever reaches
+the 21 ids the two fixtures happen to overlap on.
+`test_table_matches_the_alphabetical_ordering_rule` re-derives all 45 entries from the rule those
+21 measured pairs establish (the roster, sorted, with `Indians` at its original spelling) and
+checks the *whole* table against that derivation. The second test does not add measurement the
+first one lacks — it cannot, there is no more captured evidence — it only checks that every entry,
+reached by a fixture or not, is what the rule the 21 measured pairs support would produce. Before
+that test existed, an id outside the measured 21 could be edited to a wrong name —
+`KNOWN_CIVILISATION_NAMES[12]` from `"Cumans"` to `"Turks"`, for instance — and the suite stayed
+green. See `docs/data-sources.md` §1 for where this derivation is recorded.
 
 **Why ids stop at 44.** The eight civilisations added since (Jurchens, Khitans, Mapuche, Muisca,
 Shu, Tupi, Wei, Wu) sit outside every pair the fixtures above can check — no captured match in this

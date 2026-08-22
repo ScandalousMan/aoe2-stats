@@ -1,11 +1,26 @@
-"""Unit tests for `aoe2stats_api.civilizations` (T070c, corrected T070g).
+"""Unit tests for `aoe2stats_api.civilizations` (T070c, corrected T070g, guarded whole T070h).
 
-T070c's table named ids 1-13 confidently and wrongly (module docstring). This suite no longer
-takes the table on trust: `test_table_matches_the_fixture_derived_join` re-runs the join that
-established it — `packages/providers/fixtures/relic/get_recent_match_history.json` against
-`packages/providers/fixtures/companion/matches.json`, on `(match id, profile id)` — every time the
-suite runs, so a table edited back toward T070c's error, or drifted any other way, fails loudly
-instead of being trusted again by accident.
+T070c's table named ids 1-13 confidently and wrongly (module docstring). Two different tests now
+guard the table, and they check two different claims — keeping them separate is the point, not an
+oversight:
+
+- `test_table_matches_the_fixture_derived_join` re-runs the join that established the table's
+  ordering rule — `packages/providers/fixtures/relic/get_recent_match_history.json` against
+  `packages/providers/fixtures/companion/matches.json`, on `(match id, profile id)` — and checks it
+  against the table. This is **measurement**: 21 of the table's 45 entries, the only ones this
+  repository holds captured evidence for, and it is only ever as strong as that overlap.
+- `test_table_matches_the_alphabetical_ordering_rule` re-derives all 45 entries from the rule those
+  21 measured pairs establish — the 45-name roster, sorted, `Indians` at its original spelling — and
+  asserts the whole table against that derivation, entry for entry. This is **generalisation from
+  the rule**, not a second measurement: it does not, and cannot, independently confirm the 24 ids
+  the join above cannot reach. What it does guarantee is that every one of the 45 entries, reached
+  by a fixture or not, is internally consistent with the one rule the measured 21 support. A table
+  edited back toward T070c's error, or drifted any other way — inside the measured range or outside
+  it — fails one or both of these tests instead of being trusted again by accident.
+
+Ids 45 and above (the eight civilisations added since: Jurchens, Khitans, Mapuche, Muisca, Shu,
+Tupi, Wei, Wu) are covered by neither test and never appear in `KNOWN_CIVILISATION_NAMES` — see
+`test_falls_back_to_civilisation_id_for_an_unrecognised_id` and the module docstring.
 """
 
 from __future__ import annotations
@@ -13,7 +28,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aoe2stats_api.civilizations import civilisation_name
+from aoe2stats_api.civilizations import KNOWN_CIVILISATION_NAMES, civilisation_name
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "providers" / "fixtures"
 _RELIC_MATCH_HISTORY = json.loads(
@@ -92,6 +107,104 @@ def test_table_matches_the_fixture_derived_join() -> None:
     assert not mismatches, (
         f"KNOWN_CIVILISATION_NAMES disagrees with the fixture-derived join: {mismatches}"
     )
+
+
+# The 45-name roster `KNOWN_CIVILISATION_NAMES`' ordering rule sorts (module docstring): the base
+# game plus every expansion up to and including Dynasties of India, spelled the way each
+# civilisation was named when its id was assigned — in particular "Indians", not the later rename
+# "Hindustanis" (see `_DISPLAY_NAME_OVERRIDES` below and
+# `test_id_twenty_one_displays_the_current_name_not_the_one_it_was_derived_from`). Order here does
+# not matter — the derivation below sorts it — but every name in it does: this list, not the table
+# under test, is the one thing a reader checking this test has to agree with. The eight
+# civilisations added since (Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei, Wu) are
+# deliberately absent; they sit outside this roster and outside the table, per the module
+# docstring.
+_ROSTER_AT_ORIGINAL_SPELLING = [
+    "Armenians",
+    "Aztecs",
+    "Bengalis",
+    "Berbers",
+    "Bohemians",
+    "Britons",
+    "Bulgarians",
+    "Burgundians",
+    "Burmese",
+    "Byzantines",
+    "Celts",
+    "Chinese",
+    "Cumans",
+    "Dravidians",
+    "Ethiopians",
+    "Franks",
+    "Georgians",
+    "Goths",
+    "Gurjaras",
+    "Huns",
+    "Incas",
+    "Indians",
+    "Italians",
+    "Japanese",
+    "Khmer",
+    "Koreans",
+    "Lithuanians",
+    "Magyars",
+    "Malay",
+    "Malians",
+    "Mayans",
+    "Mongols",
+    "Persians",
+    "Poles",
+    "Portuguese",
+    "Romans",
+    "Saracens",
+    "Sicilians",
+    "Slavs",
+    "Spanish",
+    "Tatars",
+    "Teutons",
+    "Turks",
+    "Vietnamese",
+    "Vikings",
+]
+
+# Id 21 was assigned while this civilisation was still called "Indians" (that spelling is what
+# fixes its position in the sorted roster, between "Incas" and "Italians"); the game has since
+# renamed it "Hindustanis", and that is the name `KNOWN_CIVILISATION_NAMES` displays. Every other
+# roster entry displays under the exact name it sorts by, so this is the only override.
+_DISPLAY_NAME_OVERRIDES = {"Indians": "Hindustanis"}
+
+
+def test_table_matches_the_alphabetical_ordering_rule() -> None:
+    """Guards the 24 of the table's 45 entries `test_table_matches_the_fixture_derived_join` has
+    no fixture evidence for (module docstring's "How ids 0-44 below were actually established").
+
+    That test measures 21 `civilization_id -> civName` pairs from two frozen, independently
+    captured fixtures — real evidence, but only for the ids those fixtures' matches happened to
+    use. It cannot see the other 24: before this test existed, changing
+    `KNOWN_CIVILISATION_NAMES[12]` from `"Cumans"` to `"Turks"` left the whole suite green, because
+    id 12 was not among the 21.
+
+    This test does not add more measurement — there is no more captured evidence to add. It
+    instead checks that every one of the 45 entries, measured or not, is what the *one rule* the
+    21 measured pairs established would produce: the zero-based alphabetical position of each name
+    in `_ROSTER_AT_ORIGINAL_SPELLING`, with id 21 displayed under its current name rather than the
+    one it sorts by. `test_table_matches_the_fixture_derived_join` is what establishes that this
+    rule is the right one to apply; this test is what applies it to the ids that test cannot reach.
+    A single wrong entry anywhere in the table — inside the measured 21 or outside them — fails
+    this assertion.
+    """
+    assert len(_ROSTER_AT_ORIGINAL_SPELLING) == 45, (
+        "the roster this test sorts no longer has 45 names — it must match the civilisation count "
+        "the module docstring's derivation was checked against"
+    )
+    assert len(set(_ROSTER_AT_ORIGINAL_SPELLING)) == 45, "the roster has a duplicate name"
+
+    derived_table = {
+        civ_id: _DISPLAY_NAME_OVERRIDES.get(name, name)
+        for civ_id, name in enumerate(sorted(_ROSTER_AT_ORIGINAL_SPELLING))
+    }
+
+    assert derived_table == KNOWN_CIVILISATION_NAMES
 
 
 def test_names_a_known_civilisation_id() -> None:
