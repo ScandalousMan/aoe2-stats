@@ -22,8 +22,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 # Uppercase tokens that look like configuration but are not application configuration, and so are
-# not expected in .env.example.
-ENV_TOKEN_ALLOWLIST = {"PYTEST_DISABLE_NETWORK"}
+# not expected in .env.example. The scan cannot tell a module constant from an environment key —
+# both are ALL_CAPS in backticks — so a task that names one by its real identifier lands here
+# rather than being reworded around the regex (T004a records why the prose stays as written).
+ENV_TOKEN_ALLOWLIST = {
+    "PYTEST_DISABLE_NETWORK",
+    # `aoe2stats_ingester.run.DEFAULT_STAGES`, named by T060 because its staying `()` is the gap
+    # that task closed.
+    "DEFAULT_STAGES",
+}
 
 # The section of .env.example whose keys tune behaviour rather than describe infrastructure. Each of
 # these must be named by the task that consumes it: a task that states the value instead of the key
