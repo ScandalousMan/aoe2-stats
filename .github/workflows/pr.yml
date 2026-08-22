@@ -114,7 +114,7 @@ jobs:
           PYTEST_DISABLE_NETWORK: "1"
 
   web:
-    name: Web — types, lint, unit tests, built stylesheet
+    name: Web — types, lint, unit tests, built stylesheet, routing
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
@@ -142,6 +142,11 @@ jobs:
       # exactly why the broken bundle looked healthy.
       - run: pnpm --filter web build
       - run: node scripts/checks/built-css.mjs
+      # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
+      # none of them could have caught the production defect this step exists for — a reload, a
+      # bookmark or a shared link to any client-side route other than `/` hit the platform's own
+      # 404 before a line of JavaScript ran, because there was no fallback to `index.html`.
+      - run: node scripts/checks/spa-routing.mjs
 
   visual:
     name: Visual regression — affected stories only
