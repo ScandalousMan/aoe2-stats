@@ -510,6 +510,31 @@ before it became permanent.
       and which on the rule, because "verified" over a table where half the entries are untested is
       the kind of half-true a later reader relies on completely
 
+- [ ] T070i Cover the fourteen civilisations still rendering as a number, in
+      `apps/api/src/aoe2stats_api/civilizations.py`, `apps/api/tests/test_civilizations.py` and
+      `docs/data-sources.md`. T070g and T070h left ids 45 upward on the fallback because nothing
+      checkable reached them. A community reference dataset does: cross-checked against it, all 45
+      ids already in the table agree and 44 of 45 labels agree, the exception being id 30, where it
+      writes `Maya` and the table writes `Mayans` — the table is right and stays, because `Mayans`
+      is the name the game shows and the MIT-licensed tech-tree data, which is generated from the
+      game's own strings, spells it that way too. Add the fourteen the table lacks: 45 Achaemenids,
+      46 Athenians, 47 Spartans, 48 Shu, 49 Wu, 50 Wei, 51 Jurchens, 52 Khitans, 53 Macedonians,
+      54 Thracians, 55 Puru, 58 Muisca, 59 Mapuche, 60 Tupi. Five of those — the Three Kingdoms
+      civilisations — and the three American ones are ordinary picks in the ladders this product
+      tracks, so today a player who picked Shu is shown a bare number. Ids 56 and 57 are absent
+      from the reference as well: leave them on the fallback rather than closing the gap by
+      guessing what sits between Puru and Muisca, which is the error this whole run of tasks
+      exists to correct. **Do not vendor the dataset.** It carries no licence at all, unlike the
+      tech-tree repository — the same defect `docs/data-sources.md` already records against the
+      enrichment source — so the pairs are transcribed as the facts they are and the file is never
+      copied into this tree. Record the provenance and that licence status in `docs/data-sources.md`
+      beside the existing note, so the next reader knows what was leaned on and how far it can be
+      leaned on. The two regions of the table are now different kinds of claim and the tests must
+      say so rather than blur them: ids 0 to 44 are what the alphabetical rule derives and the
+      fixture join anchors, while 45 upward are individually transcribed and follow release order
+      rather than any rule. Keep the rule test authoritative over its own range instead of loosening
+      it to accommodate the new rows
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
