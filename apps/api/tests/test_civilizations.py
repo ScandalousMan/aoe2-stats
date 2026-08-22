@@ -1,26 +1,30 @@
-"""Unit tests for `aoe2stats_api.civilizations` (T070c, corrected T070g, guarded whole T070h).
+"""Unit tests for `aoe2stats_api.civilizations` (T070c, corrected T070g, guarded whole T070h,
+extended 45-60 T070i).
 
-T070c's table named ids 1-13 confidently and wrongly (module docstring). Two different tests now
-guard the table, and they check two different claims — keeping them separate is the point, not an
-oversight:
+T070c's table named ids 1-13 confidently and wrongly (module docstring). The table now holds two
+different kinds of claim, over two disjoint id ranges, and the tests keep them separate rather than
+blurring them into one assertion:
 
-- `test_table_matches_the_fixture_derived_join` re-runs the join that established the table's
-  ordering rule — `packages/providers/fixtures/relic/get_recent_match_history.json` against
+- Ids 0-44 are **derived** from one alphabetical ordering rule, itself established by measurement.
+  `test_table_matches_the_fixture_derived_join` re-runs the join that established that rule —
+  `packages/providers/fixtures/relic/get_recent_match_history.json` against
   `packages/providers/fixtures/companion/matches.json`, on `(match id, profile id)` — and checks it
-  against the table. This is **measurement**: 21 of the table's 45 entries, the only ones this
-  repository holds captured evidence for, and it is only ever as strong as that overlap.
-- `test_table_matches_the_alphabetical_ordering_rule` re-derives all 45 entries from the rule those
-  21 measured pairs establish — the 45-name roster, sorted, `Indians` at its original spelling — and
-  asserts the whole table against that derivation, entry for entry. This is **generalisation from
-  the rule**, not a second measurement: it does not, and cannot, independently confirm the 24 ids
-  the join above cannot reach. What it does guarantee is that every one of the 45 entries, reached
-  by a fixture or not, is internally consistent with the one rule the measured 21 support. A table
-  edited back toward T070c's error, or drifted any other way — inside the measured range or outside
-  it — fails one or both of these tests instead of being trusted again by accident.
+  against the table. This is **measurement**: 21 of the range's 45 entries, the only ones this
+  repository holds captured evidence for. `test_table_matches_the_alphabetical_ordering_rule`
+  re-derives all 45 entries from the rule those 21 measured pairs establish — the 45-name roster,
+  sorted, `Indians` at its original spelling — and asserts ids 0-44 of the table against that
+  derivation, entry for entry, and only that range: it stays authoritative over 0-44 rather than
+  being loosened to accommodate ids 45 and up, which follow no rule at all.
+- Ids 45-60 are **individually transcribed**, in release order, following no rule.
+  `test_table_matches_the_transcribed_ids_forty_five_to_sixty` asserts the literal expected pairs.
+  This is **not** measurement in the sense the fixture join above is, and it is **not** a rule
+  applied the way 0-44's ordering is: these fourteen pairs rest on a cross-check against a
+  community reference dataset (module docstring, T070i) and are asserted as the plain facts they
+  were read to be.
 
-Ids 45 and above (the eight civilisations added since: Jurchens, Khitans, Mapuche, Muisca, Shu,
-Tupi, Wei, Wu) are covered by neither test and never appear in `KNOWN_CIVILISATION_NAMES` — see
-`test_falls_back_to_civilisation_id_for_an_unrecognised_id` and the module docstring.
+Ids 56, 57 and anything above 60 are covered by neither of the above and never appear in
+`KNOWN_CIVILISATION_NAMES` — see `test_falls_back_for_the_deliberate_gap_and_beyond_sixty` and the
+module docstring.
 """
 
 from __future__ import annotations
@@ -115,10 +119,11 @@ def test_table_matches_the_fixture_derived_join() -> None:
 # "Hindustanis" (see `_DISPLAY_NAME_OVERRIDES` below and
 # `test_id_twenty_one_displays_the_current_name_not_the_one_it_was_derived_from`). Order here does
 # not matter — the derivation below sorts it — but every name in it does: this list, not the table
-# under test, is the one thing a reader checking this test has to agree with. The eight
-# civilisations added since (Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei, Wu) are
-# deliberately absent; they sit outside this roster and outside the table, per the module
-# docstring.
+# under test, is the one thing a reader checking this test has to agree with. Ids 45 and up
+# (Achaemenids, Athenians, Spartans, Shu, Wu, Wei, Jurchens, Khitans, Macedonians, Thracians, Puru,
+# Muisca, Mapuche, Tupi) are deliberately absent from this roster: they are not derived from any
+# ordering rule at all, and this test only ever checks ids 0-44 against what it produces — see
+# `test_table_matches_the_transcribed_ids_forty_five_to_sixty` for the other range.
 _ROSTER_AT_ORIGINAL_SPELLING = [
     "Armenians",
     "Aztecs",
@@ -175,8 +180,15 @@ _DISPLAY_NAME_OVERRIDES = {"Indians": "Hindustanis"}
 
 
 def test_table_matches_the_alphabetical_ordering_rule() -> None:
-    """Guards the 24 of the table's 45 entries `test_table_matches_the_fixture_derived_join` has
-    no fixture evidence for (module docstring's "How ids 0-44 below were actually established").
+    """Guards the 24 of ids 0-44's 45 entries `test_table_matches_the_fixture_derived_join` has no
+    fixture evidence for (module docstring's "How ids 0-44 below were actually established").
+
+    Scoped to 0-44 deliberately, and only to 0-44: ids 45 and up (T070i) follow no ordering rule at
+    all — they are individually transcribed, in release order — so folding them into this
+    derivation would either be wrong (they don't sort where the roster would place them) or would
+    silently stop this test from being a real check of the rule. Loosening this assertion to
+    "accommodate" ids 45-60 is exactly the failure mode this test exists to prevent; those ids get
+    their own assertion below instead.
 
     That test measures 21 `civilization_id -> civName` pairs from two frozen, independently
     captured fixtures — real evidence, but only for the ids those fixtures' matches happened to
@@ -185,12 +197,12 @@ def test_table_matches_the_alphabetical_ordering_rule() -> None:
     id 12 was not among the 21.
 
     This test does not add more measurement — there is no more captured evidence to add. It
-    instead checks that every one of the 45 entries, measured or not, is what the *one rule* the
-    21 measured pairs established would produce: the zero-based alphabetical position of each name
-    in `_ROSTER_AT_ORIGINAL_SPELLING`, with id 21 displayed under its current name rather than the
-    one it sorts by. `test_table_matches_the_fixture_derived_join` is what establishes that this
-    rule is the right one to apply; this test is what applies it to the ids that test cannot reach.
-    A single wrong entry anywhere in the table — inside the measured 21 or outside them — fails
+    instead checks that every one of ids 0-44's 45 entries, measured or not, is what the *one rule*
+    the 21 measured pairs established would produce: the zero-based alphabetical position of each
+    name in `_ROSTER_AT_ORIGINAL_SPELLING`, with id 21 displayed under its current name rather than
+    the one it sorts by. `test_table_matches_the_fixture_derived_join` is what establishes that
+    this rule is the right one to apply; this test is what applies it to the ids that test cannot
+    reach. A single wrong entry anywhere in 0-44 — inside the measured 21 or outside them — fails
     this assertion.
     """
     assert len(_ROSTER_AT_ORIGINAL_SPELLING) == 45, (
@@ -204,7 +216,57 @@ def test_table_matches_the_alphabetical_ordering_rule() -> None:
         for civ_id, name in enumerate(sorted(_ROSTER_AT_ORIGINAL_SPELLING))
     }
 
-    assert derived_table == KNOWN_CIVILISATION_NAMES
+    # Scoped to ids 0-44 only: the table also carries ids 45-60 (T070i), which are transcribed,
+    # not derived, and are guarded by test_table_matches_the_transcribed_ids_forty_five_to_sixty
+    # instead. Comparing against the full table here would either fail spuriously on entries this
+    # rule was never meant to produce, or — worse — invite loosening the rule to fit them.
+    table_zero_to_forty_four = {
+        civ_id: name for civ_id, name in KNOWN_CIVILISATION_NAMES.items() if civ_id <= 44
+    }
+    assert len(table_zero_to_forty_four) == 45, (
+        "expected exactly 45 entries in the table's 0-44 range"
+    )
+    assert derived_table == table_zero_to_forty_four
+
+
+# Ids 45-60 (T070i) rest on no rule the way 0-44 do: they are individually transcribed, in release
+# order, from a cross-check against SiegeEngineers/aoc-reference-data's `data/datasets/100.json`
+# (module docstring's "Ids 45-60" section). That source carries no licence, so it is read and
+# transcribed here, never vendored — this literal dict is the fact this test asserts, not a
+# generalisation the way `_ROSTER_AT_ORIGINAL_SPELLING` above is. Ids 56 and 57 are deliberately
+# absent: they are missing from the reference too, and are covered instead by
+# `test_falls_back_for_the_deliberate_gap_and_beyond_sixty`.
+_TRANSCRIBED_FORTY_FIVE_TO_SIXTY = {
+    45: "Achaemenids",
+    46: "Athenians",
+    47: "Spartans",
+    48: "Shu",
+    49: "Wu",
+    50: "Wei",
+    51: "Jurchens",
+    52: "Khitans",
+    53: "Macedonians",
+    54: "Thracians",
+    55: "Puru",
+    58: "Muisca",
+    59: "Mapuche",
+    60: "Tupi",
+}
+
+
+def test_table_matches_the_transcribed_ids_forty_five_to_sixty() -> None:
+    """Asserts the fourteen literal id-name pairs T070i added, ids 45-60 minus the deliberate gap
+    at 56/57 (module docstring). This is a transcription check, not a rule or a measurement: there
+    is no ordering rule over this range the way there is for 0-44, and this repository's own
+    fixtures never reach these ids either. The expected value here is exactly what was read from
+    the cross-check source, asserted as fact.
+    """
+    assert len(_TRANSCRIBED_FORTY_FIVE_TO_SIXTY) == 14
+
+    table_forty_five_to_sixty = {
+        civ_id: name for civ_id, name in KNOWN_CIVILISATION_NAMES.items() if 45 <= civ_id <= 60
+    }
+    assert table_forty_five_to_sixty == _TRANSCRIBED_FORTY_FIVE_TO_SIXTY
 
 
 def test_names_a_known_civilisation_id() -> None:
@@ -213,7 +275,7 @@ def test_names_a_known_civilisation_id() -> None:
 
 def test_names_id_zero() -> None:
     """Id 0 is a real civilisation (Armenians), not an unset/sentinel value — the fallback path
-    (`test_falls_back_to_civilisation_id_for_an_unrecognised_id`) only starts at 45."""
+    (`test_falls_back_for_the_deliberate_gap_and_beyond_sixty`) does not reach it."""
     assert civilisation_name(0) == "Armenians"
 
 
@@ -223,11 +285,26 @@ def test_id_twenty_one_displays_the_current_name_not_the_one_it_was_derived_from
     assert civilisation_name(21) == "Hindustanis"
 
 
-def test_falls_back_to_civilisation_id_for_an_unrecognised_id() -> None:
-    """An id this table does not carry — every civilisation added since the 45-name roster this
-    table's derivation was checked against (Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei,
-    Wu) — renders as "Civilisation <id>", never a guessed name (module docstring)."""
-    assert civilisation_name(45) == "Civilisation 45"
+def test_names_a_transcribed_id_in_the_forty_five_to_sixty_range() -> None:
+    """Spot-checks the lookup function against the transcribed range, not just the table
+    (module docstring's "Ids 45-60" section, T070i)."""
+    assert civilisation_name(48) == "Shu"
+    assert civilisation_name(60) == "Tupi"
+
+
+def test_falls_back_for_the_deliberate_gap_and_beyond_sixty() -> None:
+    """Three different reasons an id renders as "Civilisation <id>" instead of a guessed name
+    (module docstring):
+
+    - 56 and 57: deliberately absent, missing from the T070i cross-check source too, not filled in
+      by guessing what sits between Puru (55) and Muisca (58).
+    - 61: past the highest transcribed id, exactly the same shape T070c's original mistake was
+      about — no guessing past the last id this repository has evidence for.
+    - a large, arbitrary id: never in range for any civilisation this game has released.
+    """
+    assert civilisation_name(56) == "Civilisation 56"
+    assert civilisation_name(57) == "Civilisation 57"
+    assert civilisation_name(61) == "Civilisation 61"
     assert civilisation_name(999) == "Civilisation 999"
 
 

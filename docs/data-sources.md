@@ -88,6 +88,22 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   0-44. The eight civilisations added since sit outside every pair these two fixtures can check,
   so this module does not guess an order for them; they fall back to a bare id, matching
   `leaderboard_name`'s own fallback shape. Payload ~400 KB per profile.
+- **Ids 45-60 (T070i).** Not derived — no fixture here reaches them and the ordering rule above
+  stops at 44 by construction. They were instead cross-checked against
+  SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a community-maintained dataset that
+  states civilisation ids explicitly. That check confirmed all 45 ids already in the table and 44
+  of their 45 labels (id 30 is a deliberate, checked divergence — see the module docstring and the
+  comment on that entry — the reference writes "Maya", the table keeps "Mayans", the name both the
+  game and the MIT-licensed aoe2techtree data use). Fourteen ids the table lacked were then added
+  from the same source, covering the Three Kingdoms, Chronicles and American civilisations.
+  Ids 56 and 57 are absent from that dataset too and stay on the fallback deliberately — not
+  guessed at — as does everything above 60. Unlike aoe2techtree, `aoc-reference-data` carries **no
+  licence at all** (no `LICENSE` file, GitHub reports `license: None`), the same defect recorded
+  above for aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand
+  into `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
+  never copied into this repository, and nothing fetches it at build or test time. The table
+  itself, not this file, is the one place those pairs are recorded — see the module docstring for
+  the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
 - Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
 - Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
 

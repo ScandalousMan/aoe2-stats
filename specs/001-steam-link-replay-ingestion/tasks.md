@@ -510,7 +510,7 @@ before it became permanent.
       and which on the rule, because "verified" over a table where half the entries are untested is
       the kind of half-true a later reader relies on completely
 
-- [ ] T070i Cover the fourteen civilisations still rendering as a number, in
+- [x] T070i Cover the fourteen civilisations still rendering as a number, in
       `apps/api/src/aoe2stats_api/civilizations.py`, `apps/api/tests/test_civilizations.py` and
       `docs/data-sources.md`. T070g and T070h left ids 45 upward on the fallback because nothing
       checkable reached them. A community reference dataset does: cross-checked against it, all 45

@@ -1,4 +1,4 @@
-"""The civilisation id-to-name mapping for AoE2 DE (T070c, corrected T070g).
+"""The civilisation id-to-name mapping for AoE2 DE (T070c, corrected T070g, extended T070i).
 
 `getRecentMatchHistory`'s per-player rows (`matchhistorymember[].civilization_id`,
 `docs/data-sources.md` §1) carry a bare integer, never a name — Relic does not return one from this
@@ -46,13 +46,47 @@ that test existed, an id outside the measured 21 could be edited to a wrong name
 `KNOWN_CIVILISATION_NAMES[12]` from `"Cumans"` to `"Turks"`, for instance — and the suite stayed
 green. See `docs/data-sources.md` §1 for where this derivation is recorded.
 
-**Why ids stop at 44.** The eight civilisations added since (Jurchens, Khitans, Mapuche, Muisca,
-Shu, Tupi, Wei, Wu) sit outside every pair the fixtures above can check — no captured match in this
-repository's evidence uses one. Asserting a plausible order for them anyway is exactly what
-produced T070c's original error, so this module does not: an id of 45 or higher still gets a
-response, never a guess, rendered as "Civilisation <id>", identical in shape to
-`leaderboard_name`'s own fallback. Extending this table past 44 is future work gated on a fixture
-that actually exercises one of those ids, not on guesswork.
+**Ids 0-44 stop being reachable by the fixture join at 21 pairs and by the ordering rule at 44** —
+the eight civilisations added between the Three Kingdoms and Dynasties of India expansions
+(Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei, Wu) sit outside the 45-name roster that rule
+sorts, and no captured match in this repository's evidence uses one either. Asserting a plausible
+order for them was exactly T070c's original error, so this module still does not: it does not
+extend the ordering rule past id 44.
+
+**Ids 45-60 (T070i): transcribed, not derived.** These are not covered by any rule or by this
+repository's own fixtures — the roster and the join above simply do not reach them. Instead they
+were cross-checked against SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a
+community-maintained reference that states civilisation ids explicitly. That check confirmed every
+one of the 45 ids already in this table (0-44) and 44 of their 45 labels — the one disagreement is
+id 30, where the reference writes "Maya" and this table keeps "Mayans"; see the comment on that
+entry below for why. Having confirmed the source agrees with everything this table could already
+check, the fourteen ids below it that this repository has no other evidence for were read from it
+and are transcribed here as individually-verified facts, in release order, not derived from any
+rule the way 0-44 are:
+
+```
+45 Achaemenids   48 Shu    51 Jurchens   54 Thracians   58 Muisca
+46 Athenians     49 Wu     52 Khitans    55 Puru        59 Mapuche
+47 Spartans      50 Wei    53 Macedonians               60 Tupi
+```
+
+**Ids 56 and 57 are deliberately absent**, not merely unassigned. They are absent from the reference
+dataset too — nothing checkable reaches them — so this module leaves them on the fallback rather
+than guessing what sits between Puru (55) and Muisca (58). Inventing that gap is precisely the kind
+of plausible-but-unchecked entry T070c already got wrong once; do not "complete" it later without
+new evidence.
+
+**The reference dataset is read, never vendored.** Unlike the MIT-licensed tech-tree data cited for
+id 30 below, `aoc-reference-data` carries no licence at all (no `LICENSE` file, GitHub reports
+`license: None`) — the same defect `docs/data-sources.md` already records against the aoe2companion
+enrichment source. Its JSON is not copied into this repository in any form, and nothing in this
+codebase fetches it at build or test time (constitution III forbids a network call outside
+`packages/providers` regardless of licence). Only the fourteen id-name pairs above, read by hand and
+transcribed as facts, live here. See `docs/data-sources.md` §1 for the same note in context.
+
+An id of 61 or higher, and ids 56/57, still get a response, never a guess, rendered as
+"Civilisation <id>", identical in shape to `leaderboard_name`'s own fallback. Extending this table
+further is future work gated on evidence, not on guesswork.
 """
 
 from __future__ import annotations
@@ -92,6 +126,11 @@ KNOWN_CIVILISATION_NAMES: dict[int, str] = {
     27: "Magyars",
     28: "Malay",
     29: "Malians",
+    # T070i cross-checked this table against SiegeEngineers/aoc-reference-data, which spells this
+    # civilisation "Maya". "Mayans" stays: it is the name the game itself displays, and the
+    # MIT-licensed aoe2techtree data — generated from the game's own strings — spells it "Mayans"
+    # too. This is a deliberate, checked divergence from that reference, not a stale name; do not
+    # "fix" it toward "Maya".
     30: "Mayans",
     31: "Mongols",
     32: "Persians",
@@ -107,6 +146,26 @@ KNOWN_CIVILISATION_NAMES: dict[int, str] = {
     42: "Turks",
     43: "Vietnamese",
     44: "Vikings",
+    # Ids 45-60 below (T070i) are individually transcribed, in release order — not derived from
+    # the alphabetical rule above, which stops at 44. See the module docstring's "Ids 45-60"
+    # section for the cross-check that established them.
+    45: "Achaemenids",
+    46: "Athenians",
+    47: "Spartans",
+    48: "Shu",
+    49: "Wu",
+    50: "Wei",
+    51: "Jurchens",
+    52: "Khitans",
+    53: "Macedonians",
+    54: "Thracians",
+    55: "Puru",
+    # 56 and 57 are deliberately absent — they are missing from the cross-check source too. Do not
+    # fill this gap by guessing what sits between Puru (55) and Muisca (58); see the module
+    # docstring's "Ids 56 and 57" paragraph.
+    58: "Muisca",
+    59: "Mapuche",
+    60: "Tupi",
 }
 
 
