@@ -44,6 +44,30 @@ believes it holds a specific blob, and a retry would silently paper over evidenc
 not — both instead fold into `quarantined`, the same terminal outcome every other kind of
 validation failure produces, with `last_error` explaining which of the two it was.
 
+**The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
+shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
+FR-044 enforced nothing in production). `apply_quota` is a pure, read-only filter over a run's
+already-*claimed* rows (`quota.py`'s own module docstring) — it never decides what to do with a
+capture it drops, only which ones the cap still allows through. `__call__` below is the caller that
+decides: `_apply_quota` grows a running, claim-ordered list of every `ReplayCapture` this run has
+claimed so far (`_quota_candidates`), re-derives the allowed subsequence from it on every claim
+(cheap here, since `DEFAULT_BATCH_SIZE` keeps one claim to one row — see that constant's own
+docstring), and for whichever of *this* claim's rows the cap rejects, reverts the claim immediately
+(`_revert_claim`, the same undo `_revert_claim_after_rate_limit` already used for a claim a 429
+interrupted before any real attempt was made) rather than leaving it `downloading` for a stale-claim
+reclaim minutes away to eventually find. The reverted id is folded into `attempted_ids` so this same
+`__call__`'s own next `_claim_batch` does not immediately re-select the row it was just handed back
+to `pending` — precisely the guard that set already exists for a 404 that reverts to `pending`
+(see `__call__`'s own comment on `attempted_ids`). Quota enforcement is optional at construction —
+`max_captures_per_user_per_run`/`quota_exempt_days` default to `None`, and `_apply_quota` is never
+called when unset — so every already-landed test file that constructs this class without either
+keyword keeps its exact prior behaviour; a caller that wants the cap enforced supplies both
+together, from `Settings.ingest_max_captures_per_user_per_run` / `Settings.ingest_quota_exempt_days`
+(`INGEST_MAX_CAPTURES_PER_USER_PER_RUN` / `INGEST_QUOTA_EXEMPT_DAYS`, `.env.example`) the same way
+every other tunable this module owns is threaded down from `apps/api`'s `Settings` rather than read
+here directly (`test_backfill.py`'s own module docstring: `apps/ingester` cannot depend on
+`apps/api`, which is the one place `Settings` lives).
+
 **Rate limiting is delegated, not reimplemented** (T052, `ratelimit.py`): each claimed batch is
 handed to `drain_with_rate_limit_guard`, which calls this module's own per-capture handler
 serially and, the moment `ProviderRateLimited` is raised, alerts once and stops the whole batch —
@@ -123,6 +147,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
+from aoe2stats_ingester.quota import apply_quota
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
 from aoe2stats_providers.base import (
     NotFound,
@@ -350,6 +375,8 @@ class CaptureDrain:
         capture_budget_days: int = DEFAULT_CAPTURE_BUDGET_DAYS,
         replay_publication_grace_hours: int = DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        max_captures_per_user_per_run: int | None = None,
+        quota_exempt_days: int | None = None,
     ) -> None:
         # `test_idempotency.py` names this keyword argument `engine`; every other test file names
         # it `validator`. Both are the same `ReplayValidator` (`aoe2stats_core.replay.validation`)
@@ -377,6 +404,21 @@ class CaptureDrain:
         self._replay_publication_grace_hours = replay_publication_grace_hours
         self._max_attempts = max_attempts  # accepted, stored, not read — T057 owns using it
 
+        # T058's fairness cap (`quota.py`, FR-044): both or neither. A caller that means to enforce
+        # the cap and forgot the exemption (or the reverse) gets a loud, immediate configuration
+        # error rather than a cap silently applied with a nonsensical exemption window, or an
+        # exemption silently applied with no cap to exempt anything from.
+        if (max_captures_per_user_per_run is None) != (quota_exempt_days is None):
+            raise TypeError(
+                "CaptureDrain requires max_captures_per_user_per_run and quota_exempt_days "
+                "together, or neither — the fairness cap (T058, FR-044) cannot be half-configured"
+            )
+        self._max_captures_per_user_per_run = max_captures_per_user_per_run
+        self._quota_exempt_days = quota_exempt_days
+
+    def _quota_enabled(self) -> bool:
+        return self._max_captures_per_user_per_run is not None
+
     def _require_object_store(self) -> _ObjectPut:
         if self._object_store is None:
             raise TypeError("CaptureDrain requires `object_store` to process a downloaded replay")
@@ -396,8 +438,16 @@ class CaptureDrain:
         # and hammer it for the rest of the budget instead of moving on to the rest of the queue —
         # every id this cycle has already attempted, whatever the outcome, is excluded from every
         # further claim this same call makes; a *later* cycle (a fresh `__call__`) starts with an
-        # empty set and is free to attempt it again.
+        # empty set and is free to attempt it again. `_apply_quota` below adds a claimed-but-
+        # quota-deferred id to this same set for exactly the same reason: it too was just handed
+        # back to `pending`, and must not be immediately re-selected by this same `__call__`.
         attempted_ids: set[uuid.UUID] = set()
+        # T058's fairness cap (`quota.py`): this run's own claim-ordered history of every row
+        # `_claim_batch` has produced so far, whatever `_apply_quota` went on to decide about it —
+        # `apply_quota` needs the whole prefix, in claim order, to compute each user's running
+        # count correctly (see the module docstring's "per-user fairness cap" paragraph). Unused,
+        # and never grown, when quota enforcement is off (`_quota_enabled()` is `False`).
+        quota_candidates: list[ReplayCapture] = []
 
         async def handle_item(capture_id: uuid.UUID) -> None:
             outcome = await self._process_one(capture_id)
@@ -418,8 +468,18 @@ class CaptureDrain:
             claimed_ids = await self._claim_batch(exclude_ids=attempted_ids)
             if not claimed_ids:
                 break
+
+            to_process = claimed_ids
+            if self._quota_enabled():
+                to_process = await self._apply_quota(claimed_ids, quota_candidates, attempted_ids)
+                if not to_process:
+                    # Every row this claim produced was over its owner's cap and has already been
+                    # reverted to `pending` by `_apply_quota`. Nothing to hand to the rate-limit
+                    # guard; move on to whatever the queue's next claim produces.
+                    continue
+
             stopped = await drain_with_rate_limit_guard(
-                claimed_ids, handle_item, sink=self._alert_sink, run_id=None
+                to_process, handle_item, sink=self._alert_sink, run_id=None
             )
             if stopped:
                 report["alerts_raised"] += 1
@@ -427,6 +487,52 @@ class CaptureDrain:
 
         report["backlog_remaining"] = await self._backlog_remaining()
         return report
+
+    # --- Quota (T058, FR-044) ------------------------------------------------------------------
+
+    async def _apply_quota(
+        self,
+        claimed_ids: list[uuid.UUID],
+        quota_candidates: list[ReplayCapture],
+        attempted_ids: set[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Filter one `_claim_batch` result down to what the per-user fairness cap still allows
+        this cycle to process, growing `quota_candidates` — this run's own claim-ordered history —
+        by the rows this claim just produced. See the module docstring's "fairness cap" paragraph
+        for the full design; only called when `_quota_enabled()`.
+
+        Every id in `claimed_ids` not present in the returned list has already been reverted to
+        `pending` (`_revert_claim`) and added to `attempted_ids`, so it is left exactly as ready to
+        be reclaimed by a *later* cycle as a fresh `pending` row ever is, and never reclaimed by
+        this same `__call__` again.
+        """
+        assert self._max_captures_per_user_per_run is not None
+        assert self._quota_exempt_days is not None
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ReplayCapture).where(ReplayCapture.id.in_(claimed_ids))
+            )
+            rows_by_id = {row.id: row for row in result.scalars().all()}
+            quota_candidates.extend(rows_by_id[cid] for cid in claimed_ids if cid in rows_by_id)
+
+            allowed = await apply_quota(
+                session,
+                quota_candidates,
+                max_per_user=self._max_captures_per_user_per_run,
+                exempt_days=self._quota_exempt_days,
+                now=datetime.now(UTC),
+            )
+
+        allowed_ids = {row.id for row in allowed}
+        to_process: list[uuid.UUID] = []
+        for capture_id in claimed_ids:
+            if capture_id in allowed_ids:
+                to_process.append(capture_id)
+            else:
+                await self._revert_claim(capture_id)
+                attempted_ids.add(capture_id)
+        return to_process
 
     # --- Claiming ---------------------------------------------------------------------------
 
@@ -520,7 +626,7 @@ class CaptureDrain:
             # never actually got to make. `drain_with_rate_limit_guard` (`ratelimit.py`) is what
             # turns this exception into the alert and the run-stopping decision; re-raising here
             # keeps that the one place either happens.
-            await self._revert_claim_after_rate_limit(capture_id)
+            await self._revert_claim(capture_id)
             raise
         except ProviderUnavailable as exc:
             # A 5xx, or a timeout/connection failure that outlived the provider's own retry
@@ -890,11 +996,18 @@ class CaptureDrain:
             )
             await session.commit()
 
-    async def _revert_claim_after_rate_limit(self, capture_id: uuid.UUID) -> None:
-        """The `ProviderRateLimited` branch of `_process_one`'s fetch: undo `_claim_batch`'s own
-        `status`/`claimed_at`/`attempts` writes for exactly the one row that happened to be
-        claimed right before the whole run stopped, so a rate limit never counts as, or looks
-        like, an attempt at capturing that replay.
+    async def _revert_claim(self, capture_id: uuid.UUID) -> None:
+        """Undo `_claim_batch`'s own `status`/`claimed_at`/`attempts` writes for one claimed row,
+        so whichever reason this is called for never counts as, or looks like, a real attempt at
+        capturing that replay.
+
+        Two callers, both undoing a claim for a reason that has nothing to do with the capture
+        itself: the `ProviderRateLimited` branch of `_process_one`'s fetch (the row happened to be
+        claimed right before the whole run stopped on a 429), and `_apply_quota` (T058, FR-044 —
+        the row's owner was already over the per-run fairness cap, so this run never even attempts
+        it). Both leave the row immediately eligible again (`next_attempt_at` untouched, already
+        `<= now` from before this claim), for a caller that also excludes the id from this same
+        cycle's own further claims to decide when it may be reclaimed.
         """
         async with self._session_factory() as session:
             await session.execute(
