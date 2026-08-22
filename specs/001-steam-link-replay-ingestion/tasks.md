@@ -392,6 +392,32 @@ arriving one phase later.
       opponents under that name. T063 asserts the row's fields and never seeds a team match, which
       is why this survived a test written to cover exactly this response — seed a 2v2
 
+- [ ] T070e Return the capture state from `GET /api/matches/{game_id}`, in
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
+      `apps/api/src/aoe2stats_api/routers/matches.py`, `apps/api/tests/test_match_detail.py` and
+      `apps/web/src/features/matches/mappers.ts`. The detail route answers with no `capture_status`
+      and no `capture_deadline_at`, while the list route carries both — so `MatchDetailPanel`
+      renders no capture badge, and because its download control is gated on a `stored` capture that
+      gate never fires and **the replay download is unreachable from the one screen built to offer
+      it**. T066 and T071 built and tested that endpoint; T074 built the control; T076 built and
+      tested every piece of client plumbing. The single missing field is what leaves them
+      unconnected. It also contradicts this phase's own checkpoint, which claims an honest capture
+      state per match, and FR-027, which asks for that state per match rather than per list. The
+      list route already computes both in `list_matches`; do the same in `get_match_detail` rather
+      than inventing a second path. T064 asserts the participants and never the capture state, which
+      is why nothing caught it — assert both, and assert the download control's precondition
+
+- [ ] T070f Name the leaderboard in the two match routes, in
+      `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
+      Both routes return `leaderboard_id` with no name, so T076 added `formatLeaderboardName` in the
+      front end as a stand-in, falling back exactly as the server's own helper does. That is the
+      same defect T033a fixed for `apps/web/src/features/profile/leaderboards.ts` and T070c fixed
+      for civilisations, appearing a third time in the same shape: a name for an external id being
+      derived client-side because the response omits it. `apps/api/src/aoe2stats_api/leaderboards.py`
+      already holds the mapping and `GET /api/profiles` already returns `leaderboard_name` from it,
+      so this is one call in each serializer and no new source of truth. Remove the front-end
+      stand-in in the same change, so the fallback does not outlive the gap it stands in for
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
