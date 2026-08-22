@@ -73,8 +73,12 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   as static reference data rather than a value fetched per call. Payload ~8 KB. Verified:
   `76561197984749679` resolves to profile `196240`.
 - `getRecentMatchHistory` returns `id` (the `gameId` the replay endpoint expects), `matchtype_id`,
-  `mapname`, `startgametime`, `completiontime`, and `matchhistoryreportresults[]` with one row per
-  player. Payload ~400 KB per profile.
+  `mapname`, `startgametime`, `completiontime`, and `matchhistorymember[]` with one row per player,
+  each carrying `civilization_id` — an id, never a name, the same gap `getPersonalStat` has for
+  `leaderboard_id` above. `apps/api/src/aoe2stats_api/civilizations.py` names the game's original
+  thirteen civilisations as static reference data for the same reason `leaderboards.py` does
+  (T033a, T070c); ids added by later expansions are a known, documented gap in that module rather
+  than a guessed name. Payload ~400 KB per profile.
 - Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
 - Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
 

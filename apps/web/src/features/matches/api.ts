@@ -11,6 +11,10 @@ export interface ApiOpponent {
   profile_id: number
   alias: string | null
   civ_id: number | null
+  /** `matches.py`'s `_opponent_json` (T070c) — `civilisation_name` computed server-side, same
+   * shape `civilisation_name` below carries for the caller's own row. Not yet read by any mapper:
+   * `MatchRowOpponent` (packages/design-system) shows no civ for an opponent today. */
+  civ_name: string | null
 }
 
 export interface ApiMatchListRow {
@@ -23,6 +27,11 @@ export interface ApiMatchListRow {
   /** The caller's own `civ_id` for this match (`matches.py`'s module docstring: "FR-010 says
    * 'civilisation', meaning the caller's, never an opponent's"). */
   civilisation: number | null
+  /** `civilisation`'s name, computed server-side (`matches.py`'s `_match_row_json`, T070c) —
+   * `null` only when `civilisation` itself is `null`; otherwise never a bare id, not even for an
+   * id `aoe2stats_api.civilizations` does not recognise (it falls back to "Civilisation <id>"
+   * there, not here — see `format.ts`'s own note on why this module no longer hand-maps one). */
+  civilisation_name: string | null
   /** The caller's own result — `"win"` or `"loss"` today; not narrowed further here so an
    * unrecognised value still type-checks (`mappers.ts` is where it is turned into `MatchRowData`'s
    * strict `'win' | 'loss'` union, defensively). */
@@ -83,6 +92,9 @@ function assertOpponent(
   if (!isNullableNumber(opponent.civ_id)) {
     throw new MatchesResponseShapeError(`${path}.civ_id was not number|null`)
   }
+  if (!isNullableString(opponent.civ_name)) {
+    throw new MatchesResponseShapeError(`${path}.civ_name was not string|null`)
+  }
 }
 
 function assertMatchListRow(value: unknown, index: number): asserts value is ApiMatchListRow {
@@ -111,6 +123,9 @@ function assertMatchListRow(value: unknown, index: number): asserts value is Api
   }
   if (!isNullableNumber(row.civilisation)) {
     throw new MatchesResponseShapeError(`${path}.civilisation was not number|null`)
+  }
+  if (!isNullableString(row.civilisation_name)) {
+    throw new MatchesResponseShapeError(`${path}.civilisation_name was not string|null`)
   }
   if (!isNullableString(row.result)) {
     throw new MatchesResponseShapeError(`${path}.result was not string|null`)

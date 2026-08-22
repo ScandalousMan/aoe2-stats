@@ -39,7 +39,7 @@ export function toMatchRowData(row: ApiMatchListRow): MatchRowData {
     outcome: formatOutcome(row.result),
     opponent: toMatchRowOpponent(row.opponents),
     map: row.map_name ?? 'Unknown map',
-    civilisation: formatCivilisation(row.civilisation),
+    civilisation: formatCivilisation(row.civilisation_name),
     ratingChange:
       row.rating_diff != null
         ? { value: row.rating_diff, formatted: String(Math.abs(row.rating_diff)) }

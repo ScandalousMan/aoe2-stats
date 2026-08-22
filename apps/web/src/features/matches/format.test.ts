@@ -65,11 +65,11 @@ describe('formatOutcome', () => {
 })
 
 describe('formatCivilisation', () => {
-  it('renders the numeric civ id — there is no name field on the wire yet', () => {
-    expect(formatCivilisation(7)).toBe('Civilisation 7')
+  it('passes the server-named civilisation through unmodified (T070c)', () => {
+    expect(formatCivilisation('Turks')).toBe('Turks')
   })
 
-  it('reads as unknown for a null civ id', () => {
+  it('reads as unknown for a null civilisation name', () => {
     expect(formatCivilisation(null)).toBe('Unknown civilisation')
   })
 })

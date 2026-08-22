@@ -46,11 +46,13 @@ export function formatOutcome(result: string | null): 'win' | 'loss' {
   return result === 'win' ? 'win' : 'loss'
 }
 
-/** `MatchRowData.civilisation` — the API reports only the caller's numeric `civ_id`
- * (`api.ts`'s own note on `matches.py`'s `civilisation` field); there is no `civilisation_name`
- * field the way `GET /api/profiles` now sends `leaderboard_name` (T033a). Rendering the id is a
- * known, reported gap (see this feature's implementation notes) rather than a hand-maintained
- * id-to-name table repeating the exact duplication T033a moved server-side for leaderboards. */
-export function formatCivilisation(civId: number | null): string {
-  return civId != null ? `Civilisation ${civId}` : 'Unknown civilisation'
+/** `MatchRowData.civilisation` — `matches.py` now sends `civilisation_name` alongside the raw
+ * `civilisation` id (T070c), the same shape `GET /api/profiles`'s `leaderboard_name` already
+ * established (T033a): a hand-maintained id-to-name table has no business in this module, so this
+ * function no longer builds one — it passes the server's own name straight through, falling back
+ * only for a match with no recorded civilisation at all (`civilisation_name` and `civilisation`
+ * are both `null` together, never one without the other — `matches.py`'s own `civilisation_name`
+ * docstring). */
+export function formatCivilisation(civilisationName: string | null): string {
+  return civilisationName ?? 'Unknown civilisation'
 }

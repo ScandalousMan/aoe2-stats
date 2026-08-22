@@ -8,6 +8,17 @@ each. This router's job is narrower: resolve the session, prove ownership, trans
 repository's dataclasses into the JSON shape the contract fixes, and turn every failure into the
 single error envelope.
 
+**Civilisation names (T070c).** The repository's dataclasses carry only `civ_id` — Relic's own
+`getRecentMatchHistory` never names one (`docs/data-sources.md` §1) — so every row and every
+participant below also carries a `*_name` computed here, via `civilisation_name`
+(`aoe2stats_api.civilizations`), the same shape `_latest_ratings_by_profile` (`profiles.py`)
+already established for `leaderboard_name` (T033a): a hand-maintained id-to-name table for a
+measured fact about the game has no business in a front-end component module, per `CLAUDE.md`'s
+three-homes rule, so it is computed here and served, never re-derived by the client.
+`packages/storage` cannot import from `apps/api` (the dependency runs the other way), which is
+why this lookup lives at the router layer exactly like `leaderboard_name` did, rather than on the
+repository's own dataclasses.
+
 **FR-045 / FR-038 — one error, indistinguishable causes**, the same discipline `replays.py`'s and
 `profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already establish, and this
 module keeps its own copy of rather than importing (`replays.py`'s own module docstring: "each
@@ -49,6 +60,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
+from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_storage.models import ProfileLink
@@ -150,6 +162,7 @@ def _opponent_json(opponent: Opponent) -> dict[str, Any]:
         "profile_id": opponent.profile_id,
         "alias": opponent.alias,
         "civ_id": opponent.civ_id,
+        "civ_name": civilisation_name(opponent.civ_id),
     }
 
 
@@ -162,6 +175,7 @@ def _match_row_json(row: MatchListRow) -> dict[str, Any]:
         "leaderboard_id": row.leaderboard_id,
         "duration_seconds": row.duration_seconds,
         "civilisation": row.civilisation,
+        "civilisation_name": civilisation_name(row.civilisation),
         "result": row.result,
         "rating_diff": row.rating_diff,
         "opponents": [_opponent_json(opponent) for opponent in row.opponents],
@@ -188,6 +202,7 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
                 "alias": participant.alias,
                 "team_id": participant.team_id,
                 "civ_id": participant.civ_id,
+                "civ_name": civilisation_name(participant.civ_id),
                 "color_id": participant.color_id,
                 "result": participant.result,
                 "rating": participant.rating,

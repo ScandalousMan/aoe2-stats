@@ -314,6 +314,9 @@ async def test_matches_list_newest_first_with_fr010_fields(
     newest_row = body["matches"][0]
     assert newest_row["map_name"] == "Arabia"
     assert newest_row["civilisation"] == 12
+    # T070c: a name alongside the raw id, resolved server-side rather than left for the client to
+    # hand-map (the precedent `leaderboard_name`, T033a, already established for leaderboards).
+    assert newest_row["civilisation_name"] == "Turks"
     assert newest_row["result"] == "win"
     assert newest_row["rating_diff"] == 16
     assert newest_row["duration_seconds"] == 1800
@@ -324,6 +327,37 @@ async def test_matches_list_newest_first_with_fr010_fields(
     assert opponent_ids == {_OPPONENT_PROFILE_ID}, (
         "the caller's own row is never listed among their own opponents"
     )
+    opponent_row = next(
+        opponent
+        for opponent in newest_row["opponents"]
+        if opponent["profile_id"] == _OPPONENT_PROFILE_ID
+    )
+    # `_seed_match_players`' default `opponent_civ_id=2` — every opponent is named too (T070c),
+    # not only the caller's own row.
+    assert opponent_row["civ_id"] == 2
+    assert opponent_row["civ_name"] == "Byzantines"
+
+
+async def test_matches_list_civilisation_name_falls_back_for_an_unrecognised_civ_id(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T070c: an id `aoe2stats_api.civilizations` does not recognise still renders — as
+    "Civilisation <id>", never a guessed name, mirroring `leaderboard_name`'s own fallback."""
+    user = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, user)
+    await _seed_opponent_profile(db_session)
+
+    now = datetime.now(UTC)
+    game_id = 2_050
+    await _seed_full_match(db_session, game_id=game_id, completed_at=now, caller_civ_id=999)
+    await db_session.commit()
+
+    response = client.get(f"/api/matches?profile_id={_CALLER_PROFILE_ID}")
+
+    assert response.status_code == 200
+    row = response.json()["matches"][0]
+    assert row["civilisation"] == 999
+    assert row["civilisation_name"] == "Civilisation 999"
 
 
 async def test_matches_list_respects_limit_and_returns_a_next_cursor(

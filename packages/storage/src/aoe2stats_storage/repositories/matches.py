@@ -85,6 +85,9 @@ class Opponent:
 
     profile_id: int
     alias: str | None
+    #: A bare Relic id, nothing more — this package cannot import `apps/api` (the dependency runs
+    #: the other way), so `civilisation_name` (`aoe2stats_api.civilizations`, T070c) is attached
+    #: at the router layer, never here.
     civ_id: int | None
 
 
@@ -100,7 +103,8 @@ class MatchListRow:
     leaderboard_id: int
     duration_seconds: int | None
     #: The caller's own `civ_id` for this match — FR-010 says "civilisation", meaning the caller's,
-    #: never an opponent's.
+    #: never an opponent's. A bare Relic id (see `Opponent.civ_id`'s own note on why the name it
+    #: resolves to, T070c, is attached by the router rather than here).
     civilisation: int | None
     #: The caller's own result.
     result: str | None
@@ -131,6 +135,7 @@ class MatchParticipant:
     profile_id: int
     alias: str | None
     team_id: int | None
+    #: A bare Relic id (see `Opponent.civ_id`'s own note, T070c).
     civ_id: int | None
     color_id: int | None
     result: str | None

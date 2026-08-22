@@ -28,7 +28,9 @@ participant is therefore expected to carry `profile_id` and `alias` (there is no
 *who* a participant is), plus the four FR-011 asks read off `match_players`' own columns:
 `team_id`, `civ_id`, `result`, `rating_diff`. Assertions below check these keys are present with
 the seeded values rather than asserting dict equality, so an implementation that also returns
-`color_id` or `rating` is not penalised for doing more than the four FR-011 requires.
+`color_id` or `rating` is not penalised for doing more than the four FR-011 requires. T070c adds
+one further key, `civ_name` — `civilisation_name` from `aoe2stats_api.civilizations`, the same
+precedent `leaderboard_name` (T033a) set for a hand-maintained id-to-name table.
 
 **Ownership.** The contract states plainly: "Only matches involving one of the caller's linked
 profiles are reachable." Mirrors `replays.py`'s `_owned_active_link`/`_profile_not_found` FR-045
@@ -362,6 +364,8 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "CallerAlias",
             "team_id": 1,
             "civ_id": 5,
+            # T070c: every participant is named, not only the caller — `civ_id=5` is Franks.
+            "civ_name": "Franks",
             "result": "win",
             "rating_diff": 15,
         },
@@ -369,6 +373,7 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "AllyAlias",
             "team_id": 1,
             "civ_id": 7,
+            "civ_name": "Japanese",
             "result": "win",
             "rating_diff": 14,
         },
@@ -376,6 +381,7 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "OpponentAlias",
             "team_id": 2,
             "civ_id": 10,
+            "civ_name": "Saracens",
             "result": "loss",
             "rating_diff": -14,
         },
@@ -383,6 +389,9 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
             "alias": "OtherOpponent",
             "team_id": 2,
             "civ_id": 20,
+            # `civilizations.py` (T070c) only names the game's original thirteen civs with
+            # confidence (module docstring) — id 20 falls back honestly rather than guessing.
+            "civ_name": "Civilisation 20",
             "result": "loss",
             "rating_diff": -15,
         },

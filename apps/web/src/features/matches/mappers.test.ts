@@ -3,7 +3,7 @@ import type { ApiMatchListRow, ApiOpponent } from './api'
 import { toMatchRowData, toMatchRowDataList, toMatchRowOpponent } from './mappers'
 
 function opponent(overrides: Partial<ApiOpponent> = {}): ApiOpponent {
-  return { profile_id: 2, alias: 'Rival', civ_id: 3, ...overrides }
+  return { profile_id: 2, alias: 'Rival', civ_id: 3, civ_name: 'Celts', ...overrides }
 }
 
 function row(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
@@ -15,6 +15,7 @@ function row(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
     leaderboard_id: 3,
     duration_seconds: 2040,
     civilisation: 7,
+    civilisation_name: 'Japanese',
     result: 'win',
     rating_diff: 12,
     opponents: [opponent()],
@@ -83,6 +84,16 @@ describe('toMatchRowData', () => {
 
   it('falls back to "Unknown map" for a null map_name', () => {
     expect(toMatchRowData(row({ map_name: null })).map).toBe('Unknown map')
+  })
+
+  it('passes the server-named civilisation through (T070c), not the raw id', () => {
+    expect(toMatchRowData(row({ civilisation_name: 'Turks' })).civilisation).toBe('Turks')
+  })
+
+  it('falls back to "Unknown civilisation" for a null civilisation_name', () => {
+    expect(toMatchRowData(row({ civilisation_name: null })).civilisation).toBe(
+      'Unknown civilisation',
+    )
   })
 
   it("passes capture_status and capture_deadline_at through unmodified — the collapse is the badge's job", () => {

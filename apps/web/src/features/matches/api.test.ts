@@ -13,9 +13,10 @@ function validRow() {
     leaderboard_id: 3,
     duration_seconds: 2040,
     civilisation: 7,
+    civilisation_name: 'Japanese',
     result: 'win',
     rating_diff: 12,
-    opponents: [{ profile_id: 2, alias: 'Rival', civ_id: 3 }],
+    opponents: [{ profile_id: 2, alias: 'Rival', civ_id: 3, civ_name: 'Celts' }],
     capture_status: 'stored',
     capture_deadline_at: null,
   }

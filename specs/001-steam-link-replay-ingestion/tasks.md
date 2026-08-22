@@ -365,7 +365,7 @@ the visual baselines, and a baseline photographed against a placeholder label or
 count freezes the defect into the very check that exists to catch it — which is the T038b failure
 arriving one phase later.
 
-- [ ] T070c Return the civilisation name from `GET /api/matches` and `GET /api/matches/{game_id}`,
+- [x] T070c Return the civilisation name from `GET /api/matches` and `GET /api/matches/{game_id}`,
       in `apps/api/src/aoe2stats_api/routers/matches.py`,
       `packages/storage/src/aoe2stats_storage/repositories/matches.py` and `docs/data-sources.md`.
       Both routes answer with the numeric civilisation id and nothing else, so the front end cannot
