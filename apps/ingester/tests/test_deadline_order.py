@@ -198,7 +198,6 @@ async def _seed_pending_capture(
     await session.commit()
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_drain_stores_the_near_deadline_captures_when_the_budget_covers_only_half(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

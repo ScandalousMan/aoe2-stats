@@ -55,8 +55,6 @@ from aoe2stats_storage.objects import (
 # module exactly as if it had been defined there (see `apps/ingester/tests/conftest.py`).
 __all__ = ["clean_database", "database_url", "db_session", "engine", "session_factory"]
 
-pytestmark = pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
-
 _LEADERBOARD_1V1_RM = 3
 #: The platform's function ceiling `run.py`'s module docstring names — the value "the maximum
 #: function duration" in data-model.md's `claimed_at` note refers to. Passed explicitly to

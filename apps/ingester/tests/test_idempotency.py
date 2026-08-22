@@ -50,7 +50,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -247,7 +246,6 @@ async def _fetch_capture(
         return capture
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_three_further_cycles_over_an_archived_capture_change_nothing(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,

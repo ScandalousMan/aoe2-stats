@@ -63,7 +63,6 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.alerting import AlertRecord
@@ -289,7 +288,6 @@ async def _reload_capture(db_session: AsyncSession, capture_id: uuid.UUID) -> Re
 # --- Tests -------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_malformed_replay_is_uploaded_before_validation_and_quarantined_with_last_error(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -346,7 +344,6 @@ async def test_malformed_replay_is_uploaded_before_validation_and_quarantined_wi
     assert report["quarantined_total"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_engine_raising_a_base_exception_is_contained_and_quarantines_the_capture(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -384,7 +381,6 @@ async def test_engine_raising_a_base_exception_is_contained_and_quarantines_the_
     assert report["quarantined_total"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_engine_hanging_past_the_wall_clock_cap_is_contained_and_quarantines_the_capture(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -433,7 +429,6 @@ async def test_engine_hanging_past_the_wall_clock_cap_is_contained_and_quarantin
     assert report["quarantined_total"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="T055 not implemented yet")
 async def test_run_completes_when_every_capture_in_the_batch_fails_validation_differently(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
