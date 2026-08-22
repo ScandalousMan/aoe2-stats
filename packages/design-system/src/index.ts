@@ -12,6 +12,9 @@ export * from './components/Skeleton'
 export * from './components/Menu'
 export * from './components/StatValue'
 export * from './components/Dialog'
+export * from './components/CaptureStateBadge'
+export * from './components/MatchRow'
+export * from './components/MatchDetailPanel'
 
 // Screens (T035, packages/design-system/specs/{sign-in-screen,consent-step,profile-summary}.md).
 // T036/T037 build the routes that mount these; this package builds what they compose.
