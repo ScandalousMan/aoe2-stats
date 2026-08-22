@@ -82,6 +82,21 @@ happen" in the steady state, and reverting every 404 to `pending` without ever c
 otherwise is what kept that vacuously true. It is no longer vacuous: an `expired_total` (or
 `unavailable_total`) that never moves now means what it says.
 
+**Bounded retries for a `ProviderUnavailable`** (T057, FR-020). `AoemsReplayProvider` already
+retries a transient 5xx/timeout/connection failure internally, with its own backoff, before ever
+raising `ProviderUnavailable` — so *this* module's retries are the outer loop, across drain cycles,
+for a source that stayed unhealthy across an entire internal retry budget.
+`_handle_provider_unavailable` reads the row's own `attempts` (already incremented by this
+attempt's own claim, exactly as `_classify_not_found` reads it) against `self._max_attempts`:
+short of the ceiling, the row reverts to `pending` with `next_attempt_at` pushed
+`_retry_backoff_seconds(attempts)` into the future — an interval that strictly increases with
+`attempts` rather than a fixed delay repeated forever, which is what FR-020 forbids. At the
+ceiling, the row becomes terminally `failed`, never a further retry. `failed` raises no alert:
+unlike `quarantined` (bytes obtained, unparsable — constitution IV, evidence) or `expired` (the
+source itself confirms permanent loss), a run of 5xx responses is not evidence of anything
+specific to this one capture, and `failed_total` is the signal a human reviews rather than an
+alert queue a merely transient outage would flood.
+
 **Why this module exports three names for one class.** `test_interruption.py` (T044),
 `test_quarantine.py` (T047a) and `test_deadline_order.py` (T045) each committed to this module's
 shape independently, before this task landed, and named it `CaptureStage`, `CaptureDrain` and
@@ -109,7 +124,13 @@ from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
-from aoe2stats_providers.base import NotFound, ProviderRateLimited, ReplayBlob, ReplayProvider
+from aoe2stats_providers.base import (
+    NotFound,
+    ProviderRateLimited,
+    ProviderUnavailable,
+    ReplayBlob,
+    ReplayProvider,
+)
 from aoe2stats_storage.models import Alert as AlertRow
 from aoe2stats_storage.models import CaptureStatus, Match, ReplayCapture
 from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
@@ -179,10 +200,19 @@ DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS = 72
 #: The bounded-retry ceiling T057 owns (no `.env.example` name yet — that task introduces one).
 #: Accepted here and threaded through the constructor because `test_failure_classification.py`
 #: (T047) already constructs `CaptureStage` with `max_attempts=` for scenarios this task *does*
-#: own (the three 404 branches), not only for the backoff/`failed` scenario that is T057's; stored,
-#: not read by this module — see the module docstring's "three-way 404 reading" paragraph, which
-#: covers only the 404 branches, and T057's own task text for the retry ceiling itself.
+#: own (the three 404 branches), not only for the backoff/`failed` scenario that is T057's; read
+#: by `_handle_provider_unavailable` (T057) below, to decide the exact same boundary
+#: `_classify_not_found` never reaches for a 5xx: the *n*th `ProviderUnavailable` at this attempt
+#: count is terminal, never a further backoff.
 DEFAULT_MAX_ATTEMPTS = 3
+
+#: T057's backoff base, in the same spirit as `_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE`: not a
+#: setting an operator would tune independently (no `.env.example` name), just the constant this
+#: module's own exponential formula is built on. `_retry_backoff_seconds` doubles this per attempt
+#: (`base * 2 ** (attempts - 1)`), so consecutive backoffs strictly increase (FR-020) rather than
+#: repeating a fixed interval — `test_failure_classification.py`'s backoff scenario asserts the
+#: second delay is strictly greater than the first for exactly this reason.
+_RETRY_BACKOFF_BASE_SECONDS = 60.0
 
 #: `ingest_runs`' own counter vocabulary (data-model.md) that this stage's report can ever move —
 #: the rest of that row's counters belong to discovery and reconciliation, not to the drain.
@@ -492,6 +522,15 @@ class CaptureDrain:
             # keeps that the one place either happens.
             await self._revert_claim_after_rate_limit(capture_id)
             raise
+        except ProviderUnavailable as exc:
+            # A 5xx, or a timeout/connection failure that outlived the provider's own retry
+            # budget (`ProviderUnavailable`'s own docstring, `packages/providers/.../base.py`):
+            # unlike `ProviderRateLimited` this *does* count as an attempt at this capture — the
+            # claim's own increment stands — and is T057's bounded retry, not T056's rate-limit
+            # handling: see `_handle_provider_unavailable` below.
+            return await self._handle_provider_unavailable(
+                capture_id, attempts=capture.attempts, reason=str(exc)
+            )
         if isinstance(fetched, NotFound):
             return await self._classify_not_found(
                 capture_id,
@@ -670,6 +709,44 @@ class CaptureDrain:
         await self._revert_to_pending(capture_id, http_status)
         return "not_found"
 
+    async def _handle_provider_unavailable(
+        self, capture_id: uuid.UUID, *, attempts: int, reason: str
+    ) -> str:
+        """T057: bounded retries for a `ProviderUnavailable` (a 5xx, or a timeout/connection
+        failure that outlived the provider's own retry budget — `ProviderUnavailable`'s own
+        docstring). `attempts` is the row's own count *after* `_claim_batch`'s increment for this
+        very attempt, exactly as `_classify_not_found` reads it — this call already counts, so
+        the boundary below decides only what happens next, never whether this one counted.
+
+        - `attempts < self._max_attempts`: not yet exhausted. Revert to `pending` with
+          `next_attempt_at` pushed `_retry_backoff_seconds(attempts)` into the future — a delay
+          that strictly increases with `attempts` (FR-020) rather than repeating a fixed
+          interval — so the next claim leaves this row alone until its own backoff elapses.
+        - `attempts >= self._max_attempts`: the bounded-retry ceiling. Terminal `failed`, never a
+          further backoff (FR-020's "MUST stop after a bounded number of attempts"). `failed`
+          means the game itself was reachable but this system could never get the bytes — a
+          different failure than `quarantined` (bytes obtained, unparsable) or `expired` (the
+          source itself confirms the replay is gone) — and, per data-model.md's five-alert-kind
+          vocabulary, `failed` is not one of them: unlike `quarantined`/`expired`, nothing here
+          raises. A human reviewing `failed_total` is the intended signal, not an alert queue that
+          a merely transient source outage would otherwise flood.
+        """
+        if attempts >= self._max_attempts:
+            await self._mark_failed(capture_id, reason)
+            return "failed_total"
+
+        delay = self._retry_backoff_seconds(attempts)
+        await self._revert_to_pending_with_backoff(capture_id, delay=delay, reason=reason)
+        return "not_found"
+
+    def _retry_backoff_seconds(self, attempts: int) -> timedelta:
+        """Exponential backoff, doubling per attempt: `_RETRY_BACKOFF_BASE_SECONDS * 2 **
+        (attempts - 1)`. `attempts` is always >= 1 (a row only ever reaches here after
+        `_claim_batch` has incremented it at least once), so this never raises on a negative
+        exponent.
+        """
+        return timedelta(seconds=_RETRY_BACKOFF_BASE_SECONDS * (2 ** (attempts - 1)))
+
     # --- Row writes ---------------------------------------------------------------------------
 
     async def _commit_blob_metadata(
@@ -731,6 +808,44 @@ class CaptureDrain:
                         "expired (T056)"
                     ),
                 )
+            )
+            await session.commit()
+
+    async def _revert_to_pending_with_backoff(
+        self, capture_id: uuid.UUID, *, delay: timedelta, reason: str
+    ) -> None:
+        """T057's not-yet-exhausted branch of `_handle_provider_unavailable`: the row goes back to
+        `pending`, exactly as `_revert_to_pending` (T056) does for an inconclusive 404, but with
+        `next_attempt_at` pushed `delay` into the future rather than left immediately eligible —
+        the whole point of a *backoff*, versus T056's "try again on a later cycle regardless".
+        `http_status` is left untouched: `ProviderUnavailable` is not always a specific status
+        code (a timeout or connection failure carries none), so unlike the 404 branches this does
+        not overwrite whatever status the row already recorded from a previous attempt.
+        """
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(
+                    status=CaptureStatus.PENDING,
+                    claimed_at=None,
+                    next_attempt_at=datetime.now(UTC) + delay,
+                    last_error=reason,
+                )
+            )
+            await session.commit()
+
+    async def _mark_failed(self, capture_id: uuid.UUID, reason: str) -> None:
+        """T057's exhausted branch of `_handle_provider_unavailable`: the bounded-retry ceiling
+        reached, terminal `failed` (FR-020) — never a further backoff. `attempts`/`claimed_at` are
+        left as the claim already set them, exactly as `_mark_stored`/`_mark_quarantined`/
+        `_mark_expired` do for their own terminal outcomes.
+        """
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(status=CaptureStatus.FAILED, last_error=reason)
             )
             await session.commit()
 

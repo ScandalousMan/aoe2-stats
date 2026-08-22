@@ -8,13 +8,12 @@ grace but short of the two-attempt floor stays `pending`, then `unavailable`; pa
 `capture_deadline_at` is `expired` and alerts) and the pre-existing 429 scenario, which needed no
 new classification but did need the row a rate limit interrupts mid-claim to be handed back
 unattempted rather than left stranded. Only the last scenario below, three
-consecutive 5xx producing backoff then a terminal `failed`, is T057's own bounded-retry ceiling and
-stays `xfail(strict=True, reason="T057 not implemented yet")` until that task lands; it is the one
-test in this module still importing `aoe2stats_ingester.capture` inside its own body rather than at
-module scope, for exactly the reason every test here originally did — a missing name a whole-module
-import would turn into a collection error taking every other test in this file down with it. Every
-other import below (`aoe2stats_storage`, `aoe2stats_providers`, `aoe2stats_ingester.budget`) is
-safe at module scope regardless.
+consecutive 5xx producing backoff then a terminal `failed`, is T057's own bounded-retry ceiling; it
+is the one test in this module still importing `aoe2stats_ingester.capture` inside its own body
+rather than at module scope, for exactly the reason every test here originally did — a missing name
+a whole-module import would turn into a collection error taking every other test in this file down
+with it. Every other import below (`aoe2stats_storage`, `aoe2stats_providers`,
+`aoe2stats_ingester.budget`) is safe at module scope regardless.
 
 **The interface this test assumes of `capture.py`**: a `CaptureStage` (matching the `Stage`
 protocol `run.py` already defines — `name: str` plus
@@ -52,7 +51,6 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -344,7 +342,6 @@ async def test_429_stops_the_whole_run_and_alerts_not_just_the_offending_capture
         assert capture.attempts == 0
 
 
-@pytest.mark.xfail(strict=True, reason="T057 not implemented yet")
 async def test_three_consecutive_5xx_produce_backoff_then_failed_at_the_attempt_limit(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
