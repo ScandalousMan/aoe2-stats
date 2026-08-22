@@ -418,6 +418,55 @@ arriving one phase later.
       so this is one call in each serializer and no new source of truth. Remove the front-end
       stand-in in the same change, so the fallback does not outlive the gap it stands in for
 
+### Phase 5 visual remediation (post-T077 review)
+
+Added by hand after the `visual-reviewer` agent returned FAIL on `MatchRow` and `MatchDetailPanel`,
+with `Badge` and `CaptureStateBadge` passing. Every finding below was measured against rendered
+pixels — bisected at 900 and 1100 as well as the review viewports, with every capture hashed to
+catch the T038b duplicate-image failure, which did **not** recur. These are defects in T074, which
+is marked `[x]` above, and they are listed here rather than edited into its text.
+
+They run **before** the baseline capture that closes T077. A baseline photographed against a wrong
+breakpoint or a short touch target does not merely miss the defect, it freezes it into the check
+that exists to catch it, and every later run then reports green for the thing it is protecting. That
+is T038b's failure, and the reason this section exists at all is that the review caught it one step
+before it became permanent.
+
+- [ ] T074a Give the layout the breakpoints and the tier its spec asks for, in
+      `packages/design-system/src/components/MatchRow/index.tsx`,
+      `packages/design-system/src/components/MatchDetailPanel/index.tsx` and
+      `packages/design-system/src/components/CaptureStateBadge/index.tsx`. Three faults, one theme —
+      a layout reacting to the wrong width. **(a)** Both components switch from cards to a real
+      table on `useBreakpoint('lg')`, which
+      `packages/design-system/src/lib/useMediaQuery.ts` defines as 1024, while
+      `packages/design-system/specs/match-history.md` reserves everything below 1280 for cards;
+      measured at 1100 both already render a ruled table, and `xl` is the token that was meant.
+      **(b)** The panel implements only two tiers where the spec names three: there is no
+      two-participants-side-by-side layout at 768 at any width, so that tier is missing outright
+      rather than mis-triggered. **(c)** `CaptureStateBadge` stacks its secondary line on a `sm:`
+      media query, which reads the **window** and not the container it sits in, so inside the
+      row's bounded trailing column it is always inline once the page is wide — and the spec's
+      "beneath the pill rather than beside it, column width is bounded" is unreachable from any
+      prop. Give it a way to be told, rather than letting it infer from a width that does not
+      describe its own box. Note `ProfileSummary` shares the same `lg` choice: it is inherited
+      rather than introduced here, so decide deliberately whether it moves with these two, and say
+      which in the hand-back rather than changing it silently
+
+- [ ] T074b Meet the spacing scale and the touch floor, in
+      `packages/design-system/src/components/MatchRow/index.tsx` and
+      `packages/design-system/src/components/MatchDetailPanel/index.tsx`. Three spacing values sit
+      one step off the table in `packages/design-system/specs/match-history.md`: the row's table
+      column gap renders `space-6` where the spec says `space-5`, the panel's header-to-download gap
+      renders `space-6` where the spec says `space-4` because one uniform gap covers every top-level
+      child, and the participants row padding-block renders `space-2` where the spec says `space-3`.
+      Separately, and this is the one that fails an audit rather than a review: every button
+      reachable on a touch viewport in these two components measures **40 pixels** tall — the list's
+      retry control, the download control, the back link and the failure retry — against the 44 the
+      Button rule in `packages/design-system/specs/shared-primitives.md` requires, because none
+      passes the large size or extends its hit area. T035d already made this project measure the
+      rendered box rather than match a class name; this is the first time that measurement has
+      found a real violation, and it found four
+
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
 
