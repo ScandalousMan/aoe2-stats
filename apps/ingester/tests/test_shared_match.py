@@ -40,7 +40,6 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -169,7 +168,6 @@ async def _seed_two_consenting_users_sharing_a_match(
         await session.commit()
 
 
-@pytest.mark.xfail(strict=True, reason="T053 not implemented yet")
 async def test_shared_match_produces_one_match_row_and_two_isolated_replay_captures(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,

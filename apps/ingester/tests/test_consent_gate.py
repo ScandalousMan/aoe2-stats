@@ -43,7 +43,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -55,8 +54,6 @@ from aoe2stats_storage.models import (
     SteamIdentity,
     User,
 )
-
-pytestmark = pytest.mark.xfail(strict=True, reason="T053 not implemented yet")
 
 
 class _RaisingMatchHistoryProvider:
@@ -118,6 +115,13 @@ async def _seed_linked_user(
             last_sign_in_at=now,
         )
     )
+    # Flushed here, before `ProfileLink` is added below: `ProfileLink.steam_id64` has a
+    # column-level `ForeignKey` to `steam_identities` (models.py) but no ORM `relationship()`
+    # connects the two classes, so the unit of work's automatic dependency sort — which orders
+    # inserts by *mapper* relationships, not by raw table foreign keys — has no edge telling it
+    # `steam_identities` must land first (the same gap `test_shared_match.py`'s own seeding
+    # helper documents and works around identically).
+    await db_session.flush()
     db_session.add(
         AoeProfile(
             profile_id=profile_id,
