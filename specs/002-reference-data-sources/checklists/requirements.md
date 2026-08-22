@@ -41,11 +41,12 @@ feature 001 would understand", and against that reading it passes: the stories d
 wrong for a player when the mapping is stale, and the requirements say what must be written down
 rather than how.
 
-**"No implementation details."** The spec deliberately does not name the files that will carry the
-documentation, nor the module that holds the mapping. FR-004 and FR-009 say the mapping lives in one
-place and is pointed at, and FR-010 says the judgment lives where an agent loads it on demand —
-which home each of those is remains a planning decision, and settling it here would flatten the
-three-homes rule into a filename.
+**"No implementation details."** The requirements themselves name no file and no module: FR-004 and
+FR-009 say the mapping lives in one place and is pointed at, FR-010 says the judgment lives where an
+agent loads it on demand, and FR-013 to FR-016 describe what the check must notice rather than how it
+is built. The three homes are named once, in the Clarifications section, because the user settled
+that question on 2026-08-22 and a decision log records decisions — that is what the section is for.
+Planning still owns how each file is structured; it no longer owns which file.
 
 **On success criteria.** SC-001, SC-004 and SC-005 are stated as what a maintainer unfamiliar with
 feature 001 can do unaided. That is a real test, and it is the only honest one for documentation:
@@ -55,3 +56,11 @@ inspectable directly.
 **Scope note carried forward to planning.** The spec assumes feature 001's civilisation table is
 correct and does not revisit it. If planning discovers otherwise, that is a defect in 001 and belongs
 in 001's remediation, not here.
+
+**Re-validated after clarification (2026-08-22).** All 16 items still pass; none regressed. The third
+clarification widened the feature from documentation alone to documentation plus one check, so User
+Story 4, FR-013 to FR-016, SC-007, SC-008 and two edge cases were added, and the Context paragraph
+was corrected — it had claimed the feature adds no runtime behaviour, which the clarification made
+false. That correction matters more than its size: a spec whose overview contradicts its own
+requirements is the defect this project keeps finding, and it would have been introduced by the very
+step meant to remove ambiguity.

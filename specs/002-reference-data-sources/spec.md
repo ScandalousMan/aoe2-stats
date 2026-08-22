@@ -22,8 +22,25 @@ there will be one, because civilisations are added and renamed — starts from n
 plausible-looking wrong answer available to them.
 
 This feature writes down what those sources are, what each may legally be used for, and how the
-mapping is re-derived and verified. It adds no runtime behaviour: nothing here is fetched by the
-running system, now or ever (constitution III).
+mapping is re-derived and verified — and adds the one piece of automation that stops the next
+occurrence depending on someone happening to look: a check that notices an identifier the mapping
+cannot name. Nothing here is fetched by the running system, its build or its tests; the sources are
+consulted by a human, and the check reads only data this repository already holds (constitution III).
+
+## Clarifications
+
+### Session 2026-08-22
+
+- Q: How much of these repositories' reference data should this feature document? → A: document all
+  three sources and what each holds, but write the worked re-derivation procedure for the
+  civilisation mapping only, structured so another identifier can be added later without a rewrite.
+- Q: Which home should carry the source facts? → A: a new `docs/reference-data.md`, with
+  `docs/data-sources.md` linking to it, so the sources the providers actually call stay separate from
+  the material a human consults when the game changes. The judgment half goes to the
+  `aoe2-data-sources` skill either way.
+- Q: Should anything automatically detect that the mapping has gone stale? → A: yes, build it now — a
+  check that flags any civilisation id present in captured or stored match data that the mapping does
+  not name, reading only data this repository already holds.
 
 ## User Scenarios & Testing _(mandatory)_
 
@@ -99,6 +116,31 @@ the documented precedence rule alone.
 
 ---
 
+### User Story 4 - The mapping goes stale and says so itself (Priority: P2)
+
+An expansion ships. Matches arrive carrying an identifier the mapping does not name, and nothing
+announces it — the product simply shows a number to whoever plays that civilisation first. The
+maintainer should learn this from the project's own reporting, not from a player.
+
+**Why this priority**: it shares P2 with the rename because both are about silent wrongness rather
+than visible breakage, and it is what makes the other three stories fire at the right moment instead
+of whenever someone next looks. Story 1 tells a maintainer what to do; this one tells them when.
+
+**Independent Test**: seed match data carrying an identifier outside the mapping and confirm the
+check reports it, naming the identifier and how often it appears; then remove it and confirm the
+check goes quiet.
+
+**Acceptance Scenarios**:
+
+1. **Given** stored match data carrying an unnamed identifier, **When** the check runs, **Then** it
+   reports that identifier where a human will see it.
+2. **Given** every identifier in the data is named, **When** the check runs, **Then** it passes
+   without noise, so a report always means something.
+3. **Given** no match data at all, **When** the check runs, **Then** it does not report success on
+   the strength of having examined nothing.
+
+---
+
 ### Edge Cases
 
 - A source is deleted, archived, or stops being maintained. The documentation must still say what it
@@ -111,6 +153,11 @@ the documented precedence rule alone.
   the gap, not to interpolate across it.
 - A source states a fact that contradicts this repository's own captured responses. Captured
   evidence from the live source wins over any third-party restatement of it.
+- An identifier appears that will never be nameable — a mod, a test value, or a civilisation the
+  sources do not cover. The check must be able to be told that an identifier is known-unnameable, or
+  it becomes a standing false alarm that a maintainer learns to ignore, which is worse than silence.
+- The mapping is extended but the check is not re-run, so a report persists after the work is done.
+  A report is a statement about the data as it stands, never a ticket someone has to close by hand.
 
 ## Requirements _(mandatory)_
 
@@ -145,6 +192,17 @@ the documented precedence rule alone.
 - **FR-012**: Documentation MUST record that these sources are reference material consulted by a
   maintainer, distinguishing them from the runtime data sources the product actually calls, so the
   two are not confused by a reader skimming for endpoints.
+- **FR-013**: A check MUST detect any civilisation identifier present in the match data this
+  repository holds that the mapping cannot name, and report it where a human will see it, through the
+  same mechanism by which this project already surfaces problems rather than a new one.
+- **FR-014**: That check MUST read only data this repository already holds. It may not contact any
+  reference source, nor any live service, at any time.
+- **FR-015**: That check MUST distinguish "every identifier is named" from "there was nothing to
+  examine", and MUST NOT report success for the second. An empty pass is the failure this project has
+  already met more than once.
+- **FR-016**: That check MUST allow an identifier to be recorded as deliberately unnameable, so that
+  a value no source will ever cover does not become a permanent alarm that trains a maintainer to
+  ignore it.
 
 ### Key Entities
 
@@ -174,6 +232,10 @@ the documented precedence rule alone.
   documentation alone, without reopening the question.
 - **SC-006**: The repository's own checks continue to pass with no new network access introduced,
   demonstrating this feature added reference material and no runtime dependency.
+- **SC-007**: An identifier that the mapping cannot name is reported the first time the check runs
+  after the data containing it arrives, rather than when a person next inspects the product.
+- **SC-008**: The check produces no report when every identifier is named, so that any report it does
+  produce is worth reading.
 
 ## Assumptions
 
@@ -190,4 +252,10 @@ the documented precedence rule alone.
 - Feature 001's civilisation table is correct as it stands. This feature records how it was obtained
   and how to extend it; it does not revisit its contents.
 - Extending the mapping when the game next changes is out of scope. This feature makes that work
-  possible and cheap, it does not perform it in advance for civilisations that do not yet exist.
+  possible and cheap, and makes its need visible, but it does not perform it in advance for
+  civilisations that do not yet exist.
+- The worked procedure covers the civilisation mapping only. The other reference data these
+  repositories hold — the pro-player registry, teams, maps, the endpoint catalogue — is recorded as
+  existing and as what each source is good for, without a procedure of its own, because nothing in
+  this product consumes it yet and `docs/` may only carry what is true today. The documentation is
+  shaped so a second identifier can be added beside the first rather than requiring a rewrite.
