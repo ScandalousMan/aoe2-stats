@@ -151,6 +151,12 @@ source = { editable = "packages/core" }
 name = "aoe2stats-ingester"
 version = "0.1.0"
 source = { editable = "apps/ingester" }
+dependencies = [
+    { name = "aoe2stats-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aoe2stats-core", editable = "packages/core" }]
 
 [[package]]
 name = "aoe2stats-providers"

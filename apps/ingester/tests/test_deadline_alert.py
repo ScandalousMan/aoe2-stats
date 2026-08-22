@@ -35,10 +35,16 @@ future T059/T059a implementation that makes importing `run.py` pull in modules t
 yet either, and consistent rather than a special case for the one file in the batch whose target
 module happens to predate its target behaviour.
 
-Wrapped in `xfail(strict=True, reason="T059a not implemented yet")` per this project's test-first
-convention (CLAUDE.md): every assertion below runs for real against the real throwaway database,
-and today's `run_once` — `DEFAULT_STAGES` is still empty and T059/T059a have not landed — writes no
-`ingest_runs` row and raises no alert at all, so the failure is real, not a stale marker.
+Every assertion below runs for real against the real throwaway database. This file previously
+wrapped its three tests in `xfail(strict=True, reason="T059a not implemented yet")` per this
+project's test-first convention (CLAUDE.md), except for
+`test_deadline_breach_is_not_raised_for_stored_unavailable_or_quarantined_captures`, which was
+`strict=False`: that one assertion is an absence (`alerts == []`), and T059 alone (landing
+`run_once(..., session_factory=...)` and the `ingest_runs` row lifecycle, but deliberately not
+T059a's alert itself) already made it trivially true, so `strict=True` would have XPASSed before
+T059a existed to give it any meaning. Now that T059a (this module's `_raise_deadline_breach_alert`)
+lands, all three markers are gone: `run_once` raises the real alert, and every assertion here checks
+something that would actually fail if that behaviour regressed.
 """
 
 from __future__ import annotations
@@ -46,7 +52,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -139,7 +144,6 @@ async def _deadline_breach_alerts(session_factory: async_sessionmaker) -> list[A
         return list(result.scalars().all())
 
 
-@pytest.mark.xfail(strict=True, reason="T059a not implemented yet")
 async def test_deadline_breach_produces_one_row_carrying_every_offending_capture_id(
     session_factory: async_sessionmaker,
     clean_database: None,
@@ -201,19 +205,6 @@ async def test_deadline_breach_produces_one_row_carrying_every_offending_capture
     )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "T059a not implemented yet. Unlike this file's other two xfails, this one asserts an "
-        "absence (`alerts == []`), which T059 (landing `run_once(..., session_factory=...)` and "
-        "the `ingest_runs` row lifecycle, but deliberately not T059a's alert itself) already makes "
-        "trivially true: nothing raises any `deadline_breach` yet, for any input, so `strict=True` "
-        "would XPASS the moment `run_once` merely stopped erroring on `session_factory=` and "
-        "`stages=()` — before T059a exists to make the assertion mean anything. `strict=False` "
-        "keeps this running for real against the real database rather than skipping it; restore "
-        "`strict=True` once T059a lands, at which point this assertion becomes meaningful again."
-    ),
-)
 async def test_deadline_breach_is_not_raised_for_stored_unavailable_or_quarantined_captures(
     session_factory: async_sessionmaker,
     clean_database: None,
@@ -248,7 +239,6 @@ async def test_deadline_breach_is_not_raised_for_stored_unavailable_or_quarantin
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T059a not implemented yet")
 async def test_deadline_breach_fires_at_the_capture_deadline_and_not_before(
     session_factory: async_sessionmaker,
     clean_database: None,

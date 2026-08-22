@@ -82,8 +82,10 @@ from typing import Any, Protocol, runtime_checkable
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_core.alerting import AlertRecord, raise_alert
 from aoe2stats_ingester.budget import Budget
-from aoe2stats_storage.models import IngestRun, Match, ReplayCapture
+from aoe2stats_storage.models import Alert as AlertRow
+from aoe2stats_storage.models import CaptureStatus, IngestRun, Match, ReplayCapture
 from aoe2stats_storage.repositories.base import build_engine, build_session_factory
 
 
@@ -286,6 +288,133 @@ async def _close_ingest_run(
         await session.commit()
 
 
+#: `alerts.kind` for T059a's aggregate sweep (`AlertKind.DEADLINE_BREACH` in
+#: `packages/storage/src/aoe2stats_storage/models.py`), named as a plain string for the same reason
+#: `capture.py`'s own alert-kind constants are: `AlertSink.write` (`aoe2stats_core.alerting`) takes
+#: a plain `str`, so nothing here needs to import the enum merely to spell one of its members.
+_DEADLINE_BREACH_ALERT_KIND = "deadline_breach"
+
+#: Severity 1, never 2: `deadline_breach` is the second of the two kinds meaning a replay is gone or
+#: is about to be (constitution I) — see this module's own docstring and `capture.py`'s
+#: `EXPIRED_CAPTURE_ALERT_SEVERITY` for the sibling alert this one is deliberately not the same as.
+_DEADLINE_BREACH_ALERT_SEVERITY = 1
+
+#: `replay_captures.status` values a capture is already resolved under — `deadline_breach` must
+#: never fire for one of these, however far past its own `capture_deadline_at` it now sits (FR-025,
+#: T059a's own task text: "neither `stored`, `unavailable` nor `quarantined`").
+_DEADLINE_BREACH_EXCLUDED_STATUSES = (
+    CaptureStatus.STORED,
+    CaptureStatus.UNAVAILABLE,
+    CaptureStatus.QUARANTINED,
+)
+
+
+class _AlertSink:
+    """The `AlertSink` (`aoe2stats_core.alerting`) this module's own `raise_alert` call writes
+    through — structurally identical to `capture.py`'s own `_DatabaseAlertSink`, and deliberately
+    not imported from there: `capture.py` also imports `aoe2stats_providers` at module scope for
+    its `ReplayProvider` Protocol, a dependency this module has no other reason to carry and that
+    `api/cron/ingest.py`'s own module-scope `from aoe2stats_ingester.run import run_once` would
+    then drag into a plain `uv sync --no-dev` install (`tests/architecture/
+    test_deployment_install.py`, T014d). This class's only job is the same one line
+    `_DatabaseAlertSink.write` does — insert one `alerts` row through `session_factory` — so the
+    duplication is a handful of lines, not a second implementation of any real behaviour.
+    """
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def write(
+        self,
+        *,
+        kind: str,
+        severity: int,
+        detail: Mapping[str, Any] | None,
+        ingest_run_id: uuid.UUID | None,
+    ) -> AlertRecord:
+        row = AlertRow(
+            id=uuid.uuid4(),
+            kind=kind,
+            severity=severity,
+            detail=dict(detail) if detail is not None else None,
+            ingest_run_id=ingest_run_id,
+        )
+        async with self._session_factory() as session:
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return AlertRecord(
+                id=row.id,
+                kind=row.kind,
+                severity=row.severity,
+                detail=row.detail,
+                raised_at=row.raised_at,
+                ingest_run_id=row.ingest_run_id,
+                acknowledged_at=row.acknowledged_at,
+            )
+
+    async def unacknowledged_severity_one(self) -> list[AlertRecord]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AlertRow).where(AlertRow.severity == 1, AlertRow.acknowledged_at.is_(None))
+            )
+            rows = result.scalars().all()
+        return [
+            AlertRecord(
+                id=row.id,
+                kind=row.kind,
+                severity=row.severity,
+                detail=row.detail,
+                raised_at=row.raised_at,
+                ingest_run_id=row.ingest_run_id,
+                acknowledged_at=row.acknowledged_at,
+            )
+            for row in rows
+        ]
+
+
+async def _raise_deadline_breach_alert(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    run_id: uuid.UUID,
+    deadline_reference: datetime,
+) -> int:
+    """FR-025/T059a: one aggregate severity-1 `deadline_breach` row, carrying every offending
+    capture's id in `detail`, for every `replay_captures` row whose `capture_deadline_at` has
+    already passed `deadline_reference` and whose `status` is none of
+    `_DEADLINE_BREACH_EXCLUDED_STATUSES` — never one row per capture, which would bury the alert a
+    backlog is supposed to surface (see the module docstring's T059a paragraph).
+
+    This fires at the internal 21-day `capture_deadline_at`, not at the source's own ~31-day
+    retention expiry `capture.py`'s `_classify_not_found` (T056) already raises `expired_capture`
+    against — a different kind, at a different time, with roughly ten days still left to act by the
+    time this one fires.
+
+    Returns `1` if the alert was raised, `0` if there was nothing to raise it for — the amount
+    `run_once` folds into its own still-open `ingest_runs` row's `alerts_raised`, never per capture.
+    """
+    async with session_factory() as session:
+        result = await session.execute(
+            select(ReplayCapture.id).where(
+                ReplayCapture.capture_deadline_at < deadline_reference,
+                ReplayCapture.status.not_in(_DEADLINE_BREACH_EXCLUDED_STATUSES),
+            )
+        )
+        offending_ids = [row[0] for row in result.all()]
+
+    if not offending_ids:
+        return 0
+
+    await raise_alert(
+        _AlertSink(session_factory),
+        _DEADLINE_BREACH_ALERT_KIND,
+        _DEADLINE_BREACH_ALERT_SEVERITY,
+        {"capture_ids": [str(capture_id) for capture_id in offending_ids]},
+        run_id=run_id,
+    )
+    return 1
+
+
 def _default_session_factory() -> async_sessionmaker[AsyncSession]:
     """`run_once`'s own database access when no caller supplies `session_factory` — see the module
     docstring's paragraph on why this is the one deliberate exception to reading a setting from the
@@ -383,6 +512,12 @@ async def run_once(
 
     finished_at = _now()
     counters = _aggregate_counters(stage_reports)
+    # T059a: the deadline sweep runs after the drain, against this same still-open row, so its
+    # alert (if any) carries a real `ingest_run_id` and is counted in that row's `alerts_raised` —
+    # see the module docstring's T059a paragraph and `_raise_deadline_breach_alert`'s own docstring.
+    counters["alerts_raised"] += await _raise_deadline_breach_alert(
+        resolved_session_factory, run_id=run_id, deadline_reference=finished_at
+    )
     capture_lag_p50_seconds, capture_lag_p95_seconds = await _capture_lag_seconds(
         resolved_session_factory, window_start=started_at, window_end=finished_at
     )
