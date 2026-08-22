@@ -190,18 +190,14 @@ export function matchesQueryOptions(profileId: number, cursor: string | null = n
   })
 }
 
-// --- GET /api/matches/{game_id} (T076) ------------------------------------------------------
+// --- GET /api/matches/{game_id} (T076, T070e) ------------------------------------------------
 //
 // `apps/api/.../routers/matches.py`'s `_match_detail_json`: every field name here is again
 // verbatim off the wire, snake_case, the same convention this module already documents above for
-// `GET /api/matches`. **Not** included: `capture_status` / `capture_deadline_at`. `list_matches`
-// (T070) carries both per row, but `get_match_detail` (`packages/storage`'s
-// `MatchesRepository`) and `_match_detail_json` never compute or return either one — confirmed
-// against the router source and `apps/api/tests/test_match_detail.py`, which asserts nothing
-// about capture state at all. `mappers.ts`'s `toMatchDetailData` documents the consequence: this
-// route cannot populate `MatchDetailPanel`'s `captureStatus`/`captureDeadlineAt` props, so neither
-// `CaptureStateBadge` nor `DownloadAction` can render, until a remediation task extends
-// `_match_detail_json` to compute them the way T070c did for `civilisation_name`.
+// `GET /api/matches`. `capture_status` / `capture_deadline_at` are the same two fields
+// `ApiMatchListRow` carries above — `get_match_detail` (`packages/storage`'s
+// `MatchesRepository`) resolves both via the identical `LEFT OUTER JOIN` `list_matches` already
+// uses (T070e), so this route and the list route answer with one vocabulary, not two.
 
 export interface ApiMatchParticipant {
   profile_id: number
@@ -225,6 +221,11 @@ export interface ApiMatchDetail {
   leaderboard_id: number
   duration_seconds: number | null
   participants: ApiMatchParticipant[]
+  /** `null` only for a match with no `replay_captures` row yet for any of the caller's linked
+   * profiles (`matches.py`'s `get_match_detail`, T070e) — every raw `CaptureStatus` value
+   * otherwise, unmodified: same shape and same rule as `ApiMatchListRow.capture_status` above. */
+  capture_status: string | null
+  capture_deadline_at: string | null
 }
 
 /** Thrown by `assertMatchDetailResponse` when `GET /api/matches/{game_id}`'s body does not match
@@ -305,6 +306,12 @@ export function assertMatchDetailResponse(payload: unknown): asserts payload is 
     throw new MatchDetailResponseShapeError('"participants" was not an array')
   }
   body.participants.forEach((participant, index) => assertMatchParticipant(participant, index))
+  if (!isNullableString(body.capture_status)) {
+    throw new MatchDetailResponseShapeError('"capture_status" was not string|null')
+  }
+  if (!isNullableString(body.capture_deadline_at)) {
+    throw new MatchDetailResponseShapeError('"capture_deadline_at" was not string|null')
+  }
 }
 
 /** `GET /api/matches/{game_id}` (`contracts/http-api.md`'s Matches table) — reachable through any

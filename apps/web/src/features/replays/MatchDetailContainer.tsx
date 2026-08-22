@@ -29,15 +29,6 @@ import { parseGameId } from './gameId'
 // /api/matches/{game_id}` is reachable through any of the caller's own linked profiles at once,
 // FR-043), only the header's own ratings display does, exactly as it does not on the list route
 // either.
-//
-// **The capture-status gap (see `features/matches/api.ts`'s note on `ApiMatchDetail` and
-// `mappers.ts`'s note on `toMatchDetailData`).** `GET /api/matches/{game_id}` carries no
-// `capture_status` / `capture_deadline_at` today, so `toMatchDetailData` always leaves both
-// `undefined`. `MatchDetailPanel` already handles that correctly on its own — no
-// `CaptureStateBadge`, no `DownloadAction` (its gate is `captureStatus === 'stored'`, which an
-// `undefined` value never satisfies) — so `handleDownload` below is wired for real and tested, but
-// is unreachable from this screen until a remediation task (mirroring T070c/T070d) extends
-// `_match_detail_json` to compute those two fields the way `list_matches` already does.
 
 export interface MatchDetailContainerProps {
   gameId: string
@@ -142,10 +133,8 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
 
   // --- Replay download (FR-028) ---------------------------------------------------------------
   //
-  // See this module's own header note: unreachable today (`MatchDetailPanel` never renders
-  // `DownloadAction` without a `captureStatus` of `"stored"`, and `toMatchDetailData` never
-  // supplies one), but wired for real so the one remaining piece — a `capture_status` field on
-  // this route's own API response — is all a later change needs to add.
+  // `MatchDetailPanel` renders `DownloadAction` exactly when `matchDetail.captureStatus ===
+  // 'stored'` (T070e: `toMatchDetailData` now carries the real value off the wire).
   const [downloadState, setDownloadState] = useState<DownloadActionState>('idle')
   const downloadResetTimeout = useRef<number | undefined>(undefined)
 

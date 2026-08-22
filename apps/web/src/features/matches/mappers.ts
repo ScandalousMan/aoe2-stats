@@ -110,11 +110,11 @@ export function toTeamGroups(participants: readonly ApiMatchParticipant[]): Team
 }
 
 /** `ApiMatchDetail` (`api.ts`) to `MatchDetailPanel`'s `MatchDetailData`. `captureStatus` and
- * `captureDeadlineAt` are deliberately left `undefined`, never guessed: `api.ts`'s own note above
- * `ApiMatchDetail` records why `GET /api/matches/{game_id}` carries neither field today. Left
- * `undefined`, `CaptureStateBadge` renders nothing (capture-state-badge.md §6 "empty") and
- * `MatchDetailPanel`'s `DownloadAction` gate (`captureStatus === 'stored'`) never fires — the
- * honest outcome for data this route does not have, not a fabricated one. */
+ * `captureDeadlineAt` travel through verbatim (T070e: `_match_detail_json` now computes both, the
+ * same way `_match_row_json` already did) — no collapse here either, `CaptureStateBadge` is where
+ * the seven raw `CaptureStatus` values become the badge's four states (capture-state-badge.md
+ * §3). This is what lets `MatchDetailPanel`'s `DownloadAction` gate (`captureStatus === 'stored'`)
+ * fire for real. */
 export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
   return {
     gameId: String(detail.game_id),
@@ -126,5 +126,7 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     // `completed_at` — always present — rather than showing nothing.
     playedAtLabel: formatPlayedAtAbsolute(detail.started_at ?? detail.completed_at),
     teams: toTeamGroups(detail.participants),
+    captureStatus: detail.capture_status,
+    captureDeadlineAt: detail.capture_deadline_at,
   }
 }

@@ -42,7 +42,10 @@ T073's note (quoted in `test_capture_visibility.py`), the collapse of `unavailab
 `failed` into the badge's single "lost" state, and of `pending` / `downloading` into "still
 catchable", belongs to the design-system component (T073/T074), never to this router. Every row
 below carries the raw `CaptureStatus` value verbatim, including all three statuses behind "lost"
-and `quarantined`, which FR-026 keeps out of both the archived and the lost columns.
+and `quarantined`, which FR-026 keeps out of both the archived and the lost columns — both
+`_match_row_json` and `_match_detail_json` carry the identical `capture_status`/
+`capture_deadline_at` pair (T070e, FR-027: per match, not only per list), so the client reads one
+vocabulary from either route rather than two.
 
 **Cursor validation.** `MatchesRepository._decode_cursor` raises `ValueError` for any cursor this
 repository did not itself issue — malformed, tampered, or built for a different shape — which this
@@ -210,6 +213,17 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
             }
             for participant in detail.participants
         ],
+        # T070e: the same two fields `_match_row_json` already carries, unmodified — every raw
+        # `CaptureStatus` value, the badge's collapse staying a front-end concern (module
+        # docstring, "Capture state travels to the client unmodified").
+        "capture_status": (
+            detail.capture_status.value if detail.capture_status is not None else None
+        ),
+        "capture_deadline_at": (
+            detail.capture_deadline_at.isoformat()
+            if detail.capture_deadline_at is not None
+            else None
+        ),
     }
 
 
@@ -256,7 +270,8 @@ async def get_match_detail(
     game_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
     """FR-011: every participant of `game_id`, with team, civilisation, result and rating change —
-    reachable through any of the caller's linked profiles, not only the primary one (FR-043)."""
+    reachable through any of the caller's linked profiles, not only the primary one (FR-043) —
+    plus FR-027's archival state and capture deadline for this match (T070e)."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     owner_profile_ids = await _owned_profile_ids(db_session, user_id=session_row.user_id)

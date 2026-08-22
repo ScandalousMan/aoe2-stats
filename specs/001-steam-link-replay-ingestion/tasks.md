@@ -392,7 +392,7 @@ arriving one phase later.
       opponents under that name. T063 asserts the row's fields and never seeds a team match, which
       is why this survived a test written to cover exactly this response — seed a 2v2
 
-- [ ] T070e Return the capture state from `GET /api/matches/{game_id}`, in
+- [x] T070e Return the capture state from `GET /api/matches/{game_id}`, in
       `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
       `apps/api/src/aoe2stats_api/routers/matches.py`, `apps/api/tests/test_match_detail.py` and
       `apps/web/src/features/matches/mappers.ts`. The detail route answers with no `capture_status`

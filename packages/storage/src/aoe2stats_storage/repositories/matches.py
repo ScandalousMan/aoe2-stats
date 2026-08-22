@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -148,7 +148,9 @@ class MatchParticipant:
 
 @dataclass(frozen=True, slots=True)
 class MatchDetail:
-    """The full answer to one `get_match_detail` call."""
+    """The full answer to one `get_match_detail` call — FR-027's capture state alongside FR-011's
+    participants, the same two fields `MatchListRow` already carries (T070e): the list and detail
+    routes answer with one vocabulary, not two."""
 
     game_id: int
     started_at: datetime | None
@@ -157,6 +159,11 @@ class MatchDetail:
     leaderboard_id: int
     duration_seconds: int | None
     participants: list[MatchParticipant]
+    #: `None` only for a match that has not yet acquired a `replay_captures` row for any of the
+    #: caller's own linked profiles (`MatchListRow`'s own note) — every raw `CaptureStatus`
+    #: otherwise, never collapsed (module docstring, "capture status travels intact").
+    capture_status: CaptureStatus | None = None
+    capture_deadline_at: datetime | None = None
 
 
 def _encode_cursor(completed_at: datetime, game_id: int) -> str:
@@ -179,6 +186,23 @@ def _decode_cursor(cursor: str) -> tuple[datetime, int]:
         return datetime.fromisoformat(completed_at_raw), int(game_id_raw)
     except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
         raise ValueError(f"invalid matches cursor: {cursor!r}") from exc
+
+
+def _pick_capture_state(
+    candidates: Iterable[tuple[CaptureStatus, datetime]],
+) -> tuple[CaptureStatus | None, datetime | None]:
+    """`get_match_detail`'s own note: among the caller's own `replay_captures` rows for one match
+    (ordinarily exactly one), prefer `stored` — the one status `replays.py`'s own
+    `_stored_capture_for_caller` looks for — so this route's badge and the download control it
+    gates never disagree. `(None, None)` for no candidates at all, the same "not yet acquired a
+    capture row" case `MatchListRow` already leaves unfilled."""
+    best: tuple[CaptureStatus, datetime] | None = None
+    for status, deadline in candidates:
+        if best is None or (status is CaptureStatus.STORED and best[0] is not CaptureStatus.STORED):
+            best = (status, deadline)
+    if best is None:
+        return None, None
+    return best
 
 
 class MatchesRepository(Repository):
@@ -342,6 +366,20 @@ class MatchesRepository(Repository):
         controls, FR-043) took part. Returns `None` for both "no such match" and "a real match none
         of the caller's profiles played" (module docstring) — the single signal FR-038/T067
         requires the router to turn into one identical `not_found`, whatever the underlying cause.
+
+        FR-027 (T070e): also resolves the caller's own capture state for this match, the same
+        field pair `list_matches` already carries — via the identical `LEFT OUTER JOIN` (class
+        docstring), joined into this same participants query rather than a second, `None`-
+        swallowing path, so a match discovered before its capture row exists still resolves rather
+        than 404ing. `replay_captures` is keyed `(game_id, profile_id)` (`ReplayCapture`'s own
+        docstring: "whose point of view"), and this route names no single `profile_id`, so the join
+        condition matches on every id in `owner_ids` at once — ordinarily exactly one, since a
+        capture row only exists for a profile that actually discovered this match through its own
+        history. The one caller-owned row that carries a non-`None` status among the joined
+        participant rows is the caller's own capture state; `stored` wins should more than one
+        exist, since that is also the exact row `replays.py`'s `_stored_capture_for_caller` would
+        find for this caller and this `game_id` — the badge shown here and the control it gates
+        never disagree.
         """
         owner_ids = set(owner_profile_ids)
         if not owner_ids:
@@ -352,12 +390,25 @@ class MatchesRepository(Repository):
             return None
 
         result = await self.session.execute(
-            select(MatchPlayer, AoeProfile.alias)
+            select(
+                MatchPlayer,
+                AoeProfile.alias,
+                ReplayCapture.status,
+                ReplayCapture.capture_deadline_at,
+            )
             .join(AoeProfile, AoeProfile.profile_id == MatchPlayer.profile_id)
+            .outerjoin(
+                ReplayCapture,
+                and_(
+                    ReplayCapture.game_id == MatchPlayer.game_id,
+                    ReplayCapture.profile_id == MatchPlayer.profile_id,
+                    MatchPlayer.profile_id.in_(owner_ids),
+                ),
+            )
             .where(MatchPlayer.game_id == game_id)
         )
         rows = result.all()
-        if not any(player.profile_id in owner_ids for player, _alias in rows):
+        if not any(player.profile_id in owner_ids for player, _alias, _status, _deadline in rows):
             return None
 
         participants = [
@@ -371,8 +422,12 @@ class MatchesRepository(Repository):
                 rating=player.rating,
                 rating_diff=player.rating_diff,
             )
-            for player, alias in rows
+            for player, alias, _status, _deadline in rows
         ]
+
+        capture_status, capture_deadline_at = _pick_capture_state(
+            (status, deadline) for _player, _alias, status, deadline in rows if status is not None
+        )
 
         return MatchDetail(
             game_id=match.game_id,
@@ -382,4 +437,6 @@ class MatchesRepository(Repository):
             leaderboard_id=match.leaderboard_id,
             duration_seconds=match.duration_seconds,
             participants=participants,
+            capture_status=capture_status,
+            capture_deadline_at=capture_deadline_at,
         )

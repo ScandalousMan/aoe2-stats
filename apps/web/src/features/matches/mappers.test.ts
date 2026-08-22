@@ -156,6 +156,8 @@ function detail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
       participant({ profile_id: 1, team_id: 1, alias: 'Me', result: 'win', rating_diff: 12 }),
       participant({ profile_id: 2, team_id: 2, alias: 'Rival', result: 'loss', rating_diff: -12 }),
     ],
+    capture_status: 'stored',
+    capture_deadline_at: '2026-09-12T10:34:00Z',
     ...overrides,
   }
 }
@@ -273,10 +275,25 @@ describe('toMatchDetailData', () => {
     expect(result.playedAtLabel).not.toHaveLength(0)
   })
 
-  it('never populates captureStatus or captureDeadlineAt — GET /api/matches/{game_id} sends neither', () => {
-    const result = toMatchDetailData(detail())
-    expect(result.captureStatus).toBeUndefined()
-    expect(result.captureDeadlineAt).toBeUndefined()
+  it('carries captureStatus and captureDeadlineAt verbatim off the wire (T070e)', () => {
+    const result = toMatchDetailData(
+      detail({ capture_status: 'stored', capture_deadline_at: '2026-09-12T10:34:00Z' }),
+    )
+    expect(result.captureStatus).toBe('stored')
+    expect(result.captureDeadlineAt).toBe('2026-09-12T10:34:00Z')
+  })
+
+  it('never collapses capture_status — every raw CaptureStatus value passes through unmodified', () => {
+    // The badge's four-state collapse belongs to CaptureStateBadge, never this mapper
+    // (capture-state-badge.md §3, mirrored from `toMatchRowData`'s identical rule).
+    const result = toMatchDetailData(detail({ capture_status: 'quarantined' }))
+    expect(result.captureStatus).toBe('quarantined')
+  })
+
+  it('carries capture_status/capture_deadline_at as null for a match with no capture row', () => {
+    const result = toMatchDetailData(detail({ capture_status: null, capture_deadline_at: null }))
+    expect(result.captureStatus).toBeNull()
+    expect(result.captureDeadlineAt).toBeNull()
   })
 
   it('carries every participant, grouped by team, with none dropped or duplicated', () => {

@@ -95,6 +95,8 @@ function validDetail() {
     leaderboard_id: 3,
     duration_seconds: 2040,
     participants: [validParticipant()],
+    capture_status: 'stored',
+    capture_deadline_at: '2026-09-12T10:34:00Z',
   }
 }
 
@@ -138,6 +140,26 @@ describe('assertMatchDetailResponse', () => {
   it('rejects a participant with a non-nullable-number team_id', () => {
     const body = validDetail()
     body.participants = [{ ...validParticipant(), team_id: 'two' as unknown as number }]
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('accepts a null capture_status and capture_deadline_at (T070e: no capture row yet)', () => {
+    expect(() =>
+      assertMatchDetailResponse({
+        ...validDetail(),
+        capture_status: null,
+        capture_deadline_at: null,
+      }),
+    ).not.toThrow()
+  })
+
+  it('rejects a non-string, non-null capture_status', () => {
+    const body = { ...validDetail(), capture_status: 42 }
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a non-string, non-null capture_deadline_at', () => {
+    const body = { ...validDetail(), capture_deadline_at: 42 }
     expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
   })
 })

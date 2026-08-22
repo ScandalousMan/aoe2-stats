@@ -53,9 +53,12 @@ from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
     AoeProfile,
+    CaptureSource,
+    CaptureStatus,
     Match,
     MatchPlayer,
     ProfileLink,
+    ReplayCapture,
     SteamIdentity,
     User,
 )
@@ -201,6 +204,28 @@ async def _seed_match_player(
             result=result,
             rating=rating,
             rating_diff=rating_diff,
+        )
+    )
+
+
+async def _seed_capture(
+    db_session: AsyncSession,
+    *,
+    game_id: int = _GAME_ID,
+    profile_id: int,
+    status: CaptureStatus = CaptureStatus.STORED,
+    capture_deadline_at: datetime,
+) -> None:
+    """Mirrors `test_matches_list.py`'s own `_seed_capture` — one `replay_captures` row, whose
+    point of view is `profile_id` (`ReplayCapture`'s own docstring)."""
+    db_session.add(
+        ReplayCapture(
+            game_id=game_id,
+            profile_id=profile_id,
+            status=status,
+            capture_deadline_at=capture_deadline_at,
+            first_seen_at=capture_deadline_at - timedelta(days=21),
+            source=CaptureSource.AUTOMATIC,
         )
     )
 
@@ -459,3 +484,98 @@ async def test_match_detail_reachable_via_a_non_primary_linked_profile(
     assert response.status_code == 200
     by_profile = _participants_by_profile_id(response.json())
     assert set(by_profile) == {_SECONDARY_PROFILE_ID, _OPPONENT_PROFILE_ID}
+
+
+async def test_match_detail_reports_a_stored_capture(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T070e: `GET /api/matches/{game_id}` carries `capture_status`/`capture_deadline_at`, the
+    same two fields the list route already carries (`test_matches_list.py`) — and this is the
+    precondition `DownloadAction` gates the download control on (`mappers.ts`'s
+    `toMatchDetailData`, `CaptureStateBadge`): a `stored` capture for the match must be reported as
+    `stored` on *this* route, not only on the list, or the control's gate never fires."""
+    caller = await _seed_linked_caller(db_session)
+    await _sign_in(client, db_session, caller)
+
+    await _seed_profile(db_session, profile_id=_OPPONENT_PROFILE_ID, alias="OpponentAlias")
+    completed_at = datetime.now(UTC)
+    await _seed_match(db_session, completed_at=completed_at)
+    await _seed_match_player(
+        db_session,
+        profile_id=_CALLER_PROFILE_ID,
+        team_id=1,
+        civ_id=1,
+        color_id=1,
+        result="win",
+        rating=1500,
+        rating_diff=18,
+    )
+    await _seed_match_player(
+        db_session,
+        profile_id=_OPPONENT_PROFILE_ID,
+        team_id=2,
+        civ_id=2,
+        color_id=2,
+        result="loss",
+        rating=1480,
+        rating_diff=-18,
+    )
+    deadline = completed_at + timedelta(days=21)
+    await _seed_capture(
+        db_session,
+        profile_id=_CALLER_PROFILE_ID,
+        status=CaptureStatus.STORED,
+        capture_deadline_at=deadline,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{_GAME_ID}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["capture_status"] == CaptureStatus.STORED.value
+    assert body["capture_deadline_at"] == deadline.isoformat()
+
+
+async def test_match_detail_with_no_capture_row_still_resolves(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """A match that has not yet acquired a `replay_captures` row (discovery has not run, or has
+    not reached this match yet) must still answer `200` with every participant — `None` for both
+    capture fields, never a `404`: `MatchesRepository.get_match_detail`'s own `LEFT OUTER JOIN`
+    (mirroring `list_matches`) is what keeps a missing capture row from being mistaken for a
+    missing match."""
+    caller = await _seed_linked_caller(db_session)
+    await _sign_in(client, db_session, caller)
+
+    await _seed_profile(db_session, profile_id=_OPPONENT_PROFILE_ID, alias="OpponentAlias")
+    await _seed_match(db_session)
+    await _seed_match_player(
+        db_session,
+        profile_id=_CALLER_PROFILE_ID,
+        team_id=1,
+        civ_id=1,
+        color_id=1,
+        result="win",
+        rating=1500,
+        rating_diff=18,
+    )
+    await _seed_match_player(
+        db_session,
+        profile_id=_OPPONENT_PROFILE_ID,
+        team_id=2,
+        civ_id=2,
+        color_id=2,
+        result="loss",
+        rating=1480,
+        rating_diff=-18,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{_GAME_ID}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["capture_status"] is None
+    assert body["capture_deadline_at"] is None
+    assert set(_participants_by_profile_id(body)) == {_CALLER_PROFILE_ID, _OPPONENT_PROFILE_ID}
