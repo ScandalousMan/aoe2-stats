@@ -125,13 +125,27 @@ the rest of the account untouched and still answers 200.
 
 | Method        | Path               | Auth                                 | Notes                                                                                                                                                                                |
 | ------------- | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`         | `/api/health`      | none                                 | Liveness plus database and object-store reachability                                                                                                                                 |
+| `GET`         | `/api/health`      | none                                 | Liveness plus database and object-store reachability, **and schema currency** (2026-08-23, 003 T394)                                                                                  |
 | `GET`, `POST` | `/api/cron/ingest` | `Authorization: Bearer $CRON_SECRET` | Runs one cycle. **401 without a valid, non-empty secret** (constitution VIII — an unset `CRON_SECRET` refuses outright rather than matching an empty bearer). Returns the run report |
 
 A failing `/api/health` names, in `detail`, which dependency broke and why — `error_class` for a
 database or object-store probe (the exception class, or a `ClientError`'s S3 error code such as
 `SignatureDoesNotMatch`), `missing_or_invalid_keys` when `Settings` itself could not be built —
 never the value behind either (T014e, and the `detail` rule above).
+
+**Amended 2026-08-23 (003 T390, T394)**, after an outage in which every `/api/*` route answered a
+bare `internal_error` 500 for a day. Two additions, both to this route's contract and one of them
+to every route's:
+
+- `configuration_invalid` with `missing_or_invalid_keys` is no longer this route's alone. Every
+  route answers it, from a single handler in `app.py`, because `Settings` fails while FastAPI
+  resolves a route's dependencies and the route that fails is whichever one the caller asked for.
+- `/api/health` also answers **503 `schema_out_of_date`**, with `detail` naming `expected` (the
+  Alembic revision this build was compiled with) and `found` (the database's, or `null` when
+  nothing has ever been migrated). Distinct from `database_unavailable` on purpose: reachable and
+  correct are different claims, and only the second one tells an operator to run a migration. The
+  healthy 200 body gains `schema_revision` alongside `status`, `database` and `object_store`, so
+  the value is readable without provoking a failure.
 
 `/api/cron/ingest` returns 200 with a report even when individual captures failed. A non-200 means
 the cycle could not run at all. The distinction matters: the scheduler retries the second, and the

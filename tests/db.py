@@ -121,7 +121,11 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _alembic_config() -> Config:
+def alembic_config() -> Config:
+    """Public (T394): `apps/api/tests/test_schema_revision.py` builds the same `Config` to read
+    `infra/migrations`' head and hold `aoe2stats_storage.revision.EXPECTED_SCHEMA_REVISION`
+    against it. Two ways of locating one `alembic.ini` would be two answers to "which migrations",
+    which is the drift that test exists to catch."""
     root = _repo_root()
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "infra" / "migrations"))
@@ -140,7 +144,7 @@ def _migrate_to_head(database_url: str) -> None:
     previous = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = database_url
     try:
-        command.upgrade(_alembic_config(), "head")
+        command.upgrade(alembic_config(), "head")
     finally:
         if previous is None:
             os.environ.pop("DATABASE_URL", None)

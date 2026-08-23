@@ -36,6 +36,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aoe2stats_api.errors import APIError, error_response
 from aoe2stats_api.routers import auth, cron, health, matches, players, privacy, profiles, replays
+from aoe2stats_api.settings import ConfigurationError
 
 logger = logging.getLogger("aoe2stats_api")
 
@@ -149,6 +150,40 @@ def create_app() -> FastAPI:
             code="validation_error",
             message="The request could not be validated.",
             detail={"errors": exc.errors()},
+        )
+
+    @app.exception_handler(ConfigurationError)
+    async def _handle_configuration_error(request: Request, exc: ConfigurationError) -> object:
+        # T390. `Settings` fails to build while FastAPI resolves a route's dependencies —
+        # `SessionDep` and `ObjectStoreDep` each call `get_settings()` internally (`deps.py`),
+        # `SettingsDep` is that call — so this fires *before* any route body runs, for every
+        # route at once. Until this handler existed the only route that said which keys were
+        # wrong was `/api/health`, which resolves `Settings` inside its own `try` (T014e); every
+        # other route fell through to `_handle_unexpected_error` below and answered
+        # `internal_error` with an empty `detail`. That cost a production outage its diagnosis:
+        # `GET /api/me` answered 500 saying nothing while `/api/health` already held the answer,
+        # and nobody had reason to ask the second question after the first one.
+        #
+        # 503, not 500: the deployment cannot serve requests *as configured*, and an operator
+        # fixing the environment fixes it — the same status and the same `configuration_invalid`
+        # code `/api/health` has always used for this fault, so a caller sees one shape for one
+        # cause on every route.
+        #
+        # `exc.keys` is alias names only, never values (see `ConfigurationError`). Naming them in
+        # the response of an unauthenticated route is deliberate and matches `health.py`'s own
+        # reasoning: a key *name* is diagnosis the caller cannot already have, while the value
+        # behind it stays out of the response and out of this log line.
+        logger.error(
+            "Settings failed to build while handling %s %s: missing or invalid keys %s",
+            request.method,
+            request.url.path,
+            exc.keys,
+        )
+        return error_response(
+            status_code=503,
+            code="configuration_invalid",
+            message="The application configuration is invalid.",
+            detail={"missing_or_invalid_keys": exc.keys},
         )
 
     @app.exception_handler(Exception)

@@ -18,7 +18,7 @@ from functools import lru_cache
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 #: SQLAlchemy's dialect for `psycopg` 3, which supports async natively (see `packages/storage`'s
@@ -183,6 +183,53 @@ class Settings(BaseSettings):
     analysis_max_raw_bytes: int = Field(alias="ANALYSIS_MAX_RAW_BYTES")
 
 
+class ConfigurationError(Exception):
+    """`Settings` could not be built from the environment: the key names it could not resolve,
+    and nothing else.
+
+    **T390**, added 2026-08-23 after a production outage. Ten keys 003 declared
+    (`ANALYSIS_*`, `PLAYER_SEARCH_*`, `FAVOURITES_MAX_PER_USER`,
+    `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`) were never set on the deployment target, so
+    `Settings()` raised while FastAPI resolved `SessionDep`/`SettingsDep` — before any route
+    body ran — and every `/api/*` route answered a bare `internal_error` 500 with an empty
+    `detail`. The diagnosis existed on exactly one route, `/api/health`, which wraps its own
+    `Settings` resolution (T014e); `GET /api/me`, which is what a user actually hit, said
+    nothing at all.
+
+    Raising a type of this application's own is what lets `app.py` answer the *same*
+    `configuration_invalid` 503 on every route without widening that handler to
+    `pydantic.ValidationError` — which `parse_strict` (`packages/providers/base.py`) raises for
+    a drifted third-party payload, a fault that is not configuration and must not be reported
+    as configuration. `test_configuration_envelope.py` asserts both directions.
+
+    `keys` carries alias *names* only. The `ValidationError` it was derived from is chained as
+    `__cause__` and never rendered into a response or a log: `error["input"]` there holds every
+    field's value, secrets included (constitution VIII).
+    """
+
+    def __init__(self, keys: list[str]) -> None:
+        super().__init__(
+            "Settings could not be built from the environment; "
+            f"missing or invalid keys: {', '.join(keys) if keys else '(unattributed)'}"
+        )
+        self.keys = keys
+
+
+def missing_or_invalid_keys(exc: ValidationError) -> list[str]:
+    """Just the *names* a `Settings` build could not resolve, sorted and de-duplicated.
+
+    `error["loc"]` is the environment variable alias pydantic-settings validated against (e.g.
+    `S3_SECRET_ACCESS_KEY`), not the value — `error["input"]` is where the value would be, for
+    every field in `Settings` at once, secrets included, and is never read here.
+
+    Moved here from `routers/health.py` by T390: that route was the only caller while it was the
+    only place a `Settings` failure was named, and two implementations of this would be two
+    answers to "which keys are wrong" for one fault.
+    """
+    keys = {str(error["loc"][0]) for error in exc.errors() if error.get("loc")}
+    return sorted(keys)
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return the process-wide `Settings` instance, built once and cached.
@@ -191,5 +238,15 @@ def get_settings() -> Settings:
     validated instance for the lifetime of the process; nothing here re-reads the
     environment after the first call, which keeps configuration stable for the duration of
     one request, one ingest run, or one test session.
+
+    Raises `ConfigurationError`, never the underlying `pydantic.ValidationError` (T390). The
+    exception is not cached: `lru_cache` stores return values only, so a caller that fixes the
+    environment and calls again gets a fresh build attempt. Constructing `Settings()` directly —
+    which `test_settings.py` does throughout — still raises `ValidationError`, and that is the
+    boundary: this function is the application's entry point to configuration, the class is
+    pydantic's.
     """
-    return Settings()  # type: ignore[call-arg]  # values are supplied by the environment
+    try:
+        return Settings()  # type: ignore[call-arg]  # values are supplied by the environment
+    except ValidationError as exc:
+        raise ConfigurationError(missing_or_invalid_keys(exc)) from exc

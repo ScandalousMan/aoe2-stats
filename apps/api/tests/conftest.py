@@ -53,6 +53,7 @@ from aoe2stats_api.deps import get_object_store, get_session
 from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
+from aoe2stats_storage.revision import EXPECTED_SCHEMA_REVISION
 
 # Re-exported so ruff sees these names used: pytest discovers a fixture imported into a conftest
 # module exactly as if it had been defined here, which is the whole point of keeping their one
@@ -155,17 +156,56 @@ def environment(monkeypatch: pytest.MonkeyPatch, required_env: dict[str, str]) -
     get_settings.cache_clear()
 
 
+class _FakeScalars:
+    """The two-call tail — `.scalars().first()` — that `health.py`'s schema probe (T394) reads."""
+
+    def __init__(self, value: object) -> None:
+        self._value = value
+
+    def first(self) -> object:
+        return self._value
+
+
+class _FakeResult:
+    def __init__(self, value: object) -> None:
+        self._value = value
+
+    def scalars(self) -> _FakeScalars:
+        return _FakeScalars(self._value)
+
+
 class _FakeSession:
     """Stands in for `AsyncSession`: every route this harness fakes a session for only calls
     `execute`. `fails=True` raises the way a real outage would, for `test_health.py`'s checks;
-    every other caller takes the default and never sees the exception path."""
+    every other caller takes the default and never sees the exception path.
 
-    def __init__(self, *, fails: bool = False) -> None:
+    **T394.** `execute` used to return `None`, because no route this harness serves read a result
+    — `/api/health`'s database probe was `SELECT 1` and nothing looked at what came back. It now
+    also reads `alembic_version`, so the fake answers `schema_revision` (head, by default) for
+    that pair of statements and `None` for everything else, keeping every existing caller's
+    behaviour intact.
+
+    This fake agrees with the build by construction, which is deliberate and is why it proves
+    nothing about the schema: `test_schema_revision.py` owns that claim and asserts it against a
+    real database at a real revision. What this keeps true is `test_health.py`'s own subject —
+    the configuration guard, the two outage envelopes, and no configuration value in any of them.
+    """
+
+    def __init__(self, *, fails: bool = False, schema_revision: str | None = None) -> None:
         self._fails = fails
+        self._schema_revision = (
+            schema_revision if schema_revision is not None else EXPECTED_SCHEMA_REVISION
+        )
 
-    async def execute(self, _statement: object) -> None:
+    async def execute(self, statement: object) -> _FakeResult:
         if self._fails:
             raise RuntimeError("simulated database outage")
+        sql = str(statement)
+        if "to_regclass" in sql:
+            return _FakeResult("alembic_version" if self._schema_revision is not None else None)
+        if "version_num" in sql:
+            return _FakeResult(self._schema_revision)
+        return _FakeResult(None)
 
 
 class _FakeObjectStore:
