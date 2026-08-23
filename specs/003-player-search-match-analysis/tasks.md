@@ -1,0 +1,354 @@
+---
+description: 'Task list for player search, favourites and on-demand match analysis'
+---
+
+# Tasks: Player Search, Favourites and On-Demand Match Analysis
+
+**Input**: Design documents from `/specs/003-player-search-match-analysis/`
+
+**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
+[data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
+
+**Tests**: Included and mandatory. The twelve scenarios in [quickstart.md](./quickstart.md) are the
+source, and every test task names the scenario it encodes. A test task is done when the test exists
+**and fails for the right reason**, carrying `@pytest.mark.xfail(strict=True, reason="<id> not
+implemented yet")` with the module under test imported *inside* the test body; the implementing task
+removes the marker, which `strict=True` forces rather than merely permits.
+
+**Organization**: grouped by user story. US1, US2, US3 and US5 are independent of each other once the
+foundation is in. US4 depends on US2 for the page it lives on, and on a gate outside this feature —
+see below.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: can run in parallel — different files, no dependency on an incomplete task
+- **[Story]**: US1..US5, mapping to the user stories in [spec.md](./spec.md)
+- Every task names its exact file path
+
+## Path Conventions
+
+Per [plan.md](./plan.md): `api/`, `apps/{api,analyzer,web}/`,
+`packages/{core,providers,replay-engine,storage,design-system}/`, `infra/migrations/`,
+`scripts/checks/`, `docs/`, `tests/fixtures/replays/`.
+
+## Numbering starts at T301, deliberately
+
+001 reaches T108 and 002 runs T201 to T215. Ids resolve **across** features since T202, so they have
+to be unique across features. This feature's artifacts cite 001's T067, T090, T091, T092 and T070c by
+bare number, and 002's T210, because the judgment behind each is why a decision here went the way it
+did. A disjoint range costs nothing and removes the ambiguity permanently.
+
+## The gate that is not a task in this file
+
+**001's T090, T091 and T092 — export, erasure and the third-party objection route — land before
+Phase 7 (US4) retains its first third-party recording.** Decided 2026-08-23; `spec.md`'s Assumptions
+and [research.md](./research.md) R14 carry the reason. FR-033 creates a new category of personal data
+and constitution IX requires export and erasure from the MVP, so retaining a stranger's recording
+while no erasure route exists breaks the principle for the duration.
+
+They are not repeated here because they belong to another feature and duplicating them would make
+"who owed this" unanswerable. Phase 7 states the gate; T382 walks it.
+
+## Scenario coverage map
+
+| quickstart scenario | Story | Test task |
+| --- | --- | --- |
+| 1 — Search degrades honestly | US1 | T314, T317 |
+| 2 — Nothing leaks an account link | US1 | T312 |
+| 3 — A hidden profile stays hidden, source down included | US1 | T312, T314 |
+| 4 — Any player's profile and history | US1, US2 | T317, T326 |
+| 5 — The match page is complete at any age | US2 | T325, T335 |
+| 6 — Downloads, per point of view | US3 | T337, T344 |
+| 7 — The analysis runs once, and says what it found | US4 | T350, T358, T381 |
+| 8 — Everything that can go wrong with an analysis | US4 | T358 |
+| 9 — Capture always wins | US4 | T352, T381 |
+| 10 — Recomputation without the source | US4 | T358 |
+| 11 — Favourites, and what they must not cause | US5 | T367, T368 |
+| 12 — Data rights cover what this feature added | US4, US5 | T382 |
+
+---
+
+## Phase 1: Setup
+
+**Purpose**: the two things every later phase assumes exist.
+
+- [ ] T301 Add this feature's nine configuration keys to `.env.example` — valueless, each with the one-line comment saying what it governs — and read them in `apps/api/src/aoe2stats_api/settings.py`, extending `apps/api/tests/test_settings.py` with a case per key: `FAVOURITES_MAX_PER_USER`, `PLAYER_SEARCH_CACHE_TTL_SECONDS`, `PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE`, `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`, `ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY`, `ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY`, `ANALYSIS_RETENTION_CAP_BYTES`, `ANALYSIS_RUN_BUDGET_SECONDS`, `ANALYSIS_LEASE_SECONDS`. No key restates a measurement — the retention window, the capture budget and the replay sizes stay in `docs/data-sources.md`, and `obtainable_until` is derived from them (FR-024). **Until this task lands, `scripts/checks/spec_lint.py` reports nine `env-declared` failures for this feature and that is the expected state, not a defect**: the artifacts name the keys and `.env.example` does not carry them yet. This is the one task that closes all nine, so it goes first
+- [ ] T302 Create the `apps/analyzer` workspace member: `apps/analyzer/pyproject.toml` modelled on `apps/ingester/pyproject.toml`, an empty `apps/analyzer/src/aoe2stats_analyzer/__init__.py`, an `apps/analyzer/tests/` directory, registration in the root `pyproject.toml` workspace members and `uv.lock` refreshed. **Declare `aoe2stats-replay-engine` as a dependency here and nowhere else in `apps/`** — constitution V wants the engine loadable by exactly one application, and the dependency graph is the only place that can be enforced rather than intended. No logic in this task
+
+---
+
+## Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: the schema, the two mechanisms every route needs, and the one existing test that this
+feature's first route would otherwise turn red for a reason the test is right about.
+
+**⚠️ CRITICAL**: no user story work begins until this phase is complete.
+
+- [ ] T303 [P] Write the model tests for this feature's schema in `packages/storage/tests/test_models.py`, each `@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")`, importing the models inside the test body: `favourites` idempotent under its composite primary key; `profile_search_cache` keyed on the normalised query; `match_analyses` unique on `game_id` **and asserted to reject a second row for the same match**, which is the whole of FR-031 and FR-038; `retained_recordings` unique on `(game_id, profile_id)`; `rate_limit_counters` on its three-column key; `aoe_profiles.hidden_observed_at` and `alias_observed_at`; and `replay_access_log`'s check constraint accepting exactly one of `replay_capture_id` / `retained_recording_id` and **rejecting both-set and neither-set**. The constraint's two negative cases are the task: a nullable pair without them is a row that can mean nothing, and an access log whose rows can mean nothing reads as evidence while being none
+- [ ] T304 Add the five new models and the two widened ones to `packages/storage/src/aoe2stats_storage/models.py` per [data-model.md](./data-model.md), and remove T303's markers. Add `analysis_cap_reached` to `AlertKind` (severity 2) and nothing else — a per-match parse failure is an expected outcome of R3's memory bound, not an incident, and must not become an alert kind
+- [ ] T305 Write the single Alembic migration in `infra/migrations/` for everything T304 added, and confirm `uv run alembic check` reports no drift. One migration, not five: [data-model.md](./data-model.md) says so, and a partially-applied schema is the one state none of the later phases can recover from
+- [ ] T306 [P] Write the fixed-window rate-limit tests in `apps/api/tests/test_rate_limits.py`, `xfail(strict=True, reason="T307 not implemented yet")`: a counter increments per `(user_id, bucket, window)`, a window boundary resets it, exceeding the bound returns the remaining seconds, and two users never share a window. Add the case that matters on this platform: **two separate calls with no shared process still see the same count**, because an in-memory counter would pass every other assertion here and count nothing in production (R10)
+- [ ] T307 Implement `apps/api/src/aoe2stats_api/ratelimit.py` — fixed windows, upsert-incremented, rows older than the longest window pruned opportunistically on write so the table stays bounded without a job (FR-044) — and remove T306's markers
+- [ ] T308 [P] Write the response-header tests in `apps/api/tests/test_no_index_headers.py`, `xfail(strict=True, reason="T309 not implemented yet")`: every route this feature adds answers `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private`, and 001's existing routes are unchanged. Parameterise over the route table rather than listing routes by hand, so a route added later without the header fails this test instead of quietly shipping
+- [ ] T309 Implement the header middleware in `apps/api/src/aoe2stats_api/app.py` and remove T308's markers. It is middleware and not a per-route decorator for the reason T308 tests: FR-010 must hold for the route somebody forgets
+- [ ] T310 Rewrite `apps/api/tests/test_no_public_directory.py` against FR-008a, and record in its docstring what replaced the old reading and why. 001's FR-038 said no endpoint returns an arbitrary profile's history; this feature supersedes it and narrows it to constitution IX's actual line — never *publicly indexed*. **Keep live** the assertions that survive: `GET /api/matches?profile_id=` and `GET /api/profiles/{profile_id}/ratings` stay owner-scoped, because `/api/profiles/*` means "mine" and `/api/players/*` means "anyone" — that split is what keeps the blast radius to one route. **Replace** the `/api/matches/{game_id}` assertion with the four properties from [contracts/http-api.md](./contracts/http-api.md): no anonymous reach, no indexing, no account-link disclosure on any profile (FR-009, 001 FR-045), ownership still deciding a user's own archived replay. The new assertions carry `xfail(strict=True)` naming T319, T328 and T339. Never delete this file — it is the only executable statement of a constitutional property, and a decision that retires a rule has to leave its reason where the next reader will find it
+
+**Checkpoint**: schema, rate limits, headers and the superseded-rule test are in. Stories can start.
+
+---
+
+## Phase 3: User Story 1 — Find any player and see where they stand (Priority: P1) 🎯 MVP
+
+**Goal**: type a name, pick a player, land on their profile with their standing on every ladder.
+
+**Independent Test**: search a known active player by name, open the top result, and confirm the
+ratings match the official leaderboard for that player.
+
+### Tests and fixtures for User Story 1
+
+- [ ] T311 [P] [US1] Freeze a real search response as a fixture in `packages/providers/fixtures/companion_profiles_search.json`, captured from `GET https://data.aoe2companion.com/api/profiles?search=` for a common substring. **Keep `steamId`, `shared` and `sharedHistory` in the fixture exactly as the source sends them** — T312 asserts they never come out the other side, and a sanitised fixture would make that test pass while proving nothing. Add a second fixture for a hidden profile, and a third for an empty result
+- [ ] T312 [P] [US1] Write the provider tests in `packages/providers/tests/test_companion.py`, `xfail(strict=True, reason="T313 not implemented yet")`, encoding quickstart scenarios 2 and 3: `search_players` returns only the five contract fields; the account-linking fields are absent from the returned objects **and from the dataclass definition itself**, asserted by field introspection so a later refactor that adds one fails here (FR-004b); a hidden record is dropped and reported (FR-004c); a 403, a 5xx and a malformed body each yield an empty page and **never raise** (FR-003's precondition); and the circuit breaker is the same instance `enrich_matches` uses, asserted by tripping it through one method and observing the other
+- [ ] T313 [US1] Implement `search_players` plus `PlayerSearchResult` and `PlayerSearchPage` per [contracts/providers.md](./contracts/providers.md), in `packages/providers/src/aoe2stats_providers/companion/provider.py` and `packages/providers/src/aoe2stats_providers/base.py`, and remove T312's markers. Reuse the existing token bucket and breaker rather than adding new ones — two breakers would each see half the failures and neither would trip
+- [ ] T314 [P] [US1] Write the search-service tests in `apps/api/tests/test_player_search.py`, `xfail(strict=True, reason="T315/T316 not implemented yet")`, encoding quickstart scenarios 1 and 3: a repeated query hits the cache and produces one `provider_calls` row, not two (FR-004e); query normalisation collapses case, whitespace and Unicode form; with the source unavailable the fallback searches `aoe_profiles` and returns `degraded: true` (FR-004d); the fallback orders most-played first, like the source does; and **a profile with `hidden_observed_at` set is absent from the fallback too** — the case a fallback written without that column gets wrong, and the one where a person's request not to be listed quietly stops being honoured
+- [ ] T315 [US1] Implement the search service in `apps/api/src/aoe2stats_api/search.py`: query normalisation, `profile_search_cache` read and write with the configured TTL, and the `degraded` signal derived from the provider's breaker state rather than from an exception
+- [ ] T316 [US1] Implement the local fallback over `aoe_profiles` in the same module, honouring `hidden_observed_at`, and remove T314's markers. It introduces no source and no request — `aoe_profiles` already holds every participant of every match this service has seen, populated by 001's discovery
+- [ ] T317 [P] [US1] Write the route tests in `apps/api/tests/test_players_routes.py`, `xfail(strict=True, reason="T319 not implemented yet")`, encoding quickstart scenarios 1 and 4: `GET /api/players/search` finds a player by display name with no numeric identifier known (FR-001) and distinguishes found / found-nothing / degraded and **asserts the second and third are distinguishable from the response alone**, which is FR-003 and the thing a client branching on `results.length` gets wrong; the per-user rate limit answers `rate_limited` with `retry_after` (FR-005), so search cannot enumerate the source at volume through this service; `GET /api/players/{profile_id}` returns rating, rank, wins and losses per ladder (FR-006) and answers `200` with empty ladder data for a never-ranked player and `404` for a hidden one and for an unknown one; and `GET /api/players/{profile_id}/ratings` returns history where snapshots exist. Every case asserts the `X-Robots-Tag` header (FR-010)
+
+### Implementation for User Story 1
+
+- [ ] T318 [P] [US1] Write the component specs for the search box, the search result row and the third-party profile header in `packages/design-system/specs/`, carrying country and current standing per result so near-identical names stay tellable apart (FR-002), and including the three empty states the interface must keep distinguishable — no query yet, no match, and search degraded — since T317 only proves the API distinguishes them and constitution VI wants the interface to as well
+- [ ] T319 [US1] Implement `apps/api/src/aoe2stats_api/routers/players.py` with the three routes, registered in `app.py`, and remove T317's markers and the matching ones T310 left. Name the leaderboards with the existing `leaderboards.py` mapping and the civilisations with `civilizations.py`, exactly as 001's routes do (T033a, T070c) — this feature adds no naming of its own
+- [ ] T320 [P] [US1] Build `SearchBox` and `PlayerResultRow` from tokens in `packages/design-system/src/components/`, each with its `*.stories.tsx` and `*.test.tsx`, covering the three empty states
+- [ ] T321 [US1] Extend `packages/design-system/src/components/ProfileSummary/` to present a third party's profile through the same component the user's own profile uses, with stories for both. FR-008 forbids a second, divergent presentation, and the way to not build one is to not create a second component
+- [ ] T322 [US1] Wire the search and the profile in `apps/web/src/features/search/` and `apps/web/src/features/players/`, with `apps/web/src/routes/search.tsx` and `apps/web/src/routes/players.$profileId.tsx`, and add both to `apps/web/public/robots.txt` as disallowed (FR-010)
+- [ ] T323 [US1] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T320 and T321 added, updating baselines in `packages/design-system/__screenshots__/` only where the change is intended (constitution VII)
+
+**Checkpoint**: a user can find any player by name and read their standing. This is the MVP.
+
+---
+
+## Phase 4: User Story 2 — Read any match without the recorded game (Priority: P2)
+
+**Goal**: any player's match history, and a match page complete for a match of any age.
+
+**Independent Test**: open a match from a third party's history older than the retention window and
+confirm the page is complete and correct, with both CTAs correctly shown as unavailable.
+
+### Tests for User Story 2
+
+- [ ] T324 [P] [US2] Extend `apps/api/tests/test_match_detail.py` with the widening, `xfail(strict=True, reason="T327 not implemented yet")`, encoding quickstart scenario 5: any signed-in caller reads any match this service holds, with every participant's team, civilisation, result and rating change plus map, ladder, version, start time and duration (FR-018); the whole page renders from stored match data and never from a recording, so it is complete for a match of any age (FR-019); a match the caller played themselves also carries their own replay's archival state (FR-022); the response is identical whichever participant's history it was reached from, asserted by comparing two responses rather than by inspecting fields; one `matches` row exists for a match reachable from two histories (FR-021); an unnameable civilisation or map yields the raw identifier and a null name, never a guess (FR-020). **Keep the existing ownership assertions for `GET /api/matches?profile_id=` untouched** — that route stays owner-scoped and this task must not widen it
+- [ ] T325 [P] [US2] Write the history-route tests in `apps/api/tests/test_players_history.py`, `xfail(strict=True, reason="T328 not implemented yet")`, encoding quickstart scenario 4: `GET /api/players/{profile_id}/matches` returns newest first with opponent, map, civilisation, result, rating change and duration (FR-007); a player with no matches yields a clear empty state rather than an error; and the row shape is the one `GET /api/matches` already returns, asserted against it rather than restated
+- [ ] T326 [P] [US2] Write the verbatim-persistence test in `apps/api/tests/test_third_party_history.py`, `xfail(strict=True, reason="T328 not implemented yet")`: reading a third party's history persists the provider's response into `matches.raw_payload` **unmodified**, exactly as 001 does for a user's own (FR-011, constitution III). Assert the stored payload is byte-equal to the fixture, not merely field-equal — a normalised copy is not a verbatim one, and after 31 days there is nothing left to re-fetch and correct it from
+
+### Implementation for User Story 2
+
+- [ ] T327 [US2] Remove the ownership scope from `get_match_detail` in `apps/api/src/aoe2stats_api/routers/matches.py`, leaving `list_matches` owner-scoped, and remove T324's markers and the matching one T310 left. There is no `?from_profile_id=` parameter and none may be added: a parameter that could change the presentation is one that eventually will (FR-021)
+- [ ] T328 [US2] Implement `GET /api/players/{profile_id}/matches` in `apps/api/src/aoe2stats_api/routers/players.py`, persisting the source response verbatim, and remove T325's and T326's markers
+- [ ] T329 [P] [US2] Write the component specs for the full participant table and the third-party history list in `packages/design-system/specs/`, including how an unnamed identifier is shown so it reads as unresolved rather than as a name
+- [ ] T330 [US2] Extend `packages/design-system/src/components/MatchDetailPanel/` to present every participant with team, civilisation, result and rating change, with stories covering a 1v1, an eight-player game, and a match carrying an unnameable identifier
+- [ ] T331 [US2] Wire the history and the widened match page in `apps/web/src/features/players/` and `apps/web/src/features/matches/`, with `apps/web/src/routes/players.$profileId.matches.tsx`, and widen `apps/web/src/routes/matches.$gameId.tsx` to any match
+- [ ] T332 [US2] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T330 added, updating baselines in `packages/design-system/__screenshots__/`
+- [ ] T333 [US2] Walk scenario 5 of `specs/003-player-search-match-analysis/quickstart.md` by hand against a real match older than 31 days, and record the outcome in the pull request. This is US2's independent test and the one thing no fixture proves: that the page is complete when everything else about that match is gone, with no field left blank or wrong for 100% of the matches in that profile's history (SC-003)
+
+**Checkpoint**: any player's matches are readable, at any age, without a recording.
+
+---
+
+## Phase 5: User Story 3 — Get the recorded game, from any point of view (Priority: P3)
+
+**Goal**: one download per participant, each stating plainly whether it is still obtainable.
+
+**Independent Test**: open a recent third-party match, download two different participants' points of
+view, and confirm both open in the game and show it from the expected player's side.
+
+### Tests for User Story 3
+
+- [ ] T334 [P] [US3] Write the availability-derivation tests in `apps/api/tests/test_replay_availability.py`, `xfail(strict=True, reason="T336 not implemented yet")`: the four FR-025 states derive from the match's completion time, a `replay_captures` row, a `retained_recordings` row and a recorded 404, per the table in [research.md](./research.md) R8; `obtainable_until` derives from the measured window in `docs/data-sources.md` and appears in no constant of ours; and — the assertion this task exists for — **deriving availability issues no outbound request at all**, asserted against the provider call sink. `HEAD` answers `405` and `Range` is ignored, so a probe is a full download, and probing on render would be browsing-driven bulk reading of third-party recordings
+- [ ] T335 [P] [US3] Write the download-route tests in `apps/api/tests/test_replay_download.py`, `xfail(strict=True, reason="T337/T338 not implemented yet")`, encoding quickstart scenario 6: one download is offered per participant point of view (FR-023); an `archived` point of view is served from the archive with a `replay_access_log` row (FR-026, FR-029); an `obtainable` one is streamed and **stores nothing** — zero new objects and zero `retained_recordings` rows, asserted rather than assumed (FR-027); `expired` and `never_recorded` answer `404` with distinguishable codes; the per-user rate limit applies (FR-028); and a point of view offered as obtainable that 404s at fetch time answers `expired_since_page_load`, distinct from `never_recorded`, and records the outcome so the page is right next time
+
+### Implementation for User Story 3
+
+- [ ] T336 [US3] Implement the derivation in `apps/api/src/aoe2stats_api/availability.py` and remove T334's markers. It is a pure function over rows and a clock — no provider, no I/O — which is what makes T334's no-request assertion structural rather than incidental
+- [ ] T337 [US3] Implement `GET /api/matches/{game_id}/replay/{profile_id}` in `apps/api/src/aoe2stats_api/routers/replays.py` with its four behaviours, its rate limit and its access log
+- [ ] T338 [US3] Wire the per-participant `replay` object into the match-detail response in `apps/api/src/aoe2stats_api/routers/matches.py`, with `download_path` and `obtainable_until` **null** for the two unobtainable states, and remove T335's markers. The nulls are the requirement: FR-025 forbids presenting an unobtainable download as an action that then fails, and a null path is what makes rendering one impossible rather than discouraged
+- [ ] T339 [P] [US3] Write the component spec for the per-point-of-view availability list in `packages/design-system/specs/`, covering all four states and the remaining-time countdown, and stating how `expired` differs visually from `never_recorded` — FR-025 wants the difference visible, not merely present in the payload
+- [ ] T340 [US3] Build the component in `packages/design-system/src/components/`, reusing `packages/design-system/src/components/CaptureStateBadge/countdown.ts` rather than writing a second countdown, with stories for all four states and for a match hours from its boundary
+- [ ] T341 [US3] Wire the downloads into the match page in `apps/web/src/features/replays/`
+- [ ] T342 [US3] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T340 added, updating baselines in `packages/design-system/__screenshots__/`
+- [ ] T343 [US3] Walk scenario 6, points 2 and 4, of `specs/003-player-search-match-analysis/quickstart.md` by hand — two points of view opened in AgeII:DE, and a match you played whose own point of view is archived while the others have expired — and record the outcome in the pull request. Confirm that the availability stated for every point of view matches what the source actually answers at that moment (SC-004), and that obtaining any one of them takes at most two actions from the match page (SC-005)
+
+**Checkpoint**: every participant's recording is reachable while it exists, and honestly described when it is not.
+
+---
+
+## Phase 6: User Story 5 — Keep the players I care about close (Priority: P5)
+
+**Goal**: mark any player as a favourite and find them again from one list.
+
+**Independent Test**: favourite two players, sign out and back in, confirm both are listed with their
+current standing and reachable in one click.
+
+> Placed before US4 despite its lower priority. It depends only on Phase 2 and on US1's profile page,
+> it is the cheapest thing in the feature, and US4 is blocked on a gate outside it. Shipping it here
+> costs nothing and stops the queue idling behind another feature's work.
+
+### Tests for User Story 5
+
+- [ ] T344 [P] [US5] Write the favourites route tests in `apps/api/tests/test_favourites.py`, `xfail(strict=True, reason="T346 not implemented yet")`, encoding quickstart scenario 11: `PUT` twice is one row and two `200`s and `DELETE` is idempotent, so a player can be marked and unmarked (FR-013); the list carries each player's current standing and links to their profile in one step (FR-014); the per-user bound answers `favourites_limit_reached` (FR-016); an unauthenticated call answers `sign_in_required` (US5 scenario 5); and one user never sees another's favourites (FR-015). Add the assertion that has no route to test: **grep the router module for any aggregate over `profile_id`** and fail if one exists — "how many people follow this player" is a question this system must not be able to answer, and the only way to test an absence is to test for it
+- [ ] T345 [P] [US5] Write the no-capture test in `apps/ingester/tests/test_favourite_no_capture.py`, `xfail(strict=True, reason="T346 not implemented yet")`: favouriting a player enqueues no capture, ingests nothing and archives nothing, asserted across a full `run_once` after the favourite exists (FR-012, US5 scenario 4). Capture remains what 001 defines it as — the consenting user's own point of view — and a favourite is a bookmark
+
+### Implementation for User Story 5
+
+- [ ] T346 [US5] Implement `apps/api/src/aoe2stats_api/routers/favourites.py` with `GET`, `PUT` and `DELETE`, registered in `app.py`, and remove T344's and T345's markers
+- [ ] T347 [P] [US5] Write the component specs for the favourite toggle and the favourites list in `packages/design-system/specs/`, including the signed-out state that prompts sign-in without losing the user's place
+- [ ] T348 [US5] Build the toggle and the list from tokens in `packages/design-system/src/components/`, with stories including the at-the-bound and signed-out states
+- [ ] T349 [US5] Wire favourites in `apps/web/src/features/favourites/`, with `apps/web/src/routes/favourites.tsx` and the toggle on the profile page, returning the user where they were after a sign-in prompt
+- [ ] T350 [US5] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T348 added, updating baselines in `packages/design-system/__screenshots__/`
+
+**Checkpoint**: US1, US2, US3 and US5 are complete. The product is useful without any analysis at all.
+
+---
+
+## Phase 7: User Story 4 — Analyse a game, once (Priority: P4)
+
+**Goal**: one match, parsed once, its facts published to everyone who opens it, and its recording kept
+so the conclusion can always be re-derived.
+
+**Independent Test**: analyse a recent match, confirm the result appears; open the same match as a
+different user and confirm the analysis is shown immediately and was not recomputed.
+
+> **⚠️ Gate**: 001's T090, T091 and T092 — export, erasure and the third-party objection route — land
+> before T361 retains the first third-party recording. Everything up to T360 retains nothing and may
+> proceed while they are in flight. See "The gate that is not a task in this file" above.
+
+### The engine, and what it may be asked
+
+- [ ] T351 [P] [US4] Write the extraction-Protocol tests in `packages/core/tests/test_replay_analysis.py`, `xfail(strict=True, reason="T352 not implemented yet")`: `MatchTimeline` and `ParticipantTimeline` carry exactly the fields in [contracts/analysis.md](./contracts/analysis.md), asserted by field introspection. The negative half is the task: **no field named for resources, and none named `villagers` or `villagers_trained`** (FR-043b). The value object is where the misreading would enter, and a field that does not exist cannot be populated by a well-meaning later change
+- [ ] T352 [US4] Define the `ReplayExtractor` Protocol and its value objects in `packages/core/src/aoe2stats_core/replay/analysis.py`, beside the existing `ReplayValidator`, importing no engine, and remove T351's markers (constitution V)
+- [ ] T353 [P] [US4] Write the `Build`-decoder tests in `packages/replay-engine/tests/test_aoe2rec.py` against the committed reference replay, `xfail(strict=True, reason="T354 not implemented yet")`: the 326 `Build` actions decode to a `player_id` and a building identifier each. R4 measured that the pinned wheel returns `{"action_length": 36, "data": [...]}` with **no `player_id` field at all**, contradicting ADR-0001's reading — the decoding is this repository's job, and the byte offsets are what this test pins
+- [ ] T354 [US4] Implement the `Build` decoder in `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and remove T353's markers. It lives behind the Protocol, not in `apps/analyzer`: it is knowledge about one engine's output format, and constitution V wants that knowledge swappable with the engine
+- [ ] T355 [US4] Implement `extract()` in the same module, satisfying `ReplayExtractor`, and generate the golden timeline at `tests/fixtures/replays/AgeIIDE_Replay_500546441.timeline.json`. Reuse the existing `_well_formed_member` / `_read_bounded` extraction-safety path rather than repeating it — two copies of a safety check is one copy that falls behind. Collapse a research command repeated by a double-click to its first occurrence per `(player_id, technology_type)`, which R5 measured happening five times in this one game, and name the age-up field `age_up_commands` (FR-043c)
+- [ ] T356 [P] [US4] Write the golden-extraction test in `packages/replay-engine/tests/test_extract.py`: the committed replay extracts to the committed timeline, byte-for-byte. This is the assertion ADR-0001 was written about — a game patch silently broke parsing for months because nothing asserted the shape of the answer — and a version bump that moves one age-up by 208 ms must show as a diff and be explained, never absorbed
+- [ ] T357 [P] [US4] Write the memory-ceiling test in `packages/replay-engine/tests/test_extract_limits.py`: a recording whose raw size exceeds the configured ceiling is refused **before** it is parsed, and `extract()` never returns the operation stream, asserted by field introspection on the return type. R3 measured ~631 MB resident for a 6.9 MB 1v1 against a 2 GB ceiling; an eight-player game carries roughly three times the operations, so this is the path that will run first in production
+
+### The analyzer
+
+- [ ] T358 [P] [US4] Write the admission-gate tests in `apps/analyzer/tests/test_admission.py`, `xfail(strict=True, reason="T359 not implemented yet")`, encoding quickstart scenario 9: an analysis fetch is refused while any unstored capture sits inside its deadline danger window, so analysis never consumes the request budget, quota or execution window capture depends on (FR-039); analysis draws on its own daily source allowance counted from `provider_calls` and exhausting it never touches capture's; and at `ANALYSIS_RETENTION_CAP_BYTES` a new analysis is refused with `analysis_cap_reached` while capture is unaffected (FR-047). Three gates, asserted independently, because they fail in different directions — the window, the source's patience, and the allowance (R7)
+- [ ] T359 [US4] Implement `apps/analyzer/src/aoe2stats_analyzer/admission.py` and remove T358's markers. Each gate is a condition over rows this system already keeps, so it can be read in production with a SQL query — constitution I is a tie-break rule, and one that lives only in prose is decided by whoever wrote the code last
+- [ ] T360 [P] [US4] Write the claim and lease tests in `apps/analyzer/tests/test_claim.py`, `xfail(strict=True, reason="T361 not implemented yet")`: a claim is exclusive under `FOR UPDATE SKIP LOCKED`; an expired lease is re-claimable; a second asker arriving under a live lease joins the existing row and starts no second parse (FR-038); and **nothing sweeps an expired lease** — asserted by running the ingester's `run_once` over an abandoned analysis and confirming it is untouched (FR-044)
+- [ ] T361 [US4] Implement `apps/analyzer/src/aoe2stats_analyzer/claim.py` and remove T360's markers. `running` means *a lease was taken recently*, never *work is happening now* — R6 explains why the platform forces that reading, and every transition must be written against it
+- [ ] T362 [P] [US4] Write the retention tests in `apps/analyzer/tests/test_retain.py`, `xfail(strict=True, reason="T363 not implemented yet")`: the recording is stored byte-for-byte with a sha256 recorded at retention and verified on retrieval; the object key uses the retained-recording prefix and **never** resolves to `replay_object_key`'s, asserted for the same `(game_id, profile_id)` (FR-048, R9); and a retained recording is never deleted by a recompute, a parser change or the cap being reached
+- [ ] T363 [US4] Implement `apps/analyzer/src/aoe2stats_analyzer/retain.py` and the retained-recording key function in `packages/storage/src/aoe2stats_storage/objects.py`, and remove T362's markers. A separate prefix, because the free-tier watch and any bulk copy operate by prefix with no database to join against
+- [ ] T364 [P] [US4] Write the `run_once` tests in `apps/analyzer/tests/test_run.py`, `xfail(strict=True, reason="T365 not implemented yet")`, encoding quickstart scenarios 7, 8 and 10: a match is fetched and parsed exactly once however many users ask (SC-006); the stored row records which point of view it came from and which parser version produced it (FR-032); a parse failure leaves the API and the ingester untouched and the match visibly failed rather than analysed (SC-013); an interrupted run leaves no unclaimable row and the next request resumes it (FR-037); an unparsable recording goes to `failed` with its full error on the **first** attempt and does not retry, because a parse is deterministic and a second attempt is a second identical failure that costs a fetch (FR-036); a match whose recordings expired and was never analysed is `unavailable`, not an action (FR-034); and a published analysis recomputes from the retained bytes with **zero** calls to the source, however old the match (FR-041, SC-009a)
+- [ ] T365 [US4] Implement `apps/analyzer/src/aoe2stats_analyzer/run.py` and `extract.py` — `run_once(budget_seconds)`, knowing nothing about its caller — and remove T364's markers. `extract.py` orchestrates through the Protocol and imports no engine; `apps/analyzer` is the only application that depends on `packages/replay-engine` at all (T302)
+- [ ] T366 [US4] Add `api/analyze.py` — ten lines, session-authenticated, calling `run_once()` — and its `maxDuration: 300` entry in `vercel.json`. **No `CRON_SECRET`**: this is not a cron endpoint and must not become one. It adds no cron entry, so the number of scheduled jobs after this feature equals the number before it (SC-010, FR-044). It is resolved by the filesystem before the `/api/(.*)` rewrite, the way `api/cron/ingest.py` already is; extend `scripts/checks/spa-routing.mjs` to assert that resolution for this path too, so the ordering is checked rather than assumed
+
+### The API and the interface
+
+- [ ] T367 [P] [US4] Write the analysis API tests in `apps/api/tests/test_analysis_routes.py`, `xfail(strict=True, reason="T368 not implemented yet")`: a user can request the analysis of a match whose recording is obtainable and sees a result for every participant (FR-030); the `analysis` object appears on the match-detail response in each of its seven states, so a user can tell whether a match can still be analysed and until when without contacting support (SC-011); `GET /api/matches/{game_id}/analysis` answers `404` in every state but `published`; the per-user request limit applies (FR-040); and `absent` versus `unavailable` versus `refused` are distinguishable from the payload alone, since each leads the interface somewhere different
+- [ ] T368 [US4] Implement `apps/api/src/aoe2stats_api/routers/analysis.py` and wire the `analysis` object into the match-detail response in `apps/api/src/aoe2stats_api/routers/matches.py`, and remove T367's markers. The API reads state and never performs work — the work is `api/analyze.py`, in its own process, which is how constitution V's isolation is obtained here (FR-042)
+- [ ] T369 [US4] Add retention of analysed third-party recordings to `docs/privacy/processing-register.md` as its own processing activity, with its own legal basis, retention, safeguards and balancing test, in this same change (FR-045, constitution IX). It is **not** activity 3: that one is the consenting user's own point of view under explicit consent, this one is an already-public recording retained because a person deliberately asked for that match to be analysed. A row that misdescribes which is which is a breach in the direction the register itself warns about
+- [ ] T370 [P] [US4] Write the component specs for the analysis timeline, its progress state and its three failure states in `packages/design-system/specs/`. State how an unnamed technology or unit identifier is presented (FR-043a) and how an age-up time is labelled so it reads as **ordered** and not reached (FR-043c) — the wording is the requirement here, and it is decided in the spec, not in the component
+- [ ] T371 [US4] Build the analysis components from tokens in `packages/design-system/src/components/`, with stories for published, running, failed, unavailable and refused
+- [ ] T372 [US4] Wire the analysis into the match page in `apps/web/src/features/analysis/`, including leaving and returning to a running analysis (FR-035)
+- [ ] T373 [US4] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T371 added, updating baselines in `packages/design-system/__screenshots__/`
+
+**Checkpoint**: every story is complete.
+
+---
+
+## Phase 8: Polish & Cross-Cutting Concerns
+
+- [ ] T374 [P] Correct `docs/adr/0001-replay-parser.md` on two measured points, keeping the decision and its date intact and adding a dated correction note: `Build` is **not** decoded by the pinned wheel, which contradicts "Build plus Research plus the Sync clock is everything the V2 engine needs" — true of the information, false of the shape; and the parser's type table carries an `Achievements` post-game block that the reference recording does not contain. An ADR under `docs/` must be true today (`CLAUDE.md`), and both facts change what the next person tries first
+- [ ] T375 [P] Add the extraction discipline to `.claude/skills/replay-parsing/SKILL.md` — the memory bound rather than the time bound, the undecoded `Build`, the duplicated research command, and the command-log-not-state-log rule that decides what may be published — pointing at `docs/` for every number and restating none of them
+- [ ] T376 [P] Record the open question in `docs/data-sources.md` §2: whether any current-patch ranked recording carries an `Achievements` post-game block, measured across several recordings and several game modes. One negative sample proves nothing, and the answer decides whether the derivation feature simulates or reads
+- [ ] T377 [P] Update the verification checklist in `docs/risks.md` with this feature's three new failure modes: retention growth against the cap, a parse that exceeds memory, and a search source that answers from a residential connection but not from the platform's egress addresses
+- [ ] T378 Extend the free-tier watch in `scripts/checks/` to count the retained-recording prefix **separately** from 001's capture prefix, and to warn at 70 % of the analysis cap as well as of the bucket allowance. Counting them together would misstate both, which is the failure FR-048 exists to prevent, arriving through the monitor rather than through a query
+- [ ] T379 [P] Run `uv run ruff format .`, `uv run ruff check --fix .` and `uv run mypy` clean across every workspace member including the new `apps/analyzer`, and `uv run alembic check` reporting no drift
+- [ ] T380 Run `uv run python scripts/checks/spec_lint.py --feature specs/003-player-search-match-analysis` clean, and fix what it reports in the artifacts rather than in the linter
+- [ ] T381 Walk scenarios 1, 2, 3, 7, 8, 9, 10 and 11 of `specs/003-player-search-match-analysis/quickstart.md` end to end against a real deployment with a real second profile, and record each outcome in the pull request. Time the type-a-name-to-reading-ratings path (SC-001) and the share of searches that surface a player who exists from a partial, wrongly-cased fragment (SC-002); time a ranked 1v1 analysis from request to result (SC-007). Those three are verified here or nowhere. Scenario 9 is the one that matters most and is the one most likely to fail in production: `expired_total` must stay at 0 while search, browsing and analysis are all in use (SC-008, constitution I)
+- [ ] T382 Walk scenario 12 of `specs/003-player-search-match-analysis/quickstart.md` once 001's T090 to T092 have landed, and record the outcome in the pull request: export carries favourites and requested analyses; erasure removes favourites and clears `requested_by_user_id` while the analyses themselves stand; and a third-party objection removes a retained recording and withdraws the analyses derived from it (FR-017, FR-046, SC-012)
+
+---
+
+## Dependencies & Execution Order
+
+### Phase dependencies
+
+- **Phase 1 (Setup)** — no dependencies. Blocks everything.
+- **Phase 2 (Foundational)** — depends on Phase 1. Blocks every story. T310 in particular blocks T327:
+  widening `/api/matches/{game_id}` before the superseded-rule test is rewritten turns the tree red.
+- **Phase 3 (US1, P1)** — depends on Phase 2. The MVP.
+- **Phase 4 (US2, P2)** — depends on Phase 2. Independent of US1 in the API; the web route T331 adds
+  is reached from US1's profile page, so ship US1 first for a coherent demo.
+- **Phase 5 (US3, P3)** — depends on Phase 4 for the page its downloads live on.
+- **Phase 6 (US5, P5)** — depends on Phase 2 and, for its toggle, on US1's profile page.
+- **Phase 7 (US4, P4)** — depends on Phase 4, and on **001's T090–T092** before T363 retains anything.
+- **Phase 8 (Polish)** — T374 to T377 depend on Phase 7's measurements; T382 depends on the gate.
+
+### Within a story
+
+Tests before implementation, always, and the `xfail` marker comes off in the implementing task.
+Models before services, services before routes, component specs before components, components before
+web wiring, visual review last.
+
+### Parallel opportunities
+
+Honest [P] markers, not decorative ones. Two tasks writing the same file are never both [P], which is
+why the route tests are split across files by concern rather than by story.
+
+- **Phase 2**: T303, T306 and T308 are a genuine three-way batch — three test files, three areas.
+  T310 is [P] with all of them.
+- **Phase 3**: T311 and T312 are sequential (T312 reads T311's fixture). T314 and T317 are [P] with
+  each other and with T318.
+- **Phase 4**: T324, T325 and T326 are a three-way batch — three separate test files.
+- **Phase 7**: T351, T353, T358, T360, T362 and T364 are [P] across six files, and the largest batch
+  in this feature. T356 and T357 are [P] with each other once T355 lands.
+- **Across phases**: Phase 6 (US5) is [P] with the whole of Phase 7 — no shared file — which is why it
+  is placed where it is.
+
+---
+
+## Implementation Strategy
+
+### MVP
+
+Phase 1, Phase 2, Phase 3. At that point a user can find any player and read their standing, which
+already replaces looking an opponent up on the official leaderboard site. Stop and walk quickstart
+scenario 1 with the search source deliberately unreachable before building further — if the degraded
+path does not work, everything after it rests on a source `docs/data-sources.md` records as
+unverified from the platform's egress addresses.
+
+### Incremental delivery
+
+1. Phases 1 and 2 → schema, limits, headers, the superseded rule rewritten. Commit.
+2. Phase 3 (US1) → the MVP. Commit and demo.
+3. Phase 4 (US2) → any match readable at any age. Commit and demo.
+4. Phase 5 (US3) → the recorded game, per point of view. Commit and demo.
+5. Phase 6 (US5) → favourites. Commit. The product is now useful with no analysis at all.
+6. Phase 7 (US4) → analysis, once 001's US5 has landed. Commit per task.
+7. Phase 8 → the documentation corrections, the monitors, and the two human walks.
+
+Stopping after step 5 is a legitimate release. That is the ordering constitution I asks for, arriving
+as a delivery plan rather than as an intention.
+
+---
+
+## Notes
+
+- Commit at the granularity `CLAUDE.md` sets: the smallest set of tasks that was ever simultaneously
+  green, with the `[x]` in this file riding in the same commit as the work that earned it. Commit
+  when a task hands back, **before** dispatching the next one — a batch launched over an uncommitted
+  predecessor absorbs it permanently.
+- Every task above is one `implementer` invocation.
+- Every `[P]` dispatch tells the agent: **do not modify a file outside your task's named paths.** If
+  the shared gate fails because of a sibling's file, report it and hand back. `CLAUDE.md` records what
+  this cost in 001's Phase 3 — four files of rework — and Phase 7's six-way batch is the largest
+  exposure in this feature.
+- The `xfail(strict=True)` markers are not a formality and `pytest.importorskip` is not a substitute.
+  A skipped test reports green while proving nothing. `CLAUDE.md` records that six of seven agents in
+  001's test batch reached for `importorskip` under gate pressure; that is a property of the squeeze,
+  not of the agents. Dispatch against it.
+- Several tests above assert an **absence** — no resource field, no favourite aggregate, no outbound
+  request, no sweep. These are the ones an implementer is most likely to weaken into something that
+  passes, because an absence has no happy path to demonstrate. Each one names why it exists.
