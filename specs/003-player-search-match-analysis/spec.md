@@ -108,6 +108,20 @@ for that and for nothing else.
   later feature with its own spec; this one exists to prove the pipeline end to end and to put real
   facts on the page. Resolves FR-043.
 
+  > **Amended 2026-08-23, after planning measured the artifact.** Resources and villager count are
+  > **not in the recording** and were never readable: it is a command log, not a state log. They are
+  > reconstructible from the command stream, and that reconstruction is now a **separate feature,
+  > specified and built after this one** — it depends on this feature's extraction, on the recordings
+  > FR-033 retains, and on a way to verify a derived number against the game itself. Recomputing the
+  > analyses published in the meantime costs nothing and reaches no source, which is exactly what
+  > FR-033 and FR-041 were decided for. Age-up times were also narrowed to age-up *commands*, for the
+  > same reason. FR-043 is rewritten accordingly and FR-043b and FR-043c record the two rulings.
+  > `specs/003-player-search-match-analysis/research.md` R1 and R5 carry the measurements.
+  >
+  > One question is left open for that feature to measure first: the parser knows an `Achievements`
+  > post-game block, and the reference recording does not carry one. If current-patch ranked
+  > recordings ever do, part of this is a read rather than a reconstruction.
+
 - **Q: May a streamed third-party recording be persisted, given that constitution IV demands
   recomputability and IX limited capture to the consenting user?** A: yes — persist it, and amend the
   constitution. IV wins because the analysis is *published*: every viewer of that match sees it, and
@@ -365,6 +379,17 @@ their current standing and reachable in one click.
   shapes as a user's own profile, so that one presentation serves both. This feature generalises
   001's FR-008, FR-010 and FR-011 from "the signed-in user's profile" to "any profile"; it MUST NOT
   create a second, divergent presentation of the same facts.
+- **FR-008a**: This feature **supersedes 001's FR-038** and narrows it to what constitution IX
+  actually requires. 001 read it as "no endpoint returns the history of a profile the caller does not
+  own", which made a third party's profile unreachable even to a signed-in user; the constitution
+  forbids third parties being *publicly indexed*, which is a different line. Any signed-in,
+  allowlisted user MAY read any player's profile and history, and the four properties that replace
+  001's rule MUST hold: no anonymous access to any route added here; no indexing, by response header
+  and by `robots.txt`; no disclosure of a relationship between a player's accounts (FR-009); and
+  ownership still deciding access to a user's own archived replay (FR-026). 001's cross-route test of
+  the old reading MUST be rewritten against these four, never deleted — it is the only executable
+  statement of a constitutional property, and a decision that retires a rule has to leave the reason
+  where the next reader will find it.
 - **FR-009**: System MUST NOT expose, on any player's profile, anything that reveals a relationship
   between that player's profile and any other profile that the owner has not proven by signing in
   (001 FR-045).
@@ -461,14 +486,26 @@ their current standing and reachable in one click.
   failure degrades neither (constitution V).
 - **FR-043**: The analysis MUST produce, per participant, a factual account of what that player did,
   and no judgment about it: the order in which they built and trained, with the time of each; the
-  time they reached each age; their resources and villager count at each age-up; the technologies
-  they researched, with times; the units they trained, with counts; their actions per minute over
-  the course of the game; and when they were defeated or resigned. It MUST NOT rank, grade, score,
-  advise or compare players — those are a later feature with its own specification, and stating a
-  judgment this feature cannot justify would be worse than stating nothing.
+  time at which they **ordered** each age-up; the technologies they researched, with times; the units
+  they trained, with counts; their actions per minute over the course of the game; and when they were
+  defeated or resigned. It MUST NOT rank, grade, score, advise or compare players — those are a later
+  feature with its own specification, and stating a judgment this feature cannot justify would be
+  worse than stating nothing.
 - **FR-043a**: System MUST show a raw identifier rather than a guessed name for anything the analysis
   surfaces that its reference data cannot name (002, FR-020). A new game version introducing unknown
   units or technologies MUST degrade to identifiers, never to invented names.
+- **FR-043b**: The analysis MUST publish only what is read from the recording, and MUST NOT publish a
+  quantity it reconstructed. A `.aoe2record` is a log of what each player **ordered**, never of what
+  the game did in response, so resources and villager count are absent from it and are recoverable
+  only by partial re-simulation. That derivation is deferred to its own feature (see the amendment
+  note in Clarifications), because it needs training durations that vary by civilisation, cancellation
+  handling, and a stated accuracy claim for the one thing the log can never carry — what combat
+  destroyed. Publishing a reconstruction without that claim, to every viewer of a match, is the
+  unfalsifiable conclusion Q2 was resolved to prevent.
+- **FR-043c**: Where the analysis states a time derived from a research command, it MUST say that the
+  action was **ordered** and MUST NOT claim the age was reached. The two differ by the research
+  duration, which varies by game speed and civilisation and which no reference data in this
+  repository holds. It MUST also collapse a command repeated by a double-click to one event.
 - **FR-044**: System MUST add no scheduled job and no background sweep. Analysis is initiated by a
   person, on one match. Nothing is fetched speculatively, and no process walks matches nobody asked
   about — this is what keeps FR-039 satisfiable and is unchanged by FR-033.
@@ -585,11 +622,21 @@ their current standing and reachable in one click.
   to retain what is analysed.
 - The platform's per-execution budget is 300 s (`docs/adr/0002-hosting.md`). A single ranked replay
   is ~0.87 MB compressed, ~6.9 MB raw. Analysis of one match is expected to fit; a match that does
-  not fit must fail visibly (FR-036) rather than silently truncate.
+  not fit must fail visibly (FR-036) rather than silently truncate. **Measured during planning: it is
+  memory and not time that binds.** The reference 1v1 parses in 0.58 s and peaks near 631 MB against
+  a 2 GB ceiling, because every operation is materialised; an eight-player game carries roughly three
+  times the operations. FR-036's visible failure is therefore a path that will run in production, not
+  a formality.
 - Comparing a player's analysis against a benchmark bracket is out of scope, as is any grading,
   scoring or advice. The historical corpus that would make a comparison meaningful has been empty
   since 2026-02 (`docs/data-sources.md` §4) and is recorded there as a V2 concern. A richer analysis
   is expected to be specified as its own feature; FR-043 is deliberately the floor, chosen so that
   the pipeline is proven end to end before anything is built on top of it.
+- **The data-rights routes this feature leans on are not built yet.** FR-017 and FR-046 point at
+  001's export, erasure and third-party objection (001 FR-036, FR-037, FR-039), which are that
+  feature's US5 and are still open. FR-033 creates a new category of personal data, and constitution
+  IX requires export and erasure from the MVP, so **001's US5 lands before this feature retains its
+  first third-party recording.** Everything here that retains nothing — search, profiles, match pages,
+  downloads and favourites — is unaffected and may proceed in parallel. Decided 2026-08-23.
 - Nothing in this feature is commercial, and no game asset is redistributed (constitution X). The
   recorded game is the player's own game data, served from or pointed at the publisher's own source.
