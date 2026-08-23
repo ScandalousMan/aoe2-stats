@@ -33,8 +33,8 @@ every operation. `extract` therefore reduces as it goes and never returns the op
 an implementation that hands back the raw operations for a caller to walk is a wrong implementation
 of this Protocol even though it type-checks.
 
-`extract` raises `EngineParseError` on a recording it cannot process, and the caller quarantines with
-the full error (FR-036, constitution V). It does not retry: a parse is deterministic, so a second
+`extract` raises `EngineParseError` on a recording it cannot process, and the caller records it as `failed`
+with the full error (FR-036, constitution V). It does not retry: a parse is deterministic, so a second
 attempt is a second identical failure that costs another fetch.
 
 ## `MatchTimeline`
@@ -79,7 +79,11 @@ class ParticipantTimeline:
   less the `Unqueue` cancellations the stream carries. It is not a population. A villager exists one
   training duration later, that duration varies by civilisation and game speed, and a villager lost to
   a raid produces no command from its owner. Naming it `villagers_trained` — or worse, `villagers` —
-  is the misreading FR-043b exists to make impossible, and it is one refactor away at all times.
+  is the misreading FR-043b exists to make impossible, and it is one refactor away at all times. The
+  netting is a read, not a reconstruction: an `Unqueue` is a command in the same log, at a known time,
+  and subtracting it counts what the player *ordered and did not cancel*. What would make it a
+  reconstruction is turning it into a population — applying training durations, or accounting for what
+  combat took — which is the separate feature R1 defers.
 - **`technology_id`, `unit_id`, `building_id` — identifiers, not names.** R13 and FR-043a. Where
   reference data can name one it is named at the presentation boundary; where it cannot, the
   identifier is shown. Storing names here would freeze a guess into the published artifact, which is

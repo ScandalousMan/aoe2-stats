@@ -171,6 +171,16 @@ scales with players × duration. An eight-player game — ~2.5 MB zipped, so rou
 (`docs/data-sources.md` §2) — is in the region of three times the operations, which puts it close
 enough to the ceiling that it must be treated as a real failure mode rather than a theoretical one.
 
+**The number that follows.** 631 MB for 6.9 MB raw is an amplification of ~91×, and the ceiling is
+2 GB, which puts the break-even near 22 MB of raw recording. `ANALYSIS_MAX_RAW_BYTES` therefore
+defaults to **24 MB**, and the choice is deliberate rather than conservative: an eight-player game at
+~20 MB raw lands near 1.8 GB, inside the ceiling and uncomfortably close to it. Refusing it up front
+would decide by configuration a case quickstart §8.4 says must be allowed to fail *visibly*;
+admitting it keeps FR-036's path real. The key exists to refuse what is certainly impossible before
+paying for a fetch, not to guarantee what is merely tight. The existing `_MAX_INNER_BYTES = 200 MB`
+in `packages/replay-engine` stays what it is — a zip-bomb guard, about a different threat, and ~9×
+too permissive to protect memory.
+
 The spec anticipated this and pointed at the wrong resource: its assumption reads "the platform's
 per-execution budget is 300 s ... analysis of one match is expected to fit". It fits in time by two
 orders of magnitude and may not fit in memory. FR-036's visible failure is therefore the code path
@@ -365,10 +375,22 @@ So the four states FR-025 requires are each derived from something this service 
 
 | State | Derived from |
 | --- | --- |
-| held in this service's archive | a `replay_captures` row in `stored`, or a retained recording (R9) |
+| held in this service's archive | a `replay_captures` row in `stored` — that row only, see below |
 | obtainable now | the match completed inside the retention window |
 | expired | the match completed outside it |
 | never recorded by the game | a prior attempt that answered 404 while inside the window |
+
+**A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
+from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
+only copy anyone holds. It is refused. Constitution IX 2.0.0 permits retention so that a *published
+analysis stays recomputable*; handing those bytes to any signed-in caller is redistribution of a third
+party's recording after the source destroyed its own, which is a second processing purpose with no
+basis and no register entry. FR-026 says "the signed-in user's **own** point of view", and a retained
+recording generally is not one.
+
+So a match whose recording this service holds only because someone analysed it renders as `expired`,
+with an analysis available. That is the honest answer, and it is the shape of the whole feature: the
+facts survive, the file does not.
 
 The last one is the only state that requires evidence rather than arithmetic, and the evidence
 already exists: 001 records exactly this outcome on `replay_captures` for a user's own matches, and
@@ -467,7 +489,10 @@ any Pydantic model that could carry them exists. A hidden profile is dropped the
 ### Rationale
 
 The route and its properties are settled and measured — `docs/data-sources.md` §1 and §3, and the
-spec's own clarifications. Nothing here re-measures them. What Phase 0 has to settle is where the
+spec's own clarifications — **with one exception: the hidden-profile signal is asserted here and
+measured nowhere.** §3's record list does not carry it. T301a measures it before anything is built on
+FR-004c, and if it does not exist FR-004c is re-decided rather than implemented around. Nothing else
+here re-measures anything. What Phase 0 has to settle is where the
 obligations land in code, and there is only one defensible answer for two of them.
 
 FR-004b (strip `steamId`, `shared`, `sharedHistory`) and FR-004c (honour the hidden flag) are

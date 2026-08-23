@@ -91,8 +91,8 @@ requirements, 1 new application, 1 new provider method, 1 new Vercel function.
 | **I. Capture outranks analysis** | Analysis is the lowest-priority story, and the ordering is enforced in code rather than intended: an analysis fetch is refused while any capture sits inside its deadline danger window, analysis draws on its own smaller aoe.ms budget beneath capture's, and FR-047's storage cap is set below the allowance so capture keeps headroom it never has to compete for. `expired_total` staying at 0 is SC-008 and is asserted while the feature is in use. | PASS |
 | **II. Python backend** | The analyzer is a Python library. The front end gains routes and components and no logic. | PASS |
 | **III. DataProvider boundary** | `PlayerSearchProvider` is added to `packages/providers/src/aoe2stats_providers/companion`; recorded games are fetched through 001's existing `aoems` `ReplayProvider`. `apps/analyzer` opens no connection of its own. The search response is *recoverable* — it can be re-queried at any time — so it is cached, not persisted verbatim; a third party's match history is irrecoverable and is persisted verbatim exactly as a user's own (FR-011). | PASS |
-| **IV. Raw is sacred** | FR-033 is principle IV applied to a source that destroys its own evidence: the analysed recording is stored byte-for-byte with a checksum and never deleted except on erasure, and every analysis records the parser name and version that produced it, so any published analysis can be recomputed without the source (FR-041, SC-009a). | PASS |
-| **V. Pluggable parser** | Extraction is a second Protocol in `packages/core/src/aoe2stats_core/replay/`, implemented in `packages/replay-engine` beside the validator, so `aoc-mgz` can implement it without touching a caller. The API still never loads an engine: analysis runs in its own function, in its own process, and its failure cannot reach the API or the ingester (FR-042). An unparsable recording is quarantined with its full error (FR-036). | PASS |
+| **IV. Raw is sacred** | FR-033 is principle IV applied to a source that destroys its own evidence: the analysed recording is stored byte-for-byte with a checksum and deleted only on an objection or erasure by a person appearing in it (see `data-model.md`), and every analysis records the parser name and version that produced it, so any published analysis can be recomputed without the source (FR-041, SC-009a). | PASS |
+| **V. Pluggable parser** | Extraction is a second Protocol in `packages/core/src/aoe2stats_core/replay/`, implemented in `packages/replay-engine` beside the validator, so `aoc-mgz` can implement it without touching a caller. The API still never loads an engine: analysis runs in its own function, in its own process, and its failure cannot reach the API or the ingester (FR-042). An unparsable recording lands in `failed` with its full error (FR-036). | PASS |
 | **VI. Tokens first** | Every new component comes from a `product-designer` spec and is built from tokens with a story. | PASS |
 | **VII. Visual tests** | Diff-scoped Playwright regression on the stories this feature adds. | PASS |
 | **VIII. No secrets in the clear** | All new configuration is environment variables with an entry in `.env.example` and no value. No new cron endpoint, so no new shared secret. The analysis function is reachable by a signed-in user and by nobody else. | PASS |
@@ -171,9 +171,13 @@ All behavioural, all from the environment, all with a valueless entry in `.env.e
 | `ANALYSIS_RETENTION_CAP_BYTES` | FR-047's total, set below the free allowance so capture keeps headroom |
 | `ANALYSIS_RUN_BUDGET_SECONDS` | the interruptible unit of work, as `INGEST_RUN_BUDGET_SECONDS` is |
 | `ANALYSIS_LEASE_SECONDS` | how long a claim survives an invocation that died (R6) |
+| `ANALYSIS_MAX_RAW_BYTES` | R3's memory bound — the raw size above which a recording is refused before it is parsed |
 
 No key restates a measurement. The retention window, the capture budget and the replay sizes stay
 where they are measured, and `obtainable_until` is derived from them (FR-024).
+`ANALYSIS_MAX_RAW_BYTES` is not an exception: it is a budget *derived from* R3's measured
+amplification and the platform's memory ceiling, the way `CAPTURE_BUDGET_DAYS` is derived from the
+retention window rather than restating it.
 
 ## Project Structure
 

@@ -129,8 +129,10 @@ two that are not obtainable, so an unobtainable download cannot be rendered as a
 
 Behaviour per state:
 
-- `archived` — the caller's own captured replay, served from this service's archive as a short-lived
-  signed URL, regardless of the match's age (FR-026). Writes `replay_access_log` (FR-029).
+- `archived` — the caller's own captured replay, **and only that**: a `replay_captures` row the
+  caller owns, served from this service's archive as a short-lived signed URL, regardless of the
+  match's age (FR-026). A `retained_recordings` row never produces this state and is never
+  downloadable (R8). Writes `replay_access_log` (FR-029).
 - `obtainable` — fetched from the source and streamed to the caller. **The bytes are not stored**
   (FR-027): downloading is not analysing, and constitution IX permits retention only where a person
   deliberately asks for a match to be analysed.
@@ -147,6 +149,7 @@ the spec's own edge case). That call also records the outcome, so the page is ri
 ```json
 { "state": "absent" | "queued" | "running" | "published" | "failed" | "unavailable" | "refused",
   "parser_version": "0.1.21",
+  "stale": false,
   "point_of_view_profile_id": 196240,
   "result_path": "/api/matches/500546441/analysis",
   "reason": null }
@@ -174,6 +177,18 @@ guarantees that, not this paragraph.
 `absent` means never requested and requestable. `unavailable` means the recordings expired and it
 never was analysed — permanent, with `reason`, and the client must not render a button (FR-034).
 `refused` means FR-047's cap; it carries a reason and may be asked for again later.
+
+`stale` is `true` when `state` is `published` and the analysis's `parser_version` differs from the
+engine currently running. It is **computed, never stored**: a stored flag would need something to set
+it across every row at the moment of an upgrade, and that something is the sweep FR-044 forbids.
+
+A recompute is therefore triggered the same way a first analysis is — `POST /api/analyze` on a match
+whose analysis is `stale` re-claims the row and re-derives it from the retained recording, reaching no
+source (FR-041, SC-009a). On a match whose analysis is `published` and not stale, the same call is a
+no-op returning the published object; SC-006's "1 again after a parser version change" is exactly this
+path and no other. The client offers the action only while `stale` is true, so a parser upgrade that
+makes every analysis stale at once — the spec's own edge case — costs nothing until somebody opens a
+match and asks, which is the answer FR-044 gives everywhere else in this feature.
 
 ## Response headers on every route above
 

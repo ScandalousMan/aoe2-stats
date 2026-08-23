@@ -17,7 +17,8 @@ Everything [001's quickstart](../001-steam-link-replay-ingestion/quickstart.md) 
 - one match id from **more than 31 days ago**, to exercise every expired path. `docs/data-sources.md`
   §2 lists real ones with their measured outcomes, which is faster than waiting a month;
 - `.env` extended from `.env.example` with this feature's keys — the favourites bound, the search
-  TTL and rate limit, the analysis request limit, budget and lease, and the retention cap.
+  TTL and rate limit, the analysis request limit, budget and lease, the retention cap, and the
+  raw-size ceiling above which a recording is refused before it is parsed.
 
 ```bash
 uv sync --all-packages --dev
@@ -162,7 +163,9 @@ The proof that FR-033 bought what it was meant to buy.
 
 1. Take a published analysis of a match whose recordings the source no longer serves — the
    >31-day-old one.
-2. Change the parser version. Recompute.
+2. Change the parser version. Confirm the match-detail response now reports `stale: true` for that
+   analysis, and recompute by asking for it the same way a first analysis is asked for — `POST
+   /api/analyze`. Confirm nothing on a timer did it first (FR-044).
 3. Expect it to succeed from this service's own retained bytes, with the checksum verified, and
    **zero** calls to the source in `provider_calls` (FR-041, SC-009a).
 
@@ -185,9 +188,10 @@ If this fails, the retention decision the constitution was amended for has bough
 is ever retained, not after. It is part of this feature's definition of done, not someone else's.
 
 1. Export. Expect favourites and the analyses this user requested (FR-017, SC-012).
-2. Erase. Expect favourites gone, `requested_by_user_id` cleared on analyses the user asked for, and
-   the analyses themselves still standing — they are derived from public match records and shown to
-   everyone.
+2. Erase. Expect favourites gone, `requested_by_user_id` cleared on analyses the user asked for, the
+   analyses themselves still standing, and **the retained recordings still present** — they are
+   derived from public match records, shown to everyone, and must stay recomputable
+   (`data-model.md`'s erasure rule for `retained_recordings`).
 3. Object as a third party appearing in a retained recording. Expect the recording removed and the
    analyses derived from it withdrawn with it (FR-046).
 4. Confirm `docs/privacy/processing-register.md` carries retention of analysed third-party recordings

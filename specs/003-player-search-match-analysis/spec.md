@@ -462,15 +462,20 @@ their current standing and reachable in one click.
   recorded at the time and verifiable on retrieval, for every analysis it publishes — third-party
   matches included. A published analysis that cannot be recomputed from its raw is forbidden by
   constitution IV, and the source destroys the raw after ~31 days, so the choice is between keeping
-  the recording and publishing an unfalsifiable conclusion. Retained recordings are never modified
-  and never deleted except on a GDPR erasure or objection (FR-046).
+  the recording and publishing an unfalsifiable conclusion. Retained recordings are never modified, and are
+  deleted only on an erasure or objection by a person **appearing in** the recording (FR-046).
+  Erasing the user who *requested* the analysis clears who asked and keeps the bytes: a published
+  analysis must stay recomputable (constitution IV), and the requester is not the subject of a third
+  party's recording.
 - **FR-034**: System MUST present analysis as permanently unavailable, with the reason, for a match
   whose recordings have expired and which was never analysed — never as an action that fails.
 - **FR-035**: System MUST report progress for an analysis that outlasts a page load, and MUST let the
   user leave and return to it.
 - **FR-036**: System MUST record a failed analysis with its reason, MUST tell the user plainly, and
-  MUST NOT leave the match presented as analysed. A recording that cannot be parsed goes to
-  quarantine with the full error (constitution V), never a silent failure.
+  MUST NOT leave the match presented as analysed. A recording that cannot be parsed goes to the
+  `failed` state with its full error class and message recorded (constitution V), never a silent
+  failure. It needs no quarantine of its own: 001's `QUARANTINED` holds aside bytes that must survive
+  for inspection, and here FR-033 already keeps them, so the evidence is preserved by construction.
 - **FR-037**: System MUST resume cleanly from an analysis interrupted at any point, leaving no match
   stuck in an in-progress state.
 - **FR-038**: System MUST treat concurrent requests to analyse the same match as one piece of work.
@@ -481,13 +486,18 @@ their current standing and reachable in one click.
   drive volume at the replay source through this service.
 - **FR-041**: System MUST be able to recompute any analysis it has published, when the parser version
   changes or a parser defect is found, without re-fetching anything from the source. FR-033 is what
-  makes this possible for matches whose recordings the source no longer has.
+  makes this possible for matches whose recordings the source no longer has. The recompute is
+  requested the same way a first analysis is, by a person opening that match; there is no sweep and no
+  scheduled re-derivation (FR-044). Staleness is the comparison between a stored analysis's parser
+  version and the running engine, computed on read.
 - **FR-042**: System MUST run analysis in isolation from the API and the ingester, such that a parser
   failure degrades neither (constitution V).
 - **FR-043**: The analysis MUST produce, per participant, a factual account of what that player did,
   and no judgment about it: the order in which they built and trained, with the time of each; the
   time at which they **ordered** each age-up; the technologies they researched, with times; the units
-  they trained, with counts; their actions per minute over the course of the game; and when they were
+  they trained, with counts — and, of those, the count of villager training orders net of the
+  cancellations the log itself carries, published under a name that says it counts commands and not a
+  population (FR-043b); their actions per minute over the course of the game; and when they were
   defeated or resigned. It MUST NOT rank, grade, score, advise or compare players — those are a later
   feature with its own specification, and stating a judgment this feature cannot justify would be
   worse than stating nothing.
@@ -611,6 +621,11 @@ their current standing and reachable in one click.
   from datacentre addresses. This is why FR-004d exists: if the answer turns out to be no, search
   degrades to locally-observed profiles and the feature still stands. It must be checked before
   search is presented as the primary route, not after.
+- **That the search source signals a hidden profile at all is not yet verified.**
+  `docs/data-sources.md` §3's measured record carries no such field. FR-004c, the
+  `hidden_observed_at` column and the local fallback's honouring of it all depend on one, so it is
+  measured (T301a) before Phase 3 rather than discovered during it. If the signal does not exist,
+  FR-004c is re-decided, not implemented around.
 - Search, favourites and browsing are available to signed-in users. Whether any of it is reachable
   without signing in is deferred: the beta allowlist (001 FR-005) makes the question moot for now.
 - A third party's match history is read from the source on demand and is no deeper than the source

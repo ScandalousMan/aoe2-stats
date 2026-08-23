@@ -8,7 +8,9 @@ and it changes the meaning of none of them.
 
 Every table below states what erasure does to it, because R14 records that 001's export and erasure
 jobs are not written yet — this is what they will have to implement against, and stating it here is
-how this feature discharges FR-017 and FR-046 without depending on unfinished work.
+how this feature discharges FR-017 and FR-046 without depending on unfinished work. 001's T090 and
+T091 now name these tables explicitly in their own task text, so the obligation is written on both
+sides rather than remembered on one.
 
 ---
 
@@ -120,7 +122,9 @@ failure that costs a fetch.
 
 `point_of_view_profile_id` and the parser triple are FR-032 and are what make FR-041 and SC-009a
 mechanical: an analysis whose `parser_version` differs from the current engine is recomputable from
-the retained recording without touching the source, however old the match is.
+the retained recording without touching the source, however old the match is. Staleness is that
+comparison and is never a column: a stored flag would have to be set across every row the moment an
+engine is upgraded, and nothing may walk the table to do it (FR-044).
 
 `result_key` points at the published analysis in the object store rather than a `jsonb` column. The
 analysis of a long game is large, it is read whole or not at all, it is never queried by its contents,
@@ -149,9 +153,10 @@ the bucket where the free-tier watch and any bulk copy operate by prefix with no
 against.
 
 `zip_sha256` is recorded at retention and verified on retrieval. The bytes are never modified. They
-are deleted **only** on a GDPR erasure or a sustained third-party objection (FR-046, constitution IV)
-— not when the analysis is recomputed, not when the parser changes, and not when the cap is reached,
-because deleting the raw is precisely what would make the published analysis unfalsifiable again.
+are deleted **only** on an erasure or objection by a person **appearing in** the recording (FR-046,
+constitution IV) — not when the requester is erased, not when the analysis is recomputed, not when the
+parser changes, and not when the cap is reached, because deleting the raw is precisely what would make
+the published analysis unfalsifiable again. The Erasure note below states the two acts apart.
 
 The legal basis is constitution IX as amended to 2.0.0 and it is **not** the basis under which
 `replay_captures` rows exist: those are the consenting user's own point of view under explicit
@@ -160,11 +165,21 @@ match to be analysed. FR-045 requires this to appear in `docs/privacy/processing
 own activity, with its own legal basis, retention and safeguards, in the same change that creates
 this table.
 
-**Erasure**: the object and the row are deleted when the requesting user is erased *only if* no
-published analysis depends on them; otherwise the analysis is withdrawn with them, which is what
-FR-046 means by "the analyses derived from it withdrawn with it". A third-party objection over a
-participant deletes both. **Export**: named, not included — the bytes are not the requester's own
-data.
+**Erasure**: two different acts, and conflating them is what would break constitution IV.
+
+*Erasure of the user who requested the analysis* clears `requested_by_user_id` and **keeps the object
+and the row**. The bytes are an already-public recording of a match — not the requester's personal
+data, and not necessarily a match they played in — and deleting them would leave a published analysis
+that nothing can recompute, which is the unfalsifiable conclusion Q2 and principle IV exist to
+prevent.
+
+*Erasure or objection by a person appearing in the recording* deletes the object and the row, and
+withdraws every analysis derived from it. That is what FR-046 means by "the analyses derived from it
+withdrawn with it", and it is the only route by which these bytes are ever deleted.
+
+Decided 2026-08-23: FR-033's "except on a GDPR erasure or objection" reads on the second act only.
+Erasing the requester removes a *link*, not a *subject*. **Export**: named, not included — the bytes
+are not the requester's own data.
 
 ---
 
@@ -207,6 +222,12 @@ checked.
 The check constraint is the load-bearing part. A nullable pair with no constraint is a row that can
 mean nothing, and an access log whose rows can mean nothing is worse than no access log, because it
 reads as evidence.
+
+The two kinds are read by different callers, which is what R8 settles: a `replay_captures` row is
+served to its owner on request; a `retained_recordings` row is served to nobody and is read by
+`apps/analyzer` alone — on the first analysis, and on every recompute. Rows carrying
+`retained_recording_id` are therefore **system reads, not downloads**, and that is precisely what an
+audit of a third party's recording needs to be able to see.
 
 **Erasure**: unchanged from 001 — deleted with the capture or the recording it describes.
 

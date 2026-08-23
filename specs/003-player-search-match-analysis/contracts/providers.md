@@ -27,6 +27,7 @@ class PlayerSearchResult:
 class PlayerSearchPage:
     results: Sequence[PlayerSearchResult]
     has_more: bool
+    hidden_profile_ids: Sequence[int]   # dropped from `results`, reported so the column can be set
 ```
 
 ### The fields that are not there
@@ -45,8 +46,13 @@ it reads `profileId`, `name`, `country`, `games`, `clan` and the pagination fiel
 ### Hidden profiles
 
 A record the source marks as hidden is dropped inside `search_players` and never reaches a caller
-(FR-004c). The provider additionally reports it, so `aoe_profiles.hidden_observed_at` can be set and
-the local fallback honours the same request when the source is down.
+(FR-004c). Its id is reported on `PlayerSearchPage.hidden_profile_ids` — out of the results and still
+visible to the caller, because that is the only way `aoe_profiles.hidden_observed_at` gets set and the
+local fallback honours the same request when the source is down.
+
+**This clause is conditional on T301a.** `docs/data-sources.md` §3's measured record carries no hidden
+field, so what the signal *is* has not been established. If T301a finds none, FR-004c falls and this
+section falls with it.
 
 ### Failure
 
