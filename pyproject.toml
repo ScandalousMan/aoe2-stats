@@ -44,6 +44,7 @@ members = [
   "packages/storage",
   "apps/api",
   "apps/ingester",
+  "apps/analyzer",
 ]
 
 # Shared dev toolchain, installed once for the whole workspace by `uv sync --all-packages --dev`
@@ -135,6 +136,7 @@ known-first-party = [
   "aoe2stats_storage",
   "aoe2stats_api",
   "aoe2stats_ingester",
+  "aoe2stats_analyzer",
 ]
 
 [tool.ruff.format]
@@ -142,15 +144,17 @@ quote-style = "double"
 indent-style = "space"
 
 # --- mypy (strict) ------------------------------------------------------------------------------
-# Scoped to the six workspace members' `src/` trees, plus the whole `scripts/checks/` directory
+# Scoped to the seven workspace members' `src/` trees, plus the whole `scripts/checks/` directory
 # (T061a, widened by T061c): `files` names the directory rather than enumerating its scripts one by
 # one, so a script added later (T100's `free_tier_watch.py`, and whatever follows it) is under this
 # gate the moment it exists, with nothing to remember to update here. `exclude` then carves
 # `scripts/checks/tests/` back out, because test suites are excluded from this gate everywhere else
 # in the tree (only ruff runs over them), and the same holds here — without it, naming the directory
-# in `files` would pull its tests under strict mypy too. `scripts/checks` is listed in `mypy_path`
-# (not only `files`) for a different reason: `contract_sources.py` imports its sibling
-# `publication_delay.py` as a bare top-level module (`from publication_delay import
+# in `files` would pull its tests under strict mypy too. Every other member's own `tests/` is kept
+# out the same way `apps/analyzer/tests` is (T302): `files` names only its `src/` tree, never the
+# member's root, so there is nothing for `exclude` to carve back out there. `scripts/checks` is
+# listed in `mypy_path` (not only `files`) for a different reason: `contract_sources.py` imports its
+# sibling `publication_delay.py` as a bare top-level module (`from publication_delay import
 # append_sample`, matching how `uv run scripts/checks/contract_sources.py` actually resolves it —
 # the script's own directory on `sys.path`), and `explicit_package_bases` needs that directory
 # declared as a root to resolve it the same way. `scripts/hooks/` is shell, not Python, and mypy has
@@ -167,6 +171,7 @@ mypy_path = [
   "packages/storage/src",
   "apps/api/src",
   "apps/ingester/src",
+  "apps/analyzer/src",
   "scripts/checks",
 ]
 files = [
@@ -176,6 +181,7 @@ files = [
   "packages/storage/src",
   "apps/api/src",
   "apps/ingester/src",
+  "apps/analyzer/src",
   "scripts/checks",
 ]
 exclude = [

@@ -23,6 +23,20 @@ is the only form of the assertion neither failure mode can dodge. The second ass
 against the code this task replaces (a module-scope `from aoe2stats_ingester.run import run_once`
 in `routers/cron.py`) and green after it, which is the evidence this task actually changed
 something rather than merely adding a check that starts and stays vacuously true.
+
+003's `apps/analyzer` (T302) widens the boundary the same reasoning covers. `apps/api` declares no
+dependency on it at all — `api/analyze.py` (Phase 7) is a separate Vercel function that calls
+`apps/analyzer`'s own `run_once`, never `aoe2stats_api.app` — so nothing on the import path from
+the ASGI app should ever reach `aoe2stats_analyzer`. That absence is not provable from the
+dependency graph either: `apps/analyzer` also depends on `packages/replay-engine`, this time to
+*extract* rather than merely validate (plan.md), and it sits in the same shared workspace
+environment as `aoe2stats_api` — `uv sync --all-packages --dev` installs both into one venv, so
+`aoe2stats_analyzer` is importable from `aoe2stats_api`'s process the moment someone writes the
+import, whether or not `apps/api/pyproject.toml` ever declares it. A fourth assertion, run in the
+same subprocess as the first three, closes that gap the same way: today it is vacuously true
+because nothing in `apps/api/src` imports `aoe2stats_analyzer`, and it stays meaningful for the
+same reason the second assertion does — a regression that reaches for it from a router would turn
+this test red on the next run, in-process or not.
 """
 
 from __future__ import annotations
@@ -35,6 +49,7 @@ _CHECK = (
     "import aoe2stats_api.app\n"
     "assert 'aoe2stats_ingester.run' not in sys.modules, sorted(sys.modules)\n"
     "assert 'aoe2rec_py' not in sys.modules, sorted(sys.modules)\n"
+    "assert 'aoe2stats_analyzer' not in sys.modules, sorted(sys.modules)\n"
     "print('ok')\n"
 )
 
