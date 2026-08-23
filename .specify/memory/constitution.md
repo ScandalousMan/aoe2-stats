@@ -53,10 +53,22 @@ GitHub Actions secrets and Vercel project environment variables only. No secret 
 URL. Cron endpoints are authenticated by a secret and are never publicly invocable.
 
 ### IX. GDPR by Design
-We capture only the consenting user's point of view. Third-party players are processed only on the
-basis of already-public data and are never publicly indexed. Consent for replay ingestion is
-explicit and separate from account creation. Full export and erasure are available from the MVP,
-storage objects included. Any new personal data is added to the processing register in the same PR.
+**Automatic capture is limited to the consenting user's own point of view.** Nothing is ingested on
+a schedule, in bulk, or as a side effect of someone browsing.
+
+A recording that is **already public at its source** may additionally be retained when a user
+deliberately asks for that match to be analysed. The reason is principle IV, not convenience: the
+resulting analysis is shown to everyone who opens that match, and a derived artifact that cannot be
+recomputed from its raw is one this project may not publish. The source purges the recording after
+about 31 days, so declining to keep it means publishing a conclusion that can never again be
+checked or corrected. Retention on this basis is bounded by explicit human requests and never by
+traffic; it MUST be rate-limited and capped, MUST be recorded in the processing register with its
+own legal basis, and MUST be reachable by both the third-party objection route and erasure.
+
+Third-party players are processed only on the basis of already-public data and are never publicly
+indexed. Consent for replay ingestion is explicit and separate from account creation. Full export
+and erasure are available from the MVP, storage objects included. Any new personal data is added to
+the processing register in the same PR.
 **All compute and storage regions are EU.** Vercel functions run in `cdg1`, the database in an EU
 region, the object store under EU jurisdiction. A PR that moves a region outside the EU is rejected.
 
@@ -102,4 +114,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19
+**Version**: 2.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-23
