@@ -1,10 +1,12 @@
-"""The player-search service (T315): query normalisation, the `profile_search_cache` read/write
-path, and the `degraded` signal. `apps/api/tests/test_player_search.py` (T314) is this module's
-specification, exactly the relationship `ratelimit.py`'s own docstring describes for
-`test_rate_limits.py`; the cache, normalisation and the structural half of `degraded` are what that
-file's module docstring assigns to this task. The other half — what the local fallback over
-`aoe_profiles` actually returns — belongs to T316 and is left a stub below, on this task's own
-instruction not to implement it here.
+"""The player-search service (T315, T316): query normalisation, the `profile_search_cache`
+read/write path, the `degraded` signal, and the local fallback over `aoe_profiles`.
+`apps/api/tests/test_player_search.py` (T314) is this module's specification, exactly the
+relationship `ratelimit.py`'s own docstring describes for `test_rate_limits.py`; the cache,
+normalisation and the structural half of `degraded` are T315's, and the fallback's own content —
+which profiles it returns, in what order, and that it withholds none of them — is T316's, in
+`_local_fallback_results` below. It introduces no source and no request of its own: `aoe_profiles`
+already holds every participant of every match this service has seen, populated by 001's discovery,
+so the fallback is a read against a table this service already keeps, never a new external call.
 
 **Cache-first, then the breaker, never an exception.** `search_players` checks
 `profile_search_cache` before it asks anything else: a fresh row answers the query without caring
@@ -21,11 +23,11 @@ be added to the real provider; `_SearchProvider` below is this module's own boun
 to `PlayerSearchProvider` (`contracts/providers.md`), so nothing here forces that change early.
 
 **`source` is how a cached row remembers which path answered it.** A row written from a genuine
-provider call carries `source="companion"`; T316's fallback, once it lands, is expected to write
-`source="aoe_profiles"` for the same reason. Reading `degraded` back off that column on a cache hit
-— rather than re-asking the provider — is the same convention `test_players_routes.py` (T317)
-already seeded directly: `source="companion"` reads as `degraded: false`, anything else as
-`degraded: true`.
+provider call carries `source="companion"`; a row written from the fallback carries
+`source="aoe_profiles"`, for the same reason and written by the same `_write_cache` call. Reading
+`degraded` back off that column on a cache hit — rather than re-asking the provider — is the same
+convention `test_players_routes.py` (T317) already seeded directly: `source="companion"` reads as
+`degraded: false`, anything else as `degraded: true`.
 
 **Opportunistic TTL pruning happens on write, never on read and never on a schedule (FR-044).**
 Every call that writes a fresh row first deletes every row — not only this query's own — whose
@@ -49,12 +51,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_providers.base import PlayerSearchPage, PlayerSearchResult
-from aoe2stats_storage.models import ProfileSearchCache
+from aoe2stats_storage.models import AoeProfile, MatchPlayer, ProfileSearchCache
 
 # `contracts/http-api.md`: "`search` returns `{"results": [...], "degraded": bool, "reason": null
 # | "..."}`" and names this exact string for the one non-null reason a successful search body ever
@@ -64,6 +66,12 @@ _SEARCH_SOURCE_UNAVAILABLE_REASON = "search_source_unavailable"
 # `profile_search_cache.source` for a row answered by the real provider. Any other value reads back
 # as `degraded: true` — see the module docstring's note on `test_players_routes.py`'s convention.
 _COMPANION_SOURCE = "companion"
+
+# `profile_search_cache.source` for a row answered by T316's local fallback over `aoe_profiles`
+# instead — `data-model.md`'s own name for what FR-004d's fallback searches, and the value
+# `test_players_routes.py` (T317) already seeds directly to exercise the "degraded" reading of a
+# cache hit.
+_FALLBACK_SOURCE = "aoe_profiles"
 
 
 class _SearchProvider(Protocol):
@@ -107,8 +115,8 @@ async def search_players(
     now: datetime | None = None,
 ) -> SearchOutcome:
     """Cache-first, breaker-checked, never an exception — see the module docstring for why each of
-    those three is in that order. `T316` grows `_local_fallback_results` below into the real
-    fallback over `aoe_profiles`; this function's own shape does not change under that.
+    those three is in that order. `_local_fallback_results` below is T316's local fallback over
+    `aoe_profiles`; this function's own shape does not change under that.
     """
     moment = now if now is not None else datetime.now(UTC)
     query_normalised = normalise_query(query)
@@ -119,6 +127,14 @@ async def search_players(
 
     if provider.is_degraded():
         results = await _local_fallback_results(session, query_normalised, limit=limit)
+        await _write_cache(
+            session,
+            query_normalised,
+            results,
+            source=_FALLBACK_SOURCE,
+            ttl_seconds=ttl_seconds,
+            now=moment,
+        )
         return SearchOutcome(
             results=results, degraded=True, reason=_SEARCH_SOURCE_UNAVAILABLE_REASON
         )
@@ -138,13 +154,47 @@ async def search_players(
 async def _local_fallback_results(
     session: AsyncSession, query_normalised: str, *, limit: int
 ) -> Sequence[PlayerSearchResult]:
-    """T316's own body lives here: matching `aoe_profiles` case-insensitively and on substring
-    (FR-004a), ordered most-played first, withholding nothing (T301a retired FR-004c). T315's own
-    boundary is the structural half of `degraded` — that the source is never called, and that the
-    flag and reason are set correctly — not the fallback's content, so this returns no results
-    until T316 replaces this body.
+    """T316's own body: matching `aoe_profiles` case-insensitively and on substring (FR-004a,
+    reused deliberately from the source's own behaviour), ordered most-played first, withholding
+    nothing (T301a retired FR-004c — there is no signal left to withhold on).
+
+    `aoe_profiles` carries no games-played column of its own (T318's spec note); "most-played" is
+    derived here, once, from a `match_players` count grouped per profile and left-joined so a
+    profile with no recorded matches still sorts in — last, at zero, rather than dropped. This
+    introduces no source and no request: `aoe_profiles` is already populated by 001's discovery of
+    every participant of every match this service has seen, and this is a read against it alone.
     """
-    return ()
+    games_played_by_profile = (
+        select(
+            MatchPlayer.profile_id.label("profile_id"),
+            func.count().label("games_played"),
+        )
+        .group_by(MatchPlayer.profile_id)
+        .subquery()
+    )
+    games_played = func.coalesce(games_played_by_profile.c.games_played, 0)
+
+    stmt = (
+        select(AoeProfile, games_played.label("games_played"))
+        .outerjoin(
+            games_played_by_profile,
+            games_played_by_profile.c.profile_id == AoeProfile.profile_id,
+        )
+        .where(func.lower(AoeProfile.alias).contains(query_normalised))
+        .order_by(games_played.desc(), AoeProfile.profile_id)
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        PlayerSearchResult(
+            profile_id=profile.profile_id,
+            alias=profile.alias,
+            country=profile.country,
+            games_played=games_played_value,
+            clan=None,
+        )
+        for profile, games_played_value in rows
+    ]
 
 
 async def _read_fresh_cache(

@@ -54,7 +54,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -300,7 +299,6 @@ async def test_a_write_past_the_ttl_removes_stale_rows(db_session: AsyncSession)
 # --- T316: the local fallback ------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T316 not implemented yet")
 async def test_fallback_searches_aoe_profiles_and_reports_degraded(
     db_session: AsyncSession,
 ) -> None:
@@ -325,7 +323,6 @@ async def test_fallback_searches_aoe_profiles_and_reports_degraded(
     assert {r.profile_id for r in outcome.results} == {1001, 1002}
 
 
-@pytest.mark.xfail(strict=True, reason="T316 not implemented yet")
 async def test_fallback_orders_most_played_first(db_session: AsyncSession) -> None:
     """FR-004a, reused by the fallback deliberately (data-model.md, `contracts/http-api.md`:
     "the local fallback reproduces deliberately so the two answers are ordered the same way") —
@@ -348,7 +345,6 @@ async def test_fallback_orders_most_played_first(db_session: AsyncSession) -> No
     assert [r.profile_id for r in outcome.results] == [2001, 2002, 2003]
 
 
-@pytest.mark.xfail(strict=True, reason="T316 not implemented yet")
 async def test_fallback_withholds_no_profile_on_privacy_grounds(db_session: AsyncSession) -> None:
     """T301a retired FR-004c: the source's `hidden` field carries nothing, so there is no signal
     to withhold a profile on, and `aoe_profiles` itself carries no column that could stand in for
