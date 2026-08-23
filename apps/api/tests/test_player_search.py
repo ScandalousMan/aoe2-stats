@@ -182,7 +182,6 @@ async def _provider_call_count(db_session: AsyncSession) -> int:
 # --- T315: the cache -------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T315 not implemented yet")
 async def test_a_repeated_query_hits_the_cache_and_calls_the_provider_once(
     db_session: AsyncSession,
 ) -> None:
@@ -219,7 +218,6 @@ async def test_a_repeated_query_hits_the_cache_and_calls_the_provider_once(
     assert await _cache_row_count(db_session) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="T315 not implemented yet")
 async def test_query_normalisation_collapses_case_whitespace_and_unicode_form(
     db_session: AsyncSession,
 ) -> None:
@@ -242,7 +240,6 @@ async def test_query_normalisation_collapses_case_whitespace_and_unicode_form(
     assert normalise_query("  Foo   Bar  ") == normalise_query("foo bar")
 
 
-@pytest.mark.xfail(strict=True, reason="T315 not implemented yet")
 async def test_degraded_signal_comes_from_the_providers_breaker_not_from_calling_it(
     db_session: AsyncSession,
 ) -> None:
@@ -265,7 +262,6 @@ async def test_degraded_signal_comes_from_the_providers_breaker_not_from_calling
     assert outcome.reason == _SEARCH_SOURCE_UNAVAILABLE_REASON
 
 
-@pytest.mark.xfail(strict=True, reason="T315 not implemented yet")
 async def test_a_write_past_the_ttl_removes_stale_rows(db_session: AsyncSession) -> None:
     """data-model.md's `profile_search_cache`: "entries older than the configured TTL are deleted
     opportunistically on write" — the same discipline `rate_limit_counters` uses, and for the same
