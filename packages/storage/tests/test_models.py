@@ -9,7 +9,6 @@ otherwise miss entirely — the exact predicate of every partial index and const
 
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import Index, Table, UniqueConstraint
 from sqlalchemy.dialects import postgresql
 
@@ -138,13 +137,15 @@ def test_alerts_severity_is_constrained_to_one_or_two() -> None:
     assert "severity IN (1, 2)" in check_expressions
 
 
-def test_alert_kind_enum_has_the_five_documented_producers() -> None:
+def test_alert_kind_enum_has_the_six_documented_producers() -> None:
+    # 003's data-model.md adds `analysis_cap_reached` (T304) — the sixth kind, sixth producer.
     assert {k.value for k in models.AlertKind} == {
         "rate_limited",
         "deadline_breach",
         "expired_capture",
         "validation_failed",
         "free_tier",
+        "analysis_cap_reached",
     }
 
 
@@ -202,7 +203,6 @@ def test_erasure_cascades_from_users_to_identities_sessions_and_links() -> None:
 # forces T304 to remove each marker rather than leaving a stale one that would hide a regression.
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_favourites_primary_key_is_the_composite_user_and_profile_id() -> None:
     """FR-013's idempotence is the primary key, not application logic: marking the same profile
     twice inserts the same `(user_id, profile_id)` pair twice, and a primary key is what turns the
@@ -214,7 +214,6 @@ def test_favourites_primary_key_is_the_composite_user_and_profile_id() -> None:
     assert {c.name for c in table.primary_key.columns} == {"user_id", "profile_id"}
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_profile_search_cache_is_keyed_on_the_normalised_query() -> None:
     """FR-004e: one row per normalised query. The primary key on `query_normalised` alone is what
     makes a write past the TTL a replace rather than a second, stale row sitting alongside the
@@ -225,7 +224,6 @@ def test_profile_search_cache_is_keyed_on_the_normalised_query() -> None:
     assert {c.name for c in table.primary_key.columns} == {"query_normalised"}
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_match_analyses_primary_key_is_game_id_alone_and_rejects_a_second_row_per_match() -> None:
     """FR-031 and FR-038 in full: `game_id` is the *entire* primary key, not part of a composite
     one alongside `point_of_view_profile_id` or anything else. A single-column primary key rejects
@@ -238,7 +236,6 @@ def test_match_analyses_primary_key_is_game_id_alone_and_rejects_a_second_row_pe
     assert {c.name for c in table.primary_key.columns} == {"game_id"}
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_retained_recordings_unique_on_game_id_and_profile_id() -> None:
     """FR-033: a match is retained once per point of view. Same shape as `replay_captures`' own
     dedup constraint above — a `UniqueConstraint` distinct from the table's own `id` primary key,
@@ -259,7 +256,6 @@ def test_retained_recordings_unique_on_game_id_and_profile_id() -> None:
     assert dedup is not None, "(game_id, profile_id) unique constraint is missing"
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_rate_limit_counters_primary_key_is_the_three_column_window_key() -> None:
     """R10: one row per `(user, bucket, window)`, incremented with an upsert. All three columns
     together are the key — dropping any one of them would let two windows, two buckets or two
@@ -271,7 +267,6 @@ def test_rate_limit_counters_primary_key_is_the_three_column_window_key() -> Non
     assert {c.name for c in table.primary_key.columns} == {"user_id", "bucket", "window_start"}
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_aoe_profiles_gains_alias_observed_at_and_never_hidden_observed_at() -> None:
     """FR-004c was retired on measurement: T301a found no hidden-profile signal at all in the
     source (`docs/data-sources.md` §3), and data-model.md is explicit that a column nothing can
@@ -286,7 +281,6 @@ def test_aoe_profiles_gains_alias_observed_at_and_never_hidden_observed_at() -> 
     assert "hidden_observed_at" not in columns
 
 
-@pytest.mark.xfail(strict=True, reason="T304 not implemented yet")
 def test_replay_access_log_check_constraint_accepts_exactly_one_source() -> None:
     """FR-029: after this feature there are two kinds of archive a logged access can point at
     (`replay_captures` and `retained_recordings`), and a row that points at neither or both is a
