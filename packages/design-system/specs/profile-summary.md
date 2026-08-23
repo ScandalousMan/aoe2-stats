@@ -2,12 +2,17 @@
 
 **Component**: `src/components/ProfileSummary/`
 **Feature**: 001, US1 — consumed by `apps/web/src/routes/dashboard.tsx` and
-`apps/web/src/features/profile/` (T037)
+`apps/web/src/features/profile/` (T037). **Extended by 003, US1** (§11) — consumed by
+`apps/web/src/routes/players.$profileId.tsx` (003 T322), where it presents a profile that is not the
+signed-in user's own.
 **Requirements**: FR-008 (rating, rank, win/loss per leaderboard), FR-043 (one primary, others
 reachable), FR-045 (never reveal that two linked accounts are one person), FR-004 (unlink trigger),
-FR-007. SC-004.
+FR-007. SC-004. **§11 also carries 003's FR-006, FR-008, FR-008a, FR-009, FR-010, FR-013, FR-014** —
+prefixed `003` throughout this file to keep them apart from 001's own FR-008/FR-004/FR-007/FR-045
+above, which share numbers with different requirements in 003's own numbering.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `StatValue`, `Menu`, `Badge`,
-`Button`, `Callout`, `Skeleton`.
+`Button`, `Callout`, `Skeleton`. §11 also depends on
+[`player-search.md`](./player-search.md)'s `PlayerSearchResult` shape for `alias_observed_at`.
 
 ## 1. Purpose
 
@@ -276,3 +281,92 @@ breakpoint.
 - [ ] Focus ring visible and unclipped on the switcher trigger and on the focused menu item, in both
       themes.
 - [ ] No game artwork, board icon, civilisation emblem, map thumbnail or in-game font in the frame.
+
+---
+
+## 11. Viewing a third party (003, FR-008 and FR-008a — extends §§1–10, does not replace them)
+
+**The rule this section exists to keep true: one component, two subjects.** 003 FR-008 forbids "a
+second, divergent presentation of the same facts" — a third party's profile is `ProfileSummary`
+rendering someone who is not the viewer, not a second component that happens to look similar. Every
+section above (anatomy, tokens, spacing, responsive, accessibility) applies unchanged; this section
+states only the differences a non-owning viewer introduces, and why each one exists.
+
+### 11.1 What is different, and what governs it
+
+`ProfileSummary` takes a new input, `subject: "self" | "other"`, alongside the profile data it already
+takes. `subject: "other"` changes exactly four things:
+
+1. **No `ProfileSwitcher`, ever** (003 FR-009, restating 001 FR-045 for a viewer who is not the owner).
+   §4's switcher exists to move between _the signed-in user's own_ linked profiles; showing it while
+   viewing someone else would either be empty and pointless or — if it somehow listed the viewed
+   player's own linked accounts — the exact account-linkage disclosure 001 FR-045 and 003 FR-009 both
+   forbid. `IdentityBar` therefore renders the alias as static text, not a `Menu` trigger, when
+   `subject="other"`.
+2. **No `NonPrimaryBanner`, no `ProfileActions` "Manage"/unlink.** Both are about the viewer's own
+   account state (§4, §2) and have no meaning applied to someone else's profile; they are absent, not
+   disabled, following the file's own rule for controls that do not apply (§5 "disabled").
+3. **A `FavouriteToggle` action appears in `IdentityBar`**, replacing `ProfileActions`' position (003
+   FR-013): a `Button/ghost` reading "Add to favourites" / "Remove from favourites" depending on
+   current state, icon-plus-text (never icon-only, per `shared-primitives.md`'s `Button` rule). Absent
+   entirely when `subject="self"` — a user cannot favourite their own profile, and the API gives this
+   component no route to attempt it.
+4. **`AliasFreshnessNote` appears beneath the alias**, reading the profile's `alias_observed_at`
+   (`contracts/http-api.md`'s `GET /api/players/{profile_id}`): _"Last seen as <alias> on <date>."_ —
+   present only when `subject="other"`. This is spec.md's own edge case ("a searched player has since
+   changed their in-game alias… results may be stale") made honest rather than silent: the signed-in
+   user's own alias is never stale to them the way a third party's can be, so `subject="self"` never
+   shows it.
+
+**Everything else is identical by construction, not by coincidence.** `RatingBoard`, `FreshnessLine`,
+every `StatValue`, every empty and error state in §5, the responsive table transform in §8 and every
+token in §6 are the same component, the same props, the same DOM shape — a third party's profile is
+never rendered by a second code path, which is the whole of what 003 FR-008 asks for.
+
+### 11.2 Two states §5 did not need to name, because a third party introduces them
+
+**empty (fourth case) — a profile 003 US1 scenario 5 describes: searched, never played a ranked
+ladder.** Identical to §5's empty case 1 ("Profile has played no leaderboard"), reused verbatim — the
+copy does not change based on whose profile it is, because the fact stated ("no leaderboard has a
+rating yet") is true regardless of who is looking.
+
+**error (new case) — the profile does not resolve at all (`404`).** Neither `IdentityBar` nor
+`RatingBoard` render; the whole component collapses to a single `Callout/danger`: _"This player could
+not be found."_ with no further detail and a link back to search. 003's route contract answers `404`
+identically whether the profile is genuinely unknown to both the source and this service — there is no
+third case to distinguish, since FR-004c (a hidden-profile signal) was retired on measurement
+(`docs/data-sources.md` §3, T301a) — so this component has, correctly, nothing more specific to say.
+This mirrors `match-history.md` §5's identical `not_found` rule for `MatchDetailPanel`, applied here to
+a profile instead of a match, for the same reason: a single indistinguishable dead end is what the
+contract actually provides, and inventing a more specific message would assert a distinction the API
+does not make.
+
+### 11.3 Tokens, spacing, accessibility — the delta only
+
+`FavouriteToggle` uses `Button/ghost` exactly as specified in `shared-primitives.md` — no new token.
+`AliasFreshnessNote` uses `text-secondary` at `xs`, the same pairing `FreshnessLine` already uses one
+row down, spaced `space-1` below the alias line. The 404 `Callout` uses `danger`, matching every other
+not-found state in this system (`match-history.md` §5). No new token, no new gap.
+
+Accessibility: `IdentityBar`'s static alias (no switcher) is a plain `<h2>`, exactly as §9 already
+specifies for the section heading — `subject="other"` removes the `Menu` semantics `ProfileSwitcher`
+would otherwise add, and adds nothing in their place. `FavouriteToggle` is a real `<button>` with
+`aria-pressed` reflecting favourited state, label text changing with it (never an icon-only star,
+`shared-primitives.md`'s `Button` rule). The 404 `Callout` gets `role="alert"` per `Callout`'s own
+rule.
+
+### 11.4 Visual acceptance criteria (additional to §10)
+
+- [ ] The `subject="other"` story shows no `ProfileSwitcher` trigger anywhere in the frame, in either
+      theme.
+- [ ] The `subject="other"` story shows a `FavouriteToggle` in `IdentityBar`; the `subject="self"`
+      story does not, in the same viewport.
+- [ ] `AliasFreshnessNote` is present and legible in the `subject="other"` story and absent in
+      `subject="self"`, confirmed by overlaying the two identity-bar screenshots.
+- [ ] The never-ranked-third-party story renders the identical info-callout copy as the
+      never-ranked-own-profile story from §10, differing only in `subject`'s other effects.
+- [ ] The not-found story shows a single danger callout and a link back to search — no field on the
+      page distinguishes "does not exist" from any other reason a profile could 404.
+- [ ] `subject="self"` and `subject="other"` stories are visually identical in `RatingBoard`, down to
+      spacing and figure alignment, when given the same rating data — the only permitted differences
+      are the four named in §11.1.
