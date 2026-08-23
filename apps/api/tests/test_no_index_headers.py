@@ -182,7 +182,6 @@ def test_feature_route_table_cannot_silently_shrink_to_nothing() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T309 not implemented yet")
 @pytest.mark.parametrize("method,path", _FEATURE_ROUTE_CASES, ids=_ids(_FEATURE_ROUTE_CASES))
 def test_feature_route_answers_no_index_headers(method: str, path: str, client: TestClient) -> None:
     """FR-010: `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private` on every route this
