@@ -34,11 +34,16 @@ intermittent 403"), and the circuit breaker exists for exactly that. Five behavi
    fixture body handed to the provider is wrapped so that any `__getitem__`, `.get` or `in` check
    against the key `linkedProfiles` fails the test immediately, from wherever in the provider that
    access happens to occur.
+
+T312 (below `# === T312 ===`) adds `search_players` (T313, not yet implemented): quickstart
+scenario 2, "nothing about a search result leaks an account link". See that section's own
+docstring for what it covers.
 """
 
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -280,3 +285,271 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
     # `MatchEnrichment` has no `linkedProfiles` field at all (`base.py`), so nothing leaked into
     # the returned value either — belt and braces alongside the guard above.
     assert "linkedProfiles" not in MatchEnrichment.model_fields
+
+
+# ==================================================================================================
+# T312 — `search_players` (T313 not implemented yet): quickstart scenario 2, "nothing about a
+# search result leaks an account link".
+#
+# Ground truth is `contracts/providers.md`'s `PlayerSearchProvider` section
+# (`specs/003-player-search-match-analysis/contracts/providers.md`) and `docs/data-sources.md` §3's
+# "Profile search behaviour" and "Is there a 'this profile is hidden' signal?" subsections.
+# `search_players` is implemented by this same `CompanionEnrichmentProvider`, sharing its circuit
+# breaker and token bucket with `enrich_matches` rather than adding new ones — "a search storm and
+# an enrichment storm are the same source under the same protection" (providers.md).
+#
+# Written test-first, before T313 exists: every test below carries
+# `@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)`, and imports `PlayerSearchResult` /
+# `PlayerSearchPage` from inside the test body rather than at module scope, for the same
+# collection-safety reason `_provider()` above imports `CompanionEnrichmentProvider` lazily: those
+# names do not exist on `aoe2stats_providers.base` yet, and a module-scope import of a missing name
+# would abort collection for the whole workspace rather than failing one test.
+#
+# Fixtures (T311): `fixtures/companion_profiles_search.json` is a real, uncapped 20-record page for
+# `?search=vipe`, deliberately keeping `steamId`, `shared` and `sharedHistory` exactly as the source
+# sends them — the entire point of this section is proving those fields never reach
+# `PlayerSearchResult`. `fixtures/companion_profiles_search_empty.json` is a genuine no-match page.
+#
+# Four behaviours, matching this task's four clauses:
+#
+# 1. A genuine response parses into `PlayerSearchResult` objects carrying only the five contract
+#    fields (FR-004b) — the account-linking fields are simply absent as attributes, not filtered
+#    out of a wider set.
+# 2. `PlayerSearchResult` the *dataclass* has exactly those five fields, checked with
+#    `dataclasses.fields` rather than by inspecting one instance, so a later refactor that adds
+#    `steam_id` back to the dataclass fails here the moment the field is declared — before anything
+#    downstream ever sees a value in it.
+# 3. A 403, a 5xx (retry-exhausting) and a malformed (unparseable) body each come back as an empty
+#    page, never an exception — the same "failure is not an error" contract `enrich_matches`
+#    already honours. This is FR-003's precondition: the caller distinguishes "no matches" from
+#    "search unavailable" off the breaker's own state, not off a raised error.
+# 4. The circuit breaker `search_players` consults is the exact same object `enrich_matches` uses —
+#    proven by tripping it through `enrich_matches` alone and then observing `search_players`
+#    refuse to reach the transport at all, on that same provider instance.
+# ==================================================================================================
+
+SEARCH_XFAIL_REASON = "T313 not implemented yet"
+
+# The two T311 fixtures live directly under `fixtures/`, not under `fixtures/companion/` like the
+# `enrich_matches` fixtures above (`fixtures/README.md`).
+SEARCH_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+
+# The five, and only five, contract fields `PlayerSearchResult` may carry
+# (`specs/003-player-search-match-analysis/contracts/providers.md`).
+_SEARCH_CONTRACT_FIELDS = frozenset({"profile_id", "alias", "country", "games_played", "clan"})
+
+# The account-linking fields the source's search response carries (`docs/data-sources.md` §3's
+# trap: `steamId`, `shared`, `sharedHistory`), plus `linkedProfiles`'s own name for consistency
+# with `enrich_matches` above — `PlayerSearchResult` must never carry any of them (FR-004b).
+_ACCOUNT_LINKING_FIELDS = frozenset({"steam_id", "shared", "shared_history", "linked_profiles"})
+
+
+def _load_search_fixture() -> dict[str, Any]:
+    return json.loads(
+        (SEARCH_FIXTURES / "companion_profiles_search.json").read_text(encoding="utf-8")
+    )
+
+
+def _load_search_empty_fixture() -> dict[str, Any]:
+    return json.loads(
+        (SEARCH_FIXTURES / "companion_profiles_search_empty.json").read_text(encoding="utf-8")
+    )
+
+
+# --- A genuine response carries only the five contract fields, nothing about account links -------
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_returns_only_the_five_contract_fields() -> None:
+    """`fixtures/README.md`: "one full page (20 real records), uncapped" for `?search=vipe`. Every
+    one of the 20 records carries `steamId`, `shared` and `sharedHistory` on the wire
+    (`docs/data-sources.md` §3) — none of it may survive into a `PlayerSearchResult`.
+    """
+    from aoe2stats_providers.base import PlayerSearchPage, PlayerSearchResult
+
+    body = _load_search_fixture()
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert isinstance(page, PlayerSearchPage)
+    assert page.has_more is True, (
+        "the fixture is one full, uncapped page of a larger result (fixtures/README.md)"
+    )
+    assert len(page.results) == 20
+
+    for result in page.results:
+        assert isinstance(result, PlayerSearchResult)
+        # `dataclasses.asdict` walks the instance's own attributes — this is where a value
+        # smuggled through by a stray `setattr` or an over-eager `**kwargs` would show up, even if
+        # the dataclass *definition* itself (next test) looked clean.
+        field_names = set(dataclasses.asdict(result))
+        assert field_names == _SEARCH_CONTRACT_FIELDS
+        assert field_names.isdisjoint(_ACCOUNT_LINKING_FIELDS)
+        for forbidden in _ACCOUNT_LINKING_FIELDS:
+            assert not hasattr(result, forbidden)
+
+    first = page.results[0]
+    assert first.profile_id == 196240
+    assert first.alias == "TheViper"
+    assert first.country == "de"
+    assert first.games_played == 10665, 'the source sends `games` as the string "10665"'
+    assert isinstance(first.games_played, int)
+
+
+# --- A genuine empty result is an ordinary outcome, not a breaker failure -------------------------
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_genuine_empty_result_does_not_trip_the_breaker() -> None:
+    """A genuine 200 with no matching profiles (`fixtures/companion_profiles_search_empty.json`)
+    must look, in outcome, exactly like the failure paths below — an empty page — but, unlike
+    them, must leave the circuit breaker closed. FR-003's distinction between "no matches" and
+    "search unavailable" is read off the breaker's own state (`contracts/providers.md`), so a
+    legitimate empty search that quietly tripped the breaker would make every *next* search look
+    unavailable for no reason.
+    """
+    body = _load_search_empty_fixture()
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(200, json=body)
+
+    provider, _ = _provider(handler)
+
+    page = await provider.search_players("no-such-player-xyz", limit=20)
+
+    assert list(page.results) == []
+    assert page.has_more is False
+
+    # A closed breaker lets the next call straight through to the transport; an incorrectly
+    # tripped one would refuse it — the contrast to
+    # `test_search_players_shares_the_circuit_breaker_with_enrich_matches`, where a real trip does
+    # block the next call.
+    before = request_count
+    await provider.search_players("no-such-player-xyz", limit=20)
+    assert request_count == before + 1, "a genuine empty result must not count as a breaker failure"
+
+
+# --- The dataclass definition itself carries no account-linking field, not only its instances -----
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+def test_player_search_result_dataclass_has_no_account_linking_field() -> None:
+    """FR-004b: "these fields exist in the response and carrying them further would breach 001's
+    FR-045 by accident rather than by decision." Introspecting `dataclasses.fields` — the class
+    itself, never constructed — rather than an instance means a later refactor that adds
+    `steam_id` back to `PlayerSearchResult` fails this test the moment the field is declared, not
+    only once some value happens to reach it.
+    """
+    from aoe2stats_providers.base import PlayerSearchResult
+
+    field_names = {field.name for field in dataclasses.fields(PlayerSearchResult)}
+
+    assert field_names == _SEARCH_CONTRACT_FIELDS
+    assert field_names.isdisjoint(_ACCOUNT_LINKING_FIELDS)
+
+
+# --- A 403, a 5xx and a malformed body all come back as an empty page, never an exception ---------
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_403_yields_an_empty_page_and_does_not_raise() -> None:
+    """A 403 here is the same documented, expected bot-protection noise `enrich_matches` already
+    survives (`docs/data-sources.md` §3) — FR-003's precondition depends on this never becoming an
+    exception a caller would have to special-case.
+    """
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(403), recorder=recorder)
+
+    # No `pytest.raises` here on purpose, as above: any exception fails this test outright.
+    page = await provider.search_players("vipe", limit=20)
+
+    assert list(page.results) == []
+    assert page.has_more is False
+    assert len(recorder.calls) >= 1
+    assert recorder.calls[0].status_code == 403
+    assert not recorder.calls[0].rate_limited, (
+        "a 403 here is normal operating noise, not rate limiting, exactly as for `enrich_matches`"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_full_outage_yields_an_empty_page_and_does_not_raise() -> None:
+    """A 5xx that exhausts the shared retry budget is the ordinary `ProviderUnavailable` path every
+    other provider raises through — here, as for `enrich_matches`, it must not surface at all.
+    """
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(503), recorder=recorder)
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert list(page.results) == []
+    assert page.has_more is False
+    # The wire was genuinely asked, and genuinely answered every time with 503 — the retry budget
+    # ran its full course before this became "nothing" rather than an exception.
+    assert len(recorder.calls) == FAST_RETRY.max_attempts
+    assert all(call.status_code == 503 for call in recorder.calls)
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_malformed_body_yields_an_empty_page_and_does_not_raise() -> None:
+    """A 200 whose body does not even parse as JSON is the search-side twin of `enrich_matches`'s
+    malformed-body handling: a response the source genuinely sent, just not shaped as documented,
+    and still not an exception.
+    """
+    recorder = _Recorder()
+    provider, _ = _provider(
+        lambda request: httpx.Response(200, content=b"not json at all"), recorder=recorder
+    )
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert list(page.results) == []
+    assert page.has_more is False
+    assert recorder.calls[0].status_code == 200
+
+
+# --- The circuit breaker is the exact same object `enrich_matches` uses ---------------------------
+
+
+@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
+async def test_search_players_shares_the_circuit_breaker_with_enrich_matches() -> None:
+    """`contracts/providers.md`: "The existing circuit breaker and token bucket are shared with
+    `enrich_matches` rather than duplicated ... two independent breakers would each see half the
+    failures and neither would trip." Proven the direct way: trip the breaker through
+    `enrich_matches` alone, on one provider instance, then show `search_players` on that same
+    instance refuses to reach the transport at all — a duplicated, still-closed breaker for search
+    would let this next call straight through to the mock transport and bump `request_count`.
+    """
+    request_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(403)
+
+    provider, _ = _provider(handler)
+
+    # Enough consecutive failures to open the breaker (`companion/provider.py`'s
+    # `_FAILURE_THRESHOLD`), driven entirely through `enrich_matches` — `search_players` is never
+    # called until the breaker should already be open, mirroring
+    # `test_repeated_failures_open_the_circuit_breaker` above.
+    call_count = 12
+    for _ in range(call_count):
+        result = await provider.enrich_matches([FIXTURE_GAME_IDS[0]])
+        assert result == {}
+    assert request_count < call_count, "the breaker must have opened during the loop above"
+
+    plateaued_at = request_count
+    page = await provider.search_players("vipe", limit=20)
+
+    assert request_count == plateaued_at, (
+        "a breaker private to `search_players` would still be closed here and would have issued "
+        "a fresh request — the same instance `enrich_matches` already tripped must refuse this "
+        "call too, which is what makes it 'the same instance' rather than merely the same type"
+    )
+    assert list(page.results) == []
+    assert page.has_more is False

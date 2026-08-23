@@ -16,6 +16,10 @@ export * from './components/CaptureStateBadge'
 export * from './components/MatchRow'
 export * from './components/MatchDetailPanel'
 
+// Player search (T320, packages/design-system/specs/player-search.md).
+export * from './components/SearchBox'
+export * from './components/PlayerResultRow'
+
 // Screens (T035, packages/design-system/specs/{sign-in-screen,consent-step,profile-summary}.md).
 // T036/T037 build the routes that mount these; this package builds what they compose.
 export * from './components/SignInScreen'
