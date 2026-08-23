@@ -1,19 +1,22 @@
-"""Tests for the four feature-001-shaped assumptions in `scripts/checks/spec_lint.py` (T201).
+"""Tests for the four feature-001-shaped assumptions in `scripts/checks/spec_lint.py` (T201, T202).
 
 `spec_lint.py` was written when this repository held exactly one feature, and four of its checks
 (`task-refs`, `alert-kinds`, `env-consumed`, `register-commitments`) quietly baked that in: each one
-only ever looks inside the single feature it is linting, never across `specs/`. Feature 002 makes
+only ever looked inside the single feature it was linting, never across `specs/`. Feature 002 made
 that assumption visible, because eleven of its own task ids are cited by feature 001 and vice versa
-by design (tasks.md, "Numbering starts at T201, deliberately").
+by design (tasks.md, "Numbering starts at T201, deliberately"). T202 widened all four to resolve
+identifiers across every feature directory under `specs/`.
 
 Every test below builds its own fixture feature directory under `tmp_path`, never under `specs/`
 itself — the linter's own tests must not change meaning the day a third feature is added, and must
-not depend on the real repository's current shape. Where a check reads its own inputs from `REPO`
-(`check_register_commitments`, via `docs/privacy/processing-register.md`), `monkeypatch` retargets
-`spec_lint.REPO` at the fixture tree so the real repository is never touched. `spec_lint` is
-imported inside every test body rather than at module scope, per T201: it is not implemented
-against these four assumptions yet, and a module-scope import would make every test's failure mode
-"collection error" instead of the specific assertion each one is meant to prove.
+not depend on the real repository's current shape. Every check exercised here reads at least one of
+its inputs from the module-level `REPO` rather than from an argument (`check_env` and
+`check_register_commitments` scan `REPO / "specs"` directly; `check_task_references` is handed
+`feature_dir` explicitly but still resolves siblings from `feature_dir.parent`), so `monkeypatch`
+retargets `spec_lint.REPO` at the fixture tree wherever a test's own feature tree must be the one
+the check actually widens against, rather than the real repository underneath it. `spec_lint` is
+imported inside every test body rather than at module scope, matching the convention the rest of
+this test suite already uses once a module under test exists (see `test_cron_liveness.py`).
 
 `spec_lint.failures` and `spec_lint.notes` are process-wide mutable lists, not return values, and
 `import spec_lint` inside a test body still resolves to the same cached module object every other
@@ -31,15 +34,14 @@ Each check gets one positive and one negative test:
 - `register-commitments` (d): a launch item naming a task defined in another feature must pass; an
   item naming an id defined nowhere must still fail.
 
-The positive half of each pair is what T202 has to build — none of the four checks can currently see
-past the one feature directory it was handed — so those four are marked `@pytest.mark.xfail(
-strict=True, reason="T202 not implemented yet")`. The negative half asserts behaviour the checks
-already have: each one already fails on an id, a kind or a key that is genuinely defined nowhere,
-with or without a second feature in the picture, and T202 must not lose that guard while widening
-the check. Run against the checks as they stand today, every negative half already passes, so none
-of the four carries the marker — carrying it on a test that is already green would turn the suite
-red the moment it lands (CLAUDE.md's test-first convention, and the reason `strict=True` is what
-forces T202 to remove each marker rather than merely permitting it).
+None of the eight carries `xfail` any more. Under the single-feature checks T201 first wrote these
+tests against, every positive half failed structurally and was marked
+`@pytest.mark.xfail(strict=True, reason="T202 not implemented yet")`; T202's widening is what each
+marker's own reason named, and `strict=True` is what forced every marker off the moment the
+positive half started passing for real rather than merely permitting it. The negative half of each
+pair was never marked: it asserts a guard the single-feature checks already had — an id, a kind or a
+key that is genuinely defined nowhere, in this feature or any other, must still fail — and T202's
+widening had to keep that guard rather than lose it while resolving across features.
 """
 
 from __future__ import annotations
@@ -51,7 +53,6 @@ import pytest
 # --------------------------------------------------------------------------------- (a) task-refs
 
 
-@pytest.mark.xfail(strict=True, reason="T202 not implemented yet")
 def test_task_refs_passes_for_an_id_defined_by_a_different_feature(tmp_path: Path) -> None:
     """An id cited in this feature's own artifacts but defined only in another feature's
     `tasks.md` must not be reported as undefined — that is exactly the shape feature 002's own
@@ -106,7 +107,6 @@ def test_task_refs_fails_for_an_id_defined_nowhere(tmp_path: Path) -> None:
 # ------------------------------------------------------------------------------- (b) alert-kinds
 
 
-@pytest.mark.xfail(strict=True, reason="T202 not implemented yet")
 def test_alert_kinds_passes_when_data_model_declares_no_alert_vocabulary(tmp_path: Path) -> None:
     """A feature that names no `kind` enum at all in its `data-model.md` — feature 002's own shape,
     since it defines no alerts — has nothing for this check to say, and must not be treated as a
@@ -166,14 +166,15 @@ def test_alert_kinds_fails_when_a_producer_uses_a_kind_outside_the_vocabulary(
 # ------------------------------------------------------------------------------ (c) env-consumed
 
 
-@pytest.mark.xfail(strict=True, reason="T202 not implemented yet")
 def test_env_consumed_passes_for_a_key_consumed_by_a_task_in_another_feature(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A behavioural `.env.example` key this feature never mentions, but that a task in a
     *different* feature reads, must not be reported as consumed by nothing — the key has a reader,
     just not one inside this feature's own `tasks.md`."""
     import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setattr(spec_lint, "REPO", tmp_path)
 
     feature_dir = tmp_path / "specs" / "002-under-test"
     feature_dir.mkdir(parents=True)
@@ -200,11 +201,15 @@ def test_env_consumed_passes_for_a_key_consumed_by_a_task_in_another_feature(
     assert not any(f.startswith("env-consumed") for f in spec_lint.failures)
 
 
-def test_env_consumed_fails_for_a_key_consumed_by_no_task_anywhere(tmp_path: Path) -> None:
+def test_env_consumed_fails_for_a_key_consumed_by_no_task_anywhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The negative half: a behavioural key that no task, in this feature or any other, ever
     mentions must still be reported — a key that tunes behaviour and is read by nothing is exactly
     the gap this check exists to catch."""
     import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setattr(spec_lint, "REPO", tmp_path)
 
     feature_dir = tmp_path / "specs" / "002-under-test"
     feature_dir.mkdir(parents=True)
@@ -236,7 +241,6 @@ def test_env_consumed_fails_for_a_key_consumed_by_no_task_anywhere(tmp_path: Pat
 # --------------------------------------------------------------------- (d) register-commitments
 
 
-@pytest.mark.xfail(strict=True, reason="T202 not implemented yet")
 def test_register_commitments_passes_for_an_item_naming_a_task_in_another_feature(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
