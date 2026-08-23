@@ -50,6 +50,7 @@ from tests.db import clean_database, database_url, db_session, engine, session_f
 
 from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_session
+from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
 
@@ -114,6 +115,25 @@ if _missing_from_fixture or _missing_from_env_example:
         f"declared in .env.example but not in REQUIRED_ENV: {sorted(_missing_from_fixture)}; "
         f"in REQUIRED_ENV but not declared in .env.example: {sorted(_missing_from_env_example)}"
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_companion_breaker() -> Iterator[None]:
+    """MJ-4 remediation: `routers/players.py`'s `_companion_breaker` is process-lifetime
+    (`functools.lru_cache`d), the same discipline `get_settings()` already gets an explicit
+    `environment` fixture for above — but that fixture is opt-in, requested per module, while a
+    tripped breaker is a defect any test in this suite can leak into any other. Autouse, unlike
+    `environment`: `test_players_routes.py`'s own tests already clear this breaker in a `finally`
+    around the one test that deliberately trips it, but that manual discipline was the *only*
+    thing standing between a tripped breaker and every later test in the session — a test added
+    anywhere else in this suite that reaches the transport and forgets to clear it produces an
+    order-dependent heisenbug in an unrelated file. Cleared both before and after, exactly like
+    `environment` clears `get_settings()`'s cache, so a trip from an earlier session leftover (or
+    a future one) never leaks in either direction.
+    """
+    players_router._companion_breaker.cache_clear()
+    yield
+    players_router._companion_breaker.cache_clear()
 
 
 @pytest.fixture

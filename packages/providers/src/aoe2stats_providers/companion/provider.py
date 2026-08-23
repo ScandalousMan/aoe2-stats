@@ -17,16 +17,17 @@ outage or a persistent block must not keep re-spending this provider's retry bud
 closes the breaker immediately: an intermittent 403 that clears on the next try must not leave the
 breaker degraded.
 
-**Breaker lifetime is the caller's decision, not this class's.** `__init__` accepts an optional
-`breaker`; when omitted it builds one of its own (`build_circuit_breaker()` below), which is enough
-for a short-lived provider built once and used once, e.g. in a unit test. A caller that rebuilds a
-thin, per-request `CompanionEnrichmentProvider` around a *shared* process-lifetime breaker — as
-`apps/api/src/aoe2stats_api/routers/players.py`'s `_build_search_provider` does, for the same
-reason it holds `_COMPANION_HTTP_CLIENT`/`_COMPANION_RATE_LIMITER` at module scope rather than
-rebuilding them too — passes that breaker in explicitly instead. Without this, a provider rebuilt
-every request starts every request with a freshly-closed breaker, and `is_degraded()` can never
-observe an outage the previous request just recorded: exactly the defect this parameter exists to
-close.
+**Breaker lifetime is the caller's decision, not this class's — and `breaker` is required, not
+optional (MJ-3 remediation).** An earlier version defaulted `breaker` to `None` and silently built
+a fresh one (`build_circuit_breaker()` below) when omitted; that default is exactly how the next
+call site reproduces B1 by omission, with no test able to see it — a provider rebuilt every request
+around its own, always-closed breaker can never let `is_degraded()` observe an outage the previous
+request just recorded. Every caller now constructs the breaker itself, explicitly, and hands it in:
+`apps/api/src/aoe2stats_api/routers/players.py`'s `_build_search_provider` does this through
+`aoe2stats_providers.wiring.build_companion_breaker()`, for the same reason it holds
+`_COMPANION_HTTP_CLIENT`/`_COMPANION_RATE_LIMITER` at module scope rather than rebuilding them too;
+a short-lived provider built once and used once, e.g. in a unit test, still calls
+`build_circuit_breaker()` below itself rather than relying on a default that no longer exists.
 
 **FR-045.** `linkedProfiles` is not read anywhere below, deliberately: the parsing here only ever
 looks up `matchId`, `mapName`, `gameModeName`, `speedName`, `teams`, `players`, `profileId` and
@@ -44,12 +45,29 @@ so a server that ignores the filter and returns unrelated matches never leaks th
 (`docs/data-sources.md` §3's "Profile search behaviour"), against the exact same `_breaker` and
 token bucket `enrich_matches` uses — not a second instance of either, since a search storm and an
 enrichment storm are the same source under the same protection
-(`contracts/providers.md`). Behaves exactly like `enrich_matches` on every failure path (never
-raises; a 403 is not rate limiting; a non-200 or a malformed body opens the breaker one step
-further; a genuine 200, whatever it contains, closes it). The parser keeps only `profileId`,
-`name`, `country`, `games` and `clan` (FR-004b — see `PlayerSearchResult` in `base.py` for what is
-deliberately not there) and coerces `games` from the string the source sends it as
-(`docs/data-sources.md` §3) into the `int | None` the contract promises.
+(`contracts/providers.md`). Behaves like `enrich_matches` on every failure path that reaches the
+transport (never raises; a 403 is not rate limiting; a non-200 opens the breaker one step further),
+but a genuine 200 does **not**, by itself, close it (BL-1 remediation). `_parse_search_page` below
+distinguishes a body that parses into the contracted `{"profiles": [...]}` shape — closes the
+breaker, whatever the list contains, including empty — from one that does not — a renamed key, a
+wrapped list, a bare `[]` — which is treated exactly like a non-200: `record_failure()`, an empty
+page returned, never an exception. Recording success *before* that distinction existed meant a
+single-maintainer API renaming a field would permanently answer every search `degraded: false,
+results: []` — FR-003's exact prohibition — with nothing to self-correct it, because the breaker
+never saw a failure. The parser keeps only `profileId`, `name`, `country`, `games` and `clan`
+(FR-004b — see `PlayerSearchResult` in `base.py` for what is deliberately not there) and coerces
+`games` from the string the source sends it as (`docs/data-sources.md` §3) into the `int | None`
+the contract promises.
+
+**`last_call_failed()` (BL-2 remediation).** `is_degraded()` alone only ever answers "is the
+breaker open", which stays `False` through the first `_FAILURE_THRESHOLD - 1` failures of a fresh
+outage — a real gap: `apps/api/src/aoe2stats_api/search.py` used to read `is_degraded()` alone
+after a call and cache the first two failures of every outage as a confident "no such player" for
+the full TTL. `last_call_failed()` (`base.py`'s `PlayerSearchProvider`) is read straight off the
+same `_breaker`'s own last recorded outcome — `True` after any `record_failure()`, `False` after
+any `record_success()` — regardless of whether that failure also tripped the threshold, so a caller
+that checks it after every `search_players` call catches the sub-threshold window `is_degraded()`
+alone cannot see.
 """
 
 from __future__ import annotations
@@ -103,6 +121,12 @@ class CircuitBreaker:
         self._clock = clock
         self._consecutive_failures = 0
         self._opened_until: float | None = None
+        # BL-2 remediation: `_consecutive_failures >= _failure_threshold` (what `allow()` reads)
+        # cannot express "the call that was just made failed" during the sub-threshold window —
+        # the first `_failure_threshold - 1` failures of a fresh outage leave this `False` too,
+        # by design, so this tracks the *last* recorded outcome on its own, independent of the
+        # threshold. `last_call_failed()` below is this field's only reader.
+        self._last_call_failed = False
 
     def allow(self) -> bool:
         """Whether a call may reach the transport right now. Once the cooldown has elapsed this
@@ -116,11 +140,21 @@ class CircuitBreaker:
     def record_success(self) -> None:
         self._consecutive_failures = 0
         self._opened_until = None
+        self._last_call_failed = False
 
     def record_failure(self) -> None:
         self._consecutive_failures += 1
+        self._last_call_failed = True
         if self._consecutive_failures >= self._failure_threshold:
             self._opened_until = self._clock() + self._open_seconds
+
+    def last_call_failed(self) -> bool:
+        """Whether the most recent `record_success`/`record_failure` call was a failure — the
+        signal `is_degraded()` (`allow()`) cannot give during the sub-threshold window (module
+        docstring's "BL-2 remediation" note). `False` before either has ever been called: nothing
+        has failed yet, which is the same posture a freshly-closed breaker already takes.
+        """
+        return self._last_call_failed
 
 
 def build_circuit_breaker() -> CircuitBreaker:
@@ -146,7 +180,7 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
         call_sink: AsyncProviderCallSink | None = None,
         retry_policy: RetryPolicy | None = None,
         base_url: str = COMPANION_BASE_URL,
-        breaker: CircuitBreaker | None = None,
+        breaker: CircuitBreaker,
     ) -> None:
         super().__init__(
             provider="companion",
@@ -157,10 +191,11 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
             retry_policy=retry_policy,
         )
         self._base_url = base_url
-        # `breaker` lets a caller share one breaker across many short-lived
-        # `CompanionEnrichmentProvider` instances (module docstring's "Breaker lifetime" note);
-        # `build_circuit_breaker()` here is only the fallback for a caller that does not need to.
-        self._breaker = breaker if breaker is not None else build_circuit_breaker()
+        # Required, not defaulted (module docstring's "Breaker lifetime" note, MJ-3 remediation):
+        # a caller shares one breaker across many short-lived `CompanionEnrichmentProvider`
+        # instances by constructing it once (`build_circuit_breaker()`) and passing it in every
+        # time, never by relying on this class to build one silently when omitted.
+        self._breaker = breaker
 
     def is_degraded(self) -> bool:
         """Whether this source is currently known to be down, read off the same `_breaker`
@@ -171,6 +206,13 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
         depends on the Protocol, never on this concrete class.
         """
         return not self._breaker.allow()
+
+    def last_call_failed(self) -> bool:
+        """Whether the `search_players` call this provider instance most recently completed
+        failed — `True` through the sub-threshold window `is_degraded()` cannot see (module
+        docstring's "BL-2 remediation" note, `base.py`'s `PlayerSearchProvider`).
+        """
+        return self._breaker.last_call_failed()
 
     async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]:
         if not game_ids:
@@ -236,8 +278,20 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
             self._breaker.record_failure()
             return PlayerSearchPage(results=(), has_more=False)
 
+        try:
+            page = _parse_search_page(body, limit=limit)
+        except _MalformedSearchResponse:
+            # BL-1 remediation: a 200 that does not parse into `{"profiles": [...]}` — a renamed
+            # key, a wrapped list, a bare `[]` — is a source drift, not a genuine zero-result
+            # answer, and must not be recorded as (or look like) one. Recording success here, as
+            # the code used to, is exactly how FR-003 inverted forever the moment the source's
+            # shape drifted: every search would answer `degraded: false, results: []` with nothing
+            # to self-correct it, because the breaker never saw a failure.
+            self._breaker.record_failure()
+            return PlayerSearchPage(results=(), has_more=False)
+
         self._breaker.record_success()
-        return _parse_search_page(body, limit=limit)
+        return page
 
 
 def _parse_matches(
@@ -291,10 +345,29 @@ def _parse_matches(
     return result
 
 
+class _MalformedSearchResponse(Exception):
+    """Raised by `_parse_search_page` when a 200's body does not parse into the contracted
+    `{"profiles": [...]}` shape — a renamed key, a wrapped list, a bare `[]`, anything but a dict
+    carrying a `profiles` list. Never raised for a genuine zero-match answer (`{"profiles": []}`
+    is a perfectly parseable, empty list): that is `PlayerSearchPage(results=(), has_more=False)`,
+    the same value this exception's own callers return on catching it, but recorded as a *success*
+    by `search_players` — the whole distinction BL-1 exists to draw. Private to this module:
+    `search_players` is the only caller, and turns this into `_breaker.record_failure()`, never
+    into something a caller of `search_players` itself would see.
+    """
+
+
 def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
     """Build a `PlayerSearchPage` from a genuine `?search=` response
     (`docs/data-sources.md` §3), keeping only `PlayerSearchResult`'s five contract fields
     (FR-004b) and never the source's account-linking fields.
+
+    Raises `_MalformedSearchResponse` — never returns a page — when `body` does not even have the
+    contracted shape (not a dict, or no `profiles` list at all): that is a source drift
+    `search_players` must record as a failure (BL-1), not a page this function can silently stand
+    in an empty one for. A `profiles` list that is merely empty, or whose individual entries are
+    malformed and dropped by `_parse_search_result`, is a genuine, parseable answer and returns
+    normally — dropping one bad entry does not throw away a response that otherwise parsed.
 
     `limit` is enforced here rather than on the wire: the contract only documents
     `?search={name}`, no page-size parameter, so truncating the parsed list is the one
@@ -303,11 +376,11 @@ def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
     `game_ids`. A truncation counts as "more" exactly like the source's own `hasMore` does.
     """
     if not isinstance(body, dict):
-        return PlayerSearchPage(results=(), has_more=False)
+        raise _MalformedSearchResponse("search response body is not a JSON object")
 
     profiles = body.get("profiles")
     if not isinstance(profiles, list):
-        return PlayerSearchPage(results=(), has_more=False)
+        raise _MalformedSearchResponse("search response body carries no `profiles` list")
 
     results: list[PlayerSearchResult] = []
     for profile in profiles:

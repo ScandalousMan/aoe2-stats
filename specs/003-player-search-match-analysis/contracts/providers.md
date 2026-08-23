@@ -9,13 +9,15 @@ errors, strict Pydantic validation — which are not restated here.
 
 ```python
 def is_degraded(self) -> bool: ...
+def last_call_failed(self) -> bool: ...
 async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 ```
 
 Implemented by `CompanionEnrichmentProvider`, against
 `GET https://data.aoe2companion.com/api/profiles?search={name}` (`docs/data-sources.md` §3).
-`is_degraded()` is part of this Protocol, not an extension a caller adds on top of it — see
-"Failure" below for what it means and when a caller must check it.
+`is_degraded()` and `last_call_failed()` are both part of this Protocol, not an extension a caller
+adds on top of it (round-2 review's BL-2 remediation added the second) — see "Failure" below for
+what each means and when a caller must check them.
 
 ```python
 @dataclass(frozen=True)
@@ -58,40 +60,64 @@ populating `hidden`, that is a new fact for §3 and a new decision for the spec.
 ### Failure
 
 `search_players` behaves like the rest of this provider: it **never raises**. It returns an empty
-page, and the caller distinguishes "no such player" from "search is unavailable" from the same signal
-the existing enrichment path uses — the circuit breaker's own state — not from an exception. This is
-what makes FR-003 implementable without inventing a sentinel: a 403 here is documented, expected
-bot-protection noise (`docs/data-sources.md` §3), and it must not become a `ProviderRateLimited` the
-way an unexpected 403 would on any other provider.
+page, and the caller distinguishes "no such player" from "search is unavailable" from the same two
+signals the existing enrichment path's breaker exposes — `is_degraded()` and `last_call_failed()`
+(round-2 review, BL-1/BL-2) — not from an exception. This is what makes FR-003 implementable
+without inventing a sentinel: a 403 here is documented, expected bot-protection noise
+(`docs/data-sources.md` §3), and it must not become a `ProviderRateLimited` the way an unexpected
+403 would on any other provider.
 
 The existing circuit breaker and token bucket are shared with `enrich_matches` rather than duplicated.
 A search storm and an enrichment storm are the same source under the same protection, and two
 independent breakers would each see half the failures and neither would trip.
 
-`is_degraded()` is part of `PlayerSearchProvider` itself (see the Protocol above), not a detail
-private to `CompanionEnrichmentProvider`: it is the only way a caller can read the breaker's state
-ahead of a call, since `search_players` never raises. A caller must also re-read `is_degraded()`
-*after* a call that returned a page — the call that trips the breaker, or a post-cooldown probe
-that fails, still returns an ordinary-looking (possibly empty) page rather than raising, and only a
-post-call check tells that page apart from a genuine answer. `apps/api/src/aoe2stats_api/search.py`
-does both.
+**A genuine 200 does not, by itself, mean the call succeeded (BL-1).** A body that does not parse
+into the contracted `{"profiles": [...]}` shape — a renamed key, a wrapped list, a bare `[]` — is a
+source drift, not a confident, empty answer, and `search_players` must record it as a failure, not
+as a success: `packages/providers/.../companion/provider.py`'s `_parse_search_page` raises a
+private exception on exactly that distinction, and `search_players` only calls
+`_breaker.record_success()` once the shape has actually been checked. Recording success
+unconditionally before that check — the round-1 shape of this provider — is how a single renamed
+field on a single-maintainer API with no published contract would have made FR-003 invert forever:
+every search would answer `degraded: false, results: []`, with nothing to self-correct it, because
+the breaker never saw a failure.
 
-**The breaker's lifetime is the caller's to manage, not this provider's.** A `CompanionEnrichmentProvider`
-rebuilt per request (because its `call_sink` closes over a request-scoped resource) must be given
-the *same* breaker every time — `packages/providers/.../companion/provider.py`'s constructor takes
-an optional `breaker`, and `build_circuit_breaker()` is how a caller builds a process-lifetime one
-to inject. A breaker rebuilt alongside the provider is always closed, and `is_degraded()` can never
-be `True` in production even though every unit test exercises that branch directly.
+`is_degraded()` and `last_call_failed()` are both part of `PlayerSearchProvider` itself (see the
+Protocol above), not details private to `CompanionEnrichmentProvider`. `is_degraded()` is the only
+way a caller can read the breaker's state ahead of a call, since `search_players` never raises. A
+caller must also re-read _both_ signals **after** a call that returned a page (BL-2): the call
+that trips the breaker, or a post-cooldown probe that fails, still returns an ordinary-looking
+(possibly empty) page rather than raising — but `is_degraded()` alone only catches the call that
+pushes the breaker's own consecutive-failure count past its threshold. A consecutive-failure
+breaker holds `is_degraded()` at `False` through the first `_FAILURE_THRESHOLD - 1` failures of
+every fresh outage by construction, and the round-2 review reproduced exactly that by execution:
+the first two failing calls of an outage read `is_degraded()` as `False` both before and after,
+and were cached as a confident answer. `last_call_failed()` is the signal that closes that gap —
+`True` after any failed call, independent of the threshold — and a caller must check
+`is_degraded() or last_call_failed()` after every call, not `is_degraded()` alone.
+`apps/api/src/aoe2stats_api/search.py` does this.
+
+**The breaker's lifetime is the caller's to manage, not this provider's, and `breaker` is required,
+not optional (MJ-3).** A `CompanionEnrichmentProvider` rebuilt per request (because its `call_sink`
+closes over a request-scoped resource) must be given the _same_ breaker every time —
+`packages/providers/.../companion/provider.py`'s constructor takes a required `breaker`, built once
+via `aoe2stats_providers.wiring.build_companion_breaker()` and injected into every request's own,
+otherwise disposable, provider instance. The constructor used to default `breaker` to `None` and
+build a fresh one silently when omitted; that default was removed because it is exactly how the
+next call site (the ingester's own `enrich_matches` wiring) would have reproduced this defect by
+omission, with no test able to see it — a breaker rebuilt alongside the provider is always closed,
+and `is_degraded()` can never be `True` in production even though every unit test exercises that
+branch directly.
 
 ### `profile_search_cache.source` — the vocabulary and what a cache hit means
 
 `profile_search_cache` (see [data-model.md](../data-model.md)) has one column this contract, not
 `data-model.md`, is the source of truth for: `source`. Two values exist today —
 
-| `source` | Written when | A cache hit reads as |
-| --- | --- | --- |
-| `"companion"` | `search_players` returned, and the breaker was closed both before and after the call — a confident, live answer. | `degraded: false` |
-| `"aoe_profiles"` | Reserved for a row answered by the local fallback over `aoe_profiles` (`search.py`'s `_local_fallback_results`). **Not currently written** — see "Caching" below. | `degraded: true` |
+| `source`         | Written when                                                                                                                                                       | A cache hit reads as |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `"companion"`    | `search_players` returned a page, and neither `is_degraded()` nor `last_call_failed()` was true before or after the call — a confident, live answer.               | `degraded: false`    |
+| `"aoe_profiles"` | A row answered by the local fallback over `aoe_profiles` (`search.py`'s `_local_fallback_results`), cached under a short TTL — see "Caching" below (BL-3 re-take). | `degraded: true`     |
 
 A cache hit derives `degraded` structurally, from `source != "companion"`, never by re-asking the
 provider: **any value other than `"companion"` reads as degraded**, not only `"aoe_profiles"`
@@ -108,27 +134,39 @@ Caching is the caller's, not the provider's (`profile_search_cache`, see
 [data-model.md](../data-model.md)). The provider stays a thin, testable boundary; the cache is a
 product decision about staleness and belongs where the TTL is configured.
 
-**A fallback answer is not cached at all.** `search_players`'s own cache-first behaviour
-(FR-004e) exists to spare a source "that is degradable by design" repeated calls for a repeated
-query — but while the breaker is open, `is_degraded()` already stops every call before it reaches
-the transport, cache row or not. Caching the fallback's own, reduced answer under `source =
-"aoe_profiles"` would buy no further protection and would cost something real: it would pin every
-repeat of that query to the fallback's reduced results for the configured TTL (`PLAYER_SEARCH_CACHE_TTL_SECONDS`,
-`.env.example`) even after the source has recovered — the outage would outlive itself. The
-alternative considered and rejected was a much shorter TTL for a fallback row; not caching it at
-all was chosen instead, because there is no protective benefit to trade the staleness risk
-against. `_local_fallback_results` is a plain, cheap read against a table this service already
-holds in memory-adjacent storage (`aoe_profiles`), not an external call — recomputing it on every
-degraded request is not the "repeated calls against a degradable source" FR-004e caches around.
+**A fallback answer is cached, under a short, dedicated TTL (BL-3 re-take of the round-1 M1
+decision).** Round 1 stopped caching the fallback's own answer at all, reasoning that
+`_local_fallback_results` was "a plain, cheap read against a table this service already holds" and
+so cost nothing extra to recompute on every degraded request. **That premise was measured false in
+round 2**: `_local_fallback_results` is an unfiltered `SELECT profile_id, count(*) FROM
+match_players GROUP BY profile_id` subquery joined to `aoe_profiles` — a full aggregate over the
+match-participants table, recomputed on _every_ degraded request, up to the per-user rate limit,
+precisely while the source is down, against a 0.5 GB Neon instance. Not caching it at all traded a
+5-minute cache for a full-table aggregate at request volume, exactly when load on this service is
+already elevated (a search storm is often what surfaces an outage in the first place).
+
+The re-take: a fallback answer is now written to `profile_search_cache` under `source =
+"aoe_profiles"`, at a short, fixed TTL (`_FALLBACK_CACHE_TTL_SECONDS` in `search.py`, deliberately
+not settings-driven — a protective constant, not an operator knob) rather than the caller's own,
+much longer `ttl_seconds` (`PLAYER_SEARCH_CACHE_TTL_SECONDS`, `.env.example`). This keeps round 1's
+original concern — a `source` written once during an outage pinning every repeat of that query to
+the fallback's reduced results even after the source has recovered, "the outage would outlive
+itself" — bounded to the short TTL instead of eliminated by not caching at all: a stale fallback row
+self-heals within seconds of the source recovering, while a burst of repeat queries against a down
+source now recomputes the aggregate once per TTL window rather than once per request.
+`profile_search_cache`'s opportunistic pruning (`search.py`'s `_write_cache`) is TTL-aware per
+row's own `source` for the same reason: a single, uniform pruning threshold would either prune
+fresh fallback rows too eagerly (at the short TTL) or let a stale one outlive its short protection
+window (at the long one).
 
 ## `ReplayProvider` (existing) — what this feature asks of it
 
 Unchanged interface. Two new callers, with different obligations:
 
-| Caller | What it does with the bytes |
-| --- | --- |
-| download of an `obtainable` point of view | streams them to the user and **stores nothing** (FR-027) |
-| analysis | stores them byte-for-byte with a checksum, as a `retained_recordings` row (FR-033) |
+| Caller                                    | What it does with the bytes                                                        |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| download of an `obtainable` point of view | streams them to the user and **stores nothing** (FR-027)                           |
+| analysis                                  | stores them byte-for-byte with a checksum, as a `retained_recordings` row (FR-033) |
 
 Both go through the same provider, the same token bucket and the same `provider_calls` record. What
 separates them is FR-039: an analysis fetch passes `apps/analyzer/admission.py` first (R7), a

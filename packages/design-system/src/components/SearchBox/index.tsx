@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
@@ -67,15 +67,20 @@ export function SearchBox({
   }
 
   // The caller (T322) cannot hand this a stable `onSearch`: it calls `setState` the instant the
-  // callback fires, which re-renders the caller and mints a fresh closure every time. Reading
-  // `onSearch` through a ref, updated every render but never listed as a dependency, means the
-  // debounce effect below only reruns when `value` or `debounceMs` actually change — not on every
-  // render `onSearch` itself provokes. Depending on `onSearch`'s identity instead re-arms the timer
-  // on each of those renders and redispatches the same, already-settled query forever: an
-  // unbounded request loop the client would run against itself, exactly what FR-005's rate limiter
-  // exists to stop from the outside (regression, see SearchBox.test.tsx).
-  const onSearchRef = useRef(onSearch)
-  onSearchRef.current = onSearch
+  // callback fires, which re-renders the caller and mints a fresh closure every time. `useEffectEvent`
+  // reads the latest `onSearch` closure without ever being reactive itself — a call to it is
+  // deliberately excluded from any effect's dependency array — so the debounce effect below only
+  // reruns when `value` or `debounceMs` actually change, not on every render `onSearch` itself
+  // provokes. Depending on `onSearch`'s identity instead re-arms the timer on each of those renders
+  // and redispatches the same, already-settled query forever: an unbounded request loop the client
+  // would run against itself, exactly what FR-005's rate limiter exists to stop from the outside
+  // (regression, see SearchBox.test.tsx). `useEffectEvent` — rather than a ref written during
+  // render — is the fix: writing a ref outside of an effect or event handler is unsound in React 19
+  // (a discarded render could commit a closure that never mounted), and `useEffectEvent` gives the
+  // same "always the latest closure, never a dependency" behaviour without that write.
+  const handleSearch = useEffectEvent((query: string) => {
+    onSearch(query)
+  })
 
   // Debounce: dispatch `onSearch` once typing has settled. A blank query is never dispatched —
   // clearing the box is not a search, and `idle`'s own definition ("no query has been submitted
@@ -83,7 +88,7 @@ export function SearchBox({
   useEffect(() => {
     const trimmed = value.trim()
     if (trimmed === '') return
-    const timer = window.setTimeout(() => onSearchRef.current(trimmed), debounceMs)
+    const timer = window.setTimeout(() => handleSearch(trimmed), debounceMs)
     return () => window.clearTimeout(timer)
   }, [value, debounceMs])
 

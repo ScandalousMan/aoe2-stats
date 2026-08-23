@@ -302,9 +302,22 @@ class PlayerSearchProvider(Protocol):
     empty result" *before* ever calling `search_players` (`search_players` itself never raises, so
     there is no exception to read that signal off — `contracts/providers.md`'s "Failure" section).
     Read off the provider's own circuit breaker, with no side effect of its own.
+
+    `last_call_failed()` is the second, distinct signal `contracts/providers.md`'s BL-2 remediation
+    added: `is_degraded()` alone can only say "the breaker is open", which is false for the first
+    calls of a fresh outage — a consecutive-failure breaker admits a sub-threshold window where
+    every call so far has failed but the count has not yet reached `_FAILURE_THRESHOLD`
+    (`companion/provider.py`). `is_degraded()` would read `False` through that whole window even
+    though the call the caller just made did not succeed, and a caller that only checks
+    `is_degraded()` after the call caches that failure as a confident, empty answer. `last_call_
+    failed()` answers "did the call this provider instance just completed fail?", independent of
+    whether the breaker's own threshold has tripped — a caller (`apps/api/src/aoe2stats_api/
+    search.py`) must check both after every call it makes, not `is_degraded()` alone.
     """
 
     def is_degraded(self) -> bool: ...
+
+    def last_call_failed(self) -> bool: ...
 
     async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 

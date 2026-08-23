@@ -20,35 +20,57 @@ exactly as `test_player_search.py`'s `_FakeSearchProvider.is_degraded()` models 
 `packages/providers/.../base.py`) — this module depends on that Protocol, not on a private
 extension of it, so there is no boundary of its own left to declare here.
 
-`is_degraded()` is also re-read immediately *after* a genuine call to the provider, not only
-before one: a total outage still answers `search_players` with an empty page rather than raising
-(the same "Failure" section), and if that very call is what tripped the breaker — or found it
-still open on a post-cooldown probe — reading `is_degraded()` only beforehand would miss it, and an
-outage would be indistinguishable from a genuine zero-result search on the one request that
-observes it. See `_degraded_outcome` below.
+**BL-2 remediation: `is_degraded()` alone is checked again after a genuine call, but it is not
+enough on its own.** A total outage still answers `search_players` with an empty page rather than
+raising (the same "Failure" section), and if that very call is what tripped the breaker — or found
+it still open on a post-cooldown probe — reading `is_degraded()` only beforehand would miss it.
+But `is_degraded()` only ever reads "is the breaker open", which a consecutive-failure breaker
+holds `False` through the first `_FAILURE_THRESHOLD - 1` failures of every outage
+(`companion/provider.py`) — the round-2 review reproduced this by execution: the first two failing
+calls of an outage read `is_degraded() == False` both before and after, and were cached as a
+confident `source="companion"` answer, served back as "no such player" for the rest of the TTL and
+beyond. `provider.last_call_failed()` (`PlayerSearchProvider`, `base.py`) is the signal that closes
+that gap: `True` after any failed call, independent of the breaker's own threshold. `search_players`
+below checks `is_degraded() or last_call_failed()` after the call, never `is_degraded()` alone.
 
-**`source` is how a cached row remembers which path answered it, and only a genuine provider call
-is ever cached.** A row written from a real, confident answer carries `source="companion"`
-(`_COMPANION_SOURCE`); the fallback's own answer is never written to the cache at all — see
-`_degraded_outcome`'s docstring for why, and `contracts/providers.md`'s "Caching" section, which
-this remediation amended, for the reasoning recorded in one place. Reading `degraded` back off a
-cache hit's `source` column — rather than re-asking the provider — stays the convention
-`test_players_routes.py` (T317) already seeded directly: `source="companion"` reads as
-`degraded: false`, any other value (including a row from before this remediation, or one seeded
-directly by a test) as `degraded: true`.
+**`source` is how a cached row remembers which path answered it (BL-3 re-take).** A row written
+from a real, confident answer carries `source="companion"` (`_COMPANION_SOURCE`); a row written
+from the fallback carries `source="aoe_profiles"` (`_FALLBACK_SOURCE`). The round-1 remediation
+had stopped writing the fallback's answer to the cache at all, on the premise that
+`_local_fallback_results` was "a plain, cheap read" not worth protecting further — the round-2
+review measured that premise false: it is an unfiltered aggregate (`count(*) ... group by
+profile_id`) over the whole `match_players` table, joined to `aoe_profiles`, recomputed on *every*
+degraded request, up to the per-user rate limit, precisely while the source is down, against a
+0.5 GB Neon instance. Caching the fallback's own answer is worth doing after all, under a
+deliberately short TTL (`_FALLBACK_CACHE_TTL_SECONDS`, a small fraction of the live `ttl_seconds`):
+short enough that the "outage would outlive itself" risk the round-1 remediation was right to worry
+about stays bounded to that TTL rather than the full `PLAYER_SEARCH_CACHE_TTL_SECONDS`, while
+still turning a burst of repeat queries against a down source into one aggregate per
+`fallback_ttl_seconds`, not one per request. Reading `degraded` back off a cache hit's `source`
+column — rather than re-asking the provider — stays the convention `test_players_routes.py` (T317)
+already seeded directly: `source="companion"` reads as `degraded: false`, any other value
+(including a row from before this remediation, or one seeded directly by a test) as
+`degraded: true`.
 
-**Opportunistic TTL pruning happens on write, never on read and never on a schedule (FR-044).**
-Every call that writes a fresh row first deletes every row — not only this query's own — whose
-`fetched_at` has fallen behind `ttl_seconds`, the same discipline `ratelimit.py` applies to
-`rate_limit_counters` and for the same reason: this table has nothing else bounding it, because a
-per-user rate limit caps *how often* someone searches, not the *variety* of what has ever been
-searched.
+**Opportunistic TTL pruning happens on write, never on read and never on a schedule (FR-044), and
+is now TTL-aware per row's own `source`.** Every call that writes a fresh row first deletes every
+row — not only this query's own — whose `fetched_at` has fallen behind *its own* TTL: `ttl_seconds`
+for a `"companion"` row, `fallback_ttl_seconds` for any other. A single, uniform threshold would
+either prune fresh fallback rows too eagerly (if set to the short TTL) or let a stale fallback row
+outlive its own, deliberately short protection window (if set to the long one) — see `ratelimit.py`
+for the identical discipline applied to `rate_limit_counters`, minus the per-row TTL split this
+table's two kinds of row now need.
 
-**`ttl_seconds` and `limit` are explicit parameters, not a call into `get_settings()` in here** —
-identical to `check_and_increment`'s `window_seconds` in `ratelimit.py`. This function stays a pure
-function of its inputs; the router (T319) is where `PLAYER_SEARCH_CACHE_TTL_SECONDS` gets read once
-and passed in. `now` is explicit for the same reason it is there too: deterministic TTL boundaries
-under test, never a race against the real clock.
+**`ttl_seconds`, `fallback_ttl_seconds` and `limit` are explicit parameters, not a call into
+`get_settings()` in here** — identical to `check_and_increment`'s `window_seconds` in
+`ratelimit.py`. This function stays a pure function of its inputs; the router (T319) is where
+`PLAYER_SEARCH_CACHE_TTL_SECONDS` gets read once and passed in as `ttl_seconds`.
+`fallback_ttl_seconds` is not settings-driven at all, deliberately: it is a fixed, protective
+constant (`_FALLBACK_CACHE_TTL_SECONDS`) rather than an operator-tunable knob, on the same footing
+as `companion/provider.py`'s own `_FAILURE_THRESHOLD` — nothing about it should need to change
+per-deployment, so it stays a literal here rather than growing an `.env.example` entry with no
+real use for one. `now` is explicit for the same reason it is in `ratelimit.py` — deterministic TTL
+boundaries under test, never a race against the real clock.
 """
 
 from __future__ import annotations
@@ -59,7 +81,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,13 +97,18 @@ _SEARCH_SOURCE_UNAVAILABLE_REASON = "search_source_unavailable"
 # as `degraded: true` — see the module docstring's note on `test_players_routes.py`'s convention.
 _COMPANION_SOURCE = "companion"
 
-# `data-model.md`'s own name for what FR-004d's fallback searches over — never itself written to
-# `profile_search_cache.source` (this remediation stopped that, see `_degraded_outcome` below), but
-# still the value a degraded row from before this remediation, or one seeded directly by a test
-# (`test_players_routes.py`, T317), carries — and any such value still reads back as `degraded:
-# true`, since the cache-hit convention (module docstring) is "companion, or degraded", not an
-# enumeration of every non-companion source there has ever been.
+# `data-model.md`'s own name for what FR-004d's fallback searches over — written to
+# `profile_search_cache.source` for a fallback answer (BL-3 re-take, module docstring), and read
+# back as `degraded: true` exactly like any other non-companion value, including a row seeded
+# directly by a test (`test_players_routes.py`, T317) or one left over from before this remediation.
 _FALLBACK_SOURCE = "aoe_profiles"
+
+# The TTL a fallback row is cached under — deliberately much shorter than the caller's own
+# `ttl_seconds` (module docstring's "BL-3 re-take"): short enough that a query cached mid-outage
+# self-heals quickly once the source recovers, long enough to turn a burst of identical repeat
+# queries against a down source into one `_local_fallback_results` aggregate per window rather than
+# one per request.
+_FALLBACK_CACHE_TTL_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -111,6 +138,7 @@ async def search_players(
     *,
     limit: int,
     ttl_seconds: int,
+    fallback_ttl_seconds: int = _FALLBACK_CACHE_TTL_SECONDS,
     now: datetime | None = None,
 ) -> SearchOutcome:
     """Cache-first, breaker-checked, never an exception — see the module docstring for why each of
@@ -120,23 +148,46 @@ async def search_players(
     moment = now if now is not None else datetime.now(UTC)
     query_normalised = normalise_query(query)
 
-    cached = await _read_fresh_cache(session, query_normalised, ttl_seconds=ttl_seconds, now=moment)
+    cached = await _read_fresh_cache(
+        session,
+        query_normalised,
+        ttl_seconds=ttl_seconds,
+        fallback_ttl_seconds=fallback_ttl_seconds,
+        now=moment,
+    )
     if cached is not None:
         return cached
 
     if provider.is_degraded():
-        return await _degraded_outcome(session, query_normalised, limit=limit)
+        return await _degraded_outcome(
+            session,
+            query_normalised,
+            limit=limit,
+            ttl_seconds=ttl_seconds,
+            fallback_ttl_seconds=fallback_ttl_seconds,
+            now=moment,
+        )
 
     page = await provider.search_players(query, limit=limit)
-    if provider.is_degraded():
-        # B1 remediation: `search_players` never raises (`contracts/providers.md`'s "Failure"),
-        # so a call that just tripped the breaker — or found it still open on a post-cooldown
-        # probe — comes back exactly like a genuine, confident answer would: an empty (or
-        # otherwise unverifiable) `page`. Re-checking `is_degraded()` here, immediately after the
-        # call, is the only way to catch that: without it, one outage would be cached as
-        # `source="companion"` and served back as "no such player" for the full TTL, even after
-        # the source recovers — the module docstring's whole point.
-        return await _degraded_outcome(session, query_normalised, limit=limit)
+    if provider.is_degraded() or provider.last_call_failed():
+        # B1/BL-2 remediation: `search_players` never raises (`contracts/providers.md`'s
+        # "Failure"), so a failed call comes back exactly like a genuine, confident answer would:
+        # an empty (or otherwise unverifiable) `page`. `is_degraded()` alone only catches the call
+        # that pushes the breaker's own consecutive-failure count past its threshold (or a
+        # post-cooldown probe that fails again) — it stays `False` through the first
+        # `_FAILURE_THRESHOLD - 1` failures of every outage, which `last_call_failed()`
+        # (`PlayerSearchProvider`, `packages/providers/.../base.py`) is what exists to catch:
+        # `True` for any failed call, independent of the threshold. Checking `is_degraded()` alone
+        # here, as the round-1 remediation did, cached the first two failures of every outage as a
+        # confident `source="companion"` answer — the module docstring's BL-2 note.
+        return await _degraded_outcome(
+            session,
+            query_normalised,
+            limit=limit,
+            ttl_seconds=ttl_seconds,
+            fallback_ttl_seconds=fallback_ttl_seconds,
+            now=moment,
+        )
 
     await _write_cache(
         session,
@@ -144,30 +195,43 @@ async def search_players(
         page.results,
         source=_COMPANION_SOURCE,
         ttl_seconds=ttl_seconds,
+        fallback_ttl_seconds=fallback_ttl_seconds,
         now=moment,
     )
     return SearchOutcome(results=page.results, degraded=False, reason=None)
 
 
 async def _degraded_outcome(
-    session: AsyncSession, query_normalised: str, *, limit: int
+    session: AsyncSession,
+    query_normalised: str,
+    *,
+    limit: int,
+    ttl_seconds: int,
+    fallback_ttl_seconds: int,
+    now: datetime,
 ) -> SearchOutcome:
     """FR-004d's fallback outcome, reached whenever the source is (or has just been found to be)
     unavailable — before the call, when the breaker was already open, or immediately after one,
-    when the call itself is what opened it or found it still open (see `search_players` above).
+    when the call itself is what opened it, found it still open, or simply failed without tripping
+    it yet (see `search_players` above).
 
-    **Never written to `profile_search_cache` (this remediation's M1 decision, recorded in
-    `contracts/providers.md`'s "Caching" section).** Caching a degraded answer earns nothing this
-    system does not already have: the breaker itself is what stops repeat calls from reaching a
-    down source (FR-004e's own justification for the cache — "repeated ... queries do not become
-    repeated calls against a source that is degradable by design" — already holds without a cache
-    row, because `is_degraded()` short-circuits the call). What it would cost is real: a `source`
-    written once during an outage would pin every repeat of that query to the fallback's reduced
-    results for the full TTL, even after the source has recovered — precisely what the fresh-cache
-    read above must never do to a live answer, and there is no reason the fallback's own answer
-    should be held to a lower standard.
+    **Written to `profile_search_cache` under `_FALLBACK_SOURCE`, at `fallback_ttl_seconds` (BL-3
+    re-take of the round-1 M1 decision — module docstring).** Round 1 stopped caching a fallback
+    answer at all, on the premise that `_local_fallback_results` was cheap enough not to need it;
+    the round-2 review measured that premise false — it is an unfiltered aggregate over
+    `match_players`, recomputed on every degraded request. Caching it under a short TTL bounds that
+    cost without reintroducing the staleness risk round 1 was right to avoid at the *long* TTL.
     """
     results = await _local_fallback_results(session, query_normalised, limit=limit)
+    await _write_cache(
+        session,
+        query_normalised,
+        results,
+        source=_FALLBACK_SOURCE,
+        ttl_seconds=ttl_seconds,
+        fallback_ttl_seconds=fallback_ttl_seconds,
+        now=now,
+    )
     return SearchOutcome(results=results, degraded=True, reason=_SEARCH_SOURCE_UNAVAILABLE_REASON)
 
 
@@ -217,16 +281,32 @@ async def _local_fallback_results(
     ]
 
 
+def _ttl_for_source(source: str, *, ttl_seconds: int, fallback_ttl_seconds: int) -> int:
+    """The TTL that applies to a `profile_search_cache` row, keyed on its own `source` (module
+    docstring's "Opportunistic TTL pruning" note): `ttl_seconds` for a confident `"companion"`
+    answer, `fallback_ttl_seconds` — deliberately shorter — for anything else, including a row from
+    before this remediation or one seeded directly by a test."""
+    return ttl_seconds if source == _COMPANION_SOURCE else fallback_ttl_seconds
+
+
 async def _read_fresh_cache(
-    session: AsyncSession, query_normalised: str, *, ttl_seconds: int, now: datetime
+    session: AsyncSession,
+    query_normalised: str,
+    *,
+    ttl_seconds: int,
+    fallback_ttl_seconds: int,
+    now: datetime,
 ) -> SearchOutcome | None:
-    """`None` on a miss — no row, or a row older than `ttl_seconds` — so the caller re-fetches
-    exactly as if nothing were cached. A hit reads `degraded` off `source` rather than re-asking the
-    provider (module docstring)."""
+    """`None` on a miss — no row, or a row older than its own TTL (`_ttl_for_source`) — so the
+    caller re-fetches exactly as if nothing were cached. A hit reads `degraded` off `source` rather
+    than re-asking the provider (module docstring)."""
     row = await session.get(ProfileSearchCache, query_normalised)
     if row is None:
         return None
-    if row.fetched_at < now - timedelta(seconds=ttl_seconds):
+    ttl = _ttl_for_source(
+        row.source, ttl_seconds=ttl_seconds, fallback_ttl_seconds=fallback_ttl_seconds
+    )
+    if row.fetched_at < now - timedelta(seconds=ttl):
         return None
 
     degraded = row.source != _COMPANION_SOURCE
@@ -244,18 +324,32 @@ async def _write_cache(
     *,
     source: str,
     ttl_seconds: int,
+    fallback_ttl_seconds: int,
     now: datetime,
 ) -> None:
     """Replace `query_normalised`'s row (or insert it, on a first ask) and, in the same call,
-    delete every row across the whole table past `ttl_seconds` — the opportunistic pruning FR-044
-    requires in place of a job (module docstring). Not scoped to `query_normalised`'s own row:
-    unlike `rate_limit_counters`'s `(user_id, bucket)` scoping in `ratelimit.py`, nothing else
-    bounds the *variety* of queries this table accumulates, so every stale row is disposable on
-    every write, not only this one's own predecessor.
+    delete every row across the whole table past *its own* TTL (`_ttl_for_source`) — the
+    opportunistic pruning FR-044 requires in place of a job (module docstring). Not scoped to
+    `query_normalised`'s own row: unlike `rate_limit_counters`'s `(user_id, bucket)` scoping in
+    `ratelimit.py`, nothing else bounds the *variety* of queries this table accumulates, so every
+    stale row is disposable on every write, not only this one's own predecessor. Two conditions,
+    not one: a `"companion"` row is stale past `ttl_seconds`, any other row past the much shorter
+    `fallback_ttl_seconds` — a single, uniform threshold would either prune fresh fallback rows too
+    eagerly or let a stale one outlive its own deliberately short protection window.
     """
-    threshold = now - timedelta(seconds=ttl_seconds)
     await session.execute(
-        delete(ProfileSearchCache).where(ProfileSearchCache.fetched_at < threshold)
+        delete(ProfileSearchCache).where(
+            or_(
+                and_(
+                    ProfileSearchCache.source == _COMPANION_SOURCE,
+                    ProfileSearchCache.fetched_at < now - timedelta(seconds=ttl_seconds),
+                ),
+                and_(
+                    ProfileSearchCache.source != _COMPANION_SOURCE,
+                    ProfileSearchCache.fetched_at < now - timedelta(seconds=fallback_ttl_seconds),
+                ),
+            )
+        )
     )
 
     serialised = [_result_to_json(result) for result in results]

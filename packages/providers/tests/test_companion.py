@@ -57,7 +57,7 @@ from aoe2stats_providers.base import MatchEnrichment, ProviderCallRecord, RetryP
 if TYPE_CHECKING:
     # Type-checking only: mypy needs the name, but nothing here may import the module at
     # collection time — see `_provider()` below, where the real (runtime) import lives.
-    from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+    from aoe2stats_providers.companion.provider import CircuitBreaker, CompanionEnrichmentProvider
 
 # Every test in this file is expected to fail for exactly one reason — T051 does not exist yet —
 # until it does. `strict=True` is what makes that honest: the moment T051 lands and a test starts
@@ -126,14 +126,25 @@ def _provider(
     recorder: _Recorder | None = None,
     rate_per_second: float = 1000.0,
     retry_policy: RetryPolicy = FAST_RETRY,
+    breaker: CircuitBreaker | None = None,
 ) -> tuple[CompanionEnrichmentProvider, _Recorder]:
     """Imports `CompanionEnrichmentProvider` here, at call time, rather than at module scope: this
     is the one place every test below reaches the not-yet-existent T051 module through, so this is
     where the resulting `ModuleNotFoundError` is meant to surface — inside the test call, where
     `strict=True` xfail turns it into an expected failure, not during collection, where it would
     abort the whole workspace suite.
+
+    `breaker` is `None` by default, which builds this test's own fresh, independent
+    `CircuitBreaker` — MJ-3 remediation made the constructor's own `breaker` parameter required,
+    so every call through here must supply one, but each test in this file still wants its own,
+    isolated breaker unless it explicitly asks to share one across two `_provider()` calls (as
+    `test_search_players_shares_the_circuit_breaker_with_enrich_matches` does on a single provider
+    instance already, needing no second `_provider()` call at all).
     """
-    from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+    from aoe2stats_providers.companion.provider import (
+        CompanionEnrichmentProvider,
+        build_circuit_breaker,
+    )
 
     recorder = recorder or _Recorder()
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -143,6 +154,7 @@ def _provider(
         rate_limiter=TokenBucket(rate_per_second),
         call_sink=recorder.async_sink,
         retry_policy=retry_policy,
+        breaker=breaker if breaker is not None else build_circuit_breaker(),
     )
     return provider, recorder
 
@@ -544,3 +556,91 @@ async def test_search_players_shares_the_circuit_breaker_with_enrich_matches() -
     )
     assert list(page.results) == []
     assert page.has_more is False
+
+
+# ==================================================================================================
+# BL-1/BL-2 remediation: a shape-drifted 200 must not be recorded as a genuine, confident answer,
+# and a sub-threshold failure must be observable through `last_call_failed()` even while
+# `is_degraded()` still reads `False`.
+#
+# Reproduced against the pre-remediation code before writing these tests (round 2 report):
+#   - a 200 body of `{"results": [...]}` (renamed `profiles` key) produced `is_degraded() == False`
+#     forever, with `_breaker.record_success()` called before the shape was ever checked.
+#   - three consecutive 403s produced `is_degraded() before=False after=False` for the first two
+#     calls — `_FAILURE_THRESHOLD` is 3, so nothing distinguished "this call failed" from "the
+#     breaker just happens to still be closed" until the third.
+# ==================================================================================================
+
+
+async def test_shape_drifted_200_is_recorded_as_failure_not_a_confident_empty_page() -> None:
+    """BL-1: `{"results": [...]}` — a plausible rename of the documented `profiles` key — must be
+    treated as a source drift, not a genuine zero-match answer. Before this remediation,
+    `_breaker.record_success()` ran unconditionally before the body was parsed, so every search
+    against a drifted source answered `degraded: false, results: []` (FR-003's exact prohibition)
+    forever, with the breaker never tripping and nothing to self-correct it.
+    """
+    recorder = _Recorder()
+    provider, _ = _provider(
+        lambda request: httpx.Response(200, json={"results": [{"profileId": 1, "name": "X"}]}),
+        recorder=recorder,
+    )
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert list(page.results) == [], "a malformed shape still returns nothing, exactly like a 403"
+    assert page.has_more is False
+    assert provider.last_call_failed() is True, (
+        "a shape-drifted 200 must be recorded as a failure — the one thing the pre-remediation "
+        "code never did, since it called `record_success()` before this body was ever parsed"
+    )
+    assert recorder.calls[0].status_code == 200, (
+        "the wire genuinely answered 200 — it is the body's shape, not the status code, that is "
+        "malformed here, the case a non-200 check alone cannot catch"
+    )
+
+    # A drift that never clears must eventually open the breaker exactly like a run of 403s would
+    # — proving `record_failure()` is really being called, not merely that this one page is empty.
+    for _ in range(_FAILURE_THRESHOLD_FOR_TESTS - 1):
+        await provider.search_players("vipe", limit=20)
+    assert provider.is_degraded() is True, (
+        "repeated shape drift must open the breaker exactly like repeated 403s do — this is the "
+        "self-correction the pre-remediation code never reached"
+    )
+
+
+async def test_a_genuine_empty_result_still_closes_the_breaker_after_a_prior_drift() -> None:
+    """The contrast case: once the source's shape is genuinely `{"profiles": [], ...}` again, that
+    is an ordinary, confident empty answer — `record_success()` — not a continuation of the drift.
+    Distinguishes "the parser now rejects everything" (a regression BL-1's fix could introduce)
+    from "the parser correctly rejects only the drifted shape".
+    """
+    provider, _ = _provider(
+        lambda request: httpx.Response(200, json={"profiles": [], "hasMore": False})
+    )
+
+    page = await provider.search_players("no-such-player-xyz", limit=20)
+
+    assert list(page.results) == []
+    assert provider.last_call_failed() is False
+    assert provider.is_degraded() is False
+
+
+async def test_last_call_failed_is_true_through_the_sub_threshold_window() -> None:
+    """BL-2: `is_degraded()` alone cannot express "this call failed" until the third consecutive
+    failure (`_FAILURE_THRESHOLD`) — reproduced against the pre-remediation code: three consecutive
+    403s through `search_players` alone produced `is_degraded() before=False after=False` for the
+    first two calls. `last_call_failed()` must read `True` after every one of the three, not only
+    the third that also trips `is_degraded()`.
+    """
+    provider, _ = _provider(lambda request: httpx.Response(403))
+
+    for expected_is_degraded in (False, False, True):
+        await provider.search_players("vipe", limit=20)
+        assert provider.last_call_failed() is True, (
+            "every one of these three calls failed at the transport — `last_call_failed()` must "
+            "say so regardless of whether the breaker's own threshold has tripped yet"
+        )
+        assert provider.is_degraded() is expected_is_degraded
+
+
+_FAILURE_THRESHOLD_FOR_TESTS = 3  # `companion/provider.py`'s own `_FAILURE_THRESHOLD`.

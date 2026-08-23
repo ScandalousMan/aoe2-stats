@@ -36,7 +36,17 @@ previous request had already recorded, and FR-004d's fallback branch would be un
 production even though every unit test exercises it directly. `_companion_breaker()` is
 `functools.lru_cache`d rather than a bare module global for the same reason `get_settings()` is:
 so a test that deliberately trips it can reset it (`.cache_clear()`) afterwards without leaking
-that state into an unrelated test.
+that state into an unrelated test — `apps/api/tests/conftest.py`'s own autouse fixture does this
+automatically for every test in this suite now (MJ-4 remediation), so a test that reaches this
+router only through `client` no longer has to remember to.
+
+**MJ-3 remediation: the breaker is built through `aoe2stats_providers.wiring`, not through the
+concrete `companion` module.** `build_companion_breaker()` (imported below alongside
+`build_async_client_resources`) is the wiring-layer constructor for exactly this process-lifetime
+resource, the same boundary `_COMPANION_HTTP_CLIENT`/`_COMPANION_RATE_LIMITER` already go through
+— `CompanionEnrichmentProvider.__init__`'s `breaker` parameter is required, not optional, so there
+is no default left that could silently reproduce this defect at a future call site the way an
+omitted `breaker=None` used to (`companion/provider.py`'s own module docstring).
 
 Unlike `_build_relic_provider` in `routers/auth.py`, this router's call sink writes straight onto
 the request's own `db_session` rather than a separate short-lived one: `CompanionEnrichmentProvider`
@@ -67,12 +77,12 @@ from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_providers.base import ProviderCallRecord
-from aoe2stats_providers.companion.provider import (
+from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+from aoe2stats_providers.wiring import (
     CircuitBreaker,
-    CompanionEnrichmentProvider,
-    build_circuit_breaker,
+    build_async_client_resources,
+    build_companion_breaker,
 )
-from aoe2stats_providers.wiring import build_async_client_resources
 from aoe2stats_storage.models import AoeProfile, ProviderCall
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.ratings import RatingsRepository
@@ -113,7 +123,7 @@ def _companion_breaker() -> CircuitBreaker:
     above, only so a test that deliberately trips it can reset it with `.cache_clear()` once it is
     done, the same device `get_settings()` uses for the identical reason.
     """
-    return build_circuit_breaker()
+    return build_companion_breaker()
 
 
 def _companion_call_sink(

@@ -449,6 +449,30 @@ async def test_two_requests_through_the_real_provider_share_the_circuit_breaker_
                 f"a failing source must not itself fail the request. Got "
                 f"{response.status_code}: {response.text}"
             )
+            body = response.json()
+            # BL-2 remediation. `_FAILURE_THRESHOLD` is 3 (`companion/provider.py`), so the first
+            # two of these three requests do not themselves trip the breaker —
+            # `is_degraded()` reads `False` both before *and* after each of them. Before this
+            # remediation, the route read `is_degraded()` alone after the call and cached each of
+            # these as a confident `source="companion"` answer: the exact failure mode this test
+            # now proves closed, not merely "the request itself did not 500".
+            assert body["degraded"] is True, (
+                f"query {query!r} (one of the first two failures of this outage, below "
+                "`_FAILURE_THRESHOLD`) must still be reported as degraded — `is_degraded()` "
+                "alone stays `False` here, and only `last_call_failed()` can see this call's own "
+                f"outcome. Got degraded={body['degraded']!r}, results={body['results']!r}"
+            )
+            assert body["reason"] == "search_source_unavailable"
+
+            cache_row = await db_session.get(ProfileSearchCache, query)
+            assert cache_row is not None, (
+                f"a search response must still leave a cache row for {query!r}"
+            )
+            assert cache_row.source != _LIVE_SOURCE, (
+                f"a failed call for {query!r} must never be cached under the live source's own "
+                "name — a repeat of this same query within the TTL would otherwise be served "
+                "back as a confident 'no such player' for the rest of the outage and beyond"
+            )
 
         assert fake.request_count == 3, (
             "each of the three distinct queries above must have reached the transport exactly "

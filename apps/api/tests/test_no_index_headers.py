@@ -71,9 +71,11 @@ Steam, and `TestClient`'s default `follow_redirects=True` would otherwise try to
 real network call `PYTEST_DISABLE_NETWORK=1`, constitution III, forbids). The header this file
 asserts belongs to the response regardless of the auth outcome — a crawler or a shared cache that
 reaches one of these paths without a session must not index or retain the 401 or 404 it gets back
-either — and every route below `test_no_public_directory.py`'s own docstring already establishes
-answers a plain, unmatched-route-shaped 404 today, before its router exists at all, which is
-exactly the response this file's `xfail` cases check the header against.
+either — and every route below answers today's real status, whichever that is: `/api/players/*`
+(T319) a genuine 401 or 200 now that its router is registered, and `/api/favourites/*`, the replay
+route and the analysis route still a plain, unmatched-route-shaped 404, since their routers do not
+exist yet — the full range `test_feature_route_answers_no_index_headers` below checks the header
+against.
 
 **`client` is `conftest.py`'s own fixture — the real throwaway database, not a fake session.**
 A first attempt here built a `_FakeSession`-backed client the way `test_health.py` does, since no

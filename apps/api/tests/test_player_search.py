@@ -1,10 +1,11 @@
 """Tests for the search service (T315, T316), `apps/api/src/aoe2stats_api/search.py` — encoding
 quickstart scenario 1 ("search degrades honestly") and FR-004e's cache.
 
-**`aoe2stats_api.search` does not exist until T315 lands**, so every test below imports it inside
-its own body rather than at module scope (CLAUDE.md's test-first convention: a module-scope import
-of a module that does not exist yet is a collection error that takes the whole workspace suite
-down, not one failing test) and carries `@pytest.mark.xfail(strict=True, reason="...")`.
+**`aoe2stats_api.search` exists (T315, T316 both landed).** Every test below still imports it
+inside its own body rather than at module scope — a convention this file keeps deliberately rather
+than one it still needs: `packages/providers/`'s sibling tasks it was once written test-first
+against (T311-T313) have all landed too, so nothing here depends on landing order any more, but
+moving every import back to module scope buys nothing this file needs and only churns the diff.
 
 **Two implementing tasks share this file, and the reason string says which owns each test.** T315
 ("the search service: query normalisation, `profile_search_cache` read and write with the
@@ -17,34 +18,37 @@ right profiles, in the right order, with none withheld. A test that only proves 
 belongs to T315; a test that proves the fallback's answer is right belongs to T316, even though
 both exercise the same `search_players` entry point once both tasks have landed.
 
-**The interface under test is designed here, not merely exercised** — the same position
-`test_rate_limits.py` (T306) was in for `check_and_increment` before T307 existed to implement it.
-`contracts/providers.md`'s own "Failure" section says the caller must distinguish "no such player"
-from "search is unavailable" "from the same signal the existing enrichment path uses — the circuit
-breaker's own state — not from an exception", but neither `PlayerSearchResult` nor
-`PlayerSearchPage` (that same contract) carries any such signal, and an empty `PlayerSearchPage` is
-indistinguishable from a genuine zero-result search. `_FakeSearchProvider` below therefore adds one
-method neither dataclass has: `is_degraded()`. That is this file's own decision about what
-`apps/api/src/aoe2stats_api/search.py` needs from whatever provider it is given — T313 (not yet
-landed, and out of this task's own file scope) will need to grow the same method on
-`CompanionEnrichmentProvider` for that decision to hold in production, which is exactly the kind of
-downstream obligation a test-first task is allowed to create.
+**`is_degraded()` and `last_call_failed()` are part of `PlayerSearchProvider` itself, not this
+file's own invention.** This file was the first to need "the caller must distinguish 'no such
+player' from 'search is unavailable' from the same signal the existing enrichment path uses — the
+circuit breaker's own state — not from an exception" (`contracts/providers.md`'s "Failure"
+section), before either `PlayerSearchResult`/`PlayerSearchPage` carried any such signal, so
+`_FakeSearchProvider` below added `is_degraded()` as this file's own decision about what
+`apps/api/src/aoe2stats_api/search.py` needs from whatever provider it is given. T313 grew the
+matching method on `CompanionEnrichmentProvider`, and the round-2 review's BL-2 remediation moved
+both `is_degraded()` and its sibling `last_call_failed()` onto the `PlayerSearchProvider` Protocol
+itself (`base.py`, `contracts/providers.md`) — `_FakeSearchProvider` now implements both because
+the contract requires them, not because this file still needs to invent either.
 
-**No import from `aoe2stats_providers` anywhere in this file, on purpose.** T311, T312 and T313 are
-sibling tasks in the same parallel batch as this one, touching `packages/providers/`, and this file
-must not depend on their landing order. `_FakeSearchResult` and `_FakeSearchPage` below mirror
-`contracts/providers.md`'s `PlayerSearchResult`/`PlayerSearchPage` field-for-field so that whichever
-lands first, the shapes already agree.
+**No import from `aoe2stats_providers` anywhere in this file, on purpose.** `_FakeSearchResult` and
+`_FakeSearchPage` below still mirror `contracts/providers.md`'s `PlayerSearchResult`/
+`PlayerSearchPage` field-for-field, kept as a stand-in rather than switched to the real dataclasses
+now that they exist, for the same reason the lazy imports above are kept: nothing here needs the
+change.
 
-**`search_players(session, provider, query, *, limit, ttl_seconds, now=None)` returning a
-`SearchOutcome(results, degraded, reason)`** is the signature and return shape this file commits
-`aoe2stats_api.search` to. `ttl_seconds` is an explicit parameter rather than a call into
-`get_settings()` inside the function, for the identical reason `check_and_increment`'s
-`window_seconds` is: a service function stays a pure function of its inputs, and the router (T319)
-is where `PLAYER_SEARCH_CACHE_TTL_SECONDS` gets read once and passed in. `now` is explicit for the
-same reason it is in `ratelimit.py` — deterministic TTL boundaries under test, never a race against
-the real clock. `reason` carries `"search_source_unavailable"` exactly as `contracts/http-api.md`
-specifies for the response body's own `reason` field, so the router can pass it through unchanged.
+**`search_players(...)` returning a `SearchOutcome(results, degraded, reason)`** is the signature
+and return shape this file committed `aoe2stats_api.search` to: `session`, `provider`, `query`,
+then `limit`, `ttl_seconds`, `fallback_ttl_seconds` (defaulted) and `now` (defaulted), all keyword-
+only past `query`. `fallback_ttl_seconds` was added by the round-2 review's BL-3 remediation
+(module docstring in `search.py`) and defaults to that module's own protective constant, so every
+existing call site below that predates it is unaffected. `ttl_seconds` is an
+explicit parameter rather than a call into `get_settings()` inside the function, for the identical
+reason `check_and_increment`'s `window_seconds` is: a service function stays a pure function of its
+inputs, and the router (T319) is where `PLAYER_SEARCH_CACHE_TTL_SECONDS` gets read once and passed
+in. `now` is explicit for the same reason it is in `ratelimit.py` — deterministic TTL boundaries
+under test, never a race against the real clock. `reason` carries `"search_source_unavailable"`
+exactly as `contracts/http-api.md` specifies for the response body's own `reason` field, so the
+router can pass it through unchanged.
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -101,9 +106,9 @@ class _FakeSearchPage:
 
 
 class _FakeSearchProvider:
-    """Stands in for the not-yet-landed `PlayerSearchProvider` (T313). `is_degraded()` is this
-    file's own addition to that contract — see the module docstring's paragraph on why one is
-    needed at all.
+    """Stands in for `PlayerSearchProvider` (`base.py`, `contracts/providers.md`). `is_degraded()`
+    and `last_call_failed()` are both part of that contract now (module docstring's "BL-2
+    remediation" paragraph), so this fake implements both rather than inventing either.
 
     `db_session`, when given, makes `search_players` write one real `provider_calls` row per call —
     exactly what the genuine `CompanionEnrichmentProvider` does today through its shared
@@ -117,15 +122,24 @@ class _FakeSearchProvider:
         *,
         page: _FakeSearchPage,
         degraded: bool = False,
+        last_call_failed: bool = False,
         db_session: AsyncSession | None = None,
     ) -> None:
         self._page = page
         self._degraded = degraded
+        # BL-2 remediation: independent of `degraded` (the breaker's own threshold) — a sub-
+        # threshold failure sets this without the breaker itself being open yet. Defaults to
+        # `False` so every call site written before this parameter existed keeps modelling "the
+        # call succeeded" unless it deliberately says otherwise.
+        self._last_call_failed = last_call_failed
         self._db_session = db_session
         self.queries: list[str] = []
 
     def is_degraded(self) -> bool:
         return self._degraded
+
+    def last_call_failed(self) -> bool:
+        return self._last_call_failed
 
     async def search_players(self, query: str, *, limit: int) -> _FakeSearchPage:
         self.queries.append(query)
@@ -364,3 +378,126 @@ async def test_fallback_withholds_no_profile_on_privacy_grounds(db_session: Asyn
     )
 
     assert {r.profile_id for r in outcome.results} == matching_profile_ids
+
+
+# --- BL-2 remediation: a sub-threshold failure is not `is_degraded()`, but must still degrade -----
+
+
+async def test_a_call_that_fails_without_tripping_the_breaker_still_degrades(
+    db_session: AsyncSession,
+) -> None:
+    """Round-2 review, BL-2: `is_degraded() == False` both before and after a call is exactly what
+    the first `_FAILURE_THRESHOLD - 1` failures of every real outage look like
+    (`companion/provider.py`) — reproduced by execution against the pre-remediation code (round-2
+    report): the first two failing calls were cached as a confident `source="companion"` answer and
+    served back as "no such player" for the rest of the TTL. `last_call_failed=True,
+    degraded=False` models exactly that shape: the provider's call did not succeed, but the breaker
+    has not opened. `search_players` must still route this to the fallback outcome, not to the
+    live-cache write path."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9101, alias="FallbackWhileFailing", country="FR")
+    provider = _FakeSearchProvider(
+        page=_FakeSearchPage(results=[]), degraded=False, last_call_failed=True
+    )
+
+    outcome = await search_players(
+        db_session, provider, "FallbackWhileFailing", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert provider.queries == ["FallbackWhileFailing"], "the call must still have been made"
+    assert outcome.degraded is True, (
+        "a call that failed without tripping the breaker must still degrade — `is_degraded()` "
+        "alone would have read `False` here and cached this as a confident answer"
+    )
+    assert outcome.reason == _SEARCH_SOURCE_UNAVAILABLE_REASON
+    assert {r.profile_id for r in outcome.results} == {9101}, (
+        "FR-004d: a degraded search still answers from what this service has already observed"
+    )
+
+    row = await db_session.get(ProfileSearchCache, "fallbackwhilefailing")
+    assert row is not None
+    assert row.source != "companion", (
+        "the cache row this leaves behind must never carry the live source's own name — a repeat "
+        "of this query within `ttl_seconds` would otherwise be served back as a confident answer"
+    )
+
+
+# --- BL-3 re-take: a fallback answer is now cached, under a short, self-healing TTL --------------
+
+
+async def test_a_repeated_degraded_query_hits_the_short_lived_fallback_cache(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BL-3 re-take of round 1's M1 decision (`search.py`'s module docstring): a fallback answer is
+    now cached under a short TTL specifically so a burst of repeat queries against a down source
+    recomputes `_local_fallback_results` — the unfiltered `match_players` aggregate the round-2
+    review measured as expensive — once per window, not once per request."""
+    import aoe2stats_api.search as search_module
+
+    await _seed_profile(db_session, profile_id=9201, alias="BurstQuery", country="FR")
+
+    call_count = 0
+    original = search_module._local_fallback_results
+
+    async def counting_fallback(
+        session: AsyncSession, query_normalised: str, *, limit: int
+    ) -> Sequence[object]:
+        nonlocal call_count
+        call_count += 1
+        return await original(session, query_normalised, limit=limit)
+
+    monkeypatch.setattr(search_module, "_local_fallback_results", counting_fallback)
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    first = await search_module.search_players(
+        db_session, provider, "BurstQuery", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+    second = await search_module.search_players(
+        db_session,
+        provider,
+        "BurstQuery",
+        limit=10,
+        ttl_seconds=_TTL_SECONDS,
+        now=_NOW + timedelta(seconds=5),
+    )
+
+    assert call_count == 1, "the second, repeated query within the fallback TTL must hit the cache"
+    assert first.degraded is True
+    assert second.degraded is True
+    assert {r.profile_id for r in second.results} == {9201}
+
+
+async def test_a_stale_fallback_row_is_not_served_once_the_source_recovers(
+    db_session: AsyncSession,
+) -> None:
+    """The short TTL is what keeps a cached fallback answer from outliving the outage it was
+    written during: once `_FALLBACK_CACHE_TTL_SECONDS` has passed, a call against a *recovered*
+    provider must reach that provider again rather than being served the stale row — the risk
+    round 1 was right to worry about at the long TTL, bounded here to a much shorter window."""
+    from aoe2stats_api.search import _FALLBACK_CACHE_TTL_SECONDS, search_players
+
+    await _seed_profile(db_session, profile_id=9301, alias="Recovering", country="FR")
+
+    down_provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    first = await search_players(
+        db_session, down_provider, "Recovering", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+    assert first.degraded is True
+
+    recovered_page = _FakeSearchPage(results=[_FakeSearchResult(9301, "Recovering", "FR", 5, None)])
+    recovered_provider = _FakeSearchProvider(page=recovered_page, degraded=False)
+    second = await search_players(
+        db_session,
+        recovered_provider,
+        "Recovering",
+        limit=10,
+        ttl_seconds=_TTL_SECONDS,
+        now=_NOW + timedelta(seconds=_FALLBACK_CACHE_TTL_SECONDS + 1),
+    )
+
+    assert recovered_provider.queries == ["Recovering"], (
+        "past the short fallback TTL, the stale row must not answer this query — the provider "
+        "must be reached again"
+    )
+    assert second.degraded is False
