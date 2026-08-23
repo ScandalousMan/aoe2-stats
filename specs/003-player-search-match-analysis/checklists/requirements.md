@@ -55,8 +55,10 @@ Two of the three markers are resolved and recorded in the spec's Clarifications 
   Probing that source produced a requirement that would not have been written otherwise: its search
   records carry `steamId`, `shared` and `sharedHistory` — the community account-linking claim that
   001's FR-045 forbids acting on. Consuming the response naively would have breached FR-045 silently.
-  **FR-004b** now strips those fields at the provider boundary, and **FR-004c** honours the
-  source's `hidden` flag. Both exist because the source was measured rather than assumed.
+  **FR-004b** now strips those fields at the provider boundary. A companion requirement, FR-004c,
+  was written here to honour the source's `hidden` flag and **retired on 2026-08-23** once T301a
+  measured that flag and found it empty — which is the same discipline arriving at the opposite
+  answer: the source was measured rather than assumed, both times.
 
 **All markers are now resolved.** One open risk is carried in Assumptions rather than as a marker:
 whether the search source answers from the production platform's egress is unverified, and

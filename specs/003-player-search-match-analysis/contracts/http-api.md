@@ -66,9 +66,10 @@ are ordered the same way.
 data and an explanation — not `404` (US1 scenario 5). `404` means this service has never observed the
 profile and the source does not know it either.
 
-A profile whose `hidden_observed_at` is set is absent from `search` and answers `404` on
-`/api/players/{profile_id}` (FR-004c). Someone who asked the source not to be listed asked this
-service too, and a profile page is a listing.
+No profile is withheld on privacy grounds, from `search` or from `/api/players/{profile_id}`: the
+source carries no hidden signal (T301a, `docs/data-sources.md` §3) and FR-004c was retired on that
+measurement. What keeps a third party's page from being a public listing is FR-010 — a session on
+every route, `noindex, nofollow`, and `robots.txt` — not a per-profile flag.
 
 ## Favourites
 

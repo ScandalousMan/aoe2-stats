@@ -27,7 +27,6 @@ class PlayerSearchResult:
 class PlayerSearchPage:
     results: Sequence[PlayerSearchResult]
     has_more: bool
-    hidden_profile_ids: Sequence[int]   # dropped from `results`, reported so the column can be set
 ```
 
 ### The fields that are not there
@@ -43,16 +42,15 @@ This provider already demonstrates the pattern for `linkedProfiles` — its modu
 that the field "is not read anywhere below, deliberately" — and the search parser follows it exactly:
 it reads `profileId`, `name`, `country`, `games`, `clan` and the pagination fields, and no others.
 
-### Hidden profiles
+### Hidden profiles — there are none to honour
 
-A record the source marks as hidden is dropped inside `search_players` and never reaches a caller
-(FR-004c). Its id is reported on `PlayerSearchPage.hidden_profile_ids` — out of the results and still
-visible to the caller, because that is the only way `aoe_profiles.hidden_observed_at` gets set and the
-local fallback honours the same request when the source is down.
+This provider drops nothing on privacy grounds and reports nothing about it, because there is nothing
+to drop. The source's `hidden` field was measured on 2026-08-23 (T301a, `docs/data-sources.md` §3) and
+carries no value in any projection; FR-004c was retired on that measurement. `search_players` returns
+every record the source returns, minus the fields **The fields that are not there** removes.
 
-**This clause is conditional on T301a.** `docs/data-sources.md` §3's measured record carries no hidden
-field, so what the signal *is* has not been established. If T301a finds none, FR-004c falls and this
-section falls with it.
+The one thing that would change this is a measurement, not a preference: if the source ever starts
+populating `hidden`, that is a new fact for §3 and a new decision for the spec.
 
 ### Failure
 

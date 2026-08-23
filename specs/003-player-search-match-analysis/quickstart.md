@@ -68,12 +68,15 @@ at a dead address).
 
 If this scenario fails it fails silently in production, which is why it comes second.
 
-## Scenario 3 — A hidden profile stays hidden, including when the source is down
+## Scenario 3 — Retired
 
-1. Find a profile the source marks hidden. Search for it. Expect absence, and `404` on its profile
-   page (FR-004c).
-2. Take the source down and search again. **Expect absence still** — this is the case the
-   `hidden_observed_at` column exists for, and the one a fallback written without it gets wrong.
+This slot held "a hidden profile stays hidden, including when the source is down". T301a measured the
+source on 2026-08-23 and found no hidden signal to honour, so FR-004c was retired and this scenario
+with it (`docs/data-sources.md` §3).
+
+The number is kept rather than reclaimed: eleven live scenarios and one retired reads correctly, while
+renumbering would silently move every "encoding quickstart scenario N" reference in `tasks.md` onto a
+different scenario. There is nothing to walk here.
 
 ## Scenario 4 — Any player's profile and history
 

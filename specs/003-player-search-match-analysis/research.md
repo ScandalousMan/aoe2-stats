@@ -484,20 +484,21 @@ enumeration rather than to shape traffic.
 `GET https://data.aoe2companion.com/api/profiles?search={name}`, through the existing
 `CompanionEnrichmentProvider`'s circuit breaker and rate limiter, as a new `PlayerSearchProvider`
 method. Results are cached. The account-linking fields are dropped at the provider boundary, before
-any Pydantic model that could carry them exists. A hidden profile is dropped there too.
+any Pydantic model that could carry them exists. Nothing is dropped on privacy grounds beyond that:
+T301a measured the source's `hidden` field and found it carries nothing, so FR-004c was retired.
 
 ### Rationale
 
 The route and its properties are settled and measured — `docs/data-sources.md` §1 and §3, and the
-spec's own clarifications — **with one exception: the hidden-profile signal is asserted here and
-measured nowhere.** §3's record list does not carry it. T301a measures it before anything is built on
-FR-004c, and if it does not exist FR-004c is re-decided rather than implemented around. Nothing else
-here re-measures anything. What Phase 0 has to settle is where the
-obligations land in code, and there is only one defensible answer for two of them.
+spec's own clarifications — **with one exception, since corrected: the hidden-profile signal was
+asserted here and measured nowhere.** T301a measured it on 2026-08-23, found the source's `hidden`
+field carries nothing, and FR-004c was retired (`docs/data-sources.md` §3). This paragraph is what
+let an unmeasured property into a Phase 0 that opens by claiming everything here is measured; the
+correction is worth more than the deletion. What Phase 0 has to settle is where the obligations land
+in code, and there is only one defensible answer for the one that remains.
 
-FR-004b (strip `steamId`, `shared`, `sharedHistory`) and FR-004c (honour the hidden flag) are
-enforced at the provider boundary because that is the only place where "it never entered the system"
-is a property rather than a promise. A field stripped in a router is a field that existed in memory,
+FR-004b (strip `steamId`, `shared`, `sharedHistory`) is enforced at the provider boundary because
+that is the only place where "it never entered the system" is a property rather than a promise. A field stripped in a router is a field that existed in memory,
 in a log line, and in a traceback. The existing provider already demonstrates the pattern: its module
 docstring records that `linkedProfiles` "is not read anywhere below, deliberately", and there is
 nowhere for it to leak to because the value object has no field for it. The search record gets the

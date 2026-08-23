@@ -66,13 +66,13 @@ user's data.
 
 ### `aoe_profiles` (widened)
 
-Gains `hidden_observed_at` (timestamptz, nullable) and `alias_observed_at` (timestamptz).
+Gains `alias_observed_at` (timestamptz). One column, not two.
 
-`hidden_observed_at` is FR-004c's memory. The source signals that a profile asked not to be listed;
-the signal is honoured at the provider boundary for the live response, and recorded here so the
-**local fallback** (FR-004d) honours it too. Without this column, a profile hidden at the source
-would still surface from locally-observed rows the moment the source went down — the exact moment a
-person's request not to be listed would quietly stop being respected.
+**There is no `hidden_observed_at`, and that is a decision rather than an omission.** It was designed
+as FR-004c's memory, so that a profile hidden at the source stayed hidden in the local fallback when
+the source went down. T301a then measured the source and found no hidden signal to remember
+(`docs/data-sources.md` §3), and FR-004c was retired. A nullable column that nothing can ever set is
+worse than no column: every later reader has to work out whether it is unpopulated or unimplemented.
 
 `alias_observed_at` is the honesty half of the edge case where a player has since renamed: this table
 holds the last alias observed, and the date is what lets the interface say so rather than presenting

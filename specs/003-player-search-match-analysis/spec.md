@@ -147,8 +147,9 @@ for that and for nothing else.
   exists to avoid, and it still covers only ranked players. Two things make the risk acceptable —
   FR-004d gives search a fallback that needs no external source at all, and nothing else in the
   feature depends on search. Two things make it safe — FR-004b strips the account-linking fields the
-  response carries, which would otherwise breach 001's FR-045 silently, and FR-004c honours a
-  profile's hidden flag. Resolves FR-004.
+  response carries, which would otherwise breach 001's FR-045 silently. (A third safeguard, FR-004c's
+  hidden flag, was written here and retired on measurement the same day — see FR-004c.) Resolves
+  FR-004.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -358,8 +359,19 @@ their current standing and reachable in one click.
   relationship between a player's accounts — and MUST NOT store, display or act on a third party's
   Steam identifier obtained this way. These fields exist in the response and carrying them further
   would breach 001's FR-045 by accident rather than by decision.
-- **FR-004c**: System MUST honour a source-side signal that a profile is hidden, and MUST NOT present
-  such a profile in results. Someone who has asked not to be listed has asked this service too.
+- **FR-004c**: ~~System MUST honour a source-side signal that a profile is hidden.~~ **Retired
+  2026-08-23, before implementation, on measurement (T301a).** It is left here rather than deleted
+  because the field it was written for still exists on the wire, and the next reader to notice it
+  deserves the answer rather than this reasoning again. `docs/data-sources.md` §3 records the
+  measurement: the source's `hidden` field is `null` on 200 of 200 search records, `null` on a
+  single-profile fetch, typed `any` in the source's own client, written by no setting and read by no
+  consumer. A flag nobody can raise is not a signal, and honouring it would have tested green against
+  a fixture we wrote ourselves. The measurement did surface a real player-set preference —
+  `sharedHistory === false`, which that source's own client honours — and **this feature deliberately
+  does not act on it either**: it governs display at aoe2companion, this service reads history from
+  Relic, and no unaffiliated AoE2 DE site honours it. Importing it would invent an obligation that
+  exists nowhere and bind only us. Nothing replaces this requirement; FR-004b's stripping is
+  unchanged and remains the whole of what the search response owes.
 - **FR-004d**: When the search source is unavailable, System MUST fall back to searching the profiles
   it has already observed — users, favourites, and participants of match histories it already holds
   (FR-011) — and MUST label those results as reduced rather than presenting them as complete. This
@@ -621,11 +633,10 @@ their current standing and reachable in one click.
   from datacentre addresses. This is why FR-004d exists: if the answer turns out to be no, search
   degrades to locally-observed profiles and the feature still stands. It must be checked before
   search is presented as the primary route, not after.
-- **That the search source signals a hidden profile at all is not yet verified.**
-  `docs/data-sources.md` §3's measured record carries no such field. FR-004c, the
-  `hidden_observed_at` column and the local fallback's honouring of it all depend on one, so it is
-  measured (T301a) before Phase 3 rather than discovered during it. If the signal does not exist,
-  FR-004c is re-decided, not implemented around.
+- **The search source has no hidden-profile signal.** Measured 2026-08-23 (T301a) and recorded in
+  `docs/data-sources.md` §3. FR-004c is retired accordingly and nothing replaces it: this feature
+  presents every profile the source returns, and relies on FR-010's no-indexing and the beta
+  allowlist rather than on a per-profile flag that does not exist.
 - Search, favourites and browsing are available to signed-in users. Whether any of it is reachable
   without signing in is deferred: the beta allowlist (001 FR-005) makes the question moot for now.
 - A third party's match history is read from the source on demand and is no deeper than the source
