@@ -5,6 +5,7 @@ requires-python = "==3.13.*"
 [manifest]
 members = [
     "aoe2-stats",
+    "aoe2stats-analyzer",
     "aoe2stats-api",
     "aoe2stats-core",
     "aoe2stats-ingester",
@@ -121,6 +122,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/eb/8fac9a628219b007e6c936bfa90c3b1d3f2200d26da3488a86a5bfbf3dc1/aoe2rec_py-0.1.21-cp313-cp313t-musllinux_1_2_armv7l.whl", hash = "sha256:2c776754c8f52bea1ef3a96cd648020b9957d854222833048aaa2fb6a3fd8a91", size = 728069, upload-time = "2026-03-08T22:25:13.977Z" },
     { url = "https://files.pythonhosted.org/packages/96/b0/3c98b1ca2a2b4c35237d86493a5f20a7eca1a44e3df497824bee85041f14/aoe2rec_py-0.1.21-cp313-cp313t-musllinux_1_2_i686.whl", hash = "sha256:1a6577036a34d49df1c1373ba4b8a629f36f81cee886de25b8442a25db2027b8", size = 694112, upload-time = "2026-03-08T22:25:24.857Z" },
     { url = "https://files.pythonhosted.org/packages/64/38/2f6b4b77e68b3109a336fb3c65753bc5641ae2efcc433991b3ce1bdf0af6/aoe2rec_py-0.1.21-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:99867d23fd901f67f0acdd86a51ad1cf3616756585b0da76865d329c07f61dd3", size = 654895, upload-time = "2026-03-08T22:25:37.372Z" },
+]
+
+[[package]]
+name = "aoe2stats-analyzer"
+version = "0.1.0"
+source = { editable = "apps/analyzer" }
+dependencies = [
+    { name = "aoe2stats-core" },
+    { name = "aoe2stats-replay-engine" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
 ]
 
 [[package]]

@@ -326,20 +326,20 @@ the official stats page and that each row's archival state reflects reality.
 
 ### Tests for User Story 3 ⚠️ Write first, watch them fail
 
-- [ ] T063 [P] [US3] Integration test for `GET /api/matches`: newest first, carrying opponent, map, civilisation, result, rating change and duration (FR-010), cursor pagination stable across insertions, in `apps/api/tests/test_matches_list.py`
-- [ ] T064 [P] [US3] Integration test for `GET /api/matches/{game_id}`: every participant with team, civilisation, result and rating change (FR-011), in `apps/api/tests/test_match_detail.py`
-- [ ] T065 [P] [US3] Integration test for the capture state shown per match (FR-027, SC-010): archived, pending with the time remaining before the window closes, lost, and **needs review** for a `quarantined` capture — four states, the same four the badge in T073 specifies. FR-026 puts a quarantined capture in neither the archived nor the lost column, so a test asserting only three leaves uncovered the one state a user cannot otherwise account for. Plus the empty state for a user with no matches, and the counts, oldest pending and nearest deadline returned by `GET /api/replays/status` (T062), in `apps/api/tests/test_capture_visibility.py`
-- [ ] T066 [P] [US3] Integration test for `GET /api/replays/{game_id}/download`: a 302 to a short-lived signed URL (FR-028), a `replay_access_log` row written (FR-040), the bucket never public, and a caller who did not play the match refused, in `apps/api/tests/test_replay_download.py`
-- [ ] T067 [P] [US3] Integration test that no endpoint returns the history of an arbitrary `profile_id` the caller has not linked (FR-038) — **match history and rating history alike**, since `GET /api/profiles/{profile_id}/ratings` (T072) is the other route in this phase taking a profile id the caller may not own, and a rating curve for an arbitrary player is a public directory of players just as much as a match list is — in `apps/api/tests/test_no_public_directory.py`
-- [ ] T068 [P] [US3] Integration test for `GET /api/profiles/{profile_id}/ratings` returning the rating curve from `rating_snapshots` (FR-009), in `apps/api/tests/test_rating_history.py`
+- [x] T063 [P] [US3] Integration test for `GET /api/matches`: newest first, carrying opponent, map, civilisation, result, rating change and duration (FR-010), cursor pagination stable across insertions, in `apps/api/tests/test_matches_list.py`
+- [x] T064 [P] [US3] Integration test for `GET /api/matches/{game_id}`: every participant with team, civilisation, result and rating change (FR-011), in `apps/api/tests/test_match_detail.py`
+- [x] T065 [P] [US3] Integration test for the capture state shown per match (FR-027, SC-010): archived, pending with the time remaining before the window closes, lost, and **needs review** for a `quarantined` capture — four states, the same four the badge in T073 specifies. FR-026 puts a quarantined capture in neither the archived nor the lost column, so a test asserting only three leaves uncovered the one state a user cannot otherwise account for. Plus the empty state for a user with no matches, and the counts, oldest pending and nearest deadline returned by `GET /api/replays/status` (T062), in `apps/api/tests/test_capture_visibility.py`
+- [x] T066 [P] [US3] Integration test for `GET /api/replays/{game_id}/download`: a 302 to a short-lived signed URL (FR-028), a `replay_access_log` row written (FR-040), the bucket never public, and a caller who did not play the match refused, in `apps/api/tests/test_replay_download.py`
+- [x] T067 [P] [US3] Integration test that no endpoint returns the history of an arbitrary `profile_id` the caller has not linked (FR-038) — **match history and rating history alike**, since `GET /api/profiles/{profile_id}/ratings` (T072) is the other route in this phase taking a profile id the caller may not own, and a rating curve for an arbitrary player is a public directory of players just as much as a match list is — in `apps/api/tests/test_no_public_directory.py`
+- [x] T068 [P] [US3] Integration test for `GET /api/profiles/{profile_id}/ratings` returning the rating curve from `rating_snapshots` (FR-009), in `apps/api/tests/test_rating_history.py`
 
 ### Implementation for User Story 3
 
-- [ ] T069 [US3] Implement the match queries — reverse-chronological, cursor paginated, restricted to the caller's linked profiles, joined to capture status — in `packages/storage/src/aoe2stats_storage/repositories/matches.py`
-- [ ] T070 [US3] Implement the matches router: list and detail per [contracts/http-api.md](./contracts/http-api.md), in `apps/api/src/aoe2stats_api/routers/matches.py`
-- [ ] T071 [US3] Implement the replay download: freshly signed short-expiry URL, access log write, participation check, in `apps/api/src/aoe2stats_api/routers/replays.py`
-- [ ] T072 [US3] Implement `GET /api/profiles/{profile_id}/ratings` over `rating_snapshots`, restricted to the caller's own active `profile_links` and answering the single `not_found` code for a profile that is not theirs — the same shape `GET /api/replays/status` already uses (T062, `_active_link_for`), so an unlinked profile and a non-existent one stay indistinguishable (FR-038, FR-045) — in `apps/api/src/aoe2stats_api/routers/profiles.py`
-- [ ] T073 [P] [US3] Write the component specs for the match row, the match detail panel and the capture-state badge — the badge must distinguish four states: safe, still catchable with the time remaining to the day-21 capture deadline, lost, and needs review (quarantined) — in `packages/design-system/specs/`. `CaptureStatus` carries **seven** values and FR-019 requires six outcomes reported separately, so the spec must state the collapse rather than leave each implementer to invent it:
+- [x] T069 [US3] Implement the match queries — reverse-chronological, cursor paginated, restricted to the caller's linked profiles, joined to capture status — in `packages/storage/src/aoe2stats_storage/repositories/matches.py`
+- [x] T070 [US3] Implement the matches router: list and detail per [contracts/http-api.md](./contracts/http-api.md), in `apps/api/src/aoe2stats_api/routers/matches.py`
+- [x] T071 [US3] Implement the replay download: freshly signed short-expiry URL, access log write, participation check, in `apps/api/src/aoe2stats_api/routers/replays.py`
+- [x] T072 [US3] Implement `GET /api/profiles/{profile_id}/ratings` over `rating_snapshots`, restricted to the caller's own active `profile_links` and answering the single `not_found` code for a profile that is not theirs — the same shape `GET /api/replays/status` already uses (T062, `_active_link_for`), so an unlinked profile and a non-existent one stay indistinguishable (FR-038, FR-045) — in `apps/api/src/aoe2stats_api/routers/profiles.py`
+- [x] T073 [P] [US3] Write the component specs for the match row, the match detail panel and the capture-state badge — the badge must distinguish four states: safe, still catchable with the time remaining to the day-21 capture deadline, lost, and needs review (quarantined) — in `packages/design-system/specs/`. `CaptureStatus` carries **seven** values and FR-019 requires six outcomes reported separately, so the spec must state the collapse rather than leave each implementer to invent it:
 
   | `replay_captures.status`           | Badge                                                                                                                                                                                                                                  |
   | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -350,10 +350,190 @@ the official stats page and that each row's archival state reflects reality.
 
   `downloading` is "still catchable" and not a state of its own: it means a run holds the row right now, it lasts seconds, and a user who happened to load the page mid-cycle should not be shown a fourth thing to interpret. The collapse is in the **badge only** — the three statuses behind "lost" travel to the client intact and the badge carries the reason as secondary text, because FR-019 asks that these be reported separately and because they differ in the one way that matters to the reader: `unavailable` means the game never recorded the match server-side, so their own saved-games folder is probably empty too, while `expired` and `failed` mean the replay existed and we did not get it in time — in which case their local copy is very likely still there and US4 is worth their trouble. A badge that says only "lost" sends both users to the same dead end
 
-- [ ] T074 [US3] Build those components from tokens, each with a story, in `packages/design-system/src/` and their `*.stories.tsx`
-- [ ] T075 [US3] Build the match history route with its empty state, in `apps/web/src/routes/matches.index.tsx` and `apps/web/src/features/matches/`. The file is `matches.index.tsx` and **not** `matches.tsx`: under the flat file convention the generator applies, a `matches.tsx` beside T076's `matches.$gameId.tsx` is not a sibling but its **parent layout** — verified against `@tanstack/router-cli`, which emits `getParentRoute: () => MatchesRoute` and wraps it as `MatchesRouteWithChildren`. The list would then have to render an `<Outlet/>` for the detail to appear at all, and a match list wrapping a match detail is not the layout this story wants. With `matches.index.tsx` instead, and no `matches.tsx` at any point, both routes hang off the root, `/matches` resolves to the list and `/matches/$gameId` to the detail, and neither knows about the other
-- [ ] T076 [US3] Build the match detail route with the participant table and the replay download, in `apps/web/src/routes/matches.$gameId.tsx` and `apps/web/src/features/replays/`. A standalone route, not a child of the list — see T075 for why no `matches.tsx` is created
-- [ ] T077 [US3] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T074, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T074 [US3] Build those components from tokens, each with a story, in `packages/design-system/src/` and their `*.stories.tsx`
+- [x] T075 [US3] Build the match history route with its empty state, in `apps/web/src/routes/matches.index.tsx` and `apps/web/src/features/matches/`. The file is `matches.index.tsx` and **not** `matches.tsx`: under the flat file convention the generator applies, a `matches.tsx` beside T076's `matches.$gameId.tsx` is not a sibling but its **parent layout** — verified against `@tanstack/router-cli`, which emits `getParentRoute: () => MatchesRoute` and wraps it as `MatchesRouteWithChildren`. The list would then have to render an `<Outlet/>` for the detail to appear at all, and a match list wrapping a match detail is not the layout this story wants. With `matches.index.tsx` instead, and no `matches.tsx` at any point, both routes hang off the root, `/matches` resolves to the list and `/matches/$gameId` to the detail, and neither knows about the other
+- [x] T076 [US3] Build the match detail route with the participant table and the replay download, in `apps/web/src/routes/matches.$gameId.tsx` and `apps/web/src/features/replays/`. A standalone route, not a child of the list — see T075 for why no `matches.tsx` is created
+- [x] T077 [US3] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T074, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
+
+### Phase 5 remediation (post-T075)
+
+Added by hand after T075 handed back. Both are defects in the response shape T069 and T070 already
+landed as `[x]` above, found only because T075 was the first task to render that shape to a user.
+They are listed here rather than edited into the original task text, so the record shows what was
+built, what was wrong with it, and when that was found. Both run **before** T077: that task captures
+the visual baselines, and a baseline photographed against a placeholder label or a wrong participant
+count freezes the defect into the very check that exists to catch it — which is the T038b failure
+arriving one phase later.
+
+- [x] T070c Return the civilisation name from `GET /api/matches` and `GET /api/matches/{game_id}`,
+      in `apps/api/src/aoe2stats_api/routers/matches.py`,
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py` and `docs/data-sources.md`.
+      Both routes answer with the numeric civilisation id and nothing else, so the front end cannot
+      name a civilisation without a hand-maintained id-to-name table in a component module — which
+      is the precise thing T033a already removed once, moving the leaderboard names out of
+      `apps/web/src/features/profile/leaderboards.ts` on the grounds that a hand-maintained measured
+      fact about an external service has no business in the front end. `CLAUDE.md`'s three-homes
+      rule is the general form: the mapping is a fact about the game, it belongs in `docs/`, and the
+      API is what carries it to a client. T075 renders the placeholder "Civilisation" followed by
+      the id today and says so in a comment pointing at this precedent. Do for civilisations exactly
+      what T033a did for leaderboards rather than inventing a second pattern, and note that the
+      detail route needs the same field for every participant, not only for the caller
+
+- [x] T070d Carry `team_id` on each opponent returned by `GET /api/matches`, in
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
+      `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
+      The list route returns every other participant under the name `opponents`, teammates included,
+      because the row carries nothing by which a client could tell the two apart. In a team game the
+      match row therefore names an arbitrary participant and counts the caller's own teammates in
+      its "and N others", which contradicts `packages/design-system/specs/match-history.md` and
+      misreports who the player actually faced. The detail route already returns `team_id` per
+      participant, so the fault is confined to the list. The name is wrong in the same way the
+      absent field is: either carry the team and let the client separate them, or return genuine
+      opponents under that name. T063 asserts the row's fields and never seeds a team match, which
+      is why this survived a test written to cover exactly this response — seed a 2v2
+
+- [x] T070e Return the capture state from `GET /api/matches/{game_id}`, in
+      `packages/storage/src/aoe2stats_storage/repositories/matches.py`,
+      `apps/api/src/aoe2stats_api/routers/matches.py`, `apps/api/tests/test_match_detail.py` and
+      `apps/web/src/features/matches/mappers.ts`. The detail route answers with no `capture_status`
+      and no `capture_deadline_at`, while the list route carries both — so `MatchDetailPanel`
+      renders no capture badge, and because its download control is gated on a `stored` capture that
+      gate never fires and **the replay download is unreachable from the one screen built to offer
+      it**. T066 and T071 built and tested that endpoint; T074 built the control; T076 built and
+      tested every piece of client plumbing. The single missing field is what leaves them
+      unconnected. It also contradicts this phase's own checkpoint, which claims an honest capture
+      state per match, and FR-027, which asks for that state per match rather than per list. The
+      list route already computes both in `list_matches`; do the same in `get_match_detail` rather
+      than inventing a second path. T064 asserts the participants and never the capture state, which
+      is why nothing caught it — assert both, and assert the download control's precondition
+
+- [x] T070f Name the leaderboard in the two match routes, in
+      `apps/api/src/aoe2stats_api/routers/matches.py` and `apps/api/tests/test_matches_list.py`.
+      Both routes return `leaderboard_id` with no name, so T076 added `formatLeaderboardName` in the
+      front end as a stand-in, falling back exactly as the server's own helper does. That is the
+      same defect T033a fixed for `apps/web/src/features/profile/leaderboards.ts` and T070c fixed
+      for civilisations, appearing a third time in the same shape: a name for an external id being
+      derived client-side because the response omits it. `apps/api/src/aoe2stats_api/leaderboards.py`
+      already holds the mapping and `GET /api/profiles` already returns `leaderboard_name` from it,
+      so this is one call in each serializer and no new source of truth. Remove the front-end
+      stand-in in the same change, so the fallback does not outlive the gap it stands in for
+
+### Phase 5 visual remediation (post-T077 review)
+
+Added by hand after the `visual-reviewer` agent returned FAIL on `MatchRow` and `MatchDetailPanel`,
+with `Badge` and `CaptureStateBadge` passing. Every finding below was measured against rendered
+pixels — bisected at 900 and 1100 as well as the review viewports, with every capture hashed to
+catch the T038b duplicate-image failure, which did **not** recur. These are defects in T074, which
+is marked `[x]` above, and they are listed here rather than edited into its text.
+
+They run **before** the baseline capture that closes T077. A baseline photographed against a wrong
+breakpoint or a short touch target does not merely miss the defect, it freezes it into the check
+that exists to catch it, and every later run then reports green for the thing it is protecting. That
+is T038b's failure, and the reason this section exists at all is that the review caught it one step
+before it became permanent.
+
+- [x] T074a Give the layout the breakpoints and the tier its spec asks for, in
+      `packages/design-system/src/components/MatchRow/index.tsx`,
+      `packages/design-system/src/components/MatchDetailPanel/index.tsx` and
+      `packages/design-system/src/components/CaptureStateBadge/index.tsx`. Three faults, one theme —
+      a layout reacting to the wrong width. **(a)** Both components switch from cards to a real
+      table on `useBreakpoint('lg')`, which
+      `packages/design-system/src/lib/useMediaQuery.ts` defines as 1024, while
+      `packages/design-system/specs/match-history.md` reserves everything below 1280 for cards;
+      measured at 1100 both already render a ruled table, and `xl` is the token that was meant.
+      **(b)** The panel implements only two tiers where the spec names three: there is no
+      two-participants-side-by-side layout at 768 at any width, so that tier is missing outright
+      rather than mis-triggered. **(c)** `CaptureStateBadge` stacks its secondary line on a `sm:`
+      media query, which reads the **window** and not the container it sits in, so inside the
+      row's bounded trailing column it is always inline once the page is wide — and the spec's
+      "beneath the pill rather than beside it, column width is bounded" is unreachable from any
+      prop. Give it a way to be told, rather than letting it infer from a width that does not
+      describe its own box. Note `ProfileSummary` shares the same `lg` choice: it is inherited
+      rather than introduced here, so decide deliberately whether it moves with these two, and say
+      which in the hand-back rather than changing it silently
+
+- [x] T074b Meet the spacing scale and the touch floor, in
+      `packages/design-system/src/components/MatchRow/index.tsx` and
+      `packages/design-system/src/components/MatchDetailPanel/index.tsx`. Three spacing values sit
+      one step off the table in `packages/design-system/specs/match-history.md`: the row's table
+      column gap renders `space-6` where the spec says `space-5`, the panel's header-to-download gap
+      renders `space-6` where the spec says `space-4` because one uniform gap covers every top-level
+      child, and the participants row padding-block renders `space-2` where the spec says `space-3`.
+      Separately, and this is the one that fails an audit rather than a review: every button
+      reachable on a touch viewport in these two components measures **40 pixels** tall — the list's
+      retry control, the download control, the back link and the failure retry — against the 44 the
+      Button rule in `packages/design-system/specs/shared-primitives.md` requires, because none
+      passes the large size or extends its hit area. T035d already made this project measure the
+      rendered box rather than match a class name; this is the first time that measurement has
+      found a real violation, and it found four
+
+- [x] T070g Correct the civilisation table, which names every id wrongly, in
+      `apps/api/src/aoe2stats_api/civilizations.py`, a new test beside it, and `docs/data-sources.md`.
+      T070c named ids 1 to 13 with the original roster in **alphabetical** order and called that the
+      one range it could assert with confidence. It is wrong for all thirteen, and wrong in the worst
+      available way: a confident incorrect name rather than a placeholder. Measured against this
+      repository's own frozen fixtures, id 1 is Aztecs and not Britons, id 9 is Byzantines and not
+      Persians, id 12 is Cumans and not Turks — Britons is 5, Turks is 42, Vikings is 44. A player
+      who picked Aztecs is told they played Britons, which is worse than being told nothing.
+      **The mapping is derivable and was derived, not guessed.** Joining
+      `packages/providers/fixtures/relic/get_recent_match_history.json` to
+      `packages/providers/fixtures/companion/matches.json` on match id and profile id pairs Relic's
+      numeric `civilization_id` against the enrichment source's own civilisation name, for the same
+      player in the same game: 21 distinct pairs, no conflict, and three of them repeated across two
+      different matches. Those 21 are measured fact. They are reproduced exactly, 21 of 21, by one
+      rule — the zero-based alphabetical position of the civilisation over the 45-name roster that
+      predates the Three Kingdoms and the South American additions, taking `Indians` at its original
+      spelling rather than the later `Hindustanis`, which re-sorts under H and would move six ids.
+      That the rule reproduces every measured pair including the hole at 21, where `Indians` sorts
+      between `Incas` and `Italians`, is what makes it a reading of the id space rather than a
+      coincidence. Carry ids 0 to 44 from it, display id 21 under the name the game uses today, and
+      leave 45 upward to the existing fallback: the eight newest civilisations are outside every
+      pair we can check, and this task exists because a plausible order was asserted once already.
+      **Write the join as the test, not as a comment.** A test that re-derives the pairs from the
+      two fixtures and asserts the table agrees turns this from a table someone typed into a fact
+      this repository checks on every run, and is what would have caught T070c on the day it landed
+
+- [x] T070h Guard the whole civilisation table, not the fifth of it the fixtures happen to reach, in
+      `apps/api/tests/test_civilizations.py` and `apps/api/src/aoe2stats_api/civilizations.py`.
+      T070g's test re-derives 21 pairs from the frozen fixtures and asserts the table against them,
+      which anchors 21 of 45 entries. The other 24 are guarded by nothing: changing id 12 from
+      `Cumans` to `Turks` leaves the suite green, verified by doing it. Among the unguarded are
+      `Britons`, `Chinese`, `Franks`, `Goths`, `Saracens` and `Spanish` — ordinary civilisations a
+      beta player will pick in their first evening, and the ones a careless edit is most likely to
+      touch. The table is not two kinds of data, though: every entry, guarded or not, comes from one
+      ordering rule, and the 21 measured pairs are what establish that the rule is the right one.
+      Express it that way. Derive the 45 names in the test from the rule — the roster, sorted, with
+      `Indians` at its original spelling — assert the module's table equals that derivation entry
+      for entry, and keep the fixture join as the separate check that the rule itself is sound. Then
+      one perturbation anywhere in the table fails, and the roster the rule sorts becomes the single
+      thing a reader has to agree with. Say plainly in both files which claim rests on measurement
+      and which on the rule, because "verified" over a table where half the entries are untested is
+      the kind of half-true a later reader relies on completely
+
+- [x] T070i Cover the fourteen civilisations still rendering as a number, in
+      `apps/api/src/aoe2stats_api/civilizations.py`, `apps/api/tests/test_civilizations.py` and
+      `docs/data-sources.md`. T070g and T070h left ids 45 upward on the fallback because nothing
+      checkable reached them. A community reference dataset does: cross-checked against it, all 45
+      ids already in the table agree and 44 of 45 labels agree, the exception being id 30, where it
+      writes `Maya` and the table writes `Mayans` — the table is right and stays, because `Mayans`
+      is the name the game shows and the MIT-licensed tech-tree data, which is generated from the
+      game's own strings, spells it that way too. Add the fourteen the table lacks: 45 Achaemenids,
+      46 Athenians, 47 Spartans, 48 Shu, 49 Wu, 50 Wei, 51 Jurchens, 52 Khitans, 53 Macedonians,
+      54 Thracians, 55 Puru, 58 Muisca, 59 Mapuche, 60 Tupi. Five of those — the Three Kingdoms
+      civilisations — and the three American ones are ordinary picks in the ladders this product
+      tracks, so today a player who picked Shu is shown a bare number. Ids 56 and 57 are absent
+      from the reference as well: leave them on the fallback rather than closing the gap by
+      guessing what sits between Puru and Muisca, which is the error this whole run of tasks
+      exists to correct. **Do not vendor the dataset.** It carries no licence at all, unlike the
+      tech-tree repository — the same defect `docs/data-sources.md` already records against the
+      enrichment source — so the pairs are transcribed as the facts they are and the file is never
+      copied into this tree. Record the provenance and that licence status in `docs/data-sources.md`
+      beside the existing note, so the next reader knows what was leaned on and how far it can be
+      leaned on. The two regions of the table are now different kinds of claim and the tests must
+      say so rather than blur them: ids 0 to 44 are what the alphabetical rule derives and the
+      fixture join anchors, while 45 upward are individually transcribed and follow release order
+      rather than any rule. Keep the rule test authoritative over its own range instead of loosening
+      it to accommodate the new rows
 
 **Checkpoint**: The product is usable day to day — history, detail, and an honest capture state per
 match.
@@ -406,8 +586,8 @@ the archived replays; then erase and confirm nothing remains, in the records or 
 
 - [ ] T089a [US5] Gate the capture drain on live consent, in `apps/ingester/src/aoe2stats_ingester/capture.py`. T053a fixes _discovery_, which decides whose matches are found; this fixes the _claim_, which decides whose bytes are fetched. They are not the same check and neither substitutes for the other, because a queue sits between them that can be days deep: a capture enqueued while consent stood is still `pending` after the withdrawal, and the claim query — `WHERE status = 'pending' AND next_attempt_at <= now()`, per [data-model.md](./data-model.md) — has no consent clause of any kind, so the next cycle downloads and stores it. That is the exact edge case spec.md lists ("a user withdraws ingestion consent while captures are queued") and the one T089 tests. Join through `profile_links` to `users` and apply the same two-clause predicate data-model.md now states. Leave the already-`stored` rows alone: withdrawal stops further capture (FR-035), erasure is what removes what was captured (FR-037), and conflating them would delete a user's archive on a click they were told only pauses ingestion
 
-- [ ] T090 [US5] Implement the export job: a `data_requests` row, an archive assembled from the records and the blobs, and a signed URL from `GET /api/privacy/export/{id}`, in `apps/api/src/aoe2stats_api/routers/privacy.py` and `packages/core/src/aoe2stats_core/privacy/export.py`
-- [ ] T091 [US5] Implement erasure: confirmation token from a prior `GET`, deletion of the user, identities, sessions, links, captures, their `replay_access_log` rows and the objects, and in-place pseudonymisation of the departing `profile_id` in `matches` and `match_players`, in `packages/core/src/aoe2stats_core/privacy/erasure.py`. Write the pseudonymisation as a function over an arbitrary `profile_id` rather than one that derives it from the user being erased: [data-model.md](./data-model.md) calls it "the same mechanism FR-039 gives third parties", and a third party has no user row to derive anything from. T092's resolution step is its second caller and the only thing that carries out FR-039's second half
+- [ ] T090 [US5] Implement the export job: a `data_requests` row, an archive assembled from the records and the blobs, and a signed URL from `GET /api/privacy/export/{id}`, in `apps/api/src/aoe2stats_api/routers/privacy.py` and `packages/core/src/aoe2stats_core/privacy/export.py`. Cover 003's tables as `specs/003-player-search-match-analysis/data-model.md` states per table: `favourites` (the profile ids and the dates) and the analyses the user requested (match ids and dates). `profile_search_cache` and `rate_limit_counters` are excluded and that file says why. 003's FR-017 is discharged here, not there — it names this task and has no implementing task of its own
+- [ ] T091 [US5] Implement erasure: confirmation token from a prior `GET`, deletion of the user, identities, sessions, links, captures, their `replay_access_log` rows and the objects, and in-place pseudonymisation of the departing `profile_id` in `matches` and `match_players`, in `packages/core/src/aoe2stats_core/privacy/erasure.py`. Write the pseudonymisation as a function over an arbitrary `profile_id` rather than one that derives it from the user being erased: [data-model.md](./data-model.md) calls it "the same mechanism FR-039 gives third parties", and a third party has no user row to derive anything from. Cover 003's tables as that feature's `data-model.md` states per table: `favourites` and `rate_limit_counters` deleted with the user; `match_analyses.requested_by_user_id` cleared with the row retained; `retained_recordings` **kept**, because erasing the requester removes a link and not a subject and a published analysis must stay recomputable (constitution IV) — deleting a retained recording belongs to T092's objection route, not here. T092's resolution step is its second caller and the only thing that carries out FR-039's second half
 - [ ] T092 [US5] Implement `POST /api/privacy/object` with its rate limit and its deferred, recorded resolution, in `apps/api/src/aoe2stats_api/routers/privacy.py`; and write the handling procedure the register's launch item asks for — where an objection lands, who resolves it, within what delay, and the `data_requests` row that is its trace — in `docs/privacy/processing-register.md`. The endpoint alone is half the obligation: `data_requests` already carries `requested_at`, `completed_at` and `outcome`, so what is missing is not a record but the sentence saying who acts on it and by when. **Name the mechanism as well as the actor.** FR-039's second half — "MUST pseudonymise their identifiers on request" — has no code path anywhere in this feature: T091 pseudonymises only the _departing user's_ `profile_id` inside erasure, which is a different subject, a different trigger and a different scope. [data-model.md](./data-model.md) has already settled which it should be: erasure pseudonymises the departing user's `profile_id` in place, "the same mechanism FR-039 gives third parties" — so the instrument is T091's, called with an arbitrary `profile_id` from the resolution step, and this task records that rather than reopening it. Deferring the act to a human is the right design (T088 asserts it, and an endpoint that pseudonymised on demand would be a denial-of-service vector against the data); leaving the human no instrument is not a design, and it is how a register commitment comes to be promised and built nowhere
 - [ ] T093 [US5] Write the privacy notice copy and its component spec — what is collected, on what basis, for how long, how to exercise these rights (FR-041) — in `packages/design-system/specs/`. It is a design-system component and not page markup in `apps/web`, for the reason T098 gives about the footer: constitution VI admits no unstoried component, and these two are the only pieces of copy in the product carrying a legal obligation — neither should be the thing nothing screenshots. T095 builds it from this spec and T096 screenshots it, so the phase's spec-before-component-before-route order holds here as everywhere else
 - [ ] T094 [P] [US5] Write the component specs for the privacy screens, including the erasure confirmation whose wording states plainly that it is irreversible, and **the third-party objection form** — the one screen in the product addressed to someone who is not a user and has no session, so it explains what was collected about them and why before it asks for anything (FR-039), in `packages/design-system/specs/`

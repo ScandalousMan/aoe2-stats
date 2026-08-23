@@ -8,6 +8,18 @@ and never re-derived by `/speckit-analyze`, which spends its budget on judgment 
 The rule this file exists to enforce, from CLAUDE.md: a number, a path or a name that lives in two
 places will eventually be wrong in one of them.
 
+**This is a multi-feature repository.** `specs/` holds more than one feature directory at a time
+(001 and 002 as of this writing, and it will keep growing), and a task id, an alert kind, a
+behavioural configuration key or a processing-register commitment may be defined by any one of
+them rather than by the feature currently being linted — feature 002's own tasks.md cites eleven
+of feature 001's task ids by design ("Numbering starts at T201, deliberately"). A check written
+here must therefore resolve its identifiers across every feature directory under `specs/`, not
+just within the one it was handed: `task-refs`, `alert-kinds`, `env-consumed` and
+`register-commitments` each learned this the hard way (T202) after being written when the
+repository held exactly one feature. The next check added to this file should assume a second (or
+third) feature exists from the start, rather than re-acquiring the single-feature assumption and
+paying to unlearn it later.
+
 Run: uv run scripts/checks/spec_lint.py --feature specs/001-steam-link-replay-ingestion
 Exit: 0 clean, 1 on any failure. Stdlib only, so it needs no environment.
 """
@@ -32,10 +44,12 @@ ENV_TOKEN_ALLOWLIST = {
     "DEFAULT_STAGES",
 }
 
-# The section of .env.example whose keys tune behaviour rather than describe infrastructure. Each of
-# these must be named by the task that consumes it: a task that states the value instead of the key
-# is a task that tells an implementer to hard-code it.
-BEHAVIOURAL_SECTION = "Ingestion tuning"
+# A `.env.example` section is behavioural — its keys tune behaviour rather than describe
+# infrastructure — when its header ends in "tuning" (case-insensitive): `Ingestion tuning`,
+# `Search, favourites and analysis tuning`, and whatever the next feature adds under its own name.
+# Each behavioural key must be named by the task that consumes it: a task that states the value
+# instead of the key is a task that tells an implementer to hard-code it.
+BEHAVIOURAL_SECTION_SUFFIX = "tuning"
 
 UNIT_WORDS = {
     "DAYS": r"days?",
@@ -130,16 +144,34 @@ def _task_number(key: str) -> int:
     return int(match.group(1))
 
 
+def all_defined_task_ids(specs_root: Path) -> set[str]:
+    """Every task id defined by any feature's `tasks.md` under `specs_root`.
+
+    `specs_root` is a parameter rather than a reference to the module-level `REPO`, precisely so a
+    test can point it at a fixture tree it controls (`feature_dir.parent`) instead of the real
+    repository. It is not the specs root of the feature being linted alone — it is every sibling
+    directory found there, which is the whole point: a task id counts as defined the moment any
+    feature's own `tasks.md` says so, not only the one being examined.
+    """
+    ids: set[str] = set()
+    if not specs_root.is_dir():
+        return ids
+    for tasks_file in sorted(specs_root.glob("*/tasks.md")):
+        ids |= set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", read(tasks_file), re.MULTILINE))
+    return ids
+
+
 def check_task_references(feature_dir: Path, tasks: str) -> None:
     defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
     if not defined:
         fail("task-refs", "no task definitions found in tasks.md")
         return
+    all_defined = defined | all_defined_task_ids(feature_dir.parent)
     referenced: set[str] = set()
     for path in sorted(feature_dir.rglob("*.md")):
         for match in re.findall(r"\bT\d+[a-z]?\b", read(path)):
             referenced.add(match)
-    for key in sorted(referenced - defined):
+    for key in sorted(referenced - all_defined):
         fail("task-refs", f"{key} is referenced but defined by no task")
     numbers = sorted({_task_number(key) for key in defined})
     gaps = [n for n in range(numbers[0], numbers[-1] + 1) if n not in numbers]
@@ -191,10 +223,36 @@ def check_path_collisions(sources: dict[str, str], tree: set[str]) -> None:
             )
 
 
+def alert_vocabulary(specs_root: Path) -> tuple[str | None, set[str]]:
+    """The repository-wide alert `kind` vocabulary: the one declared by whichever feature's own
+    `data-model.md` under `specs_root` names it, and the name of that feature.
+
+    The vocabulary is a single fact declared once (today only by feature 001), not a per-feature
+    thing to be re-declared — this is why `check_alert_kinds` looks for it here rather than asking
+    every feature to restate it. Returns `(None, set())` when no feature under `specs_root`
+    declares one at all, which is a legitimate state, not an error: most features add no alert.
+    """
+    if specs_root.is_dir():
+        for path in sorted(specs_root.glob("*/data-model.md")):
+            enum_match = re.search(r"`kind` \(enum: (.+?)\)", read(path), re.DOTALL)
+            if enum_match:
+                return path.parent.name, set(re.findall(r"`([a-z_]+)`", enum_match.group(1)))
+    return None, set()
+
+
 def check_alert_kinds(data_model: str, tasks: str) -> None:
     enum_match = re.search(r"`kind` \(enum: (.+?)\)", data_model, re.DOTALL)
     if not enum_match:
-        fail("alert-kinds", "no `kind` enum found in data-model.md")
+        source, canonical = alert_vocabulary(REPO / "specs")
+        if not canonical:
+            notes.append("alert-kinds: no feature declares an alert vocabulary; nothing to check")
+            return
+        notes.append(
+            f"alert-kinds: this feature declares no alert vocabulary of its own; inapplicable — "
+            f"checked its own tasks against {source}'s {len(canonical)}-kind vocabulary instead"
+        )
+        for kind in sorted(set(re.findall(r"severity-\d `([a-z_]+)`", tasks)) - canonical):
+            fail("alert-kinds", f"tasks.md raises `{kind}`, which is not in data-model.md's enum")
         return
     canonical = set(re.findall(r"`([a-z_]+)`", enum_match.group(1)))
     producers = {
@@ -223,12 +281,23 @@ def parse_env(env_text: str) -> tuple[dict[str, str], set[str]]:
     in_section = False
     for line in env_text.splitlines():
         if line.startswith("# ---"):
-            in_section = BEHAVIOURAL_SECTION in line
+            header = line.strip("# -").strip()
+            in_section = header.lower().endswith(BEHAVIOURAL_SECTION_SUFFIX)
         if match := re.match(r"^([A-Z][A-Z0-9_]+)=(.*)$", line):
             values[match.group(1)] = match.group(2).strip()
             if in_section:
                 behavioural.add(match.group(1))
     return values, behavioural
+
+
+def all_tasks_text(specs_root: Path) -> str:
+    """The concatenated `tasks.md` text of every feature under `specs_root`, for a substring check
+    that must not care which feature actually consumes a key — only that some task, somewhere,
+    does. Mirrors `all_defined_task_ids`, but a key is matched against prose, not extracted as an
+    id, so the raw text is what a caller needs rather than a parsed set."""
+    if not specs_root.is_dir():
+        return ""
+    return "".join(read(p) for p in sorted(specs_root.glob("*/tasks.md")))
 
 
 def check_env(
@@ -239,8 +308,9 @@ def check_env(
         used |= set(re.findall(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b", text))
     for token in sorted(used - set(env_values) - ENV_TOKEN_ALLOWLIST):
         fail("env-declared", f"{token} is used by an artifact but declared in no .env.example key")
+    all_tasks = tasks + all_tasks_text(REPO / "specs")
     for key in sorted(behavioural):
-        if key not in tasks:
+        if key not in all_tasks:
             fail(
                 "env-consumed",
                 f"{key} tunes behaviour but is named by no task, so nothing reads it",
@@ -292,6 +362,7 @@ def check_register_commitments(tasks: str) -> None:
     if not register.is_file():
         return
     defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
+    defined |= all_defined_task_ids(REPO / "specs")
     for line in read(register).splitlines():
         item = re.match(r"^- \[([ x])\] (.+)$", line.strip())
         if not item:
@@ -307,7 +378,7 @@ def check_register_commitments(tasks: str) -> None:
         for task in sorted(named - defined):
             fail(
                 "register-commitments",
-                f"launch item names {task}, which this feature does not define",
+                f"launch item names {task}, which this repository does not define",
             )
     notes.append(
         "register-commitments: every launch item is delivered by a named task or out of scope"

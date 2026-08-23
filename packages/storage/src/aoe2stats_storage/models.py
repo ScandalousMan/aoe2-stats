@@ -72,13 +72,21 @@ class CaptureSource(enum.StrEnum):
 
 
 class AlertKind(enum.StrEnum):
-    """`alerts.kind` — five kinds, five producers, per data-model.md."""
+    """`alerts.kind` — six kinds, six producers, per data-model.md.
+
+    `ANALYSIS_CAP_REACHED` is 003's own addition (severity 2): FR-047's cap has been hit and new
+    analyses are being refused — the designed behaviour, not an incident, but a product decision
+    that has come due and that nobody finds out from a log line. No kind exists for a failed
+    analysis: FR-036 requires the user to be told and the failure recorded on `match_analyses`
+    itself, and a per-match parse failure is an expected outcome of R3's memory bound.
+    """
 
     RATE_LIMITED = "rate_limited"
     DEADLINE_BREACH = "deadline_breach"
     EXPIRED_CAPTURE = "expired_capture"
     VALIDATION_FAILED = "validation_failed"
     FREE_TIER = "free_tier"
+    ANALYSIS_CAP_REACHED = "analysis_cap_reached"
 
 
 class DataRequestKind(enum.StrEnum):
@@ -87,6 +95,20 @@ class DataRequestKind(enum.StrEnum):
     EXPORT = "export"
     ERASURE = "erasure"
     THIRD_PARTY_OBJECTION = "third_party_objection"
+
+
+class MatchAnalysisState(enum.StrEnum):
+    """`match_analyses.state` — see the six-state table in
+    `specs/003-player-search-match-analysis/data-model.md`. `running` means a lease was taken
+    recently, never that work is happening now (R6); `lease_expires_at` is what makes an expired
+    lease claimable again."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    PUBLISHED = "published"
+    FAILED = "failed"
+    UNAVAILABLE = "unavailable"
+    REFUSED = "refused"
 
 
 def _enum_column(kind: type[enum.Enum], name: str) -> Any:
@@ -215,6 +237,12 @@ class AoeProfile(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 003: the moment `alias` above was last observed at the source — the honesty half of "this
+    # player has since renamed". There is deliberately no `hidden_observed_at`: it was designed as
+    # FR-004c's memory, T301a measured the source and found no hidden signal to remember
+    # (`docs/data-sources.md` §3), and FR-004c was retired. A nullable column nothing can ever set
+    # is worse than no column — see data-model.md.
+    alias_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProfileLink(Base):
@@ -529,15 +557,40 @@ class ReplayAccessLog(Base):
     Goes with the captures it describes on erasure: `ondelete="CASCADE"` on both foreign keys means
     the rows disappear together with either the capture or the user, matching the deletion order
     described in data-model.md's `data_requests` section.
+
+    Widened by 003 (`specs/003-player-search-match-analysis/data-model.md`): after that feature
+    there are two kinds of archive a logged access can point at — a user's own `replay_captures`
+    row, served on request, or a third party's `retained_recordings` row, read only by
+    `apps/analyzer`. `replay_capture_id` becomes nullable and `retained_recording_id` is added,
+    nullable, so the check constraint below is what makes a row that means nothing impossible to
+    insert rather than merely inadvisable — the alternative, a second access-log table, was
+    rejected because an audit that reads one table reports a clean trail for rows nobody checked.
     """
 
     __tablename__ = "replay_access_log"
+    __table_args__ = (
+        # The exact predicate data-model.md pins down: Postgres's own null-counting function, not
+        # a pair of `IS NULL` comparisons, so it reads as the requirement itself. T305's migration
+        # must emit this same string.
+        CheckConstraint(
+            "num_nonnulls(replay_capture_id, retained_recording_id) = 1",
+            name="ck_replay_access_log_exactly_one_source",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    replay_capture_id: Mapped[uuid.UUID] = mapped_column(
+    # Nullable since 003: a row may instead carry `retained_recording_id`. See the check
+    # constraint above for the invariant this alone cannot express.
+    replay_capture_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("replay_captures.id", ondelete="CASCADE"),
-        nullable=False,
+        index=True,
+    )
+    # 003: a system read of a third party's already-public recording — never a download, and
+    # never served to anyone (see `RetainedRecording` below and R8).
+    retained_recording_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("retained_recordings.id", ondelete="CASCADE"),
         index=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -574,3 +627,176 @@ class DataRequest(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     outcome: Mapped[str | None] = mapped_column(Text)
+
+
+# --- 003: player search, favourites and on-demand match analysis --------------------------------
+# Five new tables, per `specs/003-player-search-match-analysis/data-model.md`. `aoe_profiles` and
+# `replay_access_log` above are the two existing tables that feature widens.
+
+
+class Favourite(Base):
+    """`favourites` — one user's private mark on one player.
+
+    The composite primary key *is* FR-013's idempotence: marking the same profile twice inserts
+    the same `(user_id, profile_id)` pair twice, which a primary key turns into a rejection rather
+    than a second row, and unmarking is a delete that cannot leave a duplicate behind.
+
+    Private to its owner, always (FR-015): there is no query anywhere in this feature that counts
+    favourites by `profile_id`, and none may be added here — "how many people follow this player"
+    is a fact this system must not be able to answer. A row here never causes capture, ingestion or
+    archival of anything (FR-012); the per-user count bound (FR-016) is enforced on insert, in the
+    repository, not in this schema.
+    """
+
+    __tablename__ = "favourites"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    profile_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aoe_profiles.profile_id"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ProfileSearchCache(Base):
+    """`profile_search_cache` — FR-004e. One row per normalised query.
+
+    `query_normalised` (lowercased, whitespace-trimmed, Unicode-normalised) alone is the primary
+    key, so a write past the TTL is a replace rather than a second, stale row sitting alongside the
+    fresh one. `results` holds only the fields `PlayerSearchResult` carries — never a verbatim copy
+    of the provider's response, which would additionally store the account-linking claim FR-004b
+    exists to keep out of this system (see `contracts/providers.md`).
+
+    Sheds its own rows: entries older than the configured TTL are deleted opportunistically on
+    write (same reasoning as `rate_limit_counters` below), because FR-044 forbids a job that clears
+    it on a timer and nothing here is keyed to a user for erasure to reach.
+    """
+
+    __tablename__ = "profile_search_cache"
+
+    query_normalised: Mapped[str] = mapped_column(Text, primary_key=True)
+    results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class MatchAnalysis(Base):
+    """`match_analyses` — one row per match, ever.
+
+    The primary key on `game_id` alone *is* FR-031 and FR-038, enforced by the database rather than
+    a check in application code: it is what makes a double-click fetch the same recording once
+    (R12), because there is no combination of other column values that lets a second row describe
+    the same match.
+
+    `state` never means "work is happening now" while `running` — R6 forces that distinction, and
+    `lease_expires_at` is what makes it operational: a row whose lease has expired is `running` in
+    name and claimable in fact. Nothing sweeps expired leases (FR-044); the next viewer's request
+    takes it.
+
+    `attempts` bounds retry of a *transient* failure only. A recording that fails to parse goes
+    straight to `failed` on the first attempt, because a parse is deterministic and a second
+    attempt is a second identical failure that costs a fetch (FR-036, constitution V).
+
+    `result_key` points at the published analysis in the object store, not a `jsonb` column here —
+    the analysis of a long game is large, read whole or not at all, and never queried by its
+    contents (same shape as `replay_parses.output_key`).
+
+    `requested_by_user_id` is nullable because erasure clears it while the row survives: the
+    analysis is derived from a match's public record and shown to every viewer, so it is not the
+    requester's personal data — who asked for it is.
+    """
+
+    __tablename__ = "match_analyses"
+
+    game_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("matches.game_id"), primary_key=True, autoincrement=False
+    )
+    state: Mapped[MatchAnalysisState] = mapped_column(
+        _enum_column(MatchAnalysisState, "match_analysis_state"),
+        nullable=False,
+        default=MatchAnalysisState.QUEUED,
+    )
+    point_of_view_profile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    parser_name: Mapped[str | None] = mapped_column(Text)
+    parser_version: Mapped[str | None] = mapped_column(Text)
+    engine_deps: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Cleared on erasure (`ondelete="SET NULL"`); the row and the published analysis survive it —
+    # see the class docstring.
+    requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_class: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    result_key: Mapped[str | None] = mapped_column(Text)
+
+
+class RetainedRecording(Base):
+    """`retained_recordings` — FR-033. A separate table from `replay_captures` on purpose (R9),
+    so the two are never counted together — the schema is what makes counting them together
+    impossible to do by accident.
+
+    `object_key` uses its own prefix, distinct from `replay_object_key`, so the separation survives
+    into the bucket where the free-tier watch and any bulk copy operate by prefix with no database
+    to join against. `zip_sha256` is recorded at retention and verified on retrieval; the bytes are
+    never modified.
+
+    Erasure here is two different acts, and conflating them is what would break constitution IV:
+
+    - erasure of the *requester* clears `requested_by_user_id` (`ondelete="SET NULL"`) and keeps
+      the object and the row — the bytes are an already-public recording, not the requester's data,
+      and deleting them would leave a published analysis nothing can recompute;
+    - erasure or objection by a person *appearing in* the recording deletes the object and the row,
+      and withdraws every analysis derived from it. That is the only route by which these bytes are
+      ever deleted (FR-046, constitution IV).
+    """
+
+    __tablename__ = "retained_recordings"
+    __table_args__ = (
+        UniqueConstraint("game_id", "profile_id", name="uq_retained_recordings_game_id_profile_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    game_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("matches.game_id"), nullable=False)
+    profile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    zip_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    zip_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    retained_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class RateLimitCounter(Base):
+    """`rate_limit_counters` — R10. Fixed windows, one row per `(user, bucket, window)`,
+    incremented with an upsert. Buckets: `search` (FR-005), `replay_download` (FR-028),
+    `analysis_request` (FR-040).
+
+    Database-backed rather than in-memory because there is no shared process on this platform
+    (constitution XII): an in-memory counter would work on a VPS and silently count nothing on
+    Vercel. Rows older than the longest window are disposable and pruned opportunistically on
+    write — nothing sweeps them (FR-044).
+    """
+
+    __tablename__ = "rate_limit_counters"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    bucket: Mapped[str] = mapped_column(Text, primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

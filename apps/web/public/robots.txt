@@ -1,0 +1,7 @@
+# FR-010 / constitution IX: player search and any player's profile are reachable by a signed-in
+# beta user but never publicly indexed. The `X-Robots-Tag: noindex, nofollow` response header
+# (apps/api/.../app.py's `_NoIndexHeaderMiddleware`, T309) covers the API routes these pages call;
+# this file covers the client-side routes themselves (`routes/search.tsx`, T322).
+User-agent: *
+Disallow: /search
+Disallow: /players

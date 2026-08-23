@@ -195,6 +195,36 @@ class MatchEnrichment(StrictProviderModel):
     civilizations: dict[int, str] | None = None
 
 
+@dataclass(frozen=True)
+class PlayerSearchResult:
+    """`PlayerSearchProvider.search_players` — one match from aoe2companion's `?search=` endpoint
+    (`docs/data-sources.md` §3), reduced to exactly the fields FR-004b allows.
+
+    A plain dataclass, not a `StrictProviderModel`: the enforcement this DTO exists for is the
+    *absence* of a field (`contracts/providers.md`'s "The fields that are not there"), which is a
+    property of the class definition itself, not of validation. `steam_id`, `shared`,
+    `shared_history` and `linked_profiles` — the source's account-linking claims, the same
+    unverifiable identity assertion 001's FR-045 already refuses for `linkedProfiles` — have
+    nowhere to be assigned here, deliberately.
+    """
+
+    profile_id: int
+    alias: str
+    country: str | None
+    games_played: int | None
+    clan: str | None
+
+
+@dataclass(frozen=True)
+class PlayerSearchPage:
+    """`PlayerSearchProvider.search_players`'s return value: one page of `PlayerSearchResult`,
+    plus whether the source reports more beyond it.
+    """
+
+    results: Sequence[PlayerSearchResult]
+    has_more: bool
+
+
 def parse_strict[ModelT: BaseModel](
     model: type[ModelT], data: Any, *, provider: str, endpoint: str
 ) -> ModelT:
@@ -257,6 +287,39 @@ class EnrichmentProvider(Protocol):
     """
 
     async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]: ...
+
+
+@runtime_checkable
+class PlayerSearchProvider(Protocol):
+    """Display-name search against aoe2companion, the only source that offers one (§1 of
+    `docs/data-sources.md`). Implemented by `CompanionEnrichmentProvider`, sharing its circuit
+    breaker and token bucket with `enrich_matches` rather than duplicating either
+    (`contracts/providers.md`). `search_players` never raises: a 403, an outage or a malformed
+    body all come back as an empty page, exactly like `enrich_matches`'s failure mode.
+
+    `is_degraded()` is part of this contract, not a `CompanionEnrichmentProvider`-only extra: it
+    is the one way a caller can tell "the source is currently known to be down" from "a genuine
+    empty result" *before* ever calling `search_players` (`search_players` itself never raises, so
+    there is no exception to read that signal off — `contracts/providers.md`'s "Failure" section).
+    Read off the provider's own circuit breaker, with no side effect of its own.
+
+    `last_call_failed()` is the second, distinct signal `contracts/providers.md`'s BL-2 remediation
+    added: `is_degraded()` alone can only say "the breaker is open", which is false for the first
+    calls of a fresh outage — a consecutive-failure breaker admits a sub-threshold window where
+    every call so far has failed but the count has not yet reached `_FAILURE_THRESHOLD`
+    (`companion/provider.py`). `is_degraded()` would read `False` through that whole window even
+    though the call the caller just made did not succeed, and a caller that only checks
+    `is_degraded()` after the call caches that failure as a confident, empty answer. `last_call_
+    failed()` answers "did the call this provider instance just completed fail?", independent of
+    whether the breaker's own threshold has tripped — a caller (`apps/api/src/aoe2stats_api/
+    search.py`) must check both after every call it makes, not `is_degraded()` alone.
+    """
+
+    def is_degraded(self) -> bool: ...
+
+    def last_call_failed(self) -> bool: ...
+
+    async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 
 
 # --- Retry with backoff ---------------------------------------------------------------------------

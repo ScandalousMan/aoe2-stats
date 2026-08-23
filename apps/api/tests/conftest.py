@@ -50,6 +50,7 @@ from tests.db import clean_database, database_url, db_session, engine, session_f
 
 from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_session
+from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
 
@@ -87,6 +88,16 @@ REQUIRED_ENV: dict[str, str] = {
     "INGEST_RUN_BUDGET_SECONDS": "5",
     "INGEST_MAX_CAPTURES_PER_USER_PER_RUN": "20",
     "INGEST_QUOTA_EXEMPT_DAYS": "7",
+    "FAVOURITES_MAX_PER_USER": "100",
+    "PLAYER_SEARCH_CACHE_TTL_SECONDS": "300",
+    "PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE": "20",
+    "REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE": "6",
+    "ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY": "10",
+    "ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY": "60",
+    "ANALYSIS_RETENTION_CAP_BYTES": "2147483648",
+    "ANALYSIS_RUN_BUDGET_SECONDS": "240",
+    "ANALYSIS_LEASE_SECONDS": "300",
+    "ANALYSIS_MAX_RAW_BYTES": "25165824",
 }
 
 
@@ -106,9 +117,28 @@ if _missing_from_fixture or _missing_from_env_example:
     )
 
 
+@pytest.fixture(autouse=True)
+def _reset_companion_breaker() -> Iterator[None]:
+    """MJ-4 remediation: `routers/players.py`'s `_companion_breaker` is process-lifetime
+    (`functools.lru_cache`d), the same discipline `get_settings()` already gets an explicit
+    `environment` fixture for above — but that fixture is opt-in, requested per module, while a
+    tripped breaker is a defect any test in this suite can leak into any other. Autouse, unlike
+    `environment`: `test_players_routes.py`'s own tests already clear this breaker in a `finally`
+    around the one test that deliberately trips it, but that manual discipline was the *only*
+    thing standing between a tripped breaker and every later test in the session — a test added
+    anywhere else in this suite that reaches the transport and forgets to clear it produces an
+    order-dependent heisenbug in an unrelated file. Cleared both before and after, exactly like
+    `environment` clears `get_settings()`'s cache, so a trip from an earlier session leftover (or
+    a future one) never leaks in either direction.
+    """
+    players_router._companion_breaker.cache_clear()
+    yield
+    players_router._companion_breaker.cache_clear()
+
+
 @pytest.fixture
 def required_env() -> dict[str, str]:
-    """The 18-key environment `test_cron.py` and `test_cron_ingest_entrypoint.py` both need,
+    """The full environment `test_cron.py` and `test_cron_ingest_entrypoint.py` both need,
     checked against `.env.example` above at import time rather than only where it is used."""
     return REQUIRED_ENV
 
@@ -142,7 +172,13 @@ class _FakeObjectStore:
     """Stands in for `ObjectStore` (T010): no test built on this harness reaches for a real
     bucket yet, and constitution III's unit tests never touch the network — `list_keys` is the
     one method `GET /api/health` calls today. `fails=True` raises the way a real outage would,
-    for `test_health.py`'s checks; every other caller takes the default and gets an empty list."""
+    for `test_health.py`'s checks; every other caller takes the default and gets an empty list.
+
+    `signed_get_url` (T066) never touches the network either: it deterministically encodes `key`
+    and `expires_in` into the returned string, so a test can assert on the redirect target alone
+    without needing the same instance the route handler received — the `client` fixture builds a
+    fresh one per request through a bare lambda, so nothing can be asserted on shared state here.
+    """
 
     def __init__(self, *, fails: bool = False) -> None:
         self._fails = fails
@@ -151,6 +187,11 @@ class _FakeObjectStore:
         if self._fails:
             raise RuntimeError("simulated object store outage")
         return []
+
+    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
 
 
 @pytest.fixture

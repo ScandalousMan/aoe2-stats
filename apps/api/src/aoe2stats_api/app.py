@@ -1,9 +1,11 @@
 """The FastAPI application — the ASGI entrypoint `api/index.py` re-exports on Vercel (T014c).
 
-Two things this module owns and nothing else: the exception handlers that make the single error
+Three things this module owns and nothing else: the exception handlers that make the single error
 envelope from `contracts/http-api.md` true of *every* response — not only the ones a router built
 by hand with `APIError`, but an unmatched route, a validation failure, or a genuinely unexpected
-exception too — and the router registration.
+exception too — the router registration, and the `X-Robots-Tag`/`Cache-Control` middleware (T309,
+FR-010) that keeps 003's third-party pages out of a crawler or a shared cache regardless of which
+of those routers answers.
 
 Routers are wired with `app.include_router(<module>.router, prefix="/api")` and nothing more.
 That is deliberate: this task (T014) ships only `health.py`, T018 adds `cron.py` — the local cron
@@ -24,16 +26,79 @@ regression here would still leave `aoe2rec_py` out of *this* process's already-p
 from __future__ import annotations
 
 import logging
+import re
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aoe2stats_api.errors import APIError, error_response
-from aoe2stats_api.routers import auth, cron, health, privacy, profiles, replays
+from aoe2stats_api.routers import auth, cron, health, matches, players, privacy, profiles, replays
 
 logger = logging.getLogger("aoe2stats_api")
+
+# The routes 003 adds — `players.py` (T319, registered below) and `favourites.py` (not registered
+# yet; a later Phase 3 task adds it) — plus the two new per-participant `matches.py` sub-routes,
+# `.../replay/{profile_id}`
+# and `.../analysis`, and `GET /api/matches/{game_id}` itself. Matched against the *request path*,
+# not a route template, which is what lets this hold for a route that is not registered yet at
+# all: FR-010 must cover the 404 a crawler gets today exactly as it will the 200 or 401 the router
+# answers once it exists (contracts/http-api.md, "Response headers on every route above" —
+# "every route above" includes the "Matches, widened" table; constitution IX, never publicly
+# indexed).
+#
+# `GET /api/matches/{game_id}` is 001's route, widened by this feature rather than added, and its
+# *status code* still comes from 001's ownership scope until T327 removes it — but the header is
+# this middleware's property regardless, same as every other route here, because the contract
+# states it belongs to the response for every route, not only the ones this feature registers.
+# T310's `test_match_detail_widening_carries_the_no_index_header` (`xfail(..., reason="T327 not
+# implemented yet")`) only *asserts* the header for this route — it has no path back to this
+# middleware, so the assertion staying `xfail` after T309 lands is expected: today it fails on the
+# still-scoped 403/404 before it ever reaches the header check, and T327 removing that scope, not
+# a change here, is what lets it reach the header assertion at all.
+_NO_INDEX_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^/api/players(/.*)?$"),
+    re.compile(r"^/api/favourites(/.*)?$"),
+    re.compile(r"^/api/matches/[^/]+$"),
+    re.compile(r"^/api/matches/[^/]+/replay/[^/]+$"),
+    re.compile(r"^/api/matches/[^/]+/analysis$"),
+)
+
+
+class _NoIndexHeaderMiddleware:
+    """ASGI middleware, not a per-route decorator: a decorator is a thing a new route in
+    `players.py` or `favourites.py` can simply omit, and FR-010 has to hold for exactly that route
+    someone forgets. Matching on `request.url.path` against `_NO_INDEX_PATH_PATTERNS` means the
+    guarantee is already true of a route before its router is even registered — the plain 404
+    `test_no_index_headers.py` exercises today answers the header exactly as the 200 will once
+    Phase 3 registers the router underneath it.
+
+    Plain ASGI rather than `BaseHTTPMiddleware`: this only ever adds two headers to whatever the
+    app already answers, never reads or buffers the body, so there is nothing here that needs
+    `BaseHTTPMiddleware`'s response-wrapping.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not any(
+            pattern.match(scope["path"]) for pattern in _NO_INDEX_PATH_PATTERNS
+        ):
+            await self._app(scope, receive, send)
+            return
+
+        async def _send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers: list[tuple[bytes, bytes]] = list(message.get("headers", []))
+                headers.append((b"x-robots-tag", b"noindex, nofollow"))
+                headers.append((b"cache-control", b"private"))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self._app(scope, receive, _send_with_headers)
 
 
 def _http_status_error_code(status_code: int) -> str:
@@ -55,6 +120,7 @@ def create_app() -> FastAPI:
     """Build the `FastAPI` instance. A function rather than only a module-level constant so a
     test can build a fresh app if it ever needs to, without reimporting the module."""
     app = FastAPI(title="aoe2-stats API")
+    app.add_middleware(_NoIndexHeaderMiddleware)
 
     @app.exception_handler(APIError)
     async def _handle_api_error(_: Request, exc: APIError) -> object:
@@ -103,6 +169,8 @@ def create_app() -> FastAPI:
     app.include_router(profiles.router, prefix="/api")
     app.include_router(privacy.router, prefix="/api")
     app.include_router(replays.router, prefix="/api")
+    app.include_router(matches.router, prefix="/api")
+    app.include_router(players.router, prefix="/api")
 
     return app
 

@@ -77,10 +77,10 @@ Failure codes that carry product meaning, not just HTTP semantics:
 
 ## Matches
 
-| Method | Path                                      | Notes                                                                                                  |
-| ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `GET`  | `/api/matches?profile_id=&cursor=&limit=` | Newest first, cursor paginated. Each row carries its capture status and `capture_deadline_at` (FR-027) |
-| `GET`  | `/api/matches/{game_id}`                  | All participants, teams, civs, results, rating changes                                                 |
+| Method | Path                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/matches?profile_id=&cursor=&limit=` | Newest first, cursor paginated. Each row carries its capture status and `capture_deadline_at` (FR-027), a `civilisation_name` the API names (T070c) alongside the raw `civilisation` id, a `leaderboard_name` the API names (T070f, the same `leaderboards.py` mapping `/api/profiles` already uses) alongside the raw `leaderboard_id`, and an `opponents` array restricted to participants on a different team than the caller's own — never a teammate (T070d) |
+| `GET`  | `/api/matches/{game_id}`                  | All participants, teams, civs, results, rating changes — each participant's `civ_id` is named as `civ_name` the same way (T070c), the match's own `leaderboard_id` carries a `leaderboard_name` the same way (T070f), and the response itself carries `capture_status`/`capture_deadline_at` for this match, the identical fields the list row above carries (FR-027, T070e)                                                                                      |
 
 Only matches involving one of the caller's linked profiles are reachable. There is no endpoint that
 takes an arbitrary `profile_id` and returns its history: FR-038 forbids exposing non-users, and an

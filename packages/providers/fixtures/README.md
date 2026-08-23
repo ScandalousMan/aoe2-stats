@@ -48,6 +48,8 @@ visitor to the official leaderboard site would read it.
 | `aoems/replay_200_meta.json`                | `ReplayProvider.fetch_replay` (200 → `ReplayBlob`) | headers + inner filename/byte count of a genuinely downloaded, currently-available replay (body verified, not committed — see above) |
 | `aoems/replay_404.json`                     | `ReplayProvider.fetch_replay` (404 → `NotFound`)   | a gameId past the ~31-day retention window                                                                                           |
 | `companion/matches.json`                    | `EnrichmentProvider.enrich_matches`                | `data.aoe2companion.com/api/matches`, capped to 3 real matches                                                                       |
+| `companion_profiles_search.json`            | `PlayerSearchProvider.search_players` (results)    | `data.aoe2companion.com/api/profiles?search=vipe`, one full page (20 real records), uncapped                                         |
+| `companion_profiles_search_empty.json`      | `PlayerSearchProvider.search_players` (no match)   | `data.aoe2companion.com/api/profiles?search=` for a substring matching no player                                                     |
 | `steam/check_authentication_invalid.txt`    | `SteamAuthProvider.verify` (rejected)              | a syntactically valid, never-issued `check_authentication` POST                                                                      |
 | `steam/check_authentication_valid.txt`      | `SteamAuthProvider.verify` (accepted)              | **not captured — see `steam/README.md`**                                                                                             |
 
