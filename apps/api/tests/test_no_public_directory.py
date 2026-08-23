@@ -23,12 +23,12 @@ carries no profile in its own path and therefore no "mine" name to keep — is w
 feature (FR-018, FR-021, T327), and the four tests below replace the single T067 assertion that
 used to cover it.
 
-**The four properties, one test each, one `xfail` marker each — never one for the file.** Per
-`contracts/http-api.md`:
+**The four properties, one test each — three still each carrying their own `xfail` marker, never
+one for the file; the first needs none anymore.** Per `contracts/http-api.md`:
 
-1. no anonymous reach to any route this feature adds (`xfail(strict=True, reason="T319 not
-   implemented yet")`, against the three routes T319 registers: `GET /api/players/search`, `GET
-   /api/players/{profile_id}`, `GET /api/players/{profile_id}/ratings`);
+1. no anonymous reach to any route this feature adds — asserted directly, no `xfail`, since T319
+   landed and registered the three routes it covers: `GET /api/players/search`, `GET
+   /api/players/{profile_id}`, `GET /api/players/{profile_id}/ratings`;
 2. no indexing — `X-Robots-Tag: noindex, nofollow` (`xfail(..., reason="T327 not implemented
    yet")`, against `GET /api/matches/{game_id}` once T327 removes its ownership scope: this route
    predates this feature and so falls outside `test_no_index_headers.py`'s (T308/T309) own
@@ -60,14 +60,21 @@ live tests below keep their positive controls (the caller's own data, asserted t
 real) exactly as T067 wrote them, because `GET /api/matches` and `GET /api/profiles/{profile_id}/
 ratings` both already exist and a bare "foreign profile_id gets `not_found`" assertion is
 indistinguishable from an accidental pass only where a route's *existence* is not yet the thing
-under test. The four new tests below reach for routes and behaviour that do not exist at all yet
-(`players.py` is unregistered; `replays.py` carries no `/api/matches/{game_id}/replay/{profile_id}`
-route), so an anonymous request already 404s on Starlette's own unmatched path rather than 401 on a
-real session check — a different status code than the assertion asks for, which is what makes each
-of those four `xfail`s genuine without needing a matching positive control. Property 2's and
-property 4's tests each keep a positive control anyway, because both name a *specific outcome*
-(a header value; a signed URL an owner must actually receive) that a route's mere existence would
-not itself prove.
+under test. The three remaining `xfail` tests below (properties 2, 3 and 4) reach for routes and
+behaviour that do not exist at all yet — `matches.py`'s ownership scope still stands (T327),
+`players.py` carries no `/matches` sub-route (T328), and `replays.py` carries no `/api/matches/
+{game_id}/replay/{profile_id}` route (T337) — so an anonymous or cross-account request already
+404s on Starlette's own unmatched path, or on `matches.py`'s existing ownership check, rather than
+answering the outcome the assertion asks for — a different result than the assertion asks for,
+which is what makes each of those three `xfail`s genuine without needing a matching positive
+control. Property 2's and property 4's tests each keep a positive control anyway, because both
+name a *specific outcome* (a header value; a signed URL an owner must actually receive) that a
+route's mere existence would not itself prove.
+
+Property 1's test needs none of this: `players.py` is registered now (T319), so every anonymous
+request it makes already answers the real `401` the assertion asks for directly, without relying
+on a route's absence to manufacture a different status code — which is why that test carries no
+`xfail` at all.
 
 **Harness and response-shape assumptions** follow the sibling files these routes share, byte for
 byte where they overlap: `test_replay_status.py`'s `client`/`db_session`/`_sign_in` conventions;
@@ -379,15 +386,15 @@ async def test_players_routes_never_answer_without_a_session(
     matches` and `GET /api/profiles/{profile_id}/ratings` (both asserted live above), never a
     smaller body or a degraded-but-200 response.
 
-    No positive control is needed to make this genuine: today, before `players.py` is registered
-    at all, every request below 404s on Starlette's own unmatched-route path, not the `401` this
-    test asks for — a different status code, so this already fails for the right reason (module
-    docstring). `GET /api/players/{profile_id}` and `GET /api/players/{profile_id}/ratings` still
-    carry one anyway, since both are pure reads over already-seeded rows and cost nothing to
-    check; `GET /api/players/search` does not, because a genuine positive control would have to
-    either reach the real search source (forbidden outside `packages/providers`, CLAUDE.md) or
-    stand up the provider-mocking harness `test_players_routes.py` (T317) already owns — duplicating
-    that machinery here for a property this test can already prove without it would be the wrong
+    No `xfail` marker: `players.py` is registered now (T319), so every request below already
+    answers the real `401 not_authenticated` the assertion asks for directly, rather than relying
+    on a route's absence to manufacture a different status code (module docstring). `GET
+    /api/players/{profile_id}` and `GET /api/players/{profile_id}/ratings` carry a positive
+    control anyway, since both are pure reads over already-seeded rows and cost nothing to check;
+    `GET /api/players/search` does not, because a genuine positive control would have to either
+    reach the real search source (forbidden outside `packages/providers`, CLAUDE.md) or stand up
+    the provider-mocking harness `test_players_routes.py` (T317) already owns — duplicating that
+    machinery here for a property this test can already prove without it would be the wrong
     trade.
     """
     caller = await _seed_scenario(db_session)

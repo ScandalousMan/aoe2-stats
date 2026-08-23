@@ -8,11 +8,14 @@ errors, strict Pydantic validation — which are not restated here.
 ## `PlayerSearchProvider` (new)
 
 ```python
+def is_degraded(self) -> bool: ...
 async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 ```
 
 Implemented by `CompanionEnrichmentProvider`, against
 `GET https://data.aoe2companion.com/api/profiles?search={name}` (`docs/data-sources.md` §3).
+`is_degraded()` is part of this Protocol, not an extension a caller adds on top of it — see
+"Failure" below for what it means and when a caller must check it.
 
 ```python
 @dataclass(frozen=True)
@@ -65,11 +68,58 @@ The existing circuit breaker and token bucket are shared with `enrich_matches` r
 A search storm and an enrichment storm are the same source under the same protection, and two
 independent breakers would each see half the failures and neither would trip.
 
+`is_degraded()` is part of `PlayerSearchProvider` itself (see the Protocol above), not a detail
+private to `CompanionEnrichmentProvider`: it is the only way a caller can read the breaker's state
+ahead of a call, since `search_players` never raises. A caller must also re-read `is_degraded()`
+*after* a call that returned a page — the call that trips the breaker, or a post-cooldown probe
+that fails, still returns an ordinary-looking (possibly empty) page rather than raising, and only a
+post-call check tells that page apart from a genuine answer. `apps/api/src/aoe2stats_api/search.py`
+does both.
+
+**The breaker's lifetime is the caller's to manage, not this provider's.** A `CompanionEnrichmentProvider`
+rebuilt per request (because its `call_sink` closes over a request-scoped resource) must be given
+the *same* breaker every time — `packages/providers/.../companion/provider.py`'s constructor takes
+an optional `breaker`, and `build_circuit_breaker()` is how a caller builds a process-lifetime one
+to inject. A breaker rebuilt alongside the provider is always closed, and `is_degraded()` can never
+be `True` in production even though every unit test exercises that branch directly.
+
+### `profile_search_cache.source` — the vocabulary and what a cache hit means
+
+`profile_search_cache` (see [data-model.md](../data-model.md)) has one column this contract, not
+`data-model.md`, is the source of truth for: `source`. Two values exist today —
+
+| `source` | Written when | A cache hit reads as |
+| --- | --- | --- |
+| `"companion"` | `search_players` returned, and the breaker was closed both before and after the call — a confident, live answer. | `degraded: false` |
+| `"aoe_profiles"` | Reserved for a row answered by the local fallback over `aoe_profiles` (`search.py`'s `_local_fallback_results`). **Not currently written** — see "Caching" below. | `degraded: true` |
+
+A cache hit derives `degraded` structurally, from `source != "companion"`, never by re-asking the
+provider: **any value other than `"companion"` reads as degraded**, not only `"aoe_profiles"`
+specifically. This is deliberate — a future third source, or a row seeded directly (as
+`apps/api/tests/test_players_routes.py` does, to exercise this reading without a live call), must
+not require a change to the reading logic, only to what gets written. A future writer must reuse
+`"companion"` for a confident answer and pick a value other than that for anything less than one;
+inventing an alternative name for a confident answer (e.g. `"live"`) would silently flip every
+existing cached row's `degraded` reading, since only the one literal `"companion"` is exempt.
+
 ### Caching
 
 Caching is the caller's, not the provider's (`profile_search_cache`, see
 [data-model.md](../data-model.md)). The provider stays a thin, testable boundary; the cache is a
 product decision about staleness and belongs where the TTL is configured.
+
+**A fallback answer is not cached at all.** `search_players`'s own cache-first behaviour
+(FR-004e) exists to spare a source "that is degradable by design" repeated calls for a repeated
+query — but while the breaker is open, `is_degraded()` already stops every call before it reaches
+the transport, cache row or not. Caching the fallback's own, reduced answer under `source =
+"aoe_profiles"` would buy no further protection and would cost something real: it would pin every
+repeat of that query to the fallback's reduced results for the configured TTL (`PLAYER_SEARCH_CACHE_TTL_SECONDS`,
+`.env.example`) even after the source has recovered — the outage would outlive itself. The
+alternative considered and rejected was a much shorter TTL for a fallback row; not caching it at
+all was chosen instead, because there is no protective benefit to trade the staleness risk
+against. `_local_fallback_results` is a plain, cheap read against a table this service already
+holds in memory-adjacent storage (`aoe_profiles`), not an external call — recomputing it on every
+degraded request is not the "repeated calls against a degradable source" FR-004e caches around.
 
 ## `ReplayProvider` (existing) — what this feature asks of it
 

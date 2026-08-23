@@ -9,13 +9,24 @@ empty result would look. Nothing here uses `_request`'s default `treat_403_as_ra
 the way every other provider's unexpected 403 would.
 
 **Circuit breaker.** `docs/data-sources.md` §3: "single-maintainer project, ... no announced rate
-limits, `/api` root returns 403 ... behind a cache and a circuit breaker." `_CircuitBreaker` below
+limits, `/api` root returns 403 ... behind a cache and a circuit breaker." `CircuitBreaker` below
 counts consecutive failures (non-200 responses or a raised `ProviderError`) and, once
 `_FAILURE_THRESHOLD` is reached, stops issuing requests at all for `_OPEN_SECONDS` — a genuine
 outage or a persistent block must not keep re-spending this provider's retry budget on every single
 `enrich_matches` call forever. A success (a 200, whatever it contains) resets the counter and
 closes the breaker immediately: an intermittent 403 that clears on the next try must not leave the
 breaker degraded.
+
+**Breaker lifetime is the caller's decision, not this class's.** `__init__` accepts an optional
+`breaker`; when omitted it builds one of its own (`build_circuit_breaker()` below), which is enough
+for a short-lived provider built once and used once, e.g. in a unit test. A caller that rebuilds a
+thin, per-request `CompanionEnrichmentProvider` around a *shared* process-lifetime breaker — as
+`apps/api/src/aoe2stats_api/routers/players.py`'s `_build_search_provider` does, for the same
+reason it holds `_COMPANION_HTTP_CLIENT`/`_COMPANION_RATE_LIMITER` at module scope rather than
+rebuilding them too — passes that breaker in explicitly instead. Without this, a provider rebuilt
+every request starts every request with a freshly-closed breaker, and `is_degraded()` can never
+observe an outage the previous request just recorded: exactly the defect this parameter exists to
+close.
 
 **FR-045.** `linkedProfiles` is not read anywhere below, deliberately: the parsing here only ever
 looks up `matchId`, `mapName`, `gameModeName`, `speedName`, `teams`, `players`, `profileId` and
@@ -71,10 +82,13 @@ _FAILURE_THRESHOLD = 3
 _OPEN_SECONDS = 30.0
 
 
-class _CircuitBreaker:
+class CircuitBreaker:
     """Consecutive-failure circuit breaker, closed by default. Not shared machinery in `base.py`:
     `EnrichmentProvider` is the only `DataProvider` this application asks to survive an outage
-    silently (see the module docstring), so nothing else needs one.
+    silently (see the module docstring), so nothing else needs one. Public (not `_CircuitBreaker`)
+    because a caller that wants breaker state to outlive one `CompanionEnrichmentProvider`
+    instance — see the module docstring's "Breaker lifetime" note — needs the type name to hold
+    one itself; `build_circuit_breaker()` below is the constructor most such callers actually want.
     """
 
     def __init__(
@@ -109,6 +123,15 @@ class _CircuitBreaker:
             self._opened_until = self._clock() + self._open_seconds
 
 
+def build_circuit_breaker() -> CircuitBreaker:
+    """A fresh, closed `CircuitBreaker` at this module's own `_FAILURE_THRESHOLD`/`_OPEN_SECONDS`
+    — the constructor a caller that wants to hold one for the process's lifetime should use
+    (module docstring's "Breaker lifetime" note), rather than reaching for the two private
+    constants itself.
+    """
+    return CircuitBreaker(failure_threshold=_FAILURE_THRESHOLD, open_seconds=_OPEN_SECONDS)
+
+
 class CompanionEnrichmentProvider(AsyncBaseProvider):
     """`EnrichmentProvider` (`contracts/providers.md`) against aoe2companion. `enrich_matches`
     never raises — see the module docstring.
@@ -123,6 +146,7 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
         call_sink: AsyncProviderCallSink | None = None,
         retry_policy: RetryPolicy | None = None,
         base_url: str = COMPANION_BASE_URL,
+        breaker: CircuitBreaker | None = None,
     ) -> None:
         super().__init__(
             provider="companion",
@@ -133,19 +157,18 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
             retry_policy=retry_policy,
         )
         self._base_url = base_url
-        self._breaker = _CircuitBreaker(
-            failure_threshold=_FAILURE_THRESHOLD, open_seconds=_OPEN_SECONDS
-        )
+        # `breaker` lets a caller share one breaker across many short-lived
+        # `CompanionEnrichmentProvider` instances (module docstring's "Breaker lifetime" note);
+        # `build_circuit_breaker()` here is only the fallback for a caller that does not need to.
+        self._breaker = breaker if breaker is not None else build_circuit_breaker()
 
     def is_degraded(self) -> bool:
         """Whether this source is currently known to be down, read off the same `_breaker`
         `enrich_matches` and `search_players` already consult before ever reaching the transport
-        (module docstring) — no second breaker, no exception. `apps/api/src/aoe2stats_api/
-        search.py`'s `_SearchProvider` Protocol requires exactly this method (T315's own module
-        docstring: "wiring this service into the real search route (T319) is where that accessor
-        needs to be added to the real provider"); this is that wiring's other half, kept on the
-        provider itself rather than duplicated in `apps/api`, since the breaker it reports is
-        this instance's own private state.
+        (module docstring) — no second breaker, no exception. Part of `PlayerSearchProvider`
+        itself (`contracts/providers.md`, `packages/providers/.../base.py`), not a private
+        extension `apps/api` reaches past the contract for: `apps/api/src/aoe2stats_api/search.py`
+        depends on the Protocol, never on this concrete class.
         """
         return not self._breaker.allow()
 

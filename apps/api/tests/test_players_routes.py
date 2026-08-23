@@ -1,8 +1,6 @@
-"""T317: route tests for `apps/api/src/aoe2stats_api/routers/players.py` (T319 — not registered
-in `app.py` yet, so every request below currently 404s on Starlette's own unmatched-route path
-rather than answering the status this file asks for). Encodes `quickstart.md` scenarios 1 and 4;
-`contracts/http-api.md`'s "Players" and "Response headers on every route above" sections are
-ground truth for every shape asserted below.
+"""T317: route tests for `apps/api/src/aoe2stats_api/routers/players.py` (T319 — registered in
+`app.py`). Encodes `quickstart.md` scenarios 1 and 4; `contracts/http-api.md`'s "Players" and
+"Response headers on every route above" sections are ground truth for every shape asserted below.
 
 **Scope, relative to the sibling files in this same parallel batch.** T314
 (`test_player_search.py`) owns proving `apps/api/src/aoe2stats_api/search.py` (T315/T316) itself —
@@ -46,12 +44,12 @@ If `search.py` lands with a different `source` vocabulary, only the two `source=
 below need to change — the response envelope (`results`/`degraded`/`reason`) and the rest of this
 file are unaffected.
 
-**The `X-Robots-Tag` assertions are not blocked on `players.py` existing.** `app.py`'s
-`_NoIndexHeaderMiddleware` (T309) matches on `request.url.path` against `^/api/players(/.*)?$`
-*before* Starlette resolves a route, specifically so the header is already true of the 404 a
-crawler gets today. Every response this file checks — including the ones that currently 404 for
-the wrong reason — already carries the header; what makes each test genuinely `xfail` today is the
-status code and body, never this. Asserted on every response anyway, per this task's own text.
+**The `X-Robots-Tag` assertions were not blocked on `players.py` existing, and still are not.**
+`app.py`'s `_NoIndexHeaderMiddleware` (T309) matches on `request.url.path` against
+`^/api/players(/.*)?$` *before* Starlette resolves a route, specifically so the header was already
+true of the 404 a crawler got before this router existed, and remains true of every response —
+`200`, `404`, `429` — now that it does. Asserted on every response anyway, per this task's own
+text.
 
 **"404 for a hidden one and for an unknown one" (T317's task text) collapses to one case here.**
 FR-004c — the source-side hidden signal — was retired before implementation (T301a,
@@ -65,8 +63,19 @@ sentence: one `404`, for a `profile_id` this service has no `aoe_profiles` row f
 **Harness conventions** follow `test_no_public_directory.py` (T310) and `test_rate_limits.py`
 (T306) byte for byte where they overlap: `client`/`db_session`/`environment` from `conftest.py`,
 the `_sign_in` cookie helper. Written test-first, with `xfail(strict=True)` on every test until
-T319 registered the router; `strict=True` is what forced those markers off rather than letting
-them linger and hide a later regression.
+T319 registered the router; `strict=True` is what forced those markers off once it did, rather
+than letting them linger and hide a later regression — every test below now runs unmarked.
+
+**Remediation (B1): the breaker is shared, and this file proves it.** `_build_search_provider`
+(`routers/players.py`) is a per-request factory that used to construct a brand-new circuit breaker
+on every call, so `CompanionEnrichmentProvider.is_degraded()` could never observe an outage a
+previous request had already recorded — `test_two_requests_through_the_real_provider_share_the_
+circuit_breaker_state` below is the one test in this file that goes through that real factory
+rather than a seeded cache row or a fake provider, specifically to catch that: no other test here
+can, by the design note in the previous paragraph. It intercepts `httpx.AsyncClient.send` at the
+same boundary `test_auth_flow.py` already uses for Steam/Relic, and resets the process-lifetime
+breaker (`players._companion_breaker.cache_clear()`) both before and after itself, so a trip it
+deliberately causes never leaks into an unrelated test in this file or any other.
 """
 
 from __future__ import annotations
@@ -75,11 +84,13 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
+from aoe2stats_api.routers import players
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import AoeProfile, ProfileSearchCache, RatingSnapshot, User
 from aoe2stats_storage.models import Session as UserSession
@@ -375,6 +386,97 @@ async def test_search_rate_limits_per_user_and_answers_retry_after(
     assert limited_body["error"]["detail"]["retry_after"] > 0
 
 
+# --- Remediation (B1): the breaker must outlive one request --------------------------------------
+
+
+class _FailingCompanionUpstream:
+    """Stands in for `data.aoe2companion.com`'s `/profiles` endpoint, reached at
+    `httpx.AsyncClient.send` — the same boundary `test_auth_flow.py`'s `fake_upstream` intercepts
+    for Steam and Relic. Every request answers `403` — companion's own "documented, expected
+    bot-protection noise" (`companion/provider.py`'s module docstring) — never `500`, so
+    `AsyncBaseProvider._request`'s retry loop never engages: each failing search costs exactly one
+    outbound request, not up to three, which is what makes `request_count` a clean signal below.
+    """
+
+    def __init__(self) -> None:
+        self.request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        return httpx.Response(403, request=request)
+
+
+async def test_two_requests_through_the_real_provider_share_the_circuit_breaker_state(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B1 remediation. `_build_search_provider` (`routers/players.py`) rebuilds a thin
+    `CompanionEnrichmentProvider` on every request, but the circuit breaker inside it must not be
+    rebuilt too — this is the one test in this file that reaches that real factory, rather than a
+    seeded cache row (this file's other tests) or a fake provider (`test_player_search.py`),
+    because that is the only path this defect could hide on: `is_degraded()` read off a *fresh*
+    breaker every request is always `False`, so FR-004d's fallback branch would be unreachable in
+    production even while every other test in this codebase kept passing.
+
+    Three distinct queries, each answered `403` by `_FailingCompanionUpstream` below, drive the
+    shared breaker's consecutive-failure count to `_FAILURE_THRESHOLD` (3,
+    `companion/provider.py`) across three *separate* requests. A fourth, distinct query must then
+    be answered from the local `aoe_profiles` fallback — `degraded: true` — without ever reaching
+    the transport a fourth time: a provider rebuilt with its own fresh, always-closed breaker every
+    request would show `degraded: false` here instead, and a fourth outbound call.
+    """
+    fake = _FailingCompanionUpstream()
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != "data.aoe2companion.com":
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+    # The breaker is process-lifetime (`players._companion_breaker`, `functools.lru_cache`d): a
+    # trip from an earlier test run in this same process must not leak in here, and this test's
+    # own trip must not leak into whatever runs after it.
+    players._companion_breaker.cache_clear()
+    try:
+        caller = await _seed_user(db_session)
+        await _sign_in(client, db_session, caller)
+        await _seed_profile(db_session, profile_id=900_900_150, alias="OutageDeltaAlias")
+
+        for query in ("outagealpha", "outagebeta", "outagegamma"):
+            response = client.get("/api/players/search", params={"q": query})
+            assert response.status_code == 200, (
+                f"a failing source must not itself fail the request. Got "
+                f"{response.status_code}: {response.text}"
+            )
+
+        assert fake.request_count == 3, (
+            "each of the three distinct queries above must have reached the transport exactly "
+            f"once. Got {fake.request_count}"
+        )
+
+        fourth = client.get("/api/players/search", params={"q": "outagedelta"})
+        assert fourth.status_code == 200
+        _assert_no_index(fourth)
+        fourth_body = fourth.json()
+        assert fourth_body["degraded"] is True, (
+            "the breaker tripped by the three requests above must still be open on this fourth, "
+            "separate request — the whole defect B1 exists to catch"
+        )
+        assert fourth_body["reason"] == "search_source_unavailable"
+        result_ids = [entry["profile_id"] for entry in fourth_body["results"]]
+        assert 900_900_150 in result_ids, (
+            "FR-004d: a degraded search still answers from what this service has already observed"
+        )
+
+        assert fake.request_count == 3, (
+            "the fourth, degraded request must never reach the transport a fourth time — a "
+            "provider rebuilt with its own fresh breaker every request would reach it again here"
+        )
+    finally:
+        players._companion_breaker.cache_clear()
+
+
 # --- GET /api/players/{profile_id} — FR-006, FR-008, FR-008a property 1 -------------------------
 
 
@@ -472,14 +574,13 @@ async def test_an_unobserved_players_profile_answers_404(
     `profile_id` this service has never itself observed — no `aoe_profiles` row — and the source
     does not know it either (`contracts/http-api.md`).
 
-    **Positive control kept deliberately, unlike this file's other not-yet-registered-route
-    assertions.** Starlette's own unmatched-route 404 goes through `app.py`'s generic
-    `HTTPException` handler, which happens to render the identical `{"error": {"code":
-    "not_found", ...}}` body a genuine "profile never observed" answer would — so the bare
-    negative assertion below is indistinguishable from an accidental pass today, exactly the
-    collision `test_no_public_directory.py`'s own module docstring warns against for a route that
-    does not exist yet. The positive control (a seeded, observed profile answering `200`) is what
-    still fails today and turns genuinely once T319 lands.
+    **Positive control kept deliberately.** Starlette's own unmatched-route 404 goes through
+    `app.py`'s generic `HTTPException` handler, which happens to render the identical `{"error":
+    {"code": "not_found", ...}}` body a genuine "profile never observed" answer would — so the bare
+    negative assertion below, on its own, would be indistinguishable from an accidental pass on a
+    route that does not exist at all, exactly the collision `test_no_public_directory.py`'s own
+    module docstring warns against. The positive control (a seeded, observed profile answering
+    `200`) is what proves this router is actually the one answering.
     """
     caller = await _seed_user(db_session)
     await _sign_in(client, db_session, caller)

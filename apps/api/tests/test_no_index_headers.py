@@ -11,9 +11,11 @@ outside `test_no_index_headers.py`'s (T308/T309) own parametrisation over 'every
 feature adds' — the header on the widening is [T310's] property to prove, not [this file's]".
 Testing it again here would duplicate that assertion under the wrong reason (`T309` is the
 middleware; `T327` is the widening that removes the route's ownership scope) and risk the two
-files disagreeing about who answers for it. This file therefore covers only the genuinely new
-surface: `players.py`, `favourites.py`, the per-participant replay-download route, and the
-published-analysis route — none of which is registered yet; Phase 3 onward adds them.
+files disagreeing about who answers for it. This file therefore covers the genuinely new surface:
+`players.py` — registered now (T319), exposing `GET /api/players/search`, `GET
+/api/players/{profile_id}` and `GET /api/players/{profile_id}/ratings` — plus `favourites.py`, the
+per-participant replay-download route, and the published-analysis route, none of which is
+registered yet; Phase 3 onward adds them.
 
 **Deriving "the routes this feature adds".** `_FEATURE_ROUTE_TABLE` below transcribes
 `contracts/http-api.md`'s own route tables ("Players", "Favourites", "Recorded games, per point of
@@ -28,13 +30,17 @@ untested. `_feature_route_cases` closes that gap by *union-ing* the table with w
 `create_app().openapi()` — FastAPI's own reflection of its registered route table, kept stable
 across releases, rather than this Starlette version's private `_IncludedRouter`/`original_router`
 routing internals — reports for the same path *patterns* at test-collection time. Today the union
-equals the table verbatim, because none of `players.py`, `favourites.py` or the two new
-`matches.py` sub-routes exist yet — `test_feature_route_table_cannot_silently_shrink_to_nothing`
-below asserts that inequality directly, so a future edit that narrows the patterns and drops
-coverage fails loudly instead of `@pytest.mark.parametrize` over an emptied list quietly
-collecting zero test items, the specific degenerate case this task's instructions call out by
-name. Once Phase 3 onward registers those routers, any route added to them — anticipated by the
-table or not — is picked up here automatically, with no further edit to this file.
+still equals the table verbatim: `players.py` is registered now (T319), but the three routes it
+adds — `GET /api/players/search`, `GET /api/players/{profile_id}`, `GET
+/api/players/{profile_id}/ratings` — are already named in `_FEATURE_ROUTE_TABLE`, and
+`favourites.py` and the two new `matches.py` sub-routes still do not exist —
+`test_feature_route_table_cannot_silently_shrink_to_nothing` below asserts the counts directly
+(`len(_FEATURE_ROUTE_CASES) >= len(_FEATURE_ROUTE_TABLE) > 0`), so a future edit that narrows the
+patterns and drops coverage fails loudly instead of `@pytest.mark.parametrize` over an emptied list
+quietly collecting zero test items, the specific degenerate case this task's instructions call out
+by name. Once Phase 3 onward registers the remaining routers, any route added to them —
+anticipated by the table or not — is picked up here automatically, with no further edit to this
+file.
 
 **The "unchanged" half is the mirror image, and needs no hand-written table at all.**
 `_non_feature_api_routes` walks the entire `/api/*` surface `create_app().openapi()` reports and
@@ -43,6 +49,21 @@ route — 001's routes today, and whatever is added to them later. Never carryin
 not a "T309 not implemented yet" case: it is true before this task, after T309, and after every
 later one, so it is asserted directly rather than through `xfail` — an `xfail(strict=True)` here
 would itself fail the moment it started passing, which today it already does.
+
+**This file's guarantee is prefix-scoped, not universal.** `_FEATURE_ROUTE_PATH_PATTERNS` names
+four path patterns — the same four `app.py`'s `_NoIndexHeaderMiddleware` matches against — and
+every assertion below is built from them: `test_feature_route_answers_no_index_headers` proves the
+header exists for every route registered under one of those four; `test_non_feature_route_headers_
+are_unchanged` proves it is absent everywhere else *that this app registers today*. Neither test
+can say anything about a route this feature, or a later one, adds under a path nobody has named in
+`_FEATURE_ROUTE_PATH_PATTERNS`: such a route falls outside `_is_feature_path`, so
+`_non_feature_api_routes` claims it as "unchanged" and this file then asserts it must *not* carry
+the header — the opposite of what a route exposing a third party's data ought to get, and silently
+so, since the same four patterns are what the middleware itself matches against. The guarantee this
+file proves is "every route under one of these four prefixes is headered correctly (or is
+correctly not)", not "every route this project will ever register is". Widening that coverage —
+parametrising the middleware and this file over something other than a hand-maintained prefix list
+— is a design change tracked separately; this docstring only states the limit as it stands today.
 
 **No request below signs in, and every one carries `follow_redirects=False`**
 (`test_auth_flow.py`'s own convention: `GET /api/auth/steam/start` answers a real redirect to
@@ -203,7 +224,12 @@ def test_non_feature_route_headers_are_unchanged(
     """001's existing routes — and `/api/matches/{game_id}`, which this feature widens rather
     than adds and does not carry this file's header assertion for (module docstring) — must not
     gain either header as a side effect of T309's middleware. Not `xfail`: this already holds
-    before T309 and must keep holding after it, and after every route either module adds later."""
+    before T309 and must keep holding after it, and after every route either module adds later.
+
+    Prefix-scoped, not universal (module docstring, "This file's guarantee is prefix-scoped"): a
+    future route registered under a path `_FEATURE_ROUTE_PATH_PATTERNS` does not name falls into
+    this test's parametrisation and is asserted here to *lack* the header, whether or not it
+    should carry one."""
     response = client.request(method, _concrete_path(path), follow_redirects=False)
 
     assert "x-robots-tag" not in response.headers

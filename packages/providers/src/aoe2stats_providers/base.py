@@ -296,7 +296,15 @@ class PlayerSearchProvider(Protocol):
     breaker and token bucket with `enrich_matches` rather than duplicating either
     (`contracts/providers.md`). `search_players` never raises: a 403, an outage or a malformed
     body all come back as an empty page, exactly like `enrich_matches`'s failure mode.
+
+    `is_degraded()` is part of this contract, not a `CompanionEnrichmentProvider`-only extra: it
+    is the one way a caller can tell "the source is currently known to be down" from "a genuine
+    empty result" *before* ever calling `search_players` (`search_players` itself never raises, so
+    there is no exception to read that signal off — `contracts/providers.md`'s "Failure" section).
+    Read off the provider's own circuit breaker, with no side effect of its own.
     """
+
+    def is_degraded(self) -> bool: ...
 
     async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 

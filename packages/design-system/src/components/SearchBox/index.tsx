@@ -66,15 +66,26 @@ export function SearchBox({
     lastResultCount.current = Math.max(MIN_SKELETON_ROWS, state.results.length)
   }
 
+  // The caller (T322) cannot hand this a stable `onSearch`: it calls `setState` the instant the
+  // callback fires, which re-renders the caller and mints a fresh closure every time. Reading
+  // `onSearch` through a ref, updated every render but never listed as a dependency, means the
+  // debounce effect below only reruns when `value` or `debounceMs` actually change — not on every
+  // render `onSearch` itself provokes. Depending on `onSearch`'s identity instead re-arms the timer
+  // on each of those renders and redispatches the same, already-settled query forever: an
+  // unbounded request loop the client would run against itself, exactly what FR-005's rate limiter
+  // exists to stop from the outside (regression, see SearchBox.test.tsx).
+  const onSearchRef = useRef(onSearch)
+  onSearchRef.current = onSearch
+
   // Debounce: dispatch `onSearch` once typing has settled. A blank query is never dispatched —
   // clearing the box is not a search, and `idle`'s own definition ("no query has been submitted
   // yet") would otherwise be unreachable once the user has typed anything at all.
   useEffect(() => {
     const trimmed = value.trim()
     if (trimmed === '') return
-    const timer = window.setTimeout(() => onSearch(trimmed), debounceMs)
+    const timer = window.setTimeout(() => onSearchRef.current(trimmed), debounceMs)
     return () => window.clearTimeout(timer)
-  }, [value, debounceMs, onSearch])
+  }, [value, debounceMs])
 
   // The countdown recomputes once per second (§5) — coarser granularity is unreadable for a
   // `retry_after` of a few seconds.

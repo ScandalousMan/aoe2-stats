@@ -52,6 +52,17 @@ function installFakeApi(searchHandler: (query: string) => Response) {
   return fetchMock
 }
 
+// Regression (B3): `onSearch={(query) => void runSearch(query)}` in `SearchContainer.tsx` is a
+// fresh closure on every render, and `runSearch` itself calls `setState` — first to `loading`,
+// then to `answered` — which is exactly the re-render `SearchBox`'s debounce effect must not treat
+// as a reason to fire again. Counting `fetch` calls to the search endpoint, rather than only
+// asserting the final rendered state, is the point: the tests above pass identically whether the
+// request fired once or in a runaway loop, because they only ever look at the last frame.
+function countSearchCalls(fetchMock: ReturnType<typeof installFakeApi>) {
+  return fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/players/search'))
+    .length
+}
+
 function renderSearch() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -165,4 +176,48 @@ describe('SearchContainer', () => {
     await user.type(screen.getByLabelText('Search a player'), 'viper')
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' }))
   })
+
+  it('fires exactly one search request for one settled query, even after the response resolves and the box re-renders (B3 regression)', async () => {
+    const fetchMock = installFakeApi(() =>
+      jsonResponse({ results: [], degraded: false, reason: null }),
+    )
+    const user = userEvent.setup()
+    renderSearch()
+
+    await user.type(screen.getByLabelText('Search a player'), 'viper')
+    expect(await screen.findByText('No player matches “viper”.')).toBeInTheDocument()
+    expect(countSearchCalls(fetchMock)).toBe(1)
+
+    // Give a re-armed debounce timer every chance to fire the same, already-settled query again.
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    expect(countSearchCalls(fetchMock)).toBe(1)
+  }, 8000)
+
+  it('does not re-fire the search while the rate-limited countdown ticks once a second (B3 regression: the countdown itself is a re-render)', async () => {
+    const fetchMock = installFakeApi(() =>
+      jsonResponse(
+        {
+          error: {
+            code: 'rate_limited',
+            message: 'Too many searches.',
+            detail: { retry_after: 3 },
+          },
+        },
+        429,
+      ),
+    )
+    const user = userEvent.setup()
+    renderSearch()
+
+    await user.type(screen.getByLabelText('Search a player'), 'viper')
+    expect(
+      await screen.findByText("You're searching too quickly. Try again in 3s."),
+    ).toBeInTheDocument()
+    expect(countSearchCalls(fetchMock)).toBe(1)
+
+    // The countdown ticks every second for 3s, each tick a `setState` in `SearchBox` itself — let
+    // it run out and settle, then confirm no further request landed in the meantime.
+    await screen.findByText("You're searching too quickly. Try again in 0s.", {}, { timeout: 4000 })
+    expect(countSearchCalls(fetchMock)).toBe(1)
+  }, 8000)
 })

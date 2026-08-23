@@ -21,10 +21,22 @@ T309) and the beta allowlist, not a per-profile flag.
 time.** `search.py` (T315, T316) is a pure function of its inputs — the cache TTL and the search
 result limit are read from `settings` exactly once, in this module, and passed in; `search.py`
 itself never calls `get_settings()`. `_build_search_provider` below is the wiring `search.py`'s
-own module docstring names as deferred to this task: `CompanionEnrichmentProvider` did not expose
-`is_degraded()` until this task added it (`packages/providers/.../companion/provider.py`), reusing
-the provider's own breaker rather than adding a second one — a search storm and an enrichment
-storm are the same source under the same protection (`contracts/providers.md`).
+own module docstring names as deferred to this task, reusing the provider's own breaker rather
+than adding a second one — a search storm and an enrichment storm are the same source under the
+same protection (`contracts/providers.md`).
+
+**The breaker outlives the request; the provider around it does not.** `_companion_breaker()`
+below is held at module scope for the process's lifetime, exactly like `_COMPANION_HTTP_CLIENT`
+and `_COMPANION_RATE_LIMITER` — a `CompanionEnrichmentProvider` rebuilt fresh per request (because
+its `call_sink` closes over the request's own `db_session`, see `_companion_call_sink`) is handed
+that *same* breaker every time via `CompanionEnrichmentProvider(breaker=...)`
+(`packages/providers/.../companion/provider.py`), rather than growing a fresh, always-closed one
+of its own on every request. Without this, `is_degraded()` could never observe an outage a
+previous request had already recorded, and FR-004d's fallback branch would be unreachable in
+production even though every unit test exercises it directly. `_companion_breaker()` is
+`functools.lru_cache`d rather than a bare module global for the same reason `get_settings()` is:
+so a test that deliberately trips it can reset it (`.cache_clear()`) afterwards without leaking
+that state into an unrelated test.
 
 Unlike `_build_relic_provider` in `routers/auth.py`, this router's call sink writes straight onto
 the request's own `db_session` rather than a separate short-lived one: `CompanionEnrichmentProvider`
@@ -41,6 +53,7 @@ is the `rate_limited` envelope `contracts/http-api.md` names, carrying `retry_af
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -54,7 +67,11 @@ from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_providers.base import ProviderCallRecord
-from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+from aoe2stats_providers.companion.provider import (
+    CircuitBreaker,
+    CompanionEnrichmentProvider,
+    build_circuit_breaker,
+)
 from aoe2stats_providers.wiring import build_async_client_resources
 from aoe2stats_storage.models import AoeProfile, ProviderCall
 from aoe2stats_storage.models import Session as SessionRow
@@ -88,6 +105,17 @@ _COMPANION_HTTP_CLIENT, _COMPANION_RATE_LIMITER = build_async_client_resources(
 )
 
 
+@functools.lru_cache(maxsize=1)
+def _companion_breaker() -> CircuitBreaker:
+    """The one `CircuitBreaker` `_build_search_provider` hands to every request's own, otherwise
+    disposable, `CompanionEnrichmentProvider` (module docstring's "The breaker outlives the
+    request" note) — `lru_cache` rather than a bare module global, like `_COMPANION_HTTP_CLIENT`
+    above, only so a test that deliberately trips it can reset it with `.cache_clear()` once it is
+    done, the same device `get_settings()` uses for the identical reason.
+    """
+    return build_circuit_breaker()
+
+
 def _companion_call_sink(
     db_session: AsyncSession,
 ) -> Callable[[ProviderCallRecord], Awaitable[None]]:
@@ -117,6 +145,7 @@ def _build_search_provider(db_session: AsyncSession) -> CompanionEnrichmentProvi
         timeout_seconds=_PROVIDER_TIMEOUT_SECONDS,
         rate_limiter=_COMPANION_RATE_LIMITER,
         call_sink=_companion_call_sink(db_session),
+        breaker=_companion_breaker(),
     )
 
 

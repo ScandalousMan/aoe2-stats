@@ -98,6 +98,49 @@ describe('SearchBox', () => {
     expect(onSearch).not.toHaveBeenCalled()
   })
 
+  // Regression: the real caller (`SearchContainer.tsx`) does not — and cannot — hand `SearchBox` a
+  // stable `onSearch`. It closes over `runSearch`, which calls `setState` the instant the callback
+  // fires, so every dispatch re-renders the caller and mints a brand-new `onSearch` identity. If
+  // the debounce effect depended on that identity, each of those renders would re-arm the 300 ms
+  // timer and fire the *same*, already-settled query again — an unbounded request loop burning
+  // `PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE` from the client itself, exactly what FR-005's rate
+  // limiter exists to prevent from the outside. `ChurningHarness` below reproduces that shape: it
+  // holds its own `state`, like `SearchContainer` does, and its `onSearch` prop is a fresh inline
+  // closure every render — never memoized — so any dependency on `onSearch`'s identity re-arms.
+  it('dispatches onSearch exactly once for a settled query, even though the caller mints a new onSearch identity on every render it triggers', () => {
+    const onSearchSpy = vi.fn()
+
+    function ChurningHarness() {
+      const [value, setValue] = useState('')
+      const [state, setState] = useState<SearchBoxState>({ status: 'idle' })
+      return (
+        <SearchBox
+          value={value}
+          onValueChange={setValue}
+          onSearch={(query) => {
+            onSearchSpy(query)
+            // Mirrors `runSearch`'s first `setState` call: this alone re-renders `ChurningHarness`
+            // and therefore recreates the `onSearch` closure passed above.
+            setState({ status: 'loading' })
+          }}
+          state={state}
+        />
+      )
+    }
+
+    render(<ChurningHarness />)
+    const input = screen.getByLabelText('Search a player')
+    fireEvent.change(input, { target: { value: 'vip' } })
+    act(() => vi.advanceTimersByTime(300))
+    expect(onSearchSpy).toHaveBeenCalledTimes(1)
+
+    // If the churned `onSearch` identity re-arms the debounce timer, this keeps firing the same
+    // settled query forever. Advancing well past several debounce windows must not add calls.
+    act(() => vi.advanceTimersByTime(5000))
+    expect(onSearchSpy).toHaveBeenCalledTimes(1)
+    expect(onSearchSpy).toHaveBeenCalledWith('vip')
+  })
+
   it('loading: marks the region busy and shows 5 hidden skeleton rows by default', () => {
     const { container } = render(<Harness state={{ status: 'loading' }} onSearch={() => {}} />)
     expect(screen.getByRole('region', { name: 'Search results' })).toHaveAttribute(

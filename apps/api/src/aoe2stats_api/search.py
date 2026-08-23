@@ -11,23 +11,31 @@ so the fallback is a read against a table this service already keeps, never a ne
 **Cache-first, then the breaker, never an exception.** `search_players` checks
 `profile_search_cache` before it asks anything else: a fresh row answers the query without caring
 whether the source is currently up, which is the whole point of FR-004e — "repeated and common
-queries do not become repeated calls against a source that is degradable by design." Only a cache
-miss looks at `provider.is_degraded()`, and that check happens *before* the provider is ever called
-— `contracts/providers.md`'s "Failure" section is explicit that `search_players` never raises, so a
-`degraded` signal read off an exception cannot exist; it has to come from state the provider can be
-asked about ahead of time, exactly as `test_player_search.py`'s `_FakeSearchProvider.is_degraded()`
-models it. `CompanionEnrichmentProvider` (`packages/providers/.../companion/provider.py`) does not
-expose an `is_degraded()` accessor yet — T313 landed reusing `enrich_matches`'s breaker instance
-without one. Wiring this service into the real search route (T319) is where that accessor needs to
-be added to the real provider; `_SearchProvider` below is this module's own boundary, not a change
-to `PlayerSearchProvider` (`contracts/providers.md`), so nothing here forces that change early.
+queries do not become repeated calls against a source that is degradable by design." A cache miss
+looks at `provider.is_degraded()` *before* the provider is ever called — `contracts/providers.md`'s
+"Failure" section is explicit that `search_players` never raises, so a `degraded` signal read off
+an exception cannot exist; it has to come from state the provider can be asked about ahead of time,
+exactly as `test_player_search.py`'s `_FakeSearchProvider.is_degraded()` models it, and exactly what
+`is_degraded()` now is on `PlayerSearchProvider` itself (`contracts/providers.md`,
+`packages/providers/.../base.py`) — this module depends on that Protocol, not on a private
+extension of it, so there is no boundary of its own left to declare here.
 
-**`source` is how a cached row remembers which path answered it.** A row written from a genuine
-provider call carries `source="companion"`; a row written from the fallback carries
-`source="aoe_profiles"`, for the same reason and written by the same `_write_cache` call. Reading
-`degraded` back off that column on a cache hit — rather than re-asking the provider — is the same
-convention `test_players_routes.py` (T317) already seeded directly: `source="companion"` reads as
-`degraded: false`, anything else as `degraded: true`.
+`is_degraded()` is also re-read immediately *after* a genuine call to the provider, not only
+before one: a total outage still answers `search_players` with an empty page rather than raising
+(the same "Failure" section), and if that very call is what tripped the breaker — or found it
+still open on a post-cooldown probe — reading `is_degraded()` only beforehand would miss it, and an
+outage would be indistinguishable from a genuine zero-result search on the one request that
+observes it. See `_degraded_outcome` below.
+
+**`source` is how a cached row remembers which path answered it, and only a genuine provider call
+is ever cached.** A row written from a real, confident answer carries `source="companion"`
+(`_COMPANION_SOURCE`); the fallback's own answer is never written to the cache at all — see
+`_degraded_outcome`'s docstring for why, and `contracts/providers.md`'s "Caching" section, which
+this remediation amended, for the reasoning recorded in one place. Reading `degraded` back off a
+cache hit's `source` column — rather than re-asking the provider — stays the convention
+`test_players_routes.py` (T317) already seeded directly: `source="companion"` reads as
+`degraded: false`, any other value (including a row from before this remediation, or one seeded
+directly by a test) as `degraded: true`.
 
 **Opportunistic TTL pruning happens on write, never on read and never on a schedule (FR-044).**
 Every call that writes a fresh row first deletes every row — not only this query's own — whose
@@ -49,13 +57,13 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aoe2stats_providers.base import PlayerSearchPage, PlayerSearchResult
+from aoe2stats_providers.base import PlayerSearchProvider, PlayerSearchResult
 from aoe2stats_storage.models import AoeProfile, MatchPlayer, ProfileSearchCache
 
 # `contracts/http-api.md`: "`search` returns `{"results": [...], "degraded": bool, "reason": null
@@ -67,22 +75,13 @@ _SEARCH_SOURCE_UNAVAILABLE_REASON = "search_source_unavailable"
 # as `degraded: true` — see the module docstring's note on `test_players_routes.py`'s convention.
 _COMPANION_SOURCE = "companion"
 
-# `profile_search_cache.source` for a row answered by T316's local fallback over `aoe_profiles`
-# instead — `data-model.md`'s own name for what FR-004d's fallback searches, and the value
-# `test_players_routes.py` (T317) already seeds directly to exercise the "degraded" reading of a
-# cache hit.
+# `data-model.md`'s own name for what FR-004d's fallback searches over — never itself written to
+# `profile_search_cache.source` (this remediation stopped that, see `_degraded_outcome` below), but
+# still the value a degraded row from before this remediation, or one seeded directly by a test
+# (`test_players_routes.py`, T317), carries — and any such value still reads back as `degraded:
+# true`, since the cache-hit convention (module docstring) is "companion, or degraded", not an
+# enumeration of every non-companion source there has ever been.
 _FALLBACK_SOURCE = "aoe_profiles"
-
-
-class _SearchProvider(Protocol):
-    """What this service needs from whatever provider it is given: `PlayerSearchProvider`
-    (`contracts/providers.md`) plus `is_degraded()` — this module's own extension of that contract,
-    designed by `test_player_search.py`'s `_FakeSearchProvider` and not yet grown on
-    `CompanionEnrichmentProvider` itself (see the module docstring)."""
-
-    def is_degraded(self) -> bool: ...
-
-    async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 
 
 @dataclass(frozen=True)
@@ -107,7 +106,7 @@ def normalise_query(query: str) -> str:
 
 async def search_players(
     session: AsyncSession,
-    provider: _SearchProvider,
+    provider: PlayerSearchProvider,
     query: str,
     *,
     limit: int,
@@ -126,20 +125,19 @@ async def search_players(
         return cached
 
     if provider.is_degraded():
-        results = await _local_fallback_results(session, query_normalised, limit=limit)
-        await _write_cache(
-            session,
-            query_normalised,
-            results,
-            source=_FALLBACK_SOURCE,
-            ttl_seconds=ttl_seconds,
-            now=moment,
-        )
-        return SearchOutcome(
-            results=results, degraded=True, reason=_SEARCH_SOURCE_UNAVAILABLE_REASON
-        )
+        return await _degraded_outcome(session, query_normalised, limit=limit)
 
     page = await provider.search_players(query, limit=limit)
+    if provider.is_degraded():
+        # B1 remediation: `search_players` never raises (`contracts/providers.md`'s "Failure"),
+        # so a call that just tripped the breaker — or found it still open on a post-cooldown
+        # probe — comes back exactly like a genuine, confident answer would: an empty (or
+        # otherwise unverifiable) `page`. Re-checking `is_degraded()` here, immediately after the
+        # call, is the only way to catch that: without it, one outage would be cached as
+        # `source="companion"` and served back as "no such player" for the full TTL, even after
+        # the source recovers — the module docstring's whole point.
+        return await _degraded_outcome(session, query_normalised, limit=limit)
+
     await _write_cache(
         session,
         query_normalised,
@@ -149,6 +147,28 @@ async def search_players(
         now=moment,
     )
     return SearchOutcome(results=page.results, degraded=False, reason=None)
+
+
+async def _degraded_outcome(
+    session: AsyncSession, query_normalised: str, *, limit: int
+) -> SearchOutcome:
+    """FR-004d's fallback outcome, reached whenever the source is (or has just been found to be)
+    unavailable — before the call, when the breaker was already open, or immediately after one,
+    when the call itself is what opened it or found it still open (see `search_players` above).
+
+    **Never written to `profile_search_cache` (this remediation's M1 decision, recorded in
+    `contracts/providers.md`'s "Caching" section).** Caching a degraded answer earns nothing this
+    system does not already have: the breaker itself is what stops repeat calls from reaching a
+    down source (FR-004e's own justification for the cache — "repeated ... queries do not become
+    repeated calls against a source that is degradable by design" — already holds without a cache
+    row, because `is_degraded()` short-circuits the call). What it would cost is real: a `source`
+    written once during an outage would pin every repeat of that query to the fallback's reduced
+    results for the full TTL, even after the source has recovered — precisely what the fresh-cache
+    read above must never do to a live answer, and there is no reason the fallback's own answer
+    should be held to a lower standard.
+    """
+    results = await _local_fallback_results(session, query_normalised, limit=limit)
+    return SearchOutcome(results=results, degraded=True, reason=_SEARCH_SOURCE_UNAVAILABLE_REASON)
 
 
 async def _local_fallback_results(
