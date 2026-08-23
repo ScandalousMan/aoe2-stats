@@ -41,18 +41,35 @@ export interface ViewedProfile {
   isPrimary: boolean
 }
 
-export type ProfileSummaryStatus = 'default' | 'loading' | 'stale' | 'error' | 'empty'
+export type ProfileSummarySubject = 'self' | 'other'
+
+export type ProfileSummaryStatus = 'default' | 'loading' | 'stale' | 'error' | 'empty' | 'not-found'
 
 export interface ProfileSummaryProps {
   variant?: ProfileSummaryVariant
+  /** Who is being shown: the signed-in user's own profile, or a third party's (003 spec §11).
+   * `subject="other"` removes `ProfileSwitcher`, `NonPrimaryBanner` and the self-only "Manage"
+   * actions, and adds `AliasFreshnessNote` and the `favouriteToggle` slot in their place. One
+   * component renders both — never a second, divergent presentation (003 FR-008). */
+  subject?: ProfileSummarySubject
   /** The switcher is populated only from the authenticated `/api/me` payload — unauthenticated, it
-   * renders nothing at all, not a disabled trigger (FR-045). */
+   * renders nothing at all, not a disabled trigger (FR-045). Ignored when `subject="other"`: a
+   * third party's own linked profiles are never shown here (003 FR-009). */
   authenticated: boolean
   viewedProfile?: ViewedProfile
   linkedProfiles?: LinkedProfileOption[]
   entries: RatingEntryData[]
   status?: ProfileSummaryStatus
   freshnessLine?: ReactNode
+  /** Pre-formatted date, e.g. "12 Aug 2026" — composed into "Last seen as <alias> on <date>."
+   * Rendered only when `subject="other"` (003 spec §11.1.4, `alias_observed_at`). */
+  aliasObservedAtLabel?: ReactNode
+  /** The favourites seam (003 FR-013). This component renders the slot in `IdentityBar` when
+   * `subject="other"`; it does not build the toggle itself — that is US5 (T348). */
+  favouriteToggle?: ReactNode
+  /** Where "back to search" points from the not-found state. Defaults to `/players` (003 T322's
+   * route). */
+  searchHref?: string
   primaryChangeInFlight?: boolean
   unlinkInFlight?: boolean
   manageError?: ReactNode
@@ -70,12 +87,16 @@ export interface ProfileSummaryProps {
  * "duplicated content breaks screen-reader output" rule (spec §8). */
 export function ProfileSummary({
   variant = 'board',
+  subject = 'self',
   authenticated,
   viewedProfile,
   linkedProfiles = [],
   entries,
   status = 'default',
   freshnessLine,
+  aliasObservedAtLabel,
+  favouriteToggle,
+  searchHref = '/players',
   primaryChangeInFlight = false,
   unlinkInFlight = false,
   manageError,
@@ -89,6 +110,24 @@ export function ProfileSummary({
 }: ProfileSummaryProps) {
   const isTable = useBreakpoint('lg')
   const compact = variant === 'compact'
+  const isSelf = subject === 'self'
+
+  // The whole component collapses to a single callout — no `IdentityBar`, no `RatingBoard` — for a
+  // profile that does not resolve at all (003 spec §11.2, `GET /api/players/{profile_id}` 404).
+  if (status === 'not-found') {
+    return (
+      <Callout
+        tone="danger"
+        heading="This player could not be found."
+        actions={
+          <Button variant="secondary" href={searchHref}>
+            Back to search
+          </Button>
+        }
+        className={className}
+      />
+    )
+  }
 
   const switcherItems: MenuItem[] = linkedProfiles.map((profile) => ({
     id: profile.id,
@@ -99,28 +138,29 @@ export function ProfileSummary({
     onSelect: () => onSelectProfile?.(profile.id),
   }))
 
-  const manageItems: MenuItem[] = viewedProfile
-    ? [
-        ...(viewedProfile.isPrimary
-          ? []
-          : [
-              {
-                id: 'make-primary',
-                label: 'Make primary',
-                loading: primaryChangeInFlight,
-                disabled: primaryChangeInFlight,
-                onSelect: () => onMakePrimary?.(viewedProfile.id),
-              },
-            ]),
-        {
-          id: 'unlink',
-          label: 'Unlink this profile',
-          loading: unlinkInFlight,
-          disabled: unlinkInFlight,
-          onSelect: onUnlink,
-        },
-      ]
-    : []
+  const manageItems: MenuItem[] =
+    isSelf && viewedProfile
+      ? [
+          ...(viewedProfile.isPrimary
+            ? []
+            : [
+                {
+                  id: 'make-primary',
+                  label: 'Make primary',
+                  loading: primaryChangeInFlight,
+                  disabled: primaryChangeInFlight,
+                  onSelect: () => onMakePrimary?.(viewedProfile.id),
+                },
+              ]),
+          {
+            id: 'unlink',
+            label: 'Unlink this profile',
+            loading: unlinkInFlight,
+            disabled: unlinkInFlight,
+            onSelect: onUnlink,
+          },
+        ]
+      : []
 
   return (
     <section
@@ -130,7 +170,9 @@ export function ProfileSummary({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
-            {authenticated && viewedProfile && (
+            {/* `subject="other"` never shows the switcher — a third party's own linked profiles
+             * are never this component's business (003 spec §11.1.1, FR-009). */}
+            {isSelf && authenticated && viewedProfile && (
               <Menu
                 variant="selection"
                 triggerLabel={
@@ -150,7 +192,7 @@ export function ProfileSummary({
                 }}
               />
             )}
-            {!authenticated && viewedProfile && (
+            {(!isSelf || !authenticated) && viewedProfile && (
               <span
                 id="profile-summary-alias"
                 className="font-sans text-xl font-semibold text-text-primary"
@@ -170,9 +212,16 @@ export function ProfileSummary({
           {viewedProfile && (
             <span className="font-mono text-xs text-text-secondary">{viewedProfile.profileId}</span>
           )}
+          {/* AliasFreshnessNote (003 spec §11.1.4) — a third party's alias can go stale between
+           * when this service last observed it and today; the signed-in user's own never can. */}
+          {!isSelf && viewedProfile && aliasObservedAtLabel && (
+            <p className="font-sans text-xs text-text-secondary">
+              Last seen as {viewedProfile.alias} on {aliasObservedAtLabel}.
+            </p>
+          )}
         </div>
 
-        {!compact && viewedProfile && (
+        {!compact && viewedProfile && isSelf && (
           <div className="flex items-center gap-2">
             <Menu
               variant="actions"
@@ -183,9 +232,15 @@ export function ProfileSummary({
             />
           </div>
         )}
+
+        {/* FavouriteToggle (003 FR-013): the seam only — the toggle itself is US5 (T348). Absent
+         * for `subject="self"`: the API gives this component no route to favourite oneself. */}
+        {!compact && viewedProfile && !isSelf && favouriteToggle && (
+          <div className="flex items-center gap-2">{favouriteToggle}</div>
+        )}
       </div>
 
-      {viewedProfile && !viewedProfile.isPrimary && (
+      {isSelf && viewedProfile && !viewedProfile.isPrimary && (
         <div className="mt-4">
           <Callout
             tone="info"

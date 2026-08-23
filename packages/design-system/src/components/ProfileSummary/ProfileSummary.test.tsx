@@ -219,4 +219,116 @@ describe('ProfileSummary', () => {
     await user.click(screen.getByRole('button', { name: 'Manage' }))
     expect(screen.queryByRole('menuitem', { name: 'Make primary' })).not.toBeInTheDocument()
   })
+
+  describe('subject="other" (003 spec §11)', () => {
+    const thirdPartyProfile = {
+      id: 'p9',
+      alias: 'rival_ace',
+      country: 'Germany',
+      profileId: '87654321',
+      isPrimary: false,
+    }
+
+    it('renders the alias as static text, never a switcher trigger', () => {
+      render(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={entries}
+        />,
+      )
+      expect(screen.getByText('rival_ace')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /switch profile/ })).not.toBeInTheDocument()
+    })
+
+    it('renders no "Manage" menu and no non-primary banner', () => {
+      render(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={entries}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('You are viewing a profile that is not your primary one.'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('renders the favouriteToggle slot it is given, and none when none is given', () => {
+      const { rerender } = render(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={entries}
+          favouriteToggle={<button type="button">Add to favourites</button>}
+        />,
+      )
+      expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeInTheDocument()
+
+      rerender(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={entries}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: 'Add to favourites' })).not.toBeInTheDocument()
+    })
+
+    it('shows AliasFreshnessNote with the profile alias and the observed date', () => {
+      render(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={entries}
+          aliasObservedAtLabel="12 Aug 2026"
+        />,
+      )
+      expect(screen.getByText('Last seen as rival_ace on 12 Aug 2026.')).toBeInTheDocument()
+    })
+
+    it('never shows AliasFreshnessNote for subject="self"', () => {
+      render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={entries}
+          aliasObservedAtLabel="12 Aug 2026"
+        />,
+      )
+      expect(screen.queryByText(/Last seen as/)).not.toBeInTheDocument()
+    })
+
+    it('reuses the identical never-rated info callout for a never-ranked third party', () => {
+      render(
+        <ProfileSummary
+          subject="other"
+          authenticated
+          viewedProfile={thirdPartyProfile}
+          entries={[]}
+        />,
+      )
+      expect(screen.getByText('rival_ace')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /Ratings appear after your first ranked match/,
+      )
+    })
+
+    it('collapses to a single danger callout with a link back to search when not found', () => {
+      render(<ProfileSummary subject="other" authenticated entries={[]} status="not-found" />)
+      expect(screen.getByRole('alert')).toHaveTextContent('This player could not be found.')
+      expect(screen.getByRole('link', { name: 'Back to search' })).toHaveAttribute(
+        'href',
+        '/players',
+      )
+      expect(screen.queryByText('rival_ace')).not.toBeInTheDocument()
+    })
+  })
 })

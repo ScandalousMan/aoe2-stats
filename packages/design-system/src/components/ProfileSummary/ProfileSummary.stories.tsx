@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Button } from '../Button'
 import { ProfileSummary } from './index'
 import type { RatingEntryData } from './index'
 
@@ -47,13 +48,65 @@ const linkedProfiles = [
   { id: 'p2', alias: 'aoe2alt', isPrimary: false },
 ]
 
+// 003 spec §11 — a third party's profile, reached from search rather than `/api/me`. Same
+// `RatingEntryData` shape and the same `entries` fixture as `Board`, so the two stories are
+// comparable digit-for-digit in `RatingBoard` (spec §11.4's last bullet).
+const thirdPartyProfile = {
+  id: 'p9',
+  alias: 'rival_ace',
+  country: 'Germany',
+  profileId: '87654321',
+  isPrimary: false,
+}
+
+// A stub only — the real toggle, its state and its mutation are 003's US5 (T348). This story
+// exists to prove `ProfileSummary` renders whatever is placed in the seam, not to implement it.
+const favouriteToggleStub = (
+  <Button variant="ghost" aria-pressed={false}>
+    Add to favourites
+  </Button>
+)
+
 export const Board: Story = {
   args: {
+    subject: 'self',
     authenticated: true,
     viewedProfile,
     linkedProfiles,
     entries,
     freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+export const ViewingThirdParty: Story = {
+  args: {
+    subject: 'other',
+    authenticated: true,
+    viewedProfile: thirdPartyProfile,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+    aliasObservedAtLabel: '12 Aug 2026',
+    favouriteToggle: favouriteToggleStub,
+  },
+}
+
+export const ThirdPartyNeverRanked: Story = {
+  args: {
+    subject: 'other',
+    authenticated: true,
+    viewedProfile: thirdPartyProfile,
+    entries: [],
+    aliasObservedAtLabel: '12 Aug 2026',
+    favouriteToggle: favouriteToggleStub,
+  },
+}
+
+export const ThirdPartyNotFound: Story = {
+  args: {
+    subject: 'other',
+    authenticated: true,
+    entries: [],
+    status: 'not-found',
   },
 }
 
