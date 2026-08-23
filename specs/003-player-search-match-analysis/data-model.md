@@ -219,7 +219,14 @@ user's data.
 ### `replay_access_log` (widened)
 
 `replay_capture_id` becomes nullable; gains `retained_recording_id` (uuid, fk
-`retained_recordings.id`, nullable), with a check constraint that **exactly one** of the two is set.
+`retained_recordings.id`, nullable), with a check constraint that **exactly one** of the two is set:
+`num_nonnulls(replay_capture_id, retained_recording_id) = 1`.
+
+The predicate is written down rather than left to whoever gets there first, because T304's model and
+T305's migration must emit the *same* one and there is no way to notice later that they did not. The
+form is Postgres's own null-counting function rather than a pair of `IS NULL` comparisons because it
+says the requirement in the words the requirement uses, and constitution XII already fixes Postgres
+as the database on both phase-1 and phase-2 hosting.
 
 FR-029 requires every access to a recording this service holds to be logged — served or merely read —
 and after this feature there are two kinds of archive. The alternative was a second log table, and it was

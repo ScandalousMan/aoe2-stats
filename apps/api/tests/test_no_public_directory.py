@@ -1,50 +1,82 @@
-"""Integration test for FR-038 (T067): "System MUST NOT publicly expose or index the profiles of
-people who are not users" — across every route in this phase that takes a `profile_id` (or a
-`game_id` naming one) the caller may not own.
+"""FR-008a (T310): the property this file asserts is no longer FR-038 as 001 wrote it. It is
+superseded, narrowed rather than dropped, and this docstring exists to say to what.
 
-`contracts/http-api.md`'s Matches section states the property directly: "Only matches involving
-one of the caller's linked profiles are reachable. There is no endpoint that takes an arbitrary
-`profile_id` and returns its history: FR-038 forbids exposing non-users, and an endpoint that does
-it 'just for logged-in users' is still a public directory of players." T067's own task text extends
-that reading to `GET /api/profiles/{profile_id}/ratings` (T072): "a rating curve for an arbitrary
-player is a public directory of players just as much as a match list is."
+**What 001's FR-038 actually was, and why it does not survive this feature.** 001 read
+constitution IX as "no endpoint takes an arbitrary `profile_id` and returns its history" — a
+third party's profile was unreachable even to a signed-in beta user, and the original version of
+this file (T067) walked `GET /api/matches?profile_id=`, `GET /api/matches/{game_id}` and `GET
+/api/profiles/{profile_id}/ratings`, asserting every foreign or never-linked `profile_id`
+collapsed into the identical FR-045 `not_found`. This feature's entire purpose — player search,
+any player's profile, any player's match history — is to add exactly the endpoints that reading
+forbade, so that reading cannot survive it. But it was always stricter than the line it served:
+constitution IX says a third party is never **publicly indexed**, and reachable by a signed-in,
+allowlisted beta user is not the same thing as publicly indexed. `spec.md`'s FR-008a records the
+supersession; `contracts/http-api.md`'s "The one thing this contract changes about 001" states the
+four properties that replace it, verbatim, and are asserted below one test each.
 
-**This is the dedicated cross-route test the property deserves, not a substitute for each router's
-own ownership tests.** `test_matches_list.py` (T063) never exercises a foreign `profile_id` at all;
-`test_match_detail.py` (T064) and `test_rating_history.py` (T068) each already assert their own
-route's FR-045 three-case `not_found` discipline (unknown, foreign, unlinked) in full. What belongs
-here instead is the property itself, walked once across every route that could leak it in one
-scenario, plus the one distinction none of those files draws explicitly: FR-038 says "people who
-are not users" — a profile that has *never* been linked to any account at all, not only a profile
-belonging to somebody else's account. `_NEVER_LINKED_PROFILE_ID` below is exactly that case:
-present in `aoe_profiles`, `matches` and even `rating_snapshots` (a provenance that would not arise
-from this feature's own ingestion path, which only ever resolves ratings for a linked profile, but
-the route must refuse it on ownership grounds regardless of how the row came to exist) — never
-linked, never owned by anyone.
+**The naming split that keeps the blast radius to one route.** `/api/profiles/*` means "mine";
+`/api/players/*` (this feature) means "anyone". `GET /api/matches?profile_id=` and `GET
+/api/profiles/{profile_id}/ratings` both live under the "mine" name and **stay owner-scoped** —
+the two tests below asserting them are unchanged from T067 and still pass today, live evidence
+that the narrowing did not widen everything it touched. Only `GET /api/matches/{game_id}` — which
+carries no profile in its own path and therefore no "mine" name to keep — is widened by this
+feature (FR-018, FR-021, T327), and the four tests below replace the single T067 assertion that
+used to cover it.
 
-**Written before the routes exist (T070, T072).** Neither `aoe2stats_api.routers.matches` nor
-`GET /api/profiles/{profile_id}/ratings` exists yet: `app.py`'s `create_app()` does not register a
-`matches` router at all (see that module's own docstring), and `profiles.py` registers only `GET
-/api/profiles`, `POST .../primary` and `DELETE /api/profiles/{profile_id}` (T031). Every request
-below therefore 404s today on Starlette's own unmatched-route path — which, by the coincidence
-`_http_status_error_code` produces (`app.py`), already answers `{"error": {"code": "not_found"}}`,
-the *same* shape the real ownership check will answer. A bare "foreign profile_id gets `not_found`"
-assertion would therefore pass by accident today, proving nothing. Every test below pairs that
-assertion with a **positive control** — the caller's own profile or match, asserted to answer `200`
-with the real seeded data — which only a working T070/T072 can satisfy; that is what makes the
-xfail genuine rather than a marker sitting over an assertion that was never really false. Per
-CLAUDE.md's test-first convention, every test carries `@pytest.mark.xfail(strict=True, reason=...)`
-naming the implementing task, so `strict=True` turns the run red the moment that task lands and a
-test starts passing for real, forcing the marker off instead of letting a stale `xfail` hide a
-regression.
+**The four properties, one test each, one `xfail` marker each — never one for the file.** Per
+`contracts/http-api.md`:
+
+1. no anonymous reach to any route this feature adds (`xfail(strict=True, reason="T319 not
+   implemented yet")`, against the three routes T319 registers: `GET /api/players/search`, `GET
+   /api/players/{profile_id}`, `GET /api/players/{profile_id}/ratings`);
+2. no indexing — `X-Robots-Tag: noindex, nofollow` (`xfail(..., reason="T327 not implemented
+   yet")`, against `GET /api/matches/{game_id}` once T327 removes its ownership scope: this route
+   predates this feature and so falls outside `test_no_index_headers.py`'s (T308/T309) own
+   parametrisation over "every route this feature adds" — the header on the widening is this
+   file's property to prove, not that one's. `robots.txt`'s client-side disallow for the routes
+   that render this page is a static front-end asset, `apps/web/public/robots.txt`, wired by
+   T322/T331 outside this Python suite's reach, and is not re-asserted here);
+3. no disclosure of a relationship between a player's accounts, on any profile (FR-009, 001
+   FR-045 restated and unchanged — `xfail(..., reason="T328 not implemented yet")`, against `GET
+   /api/players/{profile_id}/matches`, the route T328 adds);
+4. ownership still deciding a user's own archived replay (`xfail(..., reason="T337 not
+   implemented yet")`, against `GET /api/matches/{game_id}/replay/{profile_id}`, the route T337
+   adds — the one place this feature's widening must stop dead: a captured replay still leaves
+   this service only for the participant who owns the capture, whatever else about the match is
+   now public).
+
+Not T339: that task writes a design-system component spec and can make no assertion in this file
+pass — a marker naming it would turn the tree red at a task with no way to fix it.
+
+**Two dead constants removed in this pass.** `XFAIL_REASON_MATCHES` and `XFAIL_REASON_RATINGS`
+named T070 and T072 for the two tests that stay live below; both tasks landed before this pass and
+neither test ever carried an `xfail` marker referencing them (the plain comment above the two
+constants said as much), so the constants had already stopped doing anything by the time this
+docstring was last touched. Removed rather than left, because an unused reason constant sitting
+beside four genuine ones invites a future reader to wonder which of the five is stale.
+
+**Positive controls, kept where the collision risk that motivated them still exists.** The two
+live tests below keep their positive controls (the caller's own data, asserted to come back for
+real) exactly as T067 wrote them, because `GET /api/matches` and `GET /api/profiles/{profile_id}/
+ratings` both already exist and a bare "foreign profile_id gets `not_found`" assertion is
+indistinguishable from an accidental pass only where a route's *existence* is not yet the thing
+under test. The four new tests below reach for routes and behaviour that do not exist at all yet
+(`players.py` is unregistered; `replays.py` carries no `/api/matches/{game_id}/replay/{profile_id}`
+route), so an anonymous request already 404s on Starlette's own unmatched path rather than 401 on a
+real session check — a different status code than the assertion asks for, which is what makes each
+of those four `xfail`s genuine without needing a matching positive control. Property 2's and
+property 4's tests each keep a positive control anyway, because both name a *specific outcome*
+(a header value; a signed URL an owner must actually receive) that a route's mere existence would
+not itself prove.
 
 **Harness and response-shape assumptions** follow the sibling files these routes share, byte for
 byte where they overlap: `test_replay_status.py`'s `client`/`db_session`/`_sign_in` conventions;
 `test_matches_list.py`'s `{"matches": [...]}` list shape and per-row `game_id`;
 `test_match_detail.py`'s `{"game_id": ..., "participants": [...]}` shape with per-participant
-`profile_id`; and `test_rating_history.py`'s `{"ratings": [...]}` shape with per-entry `rating`.
-See each of those
-modules for the reasoning behind the specific keys asserted here.
+`profile_id`; `test_rating_history.py`'s `{"ratings": [...]}` shape with per-entry `rating`; and
+`test_replay_download.py`'s `_FakeObjectStore`-backed signed-URL convention (`conftest.py`'s
+`client` fixture wires it in for every test in this directory, including this one). See each of
+those modules for the reasoning behind the specific keys asserted here.
 """
 
 from __future__ import annotations
@@ -60,22 +92,19 @@ from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
     AoeProfile,
+    CaptureSource,
+    CaptureStatus,
     Match,
     MatchPlayer,
     ProfileLink,
     RatingSnapshot,
+    ReplayCapture,
     SteamIdentity,
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
 
 pytestmark = [pytest.mark.usefixtures("environment")]
-
-# Two separate reasons: `GET /api/matches` and `GET /api/matches/{game_id}` both come from T070,
-# `GET /api/profiles/{profile_id}/ratings` from T072. Do not drop `strict=True` on either — see
-# the module docstring for why that matters here specifically.
-XFAIL_REASON_MATCHES = "T070 not implemented yet"
-XFAIL_REASON_RATINGS = "T072 not implemented yet"
 
 #: See `test_replay_status.py`'s module docstring — this suite's working assumption, not yet fixed
 #: by a contract document beyond T028's own implementation.
@@ -96,6 +125,42 @@ _CALLER_GAME_ID = 900_200_100
 _OTHER_USER_GAME_ID = 900_200_200
 _NEVER_LINKED_GAME_ID = 900_200_300
 
+# Property 3 (`test_a_profiles_history_never_discloses_its_owners_other_profiles`): two profiles
+# under one account, each with its own match against its own, otherwise unrelated opponent, so a
+# leak of either the sibling profile's id, its alias, its game or its opponent's alias is
+# distinguishable from the profile actually asked about.
+_MULTI_PROFILE_ONE_ID = 900_100_500
+_MULTI_PROFILE_TWO_ID = 900_100_501
+_MULTI_ALIAS_ONE = "MultiAccountAliasOne"
+_MULTI_ALIAS_TWO = "MultiAccountAliasTwo"
+_MULTI_OPPONENT_ONE_ID = 900_100_510
+_MULTI_OPPONENT_TWO_ID = 900_100_511
+_MULTI_OPPONENT_ALIAS_ONE = "MultiOpponentAliasOne"
+_MULTI_OPPONENT_ALIAS_TWO = "MultiOpponentAliasTwo"
+_MULTI_GAME_ONE_ID = 900_200_500
+_MULTI_GAME_TWO_ID = 900_200_501
+
+# Property 4 (`test_replay_download_ownership_survives_the_match_detail_widening`): a capture
+# owned by one account, reached for by a second, unrelated one.
+_REPLAY_OWNER_PROFILE_ID = 900_100_600
+_REPLAY_STRANGER_PROFILE_ID = 900_100_601
+_REPLAY_GAME_ID = 900_200_600
+
+
+def _contains_value(payload: object, needle: object) -> bool:
+    """Whether `needle` appears anywhere in a JSON-decoded body, at any depth, as a value —
+    resilient to exactly which key a response nests a profile id or an alias under. Mirrors
+    `test_multi_account.py`'s helper of the same name and shape, kept as this file's own copy
+    per the module docstring's "each router in this feature is a self-contained file" convention
+    applied to its tests."""
+    if payload == needle:
+        return True
+    if isinstance(payload, dict):
+        return any(_contains_value(value, needle) for value in payload.values())
+    if isinstance(payload, list):
+        return any(_contains_value(item, needle) for item in payload)
+    return False
+
 
 async def _seed_profile(
     db_session: AsyncSession, *, profile_id: int, alias: str, country: str | None = "FR"
@@ -112,7 +177,12 @@ async def _seed_user(db_session: AsyncSession) -> User:
 
 
 async def _link_profile(
-    db_session: AsyncSession, *, user: User, profile_id: int, steam_id64: str
+    db_session: AsyncSession,
+    *,
+    user: User,
+    profile_id: int,
+    steam_id64: str,
+    is_primary: bool = True,
 ) -> None:
     now = datetime.now(UTC)
     db_session.add(
@@ -129,7 +199,7 @@ async def _link_profile(
             user_id=user.id,
             profile_id=profile_id,
             steam_id64=steam_id64,
-            is_primary=True,
+            is_primary=is_primary,
             linked_at=now,
         )
     )
@@ -299,34 +369,276 @@ async def test_matches_list_never_returns_the_history_of_a_profile_the_caller_ha
     assert str(_NEVER_LINKED_GAME_ID) not in never_linked_response.text
 
 
-async def test_match_detail_never_reveals_a_match_the_caller_did_not_play(
+@pytest.mark.xfail(strict=True, reason="T319 not implemented yet")
+async def test_players_routes_never_answer_without_a_session(
     client: TestClient, db_session: AsyncSession
 ) -> None:
-    """FR-038, walked through `GET /api/matches/{game_id}`: a `game_id` naming a real match that
-    does not involve any of the caller's linked profiles must answer the identical `not_found` a
-    genuinely unknown `game_id` would — `test_match_detail.py` (T064) already proves this for "a
-    match belonging to a different account"; this repeats it for "a match belonging to a profile
-    nobody has ever linked", FR-038's own wording."""
+    """FR-008a property 1 (`contracts/http-api.md`): no route this feature adds is reachable
+    anonymously. Walks the three routes T319 registers — `GET /api/players/search`, `GET
+    /api/players/{profile_id}`, `GET /api/players/{profile_id}/ratings` — each of which must
+    answer the identical `401 not_authenticated` `_require_session` already gives `GET /api/
+    matches` and `GET /api/profiles/{profile_id}/ratings` (both asserted live above), never a
+    smaller body or a degraded-but-200 response.
+
+    No positive control is needed to make this genuine: today, before `players.py` is registered
+    at all, every request below 404s on Starlette's own unmatched-route path, not the `401` this
+    test asks for — a different status code, so this already fails for the right reason (module
+    docstring). `GET /api/players/{profile_id}` and `GET /api/players/{profile_id}/ratings` still
+    carry one anyway, since both are pure reads over already-seeded rows and cost nothing to
+    check; `GET /api/players/search` does not, because a genuine positive control would have to
+    either reach the real search source (forbidden outside `packages/providers`, CLAUDE.md) or
+    stand up the provider-mocking harness `test_players_routes.py` (T317) already owns — duplicating
+    that machinery here for a property this test can already prove without it would be the wrong
+    trade.
+    """
+    caller = await _seed_scenario(db_session)
+
+    anonymous_search = client.get("/api/players/search", params={"q": "Stranger"})
+    assert anonymous_search.status_code == 401
+    assert anonymous_search.json()["error"]["code"] == "not_authenticated"
+
+    anonymous_profile = client.get(f"/api/players/{_STRANGER_PROFILE_ID}")
+    assert anonymous_profile.status_code == 401
+    assert anonymous_profile.json()["error"]["code"] == "not_authenticated"
+
+    anonymous_ratings = client.get(f"/api/players/{_STRANGER_PROFILE_ID}/ratings")
+    assert anonymous_ratings.status_code == 401
+    assert anonymous_ratings.json()["error"]["code"] == "not_authenticated"
+
+    # Positive control for the two routes it costs nothing to check: signed in, a real profile
+    # this service has already observed must actually answer, proving the 401s above come from
+    # the session check rather than from routes that still do not exist.
+    await _sign_in(client, db_session, caller)
+
+    profile_response = client.get(f"/api/players/{_STRANGER_PROFILE_ID}")
+    assert profile_response.status_code == 200
+
+    ratings_response = client.get(f"/api/players/{_STRANGER_PROFILE_ID}/ratings")
+    assert ratings_response.status_code == 200
+
+
+@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
+async def test_match_detail_widening_carries_the_no_index_header(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a property 2: once T327 removes the ownership scope from `get_match_detail`, `GET
+    /api/matches/{game_id}` answers for a match the caller never played (FR-018, FR-021) — the
+    one 001 route this feature widens rather than adds — and that response must carry `X-Robots-
+    Tag: noindex, nofollow` (FR-010). `test_no_index_headers.py` (T308/T309) parametrises over
+    "every route this feature adds"; this route predates the feature and is only widened, so it
+    falls outside that parametrisation and the header on the widening is this file's property to
+    prove instead. `robots.txt`'s client-side disallow for the route that renders this page is a
+    static front-end asset (`apps/web/public/robots.txt`, T322/T331) outside this Python suite's
+    reach, and is not re-asserted here — see the module docstring.
+
+    Positive control kept deliberately: `200` alone would not distinguish "the ownership scope is
+    gone" from "the header machinery also travelled with it", and this test is for the second of
+    those, not the first (`test_match_detail_widened_to_any_match_the_service_holds` in
+    `test_match_detail.py`, T324, is where the first is proven in full).
+    """
     caller = await _seed_scenario(db_session)
     await _sign_in(client, db_session, caller)
 
-    # Positive control: the caller's own match must actually come back.
-    own_response = client.get(f"/api/matches/{_CALLER_GAME_ID}")
-    assert own_response.status_code == 200
-    own_body = own_response.json()
-    assert own_body["game_id"] == _CALLER_GAME_ID
-    own_participant_ids = {p["profile_id"] for p in own_body["participants"]}
-    assert _CALLER_PROFILE_ID in own_participant_ids
-
     other_user_response = client.get(f"/api/matches/{_OTHER_USER_GAME_ID}")
-    assert other_user_response.status_code == 404
-    assert other_user_response.json()["error"]["code"] == "not_found"
-    assert "OtherUserAlias" not in other_user_response.text
+    assert other_user_response.status_code == 200, (
+        "FR-018/FR-021: the ownership scope must be gone from GET /api/matches/{game_id} — any "
+        f"match this service holds is readable by any signed-in caller. Got "
+        f"{other_user_response.status_code}: {other_user_response.text}"
+    )
+    assert other_user_response.headers.get("x-robots-tag") == "noindex, nofollow"
 
     never_linked_response = client.get(f"/api/matches/{_NEVER_LINKED_GAME_ID}")
-    assert never_linked_response.status_code == 404
-    assert never_linked_response.json()["error"]["code"] == "not_found"
-    assert "NeverLinkedAlias" not in never_linked_response.text
+    assert never_linked_response.status_code == 200
+    assert never_linked_response.headers.get("x-robots-tag") == "noindex, nofollow"
+
+
+@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
+async def test_a_profiles_history_never_discloses_its_owners_other_profiles(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a property 3 (FR-009, 001 FR-045 restated and unchanged): `GET /api/players/
+    {profile_id}/matches` — the route T328 adds — must never let a caller learn, through anything
+    it returns for one profile, that its owner has a second profile linked to the same account.
+    `test_multi_account.py` (T023) already proves this for the account holder's own routes (`GET
+    /api/me`, `GET /api/profiles`); this is the same property, for a route reachable by a caller
+    who owns neither profile, walked through the one route this feature adds that could leak a
+    link between two profiles it did not itself ask about.
+    """
+    owner = await _seed_user(db_session)
+    await _seed_profile(db_session, profile_id=_MULTI_PROFILE_ONE_ID, alias=_MULTI_ALIAS_ONE)
+    await _seed_profile(db_session, profile_id=_MULTI_PROFILE_TWO_ID, alias=_MULTI_ALIAS_TWO)
+    await _seed_profile(
+        db_session, profile_id=_MULTI_OPPONENT_ONE_ID, alias=_MULTI_OPPONENT_ALIAS_ONE
+    )
+    await _seed_profile(
+        db_session, profile_id=_MULTI_OPPONENT_TWO_ID, alias=_MULTI_OPPONENT_ALIAS_TWO
+    )
+    await _link_profile(
+        db_session, user=owner, profile_id=_MULTI_PROFILE_ONE_ID, steam_id64="76561197960287940"
+    )
+    # Not primary: `profile_links` allows exactly one primary row per user (`ix_profile_links_
+    # user_id_primary`), and which of the two is primary is irrelevant to the property under
+    # test — both must be equally undisclosed to a stranger regardless.
+    await _link_profile(
+        db_session,
+        user=owner,
+        profile_id=_MULTI_PROFILE_TWO_ID,
+        steam_id64="76561197960287941",
+        is_primary=False,
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+    await _seed_match(db_session, game_id=_MULTI_GAME_ONE_ID, completed_at=now)
+    await _seed_match_player(
+        db_session,
+        game_id=_MULTI_GAME_ONE_ID,
+        profile_id=_MULTI_PROFILE_ONE_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_MULTI_GAME_ONE_ID,
+        profile_id=_MULTI_OPPONENT_ONE_ID,
+        team_id=2,
+        civ_id=10,
+        result="loss",
+        rating_diff=-15,
+    )
+    await _seed_match(db_session, game_id=_MULTI_GAME_TWO_ID, completed_at=now)
+    await _seed_match_player(
+        db_session,
+        game_id=_MULTI_GAME_TWO_ID,
+        profile_id=_MULTI_PROFILE_TWO_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_MULTI_GAME_TWO_ID,
+        profile_id=_MULTI_OPPONENT_TWO_ID,
+        team_id=2,
+        civ_id=10,
+        result="loss",
+        rating_diff=-15,
+    )
+    await db_session.commit()
+
+    # A caller unrelated to either profile — proving the property for the general case FR-009
+    # actually names: *any* caller, not only a rival account with something to gain from it.
+    caller = await _seed_linked_caller(db_session)
+    await _sign_in(client, db_session, caller)
+
+    response = client.get(f"/api/players/{_MULTI_PROFILE_ONE_ID}/matches")
+    assert response.status_code == 200, (
+        f"GET /api/players/{{profile_id}}/matches must answer for any profile this service has "
+        f"observed. Got {response.status_code}: {response.text}"
+    )
+    body = response.json()
+
+    # Positive control: profile one's own match, against its own opponent, must actually come
+    # back — otherwise the absence checks below would pass for having returned nothing at all.
+    assert str(_MULTI_GAME_ONE_ID) in response.text
+    assert _MULTI_OPPONENT_ALIAS_ONE in response.text
+
+    assert not _contains_value(body, _MULTI_PROFILE_TWO_ID), (
+        "the response for profile one must never name profile two, its owner's other profile"
+    )
+    assert _MULTI_ALIAS_TWO not in response.text
+    assert str(_MULTI_GAME_TWO_ID) not in response.text
+    assert _MULTI_OPPONENT_ALIAS_TWO not in response.text
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_replay_download_ownership_survives_the_match_detail_widening(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a property 4 (FR-026, FR-012): `GET /api/matches/{game_id}` is now open to any
+    signed-in caller (T327), but `GET /api/matches/{game_id}/replay/{profile_id}` — the download
+    route T337 adds — must not follow it there. FR-026 is explicit that `archived` is "the
+    caller's own captured replay, and only that": a `replay_captures` row *the caller owns*,
+    regardless of the match's age. This seeds a match old enough that the source can no longer
+    supply it either, so the archive is the only copy that exists at all — a stranger reaching for
+    it anyway must still be refused, exactly as `test_replay_download.py` (T071) already proves
+    for 001's own `GET /api/replays/{game_id}/download`; this is the identical property, for the
+    route this feature adds instead.
+
+    Positive control kept deliberately, and load-bearing here specifically: without it, "the
+    stranger is refused" would be indistinguishable from "the route does not exist yet, so nobody
+    can download anything" — the same collision `test_replay_download.py`'s own equivalent test
+    names as its reason for asserting the owner's download first, in the same test.
+    """
+    owner = await _seed_user(db_session)
+    await _seed_profile(db_session, profile_id=_REPLAY_OWNER_PROFILE_ID, alias="ReplayOwnerAlias")
+    await _link_profile(
+        db_session, user=owner, profile_id=_REPLAY_OWNER_PROFILE_ID, steam_id64="76561197960287950"
+    )
+    stranger = await _seed_user(db_session)
+    await _seed_profile(
+        db_session, profile_id=_REPLAY_STRANGER_PROFILE_ID, alias="ReplayStrangerAlias"
+    )
+    await _link_profile(
+        db_session,
+        user=stranger,
+        profile_id=_REPLAY_STRANGER_PROFILE_ID,
+        steam_id64="76561197960287951",
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+    # Well past the measured retention window (docs/data-sources.md §2): the archive is the only
+    # copy of this replay that can possibly exist, which is what makes "ownership, not age" the
+    # only thing left that can be gating the stranger's request below.
+    await _seed_match(db_session, game_id=_REPLAY_GAME_ID, completed_at=now - timedelta(days=60))
+    object_key = f"replays/{_REPLAY_GAME_ID}/{_REPLAY_OWNER_PROFILE_ID}.zip"
+    db_session.add(
+        ReplayCapture(
+            game_id=_REPLAY_GAME_ID,
+            profile_id=_REPLAY_OWNER_PROFILE_ID,
+            status=CaptureStatus.STORED,
+            capture_deadline_at=now - timedelta(days=41),
+            first_seen_at=now - timedelta(days=60),
+            stored_at=now - timedelta(days=59),
+            object_key=object_key,
+            zip_bytes=1024,
+            zip_sha256="b" * 64,
+            inner_filename="replay.aoe2record",
+            inner_bytes=2048,
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+    await db_session.commit()
+
+    download_path = f"/api/matches/{_REPLAY_GAME_ID}/replay/{_REPLAY_OWNER_PROFILE_ID}"
+
+    await _sign_in(client, db_session, owner)
+    owner_response = client.get(download_path, follow_redirects=False)
+    assert owner_response.status_code == 302, (
+        "the actual owner of the capture must still be able to download it (FR-026), regardless "
+        f"of the match's age. Got {owner_response.status_code}: {owner_response.text}"
+    )
+    assert object_key in owner_response.headers.get("location", "")
+
+    client.cookies.clear()
+    await _sign_in(client, db_session, stranger)
+    stranger_response = client.get(download_path, follow_redirects=False)
+
+    assert stranger_response.status_code == 404, (
+        "a caller who does not own the capture must be refused even though GET /api/matches/"
+        f"{{game_id}} would now show them this match (T327). Got "
+        f"{stranger_response.status_code}: {stranger_response.text}"
+    )
+    assert stranger_response.json()["error"]["code"] == "not_found", (
+        "never a differentiated cause: FR-045's discipline applies here exactly as it does to "
+        "every other ownership check in this codebase (replays.py's own module docstring)"
+    )
+    assert object_key not in stranger_response.text
+    assert "location" not in stranger_response.headers
 
 
 async def test_ratings_never_returns_the_curve_of_a_profile_the_caller_has_not_linked(
