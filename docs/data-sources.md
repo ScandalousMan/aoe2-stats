@@ -107,6 +107,39 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
 - Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
 - Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
 
+### No public player-name search
+
+Measured **2026-08-23**. There is no unauthenticated endpoint on this host that turns a display name
+into a profile. Everything public here is keyed by an identifier.
+
+| Probe                                                          | Result                                                      |
+| -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `/game/account/FindProfiles` (`alias`, `search`, `profile_names`) | `401 Unauthorized`, HTML                                    |
+| `/game/{invented path}`                                        | `404` — so the 401 above is a real route, not a stray        |
+| `/community/leaderboard/findAdvancedPlayerLeaderboard`          | `404`                                                       |
+| `/community/leaderboard/getAdvancedPlayerLeaderboard`           | `404`                                                       |
+| `/community/leaderboard/getLeaderBoard2?...&searchPlayer=Viper`  | `200`, **byte-identical** to the same call without the param |
+
+> **Trap.** `getLeaderBoard2`'s `searchPlayer` parameter is **silently ignored**. It answers
+> `200` with `"message":"SUCCESS"` and returns the top of the ladder — for `searchPlayer=Viper` the
+> first result is the rank-1 player, Hera. Anything built on it looks like it works and is wrong.
+
+`FindProfiles` exists: the `/game/account/FindProfiles` → `401` versus `/game/{anything else}` →
+`404` split proves the router knows the route. It sits in the `/game/` namespace, which the game
+client reaches with a Relic session this project has no lawful way to obtain; acquiring one would
+mean impersonating the client, which the Game Content Usage Rules forbid. It is unavailable, not
+merely difficult.
+
+What does resolve a player, by identifier only:
+
+- `getPersonalStat` — steamid64 to profile, carrying `alias`, `country`, `level`.
+- `getLeaderBoard2` — the paginated ladder, one `alias` + `profile_id` per rank, public and complete
+  for ranked players. Walking it is the one way to build a name index here without a name search,
+  and it covers only players who appear on a ladder.
+
+The only measured display-name search against any source is `data.aoe2companion.com` (§3), which is
+degradable by design and intermittently 403 from datacentre addresses.
+
 ## 2. Replay download
 
 ```
@@ -191,6 +224,27 @@ GET https://data.aoe2companion.com/api/profiles?search={name}
 
 Normalized map and civilisation names, game mode, speed, CDN images, `linkedProfiles`. Freshness
 measured at ~30 s: a match ending at 15:46:08Z reported `updated` 15:46:37Z.
+
+### Profile search behaviour
+
+Measured **2026-08-23**. This is the only display-name search available against any source (see §1).
+
+| Property        | Measured                                                                          |
+| --------------- | ---------------------------------------------------------------------------------- |
+| Matching        | case-insensitive **substring** — `vipe` returns `Vipechester`, `HERA` returns `anotheraoe2player` |
+| Ordering        | by `games` descending, so the best-known player of a name comes first               |
+| Page            | 20 per page, with `page`, `perPage`, `offset`, `count`, `hasMore`                   |
+| Record          | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, social links |
+| Reliability     | 12 consecutive requests, 12 × `200`, from a residential connection                  |
+
+> **Trap.** A search record also carries `steamId`, `shared` and `sharedHistory` — the same
+> community account-linking claim as `linkedProfiles`. Constitution IX and 001's FR-045 forbid
+> using, storing or surfacing any of it: it is an unverifiable assertion about someone's identity,
+> and acting on it would expose alternate accounts their owners keep separate on purpose. Strip
+> these fields at the provider boundary so they cannot reach anything downstream.
+
+> **Unverified.** Whether this endpoint answers at all from Vercel's egress addresses is still
+> open — see the 403 observations below. Nothing may depend on it without a degraded path.
 
 Risk is high and structural: single-maintainer project, **no licence on the repository**, no public
 API documentation, no announced rate limits, `/api` root returns 403. Use only for display
