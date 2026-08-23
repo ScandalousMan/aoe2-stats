@@ -234,7 +234,7 @@ Measured **2026-08-23**. This is the only display-name search available against 
 | Matching        | case-insensitive **substring** — `vipe` returns `Vipechester`, `HERA` returns `anotheraoe2player` |
 | Ordering        | by `games` descending, so the best-known player of a name comes first               |
 | Page            | 20 per page, with `page`, `perPage`, `offset`, `count`, `hasMore`                   |
-| Record          | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, social links |
+| Record          | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, `platformName`, `steamId`, `shared`, `sharedHistory`, `hidden`, and six sparse `social*` fields (1 record in 20 carried any) |
 | Reliability     | 12 consecutive requests, 12 × `200`, from a residential connection                  |
 
 > **Trap.** A search record also carries `steamId`, `shared` and `sharedHistory` — the same
@@ -245,6 +245,41 @@ Measured **2026-08-23**. This is the only display-name search available against 
 
 > **Unverified.** Whether this endpoint answers at all from Vercel's egress addresses is still
 > open — see the 403 observations below. Nothing may depend on it without a degraded path.
+
+### Is there a "this profile is hidden" signal? Measured 2026-08-23
+
+**No usable one.** A `hidden` field exists on both projections — `?search=` and
+`/api/profiles/{profileId}` — and it carries nothing:
+
+| Evidence | Result |
+| --- | --- |
+| 200 search records, 10 queries, pages 1 to 20 | `hidden` is `null` in 200 of 200 |
+| a single-profile fetch | `hidden` is `null` |
+| the source's own client typing (`src/api/helper/api.types.ts`) | `hidden: any`, with no comment |
+| a setting anywhere in that client that writes it | none |
+| a consumer anywhere in that client that reads it | none |
+
+A field the source declares as `any`, never populates, never writes and never reads is not a privacy
+signal. Anything built on it would be honouring a flag nobody can raise, and would test green against
+a fixture we wrote ourselves.
+
+**The real preference is `sharedHistory`, and it is one of the fields we strip.** That is the finding
+worth carrying. The source's client exposes it as a user setting — "Shared History", *"Your match
+history is visible for other players"* — and honours `sharedHistory === false` by refusing to show
+that player's matches at all (*"This player has disabled shared match history"*). It was `null` in
+all 200 sampled records, which is the unset default rather than an absence of the mechanism; a player
+who has switched it off is simply rarer than 1 in 200.
+
+So the trap above needs reading with more care than it was written with. `steamId` is an identifier
+and `sharedHistory` is an expressed preference, and grouping them as one "account-linking claim" was
+imprecise: stripping the first is required, while stripping the second discards the only place this
+source records a player asking not to be shown. What `shared` means is **still unresolved** — it
+takes both values (129 `false`, 71 `true` across the same 200) and has no user-facing setting string
+in the client. Do not act on it.
+
+Consequence for anything consuming this endpoint: there is no hidden flag to honour, and whether a
+`sharedHistory === false` preference should be honoured — for a match history this service reads from
+Relic and not from here — is a product decision, not a measurement.
 
 Risk is high and structural: single-maintainer project, **no licence on the repository**, no public
 API documentation, no announced rate limits, `/api` root returns 403. Use only for display
