@@ -195,6 +195,36 @@ class MatchEnrichment(StrictProviderModel):
     civilizations: dict[int, str] | None = None
 
 
+@dataclass(frozen=True)
+class PlayerSearchResult:
+    """`PlayerSearchProvider.search_players` — one match from aoe2companion's `?search=` endpoint
+    (`docs/data-sources.md` §3), reduced to exactly the fields FR-004b allows.
+
+    A plain dataclass, not a `StrictProviderModel`: the enforcement this DTO exists for is the
+    *absence* of a field (`contracts/providers.md`'s "The fields that are not there"), which is a
+    property of the class definition itself, not of validation. `steam_id`, `shared`,
+    `shared_history` and `linked_profiles` — the source's account-linking claims, the same
+    unverifiable identity assertion 001's FR-045 already refuses for `linkedProfiles` — have
+    nowhere to be assigned here, deliberately.
+    """
+
+    profile_id: int
+    alias: str
+    country: str | None
+    games_played: int | None
+    clan: str | None
+
+
+@dataclass(frozen=True)
+class PlayerSearchPage:
+    """`PlayerSearchProvider.search_players`'s return value: one page of `PlayerSearchResult`,
+    plus whether the source reports more beyond it.
+    """
+
+    results: Sequence[PlayerSearchResult]
+    has_more: bool
+
+
 def parse_strict[ModelT: BaseModel](
     model: type[ModelT], data: Any, *, provider: str, endpoint: str
 ) -> ModelT:
@@ -257,6 +287,18 @@ class EnrichmentProvider(Protocol):
     """
 
     async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]: ...
+
+
+@runtime_checkable
+class PlayerSearchProvider(Protocol):
+    """Display-name search against aoe2companion, the only source that offers one (§1 of
+    `docs/data-sources.md`). Implemented by `CompanionEnrichmentProvider`, sharing its circuit
+    breaker and token bucket with `enrich_matches` rather than duplicating either
+    (`contracts/providers.md`). `search_players` never raises: a 403, an outage or a malformed
+    body all come back as an empty page, exactly like `enrich_matches`'s failure mode.
+    """
+
+    async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage: ...
 
 
 # --- Retry with backoff ---------------------------------------------------------------------------

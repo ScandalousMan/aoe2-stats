@@ -28,6 +28,17 @@ therefore best-effort and unverified against the live API (nightly contract test
 suite, are what would catch a drift here). Filtering the *response* down to the requested
 `game_ids` happens unconditionally in this module regardless of what the server actually honoured,
 so a server that ignores the filter and returns unrelated matches never leaks them to the caller.
+
+**`search_players` (T313, `PlayerSearchProvider`).** `GET /api/profiles?search={name}`
+(`docs/data-sources.md` §3's "Profile search behaviour"), against the exact same `_breaker` and
+token bucket `enrich_matches` uses — not a second instance of either, since a search storm and an
+enrichment storm are the same source under the same protection
+(`contracts/providers.md`). Behaves exactly like `enrich_matches` on every failure path (never
+raises; a 403 is not rate limiting; a non-200 or a malformed body opens the breaker one step
+further; a genuine 200, whatever it contains, closes it). The parser keeps only `profileId`,
+`name`, `country`, `games` and `clan` (FR-004b — see `PlayerSearchResult` in `base.py` for what is
+deliberately not there) and coerces `games` from the string the source sends it as
+(`docs/data-sources.md` §3) into the `int | None` the contract promises.
 """
 
 from __future__ import annotations
@@ -42,6 +53,8 @@ from aoe2stats_providers.base import (
     AsyncBaseProvider,
     AsyncProviderCallSink,
     MatchEnrichment,
+    PlayerSearchPage,
+    PlayerSearchResult,
     ProviderContractViolation,
     ProviderError,
     RetryPolicy,
@@ -160,6 +173,37 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
         self._breaker.record_success()
         return _parse_matches(body, game_ids, provider=self._provider)
 
+    async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage:
+        if not self._breaker.allow():
+            return PlayerSearchPage(results=(), has_more=False)
+
+        try:
+            response = await self._request(
+                "GET",
+                f"{self._base_url}/profiles",
+                endpoint="profiles",
+                params={"search": query},
+                # Same reasoning as `enrich_matches` (module docstring): a 403 here is documented,
+                # expected bot-protection noise, not throttling.
+                treat_403_as_rate_limited=False,
+            )
+        except ProviderError:
+            self._breaker.record_failure()
+            return PlayerSearchPage(results=(), has_more=False)
+
+        if response.status_code != 200:
+            self._breaker.record_failure()
+            return PlayerSearchPage(results=(), has_more=False)
+
+        try:
+            body: Any = response.json()
+        except ValueError:
+            self._breaker.record_failure()
+            return PlayerSearchPage(results=(), has_more=False)
+
+        self._breaker.record_success()
+        return _parse_search_page(body, limit=limit)
+
 
 def _parse_matches(
     body: Any, game_ids: Sequence[int], *, provider: str
@@ -210,3 +254,85 @@ def _parse_matches(
         result[match_id] = enrichment
 
     return result
+
+
+def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
+    """Build a `PlayerSearchPage` from a genuine `?search=` response
+    (`docs/data-sources.md` §3), keeping only `PlayerSearchResult`'s five contract fields
+    (FR-004b) and never the source's account-linking fields.
+
+    `limit` is enforced here rather than on the wire: the contract only documents
+    `?search={name}`, no page-size parameter, so truncating the parsed list is the one
+    behaviour this method can promise regardless of what the source actually honours — the
+    same "filter the response, not just the request" posture `_parse_matches` takes with
+    `game_ids`. A truncation counts as "more" exactly like the source's own `hasMore` does.
+    """
+    if not isinstance(body, dict):
+        return PlayerSearchPage(results=(), has_more=False)
+
+    profiles = body.get("profiles")
+    if not isinstance(profiles, list):
+        return PlayerSearchPage(results=(), has_more=False)
+
+    results: list[PlayerSearchResult] = []
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        result = _parse_search_result(profile)
+        if result is not None:
+            results.append(result)
+
+    truncated = len(results) > limit
+    if truncated:
+        results = results[:limit]
+
+    has_more = bool(body.get("hasMore")) or truncated
+    return PlayerSearchPage(results=tuple(results), has_more=has_more)
+
+
+def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
+    """One `profiles[]` entry, reduced to `profileId`, `name`, `country`, `games` and `clan` —
+    and nothing else (FR-004b): `steamId`, `shared`, `sharedHistory` and `linkedProfiles` are
+    never read, the same posture `_parse_matches` takes with `linkedProfiles` (module docstring).
+    A malformed entry (missing or mistyped `profileId`/`name`) is dropped rather than failing the
+    whole page — this provider degrades, it does not raise (module docstring).
+    """
+    profile_id = profile.get("profileId")
+    alias = profile.get("name")
+    if not isinstance(profile_id, int) or not isinstance(alias, str):
+        return None
+
+    country = profile.get("country")
+    if not isinstance(country, str):
+        country = None
+
+    clan = profile.get("clan")
+    if not isinstance(clan, str):
+        clan = None
+
+    return PlayerSearchResult(
+        profile_id=profile_id,
+        alias=alias,
+        country=country,
+        games_played=_parse_games_played(profile.get("games")),
+        clan=clan,
+    )
+
+
+def _parse_games_played(value: Any) -> int | None:
+    """The source sends `games` as a string (e.g. `"10665"`), never the `int` the contract
+    promises (`docs/data-sources.md` §3, T313's task note) — this is the one coercion this
+    module performs, not silent elsewhere: an unparseable or wrong-typed value becomes `None`
+    rather than a raised error, matching `MatchEnrichment`'s "every field is optional" posture
+    for this same degrade-not-raise provider.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None

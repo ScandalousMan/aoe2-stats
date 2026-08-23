@@ -288,7 +288,7 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 
 
 # ==================================================================================================
-# T312 — `search_players` (T313 not implemented yet): quickstart scenario 2, "nothing about a
+# T312 — `search_players` (implemented by T313): quickstart scenario 2, "nothing about a
 # search result leaks an account link".
 #
 # Ground truth is `contracts/providers.md`'s `PlayerSearchProvider` section
@@ -298,12 +298,11 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 # breaker and token bucket with `enrich_matches` rather than adding new ones — "a search storm and
 # an enrichment storm are the same source under the same protection" (providers.md).
 #
-# Written test-first, before T313 exists: every test below carries
-# `@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)`, and imports `PlayerSearchResult` /
-# `PlayerSearchPage` from inside the test body rather than at module scope, for the same
-# collection-safety reason `_provider()` above imports `CompanionEnrichmentProvider` lazily: those
-# names do not exist on `aoe2stats_providers.base` yet, and a module-scope import of a missing name
-# would abort collection for the whole workspace rather than failing one test.
+# Written test-first, before T313 existed, with every test below carrying
+# `@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)`; T313 has since landed and removed
+# those markers. `PlayerSearchResult` / `PlayerSearchPage` are still imported from inside each test
+# body rather than at module scope, for the same collection-safety reason `_provider()` above
+# imports `CompanionEnrichmentProvider` lazily.
 #
 # Fixtures (T311): `fixtures/companion_profiles_search.json` is a real, uncapped 20-record page for
 # `?search=vipe`, deliberately keeping `steamId`, `shared` and `sharedHistory` exactly as the source
@@ -328,7 +327,6 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 #    refuse to reach the transport at all, on that same provider instance.
 # ==================================================================================================
 
-SEARCH_XFAIL_REASON = "T313 not implemented yet"
 
 # The two T311 fixtures live directly under `fixtures/`, not under `fixtures/companion/` like the
 # `enrich_matches` fixtures above (`fixtures/README.md`).
@@ -359,7 +357,6 @@ def _load_search_empty_fixture() -> dict[str, Any]:
 # --- A genuine response carries only the five contract fields, nothing about account links -------
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_returns_only_the_five_contract_fields() -> None:
     """`fixtures/README.md`: "one full page (20 real records), uncapped" for `?search=vipe`. Every
     one of the 20 records carries `steamId`, `shared` and `sharedHistory` on the wire
@@ -400,7 +397,6 @@ async def test_search_players_returns_only_the_five_contract_fields() -> None:
 # --- A genuine empty result is an ordinary outcome, not a breaker failure -------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_genuine_empty_result_does_not_trip_the_breaker() -> None:
     """A genuine 200 with no matching profiles (`fixtures/companion_profiles_search_empty.json`)
     must look, in outcome, exactly like the failure paths below — an empty page — but, unlike
@@ -436,7 +432,6 @@ async def test_search_players_genuine_empty_result_does_not_trip_the_breaker() -
 # --- The dataclass definition itself carries no account-linking field, not only its instances -----
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 def test_player_search_result_dataclass_has_no_account_linking_field() -> None:
     """FR-004b: "these fields exist in the response and carrying them further would breach 001's
     FR-045 by accident rather than by decision." Introspecting `dataclasses.fields` — the class
@@ -455,7 +450,6 @@ def test_player_search_result_dataclass_has_no_account_linking_field() -> None:
 # --- A 403, a 5xx and a malformed body all come back as an empty page, never an exception ---------
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_403_yields_an_empty_page_and_does_not_raise() -> None:
     """A 403 here is the same documented, expected bot-protection noise `enrich_matches` already
     survives (`docs/data-sources.md` §3) — FR-003's precondition depends on this never becoming an
@@ -476,7 +470,6 @@ async def test_search_players_403_yields_an_empty_page_and_does_not_raise() -> N
     )
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_full_outage_yields_an_empty_page_and_does_not_raise() -> None:
     """A 5xx that exhausts the shared retry budget is the ordinary `ProviderUnavailable` path every
     other provider raises through — here, as for `enrich_matches`, it must not surface at all.
@@ -494,7 +487,6 @@ async def test_search_players_full_outage_yields_an_empty_page_and_does_not_rais
     assert all(call.status_code == 503 for call in recorder.calls)
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_malformed_body_yields_an_empty_page_and_does_not_raise() -> None:
     """A 200 whose body does not even parse as JSON is the search-side twin of `enrich_matches`'s
     malformed-body handling: a response the source genuinely sent, just not shaped as documented,
@@ -515,7 +507,6 @@ async def test_search_players_malformed_body_yields_an_empty_page_and_does_not_r
 # --- The circuit breaker is the exact same object `enrich_matches` uses ---------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=SEARCH_XFAIL_REASON)
 async def test_search_players_shares_the_circuit_breaker_with_enrich_matches() -> None:
     """`contracts/providers.md`: "The existing circuit breaker and token bucket are shared with
     `enrich_matches` rather than duplicated ... two independent breakers would each see half the
