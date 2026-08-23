@@ -49,12 +49,15 @@ enrichment storm are the same source under the same protection
 transport (never raises; a 403 is not rate limiting; a non-200 opens the breaker one step further),
 but a genuine 200 does **not**, by itself, close it (BL-1 remediation). `_parse_search_page` below
 distinguishes a body that parses into the contracted `{"profiles": [...]}` shape — closes the
-breaker, whatever the list contains, including empty — from one that does not — a renamed key, a
-wrapped list, a bare `[]` — which is treated exactly like a non-200: `record_failure()`, an empty
-page returned, never an exception. Recording success *before* that distinction existed meant a
-single-maintainer API renaming a field would permanently answer every search `degraded: false,
-results: []` — FR-003's exact prohibition — with nothing to self-correct it, because the breaker
-never saw a failure. The parser keeps only `profileId`, `name`, `country`, `games` and `clan`
+breaker, whatever the list contains, including empty — from one that does not, at either level —
+an envelope-level drift (a renamed key, a wrapped list, a bare `[]`), or a record-level one
+(BL-5: `profiles` is real and non-empty, but every entry's own `profileId`/`name` has been renamed,
+so nothing survives `_parse_search_result`) — both treated exactly like a non-200:
+`record_failure()`, an empty page returned, never an exception. Recording success *before* that
+distinction existed meant a single-maintainer API renaming a field, at either level, would
+permanently answer every search `degraded: false, results: []` — FR-003's exact prohibition — with
+nothing to self-correct it, because the breaker never saw a failure. The parser keeps only
+`profileId`, `name`, `country`, `games` and `clan`
 (FR-004b — see `PlayerSearchResult` in `base.py` for what is deliberately not there) and coerces
 `games` from the string the source sends it as (`docs/data-sources.md` §3) into the `int | None`
 the contract promises.
@@ -347,13 +350,16 @@ def _parse_matches(
 
 class _MalformedSearchResponse(Exception):
     """Raised by `_parse_search_page` when a 200's body does not parse into the contracted
-    `{"profiles": [...]}` shape — a renamed key, a wrapped list, a bare `[]`, anything but a dict
-    carrying a `profiles` list. Never raised for a genuine zero-match answer (`{"profiles": []}`
-    is a perfectly parseable, empty list): that is `PlayerSearchPage(results=(), has_more=False)`,
+    `{"profiles": [...]}` shape — either at the envelope (a renamed key, a wrapped list, a bare
+    `[]`, anything but a dict carrying a `profiles` list) or at the record level (BL-5: `profiles`
+    is a real, non-empty list, but every entry in it has had `profileId` or `name` renamed, so
+    nothing parses). Never raised for a genuine zero-match answer (`{"profiles": []}` is a
+    perfectly parseable, empty list): that is `PlayerSearchPage(results=(), has_more=False)`,
     the same value this exception's own callers return on catching it, but recorded as a *success*
-    by `search_players` — the whole distinction BL-1 exists to draw. Private to this module:
-    `search_players` is the only caller, and turns this into `_breaker.record_failure()`, never
-    into something a caller of `search_players` itself would see.
+    by `search_players` — the whole distinction BL-1 (and, at the record level, BL-5) exists to
+    draw. Private to this module: `search_players` is the only caller, and turns this into
+    `_breaker.record_failure()`, never into something a caller of `search_players` itself would
+    see.
     """
 
 
@@ -365,9 +371,15 @@ def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
     Raises `_MalformedSearchResponse` — never returns a page — when `body` does not even have the
     contracted shape (not a dict, or no `profiles` list at all): that is a source drift
     `search_players` must record as a failure (BL-1), not a page this function can silently stand
-    in an empty one for. A `profiles` list that is merely empty, or whose individual entries are
-    malformed and dropped by `_parse_search_result`, is a genuine, parseable answer and returns
-    normally — dropping one bad entry does not throw away a response that otherwise parsed.
+    in an empty one for. Also raises it when `profiles` is non-empty but every single entry fails
+    to parse (BL-5): a rename of `profileId` or `name` *inside* each record leaves the envelope
+    intact while `_parse_search_result` drops every entry, and a `profiles` list that was never
+    empty on the wire producing zero results is a record-level drift, not a genuine zero-match
+    answer — the same distinction BL-1 draws one nesting level up. A `profiles` list that is
+    genuinely empty (`{"profiles": []}`), or whose *individual* entries are malformed and dropped
+    by `_parse_search_result` while at least one other entry in the same page still parses, is a
+    genuine, parseable answer and returns normally — dropping one bad entry does not throw away a
+    response that otherwise parsed; dropping *every* entry is not a response that parsed at all.
 
     `limit` is enforced here rather than on the wire: the contract only documents
     `?search={name}`, no page-size parameter, so truncating the parsed list is the one
@@ -389,6 +401,15 @@ def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
         result = _parse_search_result(profile)
         if result is not None:
             results.append(result)
+
+    if profiles and not results:
+        # BL-5: the envelope parsed (`profiles` is a real, non-empty list), but not one entry in
+        # it survived `_parse_search_result` — a record-level rename (`profileId`/`name`) rather
+        # than the envelope-level drift the checks above already catch. A non-empty `profiles`
+        # list that yields zero results is not a genuine zero-match answer.
+        raise _MalformedSearchResponse(
+            "no `profiles` entry carried the contracted `profileId`/`name` fields"
+        )
 
     truncated = len(results) > limit
     if truncated:

@@ -625,6 +625,71 @@ async def test_a_genuine_empty_result_still_closes_the_breaker_after_a_prior_dri
     assert provider.is_degraded() is False
 
 
+async def test_all_records_renamed_is_recorded_as_a_failure_not_a_confident_empty_page() -> None:
+    """BL-5: the envelope (`{"profiles": [...]}`) is intact, but every record inside it has had its
+    contracted `profileId`/`name` fields renamed — `_parse_search_result` drops each one and
+    returns `None`, so `results` ends up `[]` from a `profiles` list that was never empty on the
+    wire. Before this remediation, `_parse_search_page` only ever raised `_MalformedSearchResponse`
+    for an envelope-level drift (body not a dict, or no `profiles` list), so this record-level drift
+    parsed "successfully" into an empty page and `search_players` called `record_success()` — the
+    same FR-003 inversion BL-1 closed one nesting level up, reopened one level down.
+    """
+    recorder = _Recorder()
+    provider, _ = _provider(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "profiles": [{"id": i, "alias": f"player-{i}"} for i in range(20)],
+                "hasMore": False,
+            },
+        ),
+        recorder=recorder,
+    )
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert list(page.results) == [], (
+        "every record was malformed, so the page is empty exactly like the pre-remediation bug"
+    )
+    assert provider.last_call_failed() is True, (
+        "a `profiles` list that is non-empty on the wire but yields zero parseable records is a "
+        "record-level source drift, not a genuine zero-match answer, and must be recorded as a "
+        "failure the same way an envelope-level drift already is (BL-1)"
+    )
+    assert recorder.calls[0].status_code == 200, (
+        "the wire genuinely answered 200 with a non-empty `profiles` list — it is the fields "
+        "*inside* each record that are malformed, the case an envelope-only check cannot catch"
+    )
+
+
+async def test_one_bad_record_among_good_ones_is_dropped_but_still_a_success() -> None:
+    """The contrast case BL-5 exists to protect: one malformed entry among otherwise-good ones must
+    still be silently dropped (the existing, correct "one bad entry does not throw away a response
+    that otherwise parsed" posture), and the call must still be recorded as a success. Without this
+    test, the fix above could not be told apart from one that over-triggers on any single dropped
+    record rather than only on "every record in this page was bad".
+    """
+    recorder = _Recorder()
+    good_records = [{"profileId": i, "name": f"player-{i}"} for i in range(19)]
+    bad_record = {"id": 999, "alias": "renamed-fields"}
+    provider, _ = _provider(
+        lambda request: httpx.Response(
+            200, json={"profiles": [*good_records, bad_record], "hasMore": False}
+        ),
+        recorder=recorder,
+    )
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert len(page.results) == 19, "the one malformed record is dropped, not the whole page"
+    assert provider.last_call_failed() is False, (
+        "a page where every other record parsed fine is a genuine, confident answer — the bad "
+        "record's own contribution is 'no result', not 'the whole page is untrustworthy'"
+    )
+    assert provider.is_degraded() is False
+    assert recorder.calls[0].status_code == 200
+
+
 async def test_last_call_failed_is_true_through_the_sub_threshold_window() -> None:
     """BL-2: `is_degraded()` alone cannot express "this call failed" until the third consecutive
     failure (`_FAILURE_THRESHOLD`) — reproduced against the pre-remediation code: three consecutive
