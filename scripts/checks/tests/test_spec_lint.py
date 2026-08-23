@@ -1,4 +1,4 @@
-"""Tests for the four feature-001-shaped assumptions in `scripts/checks/spec_lint.py` (T201, T202).
+"""Tests for the feature-001-shaped assumptions in `scripts/checks/spec_lint.py` (T201, T202, T301).
 
 `spec_lint.py` was written when this repository held exactly one feature, and four of its checks
 (`task-refs`, `alert-kinds`, `env-consumed`, `register-commitments`) quietly baked that in: each one
@@ -33,6 +33,10 @@ Each check gets one positive and one negative test:
   consumed by no task anywhere must still fail.
 - `register-commitments` (d): a launch item naming a task defined in another feature must pass; an
   item naming an id defined nowhere must still fail.
+- `behavioural-section` (e): a `.env.example` section header ending in "tuning" other than the
+  literal `Ingestion tuning` — feature 003's own `Search, favourites and analysis tuning` — must
+  still mark its keys behavioural; a header that merely *contains* "tuning" without ending in it
+  must not.
 
 None of the eight carries `xfail` any more. Under the single-feature checks T201 first wrote these
 tests against, every positive half failed structurally and was marked
@@ -305,3 +309,39 @@ def test_register_commitments_fails_for_an_item_naming_a_task_defined_nowhere(
         f.startswith("register-commitments") and "T999" in f and "does not define" in f
         for f in spec_lint.failures
     )
+
+
+# --------------------------------------------------------------------- (e) behavioural-section
+
+
+def test_behavioural_section_recognises_any_header_ending_in_tuning() -> None:
+    """T301: `parse_env` decided "behavioural" by the single literal header `Ingestion tuning`.
+    Feature 003 adds its own section, `Search, favourites and analysis tuning`, and its keys must
+    be recognised as behavioural too, without the check learning that literal string by name."""
+    import scripts.checks.spec_lint as spec_lint
+
+    env_text = (
+        "# --- Search, favourites and analysis tuning ---------------------------------\n"
+        "FAVOURITES_MAX_PER_USER=100\n"
+    )
+
+    _, behavioural = spec_lint.parse_env(env_text)
+
+    assert "FAVOURITES_MAX_PER_USER" in behavioural
+
+
+def test_behavioural_section_ignores_a_header_that_only_contains_tuning() -> None:
+    """The negative half: a header that mentions "tuning" without *ending* in it must not be
+    swept in — the check matches the suffix deliberately, not a substring anywhere in the
+    header, so a section like "Tuning notes for the database" (about infrastructure, not
+    behaviour) does not silently start requiring its keys to be named by a task."""
+    import scripts.checks.spec_lint as spec_lint
+
+    env_text = (
+        "# --- Tuning notes for the database --------------------------------------------\n"
+        "DATABASE_POOL_SIZE=5\n"
+    )
+
+    _, behavioural = spec_lint.parse_env(env_text)
+
+    assert "DATABASE_POOL_SIZE" not in behavioural

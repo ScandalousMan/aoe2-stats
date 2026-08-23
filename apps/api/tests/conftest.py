@@ -87,6 +87,16 @@ REQUIRED_ENV: dict[str, str] = {
     "INGEST_RUN_BUDGET_SECONDS": "5",
     "INGEST_MAX_CAPTURES_PER_USER_PER_RUN": "20",
     "INGEST_QUOTA_EXEMPT_DAYS": "7",
+    "FAVOURITES_MAX_PER_USER": "100",
+    "PLAYER_SEARCH_CACHE_TTL_SECONDS": "300",
+    "PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE": "20",
+    "REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE": "6",
+    "ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY": "10",
+    "ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY": "60",
+    "ANALYSIS_RETENTION_CAP_BYTES": "2147483648",
+    "ANALYSIS_RUN_BUDGET_SECONDS": "240",
+    "ANALYSIS_LEASE_SECONDS": "300",
+    "ANALYSIS_MAX_RAW_BYTES": "25165824",
 }
 
 
@@ -108,7 +118,7 @@ if _missing_from_fixture or _missing_from_env_example:
 
 @pytest.fixture
 def required_env() -> dict[str, str]:
-    """The 18-key environment `test_cron.py` and `test_cron_ingest_entrypoint.py` both need,
+    """The full environment `test_cron.py` and `test_cron_ingest_entrypoint.py` both need,
     checked against `.env.example` above at import time rather than only where it is used."""
     return REQUIRED_ENV
 

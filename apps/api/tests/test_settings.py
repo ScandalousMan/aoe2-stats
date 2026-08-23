@@ -36,6 +36,16 @@ REQUIRED_ENV: dict[str, str] = {
     "INGEST_RUN_BUDGET_SECONDS": "240",
     "INGEST_MAX_CAPTURES_PER_USER_PER_RUN": "20",
     "INGEST_QUOTA_EXEMPT_DAYS": "7",
+    "FAVOURITES_MAX_PER_USER": "100",
+    "PLAYER_SEARCH_CACHE_TTL_SECONDS": "300",
+    "PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE": "20",
+    "REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE": "6",
+    "ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY": "10",
+    "ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY": "60",
+    "ANALYSIS_RETENTION_CAP_BYTES": "2147483648",
+    "ANALYSIS_RUN_BUDGET_SECONDS": "240",
+    "ANALYSIS_LEASE_SECONDS": "300",
+    "ANALYSIS_MAX_RAW_BYTES": "25165824",
 }
 
 
@@ -99,6 +109,26 @@ def test_numeric_fields_are_typed_correctly(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.ingest_max_captures_per_user_per_run == 20
     assert isinstance(settings.ingest_quota_exempt_days, int)
     assert settings.ingest_quota_exempt_days == 7
+    assert isinstance(settings.favourites_max_per_user, int)
+    assert settings.favourites_max_per_user == 100
+    assert isinstance(settings.player_search_cache_ttl_seconds, int)
+    assert settings.player_search_cache_ttl_seconds == 300
+    assert isinstance(settings.player_search_max_per_user_per_minute, int)
+    assert settings.player_search_max_per_user_per_minute == 20
+    assert isinstance(settings.replay_download_max_per_user_per_minute, int)
+    assert settings.replay_download_max_per_user_per_minute == 6
+    assert isinstance(settings.analysis_max_requests_per_user_per_day, int)
+    assert settings.analysis_max_requests_per_user_per_day == 10
+    assert isinstance(settings.analysis_max_source_requests_per_day, int)
+    assert settings.analysis_max_source_requests_per_day == 60
+    assert isinstance(settings.analysis_retention_cap_bytes, int)
+    assert settings.analysis_retention_cap_bytes == 2147483648
+    assert isinstance(settings.analysis_run_budget_seconds, int)
+    assert settings.analysis_run_budget_seconds == 240
+    assert isinstance(settings.analysis_lease_seconds, int)
+    assert settings.analysis_lease_seconds == 300
+    assert isinstance(settings.analysis_max_raw_bytes, int)
+    assert settings.analysis_max_raw_bytes == 25165824
 
 
 def test_beta_allowlist_deduplicates_and_strips_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -44,10 +44,12 @@ ENV_TOKEN_ALLOWLIST = {
     "DEFAULT_STAGES",
 }
 
-# The section of .env.example whose keys tune behaviour rather than describe infrastructure. Each of
-# these must be named by the task that consumes it: a task that states the value instead of the key
-# is a task that tells an implementer to hard-code it.
-BEHAVIOURAL_SECTION = "Ingestion tuning"
+# A `.env.example` section is behavioural — its keys tune behaviour rather than describe
+# infrastructure — when its header ends in "tuning" (case-insensitive): `Ingestion tuning`,
+# `Search, favourites and analysis tuning`, and whatever the next feature adds under its own name.
+# Each behavioural key must be named by the task that consumes it: a task that states the value
+# instead of the key is a task that tells an implementer to hard-code it.
+BEHAVIOURAL_SECTION_SUFFIX = "tuning"
 
 UNIT_WORDS = {
     "DAYS": r"days?",
@@ -279,7 +281,8 @@ def parse_env(env_text: str) -> tuple[dict[str, str], set[str]]:
     in_section = False
     for line in env_text.splitlines():
         if line.startswith("# ---"):
-            in_section = BEHAVIOURAL_SECTION in line
+            header = line.strip("# -").strip()
+            in_section = header.lower().endswith(BEHAVIOURAL_SECTION_SUFFIX)
         if match := re.match(r"^([A-Z][A-Z0-9_]+)=(.*)$", line):
             values[match.group(1)] = match.group(2).strip()
             if in_section:

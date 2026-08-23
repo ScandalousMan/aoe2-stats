@@ -153,6 +153,35 @@ class Settings(BaseSettings):
     # Captures nearer than this to their deadline ignore the fairness cap entirely.
     ingest_quota_exempt_days: int = Field(alias="INGEST_QUOTA_EXEMPT_DAYS")
 
+    # --- Search, favourites and analysis tuning -------------------------------------------------
+    # How many players a user may favourite — see .env.example for why.
+    favourites_max_per_user: int = Field(alias="FAVOURITES_MAX_PER_USER")
+    # How long a cached search result stays fresh before it is re-fetched.
+    player_search_cache_ttl_seconds: int = Field(alias="PLAYER_SEARCH_CACHE_TTL_SECONDS")
+    # Per-user search rate limit, so search cannot enumerate the source at volume.
+    player_search_max_per_user_per_minute: int = Field(
+        alias="PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE"
+    )
+    # Per-user rate limit on recorded-game requests, downloads and retained-recording reads alike.
+    replay_download_max_per_user_per_minute: int = Field(
+        alias="REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE"
+    )
+    # Per-user daily rate limit on analysis requests.
+    analysis_max_requests_per_user_per_day: int = Field(
+        alias="ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY"
+    )
+    # Analysis's own daily allowance of requests to the replay source, kept below capture's.
+    analysis_max_source_requests_per_day: int = Field(alias="ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY")
+    # Total volume, in bytes, retained under constitution IX's on-demand analysis basis.
+    analysis_retention_cap_bytes: int = Field(alias="ANALYSIS_RETENTION_CAP_BYTES")
+    # The interruptible unit of analysis work, as INGEST_RUN_BUDGET_SECONDS is for ingestion.
+    analysis_run_budget_seconds: int = Field(alias="ANALYSIS_RUN_BUDGET_SECONDS")
+    # How long an analysis claim survives an invocation that died.
+    analysis_lease_seconds: int = Field(alias="ANALYSIS_LEASE_SECONDS")
+    # R3's memory bound: the raw recording size, in bytes, above which a recording is refused
+    # before it is parsed.
+    analysis_max_raw_bytes: int = Field(alias="ANALYSIS_MAX_RAW_BYTES")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
