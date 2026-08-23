@@ -61,6 +61,14 @@ pointless but forbidden.
 This table is a cache and holds no personal data beyond what a public search already returns. It is
 safe to truncate at any time; doing so costs a re-fetch and nothing else.
 
+**It sheds its own rows, the way `rate_limit_counters` does, and for the same reason.** A row per
+distinct normalised query, kept forever, grows with the number of *different* things anyone has ever
+searched — which no per-user rate limit bounds, because the limit caps the rate and not the variety.
+On a 0.5 GB database that is a slow leak with no reader, and FR-044 forbids the obvious fix of a job
+that clears it. So entries older than the configured TTL are deleted opportunistically on write,
+which keeps the table bounded without anything running on a timer. "Safe to truncate" above is what
+an operator *may* do; this is what the system does on its own.
+
 **Erasure**: nothing to do — no row is keyed to a user. **Export**: not included; it is not the
 user's data.
 
@@ -213,8 +221,8 @@ user's data.
 `replay_capture_id` becomes nullable; gains `retained_recording_id` (uuid, fk
 `retained_recordings.id`, nullable), with a check constraint that **exactly one** of the two is set.
 
-FR-029 requires access to recordings served from this service's own archive to be logged, and after
-this feature there are two kinds of archive. The alternative was a second log table, and it was
+FR-029 requires every access to a recording this service holds to be logged — served or merely read —
+and after this feature there are two kinds of archive. The alternative was a second log table, and it was
 rejected for FR-048's own reason one level down: two access logs would need every audit to remember
 to read both, and an audit that reads one is an audit that reports a clean trail for a file nobody
 checked.
@@ -228,6 +236,17 @@ served to its owner on request; a `retained_recordings` row is served to nobody 
 `apps/analyzer` alone — on the first analysis, and on every recompute. Rows carrying
 `retained_recording_id` are therefore **system reads, not downloads**, and that is precisely what an
 audit of a third party's recording needs to be able to see.
+
+**`apps/analyzer` writes those rows, and that is allowed** — decided 2026-08-23, because constitution
+V's "no direct write access to application tables outside its own" makes it a fair question. Three
+things settle it. The read is *user-triggered*: a recompute happens because a person asked, so a
+third party's recording is opened on someone's behalf and accountability wants that visible.
+`retained_recordings.requested_by_user_id` does not cover it — that records who caused the first
+retention, never who caused each later read. And the precedent already exists one level over: the
+ingest path writes `provider_calls` today (`apps/api/src/aoe2stats_api/ingest_stages.py`), an
+append-only audit table owned by nobody in particular. Principle V is guarding against a parser crash
+corrupting application state; an append-only audit row is not that, and the row is written before any
+engine is loaded.
 
 **Erasure**: unchanged from 001 — deleted with the capture or the recording it describes.
 

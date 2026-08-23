@@ -460,7 +460,11 @@ their current standing and reachable in one click.
   for a match to be analysed (FR-033), and a download request is not that act.
 - **FR-028**: System MUST rate-limit recorded-game requests per user, and MUST stop and raise an
   alert if the source signals throttling or refusal (001 FR-021).
-- **FR-029**: System MUST log access to recorded games it serves from its own archive (001 FR-040).
+- **FR-029**: System MUST log every access to a recorded game this service holds — both the ones it
+  **serves** to a user from its own archive (001 FR-040) and the ones it only **reads**, which is what
+  analysis and recomputation do to a retained recording. Serving is not the only way a third party's
+  recording gets opened, and an access log that records only the served half would report a clean
+  trail for a file nobody checked.
 
 **Analysing the game**
 
