@@ -47,8 +47,17 @@ bookmark and has no consequence beyond this table.
 `query_normalised` (text, pk), `results` (jsonb), `fetched_at`, `source` (text).
 
 FR-004e. One row per normalised query — lowercased, whitespace-trimmed, Unicode-normalised — holding
-the stripped result records and nothing else. Entries are served while younger than a configured TTL
-and re-fetched after it.
+the stripped result records and nothing else. Entries are served while younger than the TTL that
+applies to their own `source`, and re-fetched after it.
+
+**Correction, 2026-08-23 — there are two TTLs, not one.** This section was written when every cached
+row came from the live source. A degraded answer (FR-004d) is cached too, and under its own,
+deliberately much shorter TTL held as a constant in `apps/api/src/aoe2stats_api/search.py` rather than
+in the environment: it is a protection against re-running the fallback's `match_players` aggregate on
+every request while the source is down, not an operator-tunable cache. `PLAYER_SEARCH_CACHE_TTL_SECONDS`
+governs `source = "companion"` rows only. [contracts/providers.md](./contracts/providers.md) carries the
+`source` vocabulary and the reasoning; `docs/privacy/processing-register.md` points *here* for the
+retention mechanism, so this paragraph is what keeps that citation honest.
 
 `results` holds only the fields `PlayerSearchResult` carries (see
 [contracts/providers.md](./contracts/providers.md)). It is **not** a verbatim copy of the provider's
@@ -65,8 +74,10 @@ safe to truncate at any time; doing so costs a re-fetch and nothing else.
 distinct normalised query, kept forever, grows with the number of *different* things anyone has ever
 searched — which no per-user rate limit bounds, because the limit caps the rate and not the variety.
 On a 0.5 GB database that is a slow leak with no reader, and FR-044 forbids the obvious fix of a job
-that clears it. So entries older than the configured TTL are deleted opportunistically on write,
-which keeps the table bounded without anything running on a timer. "Safe to truncate" above is what
+that clears it. So entries older than the TTL for their own `source` are deleted opportunistically on
+write — both kinds, on every successful write, whichever kind that write is — which keeps the table
+bounded without anything running on a timer. The TTL bounds what is *served*; a row is *deleted* only
+when some later write happens to prune it, so a row can outlive its TTL if no further search succeeds. "Safe to truncate" above is what
 an operator *may* do; this is what the system does on its own.
 
 **Erasure**: nothing to do — no row is keyed to a user. **Export**: not included; it is not the

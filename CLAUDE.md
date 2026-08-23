@@ -128,6 +128,38 @@ repairs a neighbour's file silently overwrites work from a task it knows nothing
 hypothetical: it cost four files' worth of rework in the Phase 3 test batch, and it was caught only
 because one agent noticed its own file being rewritten underneath it and said so.
 
+### Remediating a review finding
+
+A fix and the test that proves it are written in the same breath, by the same agent, from the same
+sentence describing the bug. So the test covers the sub-case the fix covers — and the residue is
+invisible, because the suite is green and the finding is marked closed.
+
+003's Phase 3 took three review rounds on one defect for exactly this reason. The source was reported
+as returning an outage that read as "no player found". Round 1 made the circuit breaker survive the
+request, and its test asserted the breaker was shared. Round 2 found the breaker's threshold is 3, so
+the first two failures of every outage still cached a confident empty — and round 1's test had driven
+both of those requests while asserting only `status_code == 200`. Round 2 fixed the shape-drift check
+at the envelope; round 3 found the same inversion one level down, where every *record* fails to parse
+and the envelope is intact. Each round's test drifted exactly the key its own fix handled.
+
+So, when dispatching a remediation:
+
+- **Say what the test must fail against, and require the failure output in the hand-back.** A
+  regression test that passes before the fix proves nothing, and it is the normal result of writing
+  both at once.
+- **Ask for the contrast case, not just the reproduction.** "All records unparseable is drift" is only
+  half a claim; "one bad record among good ones is still dropped and still a success" is the half that
+  fixes the boundary. Without it the next reader cannot tell the intended limit from an accident.
+- **Name the level.** A guard at the envelope is not a guard at the record. Whoever writes the dispatch
+  should say which nesting levels, which thresholds, which sub-cases — the agent will cover the ones
+  named and stop.
+- **Re-review after remediation, and expect it to find something.** All three rounds here were real
+  defects, not nitpicks. Converging took three passes because each pass could only see the layer the
+  previous one exposed.
+
+The general rule: an absence has no happy path, and neither does a residue. Both need a test written
+against the *shape* of the bug rather than against the instance that was reported.
+
 ## Commands
 
 - `uv run pytest` / `uv run ruff format .` / `uv run ruff check --fix .` / `uv run mypy`
