@@ -108,7 +108,6 @@ asyncio.run(main())
 # --- Tests ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_counter_increments_per_call_and_denies_past_the_bound(
     db_session: AsyncSession,
 ) -> None:
@@ -145,7 +144,6 @@ async def test_counter_increments_per_call_and_denies_past_the_bound(
     assert fourth.remaining == 0
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_exceeding_the_bound_returns_the_remaining_seconds(
     db_session: AsyncSession,
 ) -> None:
@@ -179,7 +177,6 @@ async def test_exceeding_the_bound_returns_the_remaining_seconds(
     assert second.retry_after == 19
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_a_window_boundary_resets_the_counter(db_session: AsyncSession) -> None:
     from aoe2stats_api.ratelimit import check_and_increment
 
@@ -220,7 +217,6 @@ async def test_a_window_boundary_resets_the_counter(db_session: AsyncSession) ->
     assert reset.remaining == 0
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_two_users_never_share_a_window(db_session: AsyncSession) -> None:
     from aoe2stats_api.ratelimit import check_and_increment
 
@@ -262,7 +258,6 @@ async def test_two_users_never_share_a_window(db_session: AsyncSession) -> None:
     assert first_user_again.allowed is False
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_two_buckets_for_the_same_user_never_share_a_window(
     db_session: AsyncSession,
 ) -> None:
@@ -295,7 +290,6 @@ async def test_two_buckets_for_the_same_user_never_share_a_window(
     assert download_outcome.remaining == 0
 
 
-@pytest.mark.xfail(strict=True, reason="T307 not implemented yet")
 async def test_the_counter_survives_a_process_with_no_shared_memory(
     db_session: AsyncSession,
     database_url: str,
