@@ -137,6 +137,18 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
             failure_threshold=_FAILURE_THRESHOLD, open_seconds=_OPEN_SECONDS
         )
 
+    def is_degraded(self) -> bool:
+        """Whether this source is currently known to be down, read off the same `_breaker`
+        `enrich_matches` and `search_players` already consult before ever reaching the transport
+        (module docstring) — no second breaker, no exception. `apps/api/src/aoe2stats_api/
+        search.py`'s `_SearchProvider` Protocol requires exactly this method (T315's own module
+        docstring: "wiring this service into the real search route (T319) is where that accessor
+        needs to be added to the real provider"); this is that wiring's other half, kept on the
+        provider itself rather than duplicated in `apps/api`, since the breaker it reports is
+        this instance's own private state.
+        """
+        return not self._breaker.allow()
+
     async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]:
         if not game_ids:
             return {}

@@ -369,7 +369,6 @@ async def test_matches_list_never_returns_the_history_of_a_profile_the_caller_ha
     assert str(_NEVER_LINKED_GAME_ID) not in never_linked_response.text
 
 
-@pytest.mark.xfail(strict=True, reason="T319 not implemented yet")
 async def test_players_routes_never_answer_without_a_session(
     client: TestClient, db_session: AsyncSession
 ) -> None:

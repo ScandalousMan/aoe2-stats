@@ -64,9 +64,9 @@ sentence: one `404`, for a `profile_id` this service has no `aoe_profiles` row f
 
 **Harness conventions** follow `test_no_public_directory.py` (T310) and `test_rate_limits.py`
 (T306) byte for byte where they overlap: `client`/`db_session`/`environment` from `conftest.py`,
-the `_sign_in` cookie helper, and `xfail(strict=True, reason="T319 not implemented yet")` on every
-test — the module under test does not exist until T319 registers it, and `strict=True` is what
-turns a stale marker red the moment it starts passing instead of hiding the regression silently.
+the `_sign_in` cookie helper. Written test-first, with `xfail(strict=True)` on every test until
+T319 registered the router; `strict=True` is what forced those markers off rather than letting
+them linger and hide a later regression.
 """
 
 from __future__ import annotations
@@ -89,8 +89,6 @@ pytestmark = [pytest.mark.usefixtures("environment")]
 #: See `test_replay_status.py`'s module docstring — this suite's working assumption, not yet fixed
 #: by a contract document beyond T028's own implementation.
 SESSION_COOKIE_NAME = "session_id"
-
-XFAIL_REASON = "T319 not implemented yet"
 
 # `contracts/providers.md`'s own name for the live source, and the value `test_search_...` below
 # asserts a route must read as "not degraded" off a cached row's `source` column (module
@@ -223,7 +221,6 @@ def _assert_no_index(response: Any) -> None:
 # --- GET /api/players/search — FR-001, FR-002, FR-003, FR-004e, FR-005 -------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_search_finds_a_player_by_display_name_with_no_numeric_identifier(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -266,7 +263,6 @@ async def test_search_finds_a_player_by_display_name_with_no_numeric_identifier(
     assert matched["country"] == "DE"
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_search_distinguishes_found_nothing_from_search_unavailable(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -312,7 +308,6 @@ async def test_search_distinguishes_found_nothing_from_search_unavailable(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_search_unavailable_still_returns_locally_observed_results(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -345,7 +340,6 @@ async def test_search_unavailable_still_returns_locally_observed_results(
     assert 900_900_200 in result_ids
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_search_rate_limits_per_user_and_answers_retry_after(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -384,7 +378,6 @@ async def test_search_rate_limits_per_user_and_answers_retry_after(
 # --- GET /api/players/{profile_id} — FR-006, FR-008, FR-008a property 1 -------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_any_players_profile_returns_rating_rank_wins_and_losses_per_ladder(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -448,7 +441,6 @@ async def test_any_players_profile_returns_rating_rank_wins_and_losses_per_ladde
     assert ratings_by_leaderboard[4]["rating"] == 1700
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_a_never_ranked_players_profile_answers_200_with_empty_ladder_data(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -473,7 +465,6 @@ async def test_a_never_ranked_players_profile_answers_200_with_empty_ladder_data
     assert body["ratings"] == []
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_an_unobserved_players_profile_answers_404(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -512,7 +503,6 @@ async def test_an_unobserved_players_profile_answers_404(
 # --- GET /api/players/{profile_id}/ratings — FR-006, FR-008a property 1 -------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_players_ratings_history_returns_snapshots_where_they_exist(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -558,7 +548,6 @@ async def test_players_ratings_history_returns_snapshots_where_they_exist(
     )
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 async def test_players_ratings_history_is_empty_for_a_profile_with_no_snapshots(
     client: TestClient, db_session: AsyncSession
 ) -> None:

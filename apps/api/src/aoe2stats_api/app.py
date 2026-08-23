@@ -35,12 +35,13 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aoe2stats_api.errors import APIError, error_response
-from aoe2stats_api.routers import auth, cron, health, matches, privacy, profiles, replays
+from aoe2stats_api.routers import auth, cron, health, matches, players, privacy, profiles, replays
 
 logger = logging.getLogger("aoe2stats_api")
 
-# The routes 003 adds — `players.py` and `favourites.py` (not registered yet; Phase 3 onward
-# adds them) — plus the two new per-participant `matches.py` sub-routes, `.../replay/{profile_id}`
+# The routes 003 adds — `players.py` (T319, registered below) and `favourites.py` (not registered
+# yet; a later Phase 3 task adds it) — plus the two new per-participant `matches.py` sub-routes,
+# `.../replay/{profile_id}`
 # and `.../analysis`, and `GET /api/matches/{game_id}` itself. Matched against the *request path*,
 # not a route template, which is what lets this hold for a route that is not registered yet at
 # all: FR-010 must cover the 404 a crawler gets today exactly as it will the 200 or 401 the router
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
     app.include_router(privacy.router, prefix="/api")
     app.include_router(replays.router, prefix="/api")
     app.include_router(matches.router, prefix="/api")
+    app.include_router(players.router, prefix="/api")
 
     return app
 
