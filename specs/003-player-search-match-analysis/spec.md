@@ -151,6 +151,49 @@ for that and for nothing else.
   hidden flag, was written here and retired on measurement the same day — see FR-004c.) Resolves
   FR-004.
 
+### Session 2026-08-24
+
+- **Q: Who may request the analysis of a match they did not play — every signed-in user, or only
+  where a participant has opted in?** A: **every signed-in user, with no tier of any kind.** No
+  freemium, paid or entitlement model has been proposed; if one ever arrives it is a later change to
+  the business model and gets its own specification. The only limits that distinguish one request
+  from another are FR-040's per-user rate limit and FR-047's cap, and both apply to everyone
+  equally. During the closed beta "signed-in" already implies "allowlisted", because 001's FR-005
+  gates account *creation* — so no separate entitlement check exists or is needed. Resolves FR-030's
+  silence on the actor, and confirms FR-033 stands: retention follows from publishing an analysis,
+  and analysis is open, so retention is open too — bounded by deliberate requests (FR-044, FR-047)
+  and never by traffic.
+
+- **Q: Does retention of an analysed third-party recording stand as FR-033 specifies, given a
+  stated preference not to store games by default?** A: **yes, FR-033 is unchanged.** The premise
+  the preference was guarding against does not exist here: FR-044 already forbids every scheduled
+  job and background sweep, so nothing is ever retained that a person did not deliberately ask for,
+  and FR-047 bounds the total. The alternatives were weighed and rejected — retaining nothing would
+  leave every published analysis unfalsifiable once the source destroys the recording after ~31
+  days, which is the amendment to constitution IV this feature was granted rather than a gap;
+  retaining only where a participant opted in requires an opt-in mechanism the product does not have
+  and would make most matches unanalysable, including the profile fixed as this feature's test
+  fixture; and publishing the analysis only to its requester would undo FR-031's "analyse at most
+  once, serve to every subsequent viewer", which is the property US4 exists to demonstrate. Recorded
+  because the question is a reasonable one that will be asked again.
+
+- **Q: When a user erases their account and their own captured replay was the point of view a
+  published analysis was derived from, what happens to that analysis?** A: **open — deferred to a
+  constitution amendment, requested 2026-08-24.** The gap is real and is recorded here so that no
+  implementer invents an answer: for a match the user played, §2 has analysis read 001's capture and
+  create no `retained_recordings` row, 001's erasure deletes that capture and its object, and
+  `match_analyses`' erasure rule says only "`requested_by_user_id` cleared, row retained" — so the
+  analysis today survives its own raw, which is the unfalsifiable conclusion principle IV forbids.
+  FR-046's withdrawal rule does not fire, because it is written on `retained_recordings`. Two
+  dispositions were put: withdraw the analysis with the capture (no amendment needed), or let it
+  stand without its raw (amends principle IV). The second was chosen and requires principle IX to be
+  reopened as well, since IX requires retention on the public-recording basis to stay reachable by
+  erasure. **Nothing in Phase 7 may be implemented against either disposition until that amendment
+  lands** — T363, T091 and `match_analyses`' erasure rule all depend on the answer. Note also that
+  `match_analyses` carries no foreign key to its source, unlike `replay_access_log` which carries
+  both; whichever disposition wins, finding "the analyses derived from this recording" needs either
+  `(game_id, point_of_view_profile_id)` or a new column.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Find any player and see where they stand (Priority: P1)
@@ -468,8 +511,13 @@ their current standing and reachable in one click.
 
 **Analysing the game**
 
-- **FR-030**: Users MUST be able to request the analysis of a match whose recorded game is
-  obtainable, and MUST see the result for every participant.
+- **FR-030**: **Any signed-in user** MUST be able to request the analysis of any match whose
+  recorded game is obtainable — including a match they did not play and in which no participant has
+  opted in — and MUST see the result for every participant. There is no tier, quota class or
+  entitlement separating one signed-in user from another (session 2026-08-24): the only limits are
+  FR-040's per-user rate limit and FR-047's cap, and they apply to everyone equally. During the
+  closed beta "signed-in" already means "allowlisted", because 001's FR-005 gates account creation,
+  so no second check exists here.
 - **FR-031**: System MUST analyse a given match at most once, and MUST serve the stored result to
   every subsequent viewer without fetching or parsing again.
 - **FR-032**: System MUST record which point of view an analysis was derived from, and the version
