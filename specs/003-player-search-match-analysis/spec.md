@@ -82,7 +82,9 @@ control:
   capture* — still the consenting user's own point of view, still never a side effect of browsing —
   from *user-initiated retention of an already-public recording*. What that costs is a new category
   of personal data, so FR-045 puts it in the processing register with its own legal basis, and
-  FR-046 puts it inside the third-party objection route and erasure.
+  FR-046 puts it inside the third-party objection route and erasure — which, as amended 2026-08-24,
+  reach every identifier this service holds about a person appearing in a recording and leave the
+  recording itself intact.
 - **Growth driven by clicking rather than by playing.** Real, and now constitutionally required to be
   bounded: FR-047 caps it and rate-limits it. Storage volume must remain a function of deliberate
   human requests, never of traffic.
