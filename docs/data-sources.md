@@ -112,13 +112,13 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
 Measured **2026-08-23**. There is no unauthenticated endpoint on this host that turns a display name
 into a profile. Everything public here is keyed by an identifier.
 
-| Probe                                                          | Result                                                      |
-| -------------------------------------------------------------- | ----------------------------------------------------------- |
-| `/game/account/FindProfiles` (`alias`, `search`, `profile_names`) | `401 Unauthorized`, HTML                                    |
-| `/game/{invented path}`                                        | `404` — so the 401 above is a real route, not a stray        |
-| `/community/leaderboard/findAdvancedPlayerLeaderboard`          | `404`                                                       |
-| `/community/leaderboard/getAdvancedPlayerLeaderboard`           | `404`                                                       |
-| `/community/leaderboard/getLeaderBoard2?...&searchPlayer=Viper`  | `200`, **byte-identical** to the same call without the param |
+| Probe                                                             | Result                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| `/game/account/FindProfiles` (`alias`, `search`, `profile_names`) | `401 Unauthorized`, HTML                                     |
+| `/game/{invented path}`                                           | `404` — so the 401 above is a real route, not a stray        |
+| `/community/leaderboard/findAdvancedPlayerLeaderboard`            | `404`                                                        |
+| `/community/leaderboard/getAdvancedPlayerLeaderboard`             | `404`                                                        |
+| `/community/leaderboard/getLeaderBoard2?...&searchPlayer=Viper`   | `200`, **byte-identical** to the same call without the param |
 
 > **Trap.** `getLeaderBoard2`'s `searchPlayer` parameter is **silently ignored**. It answers
 > `200` with `"message":"SUCCESS"` and returns the top of the ladder — for `searchPlayer=Viper` the
@@ -185,6 +185,27 @@ on both sides of it. It is a rolling, time-based purge.
 
 **Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
 
+### Open question: does any current-patch ranked recording carry an `Achievements` block?
+
+**Not known.** `docs/adr/0001-replay-parser.md`'s correction note (2026-08-24) records that the
+parser's type table carries an `Achievements` post-game block the one reference recording measured
+there does not have — that recording carries only `Leaderboards` and `WorldTime`. One recording,
+from one match, is a single negative sample, and a single negative sample does not establish that
+the block is absent from current-patch ranked recordings in general: it could be gated on game mode,
+on a settings toggle, on whether the match completed normally, or on something else not yet probed.
+
+Resolving this needs several recordings across several game modes (at minimum ranked 1v1 and ranked
+team games; ideally also unranked and custom, since "ranked" is itself an unverified boundary here)
+checked for `num_blocks` and the block list the parser reports, the same way the reference recording
+above was checked.
+
+**What the answer decides.** The derivation/analysis feature in this codebase (V2) needs
+achievement-shaped outcomes — final scores, victory conditions, and similar post-game facts. If no
+current-patch recording ever carries the block, that data does not exist in the recording and V2 has
+to derive or simulate it from what does (`operations`, `game_settings`, the command log). If some
+recordings do carry it, V2 can read it directly instead, which is simpler and more reliable wherever
+it is present. Until this is measured, do not build V2 achievement handling on either assumption.
+
 ### Publication delay: distribution
 
 The single observation this section used to carry — 33 min after match end, one sample — is not a
@@ -229,13 +250,13 @@ measured at ~30 s: a match ending at 15:46:08Z reported `updated` 15:46:37Z.
 
 Measured **2026-08-23**. This is the only display-name search available against any source (see §1).
 
-| Property        | Measured                                                                          |
-| --------------- | ---------------------------------------------------------------------------------- |
-| Matching        | case-insensitive **substring** — `vipe` returns `Vipechester`, `HERA` returns `anotheraoe2player` |
-| Ordering        | by `games` descending, so the best-known player of a name comes first               |
-| Page            | 20 per page, with `page`, `perPage`, `offset`, `count`, `hasMore`                   |
-| Record          | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, `platformName`, `steamId`, `shared`, `sharedHistory`, `hidden`, and six sparse `social*` fields (1 record in 20 carried any) |
-| Reliability     | 12 consecutive requests, 12 × `200`, from a residential connection                  |
+| Property    | Measured                                                                                                                                                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Matching    | case-insensitive **substring** — `vipe` returns `Vipechester`, `HERA` returns `anotheraoe2player`                                                                                                                            |
+| Ordering    | by `games` descending, so the best-known player of a name comes first                                                                                                                                                        |
+| Page        | 20 per page, with `page`, `perPage`, `offset`, `count`, `hasMore`                                                                                                                                                            |
+| Record      | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, `platformName`, `steamId`, `shared`, `sharedHistory`, `hidden`, and six sparse `social*` fields (1 record in 20 carried any) |
+| Reliability | 12 consecutive requests, 12 × `200`, from a residential connection                                                                                                                                                           |
 
 > **Trap.** A search record also carries `steamId`, `shared` and `sharedHistory` — the same
 > community account-linking claim as `linkedProfiles`. Constitution IX and 001's FR-045 forbid
@@ -251,22 +272,22 @@ Measured **2026-08-23**. This is the only display-name search available against 
 **No usable one.** A `hidden` field exists on both projections — `?search=` and
 `/api/profiles/{profileId}` — and it carries nothing:
 
-| Evidence | Result |
-| --- | --- |
-| 200 search records, 10 queries, pages 1 to 20 | `hidden` is `null` in 200 of 200 |
-| a single-profile fetch | `hidden` is `null` |
-| the source's own client typing (`src/api/helper/api.types.ts`) | `hidden: any`, with no comment |
-| a setting anywhere in that client that writes it | none |
-| a consumer anywhere in that client that reads it | none |
+| Evidence                                                       | Result                           |
+| -------------------------------------------------------------- | -------------------------------- |
+| 200 search records, 10 queries, pages 1 to 20                  | `hidden` is `null` in 200 of 200 |
+| a single-profile fetch                                         | `hidden` is `null`               |
+| the source's own client typing (`src/api/helper/api.types.ts`) | `hidden: any`, with no comment   |
+| a setting anywhere in that client that writes it               | none                             |
+| a consumer anywhere in that client that reads it               | none                             |
 
 A field the source declares as `any`, never populates, never writes and never reads is not a privacy
 signal. Anything built on it would be honouring a flag nobody can raise, and would test green against
 a fixture we wrote ourselves.
 
 **The real preference is `sharedHistory`, and it is one of the fields we strip.** That is the finding
-worth carrying. The source's client exposes it as a user setting — "Shared History", *"Your match
-history is visible for other players"* — and honours `sharedHistory === false` by refusing to show
-that player's matches at all (*"This player has disabled shared match history"*). It was `null` in
+worth carrying. The source's client exposes it as a user setting — "Shared History", _"Your match
+history is visible for other players"_ — and honours `sharedHistory === false` by refusing to show
+that player's matches at all (_"This player has disabled shared match history"_). It was `null` in
 all 200 sampled records, which is the unset default rather than an absence of the mechanism; a player
 who has switched it off is simply rarer than 1 in 200.
 
