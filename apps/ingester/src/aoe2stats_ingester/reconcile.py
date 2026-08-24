@@ -18,14 +18,18 @@ comes back the same way discovery would have, and — the one thing that is spec
 carrying `backfill_requested_at` — clears that flag once, and only once, its window has actually
 been swept.
 
-**Reuse, not a second copy.** `DiscoverStage` (T053) already owns the upsert/enqueue logic this
-stage needs verbatim: `_upsert_match` (FR-012, `ON CONFLICT DO UPDATE` on `matches.game_id`),
-`_touch_aoe_profile`, `_upsert_match_player` and `_enqueue_capture` (FR-014, FR-018, the same
-`capture_deadline_at = completed_at + capture_budget_days` computed once on insert). This stage
-holds its own `DiscoverStage` instance — constructed with `profile_provider=None`, since
-reconciliation never refreshes `rating_snapshots`, only matches and captures — and calls those
-methods directly rather than restating them, so a change to how a match or a capture is upserted is
-made once, in one module, and both stages pick it up.
+**Reuse, not a second copy.** `discover.py` (T053, widened by 003's T328) already owns the
+upsert logic this stage needs verbatim — the module-level `upsert_match` (FR-012, `ON CONFLICT DO
+UPDATE` on `matches.game_id`), `touch_aoe_profile` and `upsert_match_player`, called directly
+here exactly as `DiscoverStage.__call__` calls them for its own cycle, so a change to how a match
+is upserted is made once, in one module, and both stages (and 003's `GET /api/players/{profile_id}/
+matches`) pick it up. `_enqueue_capture` (FR-014, FR-018, the same `capture_deadline_at =
+completed_at + capture_budget_days` computed once on insert) stays a `DiscoverStage` instance
+method — it is not shared with 003's route, which FR-012 forbids from enqueueing a capture for a
+third party at all — so this stage still holds its own `DiscoverStage` instance (constructed with
+`profile_provider=None`, since reconciliation never refreshes `rating_snapshots`, only matches and
+captures) for that one method and for `_consenting_profile_ids`, and calls both directly rather
+than restating them.
 
 **A provider failure is not swallowed (FR-013, FR-024).** `test_reconcile.py`'s outage scenario is
 explicit: three consecutive cycles that cannot reach the discovery source must each raise
@@ -53,7 +57,14 @@ from sqlalchemy import CursorResult, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_ingester.budget import Budget, iter_within_budget
-from aoe2stats_ingester.discover import _DISCOVERY_BATCH_SIZE, DiscoverStage, _chunk
+from aoe2stats_ingester.discover import (
+    _DISCOVERY_BATCH_SIZE,
+    DiscoverStage,
+    _chunk,
+    touch_aoe_profile,
+    upsert_match,
+    upsert_match_player,
+)
 from aoe2stats_providers.base import MatchHistoryProvider
 from aoe2stats_storage.models import ProfileLink
 from aoe2stats_storage.repositories.base import session_scope
@@ -117,13 +128,11 @@ class ReconcileStage:
 
             async with session_scope(self._session_factory) as session:
                 for raw_match in raw_matches:
-                    await self._discover._upsert_match(session, raw_match)
+                    await upsert_match(session, raw_match)
                     matches_discovered += 1
                     for player_profile_id in raw_match.player_profile_ids:
-                        await self._discover._touch_aoe_profile(session, player_profile_id)
-                        await self._discover._upsert_match_player(
-                            session, raw_match.game_id, player_profile_id
-                        )
+                        await touch_aoe_profile(session, player_profile_id)
+                        await upsert_match_player(session, raw_match.game_id, player_profile_id)
                         if player_profile_id in consenting_profile_ids:
                             enqueued = await self._discover._enqueue_capture(
                                 session, raw_match, player_profile_id

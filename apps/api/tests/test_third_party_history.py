@@ -1,5 +1,5 @@
-"""T326 — verbatim persistence for `GET /api/players/{profile_id}/matches` (T328, not yet
-implemented). `spec.md` FR-011: "System MUST preserve verbatim any source response it obtains that
+"""T326 — verbatim persistence for `GET /api/players/{profile_id}/matches`, implemented by T328.
+`spec.md` FR-011: "System MUST preserve verbatim any source response it obtains that
 `docs/data-sources.md` classifies as irrecoverable — third-party match history above all — exactly
 as it does for a user's own (constitution III, 001 FR-012)." Constitution III: "Verbatim persistence
 of the raw response is owed to every source of irrecoverable data... A source that can be re-queried
@@ -29,16 +29,6 @@ its own, distinguish "value coerced to a different but `==`-equal-looking type" 
 unchanged" in every case (`1 == 1.0` is `True` in Python; a stricter walk is what this task's text
 ("coerced") asks for and a plain `==` alone would not visibly prove).
 
-**Why this is `xfail(strict=True)`, and why the test needs no not-yet-existent import.**
-`routers/players.py` (T319) already exists and already registers `/players/search`, `/players/
-{profile_id}` and `/players/{profile_id}/ratings` — only `/players/{profile_id}/matches` (T328) is
-missing, so calling it today answers whatever the app's generic 404 handler answers, never a
-collection error. Nothing in this file imports a module T328 has not written yet, so — unlike
-`test_shared_match.py`'s `aoe2stats_ingester.discover` — there is no not-yet-existent import to
-defer into the test body; the `xfail(strict=True, reason="T328 not implemented yet")` marker alone
-is what keeps the `SubagentStop` gate green until T328 registers the route, at which point
-`strict=True` turns it off by itself the moment the route (and this test) starts passing for real.
-
 **Harness conventions** mirror `test_players_routes.py` (T317) — `client`/`db_session`/
 `environment` from `conftest.py`, the `_sign_in` cookie helper, and the same
 `httpx.AsyncClient.send`-interception boundary `test_two_requests_through_the_real_provider_share_
@@ -49,7 +39,8 @@ a FastAPI `Depends()` this file could override. `RelicMatchHistoryProvider` is t
 aoe2stats_providers/relic/matches.py`) and the only one `docs/data-sources.md` §1 documents for
 match history at all, so intercepting its one upstream host (`aoe-api.worldsedgelink.com`) is the
 one seam through which a real, unmodified `GET /api/players/{profile_id}/matches` call can be driven
-end to end without guessing a private name T328 has not written yet.
+end to end without reaching into `routers/players.py`'s own private `_build_match_history_provider`
+by name.
 """
 
 from __future__ import annotations
@@ -135,17 +126,17 @@ def _assert_structurally_equal(actual: object, expected: object, *, path: str = 
 
 
 def test_assert_structurally_equal_detects_dropped_renamed_reordered_and_coerced_fields() -> None:
-    """A guard on the comparator itself, not on T328. `test_reading_a_third_partys_history_...`
-    below is `xfail(strict=True)` until T328 lands, so its own call to `_assert_structurally_equal`
-    never actually runs against a real persisted row yet — a comparator that silently degenerated
-    into a no-op would leave that test passing as an `xfail` for a reason unrelated to the
-    comparison it exists to prove, invisible because the suite stays green (`CLAUDE.md`'s
-    remediation section names exactly this shape of residue for a fix-and-test pair; the same risk
-    applies to a test-first comparator no implementation has exercised yet). This test needs no
-    database and no client and is never itself `xfail`: it proves today, unconditionally, that the
-    comparator catches each of the four failure modes the task text names — a dropped field, a
-    renamed field, a reordered list element and a coerced type — and that it accepts an unmodified
-    structure.
+    """A guard on the comparator itself, not on T328. While this file's own `xfail(strict=True)`
+    marker was still in place — before T328 implemented the route — the one call to
+    `_assert_structurally_equal` in `test_reading_a_third_partys_history_...` below never actually
+    ran against a real persisted row yet: a comparator that silently degenerated into a no-op
+    would have left that test passing as an `xfail` for a reason unrelated to the comparison it
+    exists to prove, invisible because the suite stayed green (`CLAUDE.md`'s remediation section
+    names exactly this shape of residue for a fix-and-test pair; the same risk applies to a
+    test-first comparator no implementation has exercised yet). This test needs no database and no
+    client and is never itself `xfail`: it proves, unconditionally, that the comparator catches
+    each of the four failure modes the task text names — a dropped field, a renamed field, a
+    reordered list element and a coerced type — and that it accepts an unmodified structure.
     """
     reference: dict[str, Any] = {
         "id": 1,
@@ -332,7 +323,6 @@ async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> 
 # --- T326 itself -----------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
 async def test_reading_a_third_partys_history_persists_the_matched_entry_verbatim(
     client: TestClient,
     db_session: AsyncSession,
@@ -367,9 +357,7 @@ async def test_reading_a_third_partys_history_persists_the_matched_entry_verbati
     monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
 
     response = client.get(f"/api/players/{_THIRD_PARTY_PROFILE_ID}/matches")
-    assert response.status_code == 200, (
-        f"T328 not implemented yet. Got {response.status_code}: {response.text}"
-    )
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
 
     stored = (
         await db_session.execute(select(Match).where(Match.game_id == _TARGET_GAME_ID))

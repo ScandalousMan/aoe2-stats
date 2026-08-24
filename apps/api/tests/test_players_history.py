@@ -1,19 +1,9 @@
 """T325: route tests for `GET /api/players/{profile_id}/matches`, encoding `quickstart.md`
-scenario 4 ("Any player's profile and history") and FR-007. `apps/api/src/aoe2stats_api/
-routers/players.py` has no such route yet — T328 adds it — so every test below carries
-`@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")`. `strict=True` is what will
-force each marker off the moment T328 lands, the same discipline `test_matches_list.py` and
-`test_players_routes.py` (both now unmarked, their own implementing tasks having landed) already
-followed while they were in this same position.
-
-**Why no module-scope import of anything from T328.** There is nothing to import: this route does
-not exist as a Python symbol to import at all before T328 writes it, and every assertion below is
-exercised entirely through `client`, exactly as `test_matches_list.py`'s own module docstring
-notes for `GET /api/matches` before T070 landed ("Nothing here needs to import a not-yet-existing
-module directly ... so there is no module-scope import to guard against a collection error").
-Today, `GET /api/players/{profile_id}/matches` simply has no route registered, so every request
-below resolves to the app's generic 404 handler rather than to a real assertion — for the right
-reason, the same position `test_matches_list.py` was in for T070.
+scenario 4 ("Any player's profile and history") and FR-007. T328 has since implemented the route
+in `apps/api/src/aoe2stats_api/routers/players.py` and removed every `xfail` marker this file
+carried while it did not exist yet — the same discipline `test_matches_list.py` and
+`test_players_routes.py` (both unmarked, their own implementing tasks having landed earlier)
+already followed while they were in this same position.
 
 **Scope, relative to this task's two siblings in the same `[P]` batch.** T324
 (`test_match_detail.py`) owns the widened `GET /api/matches/{game_id}` (single match, every
@@ -265,7 +255,6 @@ async def _seed_full_match(
 # --- GET /api/players/{profile_id}/matches — FR-007 -----------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
 async def test_players_history_returns_matches_newest_first_with_fr007_fields(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -345,7 +334,6 @@ async def test_players_history_returns_matches_newest_first_with_fr007_fields(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
 async def test_players_history_empty_history_returns_empty_state_not_error(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -371,7 +359,6 @@ async def test_players_history_empty_history_returns_empty_state_not_error(
     assert "next_cursor" in body, "the same envelope GET /api/matches answers with, empty or not"
 
 
-@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
 async def test_players_history_row_shape_matches_get_matches_row_shape(
     client: TestClient, db_session: AsyncSession
 ) -> None:

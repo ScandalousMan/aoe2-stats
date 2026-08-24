@@ -54,7 +54,7 @@ T073's note (quoted in `test_capture_visibility.py`), the collapse of `unavailab
 catchable", belongs to the design-system component (T073/T074), never to this router. Every row
 below carries the raw `CaptureStatus` value verbatim, including all three statuses behind "lost"
 and `quarantined`, which FR-026 keeps out of both the archived and the lost columns — both
-`_match_row_json` and `_match_detail_json` carry the identical `capture_status`/
+`match_row_json` and `_match_detail_json` carry the identical `capture_status`/
 `capture_deadline_at` pair (T070e, FR-027: per match, not only per list), so the client reads one
 vocabulary from either route rather than two.
 
@@ -181,7 +181,12 @@ def _opponent_json(opponent: Opponent) -> dict[str, Any]:
     }
 
 
-def _match_row_json(row: MatchListRow) -> dict[str, Any]:
+def match_row_json(row: MatchListRow) -> dict[str, Any]:
+    """Public (no leading underscore): `routers/players.py`'s `GET /api/players/{profile_id}/
+    matches` (T328) imports this directly rather than restating it, so the two routes can never
+    drift apart on the one shape `contracts/http-api.md` promises is identical — see
+    `test_players_history.py`'s own row-shape-comparison test, the reason this function is
+    exported at all."""
     return {
         "game_id": row.game_id,
         "started_at": row.started_at.isoformat() if row.started_at is not None else None,
@@ -231,7 +236,7 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
             }
             for participant in detail.participants
         ],
-        # T070e: the same two fields `_match_row_json` already carries, unmodified — every raw
+        # T070e: the same two fields `match_row_json` already carries, unmodified — every raw
         # `CaptureStatus` value, the badge's collapse staying a front-end concern (module
         # docstring, "Capture state travels to the client unmodified").
         "capture_status": (
@@ -275,7 +280,7 @@ async def list_matches(
         ) from exc
 
     return {
-        "matches": [_match_row_json(row) for row in page.matches],
+        "matches": [match_row_json(row) for row in page.matches],
         "next_cursor": page.next_cursor,
     }
 

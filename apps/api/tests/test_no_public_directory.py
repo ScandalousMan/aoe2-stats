@@ -23,8 +23,8 @@ carries no profile in its own path and therefore no "mine" name to keep — is w
 feature (FR-018, FR-021, T327), and the four tests below replace the single T067 assertion that
 used to cover it.
 
-**The four properties, one test each — two still each carrying their own `xfail` marker, never
-one for the file; the first two need none anymore.** Per `contracts/http-api.md`:
+**The four properties, one test each — one still carrying its own `xfail` marker, never one for
+the file; the first three need none anymore.** Per `contracts/http-api.md`:
 
 1. no anonymous reach to any route this feature adds — asserted directly, no `xfail`, since T319
    landed and registered the three routes it covers: `GET /api/players/search`, `GET
@@ -37,8 +37,8 @@ one for the file; the first two need none anymore.** Per `contracts/http-api.md`
    that render this page is a static front-end asset, `apps/web/public/robots.txt`, wired by
    T322/T331 outside this Python suite's reach, and is not re-asserted here;
 3. no disclosure of a relationship between a player's accounts, on any profile (FR-009, 001
-   FR-045 restated and unchanged — `xfail(..., reason="T328 not implemented yet")`, against `GET
-   /api/players/{profile_id}/matches`, the route T328 adds);
+   FR-045 restated and unchanged) — asserted directly, no `xfail`, since T328 landed and
+   registered `GET /api/players/{profile_id}/matches`;
 4. ownership still deciding a user's own archived replay (`xfail(..., reason="T337 not
    implemented yet")`, against `GET /api/matches/{game_id}/replay/{profile_id}`, the route T337
    adds — the one place this feature's widening must stop dead: a captured replay still leaves
@@ -55,26 +55,27 @@ constants said as much), so the constants had already stopped doing anything by 
 docstring was last touched. Removed rather than left, because an unused reason constant sitting
 beside four genuine ones invites a future reader to wonder which of the five is stale.
 
-**Positive controls, kept where the collision risk that motivated them still exists.** The two
+**Positive controls, kept where the collision risk that motivated them still exists.** The three
 live tests below keep their positive controls (the caller's own data, asserted to come back for
-real) exactly as T067 wrote them, because `GET /api/matches` and `GET /api/profiles/{profile_id}/
-ratings` both already exist and a bare "foreign profile_id gets `not_found`" assertion is
-indistinguishable from an accidental pass only where a route's *existence* is not yet the thing
-under test. The two remaining `xfail` tests below (properties 3 and 4) reach for routes and
-behaviour that do not exist at all yet — `players.py` carries no `/matches` sub-route (T328), and
+real) exactly as T067 wrote them, because `GET /api/matches`, `GET /api/profiles/{profile_id}/
+ratings` and now `GET /api/players/{profile_id}/matches` (T328) all already exist and a bare
+"foreign profile_id gets `not_found`"-shaped assertion is indistinguishable from an accidental
+pass only where a route's *existence* is not yet the thing under test. The one remaining `xfail`
+test below (property 4) reaches for a route that does not exist at all yet —
 `replays.py` carries no `/api/matches/{game_id}/replay/{profile_id}` route (T337) — so a
 cross-account request already 404s on Starlette's own unmatched path rather than answering the
 outcome the assertion asks for — a different result than the assertion asks for, which is what
-makes each of those two `xfail`s genuine without needing a matching positive control. Property 4's
-test keeps a positive control anyway, because it names a *specific outcome* (a signed URL an owner
+makes that `xfail` genuine without needing a matching positive control. Property 4's own test
+keeps a positive control anyway, because it names a *specific outcome* (a signed URL an owner
 must actually receive) that a route's mere existence would not itself prove.
 
-Properties 1 and 2's tests need none of this. `players.py` is registered now (T319), so every
-anonymous request property 1 makes already answers the real `401` the assertion asks for directly,
-without relying on a route's absence to manufacture a different status code. `matches.py` carries
-no ownership scope on `GET /api/matches/{game_id}` now (T327), so property 2's requests already
-answer the real `200` and header the assertion asks for directly — which is why neither test
-carries an `xfail` any more.
+Properties 1, 2 and 3's tests need none of this. `players.py` is registered now (T319, T328), so
+every anonymous request property 1 makes already answers the real `401` the assertion asks for
+directly, without relying on a route's absence to manufacture a different status code. `matches.py`
+carries no ownership scope on `GET /api/matches/{game_id}` now (T327), so property 2's requests
+already answer the real `200` and header the assertion asks for directly; `GET /api/players/
+{profile_id}/matches` is a real route now (T328), so property 3's request answers the real `200`
+too — which is why none of the three carries an `xfail` any more.
 
 **Harness and response-shape assumptions** follow the sibling files these routes share, byte for
 byte where they overlap: `test_replay_status.py`'s `client`/`db_session`/`_sign_in` conventions;
@@ -457,7 +458,6 @@ async def test_match_detail_widening_carries_the_no_index_header(
     assert never_linked_response.headers.get("x-robots-tag") == "noindex, nofollow"
 
 
-@pytest.mark.xfail(strict=True, reason="T328 not implemented yet")
 async def test_a_profiles_history_never_discloses_its_owners_other_profiles(
     client: TestClient, db_session: AsyncSession
 ) -> None:
