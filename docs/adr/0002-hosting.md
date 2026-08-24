@@ -66,6 +66,10 @@ Constitution principle XII exists because of this ADR. In particular:
   is four environment variables plus a bulk copy.
 - No local filesystem state. Serverless filesystems are ephemeral and read-only outside `/tmp`.
 - A run interrupted by its time budget must leave no row in `downloading` and resume cleanly.
+- **No deploy hook.** The platform gives no step that runs after a deploy ships and before traffic
+  reaches the function, so a bad deploy cannot be blocked from the repository's side. The build
+  command (`buildCommand` in `vercel.json`) is therefore the only place left to run a check first —
+  `scripts/checks/config-preflight.mjs` is that check today.
 
 ## The single-page fallback is a host requirement, not a Vercel setting
 
