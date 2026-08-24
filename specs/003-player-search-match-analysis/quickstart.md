@@ -11,14 +11,36 @@ spending a recording on it.
 
 Everything [001's quickstart](../001-steam-link-replay-ingestion/quickstart.md) asks for, plus:
 
-- a **second** AoE2 profile id that is not yours and has played publicly within the last week — an
-  opponent from one of your own recent matches is the easiest one to get, and it is the only kind
-  this feature can honestly be tested against;
-- one match id from **more than 31 days ago**, to exercise every expired path. `docs/data-sources.md`
-  §2 lists real ones with their measured outcomes, which is faster than waiting a month;
+- a **second** AoE2 profile id that is not yours and has played publicly within the last week.
+  **Fixed on 2026-08-24: `1807091` (`Azhague3`)**, a Relic profile id and not a Steam id. It plays
+  frequently, which is what the recent-match scenarios need.
+
+  This profile has **never played against the tester**, and that costs something the earlier wording
+  claimed was free. An opponent from one of your own matches is easier — you already know what
+  happened in the game — but it is *not* the only kind this feature can be tested against, and
+  saying so was wrong: US4 exists to analyse matches you did not play. What the absence of overlap
+  actually costs is scenario 7.2, where judging the extraction means watching a stranger's recording
+  in AoE2 II:DE rather than remembering your own game. It costs nothing anywhere else;
+
+- one match id from **more than 31 days ago**, to exercise every expired path. **Fixed on
+  2026-08-24: `474746656`**, the tester's own last game, roughly four months old — so it is expired
+  by a wide margin and there is no risk of it ageing into or out of the window mid-walk.
+  `docs/data-sources.md` §2 lists further real ones with their measured outcomes.
+
+  > **This id serves scenario 8.5 and does not serve scenario 10.** 8.5 wants a match that expired
+  > *and was never analysed*, which is exactly what this is (FR-034). Scenario 10 wants a
+  > **published analysis whose recording the source no longer serves** — which cannot be produced
+  > from an already-expired match, because nothing can be retained from a recording that is gone.
+  > Reaching it honestly means analysing a match and then waiting out the window; reaching it at all
+  > before then means seeding a `retained_recordings` row and its analysis by hand and saying so in
+  > the pull request. Whichever is chosen, it is a separate fixture from this one;
+
 - `.env` extended from `.env.example` with this feature's keys — the favourites bound, the search
   TTL and rate limit, the analysis request limit, budget and lease, the retention cap, and the
-  raw-size ceiling above which a recording is refused before it is parsed.
+  raw-size ceiling above which a recording is refused before it is parsed. **Verified on 2026-08-24
+  against the deployment target: all ten are set, and so are the eighteen 001 keys** — the whole of
+  `.env.example` is present, which is the check Phase 10 of [tasks.md](./tasks.md) exists to make
+  routine rather than memorable.
 
 ```bash
 uv sync --all-packages --dev
