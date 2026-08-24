@@ -501,3 +501,239 @@ async def test_a_stale_fallback_row_is_not_served_once_the_source_recovers(
         "must be reached again"
     )
     assert second.degraded is False
+
+
+# --- T385: three correctness defects in the fallback path (T316's `_local_fallback_results`) ----
+#
+# All three live in `_local_fallback_results` and `search_players` themselves, not in a new
+# surface, so each test below drives the same public entry points every other test in this file
+# does. Grouped here by the defect they close rather than split across the file, because each is a
+# self-contained regression with its own contrast case and splitting them apart would scatter that
+# pairing across three unrelated sections.
+
+
+async def test_fallback_percent_sign_in_query_is_literal_not_a_wildcard(
+    db_session: AsyncSession,
+) -> None:
+    """FR-008a: `contains()` defaults to `autoescape=False`, so `%` in a user query is a SQL LIKE
+    wildcard, not a literal character — `q=%` against the unescaped query compiles to
+    `alias LIKE '%%%'`, which matches every alias in the table: a directory listing of the most-
+    played profiles this service knows, reached through a search box. Seeds one profile whose alias
+    genuinely contains a `%` and several that do not, and asserts a query of a bare `%` finds only
+    the one that actually contains it — the contrast case a rejected-or-stripped `%` would also
+    pass, so it is not enough to assert the directory-listing shape is gone; it must still find a
+    profile whose alias is honestly a substring match."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9401, alias="100%Winner", country="FR")
+    await _seed_profile(db_session, profile_id=9402, alias="IronWarrior", country="FR")
+    await _seed_profile(db_session, profile_id=9403, alias="PeacefulOne", country="FR")
+    await _seed_profile(db_session, profile_id=9404, alias="Zorro", country="FR")
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, "%", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9401}, (
+        "a bare '%' query must match only the profile whose alias genuinely contains a '%' "
+        "character, not every profile this service knows"
+    )
+
+
+async def test_fallback_underscore_in_query_is_literal_not_a_single_char_wildcard(
+    db_session: AsyncSession,
+) -> None:
+    """The single-character LIKE wildcard, and the one an implementer forgets when only `%` is
+    tested: unescaped, a query of `cat_dog` matches `catXdog` (any single character stands in for
+    `_`) as readily as it matches a literal `cat_dog`. Seeds both shapes and asserts only the
+    literal one comes back."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9411, alias="cat_dog", country="FR")
+    await _seed_profile(db_session, profile_id=9412, alias="catXdog", country="FR")
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, "cat_dog", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9411}, (
+        "'_' in the query must match a literal underscore only, never stand in for any single "
+        "character the way an unescaped SQL LIKE pattern would"
+    )
+
+
+async def test_fallback_backslash_in_query_is_literal_not_an_escape_prefix(
+    db_session: AsyncSession,
+) -> None:
+    """PostgreSQL's `LIKE` treats a backslash as *its own, implicit* escape character even with no
+    `ESCAPE` clause at all — a raw, unescaped `\\` in the pattern is read as an escape prefix for
+    whatever follows it, so a query containing a literal backslash silently fails to match an alias
+    that genuinely contains one; verified directly against this project's own Postgres before
+    writing this test (`SELECT 'back\\slash' LIKE '%' || 'back\\slash' || '%'` reads `false`).
+    `ColumnOperators.contains(..., autoescape=True)` closes this the same way it closes `%` and
+    `_`: it always renders an explicit `ESCAPE '/'` clause, and PostgreSQL only treats *that*
+    character as special once one is given — a raw backslash reverts to a plain literal the moment
+    any `ESCAPE` clause is present, verified the same way (`... ESCAPE '/'` on the same pattern
+    reads `true`)."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9421, alias="back\\slash\\profile", country="FR")
+    await _seed_profile(db_session, profile_id=9422, alias="backXslashXprofile", country="FR")
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, "back\\slash", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9421}, (
+        "a literal backslash in the query must match a literal backslash in the alias, not be "
+        "read as PostgreSQL's own implicit LIKE escape prefix"
+    )
+
+
+async def test_fallback_matches_a_decomposed_alias_via_a_precomposed_query(
+    db_session: AsyncSession,
+) -> None:
+    """`normalise_query` collapses Unicode form to NFC on the *query* side (module docstring), but
+    `_local_fallback_results` matched with plain SQL `lower()`, which does not normalise Unicode
+    form on the *alias* side. A source-provided alias stored decomposed (a base letter plus a
+    combining mark, exactly as `test_query_normalisation_collapses_case_whitespace_and_unicode_
+    form` builds one) was therefore unreachable by the ordinary, precomposed spelling of the same
+    visible name — the docstring's claim that Unicode form collapses was true of the cache key and
+    false of the match itself."""
+    from aoe2stats_api.search import search_players
+
+    # "e" followed by a combining acute accent (U+0301), not the precomposed "é" (U+00E9) — the
+    # same visible name "Café Warrior", a different byte sequence. Spelled with an explicit
+    # escape rather than a literal accented character in the source, exactly as
+    # `test_query_normalisation_collapses_case_whitespace_and_unicode_form` does above, so the
+    # decomposed form cannot be silently re-composed by an editor or a copy-paste.
+    decomposed_alias = "Cafe\u0301 Warrior"
+    await _seed_profile(db_session, profile_id=9431, alias=decomposed_alias, country="FR")
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, "Caf\u00e9 Warrior", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9431}, (
+        "a decomposed alias must still be found by an ordinary, precomposed query — Unicode form "
+        "must collapse on the match, not only on the cache key"
+    )
+
+
+async def test_fallback_matches_a_precomposed_alias_via_a_decomposed_query(
+    db_session: AsyncSession,
+) -> None:
+    """The contrast direction of the test above: a precomposed alias, the ordinary shape most
+    source data already carries, must still be found by a decomposed query. This direction already
+    passed before the fix — `normalise_query` puts the *query* into NFC before it ever reaches SQL
+    — so it is here to prove the fix does not flip which side was already correct while it repairs
+    the other."""
+    from aoe2stats_api.search import search_players
+
+    precomposed_alias = "Caf\u00e9 Warrior"  # U+00E9, precomposed
+    await _seed_profile(db_session, profile_id=9432, alias=precomposed_alias, country="FR")
+
+    # "e" followed by a combining acute accent (U+0301), the decomposed spelling of the same
+    # name, spelled with an explicit escape for the same reason as above.
+    decomposed_query = "Cafe\u0301 Warrior"
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, decomposed_query, limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9432}
+
+
+async def test_fallback_case_folding_still_matches_alongside_normalisation(
+    db_session: AsyncSession,
+) -> None:
+    """The fix for the Unicode-form defect touches the same SQL expression case-folding already
+    relied on (`func.lower(...)`); this pins that a query differing only in case still matches,
+    so a fix aimed at Unicode form does not regress the case-insensitivity FR-004a already
+    promised."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9441, alias="IronWarrior", country="FR")
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+    outcome = await search_players(
+        db_session, provider, "IRONWARRIOR", limit=10, ttl_seconds=_TTL_SECONDS, now=_NOW
+    )
+
+    assert {r.profile_id for r in outcome.results} == {9441}
+
+
+async def test_search_players_rejects_a_fallback_ttl_that_is_not_shorter_than_the_live_ttl(
+    db_session: AsyncSession,
+) -> None:
+    """Nothing enforced `fallback_ttl_seconds < ttl_seconds`, so an operator setting
+    `PLAYER_SEARCH_CACHE_TTL_SECONDS` below `_FALLBACK_CACHE_TTL_SECONDS` (30s) silently inverted
+    "deliberately much shorter" (module docstring's 'BL-3 re-take'): the row meant to protect the
+    source during an outage would then outlive the row it sits beside. Guarded here, at call time,
+    since both TTLs are already explicit parameters to this pure function (module docstring: "This
+    function stays a pure function of its inputs") — the one place they are both in hand, on every
+    call, which also fails the very first search request against a misconfigured deployment rather
+    than waiting for a query that happens to notice the symptom."""
+    from aoe2stats_api.search import FallbackTtlNotShorterError, search_players
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]))
+
+    with pytest.raises(FallbackTtlNotShorterError):
+        await search_players(
+            db_session,
+            provider,
+            "Anything",
+            limit=10,
+            ttl_seconds=10,
+            fallback_ttl_seconds=30,
+            now=_NOW,
+        )
+
+
+async def test_search_players_rejects_equal_ttls_too(db_session: AsyncSession) -> None:
+    """ "Strictly shorter", not "no longer than": equal TTLs collapse the same protection window
+    the ordering exists to keep apart, so the guard must fire on equality too, not only on a
+    reversed ordering."""
+    from aoe2stats_api.search import FallbackTtlNotShorterError, search_players
+
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]))
+
+    with pytest.raises(FallbackTtlNotShorterError):
+        await search_players(
+            db_session,
+            provider,
+            "Anything",
+            limit=10,
+            ttl_seconds=30,
+            fallback_ttl_seconds=30,
+            now=_NOW,
+        )
+
+
+async def test_search_players_accepts_a_correctly_ordered_ttl_pair(
+    db_session: AsyncSession,
+) -> None:
+    """The contrast case: a correctly-ordered configuration — `fallback_ttl_seconds` strictly
+    shorter than `ttl_seconds`, the shape every other test in this file already uses — must not
+    trip the guard above."""
+    from aoe2stats_api.search import search_players
+
+    await _seed_profile(db_session, profile_id=9451, alias="WellConfigured", country="FR")
+    provider = _FakeSearchProvider(page=_FakeSearchPage(results=[]), degraded=True)
+
+    outcome = await search_players(
+        db_session,
+        provider,
+        "WellConfigured",
+        limit=10,
+        ttl_seconds=_TTL_SECONDS,
+        fallback_ttl_seconds=30,
+        now=_NOW,
+    )
+
+    assert outcome.degraded is True
+    assert {r.profile_id for r in outcome.results} == {9451}

@@ -81,7 +81,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,6 +109,44 @@ _FALLBACK_SOURCE = "aoe_profiles"
 # queries against a down source into one `_local_fallback_results` aggregate per window rather than
 # one per request.
 _FALLBACK_CACHE_TTL_SECONDS = 30
+
+
+class FallbackTtlNotShorterError(ValueError):
+    """`search_players` refuses to run when `fallback_ttl_seconds` is not *strictly* shorter than
+    `ttl_seconds` (T385).
+
+    Nothing enforced this before: `_FALLBACK_CACHE_TTL_SECONDS` was "deliberately much shorter"
+    only by convention (the constant above, and the module docstring's "BL-3 re-take"), and an
+    operator setting `PLAYER_SEARCH_CACHE_TTL_SECONDS` at or below 30s silently inverted that —
+    the row meant to protect the source through an outage would then outlive, or merely tie, the
+    row it sits beside, which is the opposite of the property `_ttl_for_source` and `_write_cache`
+    both assume holds.
+
+    **Raised here, at call time, inside `search_players` — not as a `Settings` field validator in
+    `settings.py`.** `ttl_seconds` and `fallback_ttl_seconds` are already explicit parameters to
+    this function and nowhere else (module docstring: "`ttl_seconds`, `fallback_ttl_seconds` and
+    `limit` are explicit parameters, not a call into `get_settings()` in here ... This function
+    stays a pure function of its inputs"); comparing two values already in hand, at the one place
+    they are both in hand, needs nothing from `Settings` or `_FALLBACK_CACHE_TTL_SECONDS`'s own
+    module to be taught about the other's private constant. The trade-off this accepts over a
+    settings-load-time check (`ConfigurationError`, `settings.py`'s own `T390` pattern): a
+    misconfigured `PLAYER_SEARCH_CACHE_TTL_SECONDS` fails on the first search request rather than
+    at process startup, not before. It still fails before any cache read or fallback query runs,
+    and every existing call site already supplies both values without a `get_settings()` call in
+    this module, so the check costs nothing extra to reach.
+    """
+
+
+def _require_fallback_ttl_shorter(*, ttl_seconds: int, fallback_ttl_seconds: int) -> None:
+    """Strictly shorter, not merely no-longer-than: an equal pair collapses the same protection
+    window the ordering exists to keep apart, so `>=` is the failing condition, not `>`."""
+    if fallback_ttl_seconds >= ttl_seconds:
+        raise FallbackTtlNotShorterError(
+            f"fallback_ttl_seconds ({fallback_ttl_seconds}) must be strictly shorter than "
+            f"ttl_seconds ({ttl_seconds}). PLAYER_SEARCH_CACHE_TTL_SECONDS is configured at or "
+            "below the fallback's own protective TTL, which inverts 'deliberately much shorter' "
+            "(search.py's module docstring, 'BL-3 re-take')."
+        )
 
 
 @dataclass(frozen=True)
@@ -144,7 +182,14 @@ async def search_players(
     """Cache-first, breaker-checked, never an exception — see the module docstring for why each of
     those three is in that order. `_local_fallback_results` below is T316's local fallback over
     `aoe_profiles`; this function's own shape does not change under that.
+
+    Raises `FallbackTtlNotShorterError` before anything else runs — no cache read, no provider
+    call, no fallback query — when `fallback_ttl_seconds` is not strictly shorter than
+    `ttl_seconds` (T385; see that exception's own docstring for why the check lives here).
     """
+    _require_fallback_ttl_shorter(
+        ttl_seconds=ttl_seconds, fallback_ttl_seconds=fallback_ttl_seconds
+    )
     moment = now if now is not None else datetime.now(UTC)
     query_normalised = normalise_query(query)
 
@@ -247,6 +292,26 @@ async def _local_fallback_results(
     profile with no recorded matches still sorts in — last, at zero, rather than dropped. This
     introduces no source and no request: `aoe_profiles` is already populated by 001's discovery of
     every participant of every match this service has seen, and this is a read against it alone.
+
+    **The `WHERE` clause below is two T385 fixes, not one.** `ColumnOperators.contains()` defaults
+    to `autoescape=False`: `%` and `_` inside `query_normalised` reached SQL as LIKE wildcards, not
+    literal characters, so `q=%` matched every alias in the table — a directory listing of the
+    most-played profiles this service knows, reached through a search box, which is exactly the
+    shape FR-008a exists to prevent. `autoescape=True` below escapes `%`, `_` and PostgreSQL's own
+    escape character wherever they appear in the query, rendering an explicit `ESCAPE '/'` clause
+    that also neutralises PostgreSQL's *implicit* default LIKE escape character (a bare backslash),
+    which is otherwise special even with no `ESCAPE` clause at all.
+
+    Separately, `query_normalised` is Unicode-normalised to NFC by `normalise_query` (module
+    docstring), but `AoeProfile.alias` — a source-provided value this service never rewrites — may
+    not be: a decomposed alias (a base letter plus a combining mark) was unreachable by the
+    ordinary, precomposed spelling of the same visible name, because SQL `lower()` alone does not
+    normalise Unicode form. `func.normalize(AoeProfile.alias, text("NFC"))` puts the alias into the
+    same form the query already is, before `lower()` ever runs, so the docstring's claim that
+    Unicode form collapses is true of the match now, not only of the cache key. `NORMALIZE(text,
+    form)` is PostgreSQL 16+ syntax (`.github/workflows/pr.yml` runs Postgres 16 in CI); this
+    module already depends on `pg_insert`'s `ON CONFLICT`, so it is not the first PostgreSQL-only
+    construct here.
     """
     games_played_by_profile = (
         select(
@@ -264,7 +329,11 @@ async def _local_fallback_results(
             games_played_by_profile,
             games_played_by_profile.c.profile_id == AoeProfile.profile_id,
         )
-        .where(func.lower(AoeProfile.alias).contains(query_normalised))
+        .where(
+            func.lower(func.normalize(AoeProfile.alias, text("NFC"))).contains(
+                query_normalised, autoescape=True
+            )
+        )
         .order_by(games_played.desc(), AoeProfile.profile_id)
         .limit(limit)
     )
