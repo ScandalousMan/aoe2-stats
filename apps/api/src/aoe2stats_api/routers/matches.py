@@ -25,23 +25,28 @@ for `GET /api/profiles`. Both routes below carry a `leaderboard_name` alongside 
 computed with that same helper, so the client reads the identical vocabulary from every route
 rather than deriving a third copy of the mapping client-side.
 
-**FR-045 / FR-038 — one error, indistinguishable causes**, the same discipline `replays.py`'s and
-`profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already establish, and this
-module keeps its own copy of rather than importing (`replays.py`'s own module docstring: "each
-router in this feature is a self-contained file"). The two routes below apply it differently
-because they take different information from the caller:
+**FR-045 / FR-038 — one error for `list_matches`, indistinguishable causes**, the same discipline
+`replays.py`'s and `profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already
+establish, and this module keeps its own copy of rather than importing (`replays.py`'s own module
+docstring: "each router in this feature is a self-contained file"). `GET /api/matches?profile_id=`
+names one profile explicitly, so ownership is exactly `_owned_active_link`'s existing shape: no
+active link for that id, an unlinked one, or one belonging to a different account all answer the
+identical `not_found`.
 
-- `GET /api/matches?profile_id=` names one profile explicitly, so ownership is exactly
-  `_owned_active_link`'s existing shape: no active link for that id, an unlinked one, or one
-  belonging to a different account all answer the identical `not_found`.
-- `GET /api/matches/{game_id}` names no profile at all — FR-043 keeps every linked profile
-  reachable, not only the primary one, so a match is visible whenever *any* of the caller's own
-  active profiles took part. `MatchesRepository.get_match_detail` already collapses "no such
-  match" and "a real match none of the caller's profiles played" into the identical `None` (its own
-  docstring); this router turns that single signal into one `not_found` carrying a specific,
-  human-meaningful message — never Starlette's bare "Not Found" a framework-level 404 for the
-  unmatched-route fallback would otherwise coincide with (`test_match_detail.py`'s own note on why
-  that distinction is asserted explicitly).
+**`GET /api/matches/{game_id}` carries no ownership scope at all (T327, FR-018/FR-021).**
+`contracts/http-api.md`'s "Matches, widened" table states it plainly: "Any match this service holds
+is readable by any signed-in caller." The route still requires a session — `_require_session`, the
+same as every other route in this file — but, unlike `list_matches`, proves nothing about which
+profiles the caller controls before answering; `MatchesRepository.get_match_detail` (T327's own
+docstring) now returns `None` for exactly one reason, "no such `game_id`", which this router still
+turns into one `not_found` carrying a specific, human-meaningful message — never Starlette's bare
+"Not Found" a framework-level 404 for the unmatched-route fallback would otherwise coincide with
+(`test_match_detail.py`'s own note on why that distinction is asserted explicitly). There is no
+`?from_profile_id=` parameter on this route and none may be added: a parameter that could change
+the presentation is one that eventually will (FR-021), and `test_match_detail.py`'s own "identical
+whichever history it is reached from" assertion is what a per-caller presentation would break.
+`_owned_profile_ids` is still called here, but only to resolve FR-022's own archival state — never
+to decide whether the caller may see the match at all.
 
 **Capture state travels to the client unmodified.** Per `MatchesRepository`'s own docstring and
 T073's note (quoted in `test_capture_visibility.py`), the collapse of `unavailable` / `expired` /
@@ -122,12 +127,11 @@ def _profile_not_found() -> APIError:
 
 
 def _match_not_found() -> APIError:
-    """FR-038/FR-045: the one answer `GET /api/matches/{game_id}` gives for both "no such match"
-    and "a real match none of the caller's profiles played" — `MatchesRepository.get_match_detail`
-    already collapses both causes into the identical `None` (that module's own docstring); this is
-    where the single signal becomes the single response. Deliberately specific — never the bare
-    "Not Found" Starlette's own unmatched-route fallback answers, so this route's own domain
-    `not_found` is distinguishable from a request that never reached a handler at all
+    """The one answer `GET /api/matches/{game_id}` gives when `game_id` names no match at all
+    (T327: since the ownership scope was removed, `MatchesRepository.get_match_detail` now returns
+    `None` for that single reason only — see that method's own docstring). Deliberately specific —
+    never the bare "Not Found" Starlette's own unmatched-route fallback answers, so this route's
+    own domain `not_found` is distinguishable from a request that never reached a handler at all
     (`test_match_detail.py`'s own note on why that matters)."""
     return APIError(
         status_code=404,
@@ -154,8 +158,9 @@ async def _owned_active_link(
 
 async def _owned_profile_ids(db_session: AsyncSession, *, user_id: Any) -> list[int]:
     """Every profile id the caller has *actively* linked (FR-043: all of them, not only the
-    primary) — what `GET /api/matches/{game_id}` checks a match's participants against, since that
-    route names no single `profile_id` of its own."""
+    primary). `GET /api/matches/{game_id}` (T327) no longer gates a match's visibility on this
+    list — it exists only so `MatchesRepository.get_match_detail` can resolve FR-022's own
+    archival state, never a co-participant's."""
     result = await db_session.execute(
         select(ProfileLink.profile_id).where(
             ProfileLink.user_id == user_id, ProfileLink.unlinked_at.is_(None)
@@ -208,6 +213,10 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
         "leaderboard_id": detail.leaderboard_id,
         "leaderboard_name": leaderboard_name(detail.leaderboard_id),
         "duration_seconds": detail.duration_seconds,
+        # FR-018's "game version" (T327) — `matches.patch` verbatim, never resolved to a name:
+        # unlike `civ_id`/`leaderboard_id` there is no id-to-name table for it, so there is nothing
+        # to look up here.
+        "patch": detail.patch,
         "participants": [
             {
                 "profile_id": participant.profile_id,
@@ -278,9 +287,12 @@ async def list_matches(
 async def get_match_detail(
     game_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
-    """FR-011: every participant of `game_id`, with team, civilisation, result and rating change —
-    reachable through any of the caller's linked profiles, not only the primary one (FR-043) —
-    plus FR-027's archival state and capture deadline for this match (T070e)."""
+    """FR-018/FR-021 (T327): every participant of `game_id`, with team, civilisation, result and
+    rating change, plus map, ladder, game version, start time and duration — readable by any
+    signed-in caller, with no ownership scope at all (module docstring). `owner_profile_ids` is
+    still resolved and still passed through, but only so `MatchesRepository.get_match_detail` can
+    carry FR-022's own archival state and capture deadline for this match (T070e) when the caller
+    played in it — it no longer decides whether `detail` comes back at all."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     owner_profile_ids = await _owned_profile_ids(db_session, user_id=session_row.user_id)

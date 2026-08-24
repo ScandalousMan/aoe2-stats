@@ -34,24 +34,24 @@ precedent `leaderboard_name` (T033a) set for a hand-maintained id-to-name table.
 that same precedent to the top-level `leaderboard_id` itself, which now carries a `leaderboard_name`
 resolved with the identical helper `GET /api/profiles` already reads.
 
-**Ownership.** The contract states plainly: "Only matches involving one of the caller's linked
-profiles are reachable." Mirrors `replays.py`'s `_owned_active_link`/`_profile_not_found` FR-045
-discipline: a `game_id` that does not exist and one that exists but does not involve any of the
-caller's active links both answer the identical `not_found` — a differentiated answer would itself
-leak which games exist. "One of the caller's linked profiles", not only the primary one (FR-043),
-is exercised explicitly below.
+**Ownership — superseded by T327 below.** 001's contract stated: "Only matches involving one of
+the caller's linked profiles are reachable", mirroring `replays.py`'s `_owned_active_link`/
+`_profile_not_found` FR-045 discipline: a `game_id` that does not exist and one that exists but
+does not involve any of the caller's active links both answered the identical `not_found` — a
+differentiated answer would itself have leaked which games exist. T327 (FR-018, FR-021) removes
+that scope entirely; `test_match_detail_match_not_involving_caller_is_readable_since_t327` below
+carries the historical note on what changed and why. "One of the caller's linked profiles", not
+only the primary one (FR-043), is still exercised explicitly below (a match a caller's
+*non-primary* profile played is just as much "the caller's own" for FR-022's archival state), even
+though a match no linked profile played at all is reachable too now.
 
 **T324 (003) — the widening.** `contracts/http-api.md`'s "Matches, widened" table removes the
 ownership scope from this exact route (FR-018, FR-021): "Any match this service holds is readable
-by any signed-in caller." T327 is the implementing task; every test added below carries
-`@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")` for the same reason the tests
-above carry `reason="T070 not implemented yet"` — `matches.py` still gates `get_match_detail` on
-`_owned_profile_ids` today, so a caller with no linked profile in a match still gets today's
-`not_found`, and `_match_detail_json` does not yet carry a `patch` field at all (FR-018's "game
-version" — see `_seed_match`'s own `patch` parameter and `test_matches_list.py`'s docstring, which
-already names `patch` as the expected key for a reasonable implementation to add). Either alone is
-enough to fail every test below today, for a real reason, regardless of whether the calling caller
-happens to already own a participant in the match under test.
+by any signed-in caller." T327 is the implementing task, and has landed: `matches.py` no longer
+gates `get_match_detail` on `_owned_profile_ids`, and `_match_detail_json` now carries a `patch`
+field (FR-018's "game version" — see `_seed_match`'s own `patch` parameter and
+`test_matches_list.py`'s docstring, which already named `patch` as the expected key for a
+reasonable implementation to add). The tests below no longer carry `xfail`.
 
 `test_no_public_directory.py`'s own `test_match_detail_widening_carries_the_no_index_header`
 (FR-008a property 2) proves only that the `X-Robots-Tag` header survives the widening and names
@@ -338,13 +338,23 @@ async def test_match_detail_unknown_game_id_returns_not_found(
     assert body["error"]["message"] != "Not Found"
 
 
-async def test_match_detail_match_not_involving_caller_returns_the_identical_not_found(
+async def test_match_detail_match_not_involving_caller_is_readable_since_t327(
     client: TestClient, db_session: AsyncSession
 ) -> None:
-    """A `game_id` that names a real match, but one none of the caller's linked profiles took
-    part in, must answer the *same* `not_found` as an unknown one (contract: "Only matches
-    involving one of the caller's linked profiles are reachable") — never a 403 confirming the
-    match exists."""
+    """Superseded by T327 (FR-018, FR-021): before the widening, a `game_id` naming a real match
+    none of the caller's linked profiles took part in answered the identical `not_found` an
+    unknown `game_id` did — a 001-era assertion this function used to carry, named
+    `test_match_detail_match_not_involving_caller_returns_the_identical_not_found`. `contracts/
+    http-api.md`'s "Matches, widened" table removes that scope: "Any match this service holds is
+    readable by any signed-in caller." This is the direct contrast case to
+    `test_match_detail_unknown_game_id_returns_not_found` right above — same route, one `game_id`
+    that names nothing at all (still `404`) against one that names a real match the caller simply
+    did not play (now `200`) — so the boundary the widening actually draws (existence, not
+    ownership) is visible from the two tests read together, not merely from this one passing.
+    `test_match_detail_widened_to_any_match_the_service_holds` (T324) proves the full response body
+    for the equivalent scenario; this test's job is narrower and older: the specific `game_id` and
+    seeding this function has carried since 001, now asserting the opposite status code.
+    """
     caller = await _seed_linked_caller(db_session)
     await _sign_in(client, db_session, caller)
 
@@ -375,13 +385,12 @@ async def test_match_detail_match_not_involving_caller_returns_the_identical_not
 
     response = client.get(f"/api/matches/{_GAME_ID}")
 
-    assert response.status_code == 404
-    body = response.json()
-    assert body["error"]["code"] == "not_found"
-    # See `test_match_detail_unknown_game_id_returns_not_found`'s identical assertion: without
-    # this check, `app.py`'s generic unmatched-route fallback already answers 404/"not_found" on
-    # its own, so this test would pass before T070's route exists at all.
-    assert body["error"]["message"] != "Not Found"
+    assert response.status_code == 200, (
+        "FR-018/FR-021: a match not involving the caller must be readable now, not answer "
+        f"`not_found` as it did before T327. Got {response.status_code}: {response.text}"
+    )
+    by_profile = _participants_by_profile_id(response.json())
+    assert set(by_profile) == {_OPPONENT_PROFILE_ID, _OTHER_OPPONENT_PROFILE_ID}
 
 
 async def test_match_detail_lists_every_participant_with_team_civ_result_and_rating_change(
@@ -658,7 +667,6 @@ async def test_match_detail_with_no_capture_row_still_resolves(
 # --- T324: the widening (FR-018 through FR-022, quickstart scenario 5) ---------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_widened_to_any_match_the_service_holds(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -764,7 +772,6 @@ async def test_match_detail_widened_to_any_match_the_service_holds(
     assert body["capture_deadline_at"] is None
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_renders_completely_for_a_match_older_than_the_retention_window(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -845,7 +852,6 @@ async def test_match_detail_renders_completely_for_a_match_older_than_the_retent
     assert body["capture_deadline_at"] is None
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_carries_only_the_callers_own_replay_archival_state(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -922,7 +928,6 @@ async def test_match_detail_carries_only_the_callers_own_replay_archival_state(
     assert body["capture_deadline_at"] == caller_deadline.isoformat()
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_is_identical_and_singular_whichever_history_it_is_reached_from(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -1010,7 +1015,6 @@ async def test_match_detail_is_identical_and_singular_whichever_history_it_is_re
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_shows_raw_identifiers_never_a_guess_for_the_unnamed(
     client: TestClient, db_session: AsyncSession
 ) -> None:

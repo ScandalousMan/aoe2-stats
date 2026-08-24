@@ -28,23 +28,21 @@ query (`profile_id` is re-validated by the router on every call, `list_matches` 
 cursor to widen what it can see), so forging one only ever seeks to a different position in the
 same caller's own history, never into someone else's.
 
-**Restricted to the caller's linked profiles, at the query itself, never in a later branch** — the
-same discipline `data-model.md` insists on for the consent predicate ("Enforced in the query that
-selects work, not in a later branch"). The two entry points below draw that line differently
-because the two routes hand this repository different information:
+**`list_matches` stays restricted to the caller's linked profiles, at the query itself, never in a
+later branch** — the same discipline `data-model.md` insists on for the consent predicate
+("Enforced in the query that selects work, not in a later branch"). It takes one `profile_id`,
+already the one the router's own `_owned_active_link` check (`replays.py`, `profiles.py`) has
+proven belongs to the caller — restriction here is simply that every row comes from an inner join
+to `match_players` on that exact `profile_id`.
 
-- `list_matches` takes one `profile_id`, already the one the router's own `_owned_active_link`
-  check (`replays.py`, `profiles.py`) has proven belongs to the caller — restriction here is
-  simply that every row comes from an inner join to `match_players` on that exact `profile_id`.
-- `get_match_detail` takes no single `profile_id` at all: `GET /api/matches/{game_id}` names a
-  match, not a profile, and FR-043 keeps every linked profile reachable, not only the primary one
-  (`test_match_detail.py`'s own "reachable via a non-primary linked profile" case). So it takes
-  `owner_profile_ids` — every active profile id the caller controls — and returns `None` unless at
-  least one of them took part. Returning `None` for "no such match" and for "a real match the
-  caller did not play" is deliberate and is what FR-038 (T067) needs: the router turns either cause
-  into the *identical* `not_found`, and a repository that already collapses both into one signal is
-  what keeps the router from having to reconstruct that discipline itself from two different
-  answers.
+**`get_match_detail` is not restricted at all (T327, FR-018/FR-021).** It takes no single
+`profile_id`: `GET /api/matches/{game_id}` names a match, not a profile, and this feature widens
+that route so any match this service holds is readable by any signed-in caller, whichever history
+it is reached from. It still takes `owner_profile_ids` — every active profile id the caller
+controls, FR-043 — but only to resolve FR-022's own archival state, never to gate the match itself;
+`None` now means exactly one thing, "no such `game_id`" — the router (`apps/api/.../routers/
+matches.py`) still turns that into one `not_found`, the same envelope as before, just for one
+cause instead of two.
 
 **Capture status travels intact.** Per T073's own note (quoted in `test_capture_visibility.py`),
 the collapse of `unavailable`/`expired`/`failed` into a single "lost" badge state belongs to the
@@ -150,7 +148,11 @@ class MatchParticipant:
 class MatchDetail:
     """The full answer to one `get_match_detail` call — FR-027's capture state alongside FR-011's
     participants, the same two fields `MatchListRow` already carries (T070e): the list and detail
-    routes answer with one vocabulary, not two."""
+    routes answer with one vocabulary, not two.
+
+    `patch` (T327, FR-018's "game version") is `matches.patch` verbatim, carried by the ingester's
+    own `discover.py` from the source since 001 but never surfaced by any route until the widened
+    `GET /api/matches/{game_id}` needed it."""
 
     game_id: int
     started_at: datetime | None
@@ -158,6 +160,7 @@ class MatchDetail:
     map_name: str | None
     leaderboard_id: int
     duration_seconds: int | None
+    patch: str | None
     participants: list[MatchParticipant]
     #: `None` only for a match that has not yet acquired a `replay_captures` row for any of the
     #: caller's own linked profiles (`MatchListRow`'s own note) — every raw `CaptureStatus`
@@ -361,15 +364,19 @@ class MatchesRepository(Repository):
     async def get_match_detail(
         self, *, game_id: int, owner_profile_ids: Sequence[int]
     ) -> MatchDetail | None:
-        """FR-011: every participant of `game_id`, with team, civilisation, result and rating
-        change — but only if at least one of `owner_profile_ids` (every active profile the caller
-        controls, FR-043) took part. Returns `None` for both "no such match" and "a real match none
-        of the caller's profiles played" (module docstring) — the single signal FR-038/T067
-        requires the router to turn into one identical `not_found`, whatever the underlying cause.
+        """FR-018/FR-021 (T327): every participant of `game_id`, with team, civilisation, result
+        and rating change, plus map, ladder, game version, start time and duration — for *any*
+        signed-in caller, whether or not one of `owner_profile_ids` took part. The ownership scope
+        this method enforced before T327 is gone; `None` now means exactly one thing, "no such
+        match" (`match is None` below), never "a real match this caller's profiles did not play" —
+        `GET /api/matches/{game_id}` names no profile at all and FR-021 requires the identical
+        response whichever history it is reached from, an identity a caller-shaped gate would
+        itself have broken.
 
-        FR-027 (T070e): also resolves the caller's own capture state for this match, the same
-        field pair `list_matches` already carries — via the identical `LEFT OUTER JOIN` (class
-        docstring), joined into this same participants query rather than a second, `None`-
+        `owner_profile_ids` (every active profile the caller controls, FR-043) still narrows one
+        thing: FR-022's own archival state, never anyone else's. FR-027 (T070e) resolves it here,
+        the same field pair `list_matches` already carries, via the identical `LEFT OUTER JOIN`
+        (class docstring), joined into this same participants query rather than a second, `None`-
         swallowing path, so a match discovered before its capture row exists still resolves rather
         than 404ing. `replay_captures` is keyed `(game_id, profile_id)` (`ReplayCapture`'s own
         docstring: "whose point of view"), and this route names no single `profile_id`, so the join
@@ -379,11 +386,11 @@ class MatchesRepository(Repository):
         participant rows is the caller's own capture state; `stored` wins should more than one
         exist, since that is also the exact row `replays.py`'s `_stored_capture_for_caller` would
         find for this caller and this `game_id` — the badge shown here and the control it gates
-        never disagree.
+        never disagree. A caller with no active links at all (`owner_ids` empty) sees the match in
+        full and simply carries no archival state of their own, the same as any other participant
+        who never captured a replay for it.
         """
         owner_ids = set(owner_profile_ids)
-        if not owner_ids:
-            return None
 
         match = await self.session.get(Match, game_id)
         if match is None:
@@ -408,8 +415,6 @@ class MatchesRepository(Repository):
             .where(MatchPlayer.game_id == game_id)
         )
         rows = result.all()
-        if not any(player.profile_id in owner_ids for player, _alias, _status, _deadline in rows):
-            return None
 
         participants = [
             MatchParticipant(
@@ -436,6 +441,7 @@ class MatchesRepository(Repository):
             map_name=match.map_name,
             leaderboard_id=match.leaderboard_id,
             duration_seconds=match.duration_seconds,
+            patch=match.patch,
             participants=participants,
             capture_status=capture_status,
             capture_deadline_at=capture_deadline_at,

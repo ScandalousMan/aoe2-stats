@@ -5,12 +5,19 @@ fixtures (`tests/db.py`), imported rather than redefined, because `list_matches`
 `get_match_detail`'s whole job — the join to `match_players`, the cursor's row-wise `<` seek, the
 outer join to `replay_captures` — is exactly what a fake session cannot exercise honestly.
 
-These tests assert the repository directly, not through `apps/api`'s router (T070, not yet built).
-`apps/api/tests/test_matches_list.py`, `test_match_detail.py` and `test_capture_visibility.py`
-already fix the HTTP-level contract this repository must satisfy once T070 wires it in; this file
-is scoped to what belongs at this layer: ordering, cursor stability under insertion, the ownership
-split between `list_matches` (profile_id, pre-validated) and `get_match_detail` (a set of owned
-profile ids), and that capture status travels through unmodified.
+These tests assert the repository directly, not through `apps/api`'s router. `apps/api/tests/
+test_matches_list.py`, `test_match_detail.py` and `test_capture_visibility.py` already fix the
+HTTP-level contract this repository must satisfy; this file is scoped to what belongs at this
+layer: ordering, cursor stability under insertion, and that capture status travels through
+unmodified.
+
+**`get_match_detail` carries no ownership scope since T327 (FR-018, FR-021).** Before T327,
+`owner_profile_ids` (a set of the caller's own linked profile ids) gated the whole result: `None`
+unless at least one of them took part. That gate is gone — the tests below with `since_t327` in
+their name are what used to assert the opposite. `owner_profile_ids` still narrows exactly one
+thing, FR-022's own archival state (never a co-participant's), which is what the remaining
+`owner_profile_ids`-scoped assertions below exercise. `list_matches` keeps its own, unrelated
+scope: one pre-validated `profile_id`, proven by the caller by the time it reaches this repository.
 """
 
 from __future__ import annotations
@@ -429,11 +436,16 @@ async def test_get_match_detail_returns_none_for_an_unknown_game_id(
     assert detail is None
 
 
-async def test_get_match_detail_returns_none_when_no_owner_profile_took_part(
+async def test_get_match_detail_is_readable_when_no_owner_profile_took_part_since_t327(
     db_session: AsyncSession,
 ) -> None:
-    """FR-038/T067: a real match none of the caller's linked profiles played must answer the
-    identical `None` an unknown `game_id` does, never a differentiated signal."""
+    """FR-018/FR-021 (T327): a real match none of `owner_profile_ids` played must still come back
+    in full — the pre-widening behaviour this function used to assert (`None`, the identical
+    signal an unknown `game_id` gives, per FR-038/T067) is exactly what T327 removed. Contrast
+    with `test_get_match_detail_returns_none_for_an_unknown_game_id` right above: same call shape,
+    one `game_id` that names nothing at all (`None`) against one that names a real match `owner_
+    profile_ids` did not play (a full `MatchDetail`) — the boundary this method now draws is
+    existence, never ownership."""
     await _seed_callers_and_opponent(db_session)
     stranger_profile_id = 501_000_050
     await _seed_profile(db_session, profile_id=stranger_profile_id, alias="Stranger")
@@ -449,7 +461,19 @@ async def test_get_match_detail_returns_none_when_no_owner_profile_took_part(
     detail = await repository.get_match_detail(
         game_id=902_001, owner_profile_ids=[_CALLER_PROFILE_ID]
     )
-    assert detail is None
+
+    assert detail is not None, (
+        "FR-018/FR-021: a match none of the caller's own profiles played must still be readable."
+    )
+    assert {p.profile_id for p in detail.participants} == {
+        stranger_profile_id,
+        _OPPONENT_PROFILE_ID,
+    }
+    # FR-022's contrapositive: the caller took no part, so there is no archival state of their own
+    # to report, and none of the participants' own capture rows leaks in its place — none were
+    # seeded here in the first place, so `None` is the only honest answer.
+    assert detail.capture_status is None
+    assert detail.capture_deadline_at is None
 
 
 async def test_get_match_detail_reachable_via_a_non_primary_owned_profile(
@@ -480,9 +504,16 @@ async def test_get_match_detail_reachable_via_a_non_primary_owned_profile(
     }
 
 
-async def test_get_match_detail_returns_none_for_an_empty_owner_set(
+async def test_get_match_detail_is_readable_for_an_empty_owner_set_since_t327(
     db_session: AsyncSession,
 ) -> None:
+    """FR-018 (T327): a caller with no active linked profiles at all (`owner_profile_ids=[]`, the
+    empty set) is still "any signed-in caller" — the match comes back in full. `_seed_full_match`'s
+    default already gives `_CALLER_PROFILE_ID` a `stored` capture row (a genuine participant's own
+    replay, seeded regardless of who is asking), so this also proves the empty owner set truly
+    excludes it from the join rather than merely happening to have nothing to find — FR-022's own
+    archival state is never shown for a caller who owns nothing, even when a capture row exists for
+    someone who played."""
     await _seed_callers_and_opponent(db_session)
     now = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
     await _seed_full_match(db_session, game_id=904_001, completed_at=now)
@@ -490,4 +521,14 @@ async def test_get_match_detail_returns_none_for_an_empty_owner_set(
 
     repository = MatchesRepository(db_session)
     detail = await repository.get_match_detail(game_id=904_001, owner_profile_ids=[])
-    assert detail is None
+
+    assert detail is not None
+    assert {p.profile_id for p in detail.participants} == {
+        _CALLER_PROFILE_ID,
+        _OPPONENT_PROFILE_ID,
+    }
+    assert detail.capture_status is None, (
+        "FR-022: an owner set the caller does not control must never surface someone else's "
+        f"archival state. Got {detail.capture_status!r}."
+    )
+    assert detail.capture_deadline_at is None

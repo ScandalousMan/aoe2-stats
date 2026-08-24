@@ -23,19 +23,19 @@ carries no profile in its own path and therefore no "mine" name to keep — is w
 feature (FR-018, FR-021, T327), and the four tests below replace the single T067 assertion that
 used to cover it.
 
-**The four properties, one test each — three still each carrying their own `xfail` marker, never
-one for the file; the first needs none anymore.** Per `contracts/http-api.md`:
+**The four properties, one test each — two still each carrying their own `xfail` marker, never
+one for the file; the first two need none anymore.** Per `contracts/http-api.md`:
 
 1. no anonymous reach to any route this feature adds — asserted directly, no `xfail`, since T319
    landed and registered the three routes it covers: `GET /api/players/search`, `GET
    /api/players/{profile_id}`, `GET /api/players/{profile_id}/ratings`;
-2. no indexing — `X-Robots-Tag: noindex, nofollow` (`xfail(..., reason="T327 not implemented
-   yet")`, against `GET /api/matches/{game_id}` once T327 removes its ownership scope: this route
+2. no indexing — `X-Robots-Tag: noindex, nofollow`, against `GET /api/matches/{game_id}` — asserted
+   directly, no `xfail`, since T327 landed and removed that route's ownership scope: this route
    predates this feature and so falls outside `test_no_index_headers.py`'s (T308/T309) own
    parametrisation over "every route this feature adds" — the header on the widening is this
    file's property to prove, not that one's. `robots.txt`'s client-side disallow for the routes
    that render this page is a static front-end asset, `apps/web/public/robots.txt`, wired by
-   T322/T331 outside this Python suite's reach, and is not re-asserted here);
+   T322/T331 outside this Python suite's reach, and is not re-asserted here;
 3. no disclosure of a relationship between a player's accounts, on any profile (FR-009, 001
    FR-045 restated and unchanged — `xfail(..., reason="T328 not implemented yet")`, against `GET
    /api/players/{profile_id}/matches`, the route T328 adds);
@@ -60,21 +60,21 @@ live tests below keep their positive controls (the caller's own data, asserted t
 real) exactly as T067 wrote them, because `GET /api/matches` and `GET /api/profiles/{profile_id}/
 ratings` both already exist and a bare "foreign profile_id gets `not_found`" assertion is
 indistinguishable from an accidental pass only where a route's *existence* is not yet the thing
-under test. The three remaining `xfail` tests below (properties 2, 3 and 4) reach for routes and
-behaviour that do not exist at all yet — `matches.py`'s ownership scope still stands (T327),
-`players.py` carries no `/matches` sub-route (T328), and `replays.py` carries no `/api/matches/
-{game_id}/replay/{profile_id}` route (T337) — so an anonymous or cross-account request already
-404s on Starlette's own unmatched path, or on `matches.py`'s existing ownership check, rather than
-answering the outcome the assertion asks for — a different result than the assertion asks for,
-which is what makes each of those three `xfail`s genuine without needing a matching positive
-control. Property 2's and property 4's tests each keep a positive control anyway, because both
-name a *specific outcome* (a header value; a signed URL an owner must actually receive) that a
-route's mere existence would not itself prove.
+under test. The two remaining `xfail` tests below (properties 3 and 4) reach for routes and
+behaviour that do not exist at all yet — `players.py` carries no `/matches` sub-route (T328), and
+`replays.py` carries no `/api/matches/{game_id}/replay/{profile_id}` route (T337) — so a
+cross-account request already 404s on Starlette's own unmatched path rather than answering the
+outcome the assertion asks for — a different result than the assertion asks for, which is what
+makes each of those two `xfail`s genuine without needing a matching positive control. Property 4's
+test keeps a positive control anyway, because it names a *specific outcome* (a signed URL an owner
+must actually receive) that a route's mere existence would not itself prove.
 
-Property 1's test needs none of this: `players.py` is registered now (T319), so every anonymous
-request it makes already answers the real `401` the assertion asks for directly, without relying
-on a route's absence to manufacture a different status code — which is why that test carries no
-`xfail` at all.
+Properties 1 and 2's tests need none of this. `players.py` is registered now (T319), so every
+anonymous request property 1 makes already answers the real `401` the assertion asks for directly,
+without relying on a route's absence to manufacture a different status code. `matches.py` carries
+no ownership scope on `GET /api/matches/{game_id}` now (T327), so property 2's requests already
+answer the real `200` and header the assertion asks for directly — which is why neither test
+carries an `xfail` any more.
 
 **Harness and response-shape assumptions** follow the sibling files these routes share, byte for
 byte where they overlap: `test_replay_status.py`'s `client`/`db_session`/`_sign_in` conventions;
@@ -423,12 +423,11 @@ async def test_players_routes_never_answer_without_a_session(
     assert ratings_response.status_code == 200
 
 
-@pytest.mark.xfail(strict=True, reason="T327 not implemented yet")
 async def test_match_detail_widening_carries_the_no_index_header(
     client: TestClient, db_session: AsyncSession
 ) -> None:
-    """FR-008a property 2: once T327 removes the ownership scope from `get_match_detail`, `GET
-    /api/matches/{game_id}` answers for a match the caller never played (FR-018, FR-021) — the
+    """FR-008a property 2: now that T327 has removed the ownership scope from `get_match_detail`,
+    `GET /api/matches/{game_id}` answers for a match the caller never played (FR-018, FR-021) — the
     one 001 route this feature widens rather than adds — and that response must carry `X-Robots-
     Tag: noindex, nofollow` (FR-010). `test_no_index_headers.py` (T308/T309) parametrises over
     "every route this feature adds"; this route predates the feature and is only widened, so it
