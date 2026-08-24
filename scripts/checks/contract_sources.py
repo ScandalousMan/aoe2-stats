@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from contract_shapes import assert_companion_search_shape
 from publication_delay import append_sample
 
 # An honest, identifying User-Agent. Several of these sources sit behind bot protection, and we
@@ -544,6 +545,40 @@ def _companion() -> None:
     trimmed = dict(body)
     trimmed["matches"] = body["matches"][:3]
     write_json_fixture("companion/matches.json", trimmed)
+
+
+@check("aoe2companion: profile search shape (?search=vipe)")
+def _companion_search() -> None:
+    """`GET /api/profiles?search=` (`docs/data-sources.md` §3, "Profile search behaviour") — the
+    source `PlayerSearchProvider.search_players` (`companion/provider.py`, T313) calls. That
+    provider already degrades honestly on a drifted `200` — BL-1 for the envelope, BL-5 for the
+    record, both in `_parse_search_page` — but a degrade nobody watches is a degrade that tells
+    nobody (T377): every search would answer `degraded: false, results: []` forever, reading
+    exactly like a genuine "no such player". This check is what watches it.
+
+    A non-200 is recorded as a note, never a failure: `docs/data-sources.md` §3's "Observed
+    2026-08-19: intermittent 403" measured this exact host answering bot-protection noise from
+    CI runners with no relationship to the response shape, and `_companion` above already extends
+    that same leniency to the match feed on the same host. A genuine `200` whose shape has
+    drifted is a different claim entirely, and is what actually fails the nightly job here —
+    unlike `_companion`, this check is blocking.
+    """
+    r = session.get(f"{COMPANION}/profiles", params={"search": "vipe"}, timeout=TIMEOUT)
+    if r.status_code != 200:
+        notes.append(
+            f"aoe2companion search: got {r.status_code} instead of 200 (bot-protection noise, "
+            "not a shape check — docs/data-sources.md §3)"
+        )
+        return
+    body = r.json()
+    assert_companion_search_shape(body)
+    profiles = body["profiles"]
+    assert profiles, "search=vipe returned zero profiles; pick another probe query known to match"
+
+    # PlayerSearchProvider.search_players (T313). `fixtures/README.md`: "one full page (20 real
+    # records), uncapped" for `?search=vipe` — unlike `_companion`'s `matches.json` above, this
+    # fixture is deliberately not trimmed.
+    write_json_fixture("companion_profiles_search.json", body)
 
 
 @check("Steam: check_authentication rejects a forged assertion")

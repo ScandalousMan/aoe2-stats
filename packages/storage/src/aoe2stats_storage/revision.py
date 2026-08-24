@@ -25,6 +25,6 @@ from __future__ import annotations
 
 #: `uv run alembic heads`. Update in the same commit as the migration that moves it — the test
 #: named above fails until you do.
-EXPECTED_SCHEMA_REVISION = "1f9879367c9d"
+EXPECTED_SCHEMA_REVISION = "b23f76b4e1fb"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]

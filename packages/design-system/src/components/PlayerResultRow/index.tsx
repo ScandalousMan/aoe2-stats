@@ -1,4 +1,5 @@
 import { cx } from '../../lib/cx'
+import { createRowLinkClickHandler } from '../../lib/rowLink'
 
 // packages/design-system/specs/player-search.md
 
@@ -22,6 +23,11 @@ export interface PlayerSearchResultData {
 
 export interface PlayerResultRowProps {
   result: PlayerSearchResultData
+  /** Wires this row's click into the caller's own router (T388) so a plain click navigates
+   * client-side, inside a TanStack Router SPA, instead of forcing a full document reload. The row
+   * stays a real `<a href={result.href}>` regardless — a modified click (new tab, middle-click),
+   * or no `onNavigate` at all, falls straight through to the browser's native handling. */
+  onNavigate?: (href: string) => void
   className?: string
 }
 
@@ -34,10 +40,11 @@ const focusRing =
  * below `md`; from `md` up it becomes a plain divided row with country and standing moved onto the
  * alias's own line (§8). Neither field ever truncates — a half-visible alias is exactly the
  * near-identical-names failure FR-002 exists to prevent. */
-export function PlayerResultRow({ result, className }: PlayerResultRowProps) {
+export function PlayerResultRow({ result, onNavigate, className }: PlayerResultRowProps) {
   return (
     <a
       href={result.href}
+      onClick={createRowLinkClickHandler(result.href, onNavigate)}
       className={cx(
         'flex flex-col gap-1 rounded-lg border border-border bg-surface p-4',
         'md:flex-row md:items-center md:justify-between md:gap-4 md:rounded-none',

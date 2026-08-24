@@ -326,9 +326,20 @@ describe('ProfileSummary', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('This player could not be found.')
       expect(screen.getByRole('link', { name: 'Back to search' })).toHaveAttribute(
         'href',
-        '/players',
+        '/search',
       )
       expect(screen.queryByText('rival_ace')).not.toBeInTheDocument()
+    })
+
+    // T388: `searchHref` used to default to `/players`, which is not a real route — only
+    // `PlayerProfileContainer`'s override made the not-found callout work at all. This pins the
+    // default itself, independent of any caller override.
+    it('defaults searchHref to the real /search route when the caller supplies none', () => {
+      render(<ProfileSummary subject="other" authenticated entries={[]} status="not-found" />)
+      expect(screen.getByRole('link', { name: 'Back to search' })).toHaveAttribute(
+        'href',
+        '/search',
+      )
     })
   })
 })

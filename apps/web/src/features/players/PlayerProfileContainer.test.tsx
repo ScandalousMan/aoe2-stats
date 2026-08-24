@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiPlayerProfile } from './api'
@@ -122,6 +123,22 @@ describe('PlayerProfileContainer', () => {
     renderProfile()
 
     expect(await screen.findByText('This player could not be found.')).toBeInTheDocument()
+    // `ProfileSummary`'s own not-found callout carries the round trip back to `/search` here —
+    // T383's own top-bar link (below, for the resolved case) is suppressed to avoid the two
+    // reading as duplicates, so exactly one "Back to search" link, not a button, is present.
+    expect(screen.getByRole('link', { name: 'Back to search' })).toHaveAttribute('href', '/search')
+    expect(screen.queryByRole('button', { name: 'Back to search' })).not.toBeInTheDocument()
+  })
+
+  it('clicking "Back to search" navigates to /search from a resolved profile — T383', async () => {
+    installFakeApi(() => jsonResponse(baseProfile()))
+    const user = userEvent.setup()
+    renderProfile()
+
+    await screen.findByText('rival_ace')
+    await user.click(screen.getByRole('button', { name: 'Back to search' }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/search' })
   })
 
   it('redirects to sign-in when the session has expired mid-visit', async () => {

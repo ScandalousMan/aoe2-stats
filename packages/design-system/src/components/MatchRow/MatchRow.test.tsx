@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchList, MatchRow } from './index'
 import type { MatchRowData } from './index'
@@ -124,6 +125,36 @@ describe('MatchRow', () => {
     render(<MatchRow match={{ ...match, captureStatus: null }} />)
     expect(screen.queryByText(/archived|catchable|lost|review/i)).not.toBeInTheDocument()
   })
+
+  // T388: a raw `<a href>` forces a full document reload inside a TanStack Router SPA.
+  describe('onNavigate (T388)', () => {
+    it('stays a real link to the match route, href included, when onNavigate is wired', () => {
+      render(<MatchRow match={match} onNavigate={() => {}} />)
+      expect(screen.getByRole('link')).toHaveAttribute('href', '/matches/1001')
+    })
+
+    it('calls onNavigate and prevents the default navigation for a plain left click', async () => {
+      const onNavigate = vi.fn()
+      const user = userEvent.setup()
+      render(<MatchRow match={match} onNavigate={onNavigate} />)
+
+      await user.click(screen.getByRole('link'))
+
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/matches/1001')
+    })
+
+    it('lets a modified click (new tab) fall through to native handling, never calling onNavigate', () => {
+      // Not prevented on purpose (this is the point of the test): jsdom then tries a real
+      // navigation it does not implement and logs it asynchronously, after this test has already
+      // finished — harmless, expected noise, not a signal to fix.
+      const onNavigate = vi.fn()
+      render(<MatchRow match={match} onNavigate={onNavigate} />)
+
+      fireEvent.click(screen.getByRole('link'), { ctrlKey: true })
+
+      expect(onNavigate).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe('MatchList', () => {
@@ -246,5 +277,31 @@ describe('MatchList', () => {
     expect(headerCell?.className).toMatch(/\bpr-5\b/)
     expect(headerCell?.className).not.toMatch(/\bpr-6\b/)
     restore()
+  })
+
+  // T388: `onNavigate` must reach the row's link in both DOM layouts `MatchList` renders — the
+  // card list below `xl` and the real `<table>` from `xl` up — never only one of them.
+  describe('onNavigate (T388)', () => {
+    // `fireEvent`, not `userEvent`: this describe block runs under `vi.useFakeTimers()`, and
+    // `userEvent`'s own internal delays hang forever waiting on real timers that never advance.
+    it('forwards onNavigate to the card-layout row link below xl', () => {
+      const onNavigate = vi.fn()
+      render(<MatchList matches={[match]} onNavigate={onNavigate} />)
+
+      fireEvent.click(screen.getByRole('link'))
+
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/matches/1001')
+    })
+
+    it('forwards onNavigate to the table-layout row link from xl up', () => {
+      const restore = mockMatchMediaAt(1280)
+      const onNavigate = vi.fn()
+      render(<MatchList matches={[match]} onNavigate={onNavigate} />)
+
+      fireEvent.click(screen.getByRole('link'))
+
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/matches/1001')
+      restore()
+    })
   })
 })

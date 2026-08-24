@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -177,47 +177,79 @@ describe('SearchContainer', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' }))
   })
 
+  // T388: both regression tests below used to drive the query through `userEvent.type` and then
+  // wait on the wall clock — a real 900ms `setTimeout` in the first, and up to 4s of real
+  // `findByText` polling in the second — making them the two slowest tests in the web suite for a
+  // property ("no extra timer fires") that a fake clock proves exactly as well, instantly.
+  // `fireEvent.change` + `act(() => vi.advanceTimersByTime(...))` is `SearchBox.test.tsx`'s own
+  // established idiom (packages/design-system) for driving this exact debounce under a fake clock;
+  // mirrored here rather than reaching for `userEvent`, whose internal delays fight fake timers.
   it('fires exactly one search request for one settled query, even after the response resolves and the box re-renders (B3 regression)', async () => {
-    const fetchMock = installFakeApi(() =>
-      jsonResponse({ results: [], degraded: false, reason: null }),
-    )
-    const user = userEvent.setup()
-    renderSearch()
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi(() =>
+        jsonResponse({ results: [], degraded: false, reason: null }),
+      )
+      renderSearch()
 
-    await user.type(screen.getByLabelText('Search a player'), 'viper')
-    expect(await screen.findByText('No player matches “viper”.')).toBeInTheDocument()
-    expect(countSearchCalls(fetchMock)).toBe(1)
+      fireEvent.change(screen.getByLabelText('Search a player'), { target: { value: 'viper' } })
+      // `SearchBox`'s own debounce (default 300ms), then let the stubbed fetch's response and the
+      // resulting re-render settle.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300)
+      })
 
-    // Give a re-armed debounce timer every chance to fire the same, already-settled query again.
-    await new Promise((resolve) => setTimeout(resolve, 900))
-    expect(countSearchCalls(fetchMock)).toBe(1)
-  }, 8000)
+      expect(screen.getByText('No player matches “viper”.')).toBeInTheDocument()
+      expect(countSearchCalls(fetchMock)).toBe(1)
+
+      // Give a re-armed debounce timer every chance to fire the same, already-settled query
+      // again — this is the regression itself: a stable `onSearch` closure would make this
+      // unnecessary, but T388 (SearchContainer.tsx's own comment) is exactly why it cannot be.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900)
+      })
+      expect(countSearchCalls(fetchMock)).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   it('does not re-fire the search while the rate-limited countdown ticks once a second (B3 regression: the countdown itself is a re-render)', async () => {
-    const fetchMock = installFakeApi(() =>
-      jsonResponse(
-        {
-          error: {
-            code: 'rate_limited',
-            message: 'Too many searches.',
-            detail: { retry_after: 3 },
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi(() =>
+        jsonResponse(
+          {
+            error: {
+              code: 'rate_limited',
+              message: 'Too many searches.',
+              detail: { retry_after: 3 },
+            },
           },
-        },
-        429,
-      ),
-    )
-    const user = userEvent.setup()
-    renderSearch()
+          429,
+        ),
+      )
+      renderSearch()
 
-    await user.type(screen.getByLabelText('Search a player'), 'viper')
-    expect(
-      await screen.findByText("You're searching too quickly. Try again in 3s."),
-    ).toBeInTheDocument()
-    expect(countSearchCalls(fetchMock)).toBe(1)
+      fireEvent.change(screen.getByLabelText('Search a player'), { target: { value: 'viper' } })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300)
+      })
 
-    // The countdown ticks every second for 3s, each tick a `setState` in `SearchBox` itself — let
-    // it run out and settle, then confirm no further request landed in the meantime.
-    await screen.findByText("You're searching too quickly. Try again in 0s.", {}, { timeout: 4000 })
-    expect(countSearchCalls(fetchMock)).toBe(1)
-  }, 8000)
+      expect(screen.getByText("You're searching too quickly. Try again in 3s.")).toBeInTheDocument()
+      expect(countSearchCalls(fetchMock)).toBe(1)
+
+      // The countdown ticks every second for 3s, each tick a `setState` in `SearchBox` itself —
+      // let it run out and settle, then confirm no further request landed in the meantime. Once
+      // it reaches zero the sentence itself changes (T388, SearchBox's own fix) rather than
+      // sitting on "Try again in 0s." forever.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      expect(screen.getByText('You can search again now.')).toBeInTheDocument()
+      expect(countSearchCalls(fetchMock)).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

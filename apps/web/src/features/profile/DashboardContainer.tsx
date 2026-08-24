@@ -228,7 +228,15 @@ export function DashboardContainer() {
   return (
     <main className="min-h-svh bg-background">
       {authenticated && (
-        <div className="flex justify-end px-4 pt-4 md:px-6">
+        <div className="flex justify-between px-4 pt-4 md:px-6">
+          {/* T383: the one entry point to `/search` (T322) a signed-in visitor reaches without
+           * typing the URL — without this, `/search` existed and Phase 3's checkpoint ("a user
+           * can find any player by name") did not. Plain `navigate()`, matching every other
+           * cross-page action in this container (`onLinkAnotherAccount` below), not `Button`'s
+           * `href` — that renders a raw `<a>` and forces a full document reload in this SPA. */}
+          <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+            Search players
+          </Button>
           <Button
             variant="ghost"
             onClick={() => void handleSignOut()}

@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { PlayerResultRow } from './index'
 import type { PlayerSearchResultData } from './index'
 
@@ -83,5 +84,49 @@ describe('PlayerResultRow', () => {
   it('forwards a caller-supplied className onto the row', () => {
     render(<PlayerResultRow result={base} className="custom-marker" />)
     expect(screen.getByRole('link').className).toMatch(/custom-marker/)
+  })
+
+  // T388: a raw `<a href>` forces a full document reload inside a TanStack Router SPA.
+  describe('onNavigate (T388)', () => {
+    it('stays a real link to the profile route, href included, when onNavigate is wired', () => {
+      render(<PlayerResultRow result={base} onNavigate={() => {}} />)
+      expect(screen.getByRole('link')).toHaveAttribute('href', '/players/12345')
+    })
+
+    it('calls onNavigate and prevents the default navigation for a plain left click', async () => {
+      const onNavigate = vi.fn()
+      const user = userEvent.setup()
+      render(<PlayerResultRow result={base} onNavigate={onNavigate} />)
+
+      await user.click(screen.getByRole('link'))
+
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/players/12345')
+    })
+
+    it('lets a modified click (new tab) fall through to native handling, never calling onNavigate', () => {
+      const onNavigate = vi.fn()
+      render(<PlayerResultRow result={base} onNavigate={onNavigate} />)
+
+      fireEvent.click(screen.getByRole('link'), { ctrlKey: true })
+
+      expect(onNavigate).not.toHaveBeenCalled()
+    })
+
+    it('does nothing special on click when no onNavigate is supplied — the native <a> just navigates', async () => {
+      // jsdom does not implement real navigation and logs a "Not implemented" error the instant
+      // nothing prevents the anchor's default action — which is exactly the behaviour this test
+      // exists to prove, so the log is expected noise, not a signal to fix.
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const user = userEvent.setup()
+      render(<PlayerResultRow result={base} />)
+      const link = screen.getByRole('link')
+      const preventDefaultSpy = vi.spyOn(MouseEvent.prototype, 'preventDefault')
+
+      await user.click(link)
+
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+      preventDefaultSpy.mockRestore()
+      consoleErrorSpy.mockRestore()
+    })
   })
 })

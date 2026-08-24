@@ -31,11 +31,13 @@ function Harness({
   state,
   onSearch,
   onRetry,
+  onNavigate,
   initialValue = '',
 }: {
   state: SearchBoxState
   onSearch: (value: string) => void
   onRetry?: () => void
+  onNavigate?: (href: string) => void
   initialValue?: string
 }) {
   const [value, setValue] = useState(initialValue)
@@ -46,6 +48,7 @@ function Harness({
       onSearch={onSearch}
       state={state}
       onRetry={onRetry}
+      onNavigate={onNavigate}
     />
   )
 }
@@ -179,6 +182,23 @@ describe('SearchBox', () => {
     expect(screen.queryByText(/degraded/i)).not.toBeInTheDocument()
   })
 
+  // T388: `onNavigate` must reach `PlayerResultRow` unchanged, so a plain click on a result
+  // routes client-side instead of forcing a full document reload.
+  it('forwards onNavigate to each PlayerResultRow', () => {
+    const onNavigate = vi.fn()
+    render(
+      <Harness
+        state={{ status: 'answered', query: 'v', results, degraded: false }}
+        onSearch={() => {}}
+        onNavigate={onNavigate}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: /TheViper/ }))
+
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/players/1')
+  })
+
   it('empty 1 of 3 — not found: an info status callout naming the query, distinct from a failure', () => {
     render(
       <Harness
@@ -255,6 +275,16 @@ describe('SearchBox', () => {
     expect(input).toBeDisabled()
     act(() => vi.advanceTimersByTime(2000))
     expect(input).not.toBeDisabled()
+  })
+
+  // T388: this used to keep reading "Try again in 0s." forever once the countdown ran out, since
+  // nothing changed the sentence itself when the wait was actually over.
+  it('error — rate limited: reads a settled sentence, not "Try again in 0s.", once the countdown reaches zero', () => {
+    render(<Harness state={{ status: 'rate-limited', retryAfterSeconds: 2 }} onSearch={() => {}} />)
+    act(() => vi.advanceTimersByTime(2000))
+
+    expect(screen.getByRole('status')).toHaveTextContent('You can search again now.')
+    expect(screen.queryByText(/Try again in 0s\./)).not.toBeInTheDocument()
   })
 
   it('error — request failed: a danger alert distinct from the rate-limited warning, with a working retry', () => {

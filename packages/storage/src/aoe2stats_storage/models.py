@@ -679,8 +679,11 @@ class ProfileSearchCache(Base):
 
     query_normalised: Mapped[str] = mapped_column(Text, primary_key=True)
     results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    # `index=True` (T386): the opportunistic prune below is a `DELETE ... WHERE fetched_at <
+    # threshold` run on every successful cache write, across the whole table — without an index
+    # here that scan degrades linearly with the very thing the prune exists to bound.
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
     source: Mapped[str] = mapped_column(Text, nullable=False)
 

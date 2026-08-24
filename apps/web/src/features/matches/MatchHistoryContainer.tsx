@@ -179,6 +179,9 @@ export function MatchHistoryContainer() {
               status={matchListStatus}
               matches={matchRows}
               onRetry={() => void matchesQuery.refetch()}
+              // T388: `MatchRow` renders a real `<a href>` so it degrades gracefully, but a plain
+              // click routes through here instead of forcing a full document reload.
+              onNavigate={(href) => void navigate({ to: href })}
             />
           </div>
         </>

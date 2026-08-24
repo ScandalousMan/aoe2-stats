@@ -89,7 +89,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aoe2stats_api import security
+from aoe2stats_api import ratelimit, security
 from aoe2stats_api.routers import players
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import AoeProfile, ProfileSearchCache, RatingSnapshot, User
@@ -351,18 +351,53 @@ async def test_search_unavailable_still_returns_locally_observed_results(
     assert 900_900_200 in result_ids
 
 
+def _freeze_rate_limiter_clock(monkeypatch: pytest.MonkeyPatch, *, moment: datetime) -> None:
+    """Pins the clock `ratelimit.check_and_increment` reads (`aoe2stats_api.ratelimit`'s own
+    `datetime.now(UTC)`, taken when its caller passes no `now` — exactly what `players.py`'s route
+    does) to a single, fixed `moment` for the rest of a test. T389: `ratelimit.py`'s fixed windows
+    are epoch-aligned (`_window_start`), so a test that spends several real-time calls near a window
+    boundary can have the counter reset underneath it mid-loop and see the limit never fire — not a
+    bug in the limiter, a race between the test's own wall-clock calls and the boundary it never
+    controlled. `datetime.datetime` is a C type and cannot be monkeypatched attribute-by-attribute,
+    so — the same technique `freezegun` itself uses — this swaps the module-level `datetime` name
+    `ratelimit.py` calls `.now()` and `.fromtimestamp()` through for a subclass whose `now()` always
+    answers `moment`, without changing one line of `ratelimit.py` itself.
+    """
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return moment if tz is None else moment.astimezone(tz)
+
+    monkeypatch.setattr(ratelimit, "datetime", _FrozenDateTime)
+
+
 async def test_search_rate_limits_per_user_and_answers_retry_after(
-    client: TestClient, db_session: AsyncSession
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """FR-005, quickstart scenario 1.6: past the configured per-user limit
     (`PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE`), the route answers `rate_limited` with a
     `retry_after` — never a generic failure — so a client can honestly tell the user when to try
     again. Every call resolves against the same cached, empty row so nothing here depends on the
-    search outcome itself, only on the limiter."""
+    search outcome itself, only on the limiter.
+
+    T389: the clock is pinned mid-window before the first call, so every call below — however long
+    the loop itself takes on a slow run — is counted against the exact same fixed window
+    (`ratelimit._window_start`) regardless of when this test happens to execute against the real
+    clock. Widening the assertion to tolerate the limit not firing was rejected on purpose: that
+    would test nothing about FR-005's own limit-triggering path, only that the route does not
+    crash.
+    """
     caller = await _seed_user(db_session)
     await _sign_in(client, db_session, caller)
     await _seed_cache_entry(
         db_session, query_normalised="ratelimited", results=[], source=_LIVE_SOURCE
+    )
+
+    window_seconds = players._SEARCH_RATE_LIMIT_WINDOW_SECONDS
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limiter_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
     )
 
     limit = get_settings().player_search_max_per_user_per_minute

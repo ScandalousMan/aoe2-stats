@@ -50,12 +50,6 @@ if TYPE_CHECKING:
     # collection time — see `_provider()` below, where the real (runtime) import lives.
     from aoe2stats_providers.steam.provider import SteamAuthProvider
 
-# Every test in this file is expected to fail for exactly one reason — T026 does not exist yet —
-# until it does. `strict=True` is what makes that honest: the moment T026 lands and a test starts
-# passing, `strict=True` turns the *run* red instead of letting a stale xfail hide it, which is the
-# whole point of marking these tests failing rather than skipping them. Do not drop `strict=True`.
-XFAIL_REASON = "SteamAuthProvider is implemented by T026, not this test-first task (T019)"
-
 # Fractions of a millisecond, exactly like `test_provider_base.py`'s `FAST_RETRY`: keeps the one
 # test below that exhausts retries (a simulated Steam outage) fast without patching `time.sleep`.
 FAST_RETRY = RetryPolicy(
