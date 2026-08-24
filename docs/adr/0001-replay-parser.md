@@ -31,10 +31,10 @@ Both parsers were run on the same file, on the same machine, on 2026-08-19:
 version_major 68, 6 909 299 bytes. The file is committed at
 `tests/fixtures/replays/AgeIIDE_Replay_500546441.zip`.
 
-| Parser | Version | Result |
-| --- | --- | --- |
-| `aoc-mgz` | 1.8.51 (PyPI, current) | **fails** — fast parser: `could not parse`; full and summary: `RuntimeError: invalid mgz file: expected 8 to 8, found 1 (parsing) -> de -> de -> players` |
-| `aoe2rec-py` | 0.1.21 (PyPI) | **succeeds** — 0.54 s, 484 542 operations |
+| Parser       | Version                | Result                                                                                                                                                    |
+| ------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aoc-mgz`    | 1.8.51 (PyPI, current) | **fails** — fast parser: `could not parse`; full and summary: `RuntimeError: invalid mgz file: expected 8 to 8, found 1 (parsing) -> de -> de -> players` |
+| `aoe2rec-py` | 0.1.21 (PyPI)          | **succeeds** — 0.54 s, 484 542 operations                                                                                                                 |
 
 What `aoe2rec_py.parse_rec()` returned:
 
@@ -77,6 +77,26 @@ Windows; the manylinux x86_64 wheel is ~445 KB, well inside Vercel's 500 MB Pyth
 - A nightly canary parses recent replays with **both** engines and publishes both success rates. The
   failure mode we are guarding against — a game patch silently breaking parsing for months — is
   exactly what happened to aoestats.
+
+## Correction — 2026-08-24
+
+Two points measured for this ADR do not hold as stated. Both change what the next person tries
+first, so they are corrected here rather than left for a reader to discover the hard way.
+
+- **"`Build` plus `Research` plus the `Sync` clock is everything the V2 engine needs" (Evidence,
+  above) is true of the information but false of the shape.** `Research` comes back fully decoded
+  by the pinned `aoe2rec-py` wheel (`player_id`, `building_id`, `technology_type`). `Build` does
+  **not** — the wheel hands it back as opaque `{"action_length": 36, "data": [...]}` with no
+  `player_id` field, and this repo's own `packages/replay-engine` has to decode the player id and
+  building type out of that `data` payload itself. Do not assume `Build` is usable as delivered by
+  the wheel; see `specs/003-player-search-match-analysis/research.md`, section R4, for the measured
+  byte shape and the decoder.
+- **The parser's type table carries an `Achievements` post-game block that the reference recording
+  above does not contain.** The Evidence section's `AgeIIDE_Replay_500546441.aoe2record` has
+  `num_blocks: 2` — only `Leaderboards` and `WorldTime` — no `Achievements`. Whether any
+  current-patch ranked recording ever carries an `Achievements` block is an open question, not
+  settled by this ADR; do not assume achievement data is available without verifying it is present
+  first.
 
 ## Alternatives considered
 
