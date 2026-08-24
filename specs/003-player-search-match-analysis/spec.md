@@ -422,10 +422,18 @@ their current standing and reachable in one click.
 - **FR-004a**: Name search MUST match case-insensitively and on partial strings, so that a user who
   remembers part of a name finds the player, and MUST order results so that the most-played matching
   player appears first.
-- **FR-004b**: System MUST discard, at the point the search source is read, every field asserting a
-  relationship between a player's accounts — and MUST NOT store, display or act on a third party's
-  Steam identifier obtained this way. These fields exist in the response and carrying them further
-  would breach 001's FR-045 by accident rather than by decision.
+- **FR-004b**: ~~System MUST discard, at the point the search source is read, every field asserting
+  a relationship between a player's accounts — and MUST NOT store, display or act on a third party's
+  Steam identifier obtained this way.~~ **Superseded 2026-08-24, pending the principle IX amendment;
+  it governs until that amendment lands.** The replacement, in the same two halves the original
+  conflated: the field is **carried and shown as the source reports it**, marked as a claim this
+  service has not verified — 001's FR-006 makes a Steam link proven by sign-in the only one this
+  service vouches for, and presenting an unchecked third-party assertion beside it without the
+  distinction is an accuracy fault independent of the privacy question. And it **MUST NOT be used to
+  infer, suggest or act upon a relationship between profiles**: no linking, no merging, no feature
+  treating two profiles as one person on this basis. That is 001's FR-045 minus the half the
+  2026-08-24 decision removed, and it stands unchanged. Kept struck rather than deleted, per FR-004c's
+  precedent: the field is on the wire either way and the next reader deserves the ruling.
 - **FR-004c**: ~~System MUST honour a source-side signal that a profile is hidden.~~ **Retired
   2026-08-23, before implementation, on measurement (T301a).** It is left here rather than deleted
   because the field it was written for still exists on the wire, and the next reader to notice it
@@ -550,11 +558,15 @@ their current standing and reachable in one click.
   recorded at the time and verifiable on retrieval, for every analysis it publishes — third-party
   matches included. A published analysis that cannot be recomputed from its raw is forbidden by
   constitution IV, and the source destroys the raw after ~31 days, so the choice is between keeping
-  the recording and publishing an unfalsifiable conclusion. Retained recordings are never modified, and are
-  deleted only on an erasure or objection by a person **appearing in** the recording (FR-046).
-  Erasing the user who *requested* the analysis clears who asked and keeps the bytes: a published
-  analysis must stay recomputable (constitution IV), and the requester is not the subject of a third
-  party's recording.
+  the recording and publishing an unfalsifiable conclusion. Retained recordings are **never modified
+  and never deleted** — amended 2026-08-24, pending the principle IX amendment; the previous rule
+  (deleted on an erasure or objection by a person appearing in the recording) governs until that
+  lands. Erasure and objection reach the *link* between a recording and a person, never the artifact:
+  `requested_by_user_id` is cleared and the identifiers this service holds are pseudonymised, while
+  the bytes stand so the published analysis stays recomputable (constitution IV). The same rule now
+  covers a match the requester played themselves — a copy is retained under this basis at analysis
+  time even though 001 already holds the same point of view under consent, because otherwise erasing
+  that user would destroy the raw of an analysis shown to everyone. FR-046 changes with it.
 - **FR-034**: System MUST present analysis as permanently unavailable, with the reason, for a match
   whose recordings have expired and which was never analysed — never as an action that fails.
 - **FR-035**: System MUST report progress for an analysis that outlasts a page load, and MUST let the
@@ -613,9 +625,17 @@ their current standing and reachable in one click.
 - **FR-045**: System MUST record the retention of analysed third-party recordings in the processing
   register as its own processing purpose, with its own legal basis, retention and safeguards, in the
   same change that implements it.
-- **FR-046**: System MUST make a retained recording reachable by the third-party objection route and
-  by erasure (001 FR-037, FR-039), such that a person appearing in one can have it removed, and the
-  analyses derived from it withdrawn with it.
+- **FR-046**: ~~System MUST make a retained recording reachable by the third-party objection route
+  and by erasure (001 FR-037, FR-039), such that a person appearing in one can have it removed, and
+  the analyses derived from it withdrawn with it.~~ **Superseded 2026-08-24, pending the principle IX
+  amendment; it governs until that amendment lands.** The replacement: the objection route and
+  erasure MUST reach every identifier this service holds about a person appearing in a recording —
+  pseudonymising them exactly as 001 already does for `matches` and `match_players` — and MUST NOT
+  delete or modify the recording itself. A recorded game is the record of a public match, and a
+  `.aoe2record` cannot be pseudonymised without being modified, which would destroy its checksum and
+  the recomputability constitution IV requires. No analysis is withdrawn on this route: it stands and
+  stays recomputable, which is what the amendment buys. The processing register MUST state this
+  ordering in its balancing test rather than leave it implied.
 - **FR-047**: System MUST cap the volume retained this way and MUST rate-limit the requests that
   cause retention, per user and in total, so that stored volume remains a function of deliberate
   human requests and never of traffic. On reaching the cap the system MUST refuse new analyses with
