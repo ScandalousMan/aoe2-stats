@@ -46,12 +46,27 @@ properties a test plan has to establish.
 - [x] Steam identifier resolves to an AoE2 profile
 - [x] A replay younger than 21 days downloads as a single-member zip
 - [x] A replay older than 35 days returns 404, confirming the window has not moved
+- [ ] `data.aoe2companion.com`'s profile-search endpoint answers from the production platform's
+      (Vercel's) own egress addresses, not only from a residential connection — presently
+      unverified, per `docs/data-sources.md` §3's own "Unverified" note; the 12-of-12 reliability
+      sample there and R4's materialised 403 were both observed away from Vercel. FR-004d's local
+      fallback is what search stands on until this is checked from production
+- [x] A `200` response from that same endpoint with a renamed envelope key (BL-1) or a renamed
+      field inside every record (BL-5) fails the nightly contract run instead of the guard
+      degrading honestly and telling nobody — `assert_companion_search_shape` is unit-tested for
+      both cases plus the one-bad-record contrast case (`scripts/checks/tests/test_contract_shapes.py`,
+      7/7 green), and `contract_sources.py`'s `_companion_search` check that calls it is blocking
+      and runs inside the nightly workflow's `0 3 * * *` schedule (T385a)
 
 **Parsing**
 
 - [x] The reference fixture parses in under 2 s and yields `Build` and `Research` actions
 - [ ] The engine interface allows selecting mgz by configuration, and its failure on a current-patch
       file is quarantined rather than crashing the run
+- [ ] A recording whose raw size exceeds `ANALYSIS_MAX_RAW_BYTES` is refused before parsing starts,
+      so a hostile or corrupt replay cannot exhaust memory or hang the process — the measured
+      amplification the bound is derived from lives in the `replay-parsing` skill and is not
+      restated here
 
 **Ingestion** — the real measure of the MVP
 
@@ -101,3 +116,7 @@ jurisdiction, `<account>.r2...` does not).
 - [ ] Export contains the archived replays
 - [ ] Erasure removes account, links, capture records and storage objects, verified by listing the
       bucket
+- [ ] Recordings retained under FR-045/046/047 stay under `ANALYSIS_RETENTION_CAP_BYTES`, and growth
+      against that cap is observable rather than discovered by a refusal — the free-tier watch
+      counts the retained-recording prefix separately from 001's capture prefix and warns at 70 %
+      of the analysis cap (T378)
