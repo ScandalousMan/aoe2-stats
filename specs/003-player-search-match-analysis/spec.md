@@ -178,21 +178,45 @@ for that and for nothing else.
   because the question is a reasonable one that will be asked again.
 
 - **Q: When a user erases their account and their own captured replay was the point of view a
-  published analysis was derived from, what happens to that analysis?** A: **open — deferred to a
-  constitution amendment, requested 2026-08-24.** The gap is real and is recorded here so that no
+  published analysis was derived from, what happens to that analysis?** A: **the analysis stands,
+  because its recording stands — decided 2026-08-24 via the principle IX amendment below.** The gap is real and is recorded here so that no
   implementer invents an answer: for a match the user played, §2 has analysis read 001's capture and
   create no `retained_recordings` row, 001's erasure deletes that capture and its object, and
   `match_analyses`' erasure rule says only "`requested_by_user_id` cleared, row retained" — so the
   analysis today survives its own raw, which is the unfalsifiable conclusion principle IV forbids.
   FR-046's withdrawal rule does not fire, because it is written on `retained_recordings`. Two
-  dispositions were put: withdraw the analysis with the capture (no amendment needed), or let it
-  stand without its raw (amends principle IV). The second was chosen and requires principle IX to be
-  reopened as well, since IX requires retention on the public-recording basis to stay reachable by
-  erasure. **Nothing in Phase 7 may be implemented against either disposition until that amendment
-  lands** — T363, T091 and `match_analyses`' erasure rule all depend on the answer. Note also that
+  dispositions were put: withdraw the analysis with the capture, or let it stand without its raw.
+  **Neither was taken.** Amending principle IX so that a retained recording survives erasure and
+  objection makes a third and better one available: retain a copy under FR-033's basis at analysis
+  time, *including for a match the requester played themselves*, so the analysis stands **and stays
+  recomputable**. Principle IV is therefore not amended at all — it is satisfied, not overridden —
+  and the own-match hole closes with no special rule. `.aoe2record` bytes are never modified, which
+  FR-033 already required and the amendment restates. **Nothing in Phase 7 may be implemented until
+  the amendment lands** — T363, T091 and `match_analyses`' erasure rule all depend on it. Note also
+  that
   `match_analyses` carries no foreign key to its source, unlike `replay_access_log` which carries
   both; whichever disposition wins, finding "the analyses derived from this recording" needs either
   `(game_id, point_of_view_profile_id)` or a new column.
+
+- **Q: Does "every field the AoE2 DE APIs serve is public" reach `steamId`, which FR-004b strips
+  today?** A: **yes — the wide reading, decided 2026-08-24.** FR-004b is retired and the field is
+  passed through as the source reports it. Two things bound it, and neither is a residue of the
+  privacy argument that was settled against:
+
+  **It is an unverified third-party claim and MUST be presented as one.** 001's FR-006 makes a
+  *proven* Steam link the one this service stands behind — established by a real Steam sign-in. The
+  community source's `steamId` is an assertion this service cannot check. Publishing both without
+  distinguishing them would have the service vouch for something it did not verify, which is an
+  accuracy fault and survives the privacy decision untouched.
+
+  **The prohibition on acting on it stands.** 001 FR-045's remaining half — MUST NOT infer, suggest
+  or act upon a relationship between profiles the user has not proven — is unchanged. The field may
+  be shown; it MUST NOT be used to link, merge or unify profiles, and no feature may treat two
+  profiles as one person on its basis.
+
+  This retires FR-004b, changes the search contract and `profile_search_cache`'s stored fields,
+  inverts quickstart scenario 2, and needs 001's FR-045 amended to carve out carriage from action.
+  None of it may land before the principle IX amendment does.
 
 ## User Scenarios & Testing *(mandatory)*
 
