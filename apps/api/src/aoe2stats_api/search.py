@@ -214,6 +214,22 @@ async def search_players(
         )
 
     page = await provider.search_players(query, limit=limit)
+    # T387 invariant: no `await` may be introduced between this line and the
+    # `is_degraded()`/`last_call_failed()` read on the very next line. `last_call_failed()` is
+    # last-write-wins on `provider`'s `CircuitBreaker`, and that breaker is process-lifetime and
+    # shared across *every* concurrent request — `wiring.build_companion_breaker()` builds it once,
+    # `routers/players.py`'s `_build_search_provider` injects the same instance into every
+    # request's own, otherwise disposable, `CompanionEnrichmentProvider` (`contracts/providers.md`'s
+    # MJ-3 note). Reading it here is correct only because the call returning and this read happen
+    # in the same synchronous continuation: nothing can run between a coroutine's own statements, so
+    # no *other* coroutine's `search_players` call can land its own `record_success()`/
+    # `record_failure()` on the shared breaker in the gap. Insert an `await` here — an audit log
+    # call, a metrics flush, anything — and a concurrent request's outcome can overwrite this one's
+    # between the call returning and this read: this request then reports the OTHER request's
+    # success or failure, a silently wrong `degraded` signal, not a crash or anything a test would
+    # notice by accident. Nothing enforced this before T387;
+    # `test_player_search.py::test_no_await_between_search_players_call_and_last_call_failed_read`
+    # now walks this function's AST to keep it true.
     if provider.is_degraded() or provider.last_call_failed():
         # B1/BL-2 remediation: `search_players` never raises (`contracts/providers.md`'s
         # "Failure"), so a failed call comes back exactly like a genuine, confident answer would:

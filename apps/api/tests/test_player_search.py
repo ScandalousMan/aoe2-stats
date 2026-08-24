@@ -423,6 +423,97 @@ async def test_a_call_that_fails_without_tripping_the_breaker_still_degrades(
     )
 
 
+# --- T387: an executable guard for the invariant the BL-2 fix rests on ---------------------------
+
+
+def test_no_await_between_search_players_call_and_last_call_failed_read() -> None:
+    """The BL-2 signal (`last_call_failed()`) is last-write-wins on `CircuitBreaker`, a
+    process-lifetime object shared across *every* concurrent request
+    (`wiring.build_companion_breaker()`, built once and injected into every request's own,
+    otherwise disposable `CompanionEnrichmentProvider` — MJ-3, `contracts/providers.md`). Reading
+    it straight after `await provider.search_players(...)` returns is only correct because both
+    happen in the same synchronous continuation: no other coroutine can run between them, so no
+    concurrent request's own `search_players` call can overwrite the shared breaker's last outcome
+    in the gap. The inline comment at the call site (`search.py`) records *why*; this test is the
+    "cheap executable guard" its own neighbouring prose asks for, because the comment alone cannot
+    stop a later refactor from doing exactly this — inserting an `await` (an audit log call, a
+    metrics flush) between the two lines would compile clean, would not raise, and the only symptom
+    would be one request occasionally reporting a concurrent request's `degraded` outcome instead
+    of its own: a defect indistinguishable from a flaky test until read very carefully.
+
+    Why an AST check and not a live concurrency reproduction: asyncio is cooperative and only
+    switches coroutines at an `await` point, so a fake breaker mutated by two concurrently-gathered
+    `search_players` calls would not actually interleave at this gap *unless* an `await` already
+    sits there — the very defect this guards against. A concurrency test would therefore only catch
+    the regression it happened to schedule around, non-deterministically; walking the source is the
+    one form of this check that is deterministic and fails the instant the adjacency is broken,
+    which is why T387 is content with it rather than also adding (b) alongside it.
+    """
+    import ast
+    import inspect
+
+    from aoe2stats_api.search import search_players as search_players_fn
+
+    source = inspect.getsource(search_players_fn)
+    func_def = ast.parse(source).body[0]
+    assert isinstance(func_def, ast.AsyncFunctionDef), "search_players must stay an async def"
+
+    def _is_search_players_await_assign(stmt: ast.stmt) -> bool:
+        return (
+            isinstance(stmt, ast.Assign)
+            and isinstance(stmt.value, ast.Await)
+            and isinstance(stmt.value.value, ast.Call)
+            and isinstance(stmt.value.value.func, ast.Attribute)
+            and stmt.value.value.func.attr == "search_players"
+        )
+
+    def _is_breaker_read_if(stmt: ast.stmt) -> bool:
+        if not isinstance(stmt, ast.If):
+            return False
+        attrs_called = {
+            node.func.attr
+            for node in ast.walk(stmt.test)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        return {"is_degraded", "last_call_failed"} <= attrs_called
+
+    call_indices = [
+        index for index, stmt in enumerate(func_def.body) if _is_search_players_await_assign(stmt)
+    ]
+    assert len(call_indices) == 1, (
+        "expected exactly one `page = await provider.search_players(...)` assignment in "
+        "search_players's body — the invariant this test guards is specific to that call site"
+    )
+    call_index = call_indices[0]
+
+    assert call_index + 1 < len(func_def.body), (
+        "the `search_players` call must not be the last statement in the function — the "
+        "`is_degraded()`/`last_call_failed()` read is expected to follow it"
+    )
+    following_stmt = func_def.body[call_index + 1]
+
+    assert _is_breaker_read_if(following_stmt), (
+        "a statement was inserted between `page = await provider.search_players(...)` and the "
+        "`is_degraded() or last_call_failed()` check that must immediately follow it (T387). If "
+        "that new statement contains an `await`, a concurrent request's `search_players` call can "
+        "write the shared, process-lifetime breaker in the gap, and this request then silently "
+        "reports the OTHER request's outcome instead of its own."
+    )
+
+    # Only `following_stmt.test` — the `if`'s own condition — is in scope here. Its `body`/`orelse`
+    # (the fallback path this `if` branches to) legitimately awaits `_degraded_outcome`; that is
+    # downstream of the read this test guards, not part of the gap between the call and the read.
+    assert isinstance(following_stmt, ast.If)
+    awaits_in_the_condition = [
+        node for node in ast.walk(following_stmt.test) if isinstance(node, ast.Await)
+    ]
+    assert awaits_in_the_condition == [], (
+        "an `await` was found inside the `is_degraded()`/`last_call_failed()` read itself (T387) — "
+        "this read must stay synchronous, or a concurrent request can overwrite the shared "
+        "breaker's last-recorded outcome before this one gets to read it"
+    )
+
+
 # --- BL-3 re-take: a fallback answer is now cached, under a short, self-healing TTL --------------
 
 
