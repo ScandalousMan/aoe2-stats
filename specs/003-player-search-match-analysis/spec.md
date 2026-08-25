@@ -506,7 +506,10 @@ their current standing and reachable in one click.
   FR-039) MUST cover data recorded this way.
 - **FR-012**: System MUST NOT begin capturing, archiving or ingesting a third party's recorded games
   as a consequence of that player being searched, viewed, favourited or analysed. Capture remains
-  what 001 defines it as: the consenting user's own point of view, and nothing else.
+  what 001 defines it as: the linked user's own point of view, and nothing else. **Amended
+  2026-08-25** (constitution IX 4.0.0): 001's consent gate is retired, so the phrase is now "linked"
+  rather than "consenting". The point-of-view limit this requirement rests on is unchanged — it is
+  what survived the amendment, and it is what still forbids capturing a third party's recording.
 
 **Favourites**
 
@@ -581,7 +584,7 @@ their current standing and reachable in one click.
   `requested_by_user_id` is cleared and the identifiers this service holds are pseudonymised, while
   the bytes stand so the published analysis stays recomputable (constitution IV). The same rule now
   covers a match the requester played themselves — a copy is retained under this basis at analysis
-  time even though 001 already holds the same point of view under consent, because otherwise erasing
+  time even though 001 already holds the same point of view under its own basis, because otherwise erasing
   that user would destroy the raw of an analysis shown to everyone. FR-046 changes with it.
 - **FR-034**: System MUST present analysis as permanently unavailable, with the reason, for a match
   whose recordings have expired and which was never analysed — never as an action that fails.
@@ -655,8 +658,11 @@ their current standing and reachable in one click.
   human requests and never of traffic. On reaching the cap the system MUST refuse new analyses with
   a clear reason rather than degrade capture or grow without bound.
 - **FR-048**: System MUST keep recordings retained under FR-033 distinguishable from replays captured
-  under 001, so that the two never blur: they have different legal bases, different consent, and
-  different points of view, and a report that counts them together would misstate both.
+  under 001, so that the two never blur: they have different legal bases and different points of
+  view, and a report that counts them together would misstate both. **Amended 2026-08-25**: the pair
+  no longer differ by *consent* — constitution IX 4.0.0 retired that gate, and 001's capture now rests
+  on legitimate interest with a right to object, while FR-033's retention rests on IX's
+  public-recording basis and is not reached by that objection.
 
 ### Key Entities
 
@@ -674,8 +680,8 @@ their current standing and reachable in one click.
   its failure reason. Derived and disposable, because the recording it came from is kept.
 - **Retained recording**: a recorded game kept because it was analysed — which match and point of
   view it is, where it is stored, its size and checksum, when and at whose request it was retained.
-  Distinct from 001's replay capture in legal basis, consent and point of view, and never counted
-  together with it (FR-048).
+  Distinct from 001's replay capture in legal basis and point of view, and never counted together
+  with it (FR-048).
 - **Analysis request**: the intent to analyse one match, so that concurrent askers share one piece of
   work and an interrupted run can be resumed.
 
@@ -703,7 +709,7 @@ their current standing and reachable in one click.
 - **SC-007**: 90% of analyses of a typical ranked 1v1 complete within 60 seconds of being requested,
   and the user is never shown a frozen screen while one runs.
 - **SC-008**: Zero replays are lost as a result of this feature: across any 30-day period, the number
-  of consenting users' matches whose replay expired unarchived remains 0 (001 SC-001) while search,
+  of linked users' matches whose replay expired unarchived remains 0 (001 SC-001) while search,
   browsing and analysis are in use.
 - **SC-009**: Storage attributable to this feature grows only with analyses actually requested by a
   person: searching, browsing a profile, opening a match and downloading a recording add 0 bytes, and
