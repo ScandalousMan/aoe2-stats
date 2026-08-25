@@ -148,8 +148,11 @@ for that and for nothing else.
   index needs a bulk read of the primary source and a refresh job, which is the cron this feature
   exists to avoid, and it still covers only ranked players. Two things make the risk acceptable —
   FR-004d gives search a fallback that needs no external source at all, and nothing else in the
-  feature depends on search. Two things make it safe — FR-004b strips the account-linking fields the
-  response carries, which would otherwise breach 001's FR-045 silently. (A third safeguard, FR-004c's
+  feature depends on search. Two things made it safe — FR-004b stripped the account-linking fields
+  the response carries, which would otherwise have breached 001's FR-045 silently. *(FR-004b was
+  superseded 2026-08-24 by constitution IX 3.0.0; the field is now carried as an unverified claim and
+  what remains of FR-045 is the prohibition on acting on it. This entry records the 2026-08-23 state
+  and is left as written.)* (A third safeguard, FR-004c's
   hidden flag, was written here and retired on measurement the same day — see FR-004c.) Resolves
   FR-004.
 
@@ -447,8 +450,10 @@ their current standing and reachable in one click.
   `sharedHistory === false`, which that source's own client honours — and **this feature deliberately
   does not act on it either**: it governs display at aoe2companion, this service reads history from
   Relic, and no unaffiliated AoE2 DE site honours it. Importing it would invent an obligation that
-  exists nowhere and bind only us. Nothing replaces this requirement; FR-004b's stripping is
-  unchanged and remains the whole of what the search response owes.
+  exists nowhere and bind only us — and constitution IX at 3.0.0 raised that reading to project law
+  on 2026-08-24: this service neither honours the preference nor works around it. Nothing replaces
+  this requirement. FR-004b, which used to be the whole of what the search response owed, was itself
+  superseded on the same day; see its entry above.
 - **FR-004d**: When the search source is unavailable, System MUST fall back to searching the profiles
   it has already observed — users, favourites, and participants of match histories it already holds
   (FR-011) — and MUST label those results as reduced rather than presenting them as complete. This

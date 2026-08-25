@@ -234,7 +234,7 @@ packages/
                                    # beside the parser whose gap it closes
 ├── providers/src/aoe2stats_providers/companion/
 │   └── provider.py                # gains search_profiles, behind the same circuit breaker,
-                                   # stripping the account-linking fields at the boundary (FR-004b)
+                                   # carrying steam_id as an unverified claim (IX 3.0.0)
 └── design-system/                 # search box and result row, favourite toggle, participant table,
                                    # per-point-of-view availability list, analysis timeline and
                                    # its progress state — specs first, then components with stories

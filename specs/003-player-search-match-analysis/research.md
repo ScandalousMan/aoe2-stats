@@ -497,7 +497,10 @@ let an unmeasured property into a Phase 0 that opens by claiming everything here
 correction is worth more than the deletion. What Phase 0 has to settle is where the obligations land
 in code, and there is only one defensible answer for the one that remains.
 
-FR-004b (strip `steamId`, `shared`, `sharedHistory`) is enforced at the provider boundary because
+**Superseded 2026-08-24 by constitution IX 3.0.0** as to `steamId`, which is now carried as
+`unverified_steam_id`; the boundary reasoning below still governs `shared` and `sharedHistory`, and
+the pattern it establishes is why the carried field is a typed attribute rather than a passthrough
+dict. FR-004b (strip `steamId`, `shared`, `sharedHistory`) was enforced at the provider boundary because
 that is the only place where "it never entered the system" is a property rather than a promise. A field stripped in a router is a field that existed in memory,
 in a log line, and in a traceback. The existing provider already demonstrates the pattern: its module
 docstring records that `linkedProfiles` "is not read anywhere below, deliberately", and there is
