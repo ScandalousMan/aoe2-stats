@@ -258,7 +258,8 @@ Measured **2026-08-23**. This is the only display-name search available against 
 | Record      | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, `platformName`, `steamId`, `shared`, `sharedHistory`, `hidden`, and six sparse `social*` fields (1 record in 20 carried any) |
 | Reliability | 12 consecutive requests, 12 × `200`, from a residential connection                                                                                                                                                           |
 
-> **Trap.** A search record also carries `steamId`, `shared` and `sharedHistory` — the same
+> **Trap.** *Partly superseded 2026-08-24 — read the "So the trap above" paragraph below before
+> acting on this box.* A search record also carries `steamId`, `shared` and `sharedHistory` — the same
 > community account-linking claim as `linkedProfiles`. Constitution IX and 001's FR-045 forbid
 > using, storing or surfacing any of it: it is an unverifiable assertion about someone's identity,
 > and acting on it would expose alternate accounts their owners keep separate on purpose. Strip
@@ -293,8 +294,11 @@ who has switched it off is simply rarer than 1 in 200.
 
 So the trap above needs reading with more care than it was written with. `steamId` is an identifier
 and `sharedHistory` is an expressed preference, and grouping them as one "account-linking claim" was
-imprecise: stripping the first is required, while stripping the second discards the only place this
-source records a player asking not to be shown. What `shared` means is **still unresolved** — it
+imprecise — and the two have since diverged further. `steamId` is **carried**: constitution IX at
+3.0.0 (2026-08-24) treats every field these APIs serve as public and keeps it so, and it is surfaced
+as an unverified source claim, never used to link or merge profiles. `sharedHistory` is a preference
+this service **neither honours nor works around** (same amendment): where the source withholds a
+player's matches, nothing is done to obtain them by another route. What `shared` means is **still unresolved** — it
 takes both values (129 `false`, 71 `true` across the same 200) and has no user-facing setting string
 in the client. Do not act on it.
 
