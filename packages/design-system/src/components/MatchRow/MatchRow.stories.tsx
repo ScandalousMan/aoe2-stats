@@ -135,3 +135,17 @@ export const ListEmpty: Story = {
   name: 'MatchList — empty, "No matches yet"',
   render: () => <MatchList status="empty" />,
 }
+
+// §11.3 (003, US2): `players.$profileId.matches.tsx` (T331) renders this same component with
+// `subject="other"` — the caption and empty-state sentence change, the row never does. Kept beside
+// the `subject="self"` stories above so a visual diff catches either drifting from the other
+// (§11.6's own "confirmed side by side with that story").
+export const ListOtherSubjectPopulated: Story = {
+  name: 'MatchList — subject="other", populated ("<alias>\'s recent matches")',
+  render: () => <MatchList matches={populated} subject="other" subjectAlias="aoe2villain" />,
+}
+
+export const ListOtherSubjectEmpty: Story = {
+  name: 'MatchList — subject="other", empty ("<alias> has no matches in their history yet.")',
+  render: () => <MatchList status="empty" subject="other" subjectAlias="aoe2villain" />,
+}

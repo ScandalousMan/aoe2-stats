@@ -66,12 +66,20 @@ export function toMatchRowDataList(rows: readonly ApiMatchListRow[]): MatchRowDa
 /** One `ApiMatchParticipant` (`api.ts`) as `MatchDetailPanel`'s `ParticipantData`
  * (match-history.md §2's `ParticipantsTable`) — team grouping happens one level up, in
  * `toTeamGroups`, since a single participant carries only its own `team_id`, never its
- * teammates. */
+ * teammates.
+ *
+ * `civId`/`civName` travel through separately, unlike `MatchRowData.civilisation`'s single
+ * pre-formatted string: match-history.md §11.2 forbids filling an unresolved `civ_name` in with
+ * the raw id (or a guessed label) as if it were a name, so `MatchDetailPanel`'s own
+ * `UnresolvedIdentifier` renders `civId` only when `civName` is `null` — this mapper must not
+ * pre-empt that with `formatCivilisation`'s row-level "Unknown civilisation" fallback, which is a
+ * different, allowed treatment for a different field (`toMatchRowData` below). */
 export function toParticipantData(participant: ApiMatchParticipant): ParticipantData {
   return {
     id: String(participant.profile_id),
     alias: participant.alias ?? 'Unknown player',
-    civilisation: formatCivilisation(participant.civ_name),
+    civId: participant.civ_id,
+    civName: participant.civ_name,
     result: formatOutcome(participant.result),
     ratingChange:
       participant.rating_diff != null
@@ -117,7 +125,10 @@ export function toTeamGroups(participants: readonly ApiMatchParticipant[]): Team
 export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
   return {
     gameId: String(detail.game_id),
-    map: detail.map_name ?? 'Unknown map',
+    // §11.2: unlike `MatchRowData.map`'s "Unknown map" fallback, `MatchDetailPanel`'s header
+    // renders a `null` map via its own `UnresolvedIdentifier` (no id to show for a map, per that
+    // component's own note) — this mapper must not paper over the gap with invented text.
+    map: detail.map_name,
     // T070f: `leaderboard_name` computed server-side (`matches.py`'s `_match_detail_json`), the
     // same `leaderboards.py` mapping `GET /api/profiles` already reads — passed straight through,
     // never re-derived here.
@@ -127,6 +138,9 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     // `started_at` can be `null` (module docstring on `ApiMatchDetail`), so this falls back to
     // `completed_at` — always present — rather than showing nothing.
     playedAtLabel: formatPlayedAtAbsolute(detail.started_at ?? detail.completed_at),
+    // §11.1 point 3: raw text exactly as reported, never resolved to a name and never subject to
+    // §11.2's unresolved treatment — `detail.patch` passed straight through, `null` and all.
+    gameVersion: detail.patch,
     teams: toTeamGroups(detail.participants),
     captureStatus: detail.capture_status,
     captureDeadlineAt: detail.capture_deadline_at,

@@ -16,6 +16,8 @@ const baseMatch: MatchDetailData = {
   leaderboardName: '1v1 Random Map',
   durationLabel: '34 min',
   playedAtLabel: '22 Aug 2026, 14:32',
+  // §11.1 point 3 / §11.6: present in every header story, raw and verbatim — never resolved.
+  gameVersion: '101.101',
   captureStatus: 'stored',
   captureDeadlineAt: null,
   teams: [
@@ -26,7 +28,8 @@ const baseMatch: MatchDetailData = {
         {
           id: 'p1',
           alias: 'aoe2guy',
-          civilisation: 'Franks',
+          civId: 10,
+          civName: 'Franks',
           result: 'win',
           ratingChange: { value: 12 },
         },
@@ -39,7 +42,8 @@ const baseMatch: MatchDetailData = {
         {
           id: 'p2',
           alias: 'aoe2villain',
-          civilisation: 'Mongols',
+          civId: 20,
+          civName: 'Mongols',
           result: 'loss',
           ratingChange: { value: -12 },
         },
@@ -60,14 +64,16 @@ const teamMatch: MatchDetailData = {
         {
           id: 'p1',
           alias: 'aoe2guy',
-          civilisation: 'Franks',
+          civId: 10,
+          civName: 'Franks',
           result: 'win',
           ratingChange: { value: 9 },
         },
         {
           id: 'p2',
           alias: 'aoe2friend',
-          civilisation: 'Britons',
+          civId: 5,
+          civName: 'Britons',
           result: 'win',
           ratingChange: { value: 9 },
         },
@@ -80,16 +86,91 @@ const teamMatch: MatchDetailData = {
         {
           id: 'p3',
           alias: 'aoe2villain',
-          civilisation: 'Mongols',
+          civId: 20,
+          civName: 'Mongols',
           result: 'loss',
           ratingChange: { value: -9 },
         },
         {
           id: 'p4',
           alias: 'aoe2foe',
-          civilisation: 'Huns',
+          civId: 15,
+          civName: 'Huns',
           result: 'loss',
           ratingChange: { value: -9 },
+        },
+      ],
+    },
+  ],
+}
+
+// §11.4: "many participants, still one anatomy" — an eight-player free-for-all is eight
+// `TeamGroup`s of one, generalising the same `ParticipantsTable` a 1v1 already uses, with no new
+// layout branch.
+const eightPlayerFfaMatch: MatchDetailData = {
+  ...baseMatch,
+  gameId: '1006',
+  leaderboardName: 'Free-for-All',
+  teams: [
+    { civId: 10, civName: 'Franks', alias: 'aoe2guy', result: 'win' as const, value: 41 },
+    { civId: 20, civName: 'Mongols', alias: 'aoe2villain', result: 'loss' as const, value: -6 },
+    { civId: 5, civName: 'Britons', alias: 'aoe2friend', result: 'loss' as const, value: -6 },
+    { civId: 15, civName: 'Huns', alias: 'aoe2foe', result: 'loss' as const, value: -6 },
+    { civId: 3, civName: 'Aztecs', alias: 'aoe2rando1', result: 'loss' as const, value: -6 },
+    { civId: 8, civName: 'Byzantines', alias: 'aoe2rando2', result: 'loss' as const, value: -6 },
+    { civId: 1, civName: 'Aztecs', alias: 'aoe2rando3', result: 'loss' as const, value: -6 },
+    { civId: 30, civName: 'Mayans', alias: 'aoe2rando4', result: 'loss' as const, value: -5 },
+  ].map((p, index) => ({
+    id: `team-${index + 1}`,
+    name: `Team ${index + 1}`,
+    participants: [
+      {
+        id: `p${index + 1}`,
+        alias: p.alias,
+        civId: p.civId,
+        civName: p.civName,
+        result: p.result,
+        ratingChange: { value: p.value },
+      },
+    ],
+  })),
+}
+
+// §11.2: FR-020, no guess. `Fr020B`'s civilisation is a game-version id this service's reference
+// data has never learned, and the header's map carries no name either — placed alongside a fully
+// resolved participant so the visual distinction (`text-secondary`/`font-mono` vs
+// `text-primary`/`sans`) reads in one frame (§11.6).
+const unresolvedIdentifierMatch: MatchDetailData = {
+  ...baseMatch,
+  gameId: '1007',
+  map: null,
+  gameVersion: '101.102',
+  teams: [
+    {
+      id: 'team-1',
+      name: 'Team 1',
+      participants: [
+        {
+          id: 'p1',
+          alias: 'Fr020A',
+          civId: 5,
+          civName: 'Britons',
+          result: 'win',
+          ratingChange: { value: 10 },
+        },
+      ],
+    },
+    {
+      id: 'team-2',
+      name: 'Team 2',
+      participants: [
+        {
+          id: 'p2',
+          alias: 'Fr020B',
+          civId: 999,
+          civName: null,
+          result: 'loss',
+          ratingChange: { value: -10 },
         },
       ],
     },
@@ -134,6 +215,16 @@ export const NeedsReview: Story = {
 export const TeamMatch: Story = {
   name: 'Team match — every participant grouped under its team heading',
   args: { match: teamMatch },
+}
+
+export const EightPlayerFreeForAll: Story = {
+  name: 'Eight-player free-for-all — eight TeamGroups of one, same anatomy as a 1v1 (§11.4)',
+  args: { match: eightPlayerFfaMatch },
+}
+
+export const UnnameableIdentifier: Story = {
+  name: 'Unresolved civilisation and map — raw identifier, never a guess (FR-020, §11.2)',
+  args: { match: unresolvedIdentifierMatch },
 }
 
 export const DownloadPreparing: Story = {

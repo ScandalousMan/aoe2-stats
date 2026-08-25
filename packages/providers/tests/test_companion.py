@@ -344,14 +344,23 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 # `enrich_matches` fixtures above (`fixtures/README.md`).
 SEARCH_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-# The five, and only five, contract fields `PlayerSearchResult` may carry
-# (`specs/003-player-search-match-analysis/contracts/providers.md`).
-_SEARCH_CONTRACT_FIELDS = frozenset({"profile_id", "alias", "country", "games_played", "clan"})
+# The six, and only six, contract fields `PlayerSearchResult` may carry
+# (`specs/003-player-search-match-analysis/contracts/providers.md`'s "The fields, and the one rule
+# on them"). `unverified_steam_id` joined this set on 2026-08-24 (constitution IX 3.0.0): it is no
+# longer one of the fields FR-004b's strip covered, and inverting this set from "five, none of
+# them the source's account-linking claims" to "six, one of them a carried-but-unverified claim"
+# is T397's own task.
+_SEARCH_CONTRACT_FIELDS = frozenset(
+    {"profile_id", "alias", "country", "games_played", "clan", "unverified_steam_id"}
+)
 
-# The account-linking fields the source's search response carries (`docs/data-sources.md` §3's
-# trap: `steamId`, `shared`, `sharedHistory`), plus `linkedProfiles`'s own name for consistency
-# with `enrich_matches` above — `PlayerSearchResult` must never carry any of them (FR-004b).
-_ACCOUNT_LINKING_FIELDS = frozenset({"steam_id", "shared", "shared_history", "linked_profiles"})
+# The fields the source's search response carries that `PlayerSearchResult` must never carry, on
+# an unrelated basis each (`contracts/providers.md`'s "The fields, and the one rule on them"):
+# `shared` has no known meaning, `sharedHistory` is a preference this service neither honours nor
+# circumvents, `linkedProfiles` is the same unverifiable claim as `steamId` at a different shape.
+# `steam_id` is deliberately not in this set any more — it is carried, under the name
+# `unverified_steam_id`, which is in `_SEARCH_CONTRACT_FIELDS` above instead.
+_ACCOUNT_LINKING_FIELDS = frozenset({"shared", "shared_history", "linked_profiles"})
 
 
 def _load_search_fixture() -> dict[str, Any]:
@@ -366,17 +375,23 @@ def _load_search_empty_fixture() -> dict[str, Any]:
     )
 
 
-# --- A genuine response carries only the five contract fields, nothing about account links -------
+# --- T397: a genuine response carries all six contract fields, including the source's Steam claim,
+# and still nothing beyond them ---------------------------------------------------------------
 
 
-async def test_search_players_returns_only_the_five_contract_fields() -> None:
+async def test_search_players_returns_all_six_contract_fields() -> None:
     """`fixtures/README.md`: "one full page (20 real records), uncapped" for `?search=vipe`. Every
-    one of the 20 records carries `steamId`, `shared` and `sharedHistory` on the wire
-    (`docs/data-sources.md` §3) — none of it may survive into a `PlayerSearchResult`.
+    one of the 20 records carries `steamId` on the wire (`docs/data-sources.md` §3), and it must
+    reach `PlayerSearchResult.unverified_steam_id` unchanged (constitution IX 3.0.0, 2026-08-24) —
+    `shared` and `sharedHistory`, also on the wire, must not reach anywhere. Both halves are
+    asserted below and neither may slide: the field is carried and equals the source's own value,
+    and `shared`/`shared_history`/`linked_profiles` are still absent from the dataclass by
+    introspection.
     """
     from aoe2stats_providers.base import PlayerSearchPage, PlayerSearchResult
 
     body = _load_search_fixture()
+    source_steam_ids = {profile["profileId"]: profile["steamId"] for profile in body["profiles"]}
     provider, _ = _provider(lambda request: httpx.Response(200, json=body))
 
     page = await provider.search_players("vipe", limit=20)
@@ -397,6 +412,8 @@ async def test_search_players_returns_only_the_five_contract_fields() -> None:
         assert field_names.isdisjoint(_ACCOUNT_LINKING_FIELDS)
         for forbidden in _ACCOUNT_LINKING_FIELDS:
             assert not hasattr(result, forbidden)
+        # The carried half: the claim is not merely present, it equals the source's own value.
+        assert result.unverified_steam_id == source_steam_ids[result.profile_id]
 
     first = page.results[0]
     assert first.profile_id == 196240
@@ -404,6 +421,73 @@ async def test_search_players_returns_only_the_five_contract_fields() -> None:
     assert first.country == "de"
     assert first.games_played == 10665, 'the source sends `games` as the string "10665"'
     assert isinstance(first.games_played, int)
+    assert first.unverified_steam_id == "76561197984749679"
+
+
+# --- T396: the source's `steamId` claim is carried, unverified, as `unverified_steam_id` ----------
+#
+# Constitution IX at 3.0.0 (2026-08-24) retired FR-004b's strip of `steamId` alone — `shared`,
+# `sharedHistory` and `linkedProfiles` are unaffected and stay unread (`contracts/providers.md`'s
+# "The fields, and the one rule on them"). The two tests that asserted the pre-amendment "five
+# fields, `steam_id` absent" shape are inverted in place above and below, which is T397; all four
+# were verified failing against the pre-fix tree before the field existed. This section adds the
+# field's own coverage: the claim carried verbatim, and the contrast case where it is absent.
+
+
+async def test_search_players_carries_the_source_steam_claim_as_unverified_steam_id() -> None:
+    """Every one of the fixture's 20 records carries a `steamId` on the wire
+    (`docs/data-sources.md` §3) — each must reach `PlayerSearchResult.unverified_steam_id`
+    unchanged, and under that name only: `unverified_steam_id` is the requirement, not
+    `steam_id` (`contracts/providers.md`).
+    """
+    from aoe2stats_providers.base import PlayerSearchResult
+
+    body = _load_search_fixture()
+    source_records = {profile["profileId"]: profile["steamId"] for profile in body["profiles"]}
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert len(page.results) == 20
+    for result in page.results:
+        assert isinstance(result, PlayerSearchResult)
+        assert not hasattr(result, "steam_id"), (
+            "the claim is carried as `unverified_steam_id`, never as `steam_id`"
+        )
+        assert result.unverified_steam_id == source_records[result.profile_id]
+        assert isinstance(result.unverified_steam_id, str)
+
+    first = page.results[0]
+    assert first.profile_id == 196240
+    assert first.unverified_steam_id == "76561197984749679"
+
+
+async def test_search_players_missing_or_null_steam_id_keeps_the_record() -> None:
+    """The contrast case: a record without a usable `steamId` still parses — `profileId` and
+    `name` are what makes a record valid (BL-5), and `unverified_steam_id` is one optional field
+    among the others (`country`, `games`, `clan`), not a second gate on the whole record.
+    """
+    from aoe2stats_providers.base import PlayerSearchResult
+
+    body = copy.deepcopy(_load_search_fixture())
+    profiles = body["profiles"]
+    del profiles[0]["steamId"]  # entirely absent on the wire
+    profiles[1]["steamId"] = None  # present, but `null`
+
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert len(page.results) == 20, (
+        "neither a missing nor a null `steamId` drops the record (BL-5's own reasoning, one "
+        "field over)"
+    )
+    by_profile_id = {result.profile_id: result for result in page.results}
+    assert isinstance(by_profile_id[196240], PlayerSearchResult)
+    assert by_profile_id[196240].unverified_steam_id is None
+    assert by_profile_id[196240].alias == "TheViper"
+    assert by_profile_id[9187696].unverified_steam_id is None
+    assert by_profile_id[9187696].alias == "Vipechester"
 
 
 # --- A genuine empty result is an ordinary outcome, not a breaker failure -------------------------
@@ -441,15 +525,18 @@ async def test_search_players_genuine_empty_result_does_not_trip_the_breaker() -
     assert request_count == before + 1, "a genuine empty result must not count as a breaker failure"
 
 
-# --- The dataclass definition itself carries no account-linking field, not only its instances -----
+# --- T397: the dataclass definition itself carries `unverified_steam_id` and no other
+# account-linking field, not only its instances -----------------------------------------------
 
 
-def test_player_search_result_dataclass_has_no_account_linking_field() -> None:
-    """FR-004b: "these fields exist in the response and carrying them further would breach 001's
-    FR-045 by accident rather than by decision." Introspecting `dataclasses.fields` — the class
-    itself, never constructed — rather than an instance means a later refactor that adds
-    `steam_id` back to `PlayerSearchResult` fails this test the moment the field is declared, not
-    only once some value happens to reach it.
+def test_player_search_result_dataclass_has_exactly_the_six_contract_fields() -> None:
+    """`contracts/providers.md`'s "The fields, and the one rule on them": `shared`,
+    `shared_history` and `linked_profiles` have nowhere to be assigned, deliberately, while
+    `unverified_steam_id` does — constitution IX 3.0.0 (2026-08-24) retired FR-004b's strip for
+    the source's `steamId` alone. Introspecting `dataclasses.fields` — the class itself, never
+    constructed — rather than an instance means a later refactor that adds `shared_history` (or
+    any of the fields still excluded) to `PlayerSearchResult` fails this test the moment the field
+    is declared, not only once some value happens to reach it.
     """
     from aoe2stats_providers.base import PlayerSearchResult
 
@@ -457,6 +544,10 @@ def test_player_search_result_dataclass_has_no_account_linking_field() -> None:
 
     assert field_names == _SEARCH_CONTRACT_FIELDS
     assert field_names.isdisjoint(_ACCOUNT_LINKING_FIELDS)
+    assert "unverified_steam_id" in field_names
+    assert "steam_id" not in field_names, (
+        "the claim is carried under the name the contract requires, never under the source's own"
+    )
 
 
 # --- A 403, a 5xx and a malformed body all come back as an empty page, never an exception ---------

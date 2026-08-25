@@ -10,13 +10,22 @@ import { api } from '../../lib/api'
 export interface ApiPlayerSearchResult {
   profile_id: number
   alias: string
-  /** Stripped of every account-linking field at the router (FR-004b) before this ever reaches the
-   * wire — nothing here can name a third party's Steam identifier. */
   country: string | null
   /** `null` for a result answered by FR-004d's local fallback: `aoe_profiles` has no
    * games-played column (`contracts/http-api.md`). */
   games_played: number | null
   clan: string | null
+  /** The source's own, unverified Steam claim (`contracts/http-api.md`'s sixth search field,
+   * `contracts/providers.md`'s `unverified_steam_id`, constitution IX 3.0.0). `null` on the
+   * degraded fallback (FR-004d), which has no such claim to carry — never read as "no Steam
+   * account" (`contracts/http-api.md`).
+   *
+   * Optional here, not just nullable: `GET /api/players/search` does not yet put this field on
+   * the wire (T398 wires it; this feature's design-system spec, T399, ships ahead of it per
+   * tasks.md). A response missing the key entirely is treated the same as `null` by
+   * `assertPlayerSearchResult` and `mappers.ts`'s `toPlayerSearchResult`, so this module needs no
+   * further change once T398 lands and starts sending the key on every result. */
+  unverified_steam_id?: string | null
 }
 
 export interface PlayerSearchResponse {
@@ -69,6 +78,12 @@ function assertPlayerSearchResult(
   }
   if (!isNullableString(result.clan)) {
     throw new PlayerSearchResponseShapeError(`${path}.clan was not string|null`)
+  }
+  // Optional key (see `ApiPlayerSearchResult.unverified_steam_id`'s own docstring): absent is
+  // accepted so this assertion does not break on a response from before T398 wires the field.
+  // Present, it must still be string|null — a wrongly-shaped value is still a shape fault.
+  if ('unverified_steam_id' in result && !isNullableString(result.unverified_steam_id)) {
+    throw new PlayerSearchResponseShapeError(`${path}.unverified_steam_id was not string|null`)
   }
 }
 

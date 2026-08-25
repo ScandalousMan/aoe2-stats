@@ -175,10 +175,10 @@ confirm the page is complete and correct, with both CTAs correctly shown as unav
 
 - [x] T327 [US2] Remove the ownership scope from `get_match_detail` in `apps/api/src/aoe2stats_api/routers/matches.py`, leaving `list_matches` owner-scoped, and remove T324's markers and the matching one T310 left. There is no `?from_profile_id=` parameter and none may be added: a parameter that could change the presentation is one that eventually will (FR-021)
 - [x] T328 [US2] Implement `GET /api/players/{profile_id}/matches` in `apps/api/src/aoe2stats_api/routers/players.py`, persisting the source response verbatim, and remove T325's and T326's markers and the matching one T310 left
-- [ ] T329 [P] [US2] Write the component specs for the full participant table and the third-party history list in `packages/design-system/specs/`, including how an unnamed identifier is shown so it reads as unresolved rather than as a name
-- [ ] T330 [US2] Extend `packages/design-system/src/components/MatchDetailPanel/` to present every participant with team, civilisation, result and rating change, with stories covering a 1v1, an eight-player game, and a match carrying an unnameable identifier
-- [ ] T331 [US2] Wire the history and the widened match page in `apps/web/src/features/players/` and `apps/web/src/features/matches/`, with `apps/web/src/routes/players.$profileId.matches.tsx`, and widen `apps/web/src/routes/matches.$gameId.tsx` to any match
-- [ ] T332 [US2] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T330 added, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T329 [P] [US2] Write the component specs for the full participant table and the third-party history list in `packages/design-system/specs/`, including how an unnamed identifier is shown so it reads as unresolved rather than as a name
+- [x] T330 [US2] Extend `packages/design-system/src/components/MatchDetailPanel/` to present every participant with team, civilisation, result and rating change, with stories covering a 1v1, an eight-player game, and a match carrying an unnameable identifier
+- [x] T331 [US2] Wire the history and the widened match page in `apps/web/src/features/players/` and `apps/web/src/features/matches/`, with `apps/web/src/routes/players.$profileId.matches.tsx`, and widen `apps/web/src/routes/matches.$gameId.tsx` to any match
+- [x] T332 [US2] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T330 added, updating baselines in `packages/design-system/__screenshots__/`
 - [ ] T333 [US2] Walk scenario 5 of `specs/003-player-search-match-analysis/quickstart.md` by hand against a real match older than 31 days, and record the outcome in the pull request. This is US2's independent test and the one thing no fixture proves: that the page is complete when everything else about that match is gone, with no field left blank or wrong for 100% of the matches in that profile's history (SC-003)
 
 **Checkpoint**: any player's matches are readable, at any age, without a recording.
@@ -431,7 +431,7 @@ The whole phase is US1's search path. It depends on nothing in Phases 4 to 7 and
 there is room — but **it lands before T381**, which walks a quickstart scenario 2 now rewritten
 against the new behaviour.
 
-- [ ] T396 [P] [US1] Carry the source's Steam claim through the provider, in
+- [x] T396 [P] [US1] Carry the source's Steam claim through the provider, in
   `packages/providers/src/aoe2stats_providers/base.py` and
   `packages/providers/src/aoe2stats_providers/companion/provider.py`. `PlayerSearchResult` gains
   `unverified_steam_id: str | None`, read from the record's `steamId`. The field name is the
@@ -439,7 +439,7 @@ against the new behaviour.
   contract must not be able to read the claim as a fact. `shared`, `sharedHistory` and
   `linkedProfiles` stay unread — each for a reason that survives the amendment and is written in that same
   contract, not as a residue of FR-004b
-- [ ] T397 [US1] **Invert** `test_search_players_returns_only_the_five_contract_fields` and the
+- [x] T397 [US1] **Invert** `test_search_players_returns_only_the_five_contract_fields` and the
   `_ACCOUNT_LINKING_FIELDS` set in `packages/providers/tests/test_companion.py`. These pass today and
   **ratify the rule the amendment removed** — the same shape as T384's finding, one layer down.
   Dispatch this one against its failure: **the hand-back must carry the output of the test failing
@@ -448,21 +448,21 @@ against the new behaviour.
   Assert both halves and do not let the second slide: the field **is** carried and equals the
   source's value, **and** `shared`, `shared_history`, `linked_profiles` are still absent from the
   dataclass by introspection
-- [ ] T398 [US1] Surface `unverified_steam_id` through `GET /api/players/search?q=` in
+- [x] T398 [US1] Surface `unverified_steam_id` through `GET /api/players/search?q=` in
   `apps/api/src/aoe2stats_api/search.py` and `apps/api/src/aoe2stats_api/routers/players.py`, and
   store it in `profile_search_cache.results` — six contract fields now, not five. It is `null` on the
   degraded fallback (FR-004d), which reads `aoe_profiles` and has no such claim; a client must read
   `null` as "not known here" and never as "no Steam account" (this feature's `contracts/` http-api document). Update
   `apps/api/tests/test_players_routes.py`, whose comment at the cached-shape assertion still names the
   fields "a verbatim provider body would additionally carry"
-- [ ] T399 [P] [US1] Write the component spec for how an unverified claim is labelled, in
+- [x] T399 [P] [US1] Write the component spec for how an unverified claim is labelled, in
   `packages/design-system/specs/`, then build it and wire it into the result row. The wording is the
   requirement and it is decided here, not in the component — the same discipline FR-043a set for an
   unnameable identifier. **No affordance may be built on the field**: no "same player", no merge, no
   navigation asserting two profiles are one person (001 FR-045's remaining half, which the amendment
   did not touch). A test asserting the *absence* of that affordance is the one worth writing, and it
   is the kind an implementer weakens into something that passes
-- [ ] T400 Amend 001's FR-045 in `specs/001-steam-link-replay-ingestion/spec.md` to carve carriage
+- [x] T400 Amend 001's FR-045 in `specs/001-steam-link-replay-ingestion/spec.md` to carve carriage
   out from action, with a dated note rather than a rewrite. Its two justifications have separated:
   the privacy half was decided against on 2026-08-24, the accuracy half — "they are unverifiable" —
   stands and is now the whole of the requirement. Leaving FR-045 as written makes 001 and 003

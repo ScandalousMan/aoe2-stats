@@ -1,5 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { api } from '../../lib/api'
+import { assertMatchesResponse } from '../matches/api'
+import type { MatchesResponse } from '../matches/api'
 
 // `apps/api/.../routers/players.py` (T319), `GET /api/players/{profile_id}` — every field name
 // here is verbatim what that router's `get_player_profile` puts in the response body,
@@ -141,6 +143,51 @@ export function playerProfileQueryOptions(profileId: number) {
   return queryOptions({
     queryKey: ['players', profileId] as const,
     queryFn: () => fetchPlayerProfile(profileId),
+    enabled: profileId > 0,
+  })
+}
+
+// --- GET /api/players/{profile_id}/matches (T328, T331) ---------------------------------------
+//
+// `apps/api/.../routers/players.py`'s `get_player_match_history`: "the same row shape `GET
+// /api/matches` already returns" (FR-008, that router's own docstring) — `match_row_json` is one
+// function imported by both routers, so this module reuses `features/matches/api.ts`'s
+// `MatchesResponse`/`ApiMatchListRow`/`assertMatchesResponse` rather than declaring a second,
+// necessarily-identical copy that could drift from the one the wire actually never lets drift.
+
+export interface FetchPlayerMatchesParams {
+  profileId: number
+  cursor?: string | null
+}
+
+/** FR-007, FR-008a property 1: any player's matches, newest first — `404` only for a `profile_id`
+ * this service has never observed at all (the same `not_found` `fetchPlayerProfile` above
+ * documents); a player with zero matches answers `200` with an empty `matches` array, never an
+ * error (`routers/players.py`'s own "not an error" case). */
+export function fetchPlayerMatches({
+  profileId,
+  cursor,
+}: FetchPlayerMatchesParams): Promise<MatchesResponse> {
+  const params = new URLSearchParams()
+  if (cursor) {
+    params.set('cursor', cursor)
+  }
+  const query = params.toString()
+  return api
+    .get<unknown>(`/api/players/${profileId}/matches${query ? `?${query}` : ''}`)
+    .then((payload) => {
+      assertMatchesResponse(payload)
+      return payload
+    })
+}
+
+/** Distinct query key from `matchesQueryOptions` (`features/matches/api.ts`) even though the
+ * response shape is identical — the two routes answer for a different subject (the caller's own
+ * profile vs. any `profile_id`) and must never share a cache entry. */
+export function playerMatchesQueryOptions(profileId: number, cursor: string | null = null) {
+  return queryOptions({
+    queryKey: ['players', profileId, 'matches', cursor] as const,
+    queryFn: () => fetchPlayerMatches({ profileId, cursor }),
     enabled: profileId > 0,
   })
 }

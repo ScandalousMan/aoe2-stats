@@ -361,6 +361,12 @@ async def _local_fallback_results(
             country=profile.country,
             games_played=games_played_value,
             clan=None,
+            # `aoe_profiles` carries no Steam claim of its own (`contracts/http-api.md`: "null in
+            # the degraded fallback ... a client MUST treat null as 'not known here' and never as
+            # 'no Steam account'") — this is the one path where `None` means "not known", not "no
+            # claim on the wire", the same distinction `_parse_search_result` draws for a missing
+            # `steamId` (`companion/provider.py`).
+            unverified_steam_id=None,
         )
         for profile, games_played_value in rows
     ]
@@ -457,13 +463,16 @@ async def _write_cache(
 def _result_to_json(result: PlayerSearchResult) -> dict[str, Any]:
     """`profile_search_cache.results` holds only the fields `PlayerSearchResult` carries
     (data-model.md) — never a verbatim copy of the provider's response, which would additionally
-    store the account-linking claim FR-004b keeps out of this system."""
+    store `shared`, `sharedHistory` and `linkedProfiles` (`contracts/providers.md`'s "The fields,
+    and the one rule on them"). `unverified_steam_id` is one of those six fields, not one of the
+    excluded three: constitution IX 3.0.0 (2026-08-24) retired FR-004b's strip for it alone."""
     return {
         "profile_id": result.profile_id,
         "alias": result.alias,
         "country": result.country,
         "games_played": result.games_played,
         "clan": result.clan,
+        "unverified_steam_id": result.unverified_steam_id,
     }
 
 
@@ -474,4 +483,8 @@ def _result_from_json(record: dict[str, Any]) -> PlayerSearchResult:
         country=record.get("country"),
         games_played=record.get("games_played"),
         clan=record.get("clan"),
+        # `.get`, not `[...]`: a row cached before this field existed carries no key at all, and
+        # reads back as `None` — "not known here" — rather than failing to parse
+        # (`contracts/providers.md`'s `profile_search_cache.source` note on forward compatibility).
+        unverified_steam_id=record.get("unverified_steam_id"),
     )

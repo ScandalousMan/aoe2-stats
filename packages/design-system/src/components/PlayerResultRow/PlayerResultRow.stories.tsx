@@ -65,6 +65,24 @@ export const AliasOnly: Story = {
   },
 }
 
+// §4a: the source's own claim, carried and labelled, never turned into a second link or any
+// affordance suggesting this result and another are the same person.
+export const UnverifiedSteamClaim: Story = {
+  name: 'Unverified Steam claim shown — labelled, plain text, no second affordance (FR-004b, §4a)',
+  args: {
+    result: {
+      ...base,
+      profileId: '12350',
+      unverifiedSteamId: '76561198012345678',
+    },
+  },
+}
+
+export const NoUnverifiedSteamClaimKnown: Story = {
+  name: 'No unverified Steam claim known — the line is absent, not blank-filled (§4a)',
+  args: { result: { ...base, profileId: '12351', unverifiedSteamId: null } },
+}
+
 // FR-002: "at minimum country and current standing" so two players sharing a name stay tellable
 // apart at a glance.
 export const NearIdenticalNames: Story = {

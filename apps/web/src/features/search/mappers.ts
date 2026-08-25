@@ -17,6 +17,11 @@ export function toPlayerSearchResult(result: ApiPlayerSearchResult): PlayerSearc
     clan: result.clan,
     country: result.country,
     gamesPlayed: result.games_played,
+    // `?? null`, not a straight pass-through: `unverified_steam_id` is optional on the wire until
+    // T398 lands (`ApiPlayerSearchResult`'s own docstring), and `undefined` must read the same as
+    // `null` here — "not known here" — so `PlayerResultRow` never has to tell the two apart
+    // (`PlayerSearchResultData.unverifiedSteamId`'s own docstring, §4a).
+    unverifiedSteamId: result.unverified_steam_id ?? null,
   }
 }
 

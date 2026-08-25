@@ -230,6 +230,11 @@ export interface ApiMatchDetail {
    * same field and same helper as `ApiMatchListRow.leaderboard_name` above. */
   leaderboard_name: string
   duration_seconds: number | null
+  /** FR-018's "game version" (`matches.py`'s `_match_detail_json`, T327) — `matches.patch`
+   * verbatim. There is no id-to-name table for a patch string the way there is for `civ_id` and
+   * `leaderboard_id`, so this is never resolved server-side and never subject to the
+   * `UnresolvedIdentifier` treatment `civ_name`/`map_name` get (match-history.md §11.1 point 3). */
+  patch: string | null
   participants: ApiMatchParticipant[]
   /** `null` only for a match with no `replay_captures` row yet for any of the caller's linked
    * profiles (`matches.py`'s `get_match_detail`, T070e) — every raw `CaptureStatus` value
@@ -314,6 +319,9 @@ export function assertMatchDetailResponse(payload: unknown): asserts payload is 
   }
   if (!isNullableNumber(body.duration_seconds)) {
     throw new MatchDetailResponseShapeError('"duration_seconds" was not number|null')
+  }
+  if (!isNullableString(body.patch)) {
+    throw new MatchDetailResponseShapeError('"patch" was not string|null')
   }
   if (!Array.isArray(body.participants)) {
     throw new MatchDetailResponseShapeError('"participants" was not an array')

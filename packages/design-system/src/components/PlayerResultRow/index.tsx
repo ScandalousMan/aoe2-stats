@@ -19,6 +19,12 @@ export interface PlayerSearchResultData {
   /** `null` for a result answered by FR-004d's local fallback: `aoe_profiles` has no
    * games-played column, so `Standing` renders nothing for it — never a fabricated `0` (§4). */
   gamesPlayed: number | null
+  /** The source's own, unverified Steam claim (`contracts/providers.md`'s `unverified_steam_id`).
+   * `null` when not known here — always the case for a locally-known (FR-004d) result, since
+   * `aoe_profiles` carries no such claim (§4a). Carriage only: this component has no prop, and
+   * MUST never gain one, for asserting that this result is the same person as another profile —
+   * 001 FR-045's remaining half, restated in §4a. */
+  unverifiedSteamId?: string | null
 }
 
 export interface PlayerResultRowProps {
@@ -47,27 +53,38 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       onClick={createRowLinkClickHandler(result.href, onNavigate)}
       className={cx(
         'flex flex-col gap-1 rounded-lg border border-border bg-surface p-4',
-        'md:flex-row md:items-center md:justify-between md:gap-4 md:rounded-none',
-        'md:border-x-0 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
+        'md:rounded-none md:border-x-0 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
         'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
         focusRing,
         className,
       )}
     >
-      <span className="flex flex-wrap items-baseline gap-2">
-        <span className="font-sans text-sm font-semibold text-text-primary">{result.alias}</span>
-        {result.clan && (
-          <span className="font-sans text-xs text-text-secondary">[{result.clan}]</span>
-        )}
+      {/* Alias/clan and country/standing sit on one line from md up (§8); `UnverifiedSteamClaim`
+       * below is never part of this row and stays on its own line at every viewport (§4a, §8). */}
+      <span className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4">
+        <span className="flex flex-wrap items-baseline gap-2">
+          <span className="font-sans text-sm font-semibold text-text-primary">{result.alias}</span>
+          {result.clan && (
+            <span className="font-sans text-xs text-text-secondary">[{result.clan}]</span>
+          )}
+        </span>
+        <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          {result.country && (
+            <span className="font-sans text-xs text-text-secondary">{result.country}</span>
+          )}
+          {result.gamesPlayed != null && (
+            <span className="font-mono text-xs text-text-primary">{result.gamesPlayed} games</span>
+          )}
+        </span>
       </span>
-      <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        {result.country && (
-          <span className="font-sans text-xs text-text-secondary">{result.country}</span>
-        )}
-        {result.gamesPlayed != null && (
-          <span className="font-mono text-xs text-text-primary">{result.gamesPlayed} games</span>
-        )}
-      </span>
+      {/* §4a: carriage, not action — plain text inside the row's one link, no href of its own, no
+       * button, no wording that suggests two profiles are the same person. */}
+      {result.unverifiedSteamId != null && (
+        <span className="block font-sans text-xs text-text-secondary">
+          Unverified Steam ID:{' '}
+          <span className="font-mono text-text-secondary">{result.unverifiedSteamId}</span>
+        </span>
+      )}
     </a>
   )
 }

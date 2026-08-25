@@ -13,7 +13,7 @@ component carries a hard-coded style value.
 | [`consent-step.md`](./consent-step.md)               | `src/components/ConsentStep/`                                       | 001, US1/US5       |
 | [`profile-summary.md`](./profile-summary.md)         | `src/components/ProfileSummary/`                                    | 001, US1; 003, US1 |
 | [`capture-state-badge.md`](./capture-state-badge.md) | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants) | 001, US3           |
-| [`match-history.md`](./match-history.md)             | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`      | 001, US3           |
+| [`match-history.md`](./match-history.md)             | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`      | 001, US3; 003, US2 |
 | [`player-search.md`](./player-search.md)             | `src/components/SearchBox/`, `src/components/PlayerResultRow/`      | 003, US1           |
 
 ## Every spec has nine sections

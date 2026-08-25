@@ -120,6 +120,13 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
 
 export type MatchListStatus = 'default' | 'loading' | 'error' | 'empty'
 
+/** match-history.md §11.3: which player's history this list is — the row itself never differs
+ * (`MatchRow` above takes no `subject` of its own), only the two fixed strings around it that
+ * presuppose the viewer is the subject: the table's own `<caption>` and the empty-state sentence.
+ * Mirrors `ProfileSummarySubject` (`ProfileSummary`), the identical read this component's own page
+ * header already uses for the header above this list. */
+export type MatchListSubject = 'self' | 'other'
+
 export interface MatchListProps {
   status?: MatchListStatus
   matches?: MatchRowData[]
@@ -127,6 +134,16 @@ export interface MatchListProps {
   /** Forwarded, unchanged, to every `MatchRow` in the card layout and every row link in the table
    * layout (T388) — see `MatchRowProps.onNavigate`. */
   onNavigate?: (href: string) => void
+  /** Defaults to `'self'`, preserving this component's original copy unchanged for
+   * `matches.index.tsx` (T075) — the caller's own history. `'other'` swaps §11.3's two strings for
+   * a third party's, read from `subjectAlias`. */
+  subject?: MatchListSubject
+  /** The viewed player's alias, spliced into §11.3's two `subject="other"` strings. A plain
+   * `string`, not `ReactNode` — one of these two strings is also this component's own `<ul>`
+   * `aria-label` (§9's accessible list name), which cannot take a JSX child. Ignored for
+   * `subject="self"` (default), and never required there — the caller's own list names no alias
+   * in either string it uses. */
+  subjectAlias?: string
   className?: string
 }
 
@@ -138,11 +155,19 @@ export function MatchList({
   matches = [],
   onRetry,
   onNavigate,
+  subject = 'self',
+  subjectAlias,
   className,
 }: MatchListProps) {
   // §8 reserves everything below 1280 for cards; `xl` is the named breakpoint at that width
   // (`lg` is 1024 — see `useMediaQuery.ts`'s own DS-5 table), not `lg`.
   const isTable = useBreakpoint('xl')
+
+  // §11.3: the one fixed string that presupposes the viewer is the subject, computed once here
+  // rather than at each of its two call sites below — the table `<caption>` and the `<ul>`'s own
+  // `aria-label` (§9, §11.5: "screen-reader users get the corrected subject the same way sighted
+  // users do, from the same string").
+  const caption = subject === 'other' ? `${subjectAlias}'s recent matches` : 'Your recent matches'
 
   if (status === 'loading') {
     return (
@@ -170,6 +195,17 @@ export function MatchList({
   }
 
   if (status === 'empty' || matches.length === 0) {
+    // §11.3: "the empty state is a fact about the player, stated once" — a single sentence for
+    // `subject="other"`, never the first-person heading+body pair `subject="self"` keeps below.
+    if (subject === 'other') {
+      return (
+        <Callout
+          tone="info"
+          heading={`${subjectAlias} has no matches in their history yet.`}
+          className={className}
+        />
+      )
+    }
     return (
       <Callout tone="info" heading="No matches yet" className={className}>
         Once you play, they will appear here.
@@ -178,11 +214,18 @@ export function MatchList({
   }
 
   if (isTable) {
-    return <MatchTable matches={matches} onNavigate={onNavigate} className={className} />
+    return (
+      <MatchTable
+        matches={matches}
+        onNavigate={onNavigate}
+        caption={caption}
+        className={className}
+      />
+    )
   }
 
   return (
-    <ul className={cx('flex flex-col gap-3', className)}>
+    <ul className={cx('flex flex-col gap-3', className)} aria-label={caption}>
       {matches.map((match) => (
         <li key={match.gameId}>
           <MatchRow match={match} onNavigate={onNavigate} />
@@ -195,15 +238,17 @@ export function MatchList({
 function MatchTable({
   matches,
   onNavigate,
+  caption,
   className,
 }: {
   matches: MatchRowData[]
   onNavigate?: (href: string) => void
+  caption: string
   className?: string
 }) {
   return (
     <table className={cx('w-full border-collapse text-left font-sans text-sm', className)}>
-      <caption className="sr-only">Your recent matches</caption>
+      <caption className="sr-only">{caption}</caption>
       <thead>
         <tr className="border-b border-border">
           <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">

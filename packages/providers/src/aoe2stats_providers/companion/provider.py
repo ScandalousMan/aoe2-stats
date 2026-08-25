@@ -56,11 +56,12 @@ so nothing survives `_parse_search_result`) — both treated exactly like a non-
 `record_failure()`, an empty page returned, never an exception. Recording success *before* that
 distinction existed meant a single-maintainer API renaming a field, at either level, would
 permanently answer every search `degraded: false, results: []` — FR-003's exact prohibition — with
-nothing to self-correct it, because the breaker never saw a failure. The parser keeps only
-`profileId`, `name`, `country`, `games` and `clan`
-(FR-004b — see `PlayerSearchResult` in `base.py` for what is deliberately not there) and coerces
-`games` from the string the source sends it as (`docs/data-sources.md` §3) into the `int | None`
-the contract promises.
+nothing to self-correct it, because the breaker never saw a failure. The parser keeps
+`profileId`, `name`, `country`, `games`, `clan` and, since constitution IX 3.0.0 (2026-08-24),
+`steamId` — carried as `PlayerSearchResult.unverified_steam_id`, never as `steam_id`
+(see `PlayerSearchResult` in `base.py` for the name and what is still deliberately not there:
+`shared`, `sharedHistory`, `linkedProfiles`) — and coerces `games` from the string the source
+sends it as (`docs/data-sources.md` §3) into the `int | None` the contract promises.
 
 **`last_call_failed()` (BL-2 remediation).** `is_degraded()` alone only ever answers "is the
 breaker open", which stays `False` through the first `_FAILURE_THRESHOLD - 1` failures of a fresh
@@ -365,8 +366,10 @@ class _MalformedSearchResponse(Exception):
 
 def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
     """Build a `PlayerSearchPage` from a genuine `?search=` response
-    (`docs/data-sources.md` §3), keeping only `PlayerSearchResult`'s five contract fields
-    (FR-004b) and never the source's account-linking fields.
+    (`docs/data-sources.md` §3), keeping `PlayerSearchResult`'s contract fields — including the
+    source's `steamId` claim, carried as `unverified_steam_id` (constitution IX 3.0.0) — and never
+    `shared`, `sharedHistory` or `linkedProfiles` (`base.py`'s `PlayerSearchResult`,
+    `contracts/providers.md`'s "The fields, and the one rule on them").
 
     Raises `_MalformedSearchResponse` — never returns a page — when `body` does not even have the
     contracted shape (not a dict, or no `profiles` list at all): that is a source drift
@@ -420,8 +423,9 @@ def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
 
 
 def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
-    """One `profiles[]` entry, reduced to `profileId`, `name`, `country`, `games` and `clan` —
-    and nothing else (FR-004b): `steamId`, `shared`, `sharedHistory` and `linkedProfiles` are
+    """One `profiles[]` entry, reduced to `profileId`, `name`, `country`, `games`, `clan` and
+    `steamId` (carried as `unverified_steam_id` — constitution IX 3.0.0, `base.py`'s
+    `PlayerSearchResult`) — and nothing else: `shared`, `sharedHistory` and `linkedProfiles` are
     never read, the same posture `_parse_matches` takes with `linkedProfiles` (module docstring).
     A malformed entry (missing or mistyped `profileId`/`name`) is dropped rather than failing the
     whole page — this provider degrades, it does not raise (module docstring).
@@ -439,12 +443,17 @@ def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
     if not isinstance(clan, str):
         clan = None
 
+    unverified_steam_id = profile.get("steamId")
+    if not isinstance(unverified_steam_id, str):
+        unverified_steam_id = None
+
     return PlayerSearchResult(
         profile_id=profile_id,
         alias=alias,
         country=country,
         games_played=_parse_games_played(profile.get("games")),
         clan=clan,
+        unverified_steam_id=unverified_steam_id,
     )
 
 
