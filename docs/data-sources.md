@@ -294,9 +294,12 @@ who has switched it off is simply rarer than 1 in 200.
 
 So the trap above needs reading with more care than it was written with. `steamId` is an identifier
 and `sharedHistory` is an expressed preference, and grouping them as one "account-linking claim" was
-imprecise — and the two have since diverged further. `steamId` is **carried**: constitution IX at
-3.0.0 (2026-08-24) treats every field these APIs serve as public and keeps it so, and it is surfaced
-as an unverified source claim, never used to link or merge profiles. `sharedHistory` is a preference
+imprecise — and the two have since diverged further. `steamId` is **to be carried**: constitution IX at
+3.0.0 (2026-08-24) treats every field these APIs serve as public and keeps it so, and it is to be
+surfaced as an unverified source claim, never used to link or merge profiles. **Measured state of
+this repository on 2026-08-24: still stripped at the provider boundary.** 003's T396 to T398 close
+the gap, and this paragraph says which of the two it is describing rather than letting a reader
+assume the code already matches the decision. `sharedHistory` is a preference
 this service **neither honours nor works around** (same amendment): where the source withholds a
 player's matches, nothing is done to obtain them by another route. What `shared` means is **still unresolved** — it
 takes both values (129 `false`, 71 `true` across the same 200) and has no user-facing setting string
