@@ -1,7 +1,15 @@
 <!--
 Sync Impact Report — 2026-08-24
 
-Version change: 2.0.0 -> 3.0.0 (MAJOR: principle redefinition, backward incompatible)
+Version change: 2.0.0 -> 3.0.0 -> 3.0.1
+
+3.0.0 (MAJOR: principle redefinition, backward incompatible) — principle IX, below.
+3.0.1 (PATCH: clarification, no behaviour change) — principle IV's deletion exception was written
+against the file ("the original replay zip ... except on a GDPR erasure request") and so covered a
+retained recording too, permitting exactly what 3.0.0's IX forbids. The constitution contradicted
+itself for the duration. The exception is now written against the *basis*: a capture held under the
+consenting user's own basis is deleted on erasure; a recording retained under IX's public-recording
+basis is not. Found by /speckit-analyze, 2026-08-24 (finding D1).
 
 Modified principles:
 - IX. GDPR by Design — retention of an already-public recording no longer carries a deletion
@@ -57,8 +65,13 @@ recorded, its wire form is not. Which sources are irrecoverable is a measured fa
 
 ### IV. Raw Is Sacred, Derived Is Disposable
 The original replay zip and its HTTP response are stored byte-for-byte with a checksum, never
-modified, never deleted (except on a GDPR erasure request). Every derived artifact records the
-version of the tool that produced it and must be fully recomputable from the raw. No migration may
+modified, and never deleted. One exception, and one only: a replay captured under the consenting
+user's own basis is deleted on that user's GDPR erasure request. A recording retained under
+principle IX's public-recording basis is not — IX carries that rule and this principle does not
+override it. The two are different objects with different legal bases even when they are the same
+match, so the exception is written against the basis and not against the file.
+
+Every derived artifact records the version of the tool that produced it and must be fully recomputable from the raw. No migration may
 ever be required to re-parse history.
 
 ### V. Parsing Runs in an Isolated, Pluggable Engine
@@ -172,4 +185,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 3.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-24
+**Version**: 3.0.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-24
