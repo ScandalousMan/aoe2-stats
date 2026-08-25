@@ -486,3 +486,95 @@ against the new behaviour.
 - Several tests above assert an **absence** — no resource field, no favourite aggregate, no outbound
   request, no sweep. These are the ones an implementer is most likely to weaken into something that
   passes, because an absence has no happy path to demonstrate. Each one names why it exists.
+
+---
+
+## Phase 12: Constitution IX 4.0.0 alignment
+
+Added 2026-08-25. The constitution was amended again — IX to 4.0.0, retiring the opt-in consent gate
+in favour of legitimate interest (Art. 6-1-f) plus a mandatory right to object (Art. 21), and IV's
+erasure exception rewritten from "the consenting user's own basis" to "the linked user's own basis".
+The documents are corrected and committed: 001's FR-006, FR-016, FR-034, FR-035, its scenarios and
+key entities; 003's FR-012, FR-048, SC-008; `docs/privacy/processing-register.md` activity 3's basis
+and its new balancing test. **What remains is the code that still enforces the retired rule.**
+
+Two faults drove the amendment, and the second is the one this phase closes. IX forbade ingestion
+"as a side effect of someone browsing" while FR-011 does precisely that by design. And
+`DiscoverStage._consenting_profile_ids()` is the only place that module decides whose profiles exist
+for a cycle, so a non-consenting user got **no match discovery and no rating refresh**, not merely no
+replay capture — a scope 001 never specified (FR-013 carries no consent condition; FR-034/FR-035
+gated replays alone). The service permanently recorded a stranger's matches because somebody browsed,
+and refused to record the signed-in user's own.
+
+This phase is independent of Phases 4 to 7 and can run whenever there is room. **T403 lands before
+T404**, and **T404 before T406** — the migration precedes the code that reads the new column, and the
+backend precedes the UI that calls it.
+
+**The default inverts, and that is the whole point.** A linked profile whose user has answered no
+question is ingested in full, archival included. An implementation that declines to ingest until the
+user decides has reinstated the gate under a new name, and the tests below are written to catch
+exactly that.
+
+- [ ] T401 [P] Write the discovery-scope tests in `apps/ingester/tests/test_consent_gate.py`,
+  `xfail(strict=True, reason="T404 not implemented yet")`, against the **inverted** default: a linked
+  user who has never answered any question has their matches discovered and their ratings refreshed,
+  and a user who has objected to archival **still** has both. This file today asserts the opposite and
+  passes — it **ratifies the rule the amendment removed**, the same shape as T384's and T397's
+  findings. Dispatch this against its failure: **the hand-back must carry the output of the tests
+  failing before the fix.** Assert the contrast case too, or the boundary is an accident: a profile
+  whose link is `unlinked_at IS NOT NULL` is still excluded entirely, which is the one exclusion that
+  survives 4.0.0
+- [ ] T402 [P] Write the capture-scope tests in `apps/ingester/tests/test_capture_objection.py`,
+  `xfail(strict=True, reason="T404 not implemented yet")`: a `replay_captures` row is enqueued for a
+  linked user who has never answered, and **not** enqueued for one who has objected — the objection
+  reaching capture and nothing else. Assert the half that is easy to lose: the objecting user's
+  matches and ratings are still written in the same cycle, so "objected" and "unlinked" can never
+  collapse into one code path. FR-016's point-of-view limit is unchanged and MUST still hold: no
+  capture is enqueued for any participant who is not the linked user themselves
+- [ ] T403 Replace the consent columns with an objection column in
+  `packages/storage/src/aoe2stats_storage/models.py` and a migration in `infra/migrations/`:
+  `users.ingest_consent_at` and `users.ingest_consent_withdrawn_at` give way to
+  `users.archival_objected_at`, a single nullable timestamp — null means archiving, set means
+  objected. Two columns existed to tell "never consented" from "consented, then withdrew"; under
+  4.0.0 that distinction carries no legal weight, because there is no grant to record. **Migrate the
+  existing rows on the stated rule and state it in the migration**: a user with a live withdrawal
+  (`ingest_consent_withdrawn_at IS NOT NULL`) carries that timestamp forward as their objection;
+  everyone else — including every user who never answered — becomes null, which is now archiving. This
+  is the one task in the phase that changes stored data, and it is irreversible in the sense that
+  matters: the old two-timestamp evidence is not recoverable from the new column. Update
+  `specs/001-steam-link-replay-ingestion/data-model.md`'s `users` table in the same task. **001's
+  T106/T392 apply: this migration must be applied to Neon through the direct endpoint, not the pooled
+  one** (`docs/runbooks/database-migrations.md`)
+- [ ] T404 Split the gate in `apps/ingester/src/aoe2stats_ingester/discover.py` and remove T401's and
+  T402's markers. `_consenting_profile_ids()` becomes **two** queries whose difference is the whole
+  amendment: `_linked_profile_ids()` — every profile with `unlinked_at IS NULL`, no other condition —
+  drives discovery and the rating refresh; `_archiving_profile_ids()` — the same set minus
+  `archival_objected_at IS NOT NULL` — is what the capture-enqueue membership test at `__call__`'s
+  participant loop consults. The module docstring's paragraph on the two-clause consent predicate is
+  now false and must be rewritten rather than left to rot: it is the first thing the next reader will
+  believe
+- [ ] T405 Turn `POST /api/privacy/consent` into `POST /api/privacy/archival-objection` in
+  `apps/api/src/aoe2stats_api/routers/privacy.py`, and change what `GET /api/me` reports in
+  `apps/api/src/aoe2stats_api/routers/auth.py`: `ingest_consent` gives way to `archival_objected`
+  (and its timestamp), with `false` the state of a user who has answered nothing. Update
+  `apps/api/tests/test_consent.py`, `specs/001-steam-link-replay-ingestion/contracts/http-api.md` and
+  `specs/003-player-search-match-analysis/contracts/http-api.md`. The route is a **rename with an
+  inverted meaning**, not
+  a new one beside the old: leaving `POST /api/privacy/consent` reachable leaves a caller able to
+  place a user in a state the data model no longer has
+- [ ] T406 Rebuild `packages/design-system/src/components/ConsentStep/` as the objection control it
+  now is, with its spec in `packages/design-system/specs/` amended first. It renders **archival
+  already on** for a user who has answered nothing — today's onboarding variant, which asks a
+  question before ingesting, is the retired gate in visual form and must go. What replaces it states
+  that archival is running, on what basis, and offers the one switch that stops it. The "how you get
+  back in" statements are unaffected by the amendment and stay. Stories cover: archiving (never
+  answered), archiving (explicitly resumed), objected, and the write-failed state
+- [ ] T407 Wire T406 into `apps/web/src/features/profile/DashboardContainer.tsx`, then run
+  `visual-reviewer` locally and `pnpm test:visual --changed` over the stories T406 changed, updating
+  baselines in `packages/design-system/__screenshots__/`
+- [ ] T408 Walk the whole inversion once against a real linked profile that has never answered any
+  question, and record the outcome in the pull request: one ingestion cycle discovers its matches,
+  refreshes its ratings **and** enqueues its captures with nothing granted; objecting stops the next
+  cycle's captures while its matches and ratings keep arriving; and no third party's recording is
+  captured at any point (FR-016, FR-012). This is the phase's independent test and the only one that
+  proves the default actually inverted in production rather than only in the suite

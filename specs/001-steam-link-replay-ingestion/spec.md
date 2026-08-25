@@ -80,16 +80,17 @@ and confirm the correct profile and current ratings appear without any manual en
    person.
 6. **Given** a signed-in user, **When** they choose to unlink a profile, **Then** automatic ingestion
    stops for it and they are told plainly what happens to the replays already archived.
-7. **Given** a visitor about to consent, **When** they are shown what the service does, **Then** they
-   are told before consenting that access depends entirely on their Steam account and cannot be
-   recovered by any other means.
+7. **Given** a visitor about to link a Steam account, **When** they are shown what the service does,
+   **Then** they are told before linking that access depends entirely on their Steam account and
+   cannot be recovered by any other means, and that archival of their own recordings begins
+   automatically and can be switched off at any time (constitution IX, amended 2026-08-25).
 
 ---
 
 ### User Story 2 - Never lose another replay (Priority: P2)
 
-Once the user has consented, the system watches for their new matches and archives each replay
-automatically, well inside the ~31-day window. When they link their account it also sweeps backwards
+Once the user has linked a profile, the system watches for their new matches and archives each
+replay automatically, well inside the ~31-day window. When they link their account it also sweeps backwards
 and rescues everything still available from the preceding 31 days. The user does nothing.
 
 **Why this priority**: This is the irreplaceable part of the product. Presentation features can be
@@ -102,7 +103,7 @@ archived and can be downloaded back byte-for-byte identical to the original.
 
 **Acceptance Scenarios**:
 
-1. **Given** a user who has just consented and linked their profile, **When** the first ingestion
+1. **Given** a user who has just linked their profile, **When** the first ingestion
    cycle completes, **Then** every one of their matches from the preceding 31 days whose replay is
    still available has been archived, across **all** of their profiles and not only the primary one.
 2. **Given** a linked user who plays a new match, **When** the next ingestion cycle runs, **Then**
@@ -115,8 +116,10 @@ archived and can be downloaded back byte-for-byte identical to the original.
    recorded at capture time.
 6. **Given** an ingestion cycle interrupted part-way, **When** the next cycle runs, **Then** it
    resumes cleanly with no match left in an in-progress state and nothing lost.
-7. **Given** a user who has not consented to replay ingestion, **When** ingestion runs, **Then**
-   nothing of theirs is downloaded or stored.
+7. **Given** a linked user who has objected to replay archival, **When** ingestion runs, **Then** no
+   recording of theirs is downloaded or stored, while their public match and rating metadata
+   continues to be ingested. A user who has never answered is **not** in this state: archival is on
+   by default and only an objection turns it off (constitution IX, amended 2026-08-25).
 
 ---
 
@@ -192,9 +195,9 @@ records or in storage.
    personal data, their match records and their archived replay files.
 2. **Given** a signed-in user, **When** they request erasure and confirm it, **Then** their account,
    profile link, match records and archived replay files are permanently deleted, storage included.
-3. **Given** a user creating an account, **When** they are asked to consent to replay ingestion,
-   **Then** that consent is a separate, explicit choice they can decline while still using the rest,
-   and can withdraw later.
+3. **Given** a linked user, **When** they open their privacy settings, **Then** they find archival
+   already on and a separate, explicit switch to object to it, which stops all further capture of
+   their recordings while leaving the rest of the service working (constitution IX, Art. 21).
 4. **Given** a person who is not a user but appears in archived matches, **When** they object,
    **Then** their identifiers are pseudonymised without destroying the integrity of the match
    records, and the outcome is recorded.
@@ -212,7 +215,7 @@ records or in storage.
   stated where the user would see it.
 - A user links a second Steam account that is already linked to a different aoe2-stats account.
 - A user loses access to their Steam account: by design there is no recovery path, and they were
-  told so before consenting.
+  told so before linking.
 - The match discovery source is unreachable for several days: capture must catch up automatically,
   and the 21-day budget must absorb the outage without loss.
 - The replay source starts refusing requests: the system must back off and raise an alert rather
@@ -223,7 +226,7 @@ records or in storage.
 - Two matches finish while an ingestion cycle is already running.
 - An ingestion cycle exhausts its time budget mid-queue.
 - The same match appears twice from the discovery source, or under two of the user's profiles.
-- A user withdraws ingestion consent while captures are queued.
+- A user objects to replay archival while captures are queued.
 - A user unlinks their profile and later relinks the same one.
 - The archived file is not a well-formed replay (truncated, empty, or unexpected contents).
 - Two users are in the same match: the match record is shared, but each user's own replay is not.
@@ -248,7 +251,7 @@ records or in storage.
 - **FR-006**: System MUST treat the verified Steam sign-in as the sole credential. It MUST NOT store
   passwords, and MUST NOT offer password reset, email verification or account recovery: a user who
   loses access to their Steam account loses access here, and this MUST be stated plainly before they
-  consent to anything being archived.
+  link an account and archival begins.
 - **FR-007**: System MUST let a user link more than one Steam account to their single aoe2-stats
   account, each proven by its own completed sign-in, since one Steam account corresponds to exactly
   one AoE2 profile.
@@ -301,8 +304,9 @@ records or in storage.
 - **FR-014**: System MUST archive the replay of each discovered match no later than **21 days** after
   the match ended, leaving margin against the ~31-day source retention window.
 - **FR-015**: System MUST, upon linking, immediately attempt every match from the preceding 31 days.
-- **FR-016**: System MUST capture only the recording from the consenting user's own point of view,
-  never that of other participants.
+- **FR-016**: System MUST capture only the recording from the linked user's own point of view,
+  never that of other participants. The point-of-view limit is unchanged by the 2026-08-25
+  amendment and is now constitution IX's real constraint on automatic capture.
 - **FR-017**: System MUST store each replay exactly as received, unmodified, with a checksum recorded
   at capture time and verifiable on retrieval.
 - **FR-018**: System MUST never store two copies of the same replay for the same user and match.
@@ -353,10 +357,14 @@ records or in storage.
 
 **Consent, privacy and data rights**
 
-- **FR-034**: System MUST obtain explicit consent for replay ingestion, separately from account
-  creation, and MUST record when it was given.
-- **FR-035**: Users MUST be able to withdraw ingestion consent, after which no further replays of
-  theirs are captured.
+- **FR-034**: System MUST archive a linked user's own recordings without asking for consent, on the
+  basis of legitimate interest, and MUST tell them at linking time that it does so and how to stop
+  it. Archival is on by default; a linked profile whose user has answered no question is ingested in
+  full (constitution IX, amended 2026-08-25).
+- **FR-035**: Users MUST be able to object to replay archival at any time, after which no further
+  recordings of theirs are captured, and the system MUST record when the objection was made. An
+  objection stops capture only: public match and rating metadata continues to be ingested, and
+  recordings already archived are governed by FR-036 and FR-037 rather than by the objection.
 - **FR-036**: Users MUST be able to export all their personal data, match records and archived
   replays.
 - **FR-037**: Users MUST be able to permanently erase their account and everything attached to it,
@@ -370,16 +378,16 @@ records or in storage.
 
 ### Key Entities
 
-- **User**: someone with an account. Holds their consent decisions and their allowlist status.
+- **User**: someone with an account. Holds their objection decisions and their allowlist status.
 - **Steam identity**: a Steam account whose ownership the user has proven by signing in. A user may
   hold several; each maps to exactly one AoE2 profile.
 - **Player profile**: an AoE2 player as the game knows them — identifier, alias, country. Exists for
   users and for third parties alike; only users' profiles are linked to an account.
 - **Profile link**: the association between a user and one of their player profiles, whether it is
   the primary one for display, and when it was linked and unlinked. A user may hold several; all
-  are ingested, one is presented. Ingestion consent is **not** here: it is held once on the user,
-  because it is a decision about the person and not about one of their accounts, and because a
-  per-link consent would make FR-044's per-user quota ambiguous.
+  are ingested, one is presented. An archival objection is **not** here: it is held once on the
+  user, because it is a decision about the person and not about one of their accounts, and because a
+  per-link objection would make FR-044's per-user quota ambiguous.
 - **Match**: one game — when it started and ended, map, leaderboard, game version, duration, plus the
   unaltered source record it came from.
 - **Match participant**: one player's part in one match — team, civilisation, result, rating before
@@ -397,7 +405,8 @@ records or in storage.
 ### Measurable Outcomes
 
 - **SC-001**: **Zero replays are lost.** Across any 30-day period of normal operation, the number of
-  a consenting user's matches whose replay expired unarchived while it was still fetchable is 0.
+  a linked user's matches whose replay expired unarchived while it was still fetchable is 0, counting
+  every linked profile that has not objected to archival.
 - **SC-002**: 95% of a linked user's new matches are archived within **48 hours** of the match
   ending, and 100% within 21 days. The floor is the daily ingestion cadence: detection lag alone is
   up to ~25 h (`docs/adr/0002-hosting.md`), so anything under 48 h would be a promise the platform
@@ -443,7 +452,7 @@ records or in storage.
   it, and the decision is recorded here so it is not rediscovered as a contradiction.
 - A capture budget of 21 days against an observed ~31-day retention window is deemed sufficient
   margin. If the window is ever observed to shrink, the budget is revised before anything else.
-- Only the consenting user's own point-of-view recording is captured. Recordings from other
+- Only the linked user's own point-of-view recording is captured. Recordings from other
   participants' perspectives are deliberately out of scope, for volume and for privacy.
 - The 7-day backfill figure (SC-003) assumes users link a few at a time. Onboarding the whole beta
   cohort at once exceeds a daily run's throughput for several days; if that is ever planned, stagger
