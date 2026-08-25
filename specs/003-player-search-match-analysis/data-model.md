@@ -63,9 +63,10 @@ retention mechanism, so this paragraph is what keeps that citation honest.
 [contracts/providers.md](./contracts/providers.md)). It is **not** a verbatim copy of the provider's
 response, and the difference is constitution III's own: a name search can be re-run at any time, so it
 is recoverable, and principle III's verbatim obligation applies to irrecoverable sources only. Storing
-the raw body here would additionally store `steamId`, `shared` and `sharedHistory` — the account-
-linking claim FR-004b exists to keep out of this system — which makes the verbatim copy not merely
-pointless but forbidden.
+the raw body would additionally store `shared`, `sharedHistory` and a dozen presentation fields
+nothing reads, which makes the verbatim copy pointless. It is **no longer forbidden**: constitution IX
+at 3.0.0 removed the prohibition that sentence rested on, and `steam_id` is now one of the fields this
+cache stores like any other.
 
 This table is a cache and holds no personal data beyond what a public search already returns. It is
 safe to truncate at any time; doing so costs a re-fetch and nothing else.
@@ -172,12 +173,13 @@ the bucket where the free-tier watch and any bulk copy operate by prefix with no
 against.
 
 `zip_sha256` is recorded at retention and verified on retrieval. The bytes are never modified. They
-are deleted **only** on an erasure or objection by a person **appearing in** the recording (FR-046,
-constitution IV) — not when the requester is erased, not when the analysis is recomputed, not when the
-parser changes, and not when the cap is reached, because deleting the raw is precisely what would make
-the published analysis unfalsifiable again. The Erasure note below states the two acts apart.
+are **never deleted** — amended 2026-08-24 with constitution IX 3.0.0. Not when the requester is
+erased, not when a person appearing in the recording erases or objects, not when the analysis is
+recomputed, not when the parser changes, and not when the cap is reached. Deleting the raw is
+precisely what would make the published analysis unfalsifiable again. The Erasure note below states
+what the two acts do reach.
 
-The legal basis is constitution IX as amended to 2.0.0 and it is **not** the basis under which
+The legal basis is constitution IX as amended to 3.0.0 and it is **not** the basis under which
 `replay_captures` rows exist: those are the consenting user's own point of view under explicit
 consent, these are an already-public recording retained because a person deliberately asked for that
 match to be analysed. FR-045 requires this to appear in `docs/privacy/processing-register.md` as its
@@ -192,12 +194,17 @@ data, and not necessarily a match they played in — and deleting them would lea
 that nothing can recompute, which is the unfalsifiable conclusion Q2 and principle IV exist to
 prevent.
 
-*Erasure or objection by a person appearing in the recording* deletes the object and the row, and
-withdraws every analysis derived from it. That is what FR-046 means by "the analyses derived from it
-withdrawn with it", and it is the only route by which these bytes are ever deleted.
+*Erasure or objection by a person appearing in the recording* pseudonymises every identifier this
+service holds about them — the same instrument 001's erasure applies to `matches` and `match_players`,
+called with an arbitrary `profile_id` — and leaves the object and the row intact. **No analysis is
+withdrawn.** A `.aoe2record` cannot be pseudonymised without being modified, and modifying it destroys
+both its checksum and the recomputability principle IV requires. Constitution IX orders IV above
+deletion here, deliberately, and `docs/privacy/processing-register.md` carries that ordering in its
+balancing test.
 
-Decided 2026-08-23: FR-033's "except on a GDPR erasure or objection" reads on the second act only.
-Erasing the requester removes a *link*, not a *subject*. **Export**: named, not included — the bytes
+Decided 2026-08-23, amended 2026-08-24: FR-033 now carries **no** erasure exception at all. Both acts
+remove a *link*; neither removes a *subject*, because the subject is the record of a public match this
+service did not create and does not own. **Export**: named, not included — the bytes
 are not the requester's own data.
 
 ---
