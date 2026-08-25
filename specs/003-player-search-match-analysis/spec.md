@@ -206,9 +206,9 @@ for that and for nothing else.
   time, *including for a match the requester played themselves*, so the analysis stands **and stays
   recomputable**. Principle IV is therefore not amended at all — it is satisfied, not overridden —
   and the own-match hole closes with no special rule. `.aoe2record` bytes are never modified, which
-  FR-033 already required and the amendment restates. **Nothing in Phase 7 may be implemented until
-  the amendment lands** — T363, T091 and `match_analyses`' erasure rule all depend on it. Note also
-  that
+  FR-033 already required and the amendment restates. The amendment landed the same day as
+  constitution 3.0.0, and T362, T363 and `data-model.md`'s `retained_recordings` section now carry
+  the own-match rule explicitly. Note also that
   `match_analyses` carries no foreign key to its source, unlike `replay_access_log` which carries
   both; whichever disposition wins, finding "the analyses derived from this recording" needs either
   `(game_id, point_of_view_profile_id)` or a new column.
@@ -229,9 +229,10 @@ for that and for nothing else.
   be shown; it MUST NOT be used to link, merge or unify profiles, and no feature may treat two
   profiles as one person on its basis.
 
-  This retires FR-004b, changes the search contract and `profile_search_cache`'s stored fields,
-  inverts quickstart scenario 2, and needs 001's FR-045 amended to carve out carriage from action.
-  None of it may land before the principle IX amendment does.
+  This rewrote FR-004b, changed the search contract and `profile_search_cache`'s stored fields, and
+  inverted quickstart scenario 2. The principle IX amendment landed the same day (3.0.0), the
+  artifacts followed, and the code that still enforces the retired rule is Phase 11 — including
+  T400, which amends 001's FR-045 to carve carriage out from action.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -437,18 +438,17 @@ their current standing and reachable in one click.
 - **FR-004a**: Name search MUST match case-insensitively and on partial strings, so that a user who
   remembers part of a name finds the player, and MUST order results so that the most-played matching
   player appears first.
-- **FR-004b**: ~~System MUST discard, at the point the search source is read, every field asserting
-  a relationship between a player's accounts — and MUST NOT store, display or act on a third party's
-  Steam identifier obtained this way.~~ **Superseded 2026-08-24, pending the principle IX amendment;
-  it governs until that amendment lands.** The replacement, in the same two halves the original
-  conflated: the field is **carried and shown as the source reports it**, marked as a claim this
-  service has not verified — 001's FR-006 makes a Steam link proven by sign-in the only one this
-  service vouches for, and presenting an unchecked third-party assertion beside it without the
-  distinction is an accuracy fault independent of the privacy question. And it **MUST NOT be used to
-  infer, suggest or act upon a relationship between profiles**: no linking, no merging, no feature
-  treating two profiles as one person on this basis. That is 001's FR-045 minus the half the
-  2026-08-24 decision removed, and it stands unchanged. Kept struck rather than deleted, per FR-004c's
-  precedent: the field is on the wire either way and the next reader deserves the ruling.
+- **FR-004b**: System MUST carry the account identifier the search source asserts, as
+  `unverified_steam_id`, and MUST present it as **a claim this service has not verified**. 001's
+  FR-006 makes a Steam link proven by sign-in the only one this service vouches for; presenting an
+  unchecked third-party assertion beside it without the distinction is an accuracy fault, and it is
+  one whether or not the identifier counts as personal data. System MUST NOT **infer, suggest or act
+  upon** a relationship between profiles on that basis: no linking, no merging, no affordance
+  treating two profiles as one person. Rewritten 2026-08-24 under constitution IX 3.0.0, which
+  treats every field the AoE2 DE APIs serve as public and keeps it so — the requirement previously
+  read here was the opposite, discarding the field at the provider boundary, and the second half
+  above is what survives of it. `shared` and `sharedHistory` are still not carried, for reasons that
+  are not a residue of the old rule; this feature's `contracts/` providers document states each.
 - **FR-004c**: ~~System MUST honour a source-side signal that a profile is hidden.~~ **Retired
   2026-08-23, before implementation, on measurement (T301a).** It is left here rather than deleted
   because the field it was written for still exists on the wire, and the next reader to notice it
@@ -576,9 +576,8 @@ their current standing and reachable in one click.
   matches included. A published analysis that cannot be recomputed from its raw is forbidden by
   constitution IV, and the source destroys the raw after ~31 days, so the choice is between keeping
   the recording and publishing an unfalsifiable conclusion. Retained recordings are **never modified
-  and never deleted** — amended 2026-08-24, pending the principle IX amendment; the previous rule
-  (deleted on an erasure or objection by a person appearing in the recording) governs until that
-  lands. Erasure and objection reach the *link* between a recording and a person, never the artifact:
+  and never deleted** — amended 2026-08-24 under constitution IX 3.0.0; the previous rule deleted one
+  on an erasure or objection by a person appearing in it. Erasure and objection reach the *link* between a recording and a person, never the artifact:
   `requested_by_user_id` is cleared and the identifiers this service holds are pseudonymised, while
   the bytes stand so the published analysis stays recomputable (constitution IV). The same rule now
   covers a match the requester played themselves — a copy is retained under this basis at analysis
@@ -642,13 +641,11 @@ their current standing and reachable in one click.
 - **FR-045**: System MUST record the retention of analysed third-party recordings in the processing
   register as its own processing purpose, with its own legal basis, retention and safeguards, in the
   same change that implements it.
-- **FR-046**: ~~System MUST make a retained recording reachable by the third-party objection route
-  and by erasure (001 FR-037, FR-039), such that a person appearing in one can have it removed, and
-  the analyses derived from it withdrawn with it.~~ **Superseded 2026-08-24, pending the principle IX
-  amendment; it governs until that amendment lands.** The replacement: the objection route and
-  erasure MUST reach every identifier this service holds about a person appearing in a recording —
-  pseudonymising them exactly as 001 already does for `matches` and `match_players` — and MUST NOT
-  delete or modify the recording itself. A recorded game is the record of a public match, and a
+- **FR-046**: System MUST make the third-party objection route and erasure (001 FR-037, FR-039)
+  reach every identifier it holds about a person appearing in a retained recording, pseudonymising
+  them exactly as 001 already does for `matches` and `match_players`; and MUST NOT delete or modify
+  the recording itself. Rewritten 2026-08-24 under constitution IX 3.0.0 — it previously required
+  the recording removed and the analyses derived from it withdrawn, which is now forbidden. A recorded game is the record of a public match, and a
   `.aoe2record` cannot be pseudonymised without being modified, which would destroy its checksum and
   the recomputability constitution IV requires. No analysis is withdrawn on this route: it stands and
   stays recomputable, which is what the amendment buys. The processing register MUST state this
