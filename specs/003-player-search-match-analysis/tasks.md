@@ -178,7 +178,7 @@ confirm the page is complete and correct, with both CTAs correctly shown as unav
 - [x] T329 [P] [US2] Write the component specs for the full participant table and the third-party history list in `packages/design-system/specs/`, including how an unnamed identifier is shown so it reads as unresolved rather than as a name
 - [x] T330 [US2] Extend `packages/design-system/src/components/MatchDetailPanel/` to present every participant with team, civilisation, result and rating change, with stories covering a 1v1, an eight-player game, and a match carrying an unnameable identifier
 - [x] T331 [US2] Wire the history and the widened match page in `apps/web/src/features/players/` and `apps/web/src/features/matches/`, with `apps/web/src/routes/players.$profileId.matches.tsx`, and widen `apps/web/src/routes/matches.$gameId.tsx` to any match
-- [ ] T332 [US2] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T330 added, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T332 [US2] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T330 added, updating baselines in `packages/design-system/__screenshots__/`
 - [ ] T333 [US2] Walk scenario 5 of `specs/003-player-search-match-analysis/quickstart.md` by hand against a real match older than 31 days, and record the outcome in the pull request. This is US2's independent test and the one thing no fixture proves: that the page is complete when everything else about that match is gone, with no field left blank or wrong for 100% of the matches in that profile's history (SC-003)
 
 **Checkpoint**: any player's matches are readable, at any age, without a recording.
