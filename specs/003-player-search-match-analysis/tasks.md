@@ -419,6 +419,55 @@ as a delivery plan rather than as an intention.
 
 ---
 
+## Phase 11: Constitution IX 3.0.0 alignment
+
+Added 2026-08-24. The constitution was amended mid-feature — IX to 3.0.0 (a retained recording is
+never deleted; every field the AoE2 DE APIs serve is treated as public) and IV to 3.0.1 (its deletion
+exception written against the *basis* rather than the file). `/speckit-analyze` found eight CRITICAL
+and five HIGH inconsistencies; the documents are corrected and committed. **What remains is the code
+that still enforces the retired rule**, and it is recorded here rather than in a review thread.
+
+The whole phase is US1's search path. It depends on nothing in Phases 4 to 7 and can run whenever
+there is room — but **it lands before T381**, which walks a quickstart scenario 2 now rewritten
+against the new behaviour.
+
+- [ ] T396 [P] [US1] Carry the source's Steam claim through the provider, in
+  `packages/providers/src/aoe2stats_providers/base.py` and
+  `packages/providers/src/aoe2stats_providers/companion/provider.py`. `PlayerSearchResult` gains
+  `unverified_steam_id: str | None`, read from the record's `steamId`. The field name is the
+  requirement and not a comment on it (`specs/003-player-search-match-analysis/contracts/providers.md`): a consumer who never opened the
+  contract must not be able to read the claim as a fact. `shared`, `sharedHistory` and
+  `linkedProfiles` stay unread — each for a reason that survives the amendment and is written in that same
+  contract, not as a residue of FR-004b
+- [ ] T397 [US1] **Invert** `test_search_players_returns_only_the_five_contract_fields` and the
+  `_ACCOUNT_LINKING_FIELDS` set in `packages/providers/tests/test_companion.py`. These pass today and
+  **ratify the rule the amendment removed** — the same shape as T384's finding, one layer down.
+  Dispatch this one against its failure: **the hand-back must carry the output of the test failing
+  before the fix**, because a test written beside the change it verifies passes for the wrong reason
+  and that is the normal result, not the unlucky one (`CLAUDE.md`, remediating a review finding).
+  Assert both halves and do not let the second slide: the field **is** carried and equals the
+  source's value, **and** `shared`, `shared_history`, `linked_profiles` are still absent from the
+  dataclass by introspection
+- [ ] T398 [US1] Surface `unverified_steam_id` through `GET /api/players/search?q=` in
+  `apps/api/src/aoe2stats_api/search.py` and `apps/api/src/aoe2stats_api/routers/players.py`, and
+  store it in `profile_search_cache.results` — six contract fields now, not five. It is `null` on the
+  degraded fallback (FR-004d), which reads `aoe_profiles` and has no such claim; a client must read
+  `null` as "not known here" and never as "no Steam account" (this feature's `contracts/` http-api document). Update
+  `apps/api/tests/test_players_routes.py`, whose comment at the cached-shape assertion still names the
+  fields "a verbatim provider body would additionally carry"
+- [ ] T399 [P] [US1] Write the component spec for how an unverified claim is labelled, in
+  `packages/design-system/specs/`, then build it and wire it into the result row. The wording is the
+  requirement and it is decided here, not in the component — the same discipline FR-043a set for an
+  unnameable identifier. **No affordance may be built on the field**: no "same player", no merge, no
+  navigation asserting two profiles are one person (001 FR-045's remaining half, which the amendment
+  did not touch). A test asserting the *absence* of that affordance is the one worth writing, and it
+  is the kind an implementer weakens into something that passes
+- [ ] T400 Amend 001's FR-045 in `specs/001-steam-link-replay-ingestion/spec.md` to carve carriage
+  out from action, with a dated note rather than a rewrite. Its two justifications have separated:
+  the privacy half was decided against on 2026-08-24, the accuracy half — "they are unverifiable" —
+  stands and is now the whole of the requirement. Leaving FR-045 as written makes 001 and 003
+  contradict each other on a field both now describe
+
 ## Notes
 
 - Commit at the granularity `CLAUDE.md` sets: the smallest set of tasks that was ever simultaneously
