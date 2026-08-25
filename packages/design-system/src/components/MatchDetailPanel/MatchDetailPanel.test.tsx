@@ -53,6 +53,7 @@ const match: MatchDetailData = {
   leaderboardName: '1v1 Random Map',
   durationLabel: '34 min',
   playedAtLabel: '22 Aug 2026, 14:32',
+  gameVersion: '101.101',
   captureStatus: 'stored',
   captureDeadlineAt: null,
   teams: [
@@ -63,7 +64,8 @@ const match: MatchDetailData = {
         {
           id: 'p1',
           alias: 'aoe2guy',
-          civilisation: 'Franks',
+          civId: 10,
+          civName: 'Franks',
           result: 'win',
           ratingChange: { value: 12 },
         },
@@ -76,7 +78,8 @@ const match: MatchDetailData = {
         {
           id: 'p2',
           alias: 'aoe2villain',
-          civilisation: 'Mongols',
+          civId: 20,
+          civName: 'Mongols',
           result: 'loss',
           ratingChange: { value: -12 },
         },
@@ -99,6 +102,11 @@ describe('MatchDetailPanel', () => {
     expect(screen.getByText('Arabia')).toBeInTheDocument()
     expect(screen.getByText(/1v1 Random Map/)).toBeInTheDocument()
     expect(screen.getByText(/34 min/)).toBeInTheDocument()
+  })
+
+  it('shows the raw game version in the header (§11.1 point 3, FR-018)', () => {
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.getByText(/101\.101/)).toBeInTheDocument()
   })
 
   it('shows the DownloadAction only for a stored capture', () => {
@@ -303,5 +311,131 @@ describe('MatchDetailPanel — spacing scale (match-history.md §7)', () => {
     expect(cell?.className).toMatch(/\bpy-3\b/)
     expect(cell?.className).not.toMatch(/\bpy-2\b/)
     window.matchMedia = original
+  })
+})
+
+// 003 T330 (match-history.md §11): widening `MatchDetailPanel` to any match this service holds —
+// unresolved identifiers, any team count, and the "no caller highlight" rule.
+describe('MatchDetailPanel — 003, §11: any match, any age', () => {
+  function mockMatchMediaAt(widthPx: number): () => void {
+    const original = window.matchMedia
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: widthPx >= threshold,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      } as MediaQueryList
+    }
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  const unresolvedMatch: MatchDetailData = {
+    ...match,
+    gameId: '2001',
+    map: null,
+    teams: [
+      {
+        id: 'team-1',
+        name: 'Team 1',
+        participants: [
+          {
+            id: 'p1',
+            alias: 'Fr020A',
+            civId: 5,
+            civName: 'Britons',
+            result: 'win',
+            ratingChange: { value: 10 },
+          },
+        ],
+      },
+      {
+        id: 'team-2',
+        name: 'Team 2',
+        participants: [
+          {
+            id: 'p2',
+            alias: 'Fr020B',
+            civId: 999,
+            civName: null,
+            result: 'loss',
+            ratingChange: { value: -10 },
+          },
+        ],
+      },
+    ],
+  }
+
+  it('renders an unresolved civilisation as "Civilisation ID <n>" in text-secondary/font-mono, distinct from a resolved name in the same frame (FR-020, §11.2)', () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={unresolvedMatch} />)
+
+    const unresolved = screen.getByText('Civilisation ID 999')
+    expect(unresolved.className).toMatch(/\bfont-mono\b/)
+    expect(unresolved.className).toContain('text-text-secondary')
+
+    const resolved = screen.getByText('Britons')
+    expect(resolved.className).not.toMatch(/\bfont-mono\b/)
+    expect(resolved.className).toContain('text-text-primary')
+    restore()
+  })
+
+  it('never fills an unresolved civilisation name in with its raw id as if it were a name', () => {
+    render(<MatchDetailPanel match={unresolvedMatch} />)
+    expect(screen.queryByText('999')).not.toBeInTheDocument()
+    expect(screen.getByText('Civilisation ID 999')).toBeInTheDocument()
+  })
+
+  it('renders an unresolved map without inventing a name or a numeric identifier this schema does not carry', () => {
+    render(<MatchDetailPanel match={unresolvedMatch} />)
+    const unresolvedMap = screen.getByText(/Map — unresolved/)
+    expect(unresolvedMap.className).toMatch(/\bfont-mono\b/)
+    expect(unresolvedMap.className).toContain('text-text-secondary')
+    expect(screen.queryByText('Arabia')).not.toBeInTheDocument()
+  })
+
+  it('renders eight TeamGroups for a free-for-all, none dropped or duplicated (§11.4)', () => {
+    const restore = mockMatchMediaAt(1280)
+    const ffaMatch: MatchDetailData = {
+      ...match,
+      gameId: '2002',
+      teams: Array.from({ length: 8 }, (_, index) => ({
+        id: `team-${index + 1}`,
+        name: `Team ${index + 1}`,
+        participants: [
+          {
+            id: `p${index + 1}`,
+            alias: `player${index + 1}`,
+            civId: index + 1,
+            civName: `Civ${index + 1}`,
+            result: index === 0 ? ('win' as const) : ('loss' as const),
+            ratingChange: { value: index === 0 ? 40 : -6 },
+          },
+        ],
+      })),
+    }
+    render(<MatchDetailPanel match={ffaMatch} />)
+    expect(screen.getAllByRole('table', { name: /Team/ })).toHaveLength(8)
+    for (let index = 1; index <= 8; index += 1) {
+      expect(screen.getAllByText(`player${index}`)).toHaveLength(1)
+    }
+    restore()
+  })
+
+  it('renders identically whether or not the caller took part — no row carries a distinguishing "you" marker or class', () => {
+    render(<MatchDetailPanel match={match} />)
+    expect(screen.queryByText(/\byou\b/i)).not.toBeInTheDocument()
+    const rows = document.querySelectorAll('tbody tr, li')
+    const classNames = new Set(Array.from(rows).map((row) => row.className))
+    // Every row shares the same structural className — none is singled out.
+    expect(classNames.size).toBeLessThanOrEqual(1)
   })
 })
