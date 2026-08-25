@@ -52,11 +52,21 @@ touched because a person clicked.
 
 **2. Streaming on demand is the right trigger, and for own matches nothing is streamed at all.**
 Analysing a recorded game means reading it once and deriving facts from it. For a match the
-signed-in user played, the bytes are already in this service's own archive — analysis reads what 001
-captured, and can be re-run at any time, for years. For anyone else's match, the bytes are fetched
-from the source at the moment the user asks. So the user's instinct is right: **no anticipatory
-sweep is needed, because the demand itself tells the system which matches matter.** That is what the
-cron would have been for, and it is why there isn't one.
+signed-in user played, the bytes are already in this service's own archive — analysis **reads** what
+001 captured rather than fetching anything. For anyone else's match, the bytes are fetched from the
+source at the moment the user asks. So the user's instinct is right: **no anticipatory sweep is
+needed, because the demand itself tells the system which matches matter.** That is what the cron
+would have been for, and it is why there isn't one.
+
+**Amended 2026-08-24: reading 001's capture is not the same as being able to keep reading it.** An
+own match is read from the capture and then **retained under FR-033's own basis anyway**, as a second
+object under the retention prefix. It looks like duplication and is not: the capture exists under the
+user's explicit consent and is deleted when that user erases, while the analysis derived from it is
+published to everyone who opens the match and must stay recomputable for years (constitution IV).
+Without the second copy, one erasure destroys the raw of a conclusion shown to strangers — the exact
+failure FR-033 exists to prevent, arriving by the one path nobody was watching. The cost is stated
+plainly: an analysed own match occupies its bytes twice, and FR-047's cap counts only the retained
+copy.
 
 **3. What "streaming" does not settle is what happens to the bytes afterwards, and that is where the
 whole cost sits.** Discarding them after the parse looks free and is not. Because this service

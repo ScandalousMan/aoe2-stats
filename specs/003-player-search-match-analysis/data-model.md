@@ -172,6 +172,25 @@ counting them together impossible to do by accident rather than merely inadvisab
 the bucket where the free-tier watch and any bulk copy operate by prefix with no database to join
 against.
 
+**A row is written for every published analysis, including one whose point of view this service
+already holds as a `replay_captures` row.** Decided 2026-08-24; it is the case an implementer will
+otherwise skip, because skipping it looks like an optimisation and reads as one in every line of code
+around it. The two objects are not redundant copies of one file, they are the same bytes held under
+two different legal bases with two different lifetimes: the capture exists under the user's explicit
+consent and is deleted when that user erases (constitution IV's one exception, as narrowed in 3.0.1),
+while the retained recording exists under IX's public-recording basis and is never deleted. An
+analysis is published to everyone who opens the match, so its raw has to outlive the account of
+whoever happened to play it. Reading the capture and retaining nothing would leave the published
+analysis unrecomputable the first time that user erases — the failure FR-033 exists to prevent,
+reached by the one path that does not look like retention.
+
+This is why `(game_id, profile_id)` is unique *within this table* and not across it and
+`replay_captures`: R9 settled that a retained recording and a captured replay of the same pair "must
+not resolve to one object", and this is the case that makes it concrete rather than hypothetical.
+`ANALYSIS_RETENTION_CAP_BYTES` counts the retained copy only — the capture is 001's and is already
+counted under 001's prefix (FR-048), which is the whole reason T378 counts the two prefixes
+separately.
+
 `zip_sha256` is recorded at retention and verified on retrieval. The bytes are never modified. They
 are **never deleted** — amended 2026-08-24 with constitution IX 3.0.0. Not when the requester is
 erased, not when a person appearing in the recording erases or objects, not when the analysis is
