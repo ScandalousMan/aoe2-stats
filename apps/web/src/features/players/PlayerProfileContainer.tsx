@@ -88,6 +88,25 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
         searchHref="/search"
         onRetry={() => void profileQuery.refetch()}
       />
+
+      {/* T331: the one link into `players.$profileId.matches.tsx` — without it the history route
+       * is reachable only by typing the URL. Shown once a real profile has resolved; nothing to
+       * link to yet while loading, and `not-found`'s own callout already owns the page below it. */}
+      {profile && (
+        <div className="flex justify-start px-4 pb-8 md:px-6">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void navigate({
+                to: '/players/$profileId/matches',
+                params: { profileId: String(profileId) },
+              })
+            }
+          >
+            View match history
+          </Button>
+        </div>
+      )}
     </main>
   )
 }

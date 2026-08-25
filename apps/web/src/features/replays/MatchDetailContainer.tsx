@@ -161,6 +161,12 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
 
   return (
     <main className="min-h-svh bg-background">
+      {/* T327/T331: `GET /api/matches/{game_id}` carries no ownership scope any more — a caller
+       * with no linked Steam profile at all can still open any match this service holds
+       * (spec.md §11.4: "a match page with no consenting participant still renders in full"), so
+       * this banner is informational only and never replaces `MatchDetailPanel` below it, unlike
+       * `MatchHistoryContainer.tsx`'s identical-looking gate for the caller's *own* history, which
+       * has nothing to show without a linked profile. */}
       {showEmptyAccount ? (
         <div className="px-4 py-6 md:px-6">
           <Callout
@@ -175,7 +181,7 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
               </Button>
             }
           >
-            Link a Steam account to see your match history.
+            Link a Steam account to see your own replay archive on the matches you play.
           </Callout>
         </div>
       ) : (
@@ -209,20 +215,22 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
               </Callout>
             </div>
           )}
-
-          {/* match-history.md §7: page header to the panel below it shares the list route's own
-           * `space-6`; no dedicated figure exists for the detail route. */}
-          <div className="mt-6 px-4 pb-8 md:px-6">
-            <MatchDetailPanel
-              status={matchStatus}
-              match={matchDetail}
-              downloadState={downloadState}
-              onDownload={handleDownload}
-              onRetry={() => void matchQuery.refetch()}
-            />
-          </div>
         </>
       )}
+
+      {/* match-history.md §7: page header to the panel below it shares the list route's own
+       * `space-6`; no dedicated figure exists for the detail route. Rendered unconditionally
+       * (T331): the match itself never depends on the caller having a linked profile, only the
+       * header above it does. */}
+      <div className="mt-6 px-4 pb-8 md:px-6">
+        <MatchDetailPanel
+          status={matchStatus}
+          match={matchDetail}
+          downloadState={downloadState}
+          onDownload={handleDownload}
+          onRetry={() => void matchQuery.refetch()}
+        />
+      </div>
     </main>
   )
 }

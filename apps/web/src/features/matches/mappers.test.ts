@@ -154,6 +154,7 @@ function detail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
     leaderboard_id: 3,
     leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
+    patch: '101.101',
     participants: [
       participant({ profile_id: 1, team_id: 1, alias: 'Me', result: 'win', rating_diff: 12 }),
       participant({ profile_id: 2, team_id: 2, alias: 'Rival', result: 'loss', rating_diff: -12 }),
@@ -173,8 +174,16 @@ describe('toParticipantData', () => {
     expect(toParticipantData(participant({ alias: null })).alias).toBe('Unknown player')
   })
 
-  it('passes the server-named civilisation through (T070c)', () => {
-    expect(toParticipantData(participant({ civ_name: 'Turks' })).civilisation).toBe('Turks')
+  it('passes civ_id and civ_name through separately, never a single pre-formatted string', () => {
+    const result = toParticipantData(participant({ civ_id: 9, civ_name: 'Turks' }))
+    expect(result.civId).toBe(9)
+    expect(result.civName).toBe('Turks')
+  })
+
+  it('§11.2: carries civId with a null civName rather than inventing a fallback name', () => {
+    const result = toParticipantData(participant({ civ_id: 87, civ_name: null }))
+    expect(result.civId).toBe(87)
+    expect(result.civName).toBeNull()
   })
 
   it('maps a win result to the "win" outcome', () => {
@@ -246,8 +255,20 @@ describe('toMatchDetailData', () => {
     expect(toMatchDetailData(detail({ game_id: 123 })).gameId).toBe('123')
   })
 
-  it('falls back to "Unknown map" for a null map_name', () => {
-    expect(toMatchDetailData(detail({ map_name: null })).map).toBe('Unknown map')
+  it('passes a resolved map_name through unmodified', () => {
+    expect(toMatchDetailData(detail({ map_name: 'Arena' })).map).toBe('Arena')
+  })
+
+  it('§11.2: carries a null map_name through as null, never a fabricated "Unknown map"', () => {
+    expect(toMatchDetailData(detail({ map_name: null })).map).toBeNull()
+  })
+
+  it('passes patch through as gameVersion, verbatim (FR-018)', () => {
+    expect(toMatchDetailData(detail({ patch: '101.101' })).gameVersion).toBe('101.101')
+  })
+
+  it('carries a null patch through as a null gameVersion', () => {
+    expect(toMatchDetailData(detail({ patch: null })).gameVersion).toBeNull()
   })
 
   it('passes the server-named leaderboard through unmodified (T070f)', () => {

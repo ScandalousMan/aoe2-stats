@@ -304,4 +304,45 @@ describe('MatchList', () => {
       restore()
     })
   })
+
+  // §11.3 (003, US2): `subject="other"` swaps the caption and the empty-state sentence, and
+  // nothing else — the row itself carries no `subject` prop at all.
+  describe('subject="other" (003 spec §11.3)', () => {
+    it('defaults to the caller\'s own "Your recent matches" caption at xl', () => {
+      const restore = mockMatchMediaAt(1280)
+      render(<MatchList matches={[match]} />)
+      expect(screen.getByRole('table', { name: 'Your recent matches' })).toBeInTheDocument()
+      restore()
+    })
+
+    it('names the viewed player in the table caption instead of "Your"', () => {
+      const restore = mockMatchMediaAt(1280)
+      render(<MatchList matches={[match]} subject="other" subjectAlias="aoe2villain" />)
+      expect(
+        screen.getByRole('table', { name: "aoe2villain's recent matches" }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/^Your recent matches$/)).not.toBeInTheDocument()
+      restore()
+    })
+
+    it('names the viewed player in the accessible list name below xl too', () => {
+      render(<MatchList matches={[match]} subject="other" subjectAlias="aoe2villain" />)
+      expect(screen.getByRole('list', { name: "aoe2villain's recent matches" })).toBeInTheDocument()
+    })
+
+    it('shows the third-party empty-state sentence, never the first-person copy', () => {
+      render(<MatchList status="empty" subject="other" subjectAlias="aoe2villain" />)
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'aoe2villain has no matches in their history yet.',
+      )
+      expect(screen.queryByText(/No matches yet/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Once you play/)).not.toBeInTheDocument()
+    })
+
+    it('still shows the first-person empty state for subject="self" (default)', () => {
+      render(<MatchList status="empty" />)
+      expect(screen.getByRole('status')).toHaveTextContent('No matches yet')
+      expect(screen.getByRole('status')).toHaveTextContent('Once you play, they will appear here.')
+    })
+  })
 })

@@ -105,6 +105,7 @@ function validDetail() {
     leaderboard_id: 3,
     leaderboard_name: '1v1 Random Map',
     duration_seconds: 2040,
+    patch: '101.101',
     participants: [validParticipant()],
     capture_status: 'stored',
     capture_deadline_at: '2026-09-12T10:34:00Z',
@@ -122,6 +123,16 @@ describe('assertMatchDetailResponse', () => {
 
   it('accepts a null started_at', () => {
     expect(() => assertMatchDetailResponse({ ...validDetail(), started_at: null })).not.toThrow()
+  })
+
+  it('accepts a null patch (FR-018)', () => {
+    expect(() => assertMatchDetailResponse({ ...validDetail(), patch: null })).not.toThrow()
+  })
+
+  it('rejects a non-string, non-null "patch"', () => {
+    expect(() => assertMatchDetailResponse({ ...validDetail(), patch: 101 })).toThrow(
+      MatchDetailResponseShapeError,
+    )
   })
 
   it('rejects a body that is not an object', () => {

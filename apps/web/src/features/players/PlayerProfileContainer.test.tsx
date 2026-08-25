@@ -141,6 +141,30 @@ describe('PlayerProfileContainer', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/search' })
   })
 
+  // T331: the one link into `players.$profileId.matches.tsx`.
+  it('clicking "View match history" navigates to this profile\'s history route', async () => {
+    installFakeApi(() => jsonResponse(baseProfile()))
+    const user = userEvent.setup()
+    renderProfile(87654321)
+
+    await screen.findByText('rival_ace')
+    await user.click(screen.getByRole('button', { name: 'View match history' }))
+
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: '/players/$profileId/matches',
+      params: { profileId: '87654321' },
+    })
+  })
+
+  it('offers no "View match history" link while the profile has not resolved yet', () => {
+    // A `Response` that never resolves keeps `profileQuery` pending forever, the same technique
+    // used to assert a loading state has no premature content.
+    installFakeApi((() => new Promise<Response>(() => {})) as unknown as () => Response)
+    renderProfile()
+
+    expect(screen.queryByRole('button', { name: 'View match history' })).not.toBeInTheDocument()
+  })
+
   it('redirects to sign-in when the session has expired mid-visit', async () => {
     installFakeApi(() =>
       jsonResponse(
