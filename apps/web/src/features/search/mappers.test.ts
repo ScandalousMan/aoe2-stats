@@ -41,6 +41,26 @@ describe('toPlayerSearchResult', () => {
     expect(mapped.country).toBeNull()
     expect(mapped.clan).toBeNull()
   })
+
+  // §4a, FR-004b: the source's own claim is carried through, never dropped and never renamed to
+  // something that could read as verified.
+  describe('unverifiedSteamId (§4a)', () => {
+    it('carries the claim through unmodified when present', () => {
+      const mapped = toPlayerSearchResult(result({ unverified_steam_id: '76561198012345678' }))
+      expect(mapped.unverifiedSteamId).toBe('76561198012345678')
+    })
+
+    it('maps a null claim to null', () => {
+      const mapped = toPlayerSearchResult(result({ unverified_steam_id: null }))
+      expect(mapped.unverifiedSteamId).toBeNull()
+    })
+
+    it('maps a missing claim (ahead of T398) to null, not undefined', () => {
+      const wireResult = result()
+      delete wireResult.unverified_steam_id
+      expect(toPlayerSearchResult(wireResult).unverifiedSteamId).toBeNull()
+    })
+  })
 })
 
 describe('toPlayerSearchResults', () => {

@@ -346,6 +346,11 @@ async def search_for_players(
                 "country": result.country,
                 "games_played": result.games_played,
                 "clan": result.clan,
+                # The source's own claim, carried unverified since constitution IX 3.0.0
+                # (2026-08-24) — `null` on the degraded fallback (`search.py`'s
+                # `_local_fallback_results`), which reads `aoe_profiles` and has no such claim
+                # (`contracts/http-api.md`'s search section).
+                "unverified_steam_id": result.unverified_steam_id,
             }
             for result in outcome.results
         ],

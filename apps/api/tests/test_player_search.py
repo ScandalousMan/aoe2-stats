@@ -88,13 +88,17 @@ _TTL_SECONDS = 300
 @dataclass(frozen=True)
 class _FakeSearchResult:
     """Field-for-field `contracts/providers.md`'s `PlayerSearchResult` — see the module docstring
-    on why this file does not import the real thing."""
+    on why this file does not import the real thing. `unverified_steam_id` defaults to `None`:
+    most of this file's tests are about the cache/breaker/fallback machinery, not about this one
+    field, and `apps/api/tests/test_players_routes.py` is where the field's own value is
+    exercised end to end."""
 
     profile_id: int
     alias: str
     country: str | None
     games_played: int | None
     clan: str | None
+    unverified_steam_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -198,14 +198,25 @@ class MatchEnrichment(StrictProviderModel):
 @dataclass(frozen=True)
 class PlayerSearchResult:
     """`PlayerSearchProvider.search_players` — one match from aoe2companion's `?search=` endpoint
-    (`docs/data-sources.md` §3), reduced to exactly the fields FR-004b allows.
+    (`docs/data-sources.md` §3), reduced to the fields `contracts/providers.md`'s "The fields, and
+    the one rule on them" names.
 
     A plain dataclass, not a `StrictProviderModel`: the enforcement this DTO exists for is the
-    *absence* of a field (`contracts/providers.md`'s "The fields that are not there"), which is a
-    property of the class definition itself, not of validation. `steam_id`, `shared`,
-    `shared_history` and `linked_profiles` — the source's account-linking claims, the same
-    unverifiable identity assertion 001's FR-045 already refuses for `linkedProfiles` — have
-    nowhere to be assigned here, deliberately.
+    *absence* of a field, which is a property of the class definition itself, not of validation.
+    `shared`, `shared_history` and `linked_profiles` have nowhere to be assigned here, deliberately
+    — each for a reason `contracts/providers.md` records and that survives this field's addition,
+    not a residue of the FR-004b strip that once covered all four of the source's account-linking
+    fields alike.
+
+    `unverified_steam_id` is the fifth: constitution IX at 3.0.0 (2026-08-24) treats every field
+    the AoE2 DE APIs serve as public, which retired that strip for the source's `steamId` alone.
+    Its name is the requirement, not a comment on it — it is `unverified_steam_id` and not
+    `steam_id` so that a consumer who never opened `contracts/providers.md` cannot read an
+    unverified third-party claim as a fact. A verified Steam sign-in (001 FR-006) is the only
+    account link this project vouches for; this field MUST NOT be used to infer, suggest or act
+    upon a relationship between profiles the user has not proven that way — no linking, no
+    merging, no feature treating two profiles as one person on that basis (001 FR-045's remaining
+    half).
     """
 
     profile_id: int
@@ -213,6 +224,9 @@ class PlayerSearchResult:
     country: str | None
     games_played: int | None
     clan: str | None
+    # The source's own claim, carried unverified (constitution IX 3.0.0, see docstring above).
+    # Never used to link or merge profiles.
+    unverified_steam_id: str | None
 
 
 @dataclass(frozen=True)

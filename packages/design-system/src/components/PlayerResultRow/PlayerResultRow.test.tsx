@@ -86,6 +86,65 @@ describe('PlayerResultRow', () => {
     expect(screen.getByRole('link').className).toMatch(/custom-marker/)
   })
 
+  // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
+  // labelled, and nothing may be built on it.
+  describe('unverifiedSteamId (§4a)', () => {
+    it('shows the claim labelled "Unverified Steam ID:" with the value in the monospaced family', () => {
+      render(<PlayerResultRow result={{ ...base, unverifiedSteamId: '76561198012345678' }} />)
+      expect(screen.getByText(/Unverified Steam ID:/)).toBeInTheDocument()
+      const value = screen.getByText('76561198012345678')
+      expect(value).toBeInTheDocument()
+      expect(value.className).toMatch(/font-mono/)
+    })
+
+    it('renders no claim line at all when unverifiedSteamId is null, never a placeholder', () => {
+      render(<PlayerResultRow result={{ ...base, unverifiedSteamId: null }} />)
+      expect(screen.queryByText(/Unverified Steam ID/)).not.toBeInTheDocument()
+    })
+
+    it('renders no claim line at all when unverifiedSteamId is not supplied', () => {
+      render(<PlayerResultRow result={base} />)
+      expect(screen.queryByText(/Unverified Steam ID/)).not.toBeInTheDocument()
+    })
+
+    // The absence this task exists to prove. A component that wraps the claim in its own link,
+    // adds a button beside it, or describes it with "same player" / "merge" / "also known as"
+    // copy would pass every test above while breaking FR-004b's second half and 001 FR-045's
+    // remaining half outright — this is deliberately the test that would catch exactly that.
+    it('renders the claim as plain text with no second link, no button, and no wording asserting two profiles are the same person', () => {
+      render(<PlayerResultRow result={{ ...base, unverifiedSteamId: '76561198012345678' }} />)
+
+      // Exactly one focus stop in the row, the row's own link — unchanged by this field existing.
+      expect(screen.getAllByRole('link')).toHaveLength(1)
+      expect(screen.queryAllByRole('button')).toHaveLength(0)
+      expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+
+      const row = screen.getByRole('link')
+      const rowText = row.textContent ?? ''
+      const forbidden = [
+        /same player/i,
+        /same person/i,
+        /same account/i,
+        /also known as/i,
+        /\bmerge\b/i,
+        /link(ed)? (this )?(profile|account)/i,
+        /\bmatch(es)? profile/i,
+      ]
+      for (const pattern of forbidden) {
+        expect(rowText).not.toMatch(pattern)
+      }
+
+      // The claim's own value is not itself wrapped in an interactive element (e.g. a nested
+      // `<a>` pointed at a Steam profile) — it has no accessible name of its own beyond the text
+      // node, and the row's single link is the only element with a `href`.
+      const value = screen.getByText('76561198012345678')
+      expect(value.closest('a')).toBe(row)
+      // The row's own `<a>` is not itself a descendant of `row` — this checks that nothing
+      // *inside* the row carries a second `href`, `role="button"` or a click handler of its own.
+      expect(row.querySelectorAll('[href], [role="button"]')).toHaveLength(0)
+    })
+  })
+
   // T388: a raw `<a href>` forces a full document reload inside a TanStack Router SPA.
   describe('onNavigate (T388)', () => {
     it('stays a real link to the profile route, href included, when onNavigate is wired', () => {

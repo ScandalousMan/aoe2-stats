@@ -78,4 +78,37 @@ describe('assertPlayerSearchResponse', () => {
       PlayerSearchResponseShapeError,
     )
   })
+
+  // `unverified_steam_id` (constitution IX 3.0.0, FR-004b) — optional today because T398 has not
+  // wired it onto the wire yet (`ApiPlayerSearchResult`'s own docstring); still validated when
+  // present, per T037a's rule.
+  describe('unverified_steam_id', () => {
+    it('accepts a result missing the key entirely, ahead of T398', () => {
+      const result = validResult()
+      expect(() =>
+        assertPlayerSearchResponse({ results: [result], degraded: false, reason: null }),
+      ).not.toThrow()
+    })
+
+    it('accepts a result carrying the claim as a string', () => {
+      const result = { ...validResult(), unverified_steam_id: '76561198012345678' }
+      expect(() =>
+        assertPlayerSearchResponse({ results: [result], degraded: false, reason: null }),
+      ).not.toThrow()
+    })
+
+    it("accepts a result carrying the claim as null (FR-004d's degraded fallback)", () => {
+      const result = { ...validResult(), unverified_steam_id: null }
+      expect(() =>
+        assertPlayerSearchResponse({ results: [result], degraded: false, reason: null }),
+      ).not.toThrow()
+    })
+
+    it('rejects a result with the wrong type for unverified_steam_id', () => {
+      const result = { ...validResult(), unverified_steam_id: 76561198 }
+      expect(() =>
+        assertPlayerSearchResponse({ results: [result], degraded: false, reason: null }),
+      ).toThrow(PlayerSearchResponseShapeError)
+    })
+  })
 })

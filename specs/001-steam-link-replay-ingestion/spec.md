@@ -258,6 +258,19 @@ records or in storage.
   the user has not proven by signing in. Third-party mappings between a player's accounts MUST NOT be
   used to link, merge or display profiles together: they are unverifiable, and surfacing them would
   expose alternate accounts their owners keep separate on purpose.
+
+  **Amended 2026-08-24, constitution IX 3.0.0.** This requirement carried two separate
+  justifications, and they have since separated. The privacy half — that surfacing a third-party
+  mapping at all would expose alternate accounts, so it must not be shown — is decided against: IX
+  now treats every field the source serves as public and keeps it so, and a field it serves MAY be
+  carried and shown, marked as a claim this project has **not** verified (see 003's
+  `contracts/providers.md` and `contracts/http-api.md`, field `unverified_steam_id`). The accuracy
+  half — "they are unverifiable" — stands, and is now the whole of this requirement: no linking, no
+  merging, no inferring, no feature treating two profiles as one person on the strength of it, and no
+  affordance built on it. "MUST NOT be used to ... display profiles together" meant, and still means,
+  presenting two profiles *as related to one another*; it never meant withholding a single unverified
+  field carried beside its own profile, which is the part 2026-08-24 changed.
+
 - **FR-043**: System MUST let the user designate one discovered profile as primary, and MUST present
   ratings and match history for that profile. Where a user has more than one profile, the interface
   MUST make the others reachable rather than hiding that they exist and are being archived.

@@ -2,8 +2,8 @@
 
 **Components**: `src/components/SearchBox/`, `src/components/PlayerResultRow/`
 **Feature**: 003, US1 — consumed by `apps/web/src/routes/search.tsx` (T322)
-**Requirements**: FR-001, FR-002, FR-003, FR-004a, FR-004b, FR-004d, FR-004e, FR-005. SC-001, SC-002,
-SC-002a.
+**Requirements**: FR-001, FR-002, FR-003, FR-004a, FR-004b, FR-004d, FR-004e, FR-005, FR-009. SC-001,
+SC-002, SC-002a.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Callout`, `Skeleton`, `Button`.
 [`profile-summary.md`](./profile-summary.md) — `CountryLabel`'s own convention (text, optional
 non-carrying flag glyph) is reused rather than reinvented.
@@ -32,7 +32,9 @@ PlayerResultRow                                          one per result, the who
 ├─ Alias                display name, text-primary
 ├─ Clan                 optional — "[TAG]" bracketed, text-secondary, beside Alias
 ├─ CountryLabel         country name in text, optional flag glyph — never absent when country is known
-└─ Standing             games played, formatted "<N> games" — present only when known (see §4)
+├─ Standing             games played, formatted "<N> games" — present only when known (see §4)
+└─ UnverifiedSteamClaim optional — "Unverified Steam ID: <id>", its own line — present only when
+                        unverified_steam_id is not null, and carrying no affordance (see §4a)
 ```
 
 **IP note**: no player avatar, no clan crest, no country flag illustration beyond a free-licensed,
@@ -51,11 +53,63 @@ of the six `ResultsRegion` states it is rendered inside (§5); sizing is respons
 `PlayerResultRow` is fed `PlayerSearchResult` exactly as
 [contracts/providers.md](../../../specs/003-player-search-match-analysis/contracts/providers.md)
 defines it: `profile_id`, `alias`, `country: str | None`, `games_played: int | None`,
-`clan: str | None`. **There is no `steam_id`, no `shared`, no `shared_history` and no
-`linked_profiles` field to render, ever** — FR-004b strips them before this component ever receives a
-result, and `PlayerResultRow` has no prop that could carry one. This is the same enforcement
+`clan: str | None`, and `unverified_steam_id: str | None`. **`shared`, `shared_history` and
+`linked_profiles` have no field to render, ever** — they stay absent for the reasons
+`contracts/providers.md` states (no known meaning, a preference this service neither honours nor
+circumvents, and an unread duplicate of the same unverifiable claim at a different shape), and
+`PlayerResultRow` has no prop that could carry any of the three. This is the same enforcement
 `profile-summary.md` §4 states for the multi-profile switcher: the field the rule forbids has nowhere
 to be assigned, not a value hidden by a conditional.
+
+**Amended 2026-08-25.** The paragraph above used to read "there is no `steam_id` … field to render,
+ever", true under FR-004b as first written. Constitution IX 3.0.0 (2026-08-24) retired that strip and
+FR-004b was rewritten the same day: the source's Steam claim is now carried, as
+`unverified_steam_id`, and is no longer withheld at the provider boundary. It is not withheld here
+either — it is carried, labelled and bounded by §4a below. The sentence is corrected rather than
+deleted so the next reader finds the reason the old rule existed, and the reason it no longer applies,
+in the same place.
+
+### 4a. The unverified Steam claim, and the one rule on it (FR-004b, FR-009)
+
+`unverified_steam_id` is the sixth field `PlayerSearchResult` carries
+([contracts/providers.md](../../../specs/003-player-search-match-analysis/contracts/providers.md)) and
+the sixth `GET /api/players/search?q=` puts on the wire
+([contracts/http-api.md](../../../specs/003-player-search-match-analysis/contracts/http-api.md)). It
+is the source's own assertion, unverified by this service, and both documents fix its name for the
+same reason this section fixes its wording: a field named `steam_id` could be read as a fact by a
+consumer who never opened either contract, and `unverified_steam_id` cannot.
+
+**The wording is fixed here, not left to the component.** Whenever `unverified_steam_id` is not null,
+`PlayerResultRow` renders, on its own line, exactly:
+
+> Unverified Steam ID: `<value>`
+
+The word "Unverified" is the requirement, not a decoration on it — it MUST prefix the label verbatim
+everywhere this field is shown, so no later change can drop the qualifier by omission the way a plain
+"Steam ID:" would. When `unverified_steam_id` is null, the whole line is absent — no placeholder, no
+em dash, the same "absent, not blank-filled" discipline §4 states for `Standing` and `CountryLabel`.
+
+**No affordance may be built on this field — the whole of the rule that survives 001's FR-045 and
+constitution IX 3.0.0 unchanged (spec.md session 2026-08-24).** Concretely, for this component:
+
+- The claim is plain, non-interactive text inside the row's one existing `<a>` (§2, §9). It is never
+  itself a link, never a second `<a>`, never a `<button>`, never `role="button"` or any other
+  interactive role — the row has exactly one focus stop before this field exists and exactly one
+  after.
+- It links to nothing — no `href` built from it, no navigation to a Steam profile, no navigation to
+  another `PlayerResultRow`'s result.
+- No copy anywhere near it may assert, suggest or invite the reading that two profiles are the same
+  person: no "same player", no "also known as", no "merge", no comparison against another result on
+  the page. The label above is the entire vocabulary this component is permitted to use for the
+  field; nothing else describes it.
+- `PlayerResultRowProps` carries no prop, today or later, for "this result is also profile X" — there
+  is deliberately nothing in the component's own type for such an affordance to be wired to, which is
+  the same enforcement §4 states for the three fields that do not exist at all.
+
+This is carriage, not action: the claim may be _shown_, and showing it truthfully labelled is what
+FR-004b now requires: presenting an unverified assertion beside a verified fact (001 FR-006's proven
+Steam link) without the distinction would itself be the accuracy fault the amendment exists to avoid.
+What is forbidden is building anything on top of the showing.
 
 **`games_played` and `clan` are nullable for a structural reason, not an occasional gap.** A
 source-backed result carries `games_played`; a result produced by FR-004d's local fallback over
@@ -156,15 +210,17 @@ disabled condition for either component.
 Colour: `background` (page), `surface` (`Input` fill, row/card), `surface-raised` (`Callout` fill, via
 that component), `surface-sunken` (row hover, `Skeleton` fill, `Input` disabled fill), `border`
 (`Input` boundary at rest, row separators), `border-strong` (`Input` boundary on focus/hover),
-`text-primary` (alias, standing figure), `text-secondary` (idle prompt, clan, country label, labels),
-`text-disabled` (`Input` label while disabled), `info` / `warning` / `danger` (the three `Callout`
-tones in §5), `focus-ring`.
+`text-primary` (alias, standing figure), `text-secondary` (idle prompt, clan, country label, labels,
+`UnverifiedSteamClaim`'s label and value — §4a deliberately never promotes it to `text-primary`, so it
+never carries the same visual weight as a verified fact), `text-disabled` (`Input` label while
+disabled), `info` / `warning` / `danger` (the three `Callout` tones in §5), `focus-ring`.
 
-Typography: `mono` for `Standing`'s games-played figure — DS-8, the same reasoning
-`profile-summary.md` and `match-history.md` give for any number compared vertically down a list —
-`sans` for everything else (alias, clan, country, labels, callout copy). Sizes: `Input` text `md`; row
-text `sm`; alias `sm` `semibold`; clan, country, standing `xs`. Weights `semibold` on alias, `normal`
-elsewhere.
+Typography: `mono` for `Standing`'s games-played figure and `UnverifiedSteamClaim`'s id value — DS-8,
+the same reasoning `profile-summary.md` and `match-history.md` give for any number or numeric-looking
+identifier read down a list — `sans` for everything else (alias, clan, country, labels including
+`UnverifiedSteamClaim`'s own "Unverified Steam ID:" label, callout copy). Sizes: `Input` text `md`; row
+text `sm`; alias `sm` `semibold`; clan, country, standing, `UnverifiedSteamClaim` `xs`. Weights
+`semibold` on alias, `normal` elsewhere.
 
 Radius `md` (`Input`), `lg` (row card at 375, `Callout`, via that component). Elevation `none`
 throughout — `profile-summary.md`'s own reasoning against shadowed cards in a list applies here
@@ -183,18 +239,19 @@ being monospaced, same as every other stacked-figure list in this system).
 
 ## 7. Spacing
 
-| Between                                        | Step      |
-| ---------------------------------------------- | --------- |
-| Label to `Input`                               | `space-1` |
-| `Input` to `ResultsRegion`                     | `space-4` |
-| `Input` padding-inline                         | `space-4` |
-| `DegradedBanner` to `ResultsList`              | `space-3` |
-| Between `PlayerResultRow` cards (375)          | `space-3` |
-| `PlayerResultRow` padding (375 card)           | `space-4` |
-| `PlayerResultRow` row padding-block (from 768) | `space-3` |
-| Alias to clan                                  | `space-2` |
-| Alias line to country/standing line            | `space-1` |
-| Country to standing (same line, from 768)      | `space-4` |
+| Between                                              | Step      |
+| ---------------------------------------------------- | --------- |
+| Label to `Input`                                     | `space-1` |
+| `Input` to `ResultsRegion`                           | `space-4` |
+| `Input` padding-inline                               | `space-4` |
+| `DegradedBanner` to `ResultsList`                    | `space-3` |
+| Between `PlayerResultRow` cards (375)                | `space-3` |
+| `PlayerResultRow` padding (375 card)                 | `space-4` |
+| `PlayerResultRow` row padding-block (from 768)       | `space-3` |
+| Alias to clan                                        | `space-2` |
+| Alias line to country/standing line                  | `space-1` |
+| Country to standing (same line, from 768)            | `space-4` |
+| Country/standing line to `UnverifiedSteamClaim` line | `space-1` |
 
 ## 8. Responsive
 
@@ -204,7 +261,9 @@ being monospaced, same as every other stacked-figure list in this system).
   rule for figures extended to every field here, because a half-visible alias is exactly the
   "near-identical names" failure FR-002 exists to prevent.
 - **768** — country and standing move onto the alias's own line, right-aligned, still one `<a>` per
-  row.
+  row. `UnverifiedSteamClaim`, when present, stays on its own line beneath — it is never squeezed onto
+  the alias line alongside country and standing, so a longer id string never crowds the field FR-002
+  actually needs read at a glance.
 - **1280** — layout unchanged from 768; a full `<table>` transform (as `profile-summary.md` and
   `match-history.md` adopt at this breakpoint) is not used here — four short fields in a single-column
   list read as fast at this width as a table would, and a second DOM shape would be one more place for
@@ -233,7 +292,11 @@ criterion, restated here because it applies identically.
   `profile-summary.md`/`match-history.md`'s table transform).
 - `NotFoundState`/`DegradedBanner`/`FailureState` follow `Callout`'s own `role="status"` /
   `role="alert"` split (`shared-primitives.md`).
-- Every field (alias, clan, country, standing) is selectable text, never an image or canvas.
+- Every field (alias, clan, country, standing, `UnverifiedSteamClaim`) is selectable text, never an
+  image or canvas.
+- `UnverifiedSteamClaim` carries no role of its own — no `role="link"`, no `role="button"`, no
+  `tabindex` — precisely because §4a forbids it being a second interactive element; it is read by a
+  screen reader as part of the row's one link, in document order, the same as every other field.
 - 200% zoom and 320px logical width without horizontal scrolling; no field ellipsises at any
   viewport (§8).
 
@@ -255,6 +318,13 @@ criterion, restated here because it applies identically.
       carry a count and observing the field is absent, not blank-filled.
 - [ ] A row seeded with a `clan` renders the tag beside the alias in every story that sets it, and a
       row without one shows no empty bracket.
+- [ ] A row seeded with `unverifiedSteamId` shows "Unverified Steam ID: `<value>`" verbatim, the id in
+      `font-mono`, and the row still renders exactly one link in the accessibility tree — confirmed by
+      counting focusable elements in that story against a row without the field and finding no
+      difference.
+- [ ] No screenshot in this file, at any state, shows a second link, a button, or any copy reading
+      "same player", "also known as" or "merge" anywhere near `UnverifiedSteamClaim` — the claim reads
+      as a labelled fact and nothing else is clickable because of it.
 - [ ] Loading screenshot's skeleton row count matches the loaded screenshot's row count at the same
       viewport, with no reflow between the two.
 - [ ] Converting any screenshot to greyscale leaves the three `Callout` tones (`info`/`warning`/

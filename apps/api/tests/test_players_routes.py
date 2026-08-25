@@ -113,17 +113,27 @@ _SEARCH_RESULT_PROFILE_ID = 900_900_100
 
 
 def _search_result(
-    *, profile_id: int, alias: str, country: str | None, games_played: int, clan: str | None
+    *,
+    profile_id: int,
+    alias: str,
+    country: str | None,
+    games_played: int,
+    clan: str | None,
+    unverified_steam_id: str | None = None,
 ) -> dict[str, Any]:
-    """`PlayerSearchResult`'s five contract fields (`contracts/providers.md`), exactly — nothing a
-    verbatim provider body would additionally carry (`steamId`, `shared`, `sharedHistory`,
-    FR-004b), matching what `data-model.md` says `profile_search_cache.results` holds."""
+    """`PlayerSearchResult`'s six contract fields (`contracts/providers.md`), exactly — nothing a
+    verbatim provider body would additionally carry (`shared`, `sharedHistory`, `linkedProfiles`).
+    `unverified_steam_id` defaults to `None` (untested by most callers here, exactly as `null` on
+    the degraded fallback reads — `contracts/http-api.md`'s search section) rather than every
+    existing call site having to supply one it does not care about. Matches what `data-model.md`
+    says `profile_search_cache.results` holds."""
     return {
         "profile_id": profile_id,
         "alias": alias,
         "country": country,
         "games_played": games_played,
         "clan": clan,
+        "unverified_steam_id": unverified_steam_id,
     }
 
 
