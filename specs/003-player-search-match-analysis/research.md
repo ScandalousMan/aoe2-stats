@@ -382,7 +382,9 @@ So the four states FR-025 requires are each derived from something this service 
 
 **A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
 from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
-only copy anyone holds. It is refused. Constitution IX 2.0.0 permits retention so that a *published
+only copy anyone holds. It is refused, and 3.0.0 strengthens the refusal rather than weakening it — the bytes now survive an
+erasure, so serving them would redistribute a recording of someone who has asked this service to
+forget them. Constitution IX permits retention so that a *published
 analysis stays recomputable*; handing those bytes to any signed-in caller is redistribution of a third
 party's recording after the source destroyed its own, which is a second processing purpose with no
 basis and no register entry. FR-026 says "the signed-in user's **own** point of view", and a retained

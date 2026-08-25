@@ -637,7 +637,7 @@ their current standing and reachable in one click.
   person, on one match. Nothing is fetched speculatively, and no process walks matches nobody asked
   about — this is what keeps FR-039 satisfiable and is unchanged by FR-033.
 
-**Obligations created by retaining third-party recordings (constitution IX, 2.0.0)**
+**Obligations created by retaining third-party recordings (constitution IX, 2.0.0, as amended to 3.0.0 on 2026-08-24)**
 
 - **FR-045**: System MUST record the retention of analysed third-party recordings in the processing
   register as its own processing purpose, with its own legal basis, retention and safeguards, in the
