@@ -80,15 +80,24 @@ at a dead address).
 5. Search the same term twice and check `provider_calls`. Expect one row, not two (FR-004e).
 6. Search repeatedly past the per-user limit. Expect `rate_limited` with `retry_after` (FR-005).
 
-## Scenario 2 — Nothing about a search result leaks an account link
+## Scenario 2 — A source claim is carried, shown as unverified, and acted on by nothing
+
+**Rewritten 2026-08-24 with constitution IX 3.0.0.** It previously asserted the opposite — that no
+`steamId` appears anywhere — and would now fail against a correct service. The property worth
+checking moved: it is no longer *absence*, it is *carriage without action*.
 
 1. Capture the raw response from the search source for a well-known player. Confirm by inspection
    that it carries `steamId`, `shared` and `sharedHistory` (`docs/data-sources.md` §3).
-2. Search the same player through this service. Grep the response, the database and the logs for that
-   `steamId`. **Expect nothing, anywhere** (FR-004b, 001 FR-045).
-3. Confirm `profile_search_cache.results` holds only the five contract fields — not the raw body.
-
-If this scenario fails it fails silently in production, which is why it comes second.
+2. Search the same player through this service. Expect `unverified_steam_id` in the result, equal to
+   the source's value, and **presented as a claim this service has not verified**. The wording shown
+   to the user is the requirement here, not the presence of the field.
+3. Confirm nothing acts on it: no route, query or feature treats two profiles as one person on that
+   basis — no merge, no "also plays as", no linking (001 FR-045's remaining half). This is the half
+   the amendment did not touch, and the one that still fails silently in production.
+4. Confirm `shared` and `sharedHistory` are absent from the result and from
+   `profile_search_cache.results`, and that nothing anywhere reads the source's Shared History
+   preference — neither to honour it nor to route around it (constitution IX).
+5. Confirm `profile_search_cache.results` holds the six contract fields and not the raw body.
 
 ## Scenario 3 — Retired
 
@@ -217,8 +226,12 @@ is ever retained, not after. It is part of this feature's definition of done, no
    analyses themselves still standing, and **the retained recordings still present** — they are
    derived from public match records, shown to everyone, and must stay recomputable
    (`data-model.md`'s erasure rule for `retained_recordings`).
-3. Object as a third party appearing in a retained recording. Expect the recording removed and the
-   analyses derived from it withdrawn with it (FR-046).
+3. Object as a third party appearing in a retained recording. Expect every identifier this service
+   holds about that person pseudonymised — the same instrument erasure applies to `matches` and
+   `match_players` — and expect **the recording and the analyses derived from it to remain**
+   (FR-046 as amended 2026-08-24, constitution IX 3.0.0). Confirm the object is still in the bucket
+   and its checksum still verifies. This is where an implementation that quietly kept the old
+   deletion path would show, which is why it is walked rather than assumed.
 4. Confirm `docs/privacy/processing-register.md` carries retention of analysed third-party recordings
    as its own activity, with its own legal basis (FR-045). This one is checkable **today** and should
    not wait.
