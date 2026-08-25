@@ -96,7 +96,7 @@ requirements, 1 new application, 1 new provider method, 1 new Vercel function.
 | **VI. Tokens first** | Every new component comes from a `product-designer` spec and is built from tokens with a story. | PASS |
 | **VII. Visual tests** | Diff-scoped Playwright regression on the stories this feature adds. | PASS |
 | **VIII. No secrets in the clear** | All new configuration is environment variables with an entry in `.env.example` and no value. No new cron endpoint, so no new shared secret. The analysis function is reachable by a signed-in user and by nobody else. | PASS |
-| **IX. GDPR by design** | Constitution IX at 2.0.0 is what makes FR-033 lawful, and it attaches three conditions: FR-045 registers the retention as its own processing purpose with its own legal basis, FR-046 puts it inside erasure and the third-party objection route, FR-047 caps and rate-limits it. FR-012 keeps automatic capture untouched — nothing is captured because a player was searched, viewed or favourited. FR-010 keeps third-party profiles out of any index. Regions unchanged. | PASS |
+| **IX. GDPR by design** | Constitution IX at **3.0.1** is what makes FR-033 lawful, and it attaches its conditions: FR-045 registers the retention as its own processing purpose with its own legal basis, FR-047 caps and rate-limits it, and FR-046 — **amended 2026-08-24 with IX 3.0.0** — puts erasure and the third-party objection route on the *identifiers* held about a person appearing in a recording, pseudonymising them, while the recording and the analyses derived from it stand. IX orders principle IV above deletion here, deliberately; the processing register carries that ordering. FR-012 keeps automatic capture untouched — nothing is captured because a player was searched, viewed or favourited. FR-010 keeps third-party profiles out of any index. Regions unchanged. | PASS |
 | **X. Intellectual property** | No game asset. The recorded game is served from the publisher's own source or from this service's archive of it; nothing is redistributed commercially. | PASS |
 | **XI. English** | Every artifact here is English. | PASS |
 | **XII. Portable by construction** | `apps/analyzer` exposes `run_once(budget_seconds)` and knows nothing about its caller. Its two entrypoints are a ~10-line Vercel function and a ~10-line worker loop, exactly as the ingester's are. No broker, no filesystem state, storage through `packages/storage`. | PASS |
@@ -146,11 +146,15 @@ check constraint that exactly one is set, because two access logs would be the s
 forbids, one level down: an audit that reads one of them reports a clean trail for a file nobody
 checked.
 
-**001's US5 is a prerequisite of US4 here, and of nothing else** (decided 2026-08-23). Export,
-erasure and the third-party objection route are T090 to T092, still open, with `routers/privacy.py`
-implementing consent and nothing else. FR-033 creates a new category of personal data and
-constitution IX requires export and erasure from the MVP, so those three tasks land **before this
-feature retains its first third-party recording**. Everything here that retains nothing — search,
+**001's US5 is a prerequisite of US4 here, and of nothing else** (decided 2026-08-23, rationale
+amended 2026-08-24). Export, erasure and the third-party objection route are T090 to T092, still
+open, with `routers/privacy.py` implementing consent and nothing else. FR-033 creates a new category
+of personal data and constitution IX requires export and erasure from the MVP, so those three tasks
+land **before this feature retains its first third-party recording**. The gate is unchanged by IX
+3.0.0 but its reason is: erasure no longer reaches the recording, so what T090 to T092 owe here is
+FR-017's export of favourites and requested analyses, and — above all — **T092's pseudonymisation
+instrument, which the amended FR-046 makes the whole of the remedy** rather than half of it. A route
+that used to delete and now only pseudonymises is a route that has to exist and work. Everything here that retains nothing — search,
 profiles, match pages, downloads, favourites — is unaffected and proceeds in parallel. This feature
 still builds its own half, and `data-model.md` states per table what erasure must do to it, so the
 001 tasks have something to implement against rather than something to remember.

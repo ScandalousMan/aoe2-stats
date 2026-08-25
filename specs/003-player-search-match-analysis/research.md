@@ -593,6 +593,18 @@ inconvenience, it is the principle being broken for the duration. FR-017 and FR-
 built here — every table in [data-model.md](./data-model.md) states what erasure must do to it — so
 that the 001 tasks have something to implement against rather than something to remember.
 
+### Rationale amended 2026-08-24, decision unchanged
+
+Constitution IX 3.0.0 removed the deletion half of erasure and objection for retained recordings, so
+the sentence above — "retaining a third party's recording while no erasure route exists is the
+principle being broken for the duration" — no longer supports the gate on its own terms. **The gate
+stands; its reason moved.** What T090 to T092 owe this feature is now: FR-017's export of favourites
+and requested analyses (T090), and T092's **pseudonymisation instrument**, which the amended FR-046
+promotes from half the remedy to the whole of it. Under 2.0.0 a person appearing in a recording had
+two routes and one of them deleted the bytes; under 3.0.0 they have one, and if it does not exist the
+obligation is discharged by nothing at all. Recorded rather than left to be re-derived, because a
+gate whose written reason is false is a gate the next reader removes.
+
 ### Rationale
 
 FR-017 points at 001 FR-036 and FR-037, and FR-046 at 001 FR-037 and FR-039. Those are the export
