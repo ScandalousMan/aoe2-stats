@@ -11,14 +11,36 @@ spending a recording on it.
 
 Everything [001's quickstart](../001-steam-link-replay-ingestion/quickstart.md) asks for, plus:
 
-- a **second** AoE2 profile id that is not yours and has played publicly within the last week — an
-  opponent from one of your own recent matches is the easiest one to get, and it is the only kind
-  this feature can honestly be tested against;
-- one match id from **more than 31 days ago**, to exercise every expired path. `docs/data-sources.md`
-  §2 lists real ones with their measured outcomes, which is faster than waiting a month;
+- a **second** AoE2 profile id that is not yours and has played publicly within the last week.
+  **Fixed on 2026-08-24: `1807091` (`Azhague3`)**, a Relic profile id and not a Steam id. It plays
+  frequently, which is what the recent-match scenarios need.
+
+  This profile has **never played against the tester**, and that costs something the earlier wording
+  claimed was free. An opponent from one of your own matches is easier — you already know what
+  happened in the game — but it is *not* the only kind this feature can be tested against, and
+  saying so was wrong: US4 exists to analyse matches you did not play. What the absence of overlap
+  actually costs is scenario 7.2, where judging the extraction means watching a stranger's recording
+  in AoE2 II:DE rather than remembering your own game. It costs nothing anywhere else;
+
+- one match id from **more than 31 days ago**, to exercise every expired path. **Fixed on
+  2026-08-24: `474746656`**, the tester's own last game, roughly four months old — so it is expired
+  by a wide margin and there is no risk of it ageing into or out of the window mid-walk.
+  `docs/data-sources.md` §2 lists further real ones with their measured outcomes.
+
+  > **This id serves scenario 8.5 and does not serve scenario 10.** 8.5 wants a match that expired
+  > *and was never analysed*, which is exactly what this is (FR-034). Scenario 10 wants a
+  > **published analysis whose recording the source no longer serves** — which cannot be produced
+  > from an already-expired match, because nothing can be retained from a recording that is gone.
+  > Reaching it honestly means analysing a match and then waiting out the window; reaching it at all
+  > before then means seeding a `retained_recordings` row and its analysis by hand and saying so in
+  > the pull request. Whichever is chosen, it is a separate fixture from this one;
+
 - `.env` extended from `.env.example` with this feature's keys — the favourites bound, the search
   TTL and rate limit, the analysis request limit, budget and lease, the retention cap, and the
-  raw-size ceiling above which a recording is refused before it is parsed.
+  raw-size ceiling above which a recording is refused before it is parsed. **Verified on 2026-08-24
+  against the deployment target: all ten are set, and so are the eighteen 001 keys** — the whole of
+  `.env.example` is present, which is the check Phase 10 of [tasks.md](./tasks.md) exists to make
+  routine rather than memorable.
 
 ```bash
 uv sync --all-packages --dev
@@ -58,15 +80,24 @@ at a dead address).
 5. Search the same term twice and check `provider_calls`. Expect one row, not two (FR-004e).
 6. Search repeatedly past the per-user limit. Expect `rate_limited` with `retry_after` (FR-005).
 
-## Scenario 2 — Nothing about a search result leaks an account link
+## Scenario 2 — A source claim is carried, shown as unverified, and acted on by nothing
+
+**Rewritten 2026-08-24 with constitution IX 3.0.0.** It previously asserted the opposite — that no
+`steamId` appears anywhere — and would now fail against a correct service. The property worth
+checking moved: it is no longer *absence*, it is *carriage without action*.
 
 1. Capture the raw response from the search source for a well-known player. Confirm by inspection
    that it carries `steamId`, `shared` and `sharedHistory` (`docs/data-sources.md` §3).
-2. Search the same player through this service. Grep the response, the database and the logs for that
-   `steamId`. **Expect nothing, anywhere** (FR-004b, 001 FR-045).
-3. Confirm `profile_search_cache.results` holds only the five contract fields — not the raw body.
-
-If this scenario fails it fails silently in production, which is why it comes second.
+2. Search the same player through this service. Expect `unverified_steam_id` in the result, equal to
+   the source's value, and **presented as a claim this service has not verified**. The wording shown
+   to the user is the requirement here, not the presence of the field.
+3. Confirm nothing acts on it: no route, query or feature treats two profiles as one person on that
+   basis — no merge, no "also plays as", no linking (001 FR-045's remaining half). This is the half
+   the amendment did not touch, and the one that still fails silently in production.
+4. Confirm `shared` and `sharedHistory` are absent from the result and from
+   `profile_search_cache.results`, and that nothing anywhere reads the source's Shared History
+   preference — neither to honour it nor to route around it (constitution IX).
+5. Confirm `profile_search_cache.results` holds the six contract fields and not the raw body.
 
 ## Scenario 3 — Retired
 
@@ -195,8 +226,12 @@ is ever retained, not after. It is part of this feature's definition of done, no
    analyses themselves still standing, and **the retained recordings still present** — they are
    derived from public match records, shown to everyone, and must stay recomputable
    (`data-model.md`'s erasure rule for `retained_recordings`).
-3. Object as a third party appearing in a retained recording. Expect the recording removed and the
-   analyses derived from it withdrawn with it (FR-046).
+3. Object as a third party appearing in a retained recording. Expect every identifier this service
+   holds about that person pseudonymised — the same instrument erasure applies to `matches` and
+   `match_players` — and expect **the recording and the analyses derived from it to remain**
+   (FR-046 as amended 2026-08-24, constitution IX 3.0.0). Confirm the object is still in the bucket
+   and its checksum still verifies. This is where an implementation that quietly kept the old
+   deletion path would show, which is why it is walked rather than assumed.
 4. Confirm `docs/privacy/processing-register.md` carries retention of analysed third-party recordings
    as its own activity, with its own legal basis (FR-045). This one is checkable **today** and should
    not wait.

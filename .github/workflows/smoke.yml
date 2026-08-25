@@ -1,0 +1,51 @@
+name: Production smoke
+
+# T393. The gate that was missing on 2026-08-23: `main` merged, Vercel deployed, every `/api/*`
+# route answered 500 for the whole day, and nothing asked. `pr.yml` proves the code is good and
+# stops at the repository boundary; this workflow is the first thing that looks at the running
+# deployment.
+#
+# It cannot block the deploy — Vercel deploys from its own Git integration, not from here, so by
+# the time this runs the deployment is already live. Failing the run is what makes a broken
+# deployment *visible*, and `config-preflight.mjs` in `vercel.json`'s build command is what stops
+# the most common cause from getting this far at all. Two different jobs; keep both.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      settle_seconds:
+        description: Seconds to wait before the first probe
+        required: false
+        default: "0"
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: The deployment answers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The settle window exists because this run races the deploy it is checking: a probe sent
+      # before Vercel has promoted the new function reads the *previous* deployment, which is
+      # precisely the one that was working. 150 s is well past an observed build of this project;
+      # the check then requires two confirmations spaced 15 s apart, so a single 200 served from
+      # a deployment on its way out cannot pass it on its own.
+      - name: /api/health and /api/me both answer 200
+        run: >-
+          node scripts/checks/production-health.mjs
+          --settle ${{ github.event.inputs.settle_seconds || '150' }}
+          --confirmations 2
+          --interval 15
+        env:
+          SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://aoe2-stats.com' }}

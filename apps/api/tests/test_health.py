@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 
 from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_session
+from aoe2stats_storage.revision import EXPECTED_SCHEMA_REVISION
 
 pytestmark = pytest.mark.usefixtures("environment")
 
@@ -72,7 +73,14 @@ def test_health_ok_when_database_and_object_store_are_reachable(
         response = client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok", "object_store": "ok"}
+    # `schema_revision` (T394) is the revision this build expects, reported on the way past —
+    # `test_schema_revision.py` owns the claim that it matches the database, against a real one.
+    assert response.json() == {
+        "status": "ok",
+        "database": "ok",
+        "object_store": "ok",
+        "schema_revision": EXPECTED_SCHEMA_REVISION,
+    }
 
 
 def test_health_reports_database_unavailable_through_the_error_envelope(

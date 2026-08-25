@@ -52,11 +52,21 @@ touched because a person clicked.
 
 **2. Streaming on demand is the right trigger, and for own matches nothing is streamed at all.**
 Analysing a recorded game means reading it once and deriving facts from it. For a match the
-signed-in user played, the bytes are already in this service's own archive — analysis reads what 001
-captured, and can be re-run at any time, for years. For anyone else's match, the bytes are fetched
-from the source at the moment the user asks. So the user's instinct is right: **no anticipatory
-sweep is needed, because the demand itself tells the system which matches matter.** That is what the
-cron would have been for, and it is why there isn't one.
+signed-in user played, the bytes are already in this service's own archive — analysis **reads** what
+001 captured rather than fetching anything. For anyone else's match, the bytes are fetched from the
+source at the moment the user asks. So the user's instinct is right: **no anticipatory sweep is
+needed, because the demand itself tells the system which matches matter.** That is what the cron
+would have been for, and it is why there isn't one.
+
+**Amended 2026-08-24: reading 001's capture is not the same as being able to keep reading it.** An
+own match is read from the capture and then **retained under FR-033's own basis anyway**, as a second
+object under the retention prefix. It looks like duplication and is not: the capture exists under the
+user's explicit consent and is deleted when that user erases, while the analysis derived from it is
+published to everyone who opens the match and must stay recomputable for years (constitution IV).
+Without the second copy, one erasure destroys the raw of a conclusion shown to strangers — the exact
+failure FR-033 exists to prevent, arriving by the one path nobody was watching. The cost is stated
+plainly: an analysed own match occupies its bytes twice, and FR-047's cap counts only the retained
+copy.
 
 **3. What "streaming" does not settle is what happens to the bytes afterwards, and that is where the
 whole cost sits.** Discarding them after the parse looks free and is not. Because this service
@@ -82,7 +92,9 @@ control:
   capture* — still the consenting user's own point of view, still never a side effect of browsing —
   from *user-initiated retention of an already-public recording*. What that costs is a new category
   of personal data, so FR-045 puts it in the processing register with its own legal basis, and
-  FR-046 puts it inside the third-party objection route and erasure.
+  FR-046 puts it inside the third-party objection route and erasure — which, as amended 2026-08-24,
+  reach every identifier this service holds about a person appearing in a recording and leave the
+  recording itself intact.
 - **Growth driven by clicking rather than by playing.** Real, and now constitutionally required to be
   bounded: FR-047 caps it and rate-limits it. Storage volume must remain a function of deliberate
   human requests, never of traffic.
@@ -146,10 +158,81 @@ for that and for nothing else.
   index needs a bulk read of the primary source and a refresh job, which is the cron this feature
   exists to avoid, and it still covers only ranked players. Two things make the risk acceptable —
   FR-004d gives search a fallback that needs no external source at all, and nothing else in the
-  feature depends on search. Two things make it safe — FR-004b strips the account-linking fields the
-  response carries, which would otherwise breach 001's FR-045 silently. (A third safeguard, FR-004c's
+  feature depends on search. Two things made it safe — FR-004b stripped the account-linking fields
+  the response carries, which would otherwise have breached 001's FR-045 silently. *(FR-004b was
+  superseded 2026-08-24 by constitution IX 3.0.0; the field is now carried as an unverified claim and
+  what remains of FR-045 is the prohibition on acting on it. This entry records the 2026-08-23 state
+  and is left as written.)* (A third safeguard, FR-004c's
   hidden flag, was written here and retired on measurement the same day — see FR-004c.) Resolves
   FR-004.
+
+### Session 2026-08-24
+
+- **Q: Who may request the analysis of a match they did not play — every signed-in user, or only
+  where a participant has opted in?** A: **every signed-in user, with no tier of any kind.** No
+  freemium, paid or entitlement model has been proposed; if one ever arrives it is a later change to
+  the business model and gets its own specification. The only limits that distinguish one request
+  from another are FR-040's per-user rate limit and FR-047's cap, and both apply to everyone
+  equally. During the closed beta "signed-in" already implies "allowlisted", because 001's FR-005
+  gates account *creation* — so no separate entitlement check exists or is needed. Resolves FR-030's
+  silence on the actor, and confirms FR-033 stands: retention follows from publishing an analysis,
+  and analysis is open, so retention is open too — bounded by deliberate requests (FR-044, FR-047)
+  and never by traffic.
+
+- **Q: Does retention of an analysed third-party recording stand as FR-033 specifies, given a
+  stated preference not to store games by default?** A: **yes, FR-033 is unchanged.** The premise
+  the preference was guarding against does not exist here: FR-044 already forbids every scheduled
+  job and background sweep, so nothing is ever retained that a person did not deliberately ask for,
+  and FR-047 bounds the total. The alternatives were weighed and rejected — retaining nothing would
+  leave every published analysis unfalsifiable once the source destroys the recording after ~31
+  days, which is the amendment to constitution IV this feature was granted rather than a gap;
+  retaining only where a participant opted in requires an opt-in mechanism the product does not have
+  and would make most matches unanalysable, including the profile fixed as this feature's test
+  fixture; and publishing the analysis only to its requester would undo FR-031's "analyse at most
+  once, serve to every subsequent viewer", which is the property US4 exists to demonstrate. Recorded
+  because the question is a reasonable one that will be asked again.
+
+- **Q: When a user erases their account and their own captured replay was the point of view a
+  published analysis was derived from, what happens to that analysis?** A: **the analysis stands,
+  because its recording stands — decided 2026-08-24 via the principle IX amendment below.** The gap is real and is recorded here so that no
+  implementer invents an answer: for a match the user played, §2 has analysis read 001's capture and
+  create no `retained_recordings` row, 001's erasure deletes that capture and its object, and
+  `match_analyses`' erasure rule says only "`requested_by_user_id` cleared, row retained" — so the
+  analysis today survives its own raw, which is the unfalsifiable conclusion principle IV forbids.
+  FR-046's withdrawal rule does not fire, because it is written on `retained_recordings`. Two
+  dispositions were put: withdraw the analysis with the capture, or let it stand without its raw.
+  **Neither was taken.** Amending principle IX so that a retained recording survives erasure and
+  objection makes a third and better one available: retain a copy under FR-033's basis at analysis
+  time, *including for a match the requester played themselves*, so the analysis stands **and stays
+  recomputable**. Principle IV is therefore not amended at all — it is satisfied, not overridden —
+  and the own-match hole closes with no special rule. `.aoe2record` bytes are never modified, which
+  FR-033 already required and the amendment restates. The amendment landed the same day as
+  constitution 3.0.0, and T362, T363 and `data-model.md`'s `retained_recordings` section now carry
+  the own-match rule explicitly. Note also that
+  `match_analyses` carries no foreign key to its source, unlike `replay_access_log` which carries
+  both; whichever disposition wins, finding "the analyses derived from this recording" needs either
+  `(game_id, point_of_view_profile_id)` or a new column.
+
+- **Q: Does "every field the AoE2 DE APIs serve is public" reach `steamId`, which FR-004b strips
+  today?** A: **yes — the wide reading, decided 2026-08-24.** FR-004b is retired and the field is
+  passed through as the source reports it. Two things bound it, and neither is a residue of the
+  privacy argument that was settled against:
+
+  **It is an unverified third-party claim and MUST be presented as one.** 001's FR-006 makes a
+  *proven* Steam link the one this service stands behind — established by a real Steam sign-in. The
+  community source's `steamId` is an assertion this service cannot check. Publishing both without
+  distinguishing them would have the service vouch for something it did not verify, which is an
+  accuracy fault and survives the privacy decision untouched.
+
+  **The prohibition on acting on it stands.** 001 FR-045's remaining half — MUST NOT infer, suggest
+  or act upon a relationship between profiles the user has not proven — is unchanged. The field may
+  be shown; it MUST NOT be used to link, merge or unify profiles, and no feature may treat two
+  profiles as one person on its basis.
+
+  This rewrote FR-004b, changed the search contract and `profile_search_cache`'s stored fields, and
+  inverted quickstart scenario 2. The principle IX amendment landed the same day (3.0.0), the
+  artifacts followed, and the code that still enforces the retired rule is Phase 11 — including
+  T400, which amends 001's FR-045 to carve carriage out from action.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -355,10 +438,17 @@ their current standing and reachable in one click.
 - **FR-004a**: Name search MUST match case-insensitively and on partial strings, so that a user who
   remembers part of a name finds the player, and MUST order results so that the most-played matching
   player appears first.
-- **FR-004b**: System MUST discard, at the point the search source is read, every field asserting a
-  relationship between a player's accounts — and MUST NOT store, display or act on a third party's
-  Steam identifier obtained this way. These fields exist in the response and carrying them further
-  would breach 001's FR-045 by accident rather than by decision.
+- **FR-004b**: System MUST carry the account identifier the search source asserts, as
+  `unverified_steam_id`, and MUST present it as **a claim this service has not verified**. 001's
+  FR-006 makes a Steam link proven by sign-in the only one this service vouches for; presenting an
+  unchecked third-party assertion beside it without the distinction is an accuracy fault, and it is
+  one whether or not the identifier counts as personal data. System MUST NOT **infer, suggest or act
+  upon** a relationship between profiles on that basis: no linking, no merging, no affordance
+  treating two profiles as one person. Rewritten 2026-08-24 under constitution IX 3.0.0, which
+  treats every field the AoE2 DE APIs serve as public and keeps it so — the requirement previously
+  read here was the opposite, discarding the field at the provider boundary, and the second half
+  above is what survives of it. `shared` and `sharedHistory` are still not carried, for reasons that
+  are not a residue of the old rule; this feature's `contracts/` providers document states each.
 - **FR-004c**: ~~System MUST honour a source-side signal that a profile is hidden.~~ **Retired
   2026-08-23, before implementation, on measurement (T301a).** It is left here rather than deleted
   because the field it was written for still exists on the wire, and the next reader to notice it
@@ -370,8 +460,10 @@ their current standing and reachable in one click.
   `sharedHistory === false`, which that source's own client honours — and **this feature deliberately
   does not act on it either**: it governs display at aoe2companion, this service reads history from
   Relic, and no unaffiliated AoE2 DE site honours it. Importing it would invent an obligation that
-  exists nowhere and bind only us. Nothing replaces this requirement; FR-004b's stripping is
-  unchanged and remains the whole of what the search response owes.
+  exists nowhere and bind only us — and constitution IX at 3.0.0 raised that reading to project law
+  on 2026-08-24: this service neither honours the preference nor works around it. Nothing replaces
+  this requirement. FR-004b, which used to be the whole of what the search response owed, was itself
+  superseded on the same day; see its entry above.
 - **FR-004d**: When the search source is unavailable, System MUST fall back to searching the profiles
   it has already observed — users, favourites, and participants of match histories it already holds
   (FR-011) — and MUST label those results as reduced rather than presenting them as complete. This
@@ -468,8 +560,13 @@ their current standing and reachable in one click.
 
 **Analysing the game**
 
-- **FR-030**: Users MUST be able to request the analysis of a match whose recorded game is
-  obtainable, and MUST see the result for every participant.
+- **FR-030**: **Any signed-in user** MUST be able to request the analysis of any match whose
+  recorded game is obtainable — including a match they did not play and in which no participant has
+  opted in — and MUST see the result for every participant. There is no tier, quota class or
+  entitlement separating one signed-in user from another (session 2026-08-24): the only limits are
+  FR-040's per-user rate limit and FR-047's cap, and they apply to everyone equally. During the
+  closed beta "signed-in" already means "allowlisted", because 001's FR-005 gates account creation,
+  so no second check exists here.
 - **FR-031**: System MUST analyse a given match at most once, and MUST serve the stored result to
   every subsequent viewer without fetching or parsing again.
 - **FR-032**: System MUST record which point of view an analysis was derived from, and the version
@@ -478,11 +575,14 @@ their current standing and reachable in one click.
   recorded at the time and verifiable on retrieval, for every analysis it publishes — third-party
   matches included. A published analysis that cannot be recomputed from its raw is forbidden by
   constitution IV, and the source destroys the raw after ~31 days, so the choice is between keeping
-  the recording and publishing an unfalsifiable conclusion. Retained recordings are never modified, and are
-  deleted only on an erasure or objection by a person **appearing in** the recording (FR-046).
-  Erasing the user who *requested* the analysis clears who asked and keeps the bytes: a published
-  analysis must stay recomputable (constitution IV), and the requester is not the subject of a third
-  party's recording.
+  the recording and publishing an unfalsifiable conclusion. Retained recordings are **never modified
+  and never deleted** — amended 2026-08-24 under constitution IX 3.0.0; the previous rule deleted one
+  on an erasure or objection by a person appearing in it. Erasure and objection reach the *link* between a recording and a person, never the artifact:
+  `requested_by_user_id` is cleared and the identifiers this service holds are pseudonymised, while
+  the bytes stand so the published analysis stays recomputable (constitution IV). The same rule now
+  covers a match the requester played themselves — a copy is retained under this basis at analysis
+  time even though 001 already holds the same point of view under consent, because otherwise erasing
+  that user would destroy the raw of an analysis shown to everyone. FR-046 changes with it.
 - **FR-034**: System MUST present analysis as permanently unavailable, with the reason, for a match
   whose recordings have expired and which was never analysed — never as an action that fails.
 - **FR-035**: System MUST report progress for an analysis that outlasts a page load, and MUST let the
@@ -536,14 +636,20 @@ their current standing and reachable in one click.
   person, on one match. Nothing is fetched speculatively, and no process walks matches nobody asked
   about — this is what keeps FR-039 satisfiable and is unchanged by FR-033.
 
-**Obligations created by retaining third-party recordings (constitution IX, 2.0.0)**
+**Obligations created by retaining third-party recordings (constitution IX, 2.0.0, as amended to 3.0.0 on 2026-08-24)**
 
 - **FR-045**: System MUST record the retention of analysed third-party recordings in the processing
   register as its own processing purpose, with its own legal basis, retention and safeguards, in the
   same change that implements it.
-- **FR-046**: System MUST make a retained recording reachable by the third-party objection route and
-  by erasure (001 FR-037, FR-039), such that a person appearing in one can have it removed, and the
-  analyses derived from it withdrawn with it.
+- **FR-046**: System MUST make the third-party objection route and erasure (001 FR-037, FR-039)
+  reach every identifier it holds about a person appearing in a retained recording, pseudonymising
+  them exactly as 001 already does for `matches` and `match_players`; and MUST NOT delete or modify
+  the recording itself. Rewritten 2026-08-24 under constitution IX 3.0.0 — it previously required
+  the recording removed and the analyses derived from it withdrawn, which is now forbidden. A recorded game is the record of a public match, and a
+  `.aoe2record` cannot be pseudonymised without being modified, which would destroy its checksum and
+  the recomputability constitution IV requires. No analysis is withdrawn on this route: it stands and
+  stays recomputable, which is what the amendment buys. The processing register MUST state this
+  ordering in its balancing test rather than leave it implied.
 - **FR-047**: System MUST cap the volume retained this way and MUST rate-limit the requests that
   cause retention, per user and in total, so that stored volume remains a function of deliberate
   human requests and never of traffic. On reaching the cap the system MUST refuse new analyses with

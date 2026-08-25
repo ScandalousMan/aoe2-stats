@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 
 import aoe2stats_api.app as api_app_module
 from aoe2stats_api.deps import get_object_store, get_session
+from aoe2stats_storage.revision import EXPECTED_SCHEMA_REVISION
 
 
 def test_the_re_exported_app_is_the_same_object_the_fastapi_module_builds() -> None:
@@ -63,4 +64,9 @@ def test_the_re_exported_app_serves_a_real_request_through_the_error_envelope(
         app.dependency_overrides.pop(get_object_store, None)
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok", "object_store": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "database": "ok",
+        "object_store": "ok",
+        "schema_revision": EXPECTED_SCHEMA_REVISION,
+    }

@@ -382,7 +382,9 @@ So the four states FR-025 requires are each derived from something this service 
 
 **A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
 from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
-only copy anyone holds. It is refused. Constitution IX 2.0.0 permits retention so that a *published
+only copy anyone holds. It is refused, and 3.0.0 strengthens the refusal rather than weakening it — the bytes now survive an
+erasure, so serving them would redistribute a recording of someone who has asked this service to
+forget them. Constitution IX permits retention so that a *published
 analysis stays recomputable*; handing those bytes to any signed-in caller is redistribution of a third
 party's recording after the source destroyed its own, which is a second processing purpose with no
 basis and no register entry. FR-026 says "the signed-in user's **own** point of view", and a retained
@@ -497,7 +499,10 @@ let an unmeasured property into a Phase 0 that opens by claiming everything here
 correction is worth more than the deletion. What Phase 0 has to settle is where the obligations land
 in code, and there is only one defensible answer for the one that remains.
 
-FR-004b (strip `steamId`, `shared`, `sharedHistory`) is enforced at the provider boundary because
+**Superseded 2026-08-24 by constitution IX 3.0.0** as to `steamId`, which is now carried as
+`unverified_steam_id`; the boundary reasoning below still governs `shared` and `sharedHistory`, and
+the pattern it establishes is why the carried field is a typed attribute rather than a passthrough
+dict. FR-004b (strip `steamId`, `shared`, `sharedHistory`) was enforced at the provider boundary because
 that is the only place where "it never entered the system" is a property rather than a promise. A field stripped in a router is a field that existed in memory,
 in a log line, and in a traceback. The existing provider already demonstrates the pattern: its module
 docstring records that `linkedProfiles` "is not read anywhere below, deliberately", and there is
@@ -589,6 +594,18 @@ the MVP. Retaining a third party's recording while no erasure route exists is no
 inconvenience, it is the principle being broken for the duration. FR-017 and FR-046's half is still
 built here — every table in [data-model.md](./data-model.md) states what erasure must do to it — so
 that the 001 tasks have something to implement against rather than something to remember.
+
+### Rationale amended 2026-08-24, decision unchanged
+
+Constitution IX 3.0.0 removed the deletion half of erasure and objection for retained recordings, so
+the sentence above — "retaining a third party's recording while no erasure route exists is the
+principle being broken for the duration" — no longer supports the gate on its own terms. **The gate
+stands; its reason moved.** What T090 to T092 owe this feature is now: FR-017's export of favourites
+and requested analyses (T090), and T092's **pseudonymisation instrument**, which the amended FR-046
+promotes from half the remedy to the whole of it. Under 2.0.0 a person appearing in a recording had
+two routes and one of them deleted the bytes; under 3.0.0 they have one, and if it does not exist the
+obligation is discharged by nothing at all. Recorded rather than left to be re-derived, because a
+gate whose written reason is false is a gate the next reader removes.
 
 ### Rationale
 

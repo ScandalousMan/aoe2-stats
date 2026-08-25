@@ -1,7 +1,8 @@
-"""Response-header tests for FR-010 (T308): every route this feature *adds* answers
-`X-Robots-Tag: noindex, nofollow` and `Cache-Control: private`
-(`contracts/http-api.md`, "Response headers on every route above"), and every route 001 already
-owns is unaffected by whatever T309 does to answer that.
+"""Response-header tests for FR-010 (T308, widened by T384): every route this feature *adds*
+answers `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private`
+(`contracts/http-api.md`, "Response headers on every route above"), and — since T384 inverted
+`app.py`'s default — every route 001 already owns now answers the same pair too, with the
+exception of the handful of paths `aoe2stats_api.app.is_bare_api_path` names.
 
 **Scope, split with `test_no_public_directory.py` (T310).** `GET /api/matches/{game_id}` is this
 feature's one *widened* route, not an added one — it already exists, registered by 001 (T070) —
@@ -42,28 +43,33 @@ by name. Once Phase 3 onward registers the remaining routers, any route added to
 anticipated by the table or not — is picked up here automatically, with no further edit to this
 file.
 
-**The "unchanged" half is the mirror image, and needs no hand-written table at all.**
-`_non_feature_api_routes` walks the entire `/api/*` surface `create_app().openapi()` reports and
-keeps only what does not match this feature's path patterns and is not the widened match-detail
-route — 001's routes today, and whatever is added to them later. Never carrying either header is
-not a "T309 not implemented yet" case: it is true before this task, after T309, and after every
-later one, so it is asserted directly rather than through `xfail` — an `xfail(strict=True)` here
-would itself fail the moment it started passing, which today it already does.
+**The "non-feature" half is the mirror image of the feature table, and needs no hand-written list
+of its own — it names what a route is, not what header it must carry.** `_non_feature_api_routes`
+walks the entire `/api/*` surface `create_app().openapi()` reports and keeps only what does not
+match this feature's path patterns and is not the widened match-detail route — 001's routes today,
+and whatever is added to them later. This partition is about *ownership* (did this feature add the
+route, or does 001 already own it), which is exactly as true after T384 as before it; what changed
+is what the test built on top of it asserts.
 
-**This file's guarantee is prefix-scoped, not universal.** `_FEATURE_ROUTE_PATH_PATTERNS` names
-four path patterns — the same four `app.py`'s `_NoIndexHeaderMiddleware` matches against — and
-every assertion below is built from them: `test_feature_route_answers_no_index_headers` proves the
-header exists for every route registered under one of those four; `test_non_feature_route_headers_
-are_unchanged` proves it is absent everywhere else *that this app registers today*. Neither test
-can say anything about a route this feature, or a later one, adds under a path nobody has named in
-`_FEATURE_ROUTE_PATH_PATTERNS`: such a route falls outside `_is_feature_path`, so
-`_non_feature_api_routes` claims it as "unchanged" and this file then asserts it must *not* carry
-the header — the opposite of what a route exposing a third party's data ought to get, and silently
-so, since the same four patterns are what the middleware itself matches against. The guarantee this
-file proves is "every route under one of these four prefixes is headered correctly (or is
-correctly not)", not "every route this project will ever register is". Widening that coverage —
-parametrising the middleware and this file over something other than a hand-maintained prefix list
-— is a design change tracked separately; this docstring only states the limit as it stands today.
+**T384 inverted `app.py`'s default, so this file's own default inverts with it.** Before T384,
+`_NoIndexHeaderMiddleware` matched an *inclusion* list of four path patterns — this feature's own
+routers — and every route outside it, 001's included, answered unheadered; that is what
+`test_non_feature_route_headers_are_unchanged` asserted, directly rather than through `xfail`,
+because it was true before this task, stayed true through T309, and would keep being true of any
+route added later under one of the same four prefixes. That is exactly the shape T384 closes: a
+route registered under a fifth prefix fell outside every pattern on both sides and this file
+asserted it must *not* carry the header — the opposite of what a route exposing a third party's
+data ought to get, and silently so. `app.py` now headers every `/api/*` response by default and
+carves out only `aoe2stats_api.app.is_bare_api_path` — imported from there rather than
+hand-copied here, for the same reason `_feature_route_cases` unions against `openapi()` instead of
+trusting a hand-written table alone: a second, independent list of the same exemption is the
+duplication this task's own instructions warn against, and it is also exactly the kind of table
+this whole file exists to not need. `test_non_feature_route_headers_are_unchanged` keeps its name
+— `tasks.md`'s T384 names it directly — but "unchanged" now describes the *ownership* partition,
+not the header: a 001 route is asserted to carry the header exactly when `is_bare_api_path` says it
+must not stay bare, and to lack it otherwise. Every non-feature route this app registers today is
+covered by construction, the same as the feature half; there is no longer a fifth-prefix gap on
+this side of the file, because there is no longer a prefix list to fall outside of.
 
 **No request below signs in, and every one carries `follow_redirects=False`**
 (`test_auth_flow.py`'s own convention: `GET /api/auth/steam/start` answers a real redirect to
@@ -96,7 +102,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from aoe2stats_api.app import create_app
+from aoe2stats_api.app import create_app, is_bare_api_path
 
 pytestmark = pytest.mark.usefixtures("environment")
 
@@ -223,19 +229,29 @@ def test_feature_route_answers_no_index_headers(method: str, path: str, client: 
 def test_non_feature_route_headers_are_unchanged(
     method: str, path: str, client: TestClient
 ) -> None:
-    """001's existing routes — and `/api/matches/{game_id}`, which this feature widens rather
-    than adds and does not carry this file's header assertion for (module docstring) — must not
-    gain either header as a side effect of T309's middleware. Not `xfail`: this already holds
-    before T309 and must keep holding after it, and after every route either module adds later.
+    """T384: 001's existing routes — and `/api/matches/{game_id}`, which this feature widens
+    rather than adds and does not carry this file's header assertion for (module docstring) —
+    now carry both headers **by default**, the same as every route this feature adds, unless
+    `aoe2stats_api.app.is_bare_api_path` names the path as one of the handful that must stay
+    bare (today, `GET /api/health` alone). "Unchanged" names the *ownership* partition this test
+    parametrises over — a 001 route, not one this feature added — not the header outcome, which
+    T384 inverted. Not `xfail`: both branches already hold today, and hold after every route
+    either module adds later, exactly as `_NON_FEATURE_ROUTE_CASES` is derived from the app's
+    live route table rather than a hand-written list (module docstring).
 
-    Prefix-scoped, not universal (module docstring, "This file's guarantee is prefix-scoped"): a
-    future route registered under a path `_FEATURE_ROUTE_PATH_PATTERNS` does not name falls into
-    this test's parametrisation and is asserted here to *lack* the header, whether or not it
-    should carry one."""
-    response = client.request(method, _concrete_path(path), follow_redirects=False)
+    No longer prefix-scoped (module docstring, "T384 inverted `app.py`'s default"): a future
+    route registered anywhere under `/api/*` that this test's parametrisation reaches is asserted
+    to carry the header, because the middleware's own default now agrees — there is no fifth
+    prefix for it to fall outside of."""
+    concrete_path = _concrete_path(path)
+    response = client.request(method, concrete_path, follow_redirects=False)
 
-    assert "x-robots-tag" not in response.headers
-    assert "cache-control" not in response.headers
+    if is_bare_api_path(concrete_path):
+        assert "x-robots-tag" not in response.headers
+        assert "cache-control" not in response.headers
+    else:
+        assert response.headers.get("x-robots-tag") == "noindex, nofollow"
+        assert response.headers.get("cache-control") == "private"
 
 
 def test_widened_match_detail_route_is_excluded_from_both_sides() -> None:

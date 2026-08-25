@@ -70,6 +70,36 @@ Extract **in memory or into an ephemeral tmpdir**, never beside the archived zip
 single-member archive, a name matching `AgeIIDE_Replay_\d+\.aoe2record`, and a decompressed-size cap.
 The normal ratio is about eight to one, so anything far above that is a zip bomb, not a replay.
 
+## Extraction discipline
+
+**Memory bound, not time bound.** Analysis work is refused above a raw-size ceiling derived from the
+parser's measured memory amplification, not a time budget — see `ANALYSIS_MAX_RAW_BYTES` in
+`specs/003-player-search-match-analysis/plan.md` and R3 in that feature's
+[`research.md`](../../../specs/003-player-search-match-analysis/research.md). A recording that hits
+the ceiling and is refused is an **expected outcome**, not an incident: it must not raise a per-item
+alert or get retried on a timer. Only the refusal rate is worth watching.
+
+**`Build` is not decoded by the pinned wheel.** It comes back as `{"action_length", "data": [...]}`
+with no `player_id` field — the player id and building type are inside the raw `data` payload, and
+decoding that is this repository's job, covered by a golden test. Do not treat `Build` as usable
+as-delivered. See [`docs/adr/0001-replay-parser.md`](../../../docs/adr/0001-replay-parser.md) and R4
+in `specs/003-player-search-match-analysis/research.md` for what was measured and why the ADR's
+original claim about `Build` no longer holds.
+
+**Collapse duplicated commands to their first occurrence.** A double-click on an in-game button
+(age-up, research) issues the same command twice, milliseconds apart. Extraction must dedupe on
+`(player_id, technology_type)` — or the equivalent key for the command in question — and keep the
+first occurrence only, or a two-player game reports more age-ups than players. See R5 in
+`specs/003-player-search-match-analysis/research.md` and T355 in that feature's `tasks.md` for the
+rule this was written against.
+
+**A `.aoe2record` is a command log, not a state log.** It records what a player told the game to do,
+never the game's derived response — resources, population, units lost. Anything about _state_ is a
+reconstruction from the command stream, not a reading, and must never be presented with the same
+confidence as a value taken directly off an operation. Label reconstructions as such, or don't
+publish them. See `specs/003-player-search-match-analysis/research.md` (the command-log-vs-state-log
+distinction) and that feature's `spec.md` for the ruling this forced on FR-043.
+
 ## Checking whether parsing still works
 
 ```bash

@@ -1,3 +1,41 @@
+<!--
+Sync Impact Report — 2026-08-24
+
+Version change: 2.0.0 -> 3.0.0 -> 3.0.1
+
+3.0.0 (MAJOR: principle redefinition, backward incompatible) — principle IX, below.
+3.0.1 (PATCH: clarification, no behaviour change) — principle IV's deletion exception was written
+against the file ("the original replay zip ... except on a GDPR erasure request") and so covered a
+retained recording too, permitting exactly what 3.0.0's IX forbids. The constitution contradicted
+itself for the duration. The exception is now written against the *basis*: a capture held under the
+consenting user's own basis is deleted on erasure; a recording retained under IX's public-recording
+basis is not. Found by /speckit-analyze, 2026-08-24 (finding D1).
+
+Modified principles:
+- IX. GDPR by Design — retention of an already-public recording no longer carries a deletion
+  obligation. Erasure and the third-party objection route now reach the identifiers this service
+  holds about a person appearing in a recording, and leave the recording itself intact. Adds the
+  public-field treatment rule, the no-hiding / no-circumvention rule, and the carriage-versus-action
+  split for unverified source claims.
+
+Unchanged: principle IV. The amendment satisfies IV rather than overriding it — the recording
+survives, so every published analysis stays recomputable. IV's own erasure exception still governs
+001's consented captures.
+
+Added sections: none. Removed sections: none.
+
+Formatting: restored the missing blank line before "All compute and storage regions are EU.", which
+had been glued to the preceding paragraph.
+
+Follow-up TODOs — none deferred in this file. Dependent artifacts still to be brought in line, each
+already recorded in specs/003-player-search-match-analysis/spec.md session 2026-08-24:
+- 001 FR-045 carve-out (carriage is not action)
+- 003 FR-004b, FR-033, FR-046 (written, struck-pending; the struck text comes out now)
+- docs/privacy/processing-register.md balancing test and retention activity
+- docs/data-sources.md §3 "Trap" note on steamId
+- specs/003 quickstart scenario 2, which inverts
+- the provider-boundary strip and the tests asserting steamId absence
+-->
 # aoe2-stats Constitution
 
 ## Core Principles
@@ -27,8 +65,13 @@ recorded, its wire form is not. Which sources are irrecoverable is a measured fa
 
 ### IV. Raw Is Sacred, Derived Is Disposable
 The original replay zip and its HTTP response are stored byte-for-byte with a checksum, never
-modified, never deleted (except on a GDPR erasure request). Every derived artifact records the
-version of the tool that produced it and must be fully recomputable from the raw. No migration may
+modified, and never deleted. One exception, and one only: a replay captured under the consenting
+user's own basis is deleted on that user's GDPR erasure request. A recording retained under
+principle IX's public-recording basis is not — IX carries that rule and this principle does not
+override it. The two are different objects with different legal bases even when they are the same
+match, so the exception is written against the basis and not against the file.
+
+Every derived artifact records the version of the tool that produced it and must be fully recomputable from the raw. No migration may
 ever be required to re-parse history.
 
 ### V. Parsing Runs in an Isolated, Pluggable Engine
@@ -62,13 +105,41 @@ resulting analysis is shown to everyone who opens that match, and a derived arti
 recomputed from its raw is one this project may not publish. The source purges the recording after
 about 31 days, so declining to keep it means publishing a conclusion that can never again be
 checked or corrected. Retention on this basis is bounded by explicit human requests and never by
-traffic; it MUST be rate-limited and capped, MUST be recorded in the processing register with its
-own legal basis, and MUST be reachable by both the third-party objection route and erasure.
+traffic; it MUST be rate-limited and capped, and MUST be recorded in the processing register with
+its own legal basis.
+
+**Amended 2026-08-24 — a retained recording is never deleted and never modified.** Erasure and the
+third-party objection route reach the *link* between a recording and a person — who requested the
+analysis, and the identifiers this service holds — never the artifact. A recorded game is the record
+of a public match. The precedent is one level up in this same codebase: erasure pseudonymises the
+departing `profile_id` in `matches` and `match_players` in place rather than deleting the match. The
+one difference is stated rather than engineered around — a `.aoe2record` cannot be pseudonymised
+without being modified, and modifying it destroys both its checksum and the recomputability
+principle IV requires, so it is kept whole and untouched. This orders principle IV above the
+deletion half of this principle, deliberately. The processing register MUST carry that ordering in
+its balancing test rather than leave it implied, and MUST state it as the product decision it is
+rather than as a claim that the data is anonymous — the pseudonym is re-identifiable, and
+`docs/data-sources.md` §3 measured the public search projection serving `steamId` beside
+`profileId`.
+
+**This project treats every field the AoE2 DE APIs serve as public and keeps it so.** This service
+offers players no way to hide their matches within it. Where the source itself withholds data — a
+player who has switched off the source's own "Shared History" setting — **nothing is done to obtain
+it by another route**. The preference is neither honoured as a signal nor circumvented.
+
+A field the source serves MAY be carried and shown as the source reports it, marked as a claim this
+project has **not** verified. It MUST NOT be used to infer, suggest or act upon a relationship
+between profiles that the user has not proven by signing in: no linking, no merging, no feature
+treating two profiles as one person on that basis. A verified Steam sign-in is the only account link
+this project vouches for, and presenting an unchecked third-party assertion beside it without the
+distinction is an accuracy fault regardless of how the data is classified.
 
 Third-party players are processed only on the basis of already-public data and are never publicly
 indexed. Consent for replay ingestion is explicit and separate from account creation. Full export
-and erasure are available from the MVP, storage objects included. Any new personal data is added to
-the processing register in the same PR.
+and erasure are available from the MVP, storage objects included — with the single exception this
+amendment creates, stated above and nowhere else. Any new personal data is added to the processing
+register in the same PR.
+
 **All compute and storage regions are EU.** Vercel functions run in `cdg1`, the database in an EU
 region, the object store under EU jurisdiction. A PR that moves a region outside the EU is rejected.
 
@@ -114,4 +185,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 2.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-23
+**Version**: 3.0.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-24

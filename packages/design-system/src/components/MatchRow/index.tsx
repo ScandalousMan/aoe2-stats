@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cx } from '../../lib/cx'
+import { createRowLinkClickHandler } from '../../lib/rowLink'
 import { useBreakpoint } from '../../lib/useMediaQuery'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
@@ -41,6 +42,10 @@ export interface MatchRowData {
 
 export interface MatchRowProps {
   match: MatchRowData
+  /** Wires this row's click into the caller's own router (T388), the same seam
+   * `PlayerResultRow.onNavigate` defines — the row stays a real `<a href={match.href}>`, a
+   * modified click or the absence of `onNavigate` falls through to native handling. */
+  onNavigate?: (href: string) => void
   className?: string
 }
 
@@ -82,10 +87,11 @@ function MatchMeta({ match }: { match: MatchRowData }) {
 /** One match, the whole card is a single link (§2, §9): everything inside — including
  * `CaptureStateBadge` — is non-interactive text, so the row has exactly one focus stop. Used
  * directly below `xl`; `MatchList` renders a real `<table>` above it instead (§8). */
-export function MatchRow({ match, className }: MatchRowProps) {
+export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
   return (
     <a
       href={match.href}
+      onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
         'flex flex-col gap-2 rounded-lg border border-border bg-surface p-4',
         'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
@@ -118,6 +124,9 @@ export interface MatchListProps {
   status?: MatchListStatus
   matches?: MatchRowData[]
   onRetry?: () => void
+  /** Forwarded, unchanged, to every `MatchRow` in the card layout and every row link in the table
+   * layout (T388) — see `MatchRowProps.onNavigate`. */
+  onNavigate?: (href: string) => void
   className?: string
 }
 
@@ -128,6 +137,7 @@ export function MatchList({
   status = 'default',
   matches = [],
   onRetry,
+  onNavigate,
   className,
 }: MatchListProps) {
   // §8 reserves everything below 1280 for cards; `xl` is the named breakpoint at that width
@@ -168,21 +178,29 @@ export function MatchList({
   }
 
   if (isTable) {
-    return <MatchTable matches={matches} className={className} />
+    return <MatchTable matches={matches} onNavigate={onNavigate} className={className} />
   }
 
   return (
     <ul className={cx('flex flex-col gap-3', className)}>
       {matches.map((match) => (
         <li key={match.gameId}>
-          <MatchRow match={match} />
+          <MatchRow match={match} onNavigate={onNavigate} />
         </li>
       ))}
     </ul>
   )
 }
 
-function MatchTable({ matches, className }: { matches: MatchRowData[]; className?: string }) {
+function MatchTable({
+  matches,
+  onNavigate,
+  className,
+}: {
+  matches: MatchRowData[]
+  onNavigate?: (href: string) => void
+  className?: string
+}) {
   return (
     <table className={cx('w-full border-collapse text-left font-sans text-sm', className)}>
       <caption className="sr-only">Your recent matches</caption>
@@ -216,7 +234,7 @@ function MatchTable({ matches, className }: { matches: MatchRowData[]; className
       </thead>
       <tbody>
         {matches.map((match) => (
-          <MatchTableRow key={match.gameId} match={match} />
+          <MatchTableRow key={match.gameId} match={match} onNavigate={onNavigate} />
         ))}
       </tbody>
     </table>
@@ -226,13 +244,20 @@ function MatchTable({ matches, className }: { matches: MatchRowData[]; className
 // A `<tr>` cannot itself be an `<a>`, so the row's single link lives in one cell and is stretched
 // over the whole row with `after:absolute after:inset-0` against the row's own `relative` — the
 // standard "one link, whole row clickable" technique, keeping exactly one focus stop (§9).
-function MatchTableRow({ match }: { match: MatchRowData }) {
+function MatchTableRow({
+  match,
+  onNavigate,
+}: {
+  match: MatchRowData
+  onNavigate?: (href: string) => void
+}) {
   const won = match.outcome === 'win'
   return (
     <tr className="group relative border-b border-border transition-colors duration-120 ease-standard hover:bg-surface-sunken">
       <th scope="row" className="py-3 pr-5 font-normal">
         <a
           href={match.href}
+          onClick={createRowLinkClickHandler(match.href, onNavigate)}
           className={cx(
             'static font-sans text-sm font-semibold after:absolute after:inset-0',
             focusRing,

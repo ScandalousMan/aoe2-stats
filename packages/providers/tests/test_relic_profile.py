@@ -53,12 +53,6 @@ if TYPE_CHECKING:
     # collection time — see `_provider()` below, where the real (runtime) import lives.
     from aoe2stats_providers.relic.profile import RelicProfileProvider
 
-# Every test in this file is expected to fail for exactly one reason — T027 does not exist yet —
-# until it does. `strict=True` is what makes that honest: the moment T027 lands and a test starts
-# passing, `strict=True` turns the *run* red instead of letting a stale xfail hide it, which is the
-# whole point of marking these tests failing rather than skipping them. Do not drop `strict=True`.
-XFAIL_REASON = "RelicProfileProvider is implemented by T027, not this test-first task (T020)"
-
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "relic"
 
 

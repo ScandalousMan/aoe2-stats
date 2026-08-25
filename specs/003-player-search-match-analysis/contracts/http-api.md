@@ -45,8 +45,20 @@ learns the narrowing rather than re-deriving it.
 | `GET` | `/api/players/{profile_id}/matches?cursor=&limit=` | FR-007. The same row shape `GET /api/matches` already returns |
 | `GET` | `/api/players/{profile_id}/ratings` | Rating history, where snapshots exist |
 
-`search` returns `{"results": [...], "degraded": bool, "reason": null | "..."}` and distinguishes
-three outcomes, never collapsing two of them (FR-003):
+`search` returns `{"results": [...], "degraded": bool, "reason": null | "..."}`. A result carries
+`profile_id`, `alias`, `country`, `games_played`, `clan` and `unverified_steam_id`, mirroring
+`PlayerSearchResult` ([contracts/providers.md](./providers.md)) and adding nothing.
+
+`unverified_steam_id` is the source's own claim, carried since constitution IX 3.0.0 (2026-08-24)
+retired FR-004b's strip. The field name is the contract: it is `unverified_steam_id` and not
+`steam_id` so that a client cannot present it as a verified link without having chosen to. The
+interface MUST label it as unverified where it is shown, and MUST NOT offer any affordance built on
+it — no "same player", no merge, no navigation that asserts two profiles are one person (001
+FR-045's remaining half). It is `null` in the degraded fallback (FR-004d), which reads
+`aoe_profiles` and has no such claim to carry; a client MUST treat `null` as "not known here" and
+never as "no Steam account".
+
+The response distinguishes three outcomes, never collapsing two of them (FR-003):
 
 | Outcome | Shape |
 | --- | --- |

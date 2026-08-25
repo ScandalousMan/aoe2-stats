@@ -1,0 +1,76 @@
+# Runbook: applying a database migration to production
+
+The deploy pipeline has no step that does this. `vercel.json` declares exactly one hook into
+the deploy — `buildCommand`, which runs `config-preflight.mjs` ahead of `pnpm --filter web
+build` (T391) — and no field for anything that runs after the deploy: there is nowhere in the
+pipeline a migration could run even if it were wired in. `.github/workflows/pr.yml`'s
+`alembic upgrade head` / `alembic check` / `alembic downgrade -1` sequence runs only against
+the throwaway database that job creates and drops for the pull request; it never touches
+production. Whoever merges a PR that ships a new revision under
+`infra/migrations/versions/` is the one who runs this runbook, by hand, once, against Neon —
+this is that procedure.
+
+Skipping it is not hypothetical: `61d7bd9e3684` (`csrf_states`) and `1f9879367c9d` (this
+feature's schema) were both applied to Neon by hand, after the fact, to end an outage the
+missing step caused. `T394`'s `schema_out_of_date` health check makes the next occurrence
+_visible_ rather than a silent 500 or a silent gap in the daily cron's writes — it does not
+replace this runbook, it is the alarm for the case where this runbook was skipped.
+
+## Why the pooled connection string in `.env.example` is the wrong one here
+
+`DATABASE_URL` in `.env.example` documents Neon's **pooled** connection string, and that is
+correct for the running application: the daily cron always hits a cold compute, and pooling
+absorbs that. It is the wrong string for Alembic. Neon's pooler runs in transaction mode, which
+does not give a DDL migration the session semantics it needs (session-level advisory locks,
+`SET` statements holding across statements in one transaction) — a migration run through the
+pooler can fail outright or, worse, appear to succeed while leaving the lock Alembic takes
+unreleased for another session. Alembic needs Neon's **direct (unpooled)** endpoint.
+
+`infra/migrations/env.py` reads its connection string exclusively from the `DATABASE_URL`
+environment variable, the same name the application uses — there is no separate variable name
+Alembic looks for. The two never need to hold different values in the same environment: the
+deployment target's `DATABASE_URL` must stay pooled, permanently, for the app; the direct
+endpoint is only ever exported in the interactive shell running the commands below, and never
+written to the deployment target, a file, or a log.
+
+Neon's console distinguishes the two by hostname: the pooled string's host carries a `-pooler`
+segment (e.g. `ep-xxxx-pooler.<region>.aws.neon.tech`); the direct string is the identical value
+with that segment removed (`ep-xxxx.<region>.aws.neon.tech`). Both keep the
+`postgresql+psycopg://` scheme and every other part of the string unchanged. `.env.example`
+documents this alongside `DATABASE_URL` and points back here for the procedure; this is the one
+place the procedure itself is written down.
+
+## Procedure
+
+Run this once per merge to `main` whose diff touches `infra/migrations/versions/`, before or
+immediately after the deploy that carries it reaches production — a deploy that ships an
+unapplied migration is caught by `schema_out_of_date` (T394), not prevented by it.
+
+1. Get the direct-endpoint connection string from the Neon console: **Dashboard → Connection
+   Details → toggle "Pooled connection" off.**
+2. Export it as `DATABASE_URL` in the shell you run the next command from — nowhere else:
+
+   ```sh
+   export DATABASE_URL='postgresql+psycopg://user:password@ep-xxxx.<region>.aws.neon.tech/dbname?sslmode=require'
+   ```
+
+3. From the repository root, apply every pending revision:
+
+   ```sh
+   uv run alembic upgrade head
+   ```
+
+4. Confirm the database is at head and the models agree with it:
+
+   ```sh
+   uv run alembic check
+   ```
+
+5. Once the deploy is live, confirm `GET /api/health`'s `schema_revision` field (T394) matches
+   the revision just applied.
+6. Close the shell, or explicitly `unset DATABASE_URL`, so the direct-endpoint credential does
+   not linger in a long-running session.
+
+Never export the direct-endpoint value into the Vercel project's environment variables. That is
+the value the app would then use for every request, defeating the pooling `docs/adr/0002-hosting.md`
+and R10 (`docs/risks.md`) both depend on.

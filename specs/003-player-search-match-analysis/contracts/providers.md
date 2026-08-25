@@ -27,6 +27,9 @@ class PlayerSearchResult:
     country: str | None
     games_played: int | None
     clan: str | None
+    # The source's own claim, carried unverified (constitution IX 3.0.0). Never used to link
+    # or merge profiles — see "The fields, and the one rule on them" below.
+    unverified_steam_id: str | None
 
 @dataclass(frozen=True)
 class PlayerSearchPage:
@@ -34,18 +37,30 @@ class PlayerSearchPage:
     has_more: bool
 ```
 
-### The fields that are not there
+### The fields, and the one rule on them
 
-`PlayerSearchResult` has no `steam_id`, no `shared`, no `shared_history` and no `linked_profiles`,
-and this is the substance of FR-004b rather than an omission. The source carries all four
-(`docs/data-sources.md` §3's trap), and they are the same unverifiable account-linking claim
-001's FR-045 refuses.
+`PlayerSearchResult` carries `profile_id`, `alias`, `country`, `games_played`, `clan` and
+`unverified_steam_id`. The last is new: constitution IX at 3.0.0 (2026-08-24) treats every field the
+AoE2 DE APIs serve as public and keeps it so, which retired FR-004b's strip.
 
-The enforcement is the absence of the field, not a filter. A value stripped in a router has already
-existed in memory, in a log line and in a traceback; a value with nowhere to be assigned has not.
-This provider already demonstrates the pattern for `linkedProfiles` — its module docstring records
-that the field "is not read anywhere below, deliberately" — and the search parser follows it exactly:
-it reads `profileId`, `name`, `country`, `games`, `clan` and the pagination fields, and no others.
+Its name is the requirement rather than a comment on it. It is `unverified_steam_id` and not
+`steam_id` so that **a claim this service has not verified** cannot be read as a fact by a consumer
+who never opened this file. A verified Steam sign-in is the only account link this project vouches
+for (001 FR-006), and presenting an unchecked third-party assertion beside one without the
+distinction is an accuracy fault independent of how the data is classified.
+
+What did not change, and is the half worth testing: it MUST NOT be used to infer, suggest or act
+upon a relationship between profiles the user has not proven by signing in — no linking, no merging,
+no feature treating two profiles as one person on that basis. That is 001's FR-045 minus the half
+the 2026-08-24 decision removed.
+
+`shared`, `shared_history` and `linked_profiles` stay absent, and not as a residue of FR-004b.
+`shared` has no known meaning — `docs/data-sources.md` §3 measured both values across 200 records and
+says "Do not act on it", so a field nothing may act on is a field with nowhere to be assigned.
+`shared_history` is a preference this service neither honours nor circumvents (constitution IX), and
+carrying it would invite a consumer to do one or the other. `linked_profiles` is the same
+unverifiable claim at a different shape, and nothing reads it — the module docstring records that it
+"is not read anywhere below, deliberately", and that stands.
 
 ### Hidden profiles — there are none to honour
 

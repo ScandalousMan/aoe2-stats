@@ -33,6 +33,9 @@ export interface SearchBoxProps {
   /** Only called from the `failed` state's "Try again" action (§5). The `rate-limited` state needs
    * no retry callback: `Input` re-enables itself the instant the countdown reaches zero. */
   onRetry?: () => void
+  /** Forwarded, unchanged, to every `PlayerResultRow` (T388) — see that component's own doc for
+   * what it does. */
+  onNavigate?: (href: string) => void
   label?: string
   className?: string
 }
@@ -55,6 +58,7 @@ export function SearchBox({
   debounceMs = DEFAULT_DEBOUNCE_MS,
   state,
   onRetry,
+  onNavigate,
   label = 'Search a player',
   className,
 }: SearchBoxProps) {
@@ -149,6 +153,7 @@ export function SearchBox({
           rateLimitId={rateLimitId}
           skeletonRows={lastResultCount.current}
           onRetry={onRetry}
+          onNavigate={onNavigate}
         />
       </div>
     </div>
@@ -161,12 +166,14 @@ function ResultsRegionContent({
   rateLimitId,
   skeletonRows,
   onRetry,
+  onNavigate,
 }: {
   state: SearchBoxState
   secondsLeft: number
   rateLimitId: string
   skeletonRows: number
   onRetry?: () => void
+  onNavigate?: (href: string) => void
 }) {
   switch (state.status) {
     // Deliberately not a `Callout`: idle is not an outcome (§5). Wrapping the very first thing a
@@ -190,11 +197,19 @@ function ResultsRegionContent({
       )
 
     case 'rate-limited':
+      // T388: once the countdown reaches zero, `Input` re-enables itself immediately (§5) — but
+      // the sentence used to keep reading "Try again in 0s." forever, until the user typed
+      // something new. Zero is no longer a wait, so it gets its own, settled wording and tone
+      // rather than a countdown that stopped counting.
       return (
         <div id={rateLimitId}>
           <Callout
-            tone="warning"
-            heading={`You're searching too quickly. Try again in ${secondsLeft}s.`}
+            tone={secondsLeft > 0 ? 'warning' : 'info'}
+            heading={
+              secondsLeft > 0
+                ? `You're searching too quickly. Try again in ${secondsLeft}s.`
+                : 'You can search again now.'
+            }
           />
         </div>
       )
@@ -243,7 +258,7 @@ function ResultsRegionContent({
             <ul className="flex flex-col gap-3">
               {results.map((result) => (
                 <li key={result.profileId}>
-                  <PlayerResultRow result={result} />
+                  <PlayerResultRow result={result} onNavigate={onNavigate} />
                 </li>
               ))}
             </ul>

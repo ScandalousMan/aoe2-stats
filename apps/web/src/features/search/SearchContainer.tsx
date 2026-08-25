@@ -79,6 +79,10 @@ export function SearchContainer() {
           onSearch={(query) => void runSearch(query)}
           state={state}
           onRetry={() => void runSearch(lastQueryRef.current)}
+          // T388: `PlayerResultRow` renders a real `<a href>` so it degrades gracefully, but a
+          // plain click routes through here instead of forcing a full document reload — the same
+          // discipline every other navigation in this container already follows.
+          onNavigate={(href) => void navigate({ to: href })}
         />
       </div>
     </main>

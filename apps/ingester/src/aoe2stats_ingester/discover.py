@@ -90,13 +90,91 @@ _DISCOVERY_BATCH_SIZE = 10
 
 #: `matches.source` — every match this stage discovers came from the one `MatchHistoryProvider`
 #: implementation wired up today (`packages/providers/src/aoe2stats_providers/relic/matches.py`).
-_MATCH_SOURCE = "relic"
+#: Public (no leading underscore): 003's `GET /api/players/{profile_id}/matches` (T328,
+#: `apps/api/src/aoe2stats_api/routers/players.py`) reuses this exact value for the identical
+#: reason it reuses `upsert_match`/`touch_aoe_profile`/`upsert_match_player` below — one source
+#: name for a match discovered either path.
+MATCH_SOURCE = "relic"
 
 
 def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
     """Split `items` into consecutive slices of at most `size`, preserving order."""
     for start in range(0, len(items), size):
         yield items[start : start + size]
+
+
+# --- Persistence, shared with `apps/api`'s on-demand third-party history route (T328) -----------
+#
+# Module-level, not `DiscoverStage` methods, precisely so they can be called without constructing
+# a whole stage (its consenting-profile query, its rating refresh, its capture enqueue — none of
+# which `GET /api/players/{profile_id}/matches` wants: FR-012 forbids that route from beginning
+# capture for a third party at all). `DiscoverStage.__call__` below calls these same three
+# functions for its own, consenting-profile discovery cycle — one persistence path, per
+# `CLAUDE.md`'s "reuse what exists" and this task's own instruction not to invent a second one.
+
+
+async def touch_aoe_profile(session: AsyncSession, profile_id: int) -> None:
+    """Ensure an `aoe_profiles` row exists for `profile_id` and record that it was seen just now.
+    See the module docstring for why `alias` is only ever set on first insert here, never
+    overwritten on an existing row.
+    """
+    now = datetime.now(UTC)
+    statement = (
+        pg_insert(AoeProfile)
+        .values(
+            profile_id=profile_id,
+            alias=str(profile_id),
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        .on_conflict_do_update(
+            index_elements=[AoeProfile.profile_id],
+            set_={"last_seen_at": now},
+        )
+    )
+    await session.execute(statement)
+
+
+async def upsert_match(session: AsyncSession, raw_match: RawMatch) -> None:
+    """`ON CONFLICT DO UPDATE` on `matches.game_id`: a match discovered again (the shared-match
+    case, or simply re-polled the next day before its replay is captured) gets its row replaced
+    wholesale with the freshest response, `raw_payload` included — never merged field by field,
+    which could otherwise keep a value the provider has since corrected.
+    """
+    values: dict[str, Any] = {
+        "game_id": raw_match.game_id,
+        "leaderboard_id": raw_match.leaderboard_id,
+        "map_name": raw_match.map_name,
+        "patch": raw_match.patch,
+        "started_at": raw_match.started_at,
+        "completed_at": raw_match.completed_at,
+        "duration_seconds": raw_match.duration_seconds,
+        "source": MATCH_SOURCE,
+        "raw_payload": raw_match.raw_payload,
+    }
+    statement = (
+        pg_insert(Match)
+        .values(**values)
+        .on_conflict_do_update(
+            index_elements=[Match.game_id],
+            set_={key: value for key, value in values.items() if key != "game_id"},
+        )
+    )
+    await session.execute(statement)
+
+
+async def upsert_match_player(session: AsyncSession, game_id: int, profile_id: int) -> None:
+    """`ON CONFLICT DO NOTHING` on the `(game_id, profile_id)` primary key: this stage does not yet
+    know a player's civ, team, colour or result (`MatchHistoryProvider.recent_matches` does not
+    carry them — see `contracts/providers.md`), so there is nothing to refresh on a repeat
+    sighting, only a row whose *existence* must be guaranteed.
+    """
+    statement = (
+        pg_insert(MatchPlayer)
+        .values(game_id=game_id, profile_id=profile_id)
+        .on_conflict_do_nothing(index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id])
+    )
+    await session.execute(statement)
 
 
 class DiscoverStage:
@@ -150,13 +228,11 @@ class DiscoverStage:
                 continue
             async with session_scope(self._session_factory) as session:
                 for raw_match in raw_matches:
-                    await self._upsert_match(session, raw_match)
+                    await upsert_match(session, raw_match)
                     matches_discovered += 1
                     for player_profile_id in raw_match.player_profile_ids:
-                        await self._touch_aoe_profile(session, player_profile_id)
-                        await self._upsert_match_player(
-                            session, raw_match.game_id, player_profile_id
-                        )
+                        await touch_aoe_profile(session, player_profile_id)
+                        await upsert_match_player(session, raw_match.game_id, player_profile_id)
                         if player_profile_id in consenting_profile_ids:
                             enqueued = await self._enqueue_capture(
                                 session, raw_match, player_profile_id
@@ -222,69 +298,6 @@ class DiscoverStage:
                     # (`apps/api/src/aoe2stats_api/routers/auth.py`) makes the same choice.
                 )
         return len(snapshots)
-
-    async def _touch_aoe_profile(self, session: AsyncSession, profile_id: int) -> None:
-        """Ensure an `aoe_profiles` row exists for `profile_id` and record that it was seen just
-        now. See the module docstring for why `alias` is only ever set on first insert here, never
-        overwritten on an existing row.
-        """
-        now = datetime.now(UTC)
-        statement = (
-            pg_insert(AoeProfile)
-            .values(
-                profile_id=profile_id,
-                alias=str(profile_id),
-                first_seen_at=now,
-                last_seen_at=now,
-            )
-            .on_conflict_do_update(
-                index_elements=[AoeProfile.profile_id],
-                set_={"last_seen_at": now},
-            )
-        )
-        await session.execute(statement)
-
-    async def _upsert_match(self, session: AsyncSession, raw_match: RawMatch) -> None:
-        """`ON CONFLICT DO UPDATE` on `matches.game_id`: a match discovered again (the shared-match
-        case, or simply re-polled the next day before its replay is captured) gets its row
-        replaced wholesale with the freshest response, `raw_payload` included — never merged field
-        by field, which could otherwise keep a value the provider has since corrected.
-        """
-        values: dict[str, Any] = {
-            "game_id": raw_match.game_id,
-            "leaderboard_id": raw_match.leaderboard_id,
-            "map_name": raw_match.map_name,
-            "patch": raw_match.patch,
-            "started_at": raw_match.started_at,
-            "completed_at": raw_match.completed_at,
-            "duration_seconds": raw_match.duration_seconds,
-            "source": _MATCH_SOURCE,
-            "raw_payload": raw_match.raw_payload,
-        }
-        statement = (
-            pg_insert(Match)
-            .values(**values)
-            .on_conflict_do_update(
-                index_elements=[Match.game_id],
-                set_={key: value for key, value in values.items() if key != "game_id"},
-            )
-        )
-        await session.execute(statement)
-
-    async def _upsert_match_player(
-        self, session: AsyncSession, game_id: int, profile_id: int
-    ) -> None:
-        """`ON CONFLICT DO NOTHING` on the `(game_id, profile_id)` primary key: this stage does
-        not yet know a player's civ, team, colour or result (`MatchHistoryProvider.recent_matches`
-        does not carry them — see `contracts/providers.md`), so there is nothing to refresh on a
-        repeat sighting, only a row whose *existence* must be guaranteed.
-        """
-        statement = (
-            pg_insert(MatchPlayer)
-            .values(game_id=game_id, profile_id=profile_id)
-            .on_conflict_do_nothing(index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id])
-        )
-        await session.execute(statement)
 
     async def _enqueue_capture(
         self, session: AsyncSession, raw_match: RawMatch, profile_id: int

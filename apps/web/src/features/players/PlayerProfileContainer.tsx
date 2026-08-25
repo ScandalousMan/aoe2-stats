@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { ProfileSummary } from 'design-system'
+import { Button, ProfileSummary } from 'design-system'
 import type { ProfileSummaryStatus } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { playerProfileQueryOptions } from './api'
@@ -58,6 +58,20 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
 
   return (
     <main className="min-h-svh bg-background">
+      {/* T383: `ProfileSummary`'s own "Back to search" (its `searchHref` below) renders only for
+       * `status === 'not-found'`, where it collapses the whole component to one callout — a third
+       * party's profile that *did* resolve had no way back to `/search` except the browser's own
+       * back button. Suppressed for `not-found` itself so the two links do not double up.
+       * `onClick` + `navigate()`, not `Button`'s `href`, for the same reason as
+       * `DashboardContainer.tsx`'s new entry point: this is a SPA, and `href` renders a raw `<a>`
+       * that forces a full document reload. */}
+      {status !== 'not-found' && (
+        <div className="flex justify-start px-4 pt-4 md:px-6">
+          <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+            Back to search
+          </Button>
+        </div>
+      )}
       <ProfileSummary
         subject="other"
         authenticated={session?.authenticated ?? false}
@@ -67,9 +81,10 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
         aliasObservedAtLabel={
           profile?.alias_observed_at ? formatAliasObservedAt(profile.alias_observed_at) : undefined
         }
-        // `ProfileSummary`'s own default points at `/players` (a placeholder written before this
-        // task decided the real route) — `search.tsx` is the actual search route T322 wires, so
-        // this container overrides it explicitly rather than letting the two silently disagree.
+        // `ProfileSummary`'s own default is `/search` too (T388 fixed the stale `/players`
+        // placeholder) — kept explicit here so this container never silently drifts from it again.
+        // Reached only from its `not-found` callout now that the general case has its own link
+        // above.
         searchHref="/search"
         onRetry={() => void profileQuery.refetch()}
       />

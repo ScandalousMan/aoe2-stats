@@ -1,6 +1,24 @@
-"""The players router (T319): `GET /api/players/search`, `GET /api/players/{profile_id}`,
-`GET /api/players/{profile_id}/ratings`. `contracts/http-api.md`'s "Players" section and
-`apps/api/tests/test_players_routes.py` (T317) are ground truth for every shape below.
+"""The players router (T319, T328): `GET /api/players/search`, `GET /api/players/{profile_id}`,
+`GET /api/players/{profile_id}/ratings`, `GET /api/players/{profile_id}/matches`.
+`contracts/http-api.md`'s "Players" section, `apps/api/tests/test_players_routes.py` (T317) and
+`apps/api/tests/test_players_history.py`/`test_third_party_history.py` (T325, T326) are ground
+truth for every shape below.
+
+**`GET /api/players/{profile_id}/matches` (T328, FR-007, FR-011, FR-012).** Unlike the other three
+routes here, this one writes: `spec.md`'s own Assumptions state "a third party's match history is
+read from the source on demand and is no deeper than the source provides" — so every call fetches
+`profile_id`'s recent matches live from Relic and persists whatever comes back verbatim
+(constitution III, FR-011), through the *exact* upsert path `aoe2stats_ingester.discover`'s
+`DiscoverStage` already uses for a consenting user's own history (`upsert_match`,
+`touch_aoe_profile`, `upsert_match_player`, called directly rather than through the whole stage,
+which also refreshes ratings and enqueues captures system-wide — neither of which this route may
+do: FR-012 forbids beginning capture for a third party at all). A source outage does not fail the
+request: any failure of that fetch is swallowed and the route serves whatever this service already
+knows, the same honesty discipline `search.py` applies for FR-004d — see
+`_refresh_third_party_history`'s own docstring for why that catch is deliberately broader than
+`ProviderError` alone. The response row shape is imported directly from `routers/matches.py`
+(`match_row_json`) rather than restated, so the two routes can never drift on the one shape
+`contracts/http-api.md` promises is identical.
 
 **"Any profile" is the whole point, and "any profile" is exactly what does not change here.**
 `routers/profiles.py`'s `/api/profiles/*` means "mine" and is ownership-scoped throughout
@@ -68,16 +86,20 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
+from aoe2stats_api.routers.matches import match_row_json
 from aoe2stats_api.search import search_players as run_search
+from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
 from aoe2stats_providers.wiring import (
     CircuitBreaker,
     build_async_client_resources,
@@ -85,9 +107,93 @@ from aoe2stats_providers.wiring import (
 )
 from aoe2stats_storage.models import AoeProfile, ProviderCall
 from aoe2stats_storage.models import Session as SessionRow
+from aoe2stats_storage.repositories.matches import DEFAULT_PAGE_SIZE, MatchesRepository
 from aoe2stats_storage.repositories.ratings import RatingsRepository
 
 router = APIRouter(tags=["players"])
+
+# Match-history traffic against Relic's own `getRecentMatchHistory` (T328) — the identical host,
+# timeout and rate discipline `_build_relic_provider` already wires for `RelicProfileProvider` in
+# `routers/auth.py`, duplicated here rather than imported: this router's own convention, stated in
+# the module docstring, of a self-contained file over a four-line cross-router import.
+_RELIC_RATE_PER_SECOND = 5.0
+_RELIC_HTTP_CLIENT, _RELIC_RATE_LIMITER = build_async_client_resources(_RELIC_RATE_PER_SECOND)
+
+
+def _relic_call_sink(db_session: AsyncSession) -> Callable[[ProviderCallRecord], Awaitable[None]]:
+    """Writes a `provider_calls` row on its **own**, short-lived session — never queued onto
+    `db_session` itself. Mirrors `routers/auth.py`'s `_async_call_sink` byte for byte, and is not
+    `_companion_call_sink` above: Relic is a provider that *can* fail mid-request
+    (`RelicMatchHistoryProvider.recent_matches`, unlike `CompanionEnrichmentProvider`, which never
+    raises — module docstring), and `session_scope` (`deps.py`) rolls the whole request
+    transaction back on any unhandled exception — a row added to `db_session` for the very call
+    that raised would be rolled back with it, losing exactly the call an operator most needs
+    recorded (constitution III)."""
+
+    async def _sink(record: ProviderCallRecord) -> None:
+        bind = db_session.get_bind()
+        assert isinstance(bind, Engine), f"expected an Engine bind, got {type(bind)}"
+        audit_engine = AsyncEngine(bind)
+        async with AsyncSession(bind=audit_engine) as audit_session:
+            audit_session.add(
+                ProviderCall(
+                    provider=record.provider,
+                    endpoint=record.endpoint,
+                    status_code=record.status_code,
+                    duration_ms=record.duration_ms,
+                    called_at=record.called_at,
+                    rate_limited=record.rate_limited,
+                )
+            )
+            await audit_session.commit()
+
+    return _sink
+
+
+def _build_match_history_provider(db_session: AsyncSession) -> RelicMatchHistoryProvider:
+    return RelicMatchHistoryProvider(
+        client=_RELIC_HTTP_CLIENT,
+        timeout_seconds=_PROVIDER_TIMEOUT_SECONDS,
+        rate_limiter=_RELIC_RATE_LIMITER,
+        call_sink=_relic_call_sink(db_session),
+    )
+
+
+async def _refresh_third_party_history(db_session: AsyncSession, profile_id: int) -> None:
+    """FR-007/FR-011, "read from the source on demand" (`spec.md`'s own Assumptions): fetch
+    `profile_id`'s recent matches live from Relic and persist them through the exact upsert path
+    `aoe2stats_ingester.discover.DiscoverStage` already uses for a consenting user's own history —
+    `discover.upsert_match`/`discover.touch_aoe_profile`/`discover.upsert_match_player`, called
+    directly rather than through a whole `DiscoverStage` (which also refreshes ratings system-wide
+    and enqueues captures for every consenting profile it finds, neither of which this route may
+    do: FR-012 forbids beginning capture for a third party at all, and this route touches only the
+    one profile it was asked about).
+
+    A source outage does not fail the request: any failure of this fetch is swallowed and the
+    route falls back to whatever this service already knows about `profile_id`, the same honesty
+    discipline `search.py` already applies for FR-004d. Deliberately broader than `ProviderError`
+    alone: this call is the one place in the codebase where a live Relic fetch is *optional* —
+    every other caller of `RelicMatchHistoryProvider`/`RelicProfileProvider` (the ingester, the
+    sign-in flow) needs a failure to propagate, because there is a person or a process waiting on
+    a real answer. This route already has one, drawn from storage a moment later regardless of
+    whether the refresh above succeeded, so nothing here is lost by treating "the fetch could not
+    be completed, for any reason" and "the fetch reported a provider failure" identically. This
+    function never enqueues a `replay_captures` row.
+    """
+    provider = _build_match_history_provider(db_session)
+    try:
+        raw_matches = await provider.recent_matches([profile_id])
+    except Exception:
+        # See the docstring above: broader than `ProviderError` on purpose, because this fetch is
+        # optional and its failure, however it is shaped, must never turn into a failed read.
+        return
+
+    for raw_match in raw_matches:
+        await discover.upsert_match(db_session, raw_match)
+        for player_profile_id in raw_match.player_profile_ids:
+            await discover.touch_aoe_profile(db_session, player_profile_id)
+            await discover.upsert_match_player(db_session, raw_match.game_id, player_profile_id)
+
 
 # FR-005's own bucket name (`RateLimitCounter`'s docstring, `ratelimit.py`) and the fixed window
 # "per minute" already names — a structural constant of what "per minute" means, not a tuning
@@ -337,4 +443,54 @@ async def get_player_rating_history(
             }
             for snapshot in snapshots
         ]
+    }
+
+
+# --- GET /api/players/{profile_id}/matches — FR-007, FR-008a property 1, FR-011, FR-012 ---------
+
+
+@router.get("/players/{profile_id}/matches")
+async def get_player_match_history(
+    profile_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    cursor: str | None = None,
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, gt=0),
+) -> dict[str, Any]:
+    """FR-007: any player's matches, newest first, with opponent, map, civilisation, result,
+    rating change and duration per row — `contracts/http-api.md`'s "the same row shape
+    `GET /api/matches` already returns", served here via `match_row_json` (module docstring) so
+    the two routes can never present the same facts two different ways (FR-008).
+
+    `_refresh_third_party_history` runs first, on every call: this route reads the source live
+    (module docstring's "on demand" note) before answering from storage, so a player this service
+    has never discovered through a consenting user's own history still gets a real answer rather
+    than a permanently empty one. A player with no matches at all — after that refresh — gets an
+    empty list under `200`, never an error (`test_players_history.py`'s own "not an error" case);
+    `404` is reserved for a `profile_id` this service has never itself observed at all
+    (`_profile_not_found`, the one remaining `404` module-wide)."""
+    secret = settings.app_secret_key.get_secret_value()
+    _require_session(await _current_session_row(request, db_session, secret))
+
+    profile = await db_session.get(AoeProfile, profile_id)
+    if profile is None:
+        raise _profile_not_found()
+
+    await _refresh_third_party_history(db_session, profile_id)
+
+    repository = MatchesRepository(db_session)
+    try:
+        page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
+    except ValueError as exc:
+        raise APIError(
+            status_code=422,
+            code="validation_error",
+            message="The request could not be validated.",
+            detail={"errors": [str(exc)]},
+        ) from exc
+
+    return {
+        "matches": [match_row_json(row) for row in page.matches],
+        "next_cursor": page.next_cursor,
     }

@@ -42,6 +42,10 @@ ENV_TOKEN_ALLOWLIST = {
     # `aoe2stats_ingester.run.DEFAULT_STAGES`, named by T060 because its staying `()` is the gap
     # that task closed.
     "DEFAULT_STAGES",
+    # `aoe2stats_storage.revision.EXPECTED_SCHEMA_REVISION`, named by T394 because the whole point
+    # of that task is that the value is compiled into the package rather than read from the
+    # environment or the filesystem — an env key is precisely what it must not be.
+    "EXPECTED_SCHEMA_REVISION",
 }
 
 # A `.env.example` section is behavioural — its keys tune behaviour rather than describe

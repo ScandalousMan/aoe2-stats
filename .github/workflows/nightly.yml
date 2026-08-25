@@ -130,6 +130,25 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+  production-smoke:
+    name: Production smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # T393. The standing net under the same check `smoke.yml` runs on every push to `main`:
+      # that one proves a deploy served, this one proves the deployment still serves a day
+      # later — a configuration value edited by hand in the platform dashboard, a rotated
+      # credential, an expired bucket token and a Neon compute that stopped answering all break
+      # a deployment nobody has pushed to. `/` is static and answers 200 from the CDN through
+      # every one of those, which is why an uptime check on the site itself never noticed.
+      - name: /api/health and /api/me both answer 200
+        run: node scripts/checks/production-health.mjs
+        env:
+          SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://aoe2-stats.com' }}
+
   # TODO(feature-1): enable once T100 lands.
   #
   # free-tier-watch:
@@ -148,7 +167,7 @@ jobs:
   report:
     name: Open an issue on failure
     runs-on: ubuntu-latest
-    needs: [contracts, parser-canary, cron-liveness, capture-audit, alert-audit]
+    needs: [contracts, parser-canary, cron-liveness, capture-audit, alert-audit, production-smoke]
     if: failure()
     steps:
       - uses: actions/github-script@v7
@@ -167,6 +186,7 @@ jobs:
               '- cron-liveness failed -> the Vercel cron has likely stopped firing; see `docs/adr/0002-hosting.md`',
               '- capture-audit failed -> a replay expired unarchived, is stuck past its capture deadline, or SC-002\'s archival lag has slipped; see `docs/risks.md`',
               '- alert-audit failed -> an unacknowledged severity-1 alert is sitting in `alerts`; investigate before acknowledging it',
+              '- production-smoke failed -> the deployment is not serving; the job log names the cause, and `configuration_invalid` names the missing keys',
             ].join('\n');
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner, repo: context.repo.repo,

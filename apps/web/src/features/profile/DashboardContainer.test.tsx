@@ -306,6 +306,22 @@ describe('DashboardContainer', () => {
     expect(screen.getByText('ArchonQueen')).toBeInTheDocument()
   })
 
+  it('clicking "Search players" navigates to /search — T383, the entry point to US1', async () => {
+    installFakeApi({
+      session: baseSession({
+        profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
+      }),
+      profiles: [baseProfile()],
+    })
+    const user = userEvent.setup()
+    renderDashboard()
+
+    await screen.findByText('ArchonQueen')
+    await user.click(screen.getByRole('button', { name: 'Search players' }))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/search' })
+  })
+
   it('signing out calls POST /api/auth/signout and navigates to /sign-in — quickstart.md scenario 1', async () => {
     const fake = installFakeApi({
       session: baseSession({

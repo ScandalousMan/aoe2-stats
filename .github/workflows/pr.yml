@@ -22,6 +22,7 @@ jobs:
       specs: ${{ steps.filter.outputs.specs }}
       design: ${{ steps.filter.outputs.design }}
       migrations: ${{ steps.filter.outputs.migrations }}
+      config: ${{ steps.filter.outputs.config }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -49,6 +50,11 @@ jobs:
               - 'packages/design-system/**'
             migrations:
               - 'infra/migrations/**'
+            config:
+              - 'apps/api/src/aoe2stats_api/settings.py'
+              - '.env.example'
+              - 'scripts/checks/config-preflight.mjs'
+              - 'vercel.json'
             specs:
               - 'specs/**'
               - '.env.example'
@@ -76,6 +82,26 @@ jobs:
             uv run scripts/checks/spec_lint.py --feature "$feature" || status=1
           done
           exit $status
+
+  config:
+    name: Configuration — settings.py and .env.example agree
+    needs: changes
+    if: needs.changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # T391, `--contract` half. The other half — every declared key is actually set on the
+      # deployment target — runs in `vercel.json`'s build command, because it is the only place
+      # with a view of both the repository and the environment the code will run in; CI can see
+      # one of the two. What runs here is the agreement between `settings.py` and `.env.example`
+      # that the build-time half depends on being true: the preflight extracts its key list from
+      # `settings.py` with a pattern, and a pattern that silently stops matching would keep
+      # passing while covering fewer keys. This job is what makes that impossible to miss, on the
+      # pull request that would introduce it rather than on the deploy that would suffer it.
+      - run: node scripts/checks/config-preflight.mjs --contract
 
   python:
     name: Python — lint, types, tests

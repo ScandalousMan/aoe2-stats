@@ -67,8 +67,9 @@ export interface ProfileSummaryProps {
   /** The favourites seam (003 FR-013). This component renders the slot in `IdentityBar` when
    * `subject="other"`; it does not build the toggle itself — that is US5 (T348). */
   favouriteToggle?: ReactNode
-  /** Where "back to search" points from the not-found state. Defaults to `/players` (003 T322's
-   * route). */
+  /** Where "back to search" points from the not-found state. Defaults to `/search`, the actual
+   * search route (003 T322/T383's `apps/web/src/routes/search.tsx`) — `/players` was never a real
+   * route and only worked here because `PlayerProfileContainer` always overrides it. */
   searchHref?: string
   primaryChangeInFlight?: boolean
   unlinkInFlight?: boolean
@@ -96,7 +97,7 @@ export function ProfileSummary({
   freshnessLine,
   aliasObservedAtLabel,
   favouriteToggle,
-  searchHref = '/players',
+  searchHref = '/search',
   primaryChangeInFlight = false,
   unlinkInFlight = false,
   manageError,
