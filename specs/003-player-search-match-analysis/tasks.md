@@ -531,7 +531,7 @@ exactly that.
   matches and ratings are still written in the same cycle, so "objected" and "unlinked" can never
   collapse into one code path. FR-016's point-of-view limit is unchanged and MUST still hold: no
   capture is enqueued for any participant who is not the linked user themselves
-- [ ] T403 Replace the consent columns with an objection column in
+- [x] T403 Replace the consent columns with an objection column in
   `packages/storage/src/aoe2stats_storage/models.py` and a migration in `infra/migrations/`:
   `users.ingest_consent_at` and `users.ingest_consent_withdrawn_at` give way to
   `users.archival_objected_at`, a single nullable timestamp — null means archiving, set means
