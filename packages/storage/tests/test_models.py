@@ -55,8 +55,7 @@ def test_users_carries_no_credential_columns() -> None:
         "id",
         "created_at",
         "allowlisted_at",
-        "ingest_consent_at",
-        "ingest_consent_withdrawn_at",
+        "archival_objected_at",
     }
     # FR-006: no password column, no email column, no reset token. A column that does not exist
     # cannot leak.
