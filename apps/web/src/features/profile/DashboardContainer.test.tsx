@@ -30,20 +30,21 @@ interface FakeSession {
   authenticated: true
   user_id: string
   allowlisted: boolean
-  ingest_consent: boolean
-  ingest_consent_at: string | null
-  ingest_consent_withdrawn_at: string | null
+  archival_objected: boolean
+  archival_objected_at: string | null
   profiles: unknown[]
 }
 
+// `false` / `null` is deliberately the default here, not a placeholder: constitution IX 4.0.0
+// inverted the rule, and this is the fixture shape of "a linked user who has never answered any
+// question" — the exact case the amendment says is archiving, not awaiting an answer.
 function baseSession(overrides: Partial<FakeSession> = {}): FakeSession {
   return {
     authenticated: true,
     user_id: 'user-1',
     allowlisted: true,
-    ingest_consent: false,
-    ingest_consent_at: null,
-    ingest_consent_withdrawn_at: null,
+    archival_objected: false,
+    archival_objected_at: null,
     profiles: [],
     ...overrides,
   }
@@ -114,18 +115,19 @@ function installFakeApi(initial: { session: FakeSession; profiles: ApiProfile[] 
     if (path === '/api/auth/signout' && method === 'POST') {
       return jsonResponse(null)
     }
-    if (path === '/api/privacy/consent' && method === 'POST') {
-      const body = JSON.parse(String(init?.body)) as { granted: boolean }
+    if (path === '/api/privacy/archival-objection' && method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as { objected: boolean }
       const recordedAt = '2026-08-10T00:00:00Z'
+      // Mirrors the real router (T405): objecting records a fresh timestamp, resuming clears it
+      // back to null — the same shape a user who never objected reads as.
       session = {
         ...session,
-        ingest_consent: body.granted,
-        ingest_consent_at: session.ingest_consent_at ?? recordedAt,
-        ingest_consent_withdrawn_at: body.granted ? null : recordedAt,
+        archival_objected: body.objected,
+        archival_objected_at: body.objected ? recordedAt : null,
       }
       return jsonResponse({
-        ingest_consent_at: session.ingest_consent_at,
-        ingest_consent_withdrawn_at: session.ingest_consent_withdrawn_at,
+        archival_objected: session.archival_objected,
+        archival_objected_at: session.archival_objected_at,
       })
     }
 
@@ -192,7 +194,12 @@ describe('DashboardContainer', () => {
     expect(screen.queryByText('ArchonQueen')).not.toBeInTheDocument()
   })
 
-  it('shows the onboarding consent step when consent has never been answered', async () => {
+  it('archives by default for a linked user who has never answered any question — constitution IX 4.0.0, the inverted default', async () => {
+    // `baseSession()`'s default (`archival_objected: false`, `archival_objected_at: null`) is
+    // exactly the fixture for "never answered": there is no third state left to render, and no
+    // interaction happens before this assertion. An implementation that reintroduced the retired
+    // gate would show a question here instead of a running state, which is what every assertion
+    // below rules out.
     installFakeApi({
       session: baseSession({
         profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
@@ -202,34 +209,21 @@ describe('DashboardContainer', () => {
     renderDashboard()
 
     await screen.findByText('ArchonQueen')
-    expect(screen.getByRole('button', { name: 'Archive my replays' })).toBeInTheDocument()
-  })
-
-  it('shows the settings consent step, "accepted", once consent is granted — never "unanswered"', async () => {
-    installFakeApi({
-      session: baseSession({
-        ingest_consent: true,
-        ingest_consent_at: '2026-08-01T00:00:00Z',
-        profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
-      }),
-      profiles: [baseProfile()],
-    })
-    renderDashboard()
-
-    await screen.findByText('ArchonQueen')
-    expect(screen.queryByRole('button', { name: 'Archive my replays' })).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Archival is on.')
+    expect(screen.getByRole('button', { name: 'Object to archival' })).toBeInTheDocument()
+    // The retired gate does not resurface under any name: no accept/decline pair, no "not now",
+    // no checkbox, no question awaiting an answer.
+    expect(screen.queryByRole('button', { name: /accept/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /decline/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/archive my replays/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
-  it('shows the settings consent step, "declined", for a withdrawn consent — the front-end half of T037a', async () => {
-    // A user who granted consent and then withdrew it: `ingest_consent` is false but
-    // `ingest_consent_at` is not null. `consentDecisionFromSession` must read this as
-    // 'declined', and the container must show the settings variant, not 'unanswered'/onboarding.
+  it('shows archival off with the recorded date for a user who has objected, and a "Resume archival" switch', async () => {
     installFakeApi({
       session: baseSession({
-        ingest_consent: false,
-        ingest_consent_at: '2026-08-01T00:00:00Z',
-        ingest_consent_withdrawn_at: '2026-08-10T00:00:00Z',
+        archival_objected: true,
+        archival_objected_at: '2026-08-01T00:00:00Z',
         profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
       }),
       profiles: [baseProfile()],
@@ -237,12 +231,15 @@ describe('DashboardContainer', () => {
     renderDashboard()
 
     await screen.findByText('ArchonQueen')
-    expect(screen.queryByRole('button', { name: 'Archive my replays' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Turn on archival' })).toBeInTheDocument()
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('Archival is off.')
+    expect(status).toHaveTextContent('2026')
+    expect(screen.getByRole('button', { name: 'Resume archival' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Object to archival' })).not.toBeInTheDocument()
   })
 
-  it('submitting onboarding consent invalidates the session and flips to the settings variant', async () => {
-    installFakeApi({
+  it('objecting posts to /api/privacy/archival-objection and flips the dashboard to the objected state', async () => {
+    const fake = installFakeApi({
       session: baseSession({
         profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
       }),
@@ -252,11 +249,38 @@ describe('DashboardContainer', () => {
     renderDashboard()
 
     await screen.findByText('ArchonQueen')
-    await user.click(screen.getByRole('button', { name: 'Archive my replays' }))
+    await user.click(screen.getByRole('button', { name: 'Object to archival' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('Archival is on.')
+      expect(screen.getByRole('status')).toHaveTextContent('Archival is off.')
     })
+    expect(screen.getByRole('button', { name: 'Resume archival' })).toBeInTheDocument()
+    expect(fake.fetchMock).toHaveBeenCalledWith(
+      '/api/privacy/archival-objection',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ objected: true }) }),
+    )
+  })
+
+  it('resuming after an objection shows the "Archival resumed." acknowledgement, not the plain steady-state heading', async () => {
+    installFakeApi({
+      session: baseSession({
+        archival_objected: true,
+        archival_objected_at: '2026-08-01T00:00:00Z',
+        profiles: [{ profile_id: 1, alias: 'ArchonQueen', country: 'FR', is_primary: true }],
+      }),
+      profiles: [baseProfile()],
+    })
+    const user = userEvent.setup()
+    renderDashboard()
+
+    await screen.findByText('ArchonQueen')
+    await user.click(screen.getByRole('button', { name: 'Resume archival' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Archival resumed.')
+    })
+    expect(screen.queryByText('Archival is on.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Object to archival' })).toBeInTheDocument()
   })
 
   it('unlinking previews, then confirms, and the profile disappears afterwards', async () => {

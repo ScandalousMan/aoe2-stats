@@ -18,9 +18,8 @@ function validAuthenticatedPayload() {
     authenticated: true,
     user_id: 'user-1',
     allowlisted: true,
-    ingest_consent: true,
-    ingest_consent_at: '2026-08-01T00:00:00Z',
-    ingest_consent_withdrawn_at: null as string | null,
+    archival_objected: false,
+    archival_objected_at: null as string | null,
     profiles: [
       { profile_id: 1, alias: 'ArchonQueen', country: 'FR' as string | null, is_primary: true },
     ],
@@ -76,18 +75,13 @@ describe('assertMeResponse — rejects malformed payloads', () => {
     expect(() => assertMeResponse(payload)).toThrow(ApiResponseShapeError)
   })
 
-  it('rejects a non-boolean ingest_consent — the field the withdrawal defect turned on', () => {
-    const payload = { ...validAuthenticatedPayload(), ingest_consent: 'yes' }
+  it('rejects a non-boolean archival_objected', () => {
+    const payload = { ...validAuthenticatedPayload(), archival_objected: 'yes' }
     expect(() => assertMeResponse(payload)).toThrow(ApiResponseShapeError)
   })
 
-  it('rejects ingest_consent_at that is neither a string nor null', () => {
-    const payload = { ...validAuthenticatedPayload(), ingest_consent_at: 12345 }
-    expect(() => assertMeResponse(payload)).toThrow(ApiResponseShapeError)
-  })
-
-  it('rejects ingest_consent_withdrawn_at that is neither a string nor null', () => {
-    const payload = { ...validAuthenticatedPayload(), ingest_consent_withdrawn_at: false }
+  it('rejects archival_objected_at that is neither a string nor null', () => {
+    const payload = { ...validAuthenticatedPayload(), archival_objected_at: 12345 }
     expect(() => assertMeResponse(payload)).toThrow(ApiResponseShapeError)
   })
 

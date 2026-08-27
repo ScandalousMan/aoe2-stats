@@ -562,14 +562,14 @@ exactly that.
   inverted meaning**, not
   a new one beside the old: leaving `POST /api/privacy/consent` reachable leaves a caller able to
   place a user in a state the data model no longer has
-- [ ] T406 Rebuild `packages/design-system/src/components/ConsentStep/` as the objection control it
+- [x] T406 Rebuild `packages/design-system/src/components/ConsentStep/` as the objection control it
   now is, with its spec in `packages/design-system/specs/` amended first. It renders **archival
   already on** for a user who has answered nothing — today's onboarding variant, which asks a
   question before ingesting, is the retired gate in visual form and must go. What replaces it states
   that archival is running, on what basis, and offers the one switch that stops it. The "how you get
   back in" statements are unaffected by the amendment and stay. Stories cover: archiving (never
   answered), archiving (explicitly resumed), objected, and the write-failed state
-- [ ] T407 Wire T406 into `apps/web/src/features/profile/DashboardContainer.tsx`, then run
+- [x] T407 Wire T406 into `apps/web/src/features/profile/DashboardContainer.tsx`, then run
   `visual-reviewer` locally and `pnpm test:visual --changed` over the stories T406 changed, updating
   baselines in `packages/design-system/__screenshots__/`
 - [ ] T408 Walk the whole inversion once against a real linked profile that has never answered any

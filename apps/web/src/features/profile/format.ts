@@ -63,12 +63,13 @@ export function formatFreshness(
     : `Updated ${relative} (${absolute})`
 }
 
-const recordedAtFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })
+const objectedAtFormat = new Intl.DateTimeFormat('en', { dateStyle: 'long' })
 
-/** `ConsentStep`'s `recordedAt` (consent-step.md §4.4), built from `ingest_consent_at` —
- * `POST /api/privacy/consent`'s own response right after a write, or `GET /api/me`'s
- * `AuthenticatedSession.ingest_consent_at` (T037a) on every later load, since both use the same
- * field name for the same timestamp (contracts/http-api.md). */
-export function formatRecordedAt(iso: string): string {
-  return recordedAtFormat.format(new Date(iso))
+/** `ArchivalControl`'s `objectedAt` (archival-control.md §4.3), built from `archival_objected_at`
+ * — `POST /api/privacy/archival-objection`'s own response right after a write, or `GET /api/me`'s
+ * `AuthenticatedSession.archival_objected_at` (T406) on every later load, since both use the same
+ * field name for the same timestamp (contracts/http-api.md). Renders as "on <date>", matching the
+ * copy `ArchivalControl` composes it into: "Archival is off. You objected {objectedAt}." */
+export function formatObjectedAt(iso: string): string {
+  return `on ${objectedAtFormat.format(new Date(iso))}`
 }

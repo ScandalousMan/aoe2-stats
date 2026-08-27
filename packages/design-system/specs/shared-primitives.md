@@ -1,6 +1,6 @@
 # Shared primitives
 
-The three screen specs in this directory (`sign-in-screen`, `consent-step`, `profile-summary`) all
+The three screen specs in this directory (`sign-in-screen`, `archival-control`, `profile-summary`) all
 lean on the same six small components. They are specified once here so the three screens agree and
 so no implementer has to invent a resting colour at eleven at night.
 

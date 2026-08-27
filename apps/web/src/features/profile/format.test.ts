@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatFreshness,
+  formatObjectedAt,
   formatRank,
   formatRating,
-  formatRecordedAt,
   formatStreak,
   formatWinRate,
 } from './format'
@@ -108,13 +108,13 @@ describe('formatFreshness', () => {
   })
 })
 
-describe('formatRecordedAt', () => {
-  it('formats an ISO timestamp as a readable date and time', () => {
-    const result = formatRecordedAt('2026-08-01T09:30:00Z')
-    // Locale-dependent exact string (Intl.DateTimeFormat), so this asserts the year and month
-    // survive the round trip rather than pinning an exact rendering that would break across CI
-    // timezones.
+describe('formatObjectedAt', () => {
+  it('formats an ISO timestamp as "on <readable date>"', () => {
+    const result = formatObjectedAt('2026-08-01T09:30:00Z')
+    // Locale-dependent exact string (Intl.DateTimeFormat), so this asserts the year and the
+    // leading "on" survive the round trip rather than pinning an exact rendering that would break
+    // across CI timezones.
+    expect(result).toMatch(/^on /)
     expect(result).toContain('2026')
-    expect(result.length).toBeGreaterThan(0)
   })
 })

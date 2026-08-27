@@ -20,12 +20,14 @@ export interface DialogProps {
   /** Body content: plain paragraphs, an inline `Callout`, or both. */
   children?: ReactNode
   /** Rendered first, at `lg` and full width below `md`. Defaults to the `destructive` variant —
-   * both call sites this primitive was extracted from (consent withdrawal, profile unlink) confirm
-   * a consequential action, and a caller confirming something reversible passes its own `variant`. */
+   * the call sites this primitive was extracted from (T035b: archival withdrawal, profile unlink)
+   * confirmed a consequential action, and a caller confirming something reversible passes its own
+   * `variant`. T406 (constitution IX 4.0.0) removed archival withdrawal's own confirmation step —
+   * see `archival-control.md` §3 — so profile unlink is this primitive's one live consumer today. */
   primaryAction: DialogAction
   /** Rendered second. Its `onClick` is also what Escape calls: the accidental key must never be
-   * the one that takes the consequential path (consent-step.md §9), so Escape is wired to the
-   * cancelling action rather than exposed as a separate prop a caller could get backwards. */
+   * the one that takes the consequential path, so Escape is wired to the cancelling action rather
+   * than exposed as a separate prop a caller could get backwards. */
   secondaryAction: DialogAction
   className?: string
 }

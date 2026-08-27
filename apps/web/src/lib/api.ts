@@ -116,8 +116,9 @@ export const api = {
 
 // --- GET /api/me --------------------------------------------------------------------------
 //
-// Shape mirrors what contracts/http-api.md promises today: "Session, allowlist state, consent
-// state, linked profiles, which is primary", plus the documented `{"authenticated": false}` when
+// Shape mirrors what contracts/http-api.md promises today: "Session, allowlist state, archival
+// objection state, linked profiles, which is primary", plus the documented `{"authenticated":
+// false}` when
 // signed out — a 200, never a 401, because this is the bootstrap call every page makes and an
 // error status for the ordinary signed-out case would make every client log noise. The auth
 // router (`apps/api/.../routers/auth.py`) is authoritative once it exists; if its response ever
@@ -143,12 +144,13 @@ export interface AuthenticatedSession {
   authenticated: true
   user_id: string
   allowlisted: boolean
-  // The state that is true *now* — `ingest_consent_at IS NOT NULL AND
-  // ingest_consent_withdrawn_at IS NULL` (contracts/http-api.md) — never merely "was granted at
-  // some point", which a withdrawal would otherwise leave indistinguishable from a live consent.
-  ingest_consent: boolean
-  ingest_consent_at: string | null
-  ingest_consent_withdrawn_at: string | null
+  // Amended T405/T406 (constitution IX 4.0.0): archival rests on legitimate interest, not
+  // consent, and is on by default. `archival_objected` is the state that is true *now* —
+  // `archival_objected_at IS NOT NULL` (contracts/http-api.md) — `false` for a user who has
+  // never objected, indistinguishably from one who objected and later resumed archival; there is
+  // no "never answered" state left to tell apart from either.
+  archival_objected: boolean
+  archival_objected_at: string | null
   profiles: SessionProfile[]
 }
 
@@ -214,14 +216,11 @@ export function assertMeResponse(payload: unknown): asserts payload is MeRespons
   if (typeof body.allowlisted !== 'boolean') {
     throw new ApiResponseShapeError('/api/me', '"allowlisted" was not a boolean')
   }
-  if (typeof body.ingest_consent !== 'boolean') {
-    throw new ApiResponseShapeError('/api/me', '"ingest_consent" was not a boolean')
+  if (typeof body.archival_objected !== 'boolean') {
+    throw new ApiResponseShapeError('/api/me', '"archival_objected" was not a boolean')
   }
-  if (!isNullableString(body.ingest_consent_at)) {
-    throw new ApiResponseShapeError('/api/me', '"ingest_consent_at" was not string|null')
-  }
-  if (!isNullableString(body.ingest_consent_withdrawn_at)) {
-    throw new ApiResponseShapeError('/api/me', '"ingest_consent_withdrawn_at" was not string|null')
+  if (!isNullableString(body.archival_objected_at)) {
+    throw new ApiResponseShapeError('/api/me', '"archival_objected_at" was not string|null')
   }
   if (!Array.isArray(body.profiles)) {
     throw new ApiResponseShapeError('/api/me', '"profiles" was not an array')

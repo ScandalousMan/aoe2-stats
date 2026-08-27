@@ -20,8 +20,10 @@ export * from './components/MatchDetailPanel'
 export * from './components/SearchBox'
 export * from './components/PlayerResultRow'
 
-// Screens (T035, packages/design-system/specs/{sign-in-screen,consent-step,profile-summary}.md).
+// Screens (T035, packages/design-system/specs/{sign-in-screen,archival-control,profile-summary}.md).
 // T036/T037 build the routes that mount these; this package builds what they compose.
+// `ArchivalControl` was `ConsentStep` until T406 (constitution IX 4.0.0): the opt-in gate it drew
+// is retired, and archival-control.md's amendment note records the rename and why.
 export * from './components/SignInScreen'
-export * from './components/ConsentStep'
+export * from './components/ArchivalControl'
 export * from './components/ProfileSummary'
