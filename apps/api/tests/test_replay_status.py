@@ -62,7 +62,7 @@ async def _seed_linked_profile(
     """A user with one verified Steam identity and one active `profile_links` row for
     `profile_id` — the ownership `_owned_active_link` (`replays.py`) must accept."""
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
 
@@ -165,7 +165,7 @@ async def test_replay_status_other_users_profile_returns_the_identical_not_found
     """FR-045, case 2: a `profile_id` that is actively linked, but to a different account, must
     answer the same 404 as an unknown one — never a 403 that confirms the profile exists."""
     _owner = await _seed_linked_profile(db_session, profile_id=_PROFILE_ID)
-    other_user = User(allowlisted_at=datetime.now(UTC), ingest_consent_at=datetime.now(UTC))
+    other_user = User(allowlisted_at=datetime.now(UTC))
     db_session.add(other_user)
     await db_session.commit()
     await _sign_in(client, db_session, other_user)

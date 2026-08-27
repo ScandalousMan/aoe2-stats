@@ -255,7 +255,7 @@ async def _seed_user_with_no_active_links(db_session: AsyncSession) -> User:
     itself, seeded directly rather than re-derived through a flow this file is not testing.
     """
     now = datetime.now(UTC)
-    user = User(id=uuid.uuid4(), created_at=now, allowlisted_at=now, ingest_consent_at=now)
+    user = User(id=uuid.uuid4(), created_at=now, allowlisted_at=now)
     db_session.add(user)
     await db_session.commit()
     return user

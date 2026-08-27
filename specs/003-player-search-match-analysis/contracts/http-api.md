@@ -27,8 +27,8 @@ So the property to preserve is:
 3. no route exposes a relationship between a player's accounts that its owner has not proven by
    signing in (001 FR-045, restated here as FR-009 — unchanged and not narrowed);
 4. ownership still decides everything about a user's **own** archive: a captured replay is still
-   served only to the participant who owns the capture (FR-026), and consent, capture and erasure
-   are untouched (FR-012).
+   served only to the participant who owns the capture (FR-026), and archival objection, capture
+   and erasure are untouched (FR-012).
 
 `test_no_public_directory.py` is **rewritten to assert 1 to 4**, not deleted. Deleting it would
 remove the only executable statement of a constitutional property; leaving it as it is would make
@@ -38,12 +38,12 @@ learns the narrowing rather than re-deriving it.
 
 ## Players
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `GET` | `/api/players/search?q=` | FR-001. Rate limited per user (FR-005). Cached (FR-004e) |
-| `GET` | `/api/players/{profile_id}` | FR-006. Any profile. Alias, country, per-leaderboard rating, rank, wins, losses, and `alias_observed_at` |
-| `GET` | `/api/players/{profile_id}/matches?cursor=&limit=` | FR-007. The same row shape `GET /api/matches` already returns |
-| `GET` | `/api/players/{profile_id}/ratings` | Rating history, where snapshots exist |
+| Method | Path                                               | Notes                                                                                                    |
+| ------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/players/search?q=`                           | FR-001. Rate limited per user (FR-005). Cached (FR-004e)                                                 |
+| `GET`  | `/api/players/{profile_id}`                        | FR-006. Any profile. Alias, country, per-leaderboard rating, rank, wins, losses, and `alias_observed_at` |
+| `GET`  | `/api/players/{profile_id}/matches?cursor=&limit=` | FR-007. The same row shape `GET /api/matches` already returns                                            |
+| `GET`  | `/api/players/{profile_id}/ratings`                | Rating history, where snapshots exist                                                                    |
 
 `search` returns `{"results": [...], "degraded": bool, "reason": null | "..."}`. A result carries
 `profile_id`, `alias`, `country`, `games_played`, `clan` and `unverified_steam_id`, mirroring
@@ -60,10 +60,10 @@ never as "no Steam account".
 
 The response distinguishes three outcomes, never collapsing two of them (FR-003):
 
-| Outcome | Shape |
-| --- | --- |
-| found | `degraded: false`, results from the source |
-| found nothing | `degraded: false`, `results: []` |
+| Outcome            | Shape                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| found              | `degraded: false`, results from the source                                                                |
+| found nothing      | `degraded: false`, `results: []`                                                                          |
 | source unavailable | `degraded: true`, `reason: "search_source_unavailable"`, results from locally-observed profiles (FR-004d) |
 
 The third case still returns results. That is FR-004d, and `degraded` is what stops the interface
@@ -85,11 +85,11 @@ every route, `noindex, nofollow`, and `robots.txt` — not a per-profile flag.
 
 ## Favourites
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `GET` | `/api/favourites` | FR-014. Each entry with the player and current standing |
-| `PUT` | `/api/favourites/{profile_id}` | FR-013. Idempotent. `409` `favourites_limit_reached` at the bound (FR-016) |
-| `DELETE` | `/api/favourites/{profile_id}` | FR-013. Idempotent |
+| Method   | Path                           | Notes                                                                      |
+| -------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `GET`    | `/api/favourites`              | FR-014. Each entry with the player and current standing                    |
+| `PUT`    | `/api/favourites/{profile_id}` | FR-013. Idempotent. `409` `favourites_limit_reached` at the bound (FR-016) |
+| `DELETE` | `/api/favourites/{profile_id}` | FR-013. Idempotent                                                         |
 
 `PUT`/`DELETE` rather than `POST`/`POST` because the operation is idempotent in the database (the
 composite primary key) and the contract should say so. Marking twice is one row and one `200`.
@@ -101,9 +101,9 @@ return the user to where they were (US5 scenario 5).
 
 ## Matches, widened
 
-| Method | Path | Change |
-| --- | --- | --- |
-| `GET` | `/api/matches/{game_id}` | The ownership scope is removed. Any match this service holds is readable by any signed-in caller (FR-018, FR-021) |
+| Method | Path                     | Change                                                                                                            |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/matches/{game_id}` | The ownership scope is removed. Any match this service holds is readable by any signed-in caller (FR-018, FR-021) |
 
 The response gains a per-participant `replay` object and a per-match `analysis` object, both below.
 Everything 001's response already carried is unchanged, including the caller's own `capture_status`
@@ -129,9 +129,9 @@ established for `civ_name` and `leaderboard_name`.
   "download_path": "/api/matches/500546441/replay/196240" }
 ```
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `GET` | `/api/matches/{game_id}/replay/{profile_id}` | FR-023. Rate limited per user (FR-028) |
+| Method | Path                                         | Notes                                  |
+| ------ | -------------------------------------------- | -------------------------------------- |
+| `GET`  | `/api/matches/{game_id}/replay/{profile_id}` | FR-023. Rate limited per user (FR-028) |
 
 `availability` is derived, never probed — R8, and `docs/data-sources.md` §2 measured why: `HEAD`
 answers `405` and `Range` is ignored, so a probe is a full download. `obtainable_until` is derived
@@ -168,10 +168,10 @@ the spec's own edge case). That call also records the outcome, so the page is ri
   "reason": null }
 ```
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `POST` | `/api/analyze` | **A separate Vercel function, not the API app.** Body `{"game_id": ...}`. Claims and runs. `maxDuration: 300` |
-| `GET` | `/api/matches/{game_id}/analysis` | The published analysis (FR-030). `404` in every state but `published` |
+| Method | Path                              | Notes                                                                                                         |
+| ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/analyze`                    | **A separate Vercel function, not the API app.** Body `{"game_id": ...}`. Claims and runs. `maxDuration: 300` |
+| `GET`  | `/api/matches/{game_id}/analysis` | The published analysis (FR-030). `404` in every state but `published`                                         |
 
 `POST /api/analyze` is the one route in this contract that `api/index.py` does not serve. It is
 `api/analyze.py`, resolved by the filesystem before the `/api/(.*)` rewrite, exactly as
@@ -210,16 +210,16 @@ signed-in person and must not be retained by a shared cache or found by a crawle
 
 ## Error codes this feature adds
 
-| `code` | Meaning |
-| --- | --- |
-| `sign_in_required` | favouriting or searching while signed out |
-| `favourites_limit_reached` | FR-016 |
-| `rate_limited` | FR-005, FR-028, FR-040 — carries `retry_after` seconds |
-| `never_recorded` | the source has no recording for this point of view |
-| `expired_since_page_load` | it was obtainable when the page rendered and is not now |
-| `analysis_unavailable` | the window closed and it was never analysed |
-| `analysis_cap_reached` | FR-047 |
-| `analysis_failed` | the recording could not be parsed; carries the failure class, never the traceback |
+| `code`                     | Meaning                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `sign_in_required`         | favouriting or searching while signed out                                         |
+| `favourites_limit_reached` | FR-016                                                                            |
+| `rate_limited`             | FR-005, FR-028, FR-040 — carries `retry_after` seconds                            |
+| `never_recorded`           | the source has no recording for this point of view                                |
+| `expired_since_page_load`  | it was obtainable when the page rendered and is not now                           |
+| `analysis_unavailable`     | the window closed and it was never analysed                                       |
+| `analysis_cap_reached`     | FR-047                                                                            |
+| `analysis_failed`          | the recording could not be parsed; carries the failure class, never the traceback |
 
 `search_source_unavailable` is deliberately absent from this table: it is a `reason` in a successful
 body, not an error code, because the request succeeded and the answer is reduced rather than missing.

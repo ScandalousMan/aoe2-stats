@@ -119,8 +119,8 @@ async def _seed_two_consenting_users_sharing_a_match(
     racing an uncommitted transaction.
     """
     now = datetime.now(UTC)
-    user_a = User(id=uuid.uuid4(), ingest_consent_at=now - timedelta(days=30))
-    user_b = User(id=uuid.uuid4(), ingest_consent_at=now - timedelta(days=30))
+    user_a = User(id=uuid.uuid4())
+    user_b = User(id=uuid.uuid4())
 
     steam_a = SteamIdentity(
         steam_id64="76500000000000101",

@@ -92,7 +92,7 @@ async def _seed_linked_profile(
     """A user with one verified Steam identity and one active `profile_links` row for
     `profile_id` — mirrors `test_replay_status.py`'s helper of the same name and shape."""
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
 
@@ -191,7 +191,7 @@ async def test_ratings_other_users_profile_returns_the_identical_not_found(
     never the rating curve itself, which would be exactly the "public directory of players" T067
     and this module's docstring both name."""
     await _seed_linked_profile(db_session, profile_id=_PROFILE_ID)
-    other_user = User(allowlisted_at=datetime.now(UTC), ingest_consent_at=datetime.now(UTC))
+    other_user = User(allowlisted_at=datetime.now(UTC))
     db_session.add(other_user)
     await db_session.commit()
     await _sign_in(client, db_session, other_user)

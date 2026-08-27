@@ -1,46 +1,44 @@
-"""Integration test for quickstart scenario 2 (T042): "Nothing happens without consent".
+"""T401 — the discovery-scope tests for constitution IX 4.0.0 (Phase 12).
 
-Targets the discovery stage T053 ships in `aoe2stats_ingester.discover` — not implemented yet at
-this point in the sequence, hence the module-level `pytestmark` below. The module is imported
-*inside* the test body rather than at module scope, per this project's test-first convention: a
-missing module at import time must fail one test, not take the whole `apps/ingester/tests`
-collection down with it.
+Targets the split `DiscoverStage._consenting_profile_ids()` is supposed to become in T404:
+`_linked_profile_ids()` — every profile with `profile_links.unlinked_at IS NULL`, no other
+condition — drives both the rating refresh (FR-009) and match discovery (FR-013), and
+`_archiving_profile_ids()` (that same set minus `users.archival_objected_at IS NOT NULL`) governs
+capture-enqueue membership alone. T402's `test_capture_objection.py` owns that second query; this
+file owns only the first two effects.
 
-The requirement under test (quickstart.md scenario 2, FR-034, FR-035, and the part of FR-016 that
-is easiest to get wrong): a user who never granted ingestion consent, **or who granted it and then
-withdrew it**, must produce zero `replay_captures` rows and zero requests to the replay endpoint
-recorded in `provider_calls` after a cycle. "Consent must be a condition of the query that selects
-work, not a branch somewhere downstream — a branch can be bypassed by a new code path, a `WHERE`
-clause cannot." The two-clause predicate this proves — `ingest_consent_at IS NOT NULL AND
-ingest_consent_withdrawn_at IS NULL` — is stated in data-model.md and cited twice from
-contracts/http-api.md; T032 deliberately never clears `ingest_consent_at` on withdrawal, so a
-query that tests only that column answers "consented" forever from the first grant onward and
-FR-035's withdrawal does nothing at all to ingestion (T053a).
+**The default this file asserts is the inverted one.** Constitution IX, amended 2026-08-25: archival
+rests on legitimate interest (Art. 6-1-f), not consent, and "a linked profile whose user has not
+answered any question is ingested in full". A linked user's Art. 21 objection stops *capture*
+(T402) and nothing upstream of it — discovery and the rating refresh MUST still run for them, or an
+implementation has reinstated the retired opt-in gate under `archival_objected_at`'s name instead of
+the opt-out the amendment actually specifies. That inversion — objection reaches capture and nothing
+else — is the core case below (`test_objected_user_still_has_matches_discovered_...`).
 
-A downstream branch and a selecting `WHERE` clause are indistinguishable by inspecting rows alone
-— both can honestly produce zero `replay_captures` rows. What tells them apart is whether the
-*provider* is ever reached for the declined user's profile at all: a branch has to call the
-provider (or at least run enough of the pipeline to reach a point after the call) before it can
-decide to discard the result, whereas a `WHERE` clause never selects the row as work in the first
-place. `_RaisingMatchHistoryProvider` below turns that distinction into an assertion: it raises
-the instant it is asked about the declined user's profile, so this test fails loudly at the first
-line of code that would prove the branch shape instead of the query shape.
+**This file, until today, asserted the opposite** — the old two-clause `ingest_consent_at IS NOT
+NULL AND ingest_consent_withdrawn_at IS NULL` predicate — and passed, ratifying the rule the
+amendment retired: the same shape T384 and T397 found and fixed one layer up (the no-index
+middleware's route allowlist, the search endpoint's field list). It is rewritten here rather than
+amended, because every one of its old cases encoded the retired default.
 
-A second, *consenting* user is seeded alongside the declined one so a discovery stage that simply
-does nothing for anybody cannot pass this test for the wrong reason: the assertions below require
-the consenting user's profile to actually have been requested.
+**The one exclusion that survives 4.0.0** is not consent-shaped at all: a profile whose
+`profile_links` row has `unlinked_at IS NOT NULL` is excluded from discovery entirely, regardless
+of `archival_objected_at`, because an unlinked profile is not "a linked user's own point of view"
+any more — there is no user to attribute the recording to. `test_unlinked_profile_...` below is the
+contrast case: without it, "linked users are always discovered" and "unlinked users never are" could
+collapse into the same accidental code path instead of two deliberately different ones.
 
-**Assumed contract**, since none of this exists yet and this test is what defines it for T053:
+T403 (`packages/storage/src/aoe2stats_storage/models.py`) replaced
+`users.ingest_consent_at`/`ingest_consent_withdrawn_at` with the single nullable
+`users.archival_objected_at`, and T404 split `discover.py`'s gate so that query reads it. Both have
+landed, so the tests below run unmarked. They were written first, against T404's absence, each
+carrying `xfail(strict=True, reason="T404 not implemented yet")`; `strict=True` is what forced the
+markers off the moment T404 made them pass for real, rather than letting a stale marker sit here
+hiding a later regression.
 
-- `aoe2stats_ingester.discover.DiscoverStage(*, session_factory, match_history_provider,
-  capture_budget_days)` — a `Stage` (`aoe2stats_ingester.run.Stage`) constructed directly against a
-  `session_factory` and a `MatchHistoryProvider` (`contracts/providers.md`), exactly as this
-  package's own `run.py` docstring describes T053 doing ("build one against ... session_factory").
-  `capture_budget_days` is passed as a plain `int`, not a full `Settings` object: nothing here
-  needs `DATABASE_URL`, S3 credentials or a cron secret, and `budget.py` already sets the
-  precedent of a narrow, single-purpose constructor argument over threading the whole application
-  settings object through a module that does not need most of it.
-- `MatchHistoryProvider.recent_matches(profile_ids)` per `contracts/providers.md`, batched.
+The module under test (`aoe2stats_ingester.discover`) is imported inside each test body, per this
+project's test-first convention (`CLAUDE.md`): a module-scope import failure is a collection error
+that takes the whole `apps/ingester/tests` suite down, not merely this file's tests.
 """
 
 from __future__ import annotations
@@ -48,65 +46,109 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_providers.base import LeaderboardSnapshot, RawMatch
 from aoe2stats_storage.models import (
     AoeProfile,
+    Match,
+    MatchPlayer,
     ProfileLink,
-    ProviderCall,
-    ReplayCapture,
+    RatingSnapshot,
     SteamIdentity,
     User,
 )
 
+#: Offset applied to a profile id to build a unique, deterministic `matches.game_id` for that
+#: profile's fake match below — arbitrary, only required to never collide with another test's own
+#: profile ids in the same (per-test-cleaned) database.
+_GAME_ID_OFFSET = 900_000_000
 
-class _RaisingMatchHistoryProvider:
-    """A `MatchHistoryProvider` stand-in (`contracts/providers.md`) that records every profile it
-    is asked about, and raises immediately if that profile belongs to a user who never consented.
 
-    Raising from inside the fake, rather than merely asserting on its recorded calls afterwards,
-    is the point: it proves the forbidden profile was never even handed to the provider, which is
-    what "no code path downstream can reach the provider" (T042) actually means. A downstream
-    branch that discarded the *result* of a call would still have made the call, and would trip
-    this before ever getting the chance to discard anything.
+class _RecordingMatchHistoryProvider:
+    """A `MatchHistoryProvider` (`contracts/providers.md`) fake that records every profile id it
+    is asked about and, unless that id is in `forbidden_profile_ids`, returns one solo `RawMatch`
+    for it — enough for a caller to assert both "this profile was requested" and "a match for it
+    was actually discovered and upserted", not merely that the provider was invoked.
+
+    Raising immediately on a forbidden id (rather than only asserting on `requested_profile_ids`
+    afterwards) is what proves an exclusion is a property of the query that selects work, not a
+    branch that discards a result after the provider has already been reached — the same
+    distinction this file's now-rewritten, pre-4.0.0 version made with its own
+    `_RaisingMatchHistoryProvider`.
     """
 
-    def __init__(self, forbidden_profile_ids: set[int]) -> None:
+    def __init__(self, *, forbidden_profile_ids: frozenset[int] = frozenset()) -> None:
         self._forbidden = forbidden_profile_ids
         self.requested_profile_ids: list[int] = []
 
-    async def recent_matches(self, profile_ids):
+    async def recent_matches(self, profile_ids: list[int]) -> list[RawMatch]:
         for profile_id in profile_ids:
             assert profile_id not in self._forbidden, (
                 f"MatchHistoryProvider.recent_matches was called with profile_id={profile_id}, "
-                "which belongs to a user who declined ingestion consent. The consent condition "
-                "must be part of the query that selects work, not a branch downstream of a "
-                "provider call that has already happened (quickstart.md scenario 2, FR-034)."
+                "which belongs to an unlinked profile. Discovery's exclusion of an unlinked "
+                "profile must be part of the query that selects work, not a branch downstream of "
+                "a provider call that has already happened."
             )
         self.requested_profile_ids.extend(profile_ids)
-        # No matches for anyone: nothing left for discovery to upsert or enqueue either way, so
-        # a bug here cannot manufacture a `replay_captures` row for the consenting profile and
-        # mask a leak on the declined one.
-        return []
+        now = datetime.now(UTC)
+        return [
+            RawMatch(
+                game_id=_GAME_ID_OFFSET + profile_id,
+                leaderboard_id=3,
+                completed_at=now,
+                player_profile_ids=(profile_id,),
+                raw_payload={"profile_id": profile_id},
+            )
+            for profile_id in profile_ids
+        ]
+
+
+class _RecordingProfileProvider:
+    """A `ProfileProvider` (`contracts/providers.md`) fake exercising only `personal_stats`, the
+    one method `DiscoverStage._refresh_ratings` calls — mirrors `_RecordingMatchHistoryProvider`
+    above: records every profile id it is asked about, raises immediately on a forbidden one, and
+    returns one `LeaderboardSnapshot` per allowed id so a caller can assert a `rating_snapshots`
+    row was actually appended, not merely that the provider was invoked.
+    """
+
+    def __init__(self, *, forbidden_profile_ids: frozenset[int] = frozenset()) -> None:
+        self._forbidden = forbidden_profile_ids
+        self.requested_profile_ids: list[int] = []
+
+    async def resolve_profile(self, steam_id64: str):
+        raise AssertionError("DiscoverStage never calls ProfileProvider.resolve_profile")
+
+    async def personal_stats(self, profile_ids: list[int]) -> list[LeaderboardSnapshot]:
+        for profile_id in profile_ids:
+            assert profile_id not in self._forbidden, (
+                f"ProfileProvider.personal_stats was called with profile_id={profile_id}, "
+                "which belongs to an unlinked profile. The rating refresh must select its work "
+                "from the same query as discovery, never as a downstream branch."
+            )
+        self.requested_profile_ids.extend(profile_ids)
+        return [
+            LeaderboardSnapshot(profile_id=profile_id, leaderboard_id=3, rating=1000)
+            for profile_id in profile_ids
+        ]
 
 
 async def _seed_linked_user(
-    db_session: AsyncSession, *, profile_id: int, consented: bool, withdrawn: bool = False
+    db_session: AsyncSession,
+    *,
+    profile_id: int,
+    archival_objected: bool = False,
+    unlinked: bool = False,
 ) -> uuid.UUID:
-    """Insert a fully linked user — `users`, `steam_identities`, `aoe_profiles`,
-    `profile_links` — and commit, exactly the shape discovery's own query walks. The only
-    difference between the users this test seeds is `ingest_consent_at` and
-    `ingest_consent_withdrawn_at`; everything else (allowlisted, a primary linked profile) is
-    identical, so a leak cannot be explained by anything but the consent columns themselves.
+    """Insert a fully linked user — `users`, `steam_identities`, `aoe_profiles`, `profile_links` —
+    and commit, exactly the shape discovery's own query walks.
 
-    `withdrawn=True` requires `consented=True`: data-model.md's two-clause predicate
-    (`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`) is meaningless
-    against a user who never granted in the first place, and T032 never clears
-    `ingest_consent_at` on withdrawal — it stays set as the record of what was agreed and when,
-    which is exactly what makes the one-clause query pass forever after the first grant.
+    The only differences between the users this test seeds are `archival_objected_at` and
+    `profile_links.unlinked_at`; everything else (allowlisted, a primary linked profile) is
+    identical, so a leak or a wrongful exclusion cannot be explained by anything but those two
+    columns — the whole point of the inverted default and the one exclusion that survives it.
     """
-    assert consented or not withdrawn, "withdrawn=True requires consented=True"
     now = datetime.now(UTC)
     user_id = uuid.uuid4()
     steam_id64 = f"76561198{profile_id:010d}"
@@ -116,8 +158,7 @@ async def _seed_linked_user(
             id=user_id,
             created_at=now,
             allowlisted_at=now,
-            ingest_consent_at=now if consented else None,
-            ingest_consent_withdrawn_at=now if withdrawn else None,
+            archival_objected_at=now if archival_objected else None,
         )
     )
     db_session.add(
@@ -132,8 +173,8 @@ async def _seed_linked_user(
     # column-level `ForeignKey` to `steam_identities` (models.py) but no ORM `relationship()`
     # connects the two classes, so the unit of work's automatic dependency sort — which orders
     # inserts by *mapper* relationships, not by raw table foreign keys — has no edge telling it
-    # `steam_identities` must land first (the same gap `test_shared_match.py`'s own seeding
-    # helper documents and works around identically).
+    # `steam_identities` must land first (the same gap this file's own pre-4.0.0 seeding helper,
+    # and `test_shared_match.py`'s, both documented and worked around identically).
     await db_session.flush()
     db_session.add(
         AoeProfile(
@@ -151,72 +192,195 @@ async def _seed_linked_user(
             steam_id64=steam_id64,
             is_primary=True,
             linked_at=now,
+            unlinked_at=now if unlinked else None,
         )
     )
     # Committed here, mid-test, rather than left for the fixture's own teardown: the discovery
     # stage below opens its *own* session through `session_factory`, a separate connection from
-    # `db_session` — an uncommitted insert on this one is invisible to that one until this runs
-    # (the same discipline `apps/api/tests/test_consent.py`'s `_seed_signed_in_user` applies for
-    # its own two-session setup).
+    # `db_session` — an uncommitted insert on this one is invisible to that one until this runs.
     await db_session.commit()
     return user_id
 
 
-async def test_declined_consent_produces_no_captures_and_no_replay_provider_calls(
+async def test_never_answered_user_has_matches_discovered_and_ratings_refreshed(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """quickstart.md scenario 2: decline consent, trigger a cycle, expect zero `replay_captures`
-    rows and zero requests to the replay endpoint in `provider_calls` — proven here by showing the
-    declined user's profile is never even handed to the match-history provider, let alone the
-    replay one (FR-034, and the easiest-to-get-wrong part of FR-016).
-
-    A third, **withdrawn** user is seeded alongside the never-granted one (T053a): they hold
-    `ingest_consent_at` set, exactly as a currently-consenting user does, but also
-    `ingest_consent_withdrawn_at` set. A discovery query that tests only `ingest_consent_at`
-    would treat them as consenting forever — FR-035's withdrawal doing nothing at all to
-    ingestion — which is the defect this case exists to catch."""
+    """The default case constitution IX 4.0.0 states directly: "a linked profile whose user has
+    not answered any question is ingested in full". A user seeded with `archival_objected_at`
+    `NULL` — never having exercised the Art. 21 right to object, and never having "consented"
+    either, since there is no longer a grant to record — must still have their match discovered
+    (FR-013) and their rating refreshed (FR-009) on an ordinary cycle.
+    """
     from aoe2stats_ingester.budget import Budget
     from aoe2stats_ingester.discover import DiscoverStage
 
-    declined_profile_id = 100_000_001
-    consenting_profile_id = 100_000_002
-    withdrawn_profile_id = 100_000_003
-    await _seed_linked_user(db_session, profile_id=declined_profile_id, consented=False)
-    await _seed_linked_user(db_session, profile_id=consenting_profile_id, consented=True)
-    await _seed_linked_user(
-        db_session, profile_id=withdrawn_profile_id, consented=True, withdrawn=True
-    )
+    profile_id = 200_000_001
+    await _seed_linked_user(db_session, profile_id=profile_id, archival_objected=False)
 
-    provider = _RaisingMatchHistoryProvider(
-        forbidden_profile_ids={declined_profile_id, withdrawn_profile_id}
-    )
+    match_provider = _RecordingMatchHistoryProvider()
+    profile_provider = _RecordingProfileProvider()
     stage = DiscoverStage(
         session_factory=session_factory,
-        match_history_provider=provider,
+        match_history_provider=match_provider,
+        profile_provider=profile_provider,
         capture_budget_days=21,
     )
 
     await stage(Budget(seconds=60))
 
-    # Only the currently-consenting profile was requested — proving the exclusion is the
-    # two-clause consent condition and not a discovery stage that quietly does nothing for
-    # anybody, which would pass the assertion inside the fake for the wrong reason.
-    assert provider.requested_profile_ids == [consenting_profile_id]
+    assert match_provider.requested_profile_ids == [profile_id]
+    assert profile_provider.requested_profile_ids == [profile_id]
 
     async with session_factory() as session:
-        capture_count = await session.scalar(select(func.count()).select_from(ReplayCapture))
-        assert capture_count == 0
-
-        replay_endpoint_calls = await session.scalar(
-            select(func.count())
-            .select_from(ProviderCall)
-            .where(ProviderCall.endpoint.ilike("%replay%"))
+        match_row = await session.scalar(
+            select(Match).where(Match.game_id == _GAME_ID_OFFSET + profile_id)
         )
-        assert replay_endpoint_calls == 0
+        assert match_row is not None
 
-        # No provider was reached for *any* purpose on this run — the match-history provider is
-        # a fake that writes no `provider_calls` row of its own, so an empty table here also
-        # confirms discovery made no other, unaccounted-for outbound attempt.
-        total_provider_calls = await session.scalar(select(func.count()).select_from(ProviderCall))
-        assert total_provider_calls == 0
+        match_player_row = await session.scalar(
+            select(MatchPlayer).where(
+                MatchPlayer.game_id == _GAME_ID_OFFSET + profile_id,
+                MatchPlayer.profile_id == profile_id,
+            )
+        )
+        assert match_player_row is not None
+
+        snapshot_row = await session.scalar(
+            select(RatingSnapshot).where(RatingSnapshot.profile_id == profile_id)
+        )
+        assert snapshot_row is not None
+
+
+async def test_objected_user_still_has_matches_discovered_and_ratings_refreshed(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The core inversion (constitution IX 4.0.0): "an opt-out that reverses the previous default;
+    it is not the retired gate under a new name". A user who HAS exercised the Art. 21 right to
+    object (`archival_objected_at IS NOT NULL`) stops further *capture* of their recordings
+    (T402's `test_capture_objection.py`) and nothing upstream of that — their matches are still
+    discovered (FR-013, FR-042) and their ratings are still refreshed (FR-009) on every cycle,
+    exactly as an unobjected user's are. An implementation that also drops discovery or the rating
+    refresh for an objecting user has reinstated the retired opt-in consent gate under
+    `archival_objected_at`'s name — the fault this phase exists to close.
+    """
+    from aoe2stats_ingester.budget import Budget
+    from aoe2stats_ingester.discover import DiscoverStage
+
+    objected_profile_id = 200_000_002
+    await _seed_linked_user(db_session, profile_id=objected_profile_id, archival_objected=True)
+
+    match_provider = _RecordingMatchHistoryProvider()
+    profile_provider = _RecordingProfileProvider()
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=match_provider,
+        profile_provider=profile_provider,
+        capture_budget_days=21,
+    )
+
+    await stage(Budget(seconds=60))
+
+    # Discovery and the rating refresh are unconditional on objection: both the match-history and
+    # the profile provider must still have been reached for this profile.
+    assert match_provider.requested_profile_ids == [objected_profile_id]
+    assert profile_provider.requested_profile_ids == [objected_profile_id]
+
+    async with session_factory() as session:
+        match_row = await session.scalar(
+            select(Match).where(Match.game_id == _GAME_ID_OFFSET + objected_profile_id)
+        )
+        assert match_row is not None
+
+        match_player_row = await session.scalar(
+            select(MatchPlayer).where(
+                MatchPlayer.game_id == _GAME_ID_OFFSET + objected_profile_id,
+                MatchPlayer.profile_id == objected_profile_id,
+            )
+        )
+        assert match_player_row is not None
+
+        snapshot_row = await session.scalar(
+            select(RatingSnapshot).where(RatingSnapshot.profile_id == objected_profile_id)
+        )
+        assert snapshot_row is not None
+
+
+async def test_unlinked_profile_is_excluded_from_discovery_regardless_of_objection(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The contrast case: the one exclusion that survives constitution IX 4.0.0 is not
+    consent-shaped at all. `profile_links.unlinked_at IS NOT NULL` removes a profile from
+    discovery entirely — no match discovered, no rating refreshed — because an unlinked profile is
+    no longer "a linked user's own point of view" for anyone to attribute a recording to, not
+    because of anything about `archival_objected_at`.
+
+    Two unlinked profiles are seeded — one that never objected, one that did — so the exclusion
+    cannot be explained by objection at all: if it were `archival_objected_at`-shaped rather than
+    `unlinked_at`-shaped, the never-objected-but-unlinked profile would wrongly still be
+    discovered. A third, ordinarily linked profile is seeded alongside both so a discovery stage
+    that simply does nothing for anybody cannot pass this test for the wrong reason: the assertions
+    below require the linked profile to actually have been discovered.
+    """
+    from aoe2stats_ingester.budget import Budget
+    from aoe2stats_ingester.discover import DiscoverStage
+
+    linked_profile_id = 200_000_003
+    unlinked_never_objected_profile_id = 200_000_004
+    unlinked_objected_profile_id = 200_000_005
+    await _seed_linked_user(db_session, profile_id=linked_profile_id)
+    await _seed_linked_user(
+        db_session, profile_id=unlinked_never_objected_profile_id, unlinked=True
+    )
+    await _seed_linked_user(
+        db_session,
+        profile_id=unlinked_objected_profile_id,
+        archival_objected=True,
+        unlinked=True,
+    )
+
+    forbidden = frozenset({unlinked_never_objected_profile_id, unlinked_objected_profile_id})
+    match_provider = _RecordingMatchHistoryProvider(forbidden_profile_ids=forbidden)
+    profile_provider = _RecordingProfileProvider(forbidden_profile_ids=forbidden)
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=match_provider,
+        profile_provider=profile_provider,
+        capture_budget_days=21,
+    )
+
+    await stage(Budget(seconds=60))
+
+    # Only the still-linked profile was ever handed to either provider — proving the exclusion is
+    # the `unlinked_at` condition on the query that selects work, and not a discovery stage that
+    # quietly does nothing for anybody, which would pass the assertions inside the fakes for the
+    # wrong reason.
+    assert match_provider.requested_profile_ids == [linked_profile_id]
+    assert profile_provider.requested_profile_ids == [linked_profile_id]
+
+    async with session_factory() as session:
+        for excluded_profile_id in (
+            unlinked_never_objected_profile_id,
+            unlinked_objected_profile_id,
+        ):
+            match_row = await session.scalar(
+                select(Match).where(Match.game_id == _GAME_ID_OFFSET + excluded_profile_id)
+            )
+            assert match_row is None
+
+            snapshot_row = await session.scalar(
+                select(RatingSnapshot).where(RatingSnapshot.profile_id == excluded_profile_id)
+            )
+            assert snapshot_row is None
+
+        linked_match_row = await session.scalar(
+            select(Match).where(Match.game_id == _GAME_ID_OFFSET + linked_profile_id)
+        )
+        assert linked_match_row is not None
+
+        linked_snapshot_row = await session.scalar(
+            select(RatingSnapshot).where(RatingSnapshot.profile_id == linked_profile_id)
+        )
+        assert linked_snapshot_row is not None

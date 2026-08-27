@@ -290,7 +290,7 @@ class _FakeRelicMatchHistoryUpstream:
 
 async def _seed_user(db_session: AsyncSession) -> User:
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
     await db_session.commit()

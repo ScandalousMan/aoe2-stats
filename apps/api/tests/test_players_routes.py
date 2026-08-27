@@ -161,7 +161,7 @@ async def _seed_user(db_session: AsyncSession) -> User:
     profile, never about the caller's own, so no `profile_links` row is needed to exercise them
     (contrast `test_no_public_directory.py`'s heavier `_seed_linked_caller`)."""
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
     await db_session.commit()

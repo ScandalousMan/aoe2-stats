@@ -1,34 +1,43 @@
-"""The privacy router (T032): `POST /api/privacy/consent`.
+"""The privacy router (T032, renamed by T405): `POST /api/privacy/archival-objection`.
 
-FR-034 / FR-035, and `data-model.md`'s `users` table: `ingest_consent_at` is set once, the first
-time a user grants ingestion consent, and never cleared again — clearing it would destroy the
-evidence that consent was ever given, which is the opposite of what constitution IX ("GDPR by
-Design") asks for. Withdrawal is a second, independent timestamp, `ingest_consent_withdrawn_at`,
-recorded *on top of* the grant rather than in place of it. This is what lets a later reader tell
-"never consented" apart from "consented, then withdrew" — the two are different facts and this
-table is the one place that keeps them that way.
+Constitution IX 4.0.0 retired the opt-in consent gate: archival now rests on legitimate interest
+(GDPR Art. 6-1-f), not consent, and is **on by default** for every linked profile — including one
+that has never answered any question at all. What a user can still do is exercise the Art. 21 right
+to object, which is what this route now records: `users.archival_objected_at`
+(`packages/storage/.../models.py`, `data-model.md`) is a single nullable timestamp, null meaning
+"archiving" and set meaning "objected, as of this moment". There is no longer a second, independent
+fact to keep alongside it — the old two-timestamp pair (`ingest_consent_at`,
+`ingest_consent_withdrawn_at`) recorded "never asked" apart from "asked and declined", a distinction
+that only had legal weight under the retired opt-in gate. Under legitimate interest there is nothing
+to have been asked, so that distinction is gone, and this module no longer reasons about it.
 
-**Consent is separate from account creation, always.** Nothing about `not_allowlisted` (FR-005),
-`no_aoe2_profile` (FR-003) or the rest of `auth.py`'s sign-in flow touches this table at all — a
-user exists, is allowlisted and can use every other part of the account with `ingest_consent_at`
-still null. Declining here (`{"granted": false}` on an account that never consented) is
-consequently a no-op that still answers 200: there is nothing to withdraw, and the caller asking
-"please don't" is not an error just because there was nothing being done yet.
+**Consent is separate from account creation, always** — the one piece of the old reasoning that
+still holds, restated for the new column. Nothing about `not_allowlisted` (FR-005),
+`no_aoe2_profile` (FR-003) or the rest of `auth.py`'s sign-in flow touches `archival_objected_at`
+at all: a user exists, is allowlisted, and is already being archived (the default) with the
+column still null.
 
-**Granting is idempotent, not cumulative.** A second `{"granted": true}` call leaves the original
-`ingest_consent_at` untouched rather than overwriting it with a later moment — the timestamp
-records *when consent was first given*, and moving it forward on every repeat call would quietly
-rewrite that fact each time the front end happens to re-send the same choice. The ingester reads
-`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL` (data-model.md: "Enforced
-in the query that selects work") — regranting after a withdrawal is exactly the case that must
-clear `ingest_consent_withdrawn_at` again so that query starts matching, and this handler does
-that by setting `ingest_consent_withdrawn_at` back to `None` on every `granted: true` call whether
-or not it was already null.
+**Objecting is idempotent, not cumulative.** A second `{"objected": true}` call leaves the original
+`archival_objected_at` untouched rather than overwriting it with a later moment — the timestamp
+records *when the objection was first made*, and moving it forward on every repeat call would
+quietly rewrite that fact each time the front end happens to re-send the same choice.
 
-**Request body.** `contracts/http-api.md` says only "grant or withdraw", not the shape; this
-module settles it as `{"granted": bool}` — `apps/api/tests/test_consent.py` (T025)'s own working
-assumption, confirmed here and now recorded in the contract alongside the other routes rather than
-left to live only in a test file.
+**Resuming is the mirror action, not an error.** `{"objected": false}` clears
+`archival_objected_at` back to `None`, which is what resumes archival: the ingester's own gate
+(`apps/ingester/src/aoe2stats_ingester/discover.py`'s `_archiving_profile_ids`) reads
+`archival_objected_at IS NULL` and starts matching this user again from the next cycle. Resuming on
+an account that never objected in the first place is consequently a no-op that still answers 200:
+there is nothing to clear, and the caller asking "please resume" is not an error just because
+archival never stopped.
+
+**Request body.** `{"objected": bool}` — deliberately not `{"granted": bool}` carried over from the
+retired route: `granted` under the new model would mean its own negation (granting *not* to be
+archived reads backwards), so the field name states the Art. 21 action directly instead of an
+inverted consent flag. `true` objects, `false` resumes.
+
+**This is a rename, not an addition.** `POST /api/privacy/consent` does not exist alongside this
+route: the two-timestamp state it wrote to is gone from the data model, so leaving the old path
+reachable would let a caller ask this router to write into columns that no longer exist.
 """
 
 from __future__ import annotations
@@ -49,8 +58,8 @@ from aoe2stats_storage.models import User
 router = APIRouter(tags=["privacy"])
 
 
-class ConsentRequest(BaseModel):
-    granted: bool
+class ArchivalObjectionRequest(BaseModel):
+    objected: bool
 
 
 # --- Session resolution, the same discipline `auth.py` and `profiles.py` already establish -------
@@ -72,20 +81,20 @@ def _require_session(session_row: SessionRow | None) -> SessionRow:
         raise APIError(
             status_code=401,
             code="not_authenticated",
-            message="Sign in to manage your ingestion consent.",
+            message="Sign in to manage your archival objection.",
         )
     return session_row
 
 
-# --- POST /api/privacy/consent --------------------------------------------------------------------
+# --- POST /api/privacy/archival-objection -----------------------------------------------------
 
 
-@router.post("/privacy/consent")
-async def set_consent(
-    body: ConsentRequest, request: Request, db_session: SessionDep, settings: SettingsDep
+@router.post("/privacy/archival-objection")
+async def set_archival_objection(
+    body: ArchivalObjectionRequest, request: Request, db_session: SessionDep, settings: SettingsDep
 ) -> dict[str, Any]:
-    """FR-034: grant ingestion consent, recording when it was first given. FR-035: withdraw it,
-    which stops further capture without erasing the grant timestamp (module docstring)."""
+    """FR-035: object to archival, recording when the objection was first made — or resume it by
+    clearing that same timestamp (module docstring)."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
 
@@ -94,28 +103,22 @@ async def set_consent(
         raise APIError(
             status_code=401,
             code="not_authenticated",
-            message="Sign in to manage your ingestion consent.",
+            message="Sign in to manage your archival objection.",
         )
 
     now = datetime.now(UTC)
-    if body.granted:
-        # Idempotent, not cumulative (module docstring): `ingest_consent_at` is set only the first
-        # time, and a regrant clears any prior withdrawal so the ingester's own selection query
-        # starts matching this user again.
-        if user.ingest_consent_at is None:
-            user.ingest_consent_at = now
-        user.ingest_consent_withdrawn_at = None
+    if body.objected:
+        # Idempotent, not cumulative (module docstring): set only the first time.
+        if user.archival_objected_at is None:
+            user.archival_objected_at = now
     else:
-        # Withdrawing when there was never a grant is a no-op that still answers 200 (module
-        # docstring): there is nothing to withdraw, so `ingest_consent_withdrawn_at` stays null.
-        if user.ingest_consent_at is not None:
-            user.ingest_consent_withdrawn_at = now
+        # Resuming when there was never an objection is a no-op that still answers 200 (module
+        # docstring): nothing to clear.
+        user.archival_objected_at = None
 
     return {
-        "ingest_consent_at": user.ingest_consent_at.isoformat()
-        if user.ingest_consent_at is not None
-        else None,
-        "ingest_consent_withdrawn_at": user.ingest_consent_withdrawn_at.isoformat()
-        if user.ingest_consent_withdrawn_at is not None
+        "archival_objected": user.archival_objected_at is not None,
+        "archival_objected_at": user.archival_objected_at.isoformat()
+        if user.archival_objected_at is not None
         else None,
     }

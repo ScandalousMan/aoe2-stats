@@ -515,7 +515,7 @@ question is ingested in full, archival included. An implementation that declines
 user decides has reinstated the gate under a new name, and the tests below are written to catch
 exactly that.
 
-- [ ] T401 [P] Write the discovery-scope tests in `apps/ingester/tests/test_consent_gate.py`,
+- [x] T401 [P] Write the discovery-scope tests in `apps/ingester/tests/test_consent_gate.py`,
   `xfail(strict=True, reason="T404 not implemented yet")`, against the **inverted** default: a linked
   user who has never answered any question has their matches discovered and their ratings refreshed,
   and a user who has objected to archival **still** has both. This file today asserts the opposite and
@@ -524,7 +524,7 @@ exactly that.
   failing before the fix.** Assert the contrast case too, or the boundary is an accident: a profile
   whose link is `unlinked_at IS NOT NULL` is still excluded entirely, which is the one exclusion that
   survives 4.0.0
-- [ ] T402 [P] Write the capture-scope tests in `apps/ingester/tests/test_capture_objection.py`,
+- [x] T402 [P] Write the capture-scope tests in `apps/ingester/tests/test_capture_objection.py`,
   `xfail(strict=True, reason="T404 not implemented yet")`: a `replay_captures` row is enqueued for a
   linked user who has never answered, and **not** enqueued for one who has objected — the objection
   reaching capture and nothing else. Assert the half that is easy to lose: the objecting user's
@@ -545,7 +545,7 @@ exactly that.
   `specs/001-steam-link-replay-ingestion/data-model.md`'s `users` table in the same task. **001's
   T106/T392 apply: this migration must be applied to Neon through the direct endpoint, not the pooled
   one** (`docs/runbooks/database-migrations.md`)
-- [ ] T404 Split the gate in `apps/ingester/src/aoe2stats_ingester/discover.py` and remove T401's and
+- [x] T404 Split the gate in `apps/ingester/src/aoe2stats_ingester/discover.py` and remove T401's and
   T402's markers. `_consenting_profile_ids()` becomes **two** queries whose difference is the whole
   amendment: `_linked_profile_ids()` — every profile with `unlinked_at IS NULL`, no other condition —
   drives discovery and the rating refresh; `_archiving_profile_ids()` — the same set minus
@@ -553,7 +553,7 @@ exactly that.
   participant loop consults. The module docstring's paragraph on the two-clause consent predicate is
   now false and must be rewritten rather than left to rot: it is the first thing the next reader will
   believe
-- [ ] T405 Turn `POST /api/privacy/consent` into `POST /api/privacy/archival-objection` in
+- [x] T405 Turn `POST /api/privacy/consent` into `POST /api/privacy/archival-objection` in
   `apps/api/src/aoe2stats_api/routers/privacy.py`, and change what `GET /api/me` reports in
   `apps/api/src/aoe2stats_api/routers/auth.py`: `ingest_consent` gives way to `archival_objected`
   (and its timestamp), with `false` the state of a user who has answered nothing. Update

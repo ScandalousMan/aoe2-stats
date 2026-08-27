@@ -69,7 +69,7 @@ async def _seed_linked_profile(
     """A user with one verified Steam identity and one active `profile_links` row for
     `profile_id` — mirrors `test_replay_status.py`'s helper of the same name."""
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
 

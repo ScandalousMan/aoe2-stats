@@ -20,7 +20,7 @@ them (T014e).
 | `GET`  | `/api/auth/steam/start`    | 302 to Steam. Sets a short-lived state cookie. Accepts `?link=1` when already signed in, to add a second Steam account rather than replace the session                 |
 | `GET`  | `/api/auth/steam/callback` | Verifies the assertion server-side, resolves the profile, creates or extends the session, 302 to the app. **Never trusts the callback without `check_authentication`** |
 | `POST` | `/api/auth/signout`        | Invalidates the session server-side, clears the cookie                                                                                                                 |
-| `GET`  | `/api/me`                  | Session, allowlist state, consent state, linked profiles, which is primary                                                                                             |
+| `GET`  | `/api/me`                  | Session, allowlist state, archival objection state, linked profiles, which is primary                                                                                  |
 
 **The session cookie is named `session_id`** (T028, `apps/api/src/aoe2stats_api/security.py`) —
 its value is `<sessions.id>.<hmac-sha256 signature>`, base64url-encoded and padding-stripped, so a
@@ -45,16 +45,16 @@ that carries it still verifies.
 `GET /api/me` returns 200 with `{"authenticated": false}` rather than 401 when signed out: it is the
 front end's bootstrap call, and an error status for the ordinary case makes every client log noise.
 
-An authenticated `GET /api/me` answers `ingest_consent` as the state that is true **right now** —
-`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, the same predicate the
-ingester's own selection query uses (data-model.md) — never merely "consent was granted at some
-point", which `ingest_consent_at` alone cannot distinguish from a withdrawn consent (T032:
-`ingest_consent_at` is kept after withdrawal on purpose, as the record of what was agreed and
-when). `ingest_consent_at` and `ingest_consent_withdrawn_at` (both nullable ISO 8601 timestamps,
-or absent-as-`null` when there has never been a grant) are returned alongside it, in the same field
-names `POST /api/privacy/consent` already answers with, so a client can render "granted",
-"declined" or "withdrawn, previously granted at ..." from a single `GET /api/me` after a plain page
-reload, with no consent state of its own to carry between requests.
+**Amended 2026-08-27 (T405) — consent retired in favour of an objection, constitution IX 4.0.0.**
+An authenticated `GET /api/me` answers `archival_objected` as the state that is true **right
+now** — `archival_objected_at IS NOT NULL`, the same predicate the ingester's own gate reads
+(data-model.md) — with `false` the state of a user who has answered no question at all, since
+archival is on by default under legitimate interest and there is no "never asked" state left to
+distinguish from it. `archival_objected_at` (a nullable ISO 8601 timestamp, `null` for a user who
+is archiving, whether because they never objected or because they objected and later resumed) is
+returned alongside it, in the same field name `POST /api/privacy/archival-objection` already
+answers with, so a client can render "archiving" or "objected, as of ..." from a single
+`GET /api/me` after a plain page reload, with no state of its own to carry between requests.
 
 Failure codes that carry product meaning, not just HTTP semantics:
 
@@ -99,33 +99,36 @@ replay contains other players' gameplay and chat.
 
 ## Privacy
 
-| Method | Path                       | Notes                                                                                                            |
-| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/api/privacy/consent`     | Grant or withdraw ingestion consent (FR-034, FR-035). Separate from account creation, always                     |
-| `POST` | `/api/privacy/export`      | Starts an export; returns a job reference                                                                        |
-| `GET`  | `/api/privacy/export/{id}` | Status, then a signed URL to the archive                                                                         |
-| `POST` | `/api/privacy/erase`       | Requires an explicit confirmation token from a prior `GET`. Irreversible (FR-037)                                |
-| `POST` | `/api/privacy/object`      | Third-party objection (FR-039). **Unauthenticated by design** — the person objecting is by definition not a user |
+| Method | Path                              | Notes                                                                                                            |
+| ------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/privacy/archival-objection` | Object to archival, or resume it (FR-035). Separate from account creation, always                                |
+| `POST` | `/api/privacy/export`             | Starts an export; returns a job reference                                                                        |
+| `GET`  | `/api/privacy/export/{id}`        | Status, then a signed URL to the archive                                                                         |
+| `POST` | `/api/privacy/erase`              | Requires an explicit confirmation token from a prior `GET`. Irreversible (FR-037)                                |
+| `POST` | `/api/privacy/object`             | Third-party objection (FR-039). **Unauthenticated by design** — the person objecting is by definition not a user |
 
 `/api/privacy/object` is the one unauthenticated write in the system. It is rate limited and it does
 not act immediately: it records a request for a human to resolve. An endpoint that let anyone
-pseudonymise any profile on demand would be a denial-of-service vector against the data.
+pseudonymise any profile on demand would be a denial-of-service vector against the data. It is
+distinct from `/api/privacy/archival-objection` below, which is the _linked user's own_ Art. 21
+objection to their own archival, and is behind the session cookie like the rest of this section.
 
-`POST /api/privacy/consent` takes `{"granted": bool}` (T032). `true` grants — recording
-`users.ingest_consent_at` the first time only, so a repeated grant never rewrites when consent was
-first given — and clears any prior withdrawal, since the ingester's selection query
-(data-model.md) is `ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`.
-`false` withdraws by setting `users.ingest_consent_withdrawn_at`, which is added on top of
-`ingest_consent_at` and never clears it (data-model.md: "Kept after withdrawal; erasure is a
-separate act") — and is a no-op, not an error, when there was never a grant to withdraw. Declining
-consent on an account that has not yet granted it (FR-034: separate from account creation) leaves
-the rest of the account untouched and still answers 200.
+**Amended 2026-08-27 (T405) — renamed from `/api/privacy/consent`, with an inverted meaning, not
+added alongside it.** Constitution IX 4.0.0 retired the opt-in consent gate archival used to sit
+behind; there is no longer a grant to record, so the old route and its `{"granted": bool}` body do
+not exist any more. `POST /api/privacy/archival-objection` takes `{"objected": bool}` (T405).
+`true` objects — recording `users.archival_objected_at` the first time only, so a repeated
+objection never rewrites when it was first made (data-model.md) — which the ingester's own gate
+reads as `archival_objected_at IS NOT NULL` and stops capturing this user's recordings from the
+next cycle on. `false` resumes archival by clearing `users.archival_objected_at` back to `null`,
+and is a no-op, not an error, when there was never an objection to clear. Both directions answer
+200 with `{"archival_objected": bool, "archival_objected_at": <ISO 8601 timestamp or null>}`.
 
 ## Operations
 
 | Method        | Path               | Auth                                 | Notes                                                                                                                                                                                |
 | ------------- | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`         | `/api/health`      | none                                 | Liveness plus database and object-store reachability, **and schema currency** (2026-08-23, 003 T394)                                                                                  |
+| `GET`         | `/api/health`      | none                                 | Liveness plus database and object-store reachability, **and schema currency** (2026-08-23, 003 T394)                                                                                 |
 | `GET`, `POST` | `/api/cron/ingest` | `Authorization: Bearer $CRON_SECRET` | Runs one cycle. **401 without a valid, non-empty secret** (constitution VIII — an unset `CRON_SECRET` refuses outright rather than matching an empty bearer). Returns the run report |
 
 A failing `/api/health` names, in `detail`, which dependency broke and why — `error_class` for a

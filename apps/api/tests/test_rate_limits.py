@@ -59,7 +59,7 @@ _WINDOW_SECONDS = 60
 async def _seed_user(db_session: AsyncSession) -> uuid.UUID:
     """One `users` row — `rate_limit_counters.user_id` is a foreign key, so a counter cannot be
     written for an id nothing else recognises."""
-    user = User(allowlisted_at=_WINDOW_ORIGIN, ingest_consent_at=_WINDOW_ORIGIN)
+    user = User(allowlisted_at=_WINDOW_ORIGIN)
     db_session.add(user)
     await db_session.flush()
     return user.id

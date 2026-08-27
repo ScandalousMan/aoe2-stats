@@ -12,19 +12,24 @@ One cycle of discovery does three things, in this order, over the same set of pr
    so the run that lowers `CAPTURE_BUDGET_DAYS` changes every capture enqueued from that moment on
    (FR-014).
 
-**Consent is a `WHERE` clause, not a branch (FR-013, FR-034, FR-035, FR-042).**
-`_consenting_profile_ids` is the *only* place this module decides whose profiles exist for this
-cycle: a user who never granted consent, or who granted it and then withdrew it, never appears in
-the list it returns, so neither the rating refresh nor the match-history call nor the enqueue step
-ever sees that user's profile at all — there is no later `if not consented: continue` for a new
-code path to route around. The predicate is the two clauses data-model.md states —
-`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL` — never the first clause
-alone: T032 deliberately never clears `ingest_consent_at` on withdrawal, keeping it as the record
-of what was agreed and when, so a query that tests only that column would answer "consented"
-forever from the first grant onward and FR-035's withdrawal would do nothing at all to ingestion
-(T053a). FR-042 is the same query's other half: every linked profile a consenting user holds is
-selected, not only the one `is_primary` marks, because `profile_links.unlinked_at IS NULL` is the
-only per-link condition, and nothing here also filters on `is_primary`.
+**Link status is a `WHERE` clause, not a branch (FR-013, FR-042); objection is a second, narrower
+one that only capture consults (constitution IX 4.0.0).** Archival now rests on legitimate interest,
+not consent: a linked profile whose user has not answered any question is ingested in full,
+archival included. `_linked_profile_ids()` is the *only* place this module decides whose profiles
+exist for a cycle's discovery and rating refresh — every profile with `profile_links.unlinked_at
+IS NULL`, no other condition. `_archiving_profile_ids()` narrows that same set by one more
+condition, `users.archival_objected_at IS NOT NULL` excluded, and it is consulted nowhere but the
+capture-enqueue membership test in `__call__`'s participant loop: a linked user's Art. 21 objection
+stops further capture of their own recordings and nothing upstream of it — their matches are still
+discovered and their ratings are still refreshed on every cycle, exactly as an unobjected user's
+are. Collapsing "objected" into "unlinked" — dropping discovery or the rating refresh for an
+objecting user — reinstates the retired opt-in gate under `archival_objected_at`'s name; that is
+the fault this split exists to prevent, not merely a stricter query. `unlinked_at IS NOT NULL`
+remains the one exclusion that reaches every step, because an unlinked profile is not a linked
+user's own point of view for anyone to attribute a recording to. FR-042 is `_linked_profile_ids()`'s
+other half: every linked profile a user holds is selected, not only the one `is_primary` marks,
+because `profile_links.unlinked_at IS NULL` is the only per-link condition, and nothing here also
+filters on `is_primary`.
 
 **Every write below is an upsert, never a plain `INSERT`.** A discovery cycle runs daily against
 profiles whose match history and roster keep changing, and the same match is very often discovered
@@ -179,7 +184,7 @@ async def upsert_match_player(session: AsyncSession, game_id: int, profile_id: i
 
 class DiscoverStage:
     """A `Stage` (`aoe2stats_ingester.run.Stage`): ratings refresh, match discovery, upsert and
-    capture enqueue, over every consenting user's every linked profile.
+    capture enqueue, over every linked user's every linked profile.
 
     `profile_provider` is optional: a caller that only wants match discovery — this repository's
     own `test_consent_gate.py` is exactly that caller — can omit it, and the rating-refresh step is
@@ -206,12 +211,13 @@ class DiscoverStage:
         self._batch_size = batch_size
 
     async def __call__(self, budget: Budget) -> Mapping[str, Any]:
-        profile_ids = await self._consenting_profile_ids()
+        profile_ids = await self._linked_profile_ids()
         # A plain `set` for O(1) membership below: which profiles a discovered match's participants
         # belong to (and therefore get a `replay_captures` row) is checked against the *whole*
-        # cycle's consenting set, not against whichever batch happened to trigger the fetch — two
+        # cycle's archiving set — every linked profile minus one whose user has objected
+        # (constitution IX 4.0.0) — not against whichever batch happened to trigger the fetch: two
         # profiles sharing a match can land in different batches (`test_shared_match.py`).
-        consenting_profile_ids = set(profile_ids)
+        archiving_profile_ids = set(await self._archiving_profile_ids())
 
         rating_snapshots_recorded = 0
         if self._profile_provider is not None:
@@ -233,7 +239,7 @@ class DiscoverStage:
                     for player_profile_id in raw_match.player_profile_ids:
                         await touch_aoe_profile(session, player_profile_id)
                         await upsert_match_player(session, raw_match.game_id, player_profile_id)
-                        if player_profile_id in consenting_profile_ids:
+                        if player_profile_id in archiving_profile_ids:
                             enqueued = await self._enqueue_capture(
                                 session, raw_match, player_profile_id
                             )
@@ -247,24 +253,37 @@ class DiscoverStage:
             "rating_snapshots_recorded": rating_snapshots_recorded,
         }
 
-    async def _consenting_profile_ids(self) -> list[int]:
-        """FR-013/FR-034/FR-035/FR-042 in one query: every profile still actively linked
-        (`unlinked_at IS NULL`) to a user whose ingestion consent is granted **right now** —
-        `ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`, the two-clause
-        predicate data-model.md states and contracts/http-api.md cites twice — the condition this
-        whole module's docstring is about, expressed once, here, as the thing that selects work
-        rather than as a filter applied to it afterwards. The first clause alone is not enough:
-        `ingest_consent_at` is never cleared on withdrawal (T032), so it stays true forever from
-        the first grant onward, and only the second clause makes a withdrawal (FR-035) actually
-        stop a user's matches from being discovered and their captures from being enqueued.
+    async def _linked_profile_ids(self) -> list[int]:
+        """FR-013/FR-042: every profile still actively linked (`profile_links.unlinked_at IS
+        NULL`), no other condition — the set that drives match discovery and the rating refresh
+        (constitution IX 4.0.0: archival rests on legitimate interest, not consent, so a linked
+        profile whose user has not answered any question is ingested in full). `unlinked_at IS NOT
+        NULL` is the one exclusion that survives the amendment, and it must stay total: an
+        unlinked profile is not a linked user's own point of view for anyone to attribute a
+        recording to.
+        """
+        async with self._session_factory() as session:
+            statement = (
+                select(ProfileLink.profile_id).where(ProfileLink.unlinked_at.is_(None)).distinct()
+            )
+            result = await session.execute(statement)
+            return [row[0] for row in result.all()]
+
+    async def _archiving_profile_ids(self) -> list[int]:
+        """The narrower set `_linked_profile_ids()` selects, minus any profile whose user has
+        exercised the Art. 21 right to object (`users.archival_objected_at IS NOT NULL`) —
+        consulted nowhere but the capture-enqueue membership test in `__call__`'s participant
+        loop. An objecting user is still a linked user in every other respect: their matches are
+        still discovered and their ratings are still refreshed by `_linked_profile_ids()` above,
+        only their own further capture stops. "Objected" and "unlinked" are deliberately two
+        different conditions on two different queries here, never one collapsed into the other.
         """
         async with self._session_factory() as session:
             statement = (
                 select(ProfileLink.profile_id)
                 .join(User, User.id == ProfileLink.user_id)
                 .where(ProfileLink.unlinked_at.is_(None))
-                .where(User.ingest_consent_at.is_not(None))
-                .where(User.ingest_consent_withdrawn_at.is_(None))
+                .where(User.archival_objected_at.is_(None))
                 .distinct()
             )
             result = await session.execute(statement)
