@@ -27,12 +27,27 @@ directions:
 - It exists for approximately **31 days**. After that it answers `404` for everyone, forever.
 
 So third-party recorded games are freely readable *and* permanently perishable, and this service
-archives none of them. That is not an oversight — it is what constitution IX ("we capture only the
-consenting user's point of view") and principle I (capture budget belongs to consenting users)
-require. The consequence is the central design fact of this feature: **for the signed-in user's own
-matches these two CTAs work forever; for everyone else's they work for about a month and then
-disappear.** Every requirement below either follows from that or exists to make it honest to the
-user rather than a broken button.
+archives none of them. That is not an oversight — it is what constitution IX (only the linked user's
+own point of view is ever captured automatically) and principle I (the capture budget belongs to
+linked users) require. The consequence is the central design fact of this feature: **for the
+signed-in user's own matches these two CTAs work forever; for everyone else's they work for about a
+month and then disappear.** Every requirement below either follows from that or exists to make it
+honest to the user rather than a broken button.
+
+**Amended 2026-08-25** (constitution IX 4.0.0). The paragraph above quoted IX as "we capture only the
+consenting user's point of view", and gave principle I's capture budget to "consenting users".
+Neither phrase is in the constitution any more: the opt-in gate was retired for legitimate interest
+(Art. 6-1-f) with a mandatory right to object (Art. 21), so a linked profile is archived by default
+and a user who has answered nothing is ingested in full. The quotation is corrected in place rather
+than footnoted, because a rule *attributed to the constitution* that the constitution does not
+contain misleads in a way a note beside it cannot repair. **Nothing this feature decided changes**:
+what the paragraph rests on is the **point-of-view limit**, which survived 4.0.0 untouched and is now
+IX's real constraint on automatic capture (FR-012, 001 FR-016).
+
+The same substitution governs the narrative below wherever it spoke of 001 capturing for *consenting*
+users. Requirement text carries its own dated notes (FR-012, FR-048), and "Clarifications / Session
+2026-08-23" is left exactly as it was decided that day — it is anchored to IX 2.0.0 and reads
+correctly against that version, which is what a frozen record is for.
 
 ## Challenging the requirement: does on-demand analysis need a nightly cron and blob storage?
 
@@ -43,7 +58,7 @@ below and the answer is no. The second turned out to be the real question, and i
 other way (Q2, session 2026-08-23).
 
 **1. The nightly cron and the object store are not analysis infrastructure.** They exist in 001 to
-beat the ~31-day purge for consenting users, mandated by constitution principle I. They are already
+beat the ~31-day purge for linked users, mandated by constitution principle I. They are already
 built, they are not up for removal, and this feature neither needs nor extends them. The real
 question is not "does analysis need them" but "does analysis need **more** of them". For the cron,
 the answer is a flat no: **this feature adds no scheduled job at all.** Nothing is fetched on a
@@ -61,7 +76,7 @@ would have been for, and it is why there isn't one.
 **Amended 2026-08-24: reading 001's capture is not the same as being able to keep reading it.** An
 own match is read from the capture and then **retained under FR-033's own basis anyway**, as a second
 object under the retention prefix. It looks like duplication and is not: the capture exists under the
-user's explicit consent and is deleted when that user erases, while the analysis derived from it is
+linked user's own basis and is deleted when that user erases, while the analysis derived from it is
 published to everyone who opens the match and must stay recomputable for years (constitution IV).
 Without the second copy, one erasure destroys the raw of a conclusion shown to strangers — the exact
 failure FR-033 exists to prevent, arriving by the one path nobody was watching. The cost is stated
@@ -94,7 +109,11 @@ control:
   of personal data, so FR-045 puts it in the processing register with its own legal basis, and
   FR-046 puts it inside the third-party objection route and erasure — which, as amended 2026-08-24,
   reach every identifier this service holds about a person appearing in a recording and leave the
-  recording itself intact.
+  recording itself intact. **Amended 2026-08-25** (IX 4.0.0), against the 2.0.0 text this bullet
+  records: automatic capture is the *linked* user's own point of view, consent having been retired,
+  and "never a side effect of browsing" no longer holds for match *metadata* — FR-011 records a third
+  party's public match data precisely because somebody browsed. It still holds for *recordings*,
+  which is the half that mattered and the half FR-012 enforces.
 - **Growth driven by clicking rather than by playing.** Real, and now constitutionally required to be
   bounded: FR-047 caps it and rate-limits it. Storage volume must remain a function of deliberate
   human requests, never of traffic.
@@ -105,8 +124,8 @@ control:
 and it retains both its derived result and the recording it was derived from. It adds **no scheduled
 job and no background sweep** — which was the actual question, and the answer to it is unchanged by
 Q2. What grows is storage, bounded and on request; what does not grow is the cron table. Recordings
-are still never fetched speculatively, and 001's archive still holds only consenting users' own
-points of view. What this feature must also add is **honesty**: a recording that will stop being
+are still never fetched speculatively, and 001's archive still holds only linked users' own points
+of view. What this feature must also add is **honesty**: a recording that will stop being
 fetchable must say so, with its date, before the user relies on it — FR-024, FR-025 and FR-034 exist
 for that and for nothing else.
 
