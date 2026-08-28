@@ -28,6 +28,7 @@ from aoe2stats_providers.base import (
     ProviderCallRecord,
     ProviderContractViolation,
     ProviderError,
+    ProviderMoved,
     ProviderRateLimited,
     ProviderUnavailable,
     ReplayBlob,
@@ -222,6 +223,48 @@ async def test_a_connection_error_is_retried_like_a_timeout() -> None:
     assert len(recorder.calls) == FAST_RETRY.max_attempts
 
 
+# --- A redirect chain that outlives max_redirects raises ProviderMoved, not retried --------------
+#
+# `wiring.py` sets `follow_redirects=True` on the one shared client every provider is built from
+# (2026-08-28 incident, `docs/data-sources.md` §2). A host that redirects forever — or deeper than
+# the client's own `max_redirects` — is not the same failure as a 5xx or a timeout: it is the
+# source proving it has moved somewhere this client's own contract cannot resolve, a fact for a
+# human rather than a transient blip a few hundred milliseconds of backoff would fix.
+# `ProviderMoved` (`base.py`) is that distinction, raised immediately rather than retried like the
+# timeout and connection-error branches above.
+
+
+async def test_a_redirect_loop_raises_provider_moved_not_provider_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"location": str(request.url)})
+
+    recorder = _Recorder()
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=True, max_redirects=1
+    )
+    provider = _FakeAsyncProvider(
+        provider="fake",
+        client=client,
+        timeout_seconds=5.0,
+        rate_limiter=TokenBucket(1000.0),
+        call_sink=recorder.async_sink,
+        retry_policy=FAST_RETRY,
+    )
+
+    with pytest.raises(ProviderMoved) as excinfo:
+        await provider.call()
+
+    assert isinstance(excinfo.value, ProviderUnavailable)  # existing callers keep working unaltered
+    assert excinfo.value.provider == "fake"
+    assert excinfo.value.endpoint == "thing"
+    # Not retried: exactly one attempt reaches `_record`, unlike the timeout/connection-error
+    # branches above, which retry up to `FAST_RETRY.max_attempts` times.
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code is None
+
+    await client.aclose()
+
+
 # --- 429 / unexpected 403: never retried, stops the run immediately -----------------------------
 
 
@@ -339,6 +382,38 @@ def test_sync_provider_retries_and_records_like_the_async_one() -> None:
 
     assert response.status_code == 200
     assert [call.status_code for call in recorder.calls] == [503, 200]
+
+
+def test_sync_redirect_loop_raises_provider_moved_not_provider_unavailable() -> None:
+    """The synchronous twin of `test_a_redirect_loop_raises_provider_moved_not_provider_
+    unavailable` above — `SteamAuthProvider`'s own client gets the same `follow_redirects=True`
+    (`wiring.py`), and `SyncBaseProvider._request` carries the identical `TooManyRedirects` branch.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"location": str(request.url)})
+
+    recorder = _Recorder()
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), follow_redirects=True, max_redirects=1
+    )
+    provider = _FakeSyncProvider(
+        provider="fake",
+        client=client,
+        timeout_seconds=5.0,
+        rate_limiter=SyncTokenBucket(1000.0),
+        call_sink=recorder.sync_sink,
+        retry_policy=FAST_RETRY,
+    )
+
+    with pytest.raises(ProviderMoved) as excinfo:
+        provider.call()
+
+    assert isinstance(excinfo.value, ProviderUnavailable)
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code is None
+
+    client.close()
 
 
 def test_sync_provider_429_raises_immediately() -> None:

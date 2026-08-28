@@ -147,6 +147,17 @@ GET https://aoe.ms/replay/?gameId={gameId}&profileId={profileId}
   301 -> https://api.ageofempires.com/api/GameStats/AgeII/GetMatchReplay/?gameId=..&profileId=..&matchId=..
 ```
 
+**Re-confirmed 2026-08-28: this redirect is now unconditional**, not the occasional shape it was
+when first recorded above — every request to `aoe.ms/replay/`, valid `(gameId, profileId)` or not,
+receives the `301` first; there is no longer a direct `200` or `404` from that host. `Success` and
+`Failure` below describe the response after following it, served by `api.ageofempires.com`; nothing
+about the endpoint's own contract — filename, content type, retention — changed, and the redirect
+target still answers the identical shapes this table has always measured. This is what a client
+built with `follow_redirects=False` (`httpx`'s own default) reads as an unrecoverable, unnamed
+status instead of a replay — the production defect this note exists to keep from recurring
+silently; `packages/providers/src/aoe2stats_providers/wiring.py` sets `follow_redirects=True` on
+the one shared client every provider here is built from for exactly this reason.
+
 | Property       | Measured                                                                  |
 | -------------- | ------------------------------------------------------------------------- |
 | Authentication | none                                                                      |
@@ -258,8 +269,8 @@ Measured **2026-08-23**. This is the only display-name search available against 
 | Record      | `profileId`, `name`, `country`, `games`, `drops`, `clan`, `avatarhash`, `verified`, `platform`, `platformName`, `steamId`, `shared`, `sharedHistory`, `hidden`, and six sparse `social*` fields (1 record in 20 carried any) |
 | Reliability | 12 consecutive requests, 12 × `200`, from a residential connection                                                                                                                                                           |
 
-> **Trap.** *Partly superseded 2026-08-24 — read the "So the trap above" paragraph below before
-> acting on this box.* A search record also carries `steamId`, `shared` and `sharedHistory` — the same
+> **Trap.** _Partly superseded 2026-08-24 — read the "So the trap above" paragraph below before
+> acting on this box._ A search record also carries `steamId`, `shared` and `sharedHistory` — the same
 > community account-linking claim as `linkedProfiles`. Constitution IX and 001's FR-045 forbid
 > using, storing or surfacing any of it: it is an unverifiable assertion about someone's identity,
 > and acting on it would expose alternate accounts their owners keep separate on purpose. Strip

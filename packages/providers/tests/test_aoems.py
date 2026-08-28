@@ -61,12 +61,14 @@ import pytest
 from aoe2stats_providers.base import (
     NotFound,
     ProviderCallRecord,
+    ProviderMoved,
     ProviderRateLimited,
     ProviderUnavailable,
     ReplayBlob,
     RetryPolicy,
     TokenBucket,
 )
+from aoe2stats_providers.wiring import build_async_client_resources
 
 if TYPE_CHECKING:
     # Type-checking only: mypy needs the name, but nothing here may import the module at
@@ -172,6 +174,100 @@ async def test_fetch_replay_returns_a_replay_blob_on_200() -> None:
     assert seen["params"]["profileId"] == str(REFERENCE_PROFILE_ID)
     assert len(recorder.calls) == 1
     assert recorder.calls[0].status_code == 200
+    assert not recorder.calls[0].rate_limited
+
+
+# --- fetch_replay: a 301 is followed to the replay, never accepted as-is (2026-08-28 incident) ----
+#
+# `aoe.ms/replay/` now answers every request with a 301 to `api.ageofempires.com`'s own equivalent
+# path (`docs/data-sources.md` §2), which still serves the same 200/zip this provider has always
+# read. The defect this closes lives in `wiring.py`'s `follow_redirects` default, not in this
+# provider's own status handling — a test that built its own always-following
+# `httpx.AsyncClient(transport=...)` here, the way every other test in this file does through
+# `_provider()`, would pass whether or not `wiring.py` was ever fixed. This test instead goes
+# through `build_async_client_resources` itself, the exact call production wiring makes, and swaps
+# only the transport for a `MockTransport` afterwards (there is no public API to inject one at
+# construction, and adding one only for this test would let the test shape the production
+# signature) — every other client setting, `follow_redirects` included, is exactly what production
+# gets. Before `wiring.py` sets `follow_redirects=True`, this fails: the unfollowed 301 reaches
+# `fetch_replay` as `response.status_code == 301` and is raised as `ProviderUnavailable`
+# ("returned an unnamed status 301"), never a `ReplayBlob`.
+
+
+async def test_fetch_replay_follows_a_301_redirect_to_the_replay() -> None:
+    from aoe2stats_providers.aoems.provider import AoemsReplayProvider
+
+    content = REPLAY_ZIP.read_bytes()
+    redirect_target = (
+        "https://api.ageofempires.com/api/GameStats/AgeII/GetMatchReplay/"
+        f"?gameId={REFERENCE_GAME_ID}&profileId={REFERENCE_PROFILE_ID}"
+        f"&matchId={REFERENCE_GAME_ID}"
+    )
+    requested_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_hosts.append(request.url.host)
+        if request.url.host == "aoe.ms":
+            return httpx.Response(301, headers={"location": redirect_target})
+        return httpx.Response(
+            200,
+            content=content,
+            headers={
+                "content-type": "application/zip",
+                "content-disposition": f"attachment; filename={REFERENCE_FILENAME}",
+            },
+        )
+
+    client, _ = build_async_client_resources(1000.0)
+    # No public API builds this client against a fake transport — see the docstring above for why
+    # that is deliberate, not an oversight. `_transport_for_url` falls back to this attribute for
+    # every URL when no scheme-specific mount is registered, which nothing here registers.
+    client._transport = httpx.MockTransport(handler)
+    recorder = _Recorder()
+    provider = AoemsReplayProvider(
+        client=client,
+        timeout_seconds=5.0,
+        rate_limiter=TokenBucket(1000.0),
+        call_sink=recorder.async_sink,
+        retry_policy=FAST_RETRY,
+    )
+
+    try:
+        blob = await provider.fetch_replay(REFERENCE_GAME_ID, REFERENCE_PROFILE_ID)
+    finally:
+        await client.aclose()
+
+    assert isinstance(blob, ReplayBlob)
+    assert blob.content == content
+    assert blob.filename == REFERENCE_FILENAME
+    # Both legs of the redirect were actually requested — the fix follows the chain, it does not
+    # merely accept the 301 as though it were a 200.
+    assert requested_hosts == ["aoe.ms", "api.ageofempires.com"]
+
+
+# --- fetch_replay: a residual 3xx (never auto-followed) raises ProviderMoved -----------------
+#
+# `httpx.Response.has_redirect_location` only follows `{301, 302, 303, 307, 308}` carrying a
+# `Location` header, even with `follow_redirects=True` — anything else in the 3xx range reaches
+# `fetch_replay` exactly as unfollowed as a 301 did before the 2026-08-28 fix. This is the case
+# `ProviderMoved` (`base.py`) exists for at this layer: distinguishable from an ordinary outage by
+# type, not merely by a status number buried in a formatted string.
+
+
+async def test_fetch_replay_raises_provider_moved_on_a_residual_3xx() -> None:
+    recorder = _Recorder()
+    provider, _ = _provider(
+        lambda request: httpx.Response(305, headers={"location": "https://example.test/proxy"}),
+        recorder=recorder,
+    )
+
+    with pytest.raises(ProviderMoved) as excinfo:
+        await provider.fetch_replay(REFERENCE_GAME_ID, REFERENCE_PROFILE_ID)
+
+    assert excinfo.value.status_code == 305
+    assert isinstance(excinfo.value, ProviderUnavailable)  # the parent, unchanged existing callers
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 305
     assert not recorder.calls[0].rate_limited
 
 

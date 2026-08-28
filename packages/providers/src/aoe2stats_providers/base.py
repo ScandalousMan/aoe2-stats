@@ -10,8 +10,9 @@ concrete provider is allowed to skip:
 - a token bucket every request passes through before it is sent;
 - the honest, identifying `User-Agent`;
 - a `provider_calls` row for every attempt, success or failure;
-- the typed errors `ProviderUnavailable`, `ProviderRateLimited`, `ProviderContractViolation`, and
-  strict Pydantic validation so a field of an unexpected type never becomes a coerced value.
+- the typed errors `ProviderUnavailable` (and its `ProviderMoved` subtype — see that class's own
+  docstring), `ProviderRateLimited`, `ProviderContractViolation`, and strict Pydantic validation so
+  a field of an unexpected type never becomes a coerced value.
 
 What this module deliberately does **not** do: persist a raw response anywhere. `provider_calls`
 (see `packages/storage/src/aoe2stats_storage/models.py::ProviderCall`) holds no body — a generic
@@ -74,6 +75,35 @@ class ProviderUnavailable(ProviderError):
     """The source itself is unhealthy: a 5xx, or a timeout/connection failure that outlived the
     retry budget. Recoverable on a later run; the caller should not treat this as a permanent
     outcome for the item being fetched.
+    """
+
+
+class ProviderMoved(ProviderUnavailable):
+    """A `ProviderUnavailable` subtype for the one failure shape that is not, in fact, "unhealthy":
+    the endpoint itself has relocated, and the response proves it rather than merely timing out or
+    5xx-ing. Two wire conditions raise this, both in `AsyncBaseProvider._request`/
+    `SyncBaseProvider._request` below or in a concrete provider reading a status its own contract
+    does not recognise as ordinary:
+
+    - `httpx.TooManyRedirects` — the client (`wiring.py` sets `follow_redirects=True` on the one
+      shared client every provider here is built from) tried to follow a redirect chain and gave
+      up at its `max_redirects` ceiling. A genuine outage does not manifest as an endless chain of
+      valid redirect responses; a host that has been reconfigured to bounce traffic somewhere new,
+      possibly in a loop, does.
+    - a residual 3xx a concrete provider reads directly off the response, for the cases
+      `httpx.Response.has_redirect_location` does not cover even with `follow_redirects=True` — a
+      3xx outside `{301, 302, 303, 307, 308}`, or one of those five with no `Location` header. See
+      `aoems/provider.py::fetch_replay` for the one place this is currently read.
+
+    Deliberately a subclass of `ProviderUnavailable`, not a sibling: every caller written before
+    this class existed (`apps/ingester/src/aoe2stats_ingester/capture.py`'s
+    `except ProviderUnavailable`) keeps its exact prior behaviour — bounded retry, then `failed` —
+    for a case it never had a name for. A caller that wants to react differently (a human-facing
+    alert distinct from an ordinary outage, say) can `except ProviderMoved` ahead of the parent
+    without this module or any caller already written against `ProviderUnavailable` changing.
+    `str(exc)` is written to say "moved"/"redirect" rather than "unavailable"/"error", since
+    `last_error` is exactly what a human reviewing a stuck capture reads first (skill
+    `aoe2-data-sources`; `capture.py`'s own module docstring on `failed_total`).
     """
 
 
@@ -561,6 +591,17 @@ class AsyncBaseProvider:
                     timeout=self._timeout,
                     headers={"User-Agent": PROVIDER_USER_AGENT},
                 )
+            except httpx.TooManyRedirects as exc:
+                # Not retried, unlike the timeout/connection branches below: a redirect chain
+                # that outlives `max_redirects` is a property of how the source is now routed,
+                # not a transient blip that a few hundred milliseconds of backoff fixes. See
+                # `ProviderMoved`'s own docstring.
+                await self._record(endpoint, None, started, rate_limited=False)
+                raise ProviderMoved(
+                    f"{self._provider} exceeded the redirect limit calling {endpoint}: {exc}",
+                    provider=self._provider,
+                    endpoint=endpoint,
+                ) from exc
             except httpx.TimeoutException as exc:
                 await self._record(endpoint, None, started, rate_limited=False)
                 last_error = exc
@@ -685,6 +726,15 @@ class SyncBaseProvider:
                     timeout=self._timeout,
                     headers={"User-Agent": PROVIDER_USER_AGENT},
                 )
+            except httpx.TooManyRedirects as exc:
+                # The sync twin of the async branch above — see `ProviderMoved`'s own docstring
+                # for why this is raised immediately rather than folded into the retry loop.
+                self._record(endpoint, None, started, rate_limited=False)
+                raise ProviderMoved(
+                    f"{self._provider} exceeded the redirect limit calling {endpoint}: {exc}",
+                    provider=self._provider,
+                    endpoint=endpoint,
+                ) from exc
             except httpx.TimeoutException as exc:
                 self._record(endpoint, None, started, rate_limited=False)
                 last_error = exc
