@@ -1,4 +1,4 @@
-"""archival objection
+"""archival objection (expand)
 
 Revision ID: ad6ae8d59519
 Revises: b23f76b4e1fb
@@ -21,14 +21,31 @@ answered the question at all — becomes `archival_objected_at IS NULL`, which i
 This is deliberate and is the one behaviour change 4.0.0 requires: a linked profile that has
 answered nothing is no longer excluded from anything.
 
-This is the one task in this phase that changes stored data, and it is irreversible in the sense
-that matters: `downgrade()` can reconstruct a schema with both old columns, but it cannot tell
-"never consented" apart from "consented and never withdrew" again — that evidence lived only in
-`ingest_consent_at` having a value, and this migration does not attempt to fabricate it. The
-`downgrade()` below reconstructs the columns and repopulates `ingest_consent_withdrawn_at` from
-`archival_objected_at` (the one direction that is lossless); `ingest_consent_at` comes back NULL
-for everyone, which is honestly the best this migration can do, not a claim that the original value
-is recovered.
+**This is the expand half of an expand/contract pair, split for exactly one reason: a migration
+that both adds the new column and drops the two old ones in a single revision cannot be applied
+safely relative to a code deploy in either order — the old code still reads the old columns until
+its replacement is live, and the new code reads a column that does not exist until this migration
+has run.** This revision only adds `archival_objected_at` and backfills it; `ingest_consent_at`
+and `ingest_consent_withdrawn_at` are left in place, untouched, so the still-deployed old code
+(`apps/api/src/aoe2stats_api/routers/auth.py`, `apps/ingester/src/aoe2stats_ingester/discover.py`)
+keeps working unmodified against this schema. The companion contract migration
+(`down_revision = "ad6ae8d59519"`) drops the two old columns once the new code is confirmed live —
+see that file, and `docs/runbooks/database-migrations.md`, for the sequencing.
+
+**The `schema_out_of_date` window this opens, and why it is expected.** Between this migration
+being applied and the deploy that carries the new code reaching production, the database's
+`alembic_version` is ahead of the `EXPECTED_SCHEMA_REVISION` compiled into the still-deployed old
+tree (`packages/storage/src/aoe2stats_storage/revision.py`). `/api/health` (T394) will report
+`schema_out_of_date` for that window — this is the check doing its job, not a fault: every route
+still serves, because expand only adds a column, and nothing yet reads it. The window should last
+no longer than the deploy itself; if `schema_out_of_date` is still showing once the new code is
+confirmed live, that is the actual fault to investigate, not this window.
+
+**Why this revision id and `down_revision` are unchanged even though the migration's shape
+changed.** This migration has never been applied to any real database — only to throwaway
+containers and CI — so restructuring what it does is free, and keeping the id stable keeps every
+existing reference to `ad6ae8d59519` (git history, `revision.py`'s prior value, this docstring's
+own cross-references) meaningful.
 
 001's T106/T392 apply: this migration must be applied to Neon through the direct endpoint, not the
 pooled one (`docs/runbooks/database-migrations.md`) — never through this repository's CI, which
@@ -55,18 +72,10 @@ def upgrade() -> None:
         "UPDATE users SET archival_objected_at = ingest_consent_withdrawn_at "
         "WHERE ingest_consent_withdrawn_at IS NOT NULL"
     )
-    op.drop_column("users", "ingest_consent_at")
-    op.drop_column("users", "ingest_consent_withdrawn_at")
 
 
 def downgrade() -> None:
-    op.add_column("users", sa.Column("ingest_consent_at", sa.DateTime(timezone=True)))
-    op.add_column("users", sa.Column("ingest_consent_withdrawn_at", sa.DateTime(timezone=True)))
-    # Lossless in one direction only: an objection is known to have been a withdrawal (that is
-    # the only case that produced a value going forward). `ingest_consent_at` is not recoverable
-    # — see the module docstring — and is left NULL rather than backfilled with a fabricated value.
-    op.execute(
-        "UPDATE users SET ingest_consent_withdrawn_at = archival_objected_at "
-        "WHERE archival_objected_at IS NOT NULL"
-    )
+    # The old columns were never touched by this revision's upgrade() — only the new column needs
+    # undoing here. No data loss: `ingest_consent_at` and `ingest_consent_withdrawn_at` still hold
+    # whatever they held before upgrade() ran.
     op.drop_column("users", "archival_objected_at")

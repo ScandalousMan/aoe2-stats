@@ -74,3 +74,53 @@ unapplied migration is caught by `schema_out_of_date` (T394), not prevented by i
 Never export the direct-endpoint value into the Vercel project's environment variables. That is
 the value the app would then use for every request, defeating the pooling `docs/adr/0002-hosting.md`
 and R10 (`docs/risks.md`) both depend on.
+
+## Expand/contract migrations: two runs of this procedure, not one
+
+A migration that adds a column and a migration that drops one carry opposite deploy-ordering
+constraints, and a single revision that does both at once has no safe ordering relative to the
+code deploy at all: applied before the deploy, the still-live old code is missing whatever the
+drop removed; applied after, the new code is missing whatever the add hasn't arrived yet. A
+revision pair that separates the two — **expand** (additive, safe with the old code still live)
+and **contract** (destructive, safe only once the new code is confirmed live) — is how a migration
+that both adds and drops gets a safe ordering back. `ad6ae8d59519` (`archival objection (expand)`)
+and `5c5f5e0b607d` (`archival objection (contract)`) are this repository's example: expand adds
+`archival_objected_at` and backfills it while leaving `ingest_consent_at` and
+`ingest_consent_withdrawn_at` in place for the old code to keep reading; contract, applied only
+after the deploy that stops reading those two columns is live, drops them.
+
+Run the Procedure above **twice**, not once, for a pair like this — step 3's target is a specific
+revision, not `head`, on the first run:
+
+1. Run the Procedure above through step 4 (`alembic check`), but in step 3 target the **expand**
+   revision explicitly rather than `head`:
+
+   ```sh
+   uv run alembic upgrade ad6ae8d59519
+   ```
+
+   This is safe to apply before the deploy: the old code neither knows nor cares about the new
+   column.
+
+2. Deploy the code that reads the new column and stops reading the old ones.
+
+3. Do step 5 of the Procedure above — confirm `GET /api/health` — expecting it to report
+   `schema_out_of_date` until the deploy lands, not `ok`. `alembic_version` is now at
+   `ad6ae8d59519`, and `EXPECTED_SCHEMA_REVISION` compiled into the _still-deployed_ old build
+   points somewhere behind that (whatever revision was head before this pair shipped); once the
+   new build — the one whose `EXPECTED_SCHEMA_REVISION` is the contract revision — is live, the
+   two agree again and the check should read `ok`. This is the check working, not an incident:
+   every route still serves throughout, because expand only adds. Do step 6 (unset
+   `DATABASE_URL`) once this reads `ok` — if it is still `schema_out_of_date` after the deploy is
+   confirmed live, that is the real fault to investigate.
+
+4. Once step 3 above reads `ok`, run the Procedure above again in full, this time targeting the
+   **contract** revision (`head`, once it is the only pending revision):
+
+   ```sh
+   uv run alembic upgrade head
+   ```
+
+Never collapse the two runs into one `alembic upgrade head` executed before the deploy — that
+applies contract before the old code has stopped reading the columns it drops, which is the exact
+outage this split exists to avoid.
