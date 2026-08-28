@@ -28,3 +28,30 @@ async def test_build_async_client_resources_returns_a_client_and_a_rate_limiter(
     assert isinstance(rate_limiter, TokenBucket)
 
     await client.aclose()
+
+
+# --- follow_redirects (2026-08-28 incident) --------------------------------------------------
+#
+# `aoe.ms/replay/` moved permanently behind a 301 to `api.ageofempires.com` (`docs/data-sources.md`
+# §2) while `httpx`'s own default (`follow_redirects=False`) reached production unchanged: every
+# capture read the 301 itself as an unnamed status and raised `ProviderUnavailable`, forever, rather
+# than following it to the 200 the source still answers with. These two assertions target that
+# default directly, at the exact call this project's shared client is built from — see
+# `AoemsReplayProvider.fetch_replay` in `test_aoems.py` for the behavioural regression test this
+# setting exists to fix.
+
+
+def test_build_sync_client_resources_follows_redirects() -> None:
+    client, _ = build_sync_client_resources(5.0)
+
+    assert client.follow_redirects is True
+
+    client.close()
+
+
+async def test_build_async_client_resources_follows_redirects() -> None:
+    client, _ = build_async_client_resources(5.0)
+
+    assert client.follow_redirects is True
+
+    await client.aclose()
