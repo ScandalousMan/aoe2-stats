@@ -27,20 +27,23 @@ interface FakeSession {
   authenticated: true
   user_id: string
   allowlisted: boolean
-  ingest_consent: boolean
-  ingest_consent_at: string | null
-  ingest_consent_withdrawn_at: string | null
+  archival_objected: boolean
+  archival_objected_at: string | null
   profiles: unknown[]
 }
 
+// `false` / `null` is the fixture shape of "never answered any question", which constitution IX
+// 4.0.0 makes archiving by default — mirrors `DashboardContainer.test.tsx`'s `baseSession`. This
+// container never reads either field (it only branches on `session.authenticated`), so the exact
+// value does not drive any assertion below; it exists to keep the fixture honest to the current
+// `GET /api/me` contract.
 function baseSession(overrides: Partial<FakeSession> = {}): FakeSession {
   return {
     authenticated: true,
     user_id: 'user-1',
     allowlisted: true,
-    ingest_consent: false,
-    ingest_consent_at: null,
-    ingest_consent_withdrawn_at: null,
+    archival_objected: false,
+    archival_objected_at: null,
     profiles: [],
     ...overrides,
   }
