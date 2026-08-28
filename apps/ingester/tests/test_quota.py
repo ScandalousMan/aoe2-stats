@@ -79,7 +79,7 @@ _EXEMPT_DAYS = 7
 
 async def _seed_user(db_session: AsyncSession, *, steam_id64: str) -> User:
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
     db_session.add(
@@ -475,7 +475,7 @@ async def _seed_quota_user_with_three_captures(
     `_QUOTA_MAX_PER_USER=1`, only the first ordinary one in claim order fits under the cap.
     """
     async with session_factory() as session:
-        user = User(allowlisted_at=now, ingest_consent_at=now)
+        user = User(allowlisted_at=now)
         session.add(user)
         await session.flush()
         session.add(

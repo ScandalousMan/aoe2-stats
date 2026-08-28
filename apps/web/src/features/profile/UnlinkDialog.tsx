@@ -3,9 +3,11 @@ import { Callout, Dialog } from 'design-system'
 // FR-004's confirming half: the preview call already happened (`api.ts`'s `previewUnlink`,
 // wired in `DashboardContainer.tsx`) and its consequence for archived replays is what this dialog
 // shows *before* the confirming `DELETE …?confirm=true` is ever issued — never in the same step.
-// Built on `design-system`'s `Dialog` primitive (T035b), which replaced the copy of `ConsentStep`'s
-// `WithdrawConfirmDialog` chrome — focus trap, Escape handling, backdrop and boxed-surface classes
-// — this module used to carry directly.
+// Built on `design-system`'s `Dialog` primitive (T035b), which replaced the copy of what was then
+// `ConsentStep`'s `WithdrawConfirmDialog` chrome — focus trap, Escape handling, backdrop and
+// boxed-surface classes — this module used to carry directly. That withdraw-confirm dialog itself
+// was retired by T406 (constitution IX 4.0.0, `ArchivalControl` replacing `ConsentStep`), so this
+// is `Dialog`'s one live consumer today.
 
 export interface UnlinkDialogProps {
   alias: string

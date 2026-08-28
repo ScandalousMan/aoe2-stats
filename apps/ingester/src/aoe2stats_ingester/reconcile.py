@@ -12,11 +12,11 @@ FR-015).
 (`contracts/providers.md`) takes no window argument — it answers with whatever the source itself
 considers "recent" for a profile, which is why a stale profile with weeks of untouched history and
 a freshly linked profile asking for its first 31 days go through the exact same call: this stage
-re-polls **every** consenting linked profile (`DiscoverStage._consenting_profile_ids`, the same
-FR-013/FR-034/FR-042 condition discovery itself selects work with) every cycle, upserts whatever
-comes back the same way discovery would have, and — the one thing that is specific to a profile
-carrying `backfill_requested_at` — clears that flag once, and only once, its window has actually
-been swept.
+re-polls **every** linked profile (`DiscoverStage._linked_profile_ids`, FR-013/FR-042's condition,
+unchanged by constitution IX 4.0.0 — link status alone, no objection clause) every cycle, upserts
+whatever comes back the same way discovery would have, and — the one thing that is specific to a
+profile carrying `backfill_requested_at` — clears that flag once, and only once, its window has
+actually been swept.
 
 **Reuse, not a second copy.** `discover.py` (T053, widened by 003's T328) already owns the
 upsert logic this stage needs verbatim — the module-level `upsert_match` (FR-012, `ON CONFLICT DO
@@ -28,8 +28,11 @@ completed_at + capture_budget_days` computed once on insert) stays a `DiscoverSt
 method — it is not shared with 003's route, which FR-012 forbids from enqueueing a capture for a
 third party at all — so this stage still holds its own `DiscoverStage` instance (constructed with
 `profile_provider=None`, since reconciliation never refreshes `rating_snapshots`, only matches and
-captures) for that one method and for `_consenting_profile_ids`, and calls both directly rather
-than restating them.
+captures) for that method and for `_linked_profile_ids`/`_archiving_profile_ids`, and calls all
+three directly rather than restating them. Mirroring `DiscoverStage.__call__` itself
+(constitution IX 4.0.0): every linked profile is re-polled and upserted regardless of objection,
+and only the capture-enqueue membership check below is narrowed to `_archiving_profile_ids` —
+objection reaches capture and nothing upstream of it here either.
 
 **A provider failure is not swallowed (FR-013, FR-024).** `test_reconcile.py`'s outage scenario is
 explicit: three consecutive cycles that cannot reach the discovery source must each raise
@@ -72,7 +75,7 @@ from aoe2stats_storage.repositories.base import session_scope
 
 class ReconcileStage:
     """A `Stage` (`aoe2stats_ingester.run.Stage`): the 25-day reconciliation sweep and the 31-day
-    backfill, over every consenting user's every linked profile. See the module docstring for why
+    backfill, over every linked user's every linked profile. See the module docstring for why
     the two are the same pass rather than two code paths.
     """
 
@@ -90,8 +93,8 @@ class ReconcileStage:
         self._match_history_provider = match_history_provider
         self._capture_budget_days = capture_budget_days
         self._batch_size = batch_size
-        # See the module docstring: reused for its upsert/enqueue helpers and its consenting-
-        # profile query, never for its own `__call__` — that method's batching/reporting shape is
+        # See the module docstring: reused for its upsert/enqueue helpers and its linked/archiving
+        # profile queries, never for its own `__call__` — that method's batching/reporting shape is
         # discovery's, not reconciliation's (no rating refresh, no swallowed provider failure).
         self._discover = DiscoverStage(
             session_factory=session_factory,
@@ -101,18 +104,19 @@ class ReconcileStage:
         )
 
     async def __call__(self, budget: Budget) -> Mapping[str, Any]:
-        profile_ids = await self._discover._consenting_profile_ids()
-        # Same rule, same reason, as `DiscoverStage.__call__`'s own `consenting_profile_ids`
-        # (`discover.py`): whether a discovered match's participant gets a `replay_captures` row is
-        # checked against the *whole* cycle's consenting set, never against whichever batch
-        # happened to trigger the fetch. Two profiles sharing a match can land in different
-        # batches (`test_shared_match.py`), and here the two batches can even disagree about
-        # whether the match is "recent" at all — a source that answers per profile can return it
-        # for one participant's batch and not the other's, once it has aged out of that other
-        # participant's own recent-history window (T054b). This sweep exists to catch what
-        # discovery missed (FR-015); scoping the check to the batch would silently drop exactly
-        # the case it exists for.
-        consenting_profile_ids = set(profile_ids)
+        profile_ids = await self._discover._linked_profile_ids()
+        # Same rule, same reason, as `DiscoverStage.__call__`'s own `archiving_profile_ids`
+        # (`discover.py`, constitution IX 4.0.0): whether a discovered match's participant gets a
+        # `replay_captures` row is checked against the *whole* cycle's archiving set — every linked
+        # profile minus one whose user has objected — never against whichever batch happened to
+        # trigger the fetch. Two profiles sharing a match can land in different batches
+        # (`test_shared_match.py`), and here the two batches can even disagree about whether the
+        # match is "recent" at all — a source that answers per profile can return it for one
+        # participant's batch and not the other's, once it has aged out of that other participant's
+        # own recent-history window (T054b). This sweep exists to catch what discovery missed
+        # (FR-015); scoping the check to the batch would silently drop exactly the case it exists
+        # for.
+        archiving_profile_ids = set(await self._discover._archiving_profile_ids())
 
         profiles_polled = 0
         matches_discovered = 0
@@ -133,7 +137,7 @@ class ReconcileStage:
                     for player_profile_id in raw_match.player_profile_ids:
                         await touch_aoe_profile(session, player_profile_id)
                         await upsert_match_player(session, raw_match.game_id, player_profile_id)
-                        if player_profile_id in consenting_profile_ids:
+                        if player_profile_id in archiving_profile_ids:
                             enqueued = await self._discover._enqueue_capture(
                                 session, raw_match, player_profile_id
                             )

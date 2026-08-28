@@ -14,25 +14,26 @@ capture records, and the blobs they point at.
 
 ### `users`
 
-| Field                         | Type              | Notes                                                                                      |
-| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
-| `id`                          | uuid, pk          |                                                                                            |
-| `created_at`                  | timestamptz       |                                                                                            |
-| `allowlisted_at`              | timestamptz, null | Null means the closed beta refuses them (FR-005)                                           |
-| `ingest_consent_at`           | timestamptz, null | Set on the first grant and never rewritten. Enforced in the query that selects work, not in a later branch — see the consent predicate below |
-| `ingest_consent_withdrawn_at` | timestamptz, null | Kept after withdrawal; erasure is a separate act                                           |
+| Field                  | Type              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                   | uuid, pk          |                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `created_at`           | timestamptz       |                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `allowlisted_at`       | timestamptz, null | Null means the closed beta refuses them (FR-005)                                                                                                                                                                                                                                                                                                                                                                                             |
+| `archival_objected_at` | timestamptz, null | Constitution IX 4.0.0: archival rests on legitimate interest, not consent. Null means archiving — the default for every linked profile, including one that has never answered any question. Set means the user has exercised the Art. 21 right to object (FR-035). It is cleared back to null when the user resumes archival, because the objection is a *current state* and not evidence of a past grant — the never-cleared discipline belonged to `ingest_consent_at`, which recorded that consent had once been given and could not be rewritten without destroying that evidence. Under 4.0.0 there is no grant to preserve, and one nullable column is the whole of the state. Enforced in the query that selects work, not in a later branch |
 
-**The consent predicate is two clauses, never one.** Everything that selects work on a user's behalf
-reads:
+**The archival predicate is one clause.** Everything that selects work on a user's behalf reads:
 
 ```sql
-ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL
+archival_objected_at IS NULL
 ```
 
-`ingest_consent_at` alone is not the question. It is deliberately *kept* after a withdrawal, as the
-record of what was agreed and when (T032), so a one-clause test answers "consented" forever from the
-first grant onward and withdrawal (FR-035) becomes a column nothing reads. `contracts/http-api.md`
-already states both halves of this predicate and cites this file for it; it is written here so the
+There is no second clause and no "never answered" state to distinguish from "answered yes": 4.0.0
+removed the legal weight that distinction used to carry, because there is no grant of consent left
+to have a history of. This column replaces the two-timestamp pair (`ingest_consent_at`,
+`ingest_consent_withdrawn_at`) a prior revision of this table held; the migration that performed the
+replacement (`infra/migrations/versions/ad6ae8d59519_archival_objection.py`) is irreversible in the
+sense that matters — the old two-timestamp evidence is not recoverable from this column.
+`contracts/http-api.md` states this predicate and cites this file for it; it is written here so the
 citation resolves.
 
 No password column, no email column, no reset token. FR-006 removes the entire family. A column that
@@ -193,10 +194,10 @@ WHERE id IN (
 ) RETURNING *;
 ```
 
-The claim joins through `profile_links` to `users` and applies the consent predicate above. Consent
-is checked **here as well as at discovery**, and the second check is not redundant: discovery decides
-whose matches are *found*, the claim decides whose bytes are *fetched*, and between the two sits a
-queue that can be days deep. A user who withdraws with captures already `pending` is exactly the case
+The claim joins through `profile_links` to `users` and applies the archival predicate above. It is
+checked **here as well as at discovery**, and the second check is not redundant: discovery decides
+whose matches are _found_, the claim decides whose bytes are _fetched_, and between the two sits a
+queue that can be days deep. A user who objects with captures already `pending` is exactly the case
 FR-035 is about, and only this clause answers it (T089a).
 
 A run that dies leaves rows in `downloading`; the next run reclaims anything claimed longer ago than

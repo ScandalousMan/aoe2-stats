@@ -25,6 +25,13 @@ from __future__ import annotations
 
 #: `uv run alembic heads`. Update in the same commit as the migration that moves it — the test
 #: named above fails until you do.
-EXPECTED_SCHEMA_REVISION = "b23f76b4e1fb"
+#:
+#: This is the **contract** half of the `ad6ae8d59519` / `5c5f5e0b607d` expand/contract pair
+#: (`docs/runbooks/database-migrations.md`): the revision where `ingest_consent_at` and
+#: `ingest_consent_withdrawn_at` are gone and `archival_objected_at` is the only column the code
+#: in this tree reads. Production briefly sits at `ad6ae8d59519` (expand applied, contract not
+#: yet) while this build's health check reports `schema_out_of_date` — expected, not a fault; see
+#: that migration's docstring.
+EXPECTED_SCHEMA_REVISION = "5c5f5e0b607d"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]

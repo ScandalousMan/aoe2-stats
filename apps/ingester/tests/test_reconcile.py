@@ -130,7 +130,7 @@ async def _seed_consenting_linked_profile(
     `session_factory`) can see it.
     """
     now = datetime.now(UTC)
-    user = User(id=uuid.uuid4(), created_at=now, allowlisted_at=now, ingest_consent_at=now)
+    user = User(id=uuid.uuid4(), created_at=now, allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
 

@@ -24,13 +24,15 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response
 }
 
+// `archival_objected: false` here is the translation of the retired `ingest_consent: true` — a
+// user whose ingestion runs, which constitution IX 4.0.0 made the default rather than something
+// consented to (session.ts, DashboardContainer.test.tsx's `baseSession`).
 const authenticatedSession = {
   authenticated: true,
   user_id: 'user-1',
   allowlisted: true,
-  ingest_consent: true,
-  ingest_consent_at: '2026-08-01T00:00:00Z',
-  ingest_consent_withdrawn_at: null,
+  archival_objected: false,
+  archival_objected_at: null,
   profiles: [],
 }
 

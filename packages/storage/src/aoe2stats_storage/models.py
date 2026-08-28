@@ -131,10 +131,12 @@ class User(Base):
     )
     # Null means the closed beta refuses them (FR-005).
     allowlisted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Null means capture nothing. Enforced in the query that selects work, not in a later branch.
-    ingest_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Kept after withdrawal; erasure is a separate act.
-    ingest_consent_withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Constitution IX 4.0.0: archival rests on legitimate interest, not consent. Null means
+    # archiving (the default for every linked profile, including one that has never answered any
+    # question); set means the user has exercised the Art. 21 right to object, and no further
+    # recordings of theirs are captured from that moment on (FR-035). Enforced in the query that
+    # selects work, not in a later branch.
+    archival_objected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     steam_identities: Mapped[list[SteamIdentity]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

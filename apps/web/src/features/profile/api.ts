@@ -94,12 +94,16 @@ export function confirmUnlink(profileId: number): Promise<UnlinkConfirmResponse>
   return api.delete<UnlinkConfirmResponse>(`/api/profiles/${profileId}?confirm=true`)
 }
 
-export interface ConsentResponse {
-  ingest_consent_at: string | null
-  ingest_consent_withdrawn_at: string | null
+export interface ArchivalObjectionResponse {
+  archival_objected: boolean
+  archival_objected_at: string | null
 }
 
-/** FR-034 / FR-035. `{"granted": true}` accepts, `{"granted": false}` declines or withdraws. */
-export function setConsent(granted: boolean): Promise<ConsentResponse> {
-  return api.post<ConsentResponse>('/api/privacy/consent', { granted })
+/** FR-035, `POST /api/privacy/archival-objection` (renamed with an inverted meaning from
+ * `POST /api/privacy/consent` by T405, constitution IX 4.0.0 — there is no longer a grant to
+ * record). `{"objected": true}` objects, stopping future capture; `{"objected": false}` resumes
+ * archival by clearing the objection, and is a no-op, not an error, when there was never one to
+ * clear. */
+export function setArchivalObjection(objected: boolean): Promise<ArchivalObjectionResponse> {
+  return api.post<ArchivalObjectionResponse>('/api/privacy/archival-objection', { objected })
 }

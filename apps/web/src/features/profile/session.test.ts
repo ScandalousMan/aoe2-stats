@@ -1,86 +1,48 @@
 import { describe, expect, it } from 'vitest'
 import type { AuthenticatedSession } from '../../lib/api'
-import { consentDecisionFromSession } from './session'
+import { archivalControlStateFromSession } from './session'
 
-// `consentDecisionFromSession` is the front-end half of the defect T037a called the serious
-// one: `GET /api/me` reports the consent state that is true *now*
-// (`ingest_consent_at IS NOT NULL AND ingest_consent_withdrawn_at IS NULL`), and this is the one
-// place that turns those two fields into the three-way decision `ConsentStep` renders. Getting
-// the withdrawn case wrong — reporting 'accepted' or 'unanswered' for a user who granted and then
-// withdrew — is exactly the bug a reload used to reintroduce before T037a: nothing in the type
-// system catches a boolean read backwards, only a test that exercises all three states does.
+// `archivalControlStateFromSession` is the front-end half of T406/T407 (constitution IX 4.0.0):
+// `GET /api/me` reports the state that is true *now* (`archival_objected_at IS NOT NULL`), and
+// this is the one place that turns that single boolean into `ArchivalControl`'s `state` prop.
+// There is no third "unanswered" case left to derive — the whole point of the amendment this
+// module tracks is that a user who has never touched the switch is not a state distinct from one
+// who touched it and resumed.
 
 function session(overrides: Partial<AuthenticatedSession>): AuthenticatedSession {
   return {
     authenticated: true,
     user_id: 'user-1',
     allowlisted: true,
-    ingest_consent: false,
-    ingest_consent_at: null,
-    ingest_consent_withdrawn_at: null,
+    archival_objected: false,
+    archival_objected_at: null,
     profiles: [],
     ...overrides,
   }
 }
 
-describe('consentDecisionFromSession', () => {
-  it('is "unanswered" when consent was never granted or declined', () => {
-    const result = consentDecisionFromSession(
-      session({ ingest_consent: false, ingest_consent_at: null }),
+describe('archivalControlStateFromSession', () => {
+  it('is "archiving" for a user who has never objected', () => {
+    const result = archivalControlStateFromSession(
+      session({ archival_objected: false, archival_objected_at: null }),
     )
-    expect(result).toBe('unanswered')
+    expect(result).toBe('archiving')
   })
 
-  it('is "accepted" when ingest_consent is true, regardless of the recorded timestamp', () => {
-    const result = consentDecisionFromSession(
-      session({
-        ingest_consent: true,
-        ingest_consent_at: '2026-08-01T00:00:00Z',
-        ingest_consent_withdrawn_at: null,
-      }),
+  it('is "objected" when archival_objected is true, with its timestamp carried by the session', () => {
+    const result = archivalControlStateFromSession(
+      session({ archival_objected: true, archival_objected_at: '2026-08-10T00:00:00Z' }),
     )
-    expect(result).toBe('accepted')
+    expect(result).toBe('objected')
   })
 
-  it('is "declined" for a user who granted and then withdrew — the withdrawn case', () => {
-    // The exact shape a withdrawal leaves behind: `ingest_consent` is now false, but
-    // `ingest_consent_at` is not null (it was granted, once). This must read as "declined"
-    // (the settings variant's "withdrawn" state), never "unanswered" — that would tell a user who
-    // explicitly turned archival off that they have "not answered this yet".
-    const result = consentDecisionFromSession(
-      session({
-        ingest_consent: false,
-        ingest_consent_at: '2026-08-01T00:00:00Z',
-        ingest_consent_withdrawn_at: '2026-08-10T00:00:00Z',
-      }),
+  it('is "archiving" again for a user who objected and later resumed — indistinguishable from never having objected', () => {
+    // The exact shape a resumption leaves behind: `archival_objected` is false and
+    // `archival_objected_at` is back to null, exactly as it is for a user who never touched the
+    // switch at all. `archivalControlStateFromSession` must not invent a third state here.
+    const result = archivalControlStateFromSession(
+      session({ archival_objected: false, archival_objected_at: null }),
     )
-    expect(result).toBe('declined')
-  })
-
-  it('is "declined" and not "unanswered" for a first-time explicit decline (no prior grant)', () => {
-    // A user's very first answer can itself be "no" — `ingest_consent_at` records that decision
-    // was made even though it did not grant anything, contracts/http-api.md.
-    const result = consentDecisionFromSession(
-      session({
-        ingest_consent: false,
-        ingest_consent_at: '2026-08-01T00:00:00Z',
-        ingest_consent_withdrawn_at: null,
-      }),
-    )
-    expect(result).toBe('declined')
-  })
-
-  it('ingest_consent true always wins over a stale withdrawn_at from a prior cycle', () => {
-    // A user who withdrew and then granted again: `ingest_consent` is the source of truth for
-    // "now", so a leftover `ingest_consent_withdrawn_at` from the earlier withdrawal must not
-    // pull this back to "declined".
-    const result = consentDecisionFromSession(
-      session({
-        ingest_consent: true,
-        ingest_consent_at: '2026-08-15T00:00:00Z',
-        ingest_consent_withdrawn_at: '2026-08-10T00:00:00Z',
-      }),
-    )
-    expect(result).toBe('accepted')
+    expect(result).toBe('archiving')
   })
 })

@@ -82,7 +82,7 @@ async def _seed_linked_profile(
 ) -> tuple[User, SteamIdentity, ProfileLink]:
     """A user with one consenting, allowlisted account and one active profile link."""
     now = datetime.now(UTC)
-    user = User(allowlisted_at=now, ingest_consent_at=now)
+    user = User(allowlisted_at=now)
     db_session.add(user)
     await db_session.flush()
 

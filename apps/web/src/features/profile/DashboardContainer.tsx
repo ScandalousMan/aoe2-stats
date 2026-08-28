@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Callout, ConsentStep, ProfileSummary } from 'design-system'
+import { ArchivalControl, Button, Callout, ProfileSummary } from 'design-system'
 import type { ProfileSummaryStatus } from 'design-system'
 import { isApiErrorCode, meQueryOptions, signOut } from '../../lib/api'
 import {
@@ -9,22 +9,23 @@ import {
   confirmUnlink,
   previewUnlink,
   profilesQueryOptions,
-  setConsent,
+  setArchivalObjection,
   setPrimaryProfile,
 } from './api'
-import { formatFreshness, formatRecordedAt } from './format'
+import { formatFreshness, formatObjectedAt } from './format'
 import {
   latestCapturedAt,
   toLinkedProfileOptions,
   toRatingEntries,
   toViewedProfile,
 } from './mappers'
-import { type ConsentDecision, consentDecisionFromSession } from './session'
+import { archivalControlStateFromSession } from './session'
 import { UnlinkDialog } from './UnlinkDialog'
 
-// Wires `ProfileSummary` and `ConsentStep` (T035, packages/design-system) to this feature's real
-// effects and to nothing else — the same discipline `SignInContainer.tsx` (T036) established.
-// Every visual state lives in those components; this module owns the data and the handlers.
+// Wires `ProfileSummary` and `ArchivalControl` (T035, packages/design-system) to this feature's
+// real effects and to nothing else — the same discipline `SignInContainer.tsx` (T036)
+// established. Every visual state lives in those components; this module owns the data and the
+// handlers.
 
 export function DashboardContainer() {
   const navigate = useNavigate()
@@ -164,49 +165,41 @@ export function DashboardContainer() {
     setUnlinkConfirmError(null)
   }
 
-  // --- Consent (FR-034 / FR-035): `onboarding` and `settings` are wired here; the privacy route
-  // (T095) is the other consumer consent-step.md's variant split anticipates, for the account's
-  // notice and export/erasure surface rather than for this in-line summary ---------------------
+  // --- Archival objection (FR-034 / FR-035, constitution IX 4.0.0): `ArchivalControl` is wired
+  // here; the privacy route (T095) is the other consumer archival-control.md anticipates, for the
+  // account's notice and export/erasure surface rather than for this in-line summary ------------
 
-  const [consentSubmitting, setConsentSubmitting] = useState(false)
-  const [consentSubmittingChoice, setConsentSubmittingChoice] = useState<
-    'accept' | 'decline' | undefined
-  >(undefined)
-  const [consentWriteFailed, setConsentWriteFailed] = useState(false)
-  // `withdraw-confirm` (consent-step.md §3): a real dialog asked for before turning archival off,
-  // never before turning it on — the settings/accepted `onTurnOffArchival` control opens it rather
-  // than withdrawing directly, so the "Turn off archival" button T032a added is not a dead control.
-  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false)
+  const [archivalSubmitting, setArchivalSubmitting] = useState(false)
+  const [archivalWriteFailed, setArchivalWriteFailed] = useState(false)
+  // Set for the rest of this session immediately after a successful `onResume` write, so the
+  // person who just pressed the button sees an acknowledgement (archival-control.md §3) before it
+  // collapses back to the plain steady state on the next reload — there is no server-side
+  // timestamp for a resumption to reconstruct it from.
+  const [justResumed, setJustResumed] = useState(false)
 
-  // T037a: `GET /api/me` now reports the consent state that is true *now* (`ingest_consent`,
-  // `ingest_consent_at`) — a withdrawal is visible on the very next request, so a page reload no
-  // longer loses it. `consentDecisionFromSession` (`session.ts`) is the one place this is derived;
-  // no session-local override is held here any more.
-  const effectiveConsentDecision: ConsentDecision =
-    session && session.authenticated ? consentDecisionFromSession(session) : 'unanswered'
+  // T405/T406: `GET /api/me` reports the state that is true *now* (`archival_objected`,
+  // `archival_objected_at`) — an objection or a resumption is visible on the very next request, so
+  // a page reload never loses it. `archivalControlStateFromSession` (`session.ts`) is the one
+  // place this is derived; no session-local override is held here any more.
+  const archivalState =
+    session && session.authenticated ? archivalControlStateFromSession(session) : 'archiving'
 
-  async function handleConfirmWithdraw() {
-    setWithdrawConfirmOpen(false)
-    await submitConsent(false)
-  }
-
-  async function submitConsent(granted: boolean) {
-    setConsentSubmitting(true)
-    setConsentSubmittingChoice(granted ? 'accept' : 'decline')
-    setConsentWriteFailed(false)
+  async function submitArchivalObjection(objected: boolean) {
+    setArchivalSubmitting(true)
+    setArchivalWriteFailed(false)
     try {
-      await setConsent(granted)
-      // Awaited, not fired-and-forgotten: `effectiveConsentDecision` is derived straight from
-      // `session` above, so the new decision (and, for "settings", the recorded-at timestamp)
-      // only appears once this refetch has actually landed.
+      await setArchivalObjection(objected)
+      // Awaited, not fired-and-forgotten: `archivalState` is derived straight from `session`
+      // above, so the new state (and, when objecting, the recorded timestamp) only appears once
+      // this refetch has actually landed.
       await queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey })
+      setJustResumed(!objected)
     } catch (error) {
       if (!redirectIfSessionExpired(error)) {
-        setConsentWriteFailed(true)
+        setArchivalWriteFailed(true)
       }
     } finally {
-      setConsentSubmitting(false)
-      setConsentSubmittingChoice(undefined)
+      setArchivalSubmitting(false)
     }
   }
 
@@ -309,40 +302,20 @@ export function DashboardContainer() {
 
       {authenticated && (
         <div className="mt-8 px-4 pb-8 md:px-6">
-          {effectiveConsentDecision === 'unanswered' ? (
-            <ConsentStep
-              variant="onboarding"
-              submitting={consentSubmitting}
-              submittingChoice={consentSubmittingChoice}
-              writeFailed={consentWriteFailed}
-              onAccept={() => void submitConsent(true)}
-              onDecline={() => void submitConsent(false)}
-            />
-          ) : (
-            <ConsentStep
-              variant="settings"
-              decision={effectiveConsentDecision}
-              recordedAt={
-                session && session.authenticated && session.ingest_consent_at
-                  ? formatRecordedAt(session.ingest_consent_at)
-                  : undefined
-              }
-              submitting={consentSubmitting}
-              submittingChoice={consentSubmittingChoice}
-              writeFailed={consentWriteFailed}
-              onTurnOnArchival={() => void submitConsent(true)}
-              onTurnOffArchival={() => setWithdrawConfirmOpen(true)}
-            />
-          )}
+          <ArchivalControl
+            state={archivalState}
+            objectedAt={
+              session && session.authenticated && session.archival_objected_at
+                ? formatObjectedAt(session.archival_objected_at)
+                : undefined
+            }
+            justResumed={justResumed}
+            submitting={archivalSubmitting}
+            writeFailed={archivalWriteFailed}
+            onObject={() => void submitArchivalObjection(true)}
+            onResume={() => void submitArchivalObjection(false)}
+          />
         </div>
-      )}
-
-      {withdrawConfirmOpen && (
-        <ConsentStep
-          variant="withdraw-confirm"
-          onConfirmWithdraw={() => void handleConfirmWithdraw()}
-          onCancelWithdraw={() => setWithdrawConfirmOpen(false)}
-        />
       )}
 
       {unlinkTarget && unlinkPreview && (

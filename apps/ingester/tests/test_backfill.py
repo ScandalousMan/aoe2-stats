@@ -270,7 +270,7 @@ async def _seed_user_with_two_linked_profiles(
     its own proven `steam_identities` row (FR-007) and its own `backfill_requested_at` stamp
     (T031a), exactly what a fresh multi-account link leaves behind for T054 to find."""
     now = datetime.now(UTC)
-    user = User(id=uuid.uuid4(), ingest_consent_at=now - timedelta(days=1))
+    user = User(id=uuid.uuid4())
 
     steam_primary = SteamIdentity(
         steam_id64="76500000000000301",
