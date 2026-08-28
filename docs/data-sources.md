@@ -196,6 +196,36 @@ on both sides of it. It is a rolling, time-based purge.
 
 **Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
 
+#### Contradicted 2026-08-28, and not yet resolved — do not rely on the 31 days alone
+
+A second, larger sample disagrees with the reading above, and the disagreement is not marginal.
+Draining 78 captures for profile 2322168 on 2026-08-28 produced a boundary just as sharp — inside a
+**~4.5 h interval on 2026-02-22** (newest 404: match ending 13:25Z; oldest 200: 18:03Z) — but sitting
+**six months back**, not 31 days. All 22 matches after it returned a replay; all 56 before it
+returned 404.
+
+A rolling 31-day purge predicts a boundary near 2026-07-28 for a run on that date. The observed one
+is five months older, so the two measurements cannot both describe a rolling window of the same
+length.
+
+The likely confounder is recorded here rather than guessed at: **the endpoint moved between the two
+measurements.** `aoe.ms/replay/` began answering 301 to `api.ageofempires.com` (§2, measured the same
+day), and a backend migration is exactly the kind of event that would reset or redefine retention. A
+fixed epoch at 2026-02-22 — everything after it kept, everything before it discarded — fits this
+sample as well as any rolling window does, and has very different consequences: a fixed epoch can be
+purged wholesale at any time, whereas a rolling window is predictable.
+
+**What would settle it**, and what nobody should skip on the strength of one profile: re-measure the
+boundary on a *different* profile, and again a week later. If the boundary stays pinned to
+2026-02-22 it is an epoch; if it advances by a week it is a rolling window whose length changed at
+the migration.
+
+Until then the 21-day capture budget stands unchanged. It is conservative under either reading, and
+constitution I resolves the ambiguity the same way it resolves every other: capture early. What must
+*not* happen is the opposite inference — that replays are now safe for six months and capture can
+relax. This sample cannot support that, and 56 recordings were permanently lost while it was being
+taken.
+
 ### Open question: does any current-patch ranked recording carry an `Achievements` block?
 
 **Not known.** `docs/adr/0001-replay-parser.md`'s correction note (2026-08-24) records that the
