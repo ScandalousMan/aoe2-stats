@@ -38,18 +38,18 @@ ingestion and raw archival ship in the MVP while parsing and analysis wait for V
 Three homes, and the difference matters — putting something in the wrong one is how documentation
 starts lying.
 
-| Home | Holds | Lifetime |
-| --- | --- | --- |
-| `docs/` | **Facts and decisions that outlive any feature.** Measured properties of the outside world (`data-sources.md`), architecture decisions (`adr/`), the risk register. | Living. Must be true *today*; the nightly contract tests exist to keep it so. |
-| `specs/NNN-*/` | **One change.** What that feature must do, its plan, its data model, its contracts. Written once, then a historical record of what was decided and why. | Frozen at merge. |
-| `.claude/skills/` | **Judgment.** The rules, the traps, what not to do. Loaded into an agent's context on demand, so kept short. | Living, but points at `docs/` for every number. |
+| Home              | Holds                                                                                                                                                               | Lifetime                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `docs/`           | **Facts and decisions that outlive any feature.** Measured properties of the outside world (`data-sources.md`), architecture decisions (`adr/`), the risk register. | Living. Must be true _today_; the nightly contract tests exist to keep it so. |
+| `specs/NNN-*/`    | **One change.** What that feature must do, its plan, its data model, its contracts. Written once, then a historical record of what was decided and why.             | Frozen at merge.                                                              |
+| `.claude/skills/` | **Judgment.** The rules, the traps, what not to do. Loaded into an agent's context on demand, so kept short.                                                        | Living, but points at `docs/` for every number.                               |
 
-The test: *does this need updating when the world changes?* If yes it belongs in `docs/`. If it
+The test: _does this need updating when the world changes?_ If yes it belongs in `docs/`. If it
 describes one change, it belongs in `specs/`. If it tells someone how to behave, it belongs in a
 skill.
 
 **Never copy a measurement between them.** A number that exists in two files will be wrong in one of
-them. Skills and specs reference `docs/`; they do not restate it. Repeating a *constraint* where it
+them. Skills and specs reference `docs/`; they do not restate it. Repeating a _constraint_ where it
 governs a decision — the 21-day capture budget appears wherever something depends on it — is
 different and correct.
 
@@ -64,6 +64,50 @@ Its own completion criteria otherwise push it through every phase in one context
 judgment in `tasks.md` gets flattened. Artifacts are amended by hand; `/speckit-plan` and
 `/speckit-tasks` are never re-run over a file that already exists.
 
+## Working autonomously
+
+The default is to act. Interrupting costs the user a context switch, so an interruption has to buy
+something an assistant cannot supply alone.
+
+**Do git work without asking.** Branch, commit, push, open the PR, update the PR, rebase, resolve a
+conflict. These are recoverable, they are the normal course of the workflow, and pausing on each one
+turns a ten-minute task into a conversation. Load the `git-workflow` skill first — it carries the
+ordering rules and the checks that run before each action.
+
+**Ask only for one of three things**, and say which one it is:
+
+|                                                                       | Example                                                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Validation** — irreversible, outward-facing, or destroying evidence | force-pushing over someone else's commit, deleting a branch that is not yours, dropping production data |
+| **Information** — something only the user has                         | a credential, a value from a console, which of two real-world facts is true                             |
+| **Arbitration** — a decision the code cannot settle                   | which of two designs to keep, whether to accept a risk, what a requirement should say                   |
+
+Anything else, decide it and say what you decided. "Should I proceed?" is not a question; it is a
+delay with a question mark on it.
+
+**Say what is blocked and how to unblock it, in the same message.** Never hand back a task because a
+step needs the user. Do every part that does not depend on them, then give the exact commands for
+the part that does — copy-pasteable, in order, with the one value they must supply named. A request
+for information includes the steps to supply it.
+
+**Retry once before declaring something impossible.** A permission prompt or a classifier refusal is
+not always a final answer, and a call that was refused in one shape sometimes succeeds in a simpler
+one. Retry once, cleanly; if it fails again, hand it over with the commands.
+
+### Interrupt for context and commands first
+
+Two things must be said **before** any other suggestion in the same message, because they change what
+the user should do next and are worthless once they have already acted:
+
+- **`/clear`.** Say so when the next work shares nothing with what is above it — a finished phase, a
+  pivot from incident response to feature work, a long session about to start something unrelated.
+  Say it even if it means the current session ends. If the task at hand _needs_ the session's own
+  history as evidence, say that too, and put the `/clear` after it.
+- **The next spec-kit command.** `/speckit-analyze` before a merge that touched artifacts,
+  `/speckit-constitution` when an amendment's follow-ups are done, `/speckit-implement` scoped to the
+  next phase. Naming it is not optional politeness — these commands carry model routing and gates
+  that doing the work conversationally silently skips.
+
 ## Commits
 
 The commit unit is **the smallest set of tasks that was ever simultaneously green**. Sequential
@@ -71,13 +115,28 @@ tasks are one commit each, as `tasks.md` asks. A parallel batch is one commit: a
 working tree interleave in the same files, and splitting that afterwards invents commits that never
 existed as a working state and cannot be verified individually.
 
-That granularity only exists at the moment it exists. Commit when a task hands back, *before*
+That granularity only exists at the moment it exists. Commit when a task hands back, _before_
 dispatching the next one — a batch launched over an uncommitted predecessor absorbs it permanently,
 and no amount of care afterwards gets it back.
 
 Never commit a red tree. The `SubagentStop` gate proves each hand-back green on its own; the commit
 re-proves it for the whole batch, because "each passed alone" and "they pass together" are different
 claims — and the second is the one the next phase builds on.
+
+Two ways that has actually failed, both on 2026-08-27, both now gated by
+`scripts/hooks/git-preflight.sh`:
+
+**Run the whole suite, not the failures the agent mentioned.** A hand-back names what the agent
+noticed; verifying only those inherits its blind spot. One hand-back reported a single out-of-scope
+failure, that one file was checked, and the commit went in with **96 tests red**.
+
+**`tasks.md` does not tell you the commit unit.** It says so for the one pair it was written about
+("never separately green") and is silent everywhere else — which is not a claim that every other task
+is green alone. Before committing a change that removes or renames anything, grep for its consumers;
+if they are not in the same commit, the unit is wrong.
+
+Fetching, branch hygiene, when to open the PR, and how to sequence a migration deploy are in the
+`git-workflow` skill. Load it before any git action beyond reading status.
 
 The `[x]` in `tasks.md` rides in the same commit as the code that earned it. A checkbox committed on
 its own is a claim with no evidence behind it, and it is the one lie this workflow cannot detect.
@@ -111,7 +170,7 @@ reason="<implementing task id> not implemented yet")`, never with a skip.
 The test body runs with every assertion intact, the expected failure keeps the suite green, and
 `strict=True` turns the run red the moment the implementation makes it pass — which forces the
 marker off instead of letting a stale `xfail` hide a regression. Import the not-yet-existent module
-*inside* the test body: a module-scope import of a missing module is a collection error that takes
+_inside_ the test body: a module-scope import of a missing module is a collection error that takes
 the whole workspace suite down with it.
 
 `pytest.importorskip` is the wrong tool here and was tried first. A skipped test proves nothing
@@ -139,7 +198,7 @@ as returning an outage that read as "no player found". Round 1 made the circuit 
 request, and its test asserted the breaker was shared. Round 2 found the breaker's threshold is 3, so
 the first two failures of every outage still cached a confident empty — and round 1's test had driven
 both of those requests while asserting only `status_code == 200`. Round 2 fixed the shape-drift check
-at the envelope; round 3 found the same inversion one level down, where every *record* fails to parse
+at the envelope; round 3 found the same inversion one level down, where every _record_ fails to parse
 and the envelope is intact. Each round's test drifted exactly the key its own fix handled.
 
 So, when dispatching a remediation:
@@ -158,7 +217,7 @@ So, when dispatching a remediation:
   previous one exposed.
 
 The general rule: an absence has no happy path, and neither does a residue. Both need a test written
-against the *shape* of the bug rather than against the instance that was reported.
+against the _shape_ of the bug rather than against the instance that was reported.
 
 ## Commands
 
