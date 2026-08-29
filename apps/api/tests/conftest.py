@@ -42,6 +42,7 @@ from __future__ import annotations
 import re
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -214,10 +215,14 @@ class _FakeObjectStore:
     one method `GET /api/health` calls today. `fails=True` raises the way a real outage would,
     for `test_health.py`'s checks; every other caller takes the default and gets an empty list.
 
-    `signed_get_url` (T066) never touches the network either: it deterministically encodes `key`
-    and `expires_in` into the returned string, so a test can assert on the redirect target alone
-    without needing the same instance the route handler received — the `client` fixture builds a
-    fresh one per request through a bare lambda, so nothing can be asserted on shared state here.
+    `signed_get_url` (T066) never touches the network either: it deterministically encodes `key`,
+    `expires_in` and, when given, `filename` into the returned string, so a test can assert on the
+    redirect target alone without needing the same instance the route handler received — the
+    `client` fixture builds a fresh one per request through a bare lambda, so nothing can be
+    asserted on shared state here. `filename` (2026-08-29 fix) is encoded as its own query
+    parameter, deliberately never folded into the path the way the real `response-content-
+    disposition` signed parameter would be for a caller — a test decodes it with `parse_qs`
+    exactly like `expires_in`, so the shape stays symmetric with the rest of this fake.
     """
 
     def __init__(self, *, fails: bool = False) -> None:
@@ -228,10 +233,15 @@ class _FakeObjectStore:
             raise RuntimeError("simulated object store outage")
         return []
 
-    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
+    async def signed_get_url(
+        self, key: str, *, expires_in: int = 300, filename: str | None = None
+    ) -> str:
         if self._fails:
             raise RuntimeError("simulated object store outage")
-        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+        url = f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+        if filename is not None:
+            url += f"&filename={quote(filename)}"
+        return url
 
 
 @pytest.fixture

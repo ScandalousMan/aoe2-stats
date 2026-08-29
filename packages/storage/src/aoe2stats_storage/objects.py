@@ -144,7 +144,11 @@ class ObjectStore:
         return body
 
     async def signed_get_url(
-        self, key: str, *, expires_in: int = DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS
+        self,
+        key: str,
+        *,
+        expires_in: int = DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS,
+        filename: str | None = None,
     ) -> str:
         """A short-lived, presigned `GET` URL for `key`.
 
@@ -152,11 +156,35 @@ class ObjectStore:
         call, but it still runs through the worker thread: the caller gets one uniform,
         never-blocks contract across every method on this class, and the cost of a thread
         hop here is negligible next to a request that is about to redirect a browser anyway.
+
+        `filename`, when given, becomes this URL's own `response-content-disposition`, passed to
+        `boto3` as `ResponseContentDisposition` — a `GetObject` request parameter both AWS S3 and
+        Cloudflare R2 honour (R2's S3-compatible `GetObject` implementation serves the standard
+        `response-*` override parameters; `docs/adr/0002-hosting.md`'s "Object storage is reached
+        only through the S3 API" is exactly the guarantee that makes this portable to phase 2's OVH
+        Object Storage too). It exists because a browser derives the filename it saves a download
+        under from the signed URL's own last path segment, never from the object key inside it — a
+        caller that redirects a browser to a signed URL (every `archived` branch in
+        `apps/api/src/aoe2stats_api/routers/replays.py`) needs this to control that name, since
+        `replay_object_key`'s `{game_id}/{profile_id}.zip` shape puts `game_id` in a path segment
+        the browser never reads. It rides on the signed URL itself — covered by the SigV4 signature
+        the same as `Bucket`/`Key`, so it cannot be tampered with by whoever holds the URL — rather
+        than as a response header this class sets after the fact, because there is no "after the
+        fact" here: this method never touches the object, it only computes a URL a caller redirects
+        a browser to directly.
+
+        Optional, not required: `apps/ingester/tests/test_quarantine.py` calls this for a quarantine
+        review tool, never a browser redirect, and genuinely wants no disposition override — that
+        caller keeps working unchanged, still getting a URL whose filename is the key's own last
+        segment.
         """
+        params: dict[str, str] = {"Bucket": self._bucket, "Key": key}
+        if filename is not None:
+            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
         return await asyncio.to_thread(
             self._client.generate_presigned_url,
             "get_object",
-            Params={"Bucket": self._bucket, "Key": key},
+            Params=params,
             ExpiresIn=expires_in,
         )
 

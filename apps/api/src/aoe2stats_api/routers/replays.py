@@ -40,16 +40,27 @@ and every successful download writes one `replay_access_log` row (FR-040). This 
 `game_id` alone, to the *caller's own* `stored` capture — `_stored_capture_for_caller` below
 answers exactly one point of view per call, never a participant chosen by the caller — so it cannot
 reproduce `_point_of_view_filename`'s collision below: there is no second point of view this route
-could ever be asked to name in the same breath. It also sets no `content-disposition` header of its
-own at all; the browser's filename comes from the signed URL it is redirected to. Ownership is
-resolved the same way `_owned_active_link` resolves it above, except the row being reached for is a
-`replay_captures` one addressed by `(game_id, profile_id)` rather than a `profile_links` one
-addressed by `profile_id` alone: `_stored_capture_for_caller` joins `replay_captures` to the
-caller's own active `profile_links` rows, so a `game_id` that names no match, a match the caller
-did not play, or a match whose replay is not yet `stored` all answer the identical `not_found`
-FR-045 requires (module docstring, `profiles.py`'s own note on why a differentiated answer would
-itself be the leak — here, whether the match exists at all). Never a 403: that would already
-disclose the match exists. A refusal is not an access and writes nothing to `replay_access_log`.
+could ever be asked to name in the same breath. It sets no `content-disposition` header of its own
+directly — a redirect carries no body of its own to attach one to — but it does name the browser's
+eventual download: `signed_get_url`'s own `filename` parameter (2026-08-29 fix) puts
+`_point_of_view_filename(game_id, capture.profile_id)` on the signed URL itself as a signed
+`response-content-disposition`, because a browser derives a redirected download's filename from
+the signed URL's own last path segment, never from `replay_object_key`'s
+`replays/{game_id}/{profile_id}.zip` — that segment is the bare `profile_id}.zip`, `game_id` never
+reaching the browser at all. **This is the production defect this comment used to call impossible**:
+the same caller archiving two different matches produced two identical `{profile_id}.zip`
+downloads, distinguishable only by the browser's own `" (1)"` — a different axis from
+`_point_of_view_filename`'s collision below (participants of *one* match), but the identical class
+of bug, on the branch this docstring had reasoned past because embedding `profile_id` in the *key*
+was mistaken for embedding it in the browser-visible *name*. Ownership is resolved the same way
+`_owned_active_link` resolves it above, except the row being reached for is a `replay_captures` one
+addressed by `(game_id, profile_id)` rather than a `profile_links` one addressed by `profile_id`
+alone: `_stored_capture_for_caller` joins `replay_captures` to the caller's own active
+`profile_links` rows, so a `game_id` that names no match, a match the caller did not play, or a
+match whose replay is not yet `stored` all answer the identical `not_found` FR-045 requires
+(module docstring, `profiles.py`'s own note on why a differentiated answer would itself be the leak
+— here, whether the match exists at all). Never a 403: that would already disclose the match
+exists. A refusal is not an access and writes nothing to `replay_access_log`.
 
 **`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
 above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
@@ -94,7 +105,11 @@ Per-state behaviour (`contracts/http-api.md`):
   test seeds a *stranger's* `stored` capture, old enough that the source has long since lost it
   too, and still requires a `404 not_found` — never `expired`, which would itself disclose that an
   archive exists for someone else's account. A caller who owns it gets the identical
-  302-to-a-signed-URL-and-log shape 001's own route above already implements.
+  302-to-a-signed-URL-and-log shape 001's own route above already implements, including its
+  `filename=_point_of_view_filename(game_id, profile_id)` argument to `signed_get_url` (2026-08-29
+  fix, same one 001's route above carries) — so this route's own filename agrees with the
+  `obtainable` branch immediately below whether the recording is fetched from the archive or from
+  the source.
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
@@ -492,7 +507,8 @@ async def download_replay(
         db_session, game_id=game_id, user_id=session_row.user_id
     )
 
-    signed_url = await object_store.signed_get_url(object_key)
+    filename = _point_of_view_filename(game_id=game_id, profile_id=capture.profile_id)
+    signed_url = await object_store.signed_get_url(object_key, filename=filename)
 
     db_session.add(
         ReplayAccessLog(
@@ -506,9 +522,23 @@ async def download_replay(
 
 
 def _point_of_view_filename(*, game_id: int, profile_id: int) -> str:
-    """The `content-disposition` filename this route serves for the `obtainable` branch —
-    **always** `AgeIIDE_Replay_{game_id}_{profile_id}.zip`, derived here rather than carried from
-    `AoemsReplayProvider.fetch_replay`'s own `ReplayBlob.filename`.
+    """The download filename every branch of both routes in this module serves for a point of
+    view — **always** `AgeIIDE_Replay_{game_id}_{profile_id}.zip`. Originally written for the
+    `obtainable` branch below, derived here rather than carried from `AoemsReplayProvider.
+    fetch_replay`'s own `ReplayBlob.filename`.
+
+    **2026-08-29: also the filename argument every `signed_get_url` call site in this module
+    passes**, for the two `archived` branches (`download_replay` above and `download_replay_
+    point_of_view`'s own `ARCHIVED` branch below) alongside the `obtainable` branch this docstring
+    was first written for. A 302 to a presigned URL has no response body to set a
+    `content-disposition` header on directly, so those two call sites reach `ObjectStore.
+    signed_get_url`'s own `filename` parameter instead, which folds this exact string into the
+    signed URL as `response-content-disposition` — the production defect this fixes: a browser
+    names a redirected download from the signed URL's own last path segment, never from
+    `replay_object_key`'s `{game_id}/{profile_id}.zip`, so the archived branches embedded
+    `profile_id` in a path segment the browser never reads and `game_id` in one it never saw at
+    all. All three call sites now agree on one function, so the three branches of "download a
+    point of view" cannot drift into three different filename shapes again.
 
     This is a deliberate choice between two ways to disambiguate two participants' downloads of
     the same match, made explicit because `aoems/provider.py::_parse_filename`'s own docstring
@@ -1027,7 +1057,8 @@ async def download_replay_point_of_view(
             # "indistinguishable causes" rule.
             if capture is None or capture.object_key is None or not caller_owns_profile:
                 raise _replay_not_found()
-            signed_url = await object_store.signed_get_url(capture.object_key)
+            filename = _point_of_view_filename(game_id=game_id, profile_id=profile_id)
+            signed_url = await object_store.signed_get_url(capture.object_key, filename=filename)
             db_session.add(
                 ReplayAccessLog(
                     replay_capture_id=capture.id,
