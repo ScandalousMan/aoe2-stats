@@ -36,7 +36,17 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aoe2stats_api.errors import APIError, error_response
-from aoe2stats_api.routers import auth, cron, health, matches, players, privacy, profiles, replays
+from aoe2stats_api.routers import (
+    auth,
+    cron,
+    favourites,
+    health,
+    matches,
+    players,
+    privacy,
+    profiles,
+    replays,
+)
 from aoe2stats_api.settings import ConfigurationError
 
 logger = logging.getLogger("aoe2stats_api")
@@ -229,6 +239,7 @@ def create_app() -> FastAPI:
     app.include_router(replays.router, prefix="/api")
     app.include_router(matches.router, prefix="/api")
     app.include_router(players.router, prefix="/api")
+    app.include_router(favourites.router, prefix="/api")
 
     return app
 

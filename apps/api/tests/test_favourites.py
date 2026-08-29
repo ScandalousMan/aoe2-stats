@@ -168,7 +168,6 @@ async def _favourite_row_count(db_session: AsyncSession, *, user_id: Any) -> int
 # --- PUT/DELETE /api/favourites/{profile_id} — FR-013 -------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 async def test_put_twice_is_one_row_and_two_200s_and_delete_is_idempotent(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -216,7 +215,6 @@ async def test_put_twice_is_one_row_and_two_200s_and_delete_is_idempotent(
 # --- GET /api/favourites — FR-014 ----------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 async def test_favourites_list_carries_current_standing_and_reaches_the_profile_in_one_step(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -251,7 +249,6 @@ async def test_favourites_list_carries_current_standing_and_reaches_the_profile_
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 async def test_unmarking_a_favourite_removes_it_and_changes_nothing_else(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -284,7 +281,6 @@ async def test_unmarking_a_favourite_removes_it_and_changes_nothing_else(
 # --- The per-user bound — FR-016 -----------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 async def test_favouriting_past_the_bound_answers_favourites_limit_reached(
     client: TestClient,
     db_session: AsyncSession,
@@ -332,7 +328,6 @@ async def test_favouriting_past_the_bound_answers_favourites_limit_reached(
 # --- Unauthenticated — US5 scenario 5 ------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 @pytest.mark.parametrize(
     "method,path",
     [
@@ -357,7 +352,6 @@ def test_an_unauthenticated_call_answers_sign_in_required(
 # --- Privacy between users — FR-015 --------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 async def test_one_user_never_sees_anothers_favourites(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -395,7 +389,6 @@ async def test_one_user_never_sees_anothers_favourites(
 # --- The assertion with no route to test — FR-015 -------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T346 not implemented yet")
 def test_favourites_router_never_aggregates_over_profile_id() -> None:
     """FR-015 in the negative: "how many people follow this player" is a question this system
     must not be able to answer, and answering it would reveal to a player that they are being
