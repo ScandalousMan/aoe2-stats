@@ -13,29 +13,69 @@ now carries a `signed_get_url` that deterministically encodes `key` and `expires
 returned string (T066): the redirect target can only carry that shape if the router asked the
 object store to sign it, never if it built a bucket URL by hand. A raw `{endpoint}/{bucket}/{key}`
 would not match `_FAKE_SIGNED_PREFIX` and would fail every assertion below.
+
+---
+
+**T335 (003) below**: `GET /api/matches/{game_id}/replay/{profile_id}` — `contracts/http-api.md`'s
+"Recorded games, per point of view" table, quickstart.md scenario 6, and the per-participant
+`replay` object `GET /api/matches/{game_id}` gains alongside it. This is a *different* route from
+001's `GET /api/replays/{game_id}/download` above: 001's route is the caller's own dashboard
+download by `game_id` alone; this one is reachable for *any* participant's point of view of *any*
+match, `profile_id` named explicitly, which is the whole of US3 (FR-023).
+
+Two implementing tasks split this file's markers. `routers/replays.py` (already registered by
+`app.py`) gains the new route at **T337**; `routers/matches.py`'s existing `GET /api/matches/
+{game_id}` gains the per-participant `replay` object at **T338**, wiring `download_path` and
+`obtainable_until` onto the response `test_match_detail.py` already exercises. Both tasks touch
+code that exists today — `replays.py` and `matches.py` are real modules with real routes already —
+so every test below calls through `client` exactly like the tests above it; nothing is imported
+from either module at module scope or inside a test body, because there is nothing missing to
+import, only a route and a response field not yet present. `xfail(strict=True, reason="T338 not
+implemented yet")` marks the one test about the match-detail `replay` object; every other test
+below carries `reason="T337 not implemented yet"` — see each test's own marker.
+
+`obtainable_until` is asserted `null` throughout, never a date: FR-024 was amended 2026-08-29 —
+the source's retention window is contradicted and unresolved (`research.md` R8) — so no promise
+about a future date may be derived from a window that may not be the real one. That amendment is
+independent of T337/T338 and is asserted here because SC-004 is explicitly not claimable while it
+stands (R8's own words), which this file's assertions must not contradict by asserting a date.
+
+`_T335_AOEMS_HOST`, `_FakeAoemsUpstream` and `_install_fake_aoems_upstream` mirror
+`test_third_party_history.py`'s own `_RELIC_HOST`/`_FakeRelicMatchHistoryUpstream` seam — the
+provider a router builds privately (`AoemsReplayProvider`, `packages/providers/src/
+aoe2stats_providers/aoems/provider.py`) has no `Depends()` this file could override, so the one
+seam through which a real, unmodified download call can be driven end to end is `httpx.AsyncClient.
+send`, intercepted by host.
 """
 
 from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aoe2stats_api import security
+from aoe2stats_api import ratelimit, security
+from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
+    Alert,
+    AlertKind,
     AoeProfile,
     CaptureSource,
     CaptureStatus,
     Match,
+    MatchPlayer,
     ProfileLink,
     ReplayAccessLog,
     ReplayCapture,
+    RetainedRecording,
     SteamIdentity,
     User,
 )
@@ -247,3 +287,509 @@ async def test_replay_download_refuses_a_caller_who_did_not_play_the_match(
         "only the owner's successful download may be logged; a refusal is not an access"
     )
     assert log_rows[0].user_id == owner.id
+
+
+# ================================================================================================
+# T335 (003) — `GET /api/matches/{game_id}/replay/{profile_id}` and the match-detail `replay`
+# object
+# ================================================================================================
+
+#: The one host `AoemsReplayProvider` ever calls (`packages/providers/src/aoe2stats_providers/
+#: aoems/provider.py`'s own `AOEMS_BASE_URL`) — the interception seam below is keyed on it exactly
+#: as `test_third_party_history.py`'s `_RELIC_HOST` keys its own.
+_T335_AOEMS_HOST = "aoe.ms"
+
+_T335_OWNER_PROFILE_ID = 850_200_001
+_T335_PARTICIPANT_A_PROFILE_ID = 850_200_002
+_T335_PARTICIPANT_B_PROFILE_ID = 850_200_003
+
+_T335_MATCH_DETAIL_GAME_ID = 850_100_001
+_T335_ARCHIVED_GAME_ID = 850_100_002
+_T335_OBTAINABLE_GAME_ID = 850_100_003
+_T335_EXPIRED_GAME_ID = 850_100_004
+_T335_BOUNDARY_RACE_GAME_ID = 850_100_005
+_T335_RATE_LIMIT_GAME_ID = 850_100_006
+_T335_SOURCE_REFUSAL_GAME_ID_BASE = 850_100_100
+
+#: FR-024, amended 2026-08-29 (`research.md` R8): a match old enough to be `expired` under either
+#: the ~31-day rolling reading or the contradicted six-month epoch reading — the derivation stays
+#: conservative under either, so a match this old renders `expired` whichever the open question
+#: eventually settles.
+_T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
+
+#: Comfortably inside every credible reading of the retention window.
+_T335_DEFINITELY_OBTAINABLE_AGE = timedelta(days=2)
+
+
+async def _seed_bare_user(db_session: AsyncSession) -> User:
+    """A signed-in user with no linked profile at all. Downloading a third party's `obtainable`
+    point of view needs no ownership of anything — US3's own independent test opens "a recent
+    third-party match" as any signed-in user, never only a participant."""
+    user = User(allowlisted_at=datetime.now(UTC))
+    db_session.add(user)
+    await db_session.flush()
+    await db_session.commit()
+    return user
+
+
+async def _seed_participant_profile(
+    db_session: AsyncSession, *, profile_id: int, alias: str
+) -> None:
+    db_session.add(AoeProfile(profile_id=profile_id, alias=alias, country="FR"))
+
+
+async def _seed_open_match(
+    db_session: AsyncSession, *, game_id: int, completed_at: datetime
+) -> None:
+    """A bare `matches` row with no capture and no participant — callers add
+    `_seed_participant_profile`/`MatchPlayer` rows on top as each test needs them."""
+    db_session.add(
+        Match(
+            game_id=game_id,
+            leaderboard_id=3,
+            completed_at=completed_at,
+            source="relic",
+            raw_payload={},
+        )
+    )
+
+
+class _FakeAoemsUpstream:
+    """Answers every `GET https://aoe.ms/replay/?gameId=&profileId=` call with a fixed
+    `httpx.Response`, counting how many times it was actually called — mirrors
+    `test_third_party_history.py`'s own `_FakeRelicMatchHistoryUpstream`, the identical seam for a
+    router that builds its provider privately rather than through a FastAPI `Depends()` this file
+    could override."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self._response = response
+        self.request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        return self._response
+
+
+def _install_fake_aoems_upstream(monkeypatch: pytest.MonkeyPatch, fake: _FakeAoemsUpstream) -> None:
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != _T335_AOEMS_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+
+class _TrackingObjectStore:
+    """A `get_object_store` override that records every `put`, unlike `conftest.py`'s shared
+    `_FakeObjectStore` (T066), which implements only `list_keys` and `signed_get_url`. FR-027's
+    "stores nothing" needs the write path observed, not merely absent by omission — a fake with no
+    `put` at all would make a router that mistakenly calls it fail with a bare `AttributeError`
+    instead of a assertion this file can name.
+    """
+
+    def __init__(self) -> None:
+        self.put_calls: list[str] = []
+
+    async def list_keys(self, prefix: str = "") -> list[str]:
+        return list(self.put_calls)
+
+    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
+        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+
+    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+        self.put_calls.append(key)
+
+    async def get(self, key: str) -> bytes:
+        raise AssertionError(f"unexpected object-store read of {key!r} during a plain download")
+
+    async def delete(self, key: str) -> None:
+        raise AssertionError(f"unexpected object-store delete of {key!r} during a plain download")
+
+
+def _freeze_rate_limit_clock(monkeypatch: pytest.MonkeyPatch, *, moment: datetime) -> None:
+    """Pins the clock `ratelimit.check_and_increment` reads to a single, fixed `moment` for the
+    rest of a test — mirrors `test_players_routes.py`'s own `_freeze_rate_limiter_clock` byte for
+    byte (its own docstring explains why a real-time loop can otherwise race an epoch-aligned
+    window boundary)."""
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return moment if tz is None else moment.astimezone(tz)
+
+    monkeypatch.setattr(ratelimit, "datetime", _FrozenDateTime)
+
+
+@pytest.mark.xfail(strict=True, reason="T338 not implemented yet")
+async def test_match_detail_replay_object_offers_one_download_per_participant_point_of_view(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-023, quickstart scenario 6.1: `GET /api/matches/{game_id}` carries a per-participant
+    `replay` object (`contracts/http-api.md`'s "Recorded games, per point of view" table) — one
+    entry per participant, never more, never fewer. The caller's own archived point of view reads
+    `archived`; a co-participant with no archive, in the same match still inside the retention
+    window, reads `obtainable`. `obtainable_until` is `null` for every entry regardless of state —
+    FR-024's 2026-08-29 amendment (module docstring): no date may be derived while the source's
+    retention window is contradicted and unresolved (`research.md` R8).
+    """
+    game_id = _T335_MATCH_DETAIL_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287950"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ParticipantA"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_B_PROFILE_ID, alias="ParticipantB"
+    )
+    await db_session.commit()
+
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+
+    for profile_id, team_id, result in (
+        (_T335_OWNER_PROFILE_ID, 1, "win"),
+        (_T335_PARTICIPANT_A_PROFILE_ID, 2, "loss"),
+        (_T335_PARTICIPANT_B_PROFILE_ID, 2, "loss"),
+    ):
+        db_session.add(
+            MatchPlayer(
+                game_id=game_id,
+                profile_id=profile_id,
+                team_id=team_id,
+                civ_id=1,
+                color_id=1,
+                result=result,
+                rating=1500,
+                rating_diff=10,
+            )
+        )
+    await db_session.commit()
+
+    await _sign_in(client, db_session, owner)
+    response = client.get(f"/api/matches/{game_id}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    participants = response.json()["participants"]
+    assert len(participants) == 3
+    replay_by_profile = {p["profile_id"]: p.get("replay") for p in participants}
+    assert set(replay_by_profile) == {
+        _T335_OWNER_PROFILE_ID,
+        _T335_PARTICIPANT_A_PROFILE_ID,
+        _T335_PARTICIPANT_B_PROFILE_ID,
+    }, "FR-023: one download offered per participant point of view, never more, never fewer"
+
+    for profile_id, replay in replay_by_profile.items():
+        assert replay is not None, f"missing `replay` object for participant {profile_id}"
+        assert replay["profile_id"] == profile_id
+        assert replay["obtainable_until"] is None, (
+            "FR-024, amended 2026-08-29: obtainable_until must be null while the retention "
+            "window is unresolved (research.md R8), for every state"
+        )
+
+    owner_replay = replay_by_profile[_T335_OWNER_PROFILE_ID]
+    assert owner_replay["availability"] == "archived"
+    assert (
+        owner_replay["download_path"] == f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}"
+    )
+
+    for profile_id in (_T335_PARTICIPANT_A_PROFILE_ID, _T335_PARTICIPANT_B_PROFILE_ID):
+        other_replay = replay_by_profile[profile_id]
+        assert other_replay["availability"] == "obtainable"
+        assert other_replay["download_path"] == f"/api/matches/{game_id}/replay/{profile_id}"
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-026, FR-029, quickstart scenario 6.4: the caller's own archived point of view is served
+    through this new, per-participant path exactly as 001's own `GET /api/replays/{game_id}/
+    download` above is — a 302 to a freshly signed, short-expiry URL, never a bare bucket URL —
+    and the access is logged. `replay_access_log` was widened by 003 to carry a nullable
+    `retained_recording_id` alongside `replay_capture_id` (data-model.md); this row must set the
+    first and leave the second null, since an archived download is never a read of a
+    `retained_recordings` row (R8, R9)."""
+    game_id = _T335_ARCHIVED_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287951"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    capture = await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+    )
+
+    assert response.status_code == 302, f"Got {response.status_code}: {response.text}"
+    key, expires_in = _decode_signed_url(response.headers["location"])
+    assert key == object_key
+    assert 1 <= expires_in <= _MAX_SIGNED_URL_EXPIRES_IN_SECONDS
+
+    log_result = await db_session.execute(
+        select(ReplayAccessLog).where(ReplayAccessLog.replay_capture_id == capture.id)
+    )
+    log_rows = log_result.scalars().all()
+    assert len(log_rows) == 1, "FR-029: every access to an archived point of view must be logged"
+    assert log_rows[0].user_id == owner.id
+    assert log_rows[0].retained_recording_id is None, (
+        "R9/FR-048: an archived download logs against replay_captures, never retained_recordings"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-023, FR-027, SC-009, quickstart scenario 6.3: a point of view this service has not
+    archived is fetched from the source and streamed straight through to the caller. "Stores
+    nothing" is asserted, not assumed: zero new object-store writes (via `_TrackingObjectStore`,
+    substituted for `conftest.py`'s shared `_FakeObjectStore`, which cannot observe a `put` at
+    all) and zero new `retained_recordings` rows — downloading is not analysing, and constitution
+    IX permits retention only where a person deliberately asks for a match to be analysed
+    (FR-033), which a download request is not.
+    """
+    game_id = _T335_OBTAINABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="Obtainable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await db_session.commit()
+
+    fake_bytes = b"FAKE-AOE2RECORD-ZIP-BYTES-FOR-T335"
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=fake_bytes,
+            headers={
+                "content-disposition": f"attachment; filename=AgeIIDE_Replay_{game_id}.zip",
+                "content-type": "application/zip",
+            },
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    tracking_store = _TrackingObjectStore()
+    # `client.app` is typed as a bare ASGI app by `starlette.testclient.TestClient` — the concrete
+    # `FastAPI` instance `conftest.py`'s own `client` fixture builds always carries
+    # `dependency_overrides`, which is why every other test in this suite family reaches for it
+    # the same way (`test_configuration_envelope.py`, `test_index_entrypoint.py`).
+    client.app.dependency_overrides[get_object_store] = lambda: tracking_store  # type: ignore[attr-defined]
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert response.content == fake_bytes
+
+    assert tracking_store.put_calls == [], (
+        "FR-027: downloading is not analysing — a recording obtained solely to serve a download "
+        "must store zero new bytes"
+    )
+
+    retained_count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(RetainedRecording)
+            .where(RetainedRecording.game_id == game_id)
+        )
+    ).scalar_one()
+    assert retained_count == 0, (
+        "FR-027/SC-009: zero new retained_recordings rows for a plain download"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-025: a point of view whose match completed outside the retention window answers `404`
+    with a `code` that names the reason as `expired` — distinct from `never_recorded`, proven
+    alongside it below."""
+    game_id = _T335_EXPIRED_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ExpiredPointOfView"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "expired"
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_recorded(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-025's own edge case, quickstart scenario 6 and `contracts/http-api.md`'s "boundary
+    race" paragraph (`research.md` R8): a point of view offered as `obtainable` that answers 404
+    at the source when actually fetched is `expired_since_page_load` — never conflated with
+    `never_recorded`, which means the source never had it at all (R8's derivation table). The
+    call also *records* the outcome, so the identical request the next moment answers
+    `never_recorded` instead of repeating the same 404 as a fresh surprise: "That call also
+    records the outcome, so the page is right the next time" (contracts/http-api.md). This is
+    also this file's proof that `expired` (the window closed, tested above),
+    `expired_since_page_load` (it closed between page load and click) and `never_recorded` (the
+    source never had it) are three distinct codes, never any two of them conflated.
+    """
+    game_id = _T335_BOUNDARY_RACE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BoundaryRace"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    first = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert first.status_code == 404, f"Got {first.status_code}: {first.text}"
+    first_code = first.json()["error"]["code"]
+    assert first_code == "expired_since_page_load", (
+        "a recording offered as obtainable that 404s at fetch time must say so, distinctly from "
+        "never having been recorded at all"
+    )
+
+    second = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert second.status_code == 404, f"Got {second.status_code}: {second.text}"
+    second_code = second.json()["error"]["code"]
+    assert second_code == "never_recorded", (
+        "the first call's outcome must be recorded, so the identical request answers "
+        "never_recorded rather than expired_since_page_load a second time"
+    )
+    assert second_code != first_code
+    assert second_code != "expired", (
+        "never_recorded (the source never had it) and expired (the window closed) are FR-025's "
+        "two distinct unobtainable reasons and must never share a code"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+async def test_replay_download_rate_limit_applies_per_user(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-028's first half, R10: past `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`, the route
+    answers `rate_limited` with a `retry_after` — the identical envelope
+    `test_players_routes.py`'s own `test_search_rate_limits_per_user_and_answers_retry_after`
+    proves for the `search` bucket, now proven for the `replay_download` bucket
+    (data-model.md's `rate_limit_counters` section names both)."""
+    game_id = _T335_RATE_LIMIT_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287952"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+
+    #: `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`'s own window (R10: a fixed window, per bucket).
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+
+    for attempt in range(limit):
+        response = client.get(
+            f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+        )
+        assert response.status_code == 302, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+
+    limited = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+    )
+    assert limited.status_code == 429, (
+        f"the call past the configured limit of {limit} must be refused. Got "
+        f"{limited.status_code}: {limited.text}"
+    )
+    limited_body = limited.json()
+    assert limited_body["error"]["code"] == "rate_limited"
+    assert isinstance(limited_body["error"]["detail"].get("retry_after"), int)
+    assert limited_body["error"]["detail"]["retry_after"] > 0
+
+
+@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
+@pytest.mark.parametrize("source_status", [403, 429])
+async def test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    source_status: int,
+) -> None:
+    """FR-028's second half, 001 FR-021: a throttling or refusal signal from the source (a 429,
+    or an unexpected 403 — `AoemsReplayProvider`'s own module docstring: both are read the same
+    way every other provider reads them) stops the request rather than being retried through —
+    `AsyncBaseProvider._request` never retries either through its own backoff policy, only a 5xx
+    or a timeout reaches it — and raises the identical severity-2 `rate_limited` alert 001's own
+    ingester already raises for the same source (`AlertKind.RATE_LIMITED`; data-model.md's own
+    "Alert vocabulary" section adds only `analysis_cap_reached` here, so this route must reuse
+    the existing kind rather than invent a second one).
+    """
+    game_id = _T335_SOURCE_REFUSAL_GAME_ID_BASE + source_status
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceRefusal"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await db_session.commit()
+
+    alerts_before = (await db_session.execute(select(func.count()).select_from(Alert))).scalar_one()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(source_status, text="refused"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert fake_upstream.request_count == 1, (
+        f"a {source_status} from the source must stop the request rather than being retried "
+        "through (FR-028)"
+    )
+    assert response.status_code == 429, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "rate_limited"
+
+    alert_result = await db_session.execute(
+        select(Alert).where(Alert.kind == AlertKind.RATE_LIMITED).order_by(Alert.raised_at.desc())
+    )
+    alert_row = alert_result.scalars().first()
+    assert alert_row is not None, (
+        "FR-028/001 FR-021: a source throttling or refusal signal must raise a rate_limited alert"
+    )
+    assert alert_row.severity == 2
+
+    alerts_after = (await db_session.execute(select(func.count()).select_from(Alert))).scalar_one()
+    assert alerts_after == alerts_before + 1, "exactly one alert per refused request"

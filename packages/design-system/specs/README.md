@@ -15,6 +15,7 @@ component carries a hard-coded style value.
 | [`capture-state-badge.md`](./capture-state-badge.md) | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants) | 001, US3           |
 | [`match-history.md`](./match-history.md)             | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`      | 001, US3; 003, US2 |
 | [`player-search.md`](./player-search.md)             | `src/components/SearchBox/`, `src/components/PlayerResultRow/`      | 003, US1           |
+| [`replay-availability.md`](./replay-availability.md) | `src/components/ReplayAvailabilityList/`                            | 003, US3           |
 
 ## Every spec has nine sections
 
