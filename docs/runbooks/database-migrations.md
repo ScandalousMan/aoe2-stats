@@ -48,27 +48,47 @@ unapplied migration is caught by `schema_out_of_date` (T394), not prevented by i
 
 1. Get the direct-endpoint connection string from the Neon console: **Dashboard → Connection
    Details → toggle "Pooled connection" off.**
-2. Export it as `DATABASE_URL` in the shell you run the next command from — nowhere else:
+2. From the repository root, run this single command and paste the string at its prompt. It
+   reads the value, rewrites the scheme, and applies the migration in one shell:
 
    ```sh
-   export DATABASE_URL='postgresql+psycopg://user:password@ep-xxxx.<region>.aws.neon.tech/dbname?sslmode=require'
+   read -rs "RAW?Paste Neon DIRECT url then Enter: "; export DATABASE_URL="postgresql+psycopg://${RAW#*://}"; print -r -- "host: ${${DATABASE_URL#*@}%%/*}"; uv run alembic upgrade head && uv run alembic check
    ```
 
-3. From the repository root, apply every pending revision:
+   It prints the host and nothing else — check it carries **no** `-pooler` segment before
+   reading the migration output. Expect `<previous> -> <new>` from `upgrade`, then
+   `No new upgrade operations detected.` from `check`.
 
-   ```sh
-   uv run alembic upgrade head
-   ```
+**Why one command and a prompt, rather than an `export` you paste.** All three of these have
+happened, in one sitting, on 2026-08-29, and cost four failed attempts and a rotated credential:
 
-4. Confirm the database is at head and the models agree with it:
+- **The scheme.** Neon's console gives `postgresql://…`. SQLAlchemy maps a bare `postgresql://`
+  to the **psycopg2** dialect, which this repository does not install — `packages/storage`
+  declares `psycopg[binary]>=3.2`, and `infra/migrations/env.py` passes `DATABASE_URL` to
+  SQLAlchemy verbatim with no scheme rewriting. Pasting the console's string over an example
+  that already reads `postgresql+psycopg://` silently drops the one part the example was
+  carrying, and the run dies on `ModuleNotFoundError: No module named 'psycopg2'`. The command
+  above rewrites the scheme itself, so the console's string works unedited.
+- **The `?`.** `?sslmode=require` contains a glob character. Pasted anywhere zsh can expand it
+  unquoted, the shell answers `zsh: no matches found:` and the variable ends up **empty** — at
+  which point `DATABASE_URL` is a bare `postgresql+psycopg://`, psycopg falls back to a local
+  Unix socket, and the error is `connection to server on socket "/tmp/.s.PGSQL.5432" failed`,
+  which reads like a missing local Postgres rather than a quoting fault.
+- **The credential.** A pasted `export` puts the password in the shell history and on screen,
+  where it can be copied into a bug report, a terminal recording, or a chat window along with
+  the surrounding error. `read -rs` echoes nothing and leaves nothing in history. **If the
+  password is exposed anyway, treat it as burned**: reset the role in the Neon console, then
+  update `DATABASE_URL` in the Vercel project with the new **pooled** string — the rotation
+  breaks the running application until that second half is done, so do both together.
 
-   ```sh
-   uv run alembic check
-   ```
+3. Once the deploy is live, confirm `GET /api/health` answers **`200`** (T394).
 
-5. Once the deploy is live, confirm `GET /api/health`'s `schema_revision` field (T394) matches
-   the revision just applied.
-6. Close the shell, or explicitly `unset DATABASE_URL`, so the direct-endpoint credential does
+   Read the status, not the field: the route returns `503 schema_out_of_date` when
+   `alembic_version` differs from `EXPECTED_SCHEMA_REVISION`, and the `schema_revision` value in
+   a successful body is the **build's own compiled constant**, never what was found in the
+   database. So the field alone is not evidence about the database — a `200` is, because the
+   route only reaches it when the two are equal.
+4. Close the shell, or explicitly `unset DATABASE_URL`, so the direct-endpoint credential does
    not linger in a long-running session.
 
 Never export the direct-endpoint value into the Vercel project's environment variables. That is
@@ -89,14 +109,15 @@ and `5c5f5e0b607d` (`archival objection (contract)`) are this repository's examp
 `ingest_consent_withdrawn_at` in place for the old code to keep reading; contract, applied only
 after the deploy that stops reading those two columns is live, drops them.
 
-Run the Procedure above **twice**, not once, for a pair like this — step 3's target is a specific
+Run the Procedure above **twice**, not once, for a pair like this — step 2's target is a specific
 revision, not `head`, on the first run:
 
-1. Run the Procedure above through step 4 (`alembic check`), but in step 3 target the **expand**
-   revision explicitly rather than `head`:
+1. Run the Procedure above's step 2, with the **expand** revision named explicitly in place of
+   `head`. The prompt, the scheme rewrite and the `check` are all unchanged; only the target
+   differs:
 
    ```sh
-   uv run alembic upgrade ad6ae8d59519
+   read -rs "RAW?Paste Neon DIRECT url then Enter: "; export DATABASE_URL="postgresql+psycopg://${RAW#*://}"; print -r -- "host: ${${DATABASE_URL#*@}%%/*}"; uv run alembic upgrade ad6ae8d59519 && uv run alembic check
    ```
 
    This is safe to apply before the deploy: the old code neither knows nor cares about the new
@@ -104,22 +125,18 @@ revision, not `head`, on the first run:
 
 2. Deploy the code that reads the new column and stops reading the old ones.
 
-3. Do step 5 of the Procedure above — confirm `GET /api/health` — expecting it to report
-   `schema_out_of_date` until the deploy lands, not `ok`. `alembic_version` is now at
+3. Do step 3 of the Procedure above — confirm `GET /api/health` — expecting it to answer `503
+   schema_out_of_date` until the deploy lands, not `200`. `alembic_version` is now at
    `ad6ae8d59519`, and `EXPECTED_SCHEMA_REVISION` compiled into the _still-deployed_ old build
    points somewhere behind that (whatever revision was head before this pair shipped); once the
    new build — the one whose `EXPECTED_SCHEMA_REVISION` is the contract revision — is live, the
    two agree again and the check should read `ok`. This is the check working, not an incident:
-   every route still serves throughout, because expand only adds. Do step 6 (unset
-   `DATABASE_URL`) once this reads `ok` — if it is still `schema_out_of_date` after the deploy is
-   confirmed live, that is the real fault to investigate.
+   every route still serves throughout, because expand only adds. Do step 4 (unset
+   `DATABASE_URL`) once this answers `200` — if it is still `schema_out_of_date` after the deploy
+   is confirmed live, that is the real fault to investigate.
 
-4. Once step 3 above reads `ok`, run the Procedure above again in full, this time targeting the
-   **contract** revision (`head`, once it is the only pending revision):
-
-   ```sh
-   uv run alembic upgrade head
-   ```
+4. Once step 3 above answers `200`, run the Procedure above again in full, this time targeting
+   the **contract** revision (`head`, once it is the only pending revision).
 
 Never collapse the two runs into one `alembic upgrade head` executed before the deploy — that
 applies contract before the old code has stopped reading the columns it drops, which is the exact
