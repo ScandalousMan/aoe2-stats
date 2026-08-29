@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { AnalysisContainer } from '../features/analysis/AnalysisContainer'
 import { MatchDetailContainer } from '../features/replays/MatchDetailContainer'
 
 // T076: the match detail route, `/matches/$gameId`. Deliberately its own top-level file, never a
@@ -24,5 +25,15 @@ export const Route = createFileRoute('/matches/$gameId')({
 
 function MatchDetailRoute() {
   const { gameId } = Route.useParams()
-  return <MatchDetailContainer gameId={gameId} />
+  return (
+    <>
+      <MatchDetailContainer gameId={gameId} />
+      {/* T372, US4: its own section, sibling to `MatchDetailContainer` rather than nested inside
+       * it — `AnalysisContainer`'s own module docstring explains why (shares that container's
+       * `GET /api/matches/{game_id}` query key, one request either way). It renders nothing at all
+       * for a `gameId` this service holds no match for, matching `MatchDetailContainer`'s own gate
+       * for `ReplayAvailabilityList`. */}
+      <AnalysisContainer gameId={gameId} />
+    </>
+  )
 }
