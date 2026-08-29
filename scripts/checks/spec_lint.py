@@ -123,7 +123,13 @@ def has_extension(path: str) -> bool:
 
 
 def check_requirement_coverage(spec: str, tasks: str) -> None:
-    defined = set(re.findall(r"\*\*(FR-\d+|SC-\d+)\*\*:", spec))
+    # The lettered suffix is not optional decoration — amended 2026-08-29. This pattern was
+    # `(FR-\d+|SC-\d+)`, which silently skipped every id a later amendment inserted between two
+    # existing ones: FR-004a..e, FR-008a, FR-043a..c, SC-002a, SC-009a in 003 alone. Eleven
+    # requirements were outside the coverage check while it reported "61/61", which reads as full
+    # coverage and was not. Inserted ids are exactly the ones a spec grows under amendment, so they
+    # are the ones most likely to lose their task.
+    defined = set(re.findall(r"\*\*(FR-\d+[a-z]*|SC-\d+[a-z]*)\*\*:", spec))
     if not defined:
         fail("requirement-coverage", "no FR-/SC- definitions found in spec.md")
         return
