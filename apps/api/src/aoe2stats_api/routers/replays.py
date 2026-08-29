@@ -80,9 +80,12 @@ Per-state behaviour (`contracts/http-api.md`):
   `_capture_for_point_of_view` filters *any* row the caller does not own out to `None` (B1
   remediation, widened at M12 — its own docstring), so `derive_availability` falls through to the
   ordinary age comparison for it instead — `archived` therefore cannot be reached here for a
-  capture the caller does not own, and the `assert caller_owns_profile` in this branch below exists
-  only to fail loudly if that ever stops being true. FR-026 is explicit that `archived` is "the
-  caller's own captured replay, and only that", and `test_no_public_directory.py`'s own property-4
+  capture the caller does not own, and the branch below still raises `_replay_not_found()` if that
+  ever stops being true (L20 remediation, third-round review: a real, raised check, never a bare
+  `assert`, which is a no-op under `python -O` and would turn a regression in the filtering above
+  into a stranger's replay served silently instead of failing loudly). FR-026 is explicit that
+  `archived` is "the caller's own captured replay, and only that", and
+  `test_no_public_directory.py`'s own property-4
   test seeds a *stranger's* `stored` capture, old enough that the source has long since lost it
   too, and still requires a `404 not_found` — never `expired`, which would itself disclose that an
   archive exists for someone else's account. A caller who owns it gets the identical
@@ -187,6 +190,25 @@ already is, so it is caught by the outer `except APIError` exactly like the rest
 browser navigation as the same `303` this section already describes. No `replay_fetch_misses` row
 is written on this path (`_source_unavailable_error`'s own docstring): a source failure is not
 evidence the recording never existed.
+
+**M2 (fourth-round review): a trailing `except ProviderError` closes the structural gap B3 left
+one subclass short.** B3 above named `ProviderRateLimited` and `ProviderUnavailable` explicitly and
+stopped there; `ProviderContractViolation` is the third `ProviderError` subclass (`base.py`) and is
+not reachable from `AoemsReplayProvider.fetch_replay` today, so this was not a live defect — but it
+is the identical shape B3 fixed, one layer up: the day a fourth subclass exists, or `fetch_replay`
+grows a validated response, that gap reopens verbatim with no test able to see it coming.
+`routers/auth.py`'s own two browser-navigation call sites already catch the base `ProviderError`
+for exactly this reason; this route now matches that precedent (`_source_unavailable_error()` on
+the trailing clause here too).
+
+**L3 (fourth-round review): `ProviderRateLimited.retry_after_seconds`, forwarded.** The source's
+own `Retry-After` header was parsed (`base.py`'s `_parse_retry_after`) and then silently dropped
+here, while this route's *own* limiter (`_apply_replay_download_rate_limit`) already forwards its
+figure on the identical `rate_limited` code — `_source_rate_limited_error` now takes it as an
+optional argument and carries it through `detail={"retry_after": ...}` exactly the same way, with
+`None` (no `Retry-After` from the source) staying `None` rather than becoming an invented figure —
+the client's own deliberate handling of that absence (`replay-availability.md` §5) must keep
+working unchanged.
 """
 
 from __future__ import annotations
@@ -219,6 +241,7 @@ from aoe2stats_providers.aoems.provider import AoemsReplayProvider
 from aoe2stats_providers.base import (
     NotFound,
     ProviderCallRecord,
+    ProviderError,
     ProviderRateLimited,
     ProviderUnavailable,
 )
@@ -628,11 +651,36 @@ def _expired_since_page_load_error() -> APIError:
     )
 
 
-def _source_rate_limited_error() -> APIError:
+def _source_rate_limited_error(*, retry_after_seconds: float | None = None) -> APIError:
+    """L3 remediation (fourth-round review): `ProviderRateLimited.retry_after_seconds`, parsed
+    from the source's own `Retry-After` header (`base.py`'s `_parse_retry_after`), used to be
+    dropped here — this route's *own* limiter (`_apply_replay_download_rate_limit`) forwards its
+    figure through `detail={"retry_after": ...}`, but this sibling producer, on the identical
+    `rate_limited` code, did not, even though it carries one whenever the source sends a
+    `Retry-After` header.
+
+    Rounded to the nearest whole second and floored at zero: `apps/web`'s own
+    `parseReplayDownloadFailure` (`downloadFailure.ts`) only accepts `/^\\d+$/` on the query
+    parameter this ends up in (`_match_page_redirect_for_download_failure` below) — a negative or
+    fractional value would silently fail to parse there rather than render, which is a worse
+    failure than omitting it. `None` (the source sent no `Retry-After`) is passed through as `None`
+    rather than coerced to a number: `_apply_replay_download_rate_limit`'s own `RateLimitOutcome.
+    retry_after` already establishes that `detail=None` (never a fabricated `0`) is how this route
+    tells the client "no figure to show", and the client already handles that absence deliberately
+    — falling back to the generic failed-request copy rather than an empty countdown
+    (`replay-availability.md` §5's own "never a rounded or invented figure" rule, extended to
+    "never an absent one either") — a path this fix must not disturb.
+    """
+    detail = (
+        {"retry_after": max(0, round(retry_after_seconds))}
+        if retry_after_seconds is not None
+        else None
+    )
     return APIError(
         status_code=429,
         code="rate_limited",
         message="The replay source is throttling requests. Try again later.",
+        detail=detail,
     )
 
 
@@ -951,12 +999,29 @@ async def download_replay_point_of_view(
             result = await provider.fetch_replay(game_id, profile_id)
         except ProviderRateLimited as error:
             await raise_rate_limited_alert(_RequestAlertSink(db_session), error, run_id=None)
-            raise _source_rate_limited_error() from error
+            raise _source_rate_limited_error(
+                retry_after_seconds=error.retry_after_seconds
+            ) from error
         except ProviderUnavailable as error:
             # `ProviderMoved` is a `ProviderUnavailable` subtype (`base.py`'s own docstring) and is
             # caught here too, deliberately not ahead of this clause: this route has no separate
             # reaction to "the source moved" versus "the source is down" (`_source_unavailable_
             # error`'s own docstring).
+            raise _source_unavailable_error() from error
+        except ProviderError as error:
+            # M2 remediation (fourth-round review): `ProviderError`'s third subclass,
+            # `ProviderContractViolation`, is not reachable from `AoemsReplayProvider.fetch_replay`
+            # today — it never validates a response into a strict DTO the way `ProfileProvider`/
+            # `MatchHistoryProvider` do (`aoems/provider.py`'s own module docstring on why a
+            # contract violation would have no bounded-retry path to fall back to) — so this clause
+            # is not live yet. It exists so the moment either changes (a fourth `ProviderError`
+            # subclass, or `fetch_replay` growing a validated response) does not silently reopen B3
+            # verbatim: `routers/auth.py`'s two browser-navigation call sites already catch the
+            # base `ProviderError` for the identical reason, naming all three subclasses in their
+            # own comment, and this is the other browser-navigation route in this codebase facing
+            # the same hierarchy. `_source_unavailable_error()`, not a fourth code: a contract
+            # violation is still the source failing to answer usably, exactly what `502`/
+            # `source_unavailable` already means here.
             raise _source_unavailable_error() from error
 
         if isinstance(result, NotFound):

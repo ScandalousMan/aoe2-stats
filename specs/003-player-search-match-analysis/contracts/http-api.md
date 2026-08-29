@@ -239,7 +239,7 @@ signed-in person and must not be retained by a shared cache or found by a crawle
 | -------------------------- | --------------------------------------------------------------------------------- |
 | `sign_in_required`         | favouriting or searching while signed out                                         |
 | `favourites_limit_reached` | FR-016                                                                            |
-| `rate_limited`             | FR-005, FR-028, FR-040 — carries `retry_after` seconds                            |
+| `rate_limited`             | FR-005, FR-028, FR-040 — carries `retry_after` seconds when known (below)         |
 | `never_recorded`           | the source has no recording for this point of view                                |
 | `expired_since_page_load`  | it was obtainable when the page rendered and is not now                           |
 | `analysis_unavailable`     | the window closed and it was never analysed                                       |
@@ -253,3 +253,14 @@ response. The two names are close on purpose only in what they describe, never i
 
 `search_source_unavailable` is deliberately absent from this table: it is a `reason` in a successful
 body, not an error code, because the request succeeded and the answer is reduced rather than missing.
+
+**Amended 2026-08-29**: `rate_limited` has two producers on the download route, and the table's old
+"carries `retry_after` seconds" overstated what both give. This service's own per-caller limit
+(FR-028) always knows its own figure and always carries it. The replay source refusing this service's
+own outbound request (a 403/429 `aoe.ms` itself returns) carries one only when `aoe.ms` sent a
+`Retry-After` header on that refusal; where it did not, the code is raised with no `retry_after` at
+all. So the figure is present when it is known — always for this service's own limit, and for the
+source's refusal only when the upstream supplied one.
+`packages/design-system/specs/replay-availability.md` §5 and
+`apps/web/src/features/replays/availability.ts` already treat the absence as an expected shape,
+falling back to generic copy rather than rendering an empty countdown.

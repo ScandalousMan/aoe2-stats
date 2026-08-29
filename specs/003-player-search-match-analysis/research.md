@@ -438,9 +438,13 @@ an analysis fetch that 404s inside the window records it for a third party's.
 SC-004 asks that the stated availability match what the source answers "at that moment", and the
 boundary race in the spec's edge cases is the case where it cannot: a match hours from expiry is
 offered, and by the time the user clicks, the source has purged it. The design does not pretend to
-close that race — it names it. The countdown FR-024 requires is what makes the risk visible before
-the click, and a 404 after it is reported as "it expired while you were reading", distinctly from
-"it was never recorded" (FR-025).
+close that race — it names it. **Nothing currently warns the user before the click.** With
+`obtainable_until` null while the window is unresolved (above), there is no date to count down to,
+and the row renders the same `Obtainable`/`info` badge it would with one
+(`packages/design-system/specs/replay-availability.md` §3.2) — no countdown, no other signal that this
+particular row is closer to the boundary than any other `obtainable` one. What the design does instead
+is catch the race after it happens rather than pretend it cannot: a 404 at fetch time is reported as
+"it expired while you were reading", distinctly from "it was never recorded" (FR-025).
 
 ### Alternatives considered
 

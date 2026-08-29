@@ -65,7 +65,7 @@ from aoe2stats_api import ratelimit, security
 from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.routers import replays as replays_router
 from aoe2stats_api.settings import get_settings
-from aoe2stats_providers.base import RetryPolicy, TokenBucket
+from aoe2stats_providers.base import ProviderContractViolation, RetryPolicy, TokenBucket
 from aoe2stats_storage.models import (
     Alert,
     AlertKind,
@@ -357,6 +357,17 @@ _T335_DEFINITELY_OBTAINABLE_AGE = timedelta(days=2)
 _T335_SOURCE_UNAVAILABLE_GAME_ID = 850_100_016
 _T335_SOURCE_TIMEOUT_GAME_ID = 850_100_017
 _T335_BROWSER_SOURCE_UNAVAILABLE_GAME_ID = 850_100_018
+
+#: Fourth-round review remediation — each finding gets its own game so none of these interferes
+#: with a rate-limit window or a fetch-miss row another test in this file already wrote.
+#: M1: a real, wire-shaped UTF-8 filename the route must stream rather than 500 on.
+_T335_NON_LATIN1_FILENAME_GAME_ID = 850_100_019
+#: M2: `ProviderContractViolation`, the one `ProviderError` subclass not reachable from
+#: `AoemsReplayProvider` today — reached here only via a `_build_replay_provider` double, since
+#: nothing in the real provider raises it (the finding's own words: "not a live defect").
+_T335_PROVIDER_CONTRACT_VIOLATION_GAME_ID = 850_100_020
+#: L3: the source's own `Retry-After`, forwarded — and its contrast case, no header at all.
+_T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID = 850_100_021
 
 #: Fast enough that a 503-exhausts-retries or timeout test does not spend real seconds asleep in
 #: `AsyncBaseProvider`'s exponential backoff — mirrors `packages/providers/tests/test_aoems.py`'s
@@ -957,6 +968,10 @@ async def test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert(
     )
     assert response.status_code == 429, f"Got {response.status_code}: {response.text}"
     assert response.json()["error"]["code"] == "rate_limited"
+    assert response.json()["error"]["detail"] == {}, (
+        "L3 contrast case: a source refusal with no Retry-After header must not manufacture a "
+        f"retry_after. Got detail={response.json()['error']['detail']!r}"
+    )
 
     alert_result = await db_session.execute(
         select(Alert).where(Alert.kind == AlertKind.RATE_LIMITED).order_by(Alert.raised_at.desc())
@@ -1441,3 +1456,177 @@ async def test_expired_point_of_view_with_sec_fetch_mode_cors_answers_json_never
     assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
     assert "location" not in response.headers
     assert response.json()["error"]["code"] == "expired"
+
+
+# ================================================================================================
+# M1 (fourth-round review) — the reachable sibling of the CR/LF filename fix: a genuine UTF-8
+# filename in the source's own `content-disposition` must stream through, never reach a browser
+# navigation as a bare 500. Built from raw `(bytes, bytes)` header pairs, not a `dict[str, str]`
+# (`httpx.Headers.__init__`'s own `.encode("ascii")` refuses a non-ASCII `str` outright) — this is
+# the shape `httpx`'s transport layer hands back after decoding real wire bytes, the one a browser
+# navigation can actually receive over a real connection. CR/LF, by contrast, cannot survive HTTP
+# wire parsing at all (`aoems/provider.py`'s own `_is_safe_header_filename` docstring) — this test
+# is the case that *can* arrive, driven through the real route rather than the provider alone.
+# ================================================================================================
+
+
+async def test_obtainable_point_of_view_with_a_non_latin1_filename_streams_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before this fix, `AoemsReplayProvider._parse_filename` refused a control character
+    (`\\x00`-`\\x1f`, `\\x7f`) only, never a codepoint above U+00FF — so this route's own
+    `Response(headers={"content-disposition": ...})` reached Starlette's `.encode("latin-1")`
+    with a genuine UTF-8 filename and raised `UnicodeEncodeError`, uncaught here, escaping to
+    `app.py`'s generic handler as a bare `500` on a browser navigation — the exact raw-JSON
+    stranding B3's `303` fix exists to eliminate, through the very header that fix already
+    hardened once, for CR/LF, the one case that could never actually reach it this way."""
+    game_id = _T335_NON_LATIN1_FILENAME_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="NonLatin1Filename"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_bytes = b"FAKE-AOE2RECORD-ZIP-BYTES-NON-LATIN1"
+    # A euro sign (U+20AC): unremarkable UTF-8, unrepresentable in Latin-1 — exactly the shape
+    # `httpx`'s own transport layer would hand back after decoding real wire bytes. A `dict[str,
+    # str]` header, unlike this one, cannot even construct this value: `httpx.Headers.__init__`
+    # refuses a non-ASCII `str` outright with its own `.encode("ascii")`.
+    raw_filename = "replay_€.zip".encode()
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=fake_bytes,
+            headers=[
+                (b"content-type", b"application/zip"),
+                (b"content-disposition", b'attachment; filename="' + raw_filename + b'"'),
+            ],
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200, (
+        f"a non-Latin-1 upstream filename must never strand a browser navigation on a bare 500. "
+        f"Got {response.status_code}: {response.text}"
+    )
+    assert response.content == fake_bytes
+    disposition = response.headers["content-disposition"]
+    disposition.encode("latin-1")  # must not raise — this is the served header, not this test's
+    assert disposition == (
+        f'attachment; filename="AgeIIDE_Replay_{game_id}_{_T335_PARTICIPANT_A_PROFILE_ID}.zip"'
+    ), (
+        "the unsafe upstream filename must fall back to the safe, generated name rather than "
+        f"being carried through: got {disposition!r}"
+    )
+
+
+# ================================================================================================
+# M2 (fourth-round review) — the trailing `except ProviderError` catches the one `ProviderError`
+# subclass B3 left unnamed. Not reachable from the real `AoemsReplayProvider` today (the finding's
+# own words: "not a live defect"), so this drives it through a `_build_replay_provider` double
+# rather than the fake-upstream seam every other test in this file uses — the only way to prove
+# the route's own handling without a fourth real trigger to reach it with.
+# ================================================================================================
+
+
+class _ContractViolatingProvider:
+    """A `fetch_replay` that always raises `ProviderContractViolation` — the one `ProviderError`
+    subclass `AoemsReplayProvider` never raises today, standing in for the day it, or a successor,
+    does."""
+
+    async def fetch_replay(self, game_id: int, profile_id: int) -> None:
+        raise ProviderContractViolation(
+            "simulated contract violation", provider="aoems", endpoint="replay"
+        )
+
+
+async def test_provider_contract_violation_answers_source_unavailable_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M2: before this fix, the route's `try`/`except` around `fetch_replay` named
+    `ProviderRateLimited` and `ProviderUnavailable` only — a `ProviderContractViolation` fell
+    straight through, uncaught, to a bare `500`, the identical shape B3 already fixed one round
+    earlier for `ProviderUnavailable`."""
+    game_id = _T335_PROVIDER_CONTRACT_VIOLATION_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ContractViolation"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        replays_router,
+        "_build_replay_provider",
+        lambda db_session: _ContractViolatingProvider(),
+    )
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+
+
+# ================================================================================================
+# L3 (fourth-round review) — the source's own `Retry-After`, forwarded through the identical
+# `detail.retry_after` shape this route's own limiter already uses on the same `rate_limited`
+# code. The contrast case (no `Retry-After` at all) is asserted inline on
+# `test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert` above, which already
+# exercises a source 429 with no such header.
+# ================================================================================================
+
+
+async def test_source_rate_limited_forwards_the_source_retry_after(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 429 from the source that carries `Retry-After` must not be trimmed of it before reaching
+    the caller — `ProviderRateLimited.retry_after_seconds` (`base.py`) is parsed already; this
+    route used to drop it on the floor rather than forward it, unlike
+    `_apply_replay_download_rate_limit`'s own figure on the identical `rate_limited` code."""
+    game_id = _T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceRetryAfter"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(429, text="slow down", headers={"Retry-After": "30"})
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 429, f"Got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["error"]["code"] == "rate_limited"
+    assert body["error"]["detail"].get("retry_after") == 30, (
+        f"the source's own Retry-After must be forwarded, not dropped: got "
+        f"{body['error']['detail']!r}"
+    )
