@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiMatchDetail } from '../matches/api'
@@ -70,6 +70,12 @@ function baseDetail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
         result: 'win',
         rating: 1800,
         rating_diff: 12,
+        replay: {
+          profile_id: 11,
+          availability: 'obtainable',
+          obtainable_until: null,
+          download_path: '/api/matches/700800900/replay/11',
+        },
       },
       {
         profile_id: 22,
@@ -81,6 +87,12 @@ function baseDetail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
         result: 'loss',
         rating: 1750,
         rating_diff: -12,
+        replay: {
+          profile_id: 22,
+          availability: 'expired',
+          obtainable_until: null,
+          download_path: null,
+        },
       },
     ],
     capture_status: null,
@@ -144,8 +156,10 @@ describe('MatchDetailContainer', () => {
     renderMatch()
 
     expect(await screen.findByText('Arabia')).toBeInTheDocument()
-    expect(screen.getByText('aoe2villain')).toBeInTheDocument()
-    expect(screen.getByText('rival_ace')).toBeInTheDocument()
+    // Each alias now appears twice — once in `ParticipantsTable`, once in
+    // `ReplayAvailabilityList`'s own row (T341) — so this asserts presence, not a single match.
+    expect(screen.getAllByText('aoe2villain').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('rival_ace').length).toBeGreaterThan(0)
   })
 
   it('still offers to link a Steam account, non-blocking, above the match content', async () => {
@@ -189,6 +203,12 @@ describe('MatchDetailContainer', () => {
                 result: 'win',
                 rating: 1800,
                 rating_diff: 12,
+                replay: {
+                  profile_id: 11,
+                  availability: 'obtainable',
+                  obtainable_until: null,
+                  download_path: '/api/matches/700800900/replay/11',
+                },
               },
             ],
           }),
@@ -197,6 +217,53 @@ describe('MatchDetailContainer', () => {
     renderMatch()
 
     expect(await screen.findByText('Civilisation ID 87')).toBeInTheDocument()
+  })
+
+  // T341: `ReplayAvailabilityList` wired from `GET /api/matches/{game_id}`'s per-participant
+  // `replay` object (T338, FR-023..FR-029).
+
+  it('renders one recorded-game row per participant, each in its own state', async () => {
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+    renderMatch()
+
+    // `Heading` renders before the match data arrives too (§5's loading skeleton), so waiting on
+    // the badge text — only present once real rows replace the skeleton — is what actually
+    // proves the data reached the list, not just that the section mounted.
+    expect(await screen.findByText('Obtainable')).toBeInTheDocument()
+    expect(screen.getByText('Expired')).toBeInTheDocument()
+  })
+
+  it('triggers a same-tab navigation to the participant’s own download_path on click (FR-023)', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+    renderMatch()
+
+    const [downloadButton] = await screen.findAllByRole('button', { name: 'Download' })
+    fireEvent.click(downloadButton!)
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/11')
+  })
+
+  it('offers no download for an unobtainable point of view — absent, never a button that fails (FR-025)', async () => {
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+    renderMatch()
+
+    await screen.findByText('Expired')
+    // Exactly one participant is `obtainable` in `baseDetail()`'s fixture; the other is
+    // `expired` and must not contribute a second `DownloadAction`.
+    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1)
+  })
+
+  it('does not render the recorded-games section for a match this service does not hold', async () => {
+    installFakeApi({
+      profiles: [],
+      detail: () => jsonResponse({ error: { code: 'not_found', message: 'No such match.' } }, 404),
+    })
+    renderMatch()
+
+    await screen.findByText('This match could not be found.')
+    expect(screen.queryByText('Recorded games')).not.toBeInTheDocument()
   })
 
   it('collapses to the not-found callout for a game_id this service does not hold', async () => {

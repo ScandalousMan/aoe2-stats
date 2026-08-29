@@ -206,6 +206,19 @@ export function matchesQueryOptions(profileId: number, cursor: string | null = n
 // `MatchesRepository`) resolves both via the identical `LEFT OUTER JOIN` `list_matches` already
 // uses (T070e), so this route and the list route answer with one vocabulary, not two.
 
+/** `matches.py`'s `_replay_json` (T338, FR-023) — one per participant, exactly `contracts/
+ * http-api.md`'s "Recorded games, per point of view" shape. `download_path` and
+ * `obtainable_until` are `null` for `expired` and `never_recorded` (FR-025's whole point: an
+ * unobtainable download must not be renderable as a button that then fails), and
+ * `obtainable_until` is `null` in every state today (FR-024, amended 2026-08-29 — the retention
+ * window is unresolved) — never invented client-side either way. */
+export interface ApiReplayAvailability {
+  profile_id: number
+  availability: 'archived' | 'obtainable' | 'expired' | 'never_recorded'
+  obtainable_until: string | null
+  download_path: string | null
+}
+
 export interface ApiMatchParticipant {
   profile_id: number
   alias: string | null
@@ -218,6 +231,8 @@ export interface ApiMatchParticipant {
   result: string | null
   rating: number | null
   rating_diff: number | null
+  /** T338: this participant's own point of view — always present, one per participant (FR-023). */
+  replay: ApiReplayAvailability
 }
 
 export interface ApiMatchDetail {
@@ -250,6 +265,33 @@ export class MatchDetailResponseShapeError extends Error {
   constructor(detail: string) {
     super(`Unexpected response shape from /api/matches/{game_id}: ${detail}`)
     this.name = 'MatchDetailResponseShapeError'
+  }
+}
+
+const REPLAY_AVAILABILITIES = ['archived', 'obtainable', 'expired', 'never_recorded'] as const
+
+function assertReplayAvailability(
+  value: unknown,
+  path: string,
+): asserts value is ApiReplayAvailability {
+  if (typeof value !== 'object' || value === null) {
+    throw new MatchDetailResponseShapeError(`${path} was not an object`)
+  }
+  const replay = value as Record<string, unknown>
+  if (typeof replay.profile_id !== 'number') {
+    throw new MatchDetailResponseShapeError(`${path}.profile_id was not a number`)
+  }
+  if (
+    typeof replay.availability !== 'string' ||
+    !REPLAY_AVAILABILITIES.includes(replay.availability as (typeof REPLAY_AVAILABILITIES)[number])
+  ) {
+    throw new MatchDetailResponseShapeError(`${path}.availability was not one of the four states`)
+  }
+  if (!isNullableString(replay.obtainable_until)) {
+    throw new MatchDetailResponseShapeError(`${path}.obtainable_until was not string|null`)
+  }
+  if (!isNullableString(replay.download_path)) {
+    throw new MatchDetailResponseShapeError(`${path}.download_path was not string|null`)
   }
 }
 
@@ -289,6 +331,7 @@ function assertMatchParticipant(
   if (!isNullableNumber(participant.rating_diff)) {
     throw new MatchDetailResponseShapeError(`${path}.rating_diff was not number|null`)
   }
+  assertReplayAvailability(participant.replay, `${path}.replay`)
 }
 
 /** Validates `payload` against `ApiMatchDetail` and narrows to it, or throws

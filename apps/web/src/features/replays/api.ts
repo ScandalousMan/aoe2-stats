@@ -35,3 +35,25 @@ export function replayDownloadPath(gameId: number): string {
 export function triggerReplayDownload(gameId: number): void {
   window.location.assign(replayDownloadPath(gameId))
 }
+
+/**
+ * Triggers `GET /api/matches/{game_id}/replay/{profile_id}` (T337, FR-023) — one download per
+ * participant point of view, reached from `ReplayAvailabilityList`'s own `DownloadAction`
+ * (`packages/design-system/specs/replay-availability.md` §10: "a real `<button>` triggering a
+ * same-tab navigation to the download endpoint... the URL is minted per click so FR-029's
+ * access-log write happens server-side on that request, on every click, archived and obtainable
+ * alike"). `path` is `matches/api.ts`'s own `ApiReplayAvailability.download_path`, server-minted —
+ * never rebuilt client-side, matching every other identifier this feature refuses to derive on
+ * its own (module docstring above).
+ *
+ * The same reasoning `triggerReplayDownload` carries applies twice over here: this single route
+ * answers a 302-to-a-signed-URL for `archived` (a *cross-origin* redirect — the bucket has no
+ * CORS configured, `packages/storage/src/aoe2stats_storage/objects.py`'s own docstring, so a
+ * script-readable `fetch` following it would reject on the browser's own CORS check) and a
+ * same-origin streamed body for `obtainable` (FR-027: fetched from the source and streamed
+ * straight through, never stored). A plain top-level navigation is the one mechanism that serves
+ * both without a second, divergent code path per state.
+ */
+export function triggerReplayPointOfViewDownload(path: string): void {
+  window.location.assign(path)
+}

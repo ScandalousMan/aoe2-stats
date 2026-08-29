@@ -1,8 +1,19 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Callout, MatchDetailPanel, ProfileSummary } from 'design-system'
-import type { DownloadActionState, MatchDetailStatus, ProfileSummaryStatus } from 'design-system'
+import {
+  Button,
+  Callout,
+  MatchDetailPanel,
+  ProfileSummary,
+  ReplayAvailabilityList,
+} from 'design-system'
+import type {
+  DownloadActionState,
+  MatchDetailStatus,
+  ProfileSummaryStatus,
+  ReplayDownloadState,
+} from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { matchDetailQueryOptions } from '../matches/api'
 import { toMatchDetailData } from '../matches/mappers'
@@ -14,7 +25,8 @@ import {
   toRatingEntries,
   toViewedProfile,
 } from '../profile/mappers'
-import { triggerReplayDownload } from './api'
+import { triggerReplayDownload, triggerReplayPointOfViewDownload } from './api'
+import { toReplayAvailabilityRows } from './availability'
 import { parseGameId } from './gameId'
 
 // Wires `MatchDetailPanel` and `ProfileSummary/compact` (packages/design-system) to this
@@ -159,6 +171,60 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
     downloadResetTimeout.current = window.setTimeout(() => setDownloadState('idle'), 1500)
   }
 
+  // --- Recorded games, per point of view (T338, T341, FR-023..FR-029) ------------------------
+  //
+  // A second, separate download surface from `handleDownload` above: that one is the caller's
+  // *own* one-click shortcut (`MatchDetailPanel`'s header `DownloadAction`, unchanged by this
+  // task); this is `ReplayAvailabilityList`'s per-participant row, offering every point of view
+  // this match carries, one per row (FR-023) — including a third party's, and including the
+  // caller's own again when it renders `archived` (replay-availability.md §3.3).
+  const rawParticipants = matchQuery.data?.participants ?? []
+  const [pointOfViewDownloadStates, setPointOfViewDownloadStates] = useState<
+    Record<string, ReplayDownloadState>
+  >({})
+  // One reset timeout per row, keyed the same way the state map above is — a second click on a
+  // different row must not cancel the first row's own reset (`downloadResetTimeout` above only
+  // ever needs one, since `MatchDetailPanel` offers exactly one `DownloadAction`).
+  const pointOfViewResetTimeouts = useRef<Map<string, number>>(new Map())
+
+  useEffect(() => {
+    const timeouts = pointOfViewResetTimeouts.current
+    return () => {
+      timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId))
+    }
+  }, [])
+
+  function handlePointOfViewDownload(rowId: string) {
+    const participant = rawParticipants.find((row) => String(row.profile_id) === rowId)
+    const downloadPath = participant?.replay.download_path
+    // `download_path` is `null` for `expired`/`never_recorded` (FR-025's whole point: an
+    // unobtainable download must not be renderable as a button that then fails) —
+    // `ReplayAvailabilityList` never offers `DownloadAction` for either state, so this only
+    // guards against a row this component does not itself know about.
+    if (!downloadPath) {
+      return
+    }
+    setPointOfViewDownloadStates((previous) => ({ ...previous, [rowId]: 'loading' }))
+    triggerReplayPointOfViewDownload(downloadPath)
+    const existingTimeout = pointOfViewResetTimeouts.current.get(rowId)
+    if (existingTimeout !== undefined) {
+      window.clearTimeout(existingTimeout)
+    }
+    // Mirrors `handleDownload`'s own note: a same-tab navigation carries no completion signal
+    // (`api.ts`'s `triggerReplayPointOfViewDownload`), so this row returns to `idle` after the
+    // same short window `handleDownload` already uses, rather than staying `loading` forever.
+    const timeoutId = window.setTimeout(() => {
+      setPointOfViewDownloadStates((previous) => ({ ...previous, [rowId]: 'idle' }))
+      pointOfViewResetTimeouts.current.delete(rowId)
+    }, 1500)
+    pointOfViewResetTimeouts.current.set(rowId, timeoutId)
+  }
+
+  // Rendered while loading (the skeleton) and once data has arrived — never for `not-found` or
+  // `error`, the two `matchStatus` values `MatchDetailPanel` itself already turns into its own
+  // single unified message; there is no match to offer recordings for in either case.
+  const showReplayAvailability = matchStatus === 'loading' || matchStatus === 'default'
+
   return (
     <main className="min-h-svh bg-background">
       {/* T327/T331: `GET /api/matches/{game_id}` carries no ownership scope any more — a caller
@@ -230,6 +296,19 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
           onDownload={handleDownload}
           onRetry={() => void matchQuery.refetch()}
         />
+
+        {/* replay-availability.md §8: `space-8` between this section and `ParticipantsTable`
+         * above it (inside `MatchDetailPanel`) — "a download action and a table of facts are two
+         * different kinds of content on the same page". */}
+        {showReplayAvailability && (
+          <div className="mt-8">
+            <ReplayAvailabilityList
+              loading={matchStatus === 'loading'}
+              rows={toReplayAvailabilityRows(rawParticipants, pointOfViewDownloadStates)}
+              onDownload={handlePointOfViewDownload}
+            />
+          </div>
+        )}
       </div>
     </main>
   )
