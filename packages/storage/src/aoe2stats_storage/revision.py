@@ -32,6 +32,10 @@ from __future__ import annotations
 #: in this tree reads. Production briefly sits at `ad6ae8d59519` (expand applied, contract not
 #: yet) while this build's health check reports `schema_out_of_date` — expected, not a fault; see
 #: that migration's docstring.
-EXPECTED_SCHEMA_REVISION = "5c5f5e0b607d"
+#:
+#: `b7cc0beaab35` (T337) adds `replay_fetch_misses` — see that migration's own docstring and
+#: `ReplayFetchMiss` in `models.py` for why FR-025's boundary race needed a table of its own
+#: rather than a `replay_captures` row.
+EXPECTED_SCHEMA_REVISION = "b7cc0beaab35"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]

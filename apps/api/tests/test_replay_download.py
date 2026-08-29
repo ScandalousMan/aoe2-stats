@@ -503,7 +503,6 @@ async def test_match_detail_replay_object_offers_one_download_per_participant_po
         assert other_replay["download_path"] == f"/api/matches/{game_id}/replay/{profile_id}"
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -544,7 +543,6 @@ async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -611,7 +609,6 @@ async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -635,7 +632,6 @@ async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
     assert response.json()["error"]["code"] == "expired"
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_recorded(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -688,7 +684,6 @@ async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_re
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_replay_download_rate_limit_applies_per_user(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -738,7 +733,6 @@ async def test_replay_download_rate_limit_applies_per_user(
     assert limited_body["error"]["detail"]["retry_after"] > 0
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 @pytest.mark.parametrize("source_status", [403, 429])
 async def test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert(
     client: TestClient,

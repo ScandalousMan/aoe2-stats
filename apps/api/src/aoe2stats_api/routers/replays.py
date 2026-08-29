@@ -45,24 +45,134 @@ did not play, or a match whose replay is not yet `stored` all answer the identic
 FR-045 requires (module docstring, `profiles.py`'s own note on why a differentiated answer would
 itself be the leak — here, whether the match exists at all). Never a 403: that would already
 disclose the match exists. A refusal is not an access and writes nothing to `replay_access_log`.
+
+**`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
+above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
+one is reachable for *any* participant's point of view of *any* match this service holds,
+`profile_id` named explicitly (FR-023, US3, `contracts/http-api.md`'s "Recorded games, per point of
+view"). `apps/api/tests/test_replay_download.py`'s `T335`-authored section is this route's own
+specification; `specs/003-player-search-match-analysis/research.md` R8 is the state derivation it
+implements to, through `availability.py`'s `derive_availability` (T336) — this router never
+re-derives the four states itself.
+
+Per-state behaviour (`contracts/http-api.md`):
+
+- `archived` — `derive_availability` answers this only from a `replay_captures` row in `stored`,
+  regardless of who owns it (FR-026's "own point of view" is not a parameter `derive_availability`
+  takes — module docstring, `availability.py`). **Ownership is checked here, in this branch, before
+  anything is served**: FR-026 is explicit that `archived` is "the caller's own captured replay,
+  and only that", and `test_no_public_directory.py`'s own property-4 test seeds a *stranger's*
+  `stored` capture, old enough that the source has long since lost it too, and still requires a
+  `404 not_found` — never `expired`, which would itself disclose that an archive exists for someone
+  else's account. A caller who owns it gets the identical 302-to-a-signed-URL-and-log shape 001's
+  own route above already implements.
+- `obtainable` — fetched from the source and returned to the caller as a plain response body,
+  **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
+  `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
+  only where a person deliberately asks for a match to be analysed).
+- `expired`, `never_recorded` — `404` with the distinguishing `code`, no fetch attempted at all
+  (`derive_availability` already decided this from rows and a clock — R8's whole point).
+
+**The boundary race (FR-025, R8) needed a table of its own, `replay_fetch_misses` — see
+`ReplayFetchMiss`'s docstring in `packages/storage/src/aoe2stats_storage/models.py` for why
+`replay_captures` was the tempting answer and the wrong one.** In short: that table's automatic
+capture pipeline claims from it with no ownership filter at all
+(`apps/ingester/.../capture.py::_claim_batch`), so any row this route wrote there would either have
+that pipeline fetch and *store* a third party's recording as a direct consequence of a download
+click (a `pending` row — forbidden by FR-012 and FR-027) or permanently block the real capture that
+pipeline owes that profile's owner if they later link an account (any terminal status —
+`discover.py`'s `_enqueue_capture` no-ops on `ON CONFLICT DO NOTHING` against a row that already
+exists). `replay_fetch_misses` is read-only evidence with none of `replay_captures`' readers:
+`_has_recorded_fetch_miss` below feeds `derive_availability`'s own `recorded_404` parameter, and
+`_record_fetch_miss` writes it, once, the moment a point of view offered as `obtainable` answers
+404 at fetch time — so the identical next request reads `never_recorded` from the row instead of
+probing the source a second time. **This table is not named in `data-model.md`'s "five new
+tables"; that omission is reported in this task's own hand-back for the artifact to be amended by
+hand alongside the code, per this repository's own rule that spec-kit artifacts never drift from
+what actually shipped.**
+
+**Every write this route makes on a path that ends in an error answers to its own short-lived
+session, never `db_session`** (`_audit_session` below) — `deps.py`'s `session_scope` rolls the
+whole request's transaction back the moment any exception (including `APIError`) propagates, and
+three of this route's writes each happen on exactly such a path: the `rate_limited` alert
+(FR-028's second half) precedes a `429`, and the fetch-miss row precedes a `404`. Mirrors
+`routers/players.py`'s `_relic_call_sink`, which the same reasoning already governs there.
+
+**The rate limit (FR-028's first half, R10) applies before anything else this route does**, in its
+own `replay_download` bucket (`data-model.md`'s `rate_limit_counters` section) — `contracts/
+http-api.md` states it applies to the whole route, not only the `obtainable` branch, and
+`test_replay_download_rate_limit_applies_per_user` exhausts it against a caller's own `archived`
+point of view to prove exactly that.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
+from aoe2stats_api.availability import Availability, derive_availability
 from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
-from aoe2stats_storage.models import CaptureStatus, ProfileLink, ReplayAccessLog, ReplayCapture
+from aoe2stats_api.ratelimit import check_and_increment
+from aoe2stats_core.alerting import AlertRecord
+from aoe2stats_ingester.ratelimit import (
+    build_aoems_rate_limiter,
+    build_aoems_retry_policy,
+    raise_rate_limited_alert,
+)
+from aoe2stats_providers.aoems.provider import AoemsReplayProvider
+from aoe2stats_providers.base import NotFound, ProviderCallRecord, ProviderRateLimited
+from aoe2stats_providers.wiring import build_async_client_resources
+from aoe2stats_storage.models import (
+    Alert,
+    CaptureStatus,
+    Match,
+    ProfileLink,
+    ProviderCall,
+    ReplayAccessLog,
+    ReplayCapture,
+    ReplayFetchMiss,
+)
 from aoe2stats_storage.models import Session as SessionRow
 
 router = APIRouter(tags=["replays"])
+
+#: `.env.example`'s own tuned `AOEMS_MAX_REQUESTS_PER_SECOND` default (`1`) — "at most 1 request
+#: per second to the replay endpoint, serially" (skill `aoe2-data-sources`), the identical policy
+#: `apps/ingester/src/aoe2stats_ingester/ratelimit.py::build_aoems_rate_limiter` enforces for the
+#: ingester's own process. A hardcoded constant rather than read from `settings`, mirroring
+#: `routers/players.py`'s own `_RELIC_RATE_PER_SECOND`/`_COMPANION_RATE_PER_SECOND`: no router in
+#: this codebase reads `get_settings()` at module scope.
+_AOEMS_RATE_PER_SECOND = 1.0
+
+#: Interactive, on-demand traffic, not the ingester's own daily bulk cycle — mirrors
+#: `_PROVIDER_TIMEOUT_SECONDS` in `routers/auth.py`/`routers/players.py`.
+_AOEMS_PROVIDER_TIMEOUT_SECONDS = 10.0
+
+#: Built once per process, held for its lifetime (module docstring's "Every write ..." note and
+#: `routers/players.py`'s identical precedent for Relic/Companion). `build_async_client_resources`
+#: is used only for the `httpx.AsyncClient` half — `apps/api` may not `import httpx` itself
+#: (`tests/architecture/test_import_graph.py`, constitution III) — its own generic `TokenBucket` is
+#: discarded in favour of `build_aoems_rate_limiter`'s serial-capacity-of-one policy, the one this
+#: endpoint actually needs.
+_AOEMS_HTTP_CLIENT, _ = build_async_client_resources(_AOEMS_RATE_PER_SECOND)
+_AOEMS_RATE_LIMITER = build_aoems_rate_limiter(_AOEMS_RATE_PER_SECOND)
+_AOEMS_RETRY_POLICY = build_aoems_retry_policy()
+
+#: FR-028's own bucket name (`data-model.md`'s `rate_limit_counters` section) and the fixed window
+#: "per minute" names — the same structural-constant footing `routers/players.py`'s
+#: `_SEARCH_RATE_LIMIT_BUCKET`/`_SEARCH_RATE_LIMIT_WINDOW_SECONDS` stand on.
+_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET = "replay_download"
+_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS = 60
 
 
 # --- Session resolution, the same discipline `auth.py`, `privacy.py` and `profiles.py` already
@@ -266,3 +376,285 @@ async def download_replay(
     )
 
     return RedirectResponse(url=signed_url, status_code=302)
+
+
+# --- GET /api/matches/{game_id}/replay/{profile_id} (T337, 003) ------------------------------
+
+
+def _audit_session(db_session: AsyncSession) -> AsyncSession:
+    """A session bound to the same engine as `db_session`, independent of its transaction —
+    mirrors `routers/players.py`'s `_relic_call_sink` exactly (module docstring's "Every write ..."
+    note). Used as `async with _audit_session(db_session) as audit_session: ...`; every write this
+    route makes that precedes a `raise APIError(...)` goes through this, never `db_session` itself,
+    because `deps.py`'s `session_scope` rolls `db_session`'s own transaction back the moment that
+    exception propagates."""
+    bind = db_session.get_bind()
+    assert isinstance(bind, Engine), f"expected an Engine bind, got {type(bind)}"
+    return AsyncSession(bind=AsyncEngine(bind))
+
+
+async def _match_completed_at(db_session: AsyncSession, game_id: int) -> datetime:
+    """`Match.completed_at` for `game_id`, or the single `not_found` FR-045 requires — this route
+    answers the identical code for "no such match" as it does for every other refusal (module
+    docstring, `_replay_not_found`'s own reasoning)."""
+    result = await db_session.execute(select(Match.completed_at).where(Match.game_id == game_id))
+    completed_at = result.scalar_one_or_none()
+    if completed_at is None:
+        raise _replay_not_found()
+    return completed_at
+
+
+async def _capture_for_point_of_view(
+    db_session: AsyncSession, *, game_id: int, profile_id: int
+) -> ReplayCapture | None:
+    """The `replay_captures` row for this exact `(game_id, profile_id)` pair, whoever it belongs
+    to — `derive_availability` (T336) needs it regardless of ownership (its own module docstring:
+    "no session and no query... its parameter list carries nothing that names it either"); this
+    route is what applies FR-026's ownership check, in the `archived` branch below, before serving
+    anything from it."""
+    result = await db_session.execute(
+        select(ReplayCapture).where(
+            ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _caller_owns_profile(db_session: AsyncSession, *, profile_id: int, user_id: Any) -> bool:
+    """Whether `user_id` holds an active `profile_links` row for `profile_id` — the ownership test
+    FR-026 requires before an `archived` point of view may be served (module docstring)."""
+    result = await db_session.execute(
+        select(ProfileLink.profile_id).where(
+            ProfileLink.profile_id == profile_id,
+            ProfileLink.user_id == user_id,
+            ProfileLink.unlinked_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _has_recorded_fetch_miss(
+    db_session: AsyncSession, *, game_id: int, profile_id: int
+) -> bool:
+    """Whether `replay_fetch_misses` already carries evidence for this exact point of view —
+    `derive_availability`'s own `recorded_404` parameter (module docstring, `ReplayFetchMiss`'s
+    docstring in `models.py`)."""
+    result = await db_session.execute(
+        select(ReplayFetchMiss.game_id).where(
+            ReplayFetchMiss.game_id == game_id, ReplayFetchMiss.profile_id == profile_id
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _record_fetch_miss(db_session: AsyncSession, *, game_id: int, profile_id: int) -> None:
+    """Persists the boundary-race evidence on its own short-lived session (`_audit_session`),
+    since this call always precedes an `expired_since_page_load` `404` (module docstring).
+    `ON CONFLICT DO NOTHING` on the primary key: two callers racing the same boundary each try to
+    record the same fact, and the first one wins with no error for the second."""
+    async with _audit_session(db_session) as audit_session:
+        statement = (
+            pg_insert(ReplayFetchMiss)
+            .values(game_id=game_id, profile_id=profile_id)
+            .on_conflict_do_nothing(
+                index_elements=[ReplayFetchMiss.game_id, ReplayFetchMiss.profile_id]
+            )
+        )
+        await audit_session.execute(statement)
+        await audit_session.commit()
+
+
+def _never_recorded_error() -> APIError:
+    return APIError(
+        status_code=404,
+        code="never_recorded",
+        message="This game does not appear to have been recorded.",
+    )
+
+
+def _expired_error() -> APIError:
+    return APIError(
+        status_code=404,
+        code="expired",
+        message="This recording is past the source's retention window.",
+    )
+
+
+def _expired_since_page_load_error() -> APIError:
+    return APIError(
+        status_code=404,
+        code="expired_since_page_load",
+        message="This recording expired between page load and this request.",
+    )
+
+
+def _source_rate_limited_error() -> APIError:
+    return APIError(
+        status_code=429,
+        code="rate_limited",
+        message="The replay source is throttling requests. Try again later.",
+    )
+
+
+def _aoems_call_sink(db_session: AsyncSession) -> Callable[[ProviderCallRecord], Awaitable[None]]:
+    """Writes a `provider_calls` row on its own short-lived session (`_audit_session`), never
+    `db_session` — mirrors `routers/players.py`'s `_relic_call_sink` exactly, and for the
+    identical reason: `AoemsReplayProvider.fetch_replay` can raise `ProviderRateLimited` mid-call,
+    and `deps.py`'s `session_scope` would roll a row added to `db_session` back along with it."""
+
+    async def _sink(record: ProviderCallRecord) -> None:
+        async with _audit_session(db_session) as audit_session:
+            audit_session.add(
+                ProviderCall(
+                    provider=record.provider,
+                    endpoint=record.endpoint,
+                    status_code=record.status_code,
+                    duration_ms=record.duration_ms,
+                    called_at=record.called_at,
+                    rate_limited=record.rate_limited,
+                )
+            )
+            await audit_session.commit()
+
+    return _sink
+
+
+def _build_replay_provider(db_session: AsyncSession) -> AoemsReplayProvider:
+    return AoemsReplayProvider(
+        client=_AOEMS_HTTP_CLIENT,
+        timeout_seconds=_AOEMS_PROVIDER_TIMEOUT_SECONDS,
+        rate_limiter=_AOEMS_RATE_LIMITER,
+        call_sink=_aoems_call_sink(db_session),
+        retry_policy=_AOEMS_RETRY_POLICY,
+    )
+
+
+class _RequestAlertSink:
+    """The `AlertSink` (`aoe2stats_core.alerting`) `raise_rate_limited_alert` writes through, on
+    its own short-lived session (`_audit_session`) rather than `db_session` — this route only ever
+    raises this alert on a path that ends in `429` (module docstring), which `deps.py`'s
+    `session_scope` would otherwise roll back along with the alert itself. Structurally identical
+    to `apps/ingester/src/aoe2stats_ingester/run.py`'s own `_AlertSink`, scoped to a request's
+    engine bind instead of a `session_factory`."""
+
+    def __init__(self, db_session: AsyncSession) -> None:
+        self._db_session = db_session
+
+    async def write(
+        self,
+        *,
+        kind: str,
+        severity: int,
+        detail: Mapping[str, Any] | None,
+        ingest_run_id: Any,
+    ) -> AlertRecord:
+        async with _audit_session(self._db_session) as audit_session:
+            row = Alert(
+                kind=kind,
+                severity=severity,
+                detail=dict(detail) if detail is not None else None,
+                ingest_run_id=ingest_run_id,
+            )
+            audit_session.add(row)
+            await audit_session.commit()
+            await audit_session.refresh(row)
+            return AlertRecord(
+                id=row.id,
+                kind=row.kind,
+                severity=row.severity,
+                detail=row.detail,
+                raised_at=row.raised_at,
+                ingest_run_id=row.ingest_run_id,
+                acknowledged_at=row.acknowledged_at,
+            )
+
+    async def unacknowledged_severity_one(self) -> Sequence[AlertRecord]:
+        raise NotImplementedError(
+            "this sink only ever writes a rate_limited alert from this route; the nightly audit's "
+            "own read path is apps/ingester's _AlertSink, not this one"
+        )
+
+
+@router.get("/matches/{game_id}/replay/{profile_id}")
+async def download_replay_point_of_view(
+    game_id: int,
+    profile_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    object_store: ObjectStoreDep,
+) -> Response:
+    """FR-023, FR-025, FR-026, FR-027, FR-028, FR-029 (module docstring): one download per
+    participant point of view, of any match this service holds. `derive_availability` (T336)
+    decides which of the four states applies; this route only supplies the rows it needs, checks
+    ownership for the one state that requires it, and carries out the state's own action."""
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+
+    rate_limit = await check_and_increment(
+        db_session,
+        user_id=session_row.user_id,
+        bucket=_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET,
+        limit=settings.replay_download_max_per_user_per_minute,
+        window_seconds=_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not rate_limit.allowed:
+        raise APIError(
+            status_code=429,
+            code="rate_limited",
+            message="Too many replay downloads. Try again shortly.",
+            detail={"retry_after": rate_limit.retry_after},
+        )
+
+    completed_at = await _match_completed_at(db_session, game_id)
+    capture = await _capture_for_point_of_view(db_session, game_id=game_id, profile_id=profile_id)
+    recorded_404 = await _has_recorded_fetch_miss(
+        db_session, game_id=game_id, profile_id=profile_id
+    )
+    availability = derive_availability(
+        completed_at=completed_at,
+        now=datetime.now(UTC),
+        capture=capture,
+        recorded_404=recorded_404,
+    )
+
+    if availability.state is Availability.ARCHIVED:
+        assert capture is not None and capture.object_key is not None
+        if not await _caller_owns_profile(
+            db_session, profile_id=profile_id, user_id=session_row.user_id
+        ):
+            raise _replay_not_found()
+        signed_url = await object_store.signed_get_url(capture.object_key)
+        db_session.add(
+            ReplayAccessLog(
+                replay_capture_id=capture.id,
+                user_id=session_row.user_id,
+                purpose="download",
+            )
+        )
+        return RedirectResponse(url=signed_url, status_code=302)
+
+    if availability.state is Availability.NEVER_RECORDED:
+        raise _never_recorded_error()
+
+    if availability.state is Availability.EXPIRED:
+        raise _expired_error()
+
+    # Availability.OBTAINABLE: fetch from the source and stream it straight through — FR-027
+    # forbids storing it (module docstring).
+    provider = _build_replay_provider(db_session)
+    try:
+        result = await provider.fetch_replay(game_id, profile_id)
+    except ProviderRateLimited as error:
+        await raise_rate_limited_alert(_RequestAlertSink(db_session), error, run_id=None)
+        raise _source_rate_limited_error() from error
+
+    if isinstance(result, NotFound):
+        await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
+        raise _expired_since_page_load_error()
+
+    return Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={"content-disposition": f'attachment; filename="{result.filename}"'},
+    )

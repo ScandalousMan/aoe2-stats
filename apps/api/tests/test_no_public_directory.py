@@ -559,7 +559,6 @@ async def test_a_profiles_history_never_discloses_its_owners_other_profiles(
     assert _MULTI_OPPONENT_ALIAS_TWO not in response.text
 
 
-@pytest.mark.xfail(strict=True, reason="T337 not implemented yet")
 async def test_replay_download_ownership_survives_the_match_detail_widening(
     client: TestClient, db_session: AsyncSession
 ) -> None:
