@@ -27,6 +27,9 @@ export * from './components/ReplayAvailabilityList'
 export * from './components/FavouriteToggle'
 export * from './components/FavouritesList'
 
+// Analysis (T371, packages/design-system/specs/analysis-timeline.md).
+export * from './components/AnalysisTimeline'
+
 // Screens (T035, packages/design-system/specs/{sign-in-screen,archival-control,profile-summary}.md).
 // T036/T037 build the routes that mount these; this package builds what they compose.
 // `ArchivalControl` was `ConsentStep` until T406 (constitution IX 4.0.0): the opt-in gate it drew

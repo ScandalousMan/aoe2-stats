@@ -91,6 +91,25 @@ because `availability: "archived"` on a stranger's point of view is already the 
 `test_no_public_directory.py`'s property 4 exists to catch: it says an account controls that
 profile, whether or not the button underneath it ever works.
 
+**The `analysis` object on match-detail (T368, SC-011, FR-041).** `_analysis_json` answers the
+`analysis` summary `contracts/http-api.md`'s "Analysis" section fixes, in each of its seven states
+— `absent` (no `match_analyses` row at all) plus the six `MatchAnalysisState` values — so a caller
+can tell from this one response whether a match can still be analysed and until when, without
+opening `GET /api/matches/{game_id}/analysis` itself. `stale` is computed here, on every read, by
+comparing the stored row's own `parser_version` against `_running_engine_version()` — never a
+stored column (FR-041; `match_analyses` carries no such column, `packages/storage/src/
+aoe2stats_storage/models.py`). `_running_engine_version()` deliberately does **not** import
+`aoe2stats_replay_engine.aoe2rec` to read `ENGINE_NAME`: that module imports `aoe2rec_py`, the
+native PyO3 extension, at its own module scope, and anything reachable from `aoe2stats_api.app`
+doing that is exactly what constitution V and `test_engine_isolation.py`'s subprocess check forbid.
+`importlib.metadata.version` reads the installed distribution's own metadata without importing its
+code at all, so `_ENGINE_NAME` below — a literal duplicate of, never an import of, `aoe2stats_
+replay_engine.aoe2rec.ENGINE_NAME` — is the one way this process can answer "what version of the
+engine is running" without loading it. `routers/analysis.py`'s own `GET /api/matches/{game_id}/
+analysis` needs no such comparison — it only ever serves the published document whole or answers
+`404` — so this function and its query live here, not there (that router's own module docstring:
+"share no response shape to keep in sync").
+
 **Widened past `stored` alone (M12, third-round review).** The filter used to read `capture.status
 is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids` — `stored` only.
 `derive_availability` also reads `unavailable` on its own (`availability.py`'s table,
@@ -110,6 +129,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from importlib import metadata
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -122,7 +142,13 @@ from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
-from aoe2stats_storage.models import ProfileLink, ReplayCapture, ReplayFetchMiss
+from aoe2stats_storage.models import (
+    MatchAnalysis,
+    MatchAnalysisState,
+    ProfileLink,
+    ReplayCapture,
+    ReplayFetchMiss,
+)
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
     DEFAULT_PAGE_SIZE,
@@ -300,6 +326,91 @@ def _replay_json(
     }
 
 
+# --- The `analysis` object (T368, module docstring) ----------------------------------------------
+
+#: `aoe2stats_replay_engine.aoe2rec.ENGINE_NAME` verbatim, duplicated rather than imported — see
+#: the module docstring's own paragraph on why importing that module here would violate
+#: constitution V.
+_ENGINE_NAME = "aoe2rec-py"
+
+
+def _running_engine_version() -> str:
+    """FR-041's "the engine currently running", read without ever importing it (module docstring).
+    `importlib.metadata.version` answers from the installed distribution's own metadata."""
+    return metadata.version(_ENGINE_NAME)
+
+
+#: FR-034: `unavailable` is permanent, and the client must never render a retry action for it —
+#: a fixed reason, never derived from a stored column, since `match_analyses` records no reason
+#: text of its own for this state (data-model.md's state table: "the recording could not be
+#: obtained, and cannot be — the window closed").
+_ANALYSIS_UNAVAILABLE_REASON = (
+    "The recording expired before this match could be analysed, and it cannot be recovered."
+)
+
+#: FR-047: `refused` may be asked for again later — a different, distinguishable fixed reason from
+#: `_ANALYSIS_UNAVAILABLE_REASON` above (`test_analysis_routes.py`'s own
+#: "the two reasons ... must read differently" assertion).
+_ANALYSIS_REFUSED_REASON = (
+    "The daily analysis limit was reached. This match may be analysed again later."
+)
+
+
+def _analysis_failed_reason(error_message: str | None) -> str:
+    """FR-036: `failed` carries the recording's own parse failure, in `error_message` — shown
+    verbatim rather than a generic message, since it is the one state whose reason a stored row
+    actually explains rather than a fixed policy text."""
+    if error_message:
+        return f"The recording could not be analysed: {error_message}"
+    return "The recording could not be analysed."
+
+
+def _analysis_reason(row: MatchAnalysis) -> str | None:
+    if row.state is MatchAnalysisState.FAILED:
+        return _analysis_failed_reason(row.error_message)
+    if row.state is MatchAnalysisState.UNAVAILABLE:
+        return _ANALYSIS_UNAVAILABLE_REASON
+    if row.state is MatchAnalysisState.REFUSED:
+        return _ANALYSIS_REFUSED_REASON
+    return None
+
+
+async def _analysis_row(db_session: AsyncSession, *, game_id: int) -> MatchAnalysis | None:
+    """`match_analyses`'s own primary key is `game_id` alone (data-model.md) — at most one row per
+    match, ever, so this is the whole lookup."""
+    result = await db_session.execute(select(MatchAnalysis).where(MatchAnalysis.game_id == game_id))
+    return result.scalar_one_or_none()
+
+
+def _analysis_json(*, game_id: int, row: MatchAnalysis | None) -> dict[str, Any]:
+    """The `analysis` object `contracts/http-api.md`'s "Analysis" section fixes, in each of its
+    seven states (module docstring). `row is None` is `absent` — never requested, requestable —
+    the one state that is not a stored `MatchAnalysisState` value at all."""
+    result_path = f"/api/matches/{game_id}/analysis"
+    if row is None:
+        return {
+            "state": "absent",
+            "parser_version": None,
+            "stale": False,
+            "point_of_view_profile_id": None,
+            "result_path": result_path,
+            "reason": None,
+        }
+    stale = (
+        row.state is MatchAnalysisState.PUBLISHED
+        and row.parser_version is not None
+        and row.parser_version != _running_engine_version()
+    )
+    return {
+        "state": row.state.value,
+        "parser_version": row.parser_version,
+        "stale": stale,
+        "point_of_view_profile_id": row.point_of_view_profile_id,
+        "result_path": result_path,
+        "reason": _analysis_reason(row),
+    }
+
+
 # --- Response shaping --------------------------------------------------------------------------
 
 
@@ -341,11 +452,16 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
 
 
 def _match_detail_json(
-    detail: MatchDetail, *, replay_by_profile: dict[int, AvailabilityView]
+    detail: MatchDetail,
+    *,
+    replay_by_profile: dict[int, AvailabilityView],
+    analysis: dict[str, Any],
 ) -> dict[str, Any]:
     """`replay_by_profile` carries one `AvailabilityView` per participant (T338, `_replay_by_
     profile` above) — every id in `detail.participants` is a key in it, since both are built from
-    the same participant list in `get_match_detail`."""
+    the same participant list in `get_match_detail`. `analysis` is the T368 summary object
+    (`_analysis_json`, module docstring), one per match rather than one per participant — unlike
+    `replay`, it does not vary by point of view."""
     return {
         "game_id": detail.game_id,
         "started_at": detail.started_at.isoformat() if detail.started_at is not None else None,
@@ -390,6 +506,9 @@ def _match_detail_json(
             if detail.capture_deadline_at is not None
             else None
         ),
+        # T368, SC-011: whether this match can still be analysed, until when, and why not —
+        # one object per match, not per participant (module docstring).
+        "analysis": analysis,
     }
 
 
@@ -464,4 +583,9 @@ async def get_match_detail(
         capture_budget_days=settings.capture_budget_days,
     )
 
-    return _match_detail_json(detail, replay_by_profile=replay_by_profile)
+    # T368: the `analysis` summary object, computed from whatever `match_analyses` row (if any)
+    # this exact game_id carries — `_analysis_json`'s own docstring for the seven states.
+    analysis_row = await _analysis_row(db_session, game_id=game_id)
+    analysis = _analysis_json(game_id=game_id, row=analysis_row)
+
+    return _match_detail_json(detail, replay_by_profile=replay_by_profile, analysis=analysis)
