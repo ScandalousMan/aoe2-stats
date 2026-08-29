@@ -151,7 +151,14 @@ not this vocabulary's `error` or `empty`.
   - `DownloadAction`, while the stream or the signed URL is being requested: `Button`'s own `loading`
     state, label "Preparing your download…" — the identical label `match-history.md` §5 already uses
     for the caller's own `DownloadAction`, because it is the identical wait for the identical reason.
-- **error** — two distinct causes, never merged into one message:
+- **error** — two distinct causes, never merged into one message. **All three of the states below are
+  now reachable in production**, through the one `303` redirect mechanism the 2026-08-29 amendment
+  below describes: the generic failed-request `Callout`, the rate-limited `Callout` with its
+  `retry_after`, and the boundary race's in-place transition. Every point-of-view download failure
+  used to navigate the browser to a raw JSON error page before any of the three could render at
+  all — a first attempt at a fix addressed only the boundary race's own wording (retiring it to
+  `never_recorded`'s copy, below) and never mentioned that the other two shared the identical root
+  cause and were equally unreachable.
   - **The request could not be started at all** (a network failure, or FR-028's rate limit): the row
     returns to `default` and `DownloadAction` is pressable again (`Button`'s own rule: "the button
     returns to default and to being pressable" — never a state that makes retrying unreachable). A
@@ -174,26 +181,36 @@ not this vocabulary's `error` or `empty`.
     **Amended 2026-08-29 — how this row actually reaches that state.** As first written, §5 and §10
     contradicted each other: §10 requires `DownloadAction` to be a real button triggering a same-tab
     navigation, archived and obtainable alike, and a navigation returns nothing a script can observe,
-    so no client code could ever detect the 404 that this transition is a reaction to. Written that
-    way, the state was reachable from Storybook and from nowhere else — a specified behaviour with no
-    path to it in production, which is the shape of gap this repository keeps writing tasks to close.
+    so no client code could ever detect the 404 that this transition is a reaction to. A first fix
+    tried to work around that from the click side — a `setTimeout`-deferred `matchQuery.refetch()` in
+    `MatchDetailContainer.tsx`, intending the row to self-correct once `apps/api` had recorded the
+    outcome. It did not work: a `200` carrying `content-disposition: attachment` does not navigate
+    (nothing to correct), and every failure response was plain JSON with no such header, so the
+    browser _did_ navigate on a failure — destroying the SPA, and the pending timeout along with it,
+    before the refetch ever ran. A user who hit this state was left looking at a raw JSON error page,
+    not at this row transitioning to anything.
 
-    §10 wins, and the transition is obtained from the server instead of from the click. `apps/web`
-    refetches `GET /api/matches/{game_id}` after a point-of-view download click; T337 has by then
-    written the `replay_fetch_misses` row, so the affected row comes back `never_recorded` with a null
-    `download_path` and the dead action disappears on its own. That is `contracts/http-api.md`'s own
-    sentence — "records the outcome, so the page is right the next time" — delivered literally rather
-    than approximated in the client.
+    **§10 wins, and the transition is obtained from the server instead of from the click — as a
+    redirect, not a refetch.** `GET /api/matches/{game_id}/replay/{profile_id}`
+    (`apps/api/.../routers/replays.py`'s `_match_page_redirect_for_download_failure`) answers a
+    same-origin `303` back to this exact match page for a browser navigation, carrying the failing
+    `code` (and `retry_after`, where the error has one) as query parameters. The browser follows it as an
+    ordinary same-tab navigation — the same mechanism §10 already requires, never a script reading a
+    response — and the reloaded page reads those parameters once, on load, then clears them
+    (`apps/web/src/features/replays/downloadFailure.ts`) so a later refresh does not resurrect a
+    stale alert. This costs a page reload on the failure path only, and nothing on the success path;
+    an API caller (not a browser navigation) still receives the identical JSON body it always did.
 
-    **What that costs, stated rather than hidden**: the wording above is the one thing not delivered.
-    The row self-corrects to `never_recorded`'s copy, not to "This recording expired while you were
-    viewing this page." The distinction the paragraph above argues for — the recording existed a
-    moment ago — is real, and it is preserved in the API (`expired_since_page_load` is a distinct code
-    and stays one), but it is not currently shown to the user. Recovering it needs the download to be
-    something a script can observe, which §10 refuses for good reasons (CORS on the archived signed-URL
-    redirect; a doubled rate-limit unit and a doubled `replay_access_log` row on the obtainable path).
-    The states remain in the component and in its stories, unreached by this wiring: they are what a
-    later transport would render, not decoration.
+    **The real wording is delivered, not given up.** `T337`'s `replay_fetch_misses` write means the
+    freshly-fetched `GET /api/matches/{game_id}` this reload triggers already reports the affected
+    profile `never_recorded`, not `expired` — `derive_availability`'s own reading of that evidence,
+    unchanged by this fix. `toReplayAvailabilityRows`
+    (`apps/web/src/features/replays/availability.ts`) is what reconciles the two: for the one row
+    `replay_error_profile_id` names, an
+    `expired_since_page_load` code overrides that row's rendered `availability` to `expired` and sets
+    `expiredSincePageLoad`, so `ReplayAvailabilityList` shows the real boundary-race sentence for this
+    one page load, exactly as tabled above — never `never_recorded`'s copy, which would misstate that
+    the recording was never there at all.
 - **empty** — a match with no participants is not a case this component receives; `MatchDetailPanel`
   never renders with zero rows (`match-history.md` FR-011). What _is_ a real empty case: **every row
   is `expired`/`never_recorded`** (a match old enough, or unlucky enough, that nothing is obtainable
@@ -299,8 +316,14 @@ Gaps in play: none. Every token this component needs is already in use by `Badge
   reaching the label but not the reason next to it) is possible in this component too.
 - `DownloadAction` is a real `<button>` triggering a same-tab navigation to the download endpoint —
   never a bare `<a href>` to an unsigned URL, matching `match-history.md` §9's identical rule; the URL
-  is minted per click so FR-029's access-log write happens server-side on that request, on every click,
-  archived and obtainable alike.
+  is minted per click, server-side, on that request. **Corrected 2026-08-29** — this used to claim
+  FR-029's `replay_access_log` write happens "on every click, archived and obtainable alike"; it does
+  not, and the route (`apps/api/.../routers/replays.py`'s `download_replay_point_of_view`) never
+  claimed otherwise — only the `archived` branch writes that row. FR-029 and `contracts/http-api.md`
+  scope the logging duty to a recording this service _holds_: `obtainable` is fetched from the source
+  and streamed straight through with nothing stored (FR-027), so there is no archive access to log,
+  by design (`docs/privacy/processing-register.md`). This spec was the one that was wrong; the route's
+  own logging behaviour is unchanged by this correction.
 - The row-level error `Callout` (§5) uses `Callout`'s own tone-to-role mapping — `role="alert"` for the
   rate-limit/failed-request case, and the same for the `expired_since_page_load` transition, since both
   are events the user did not expect and must be told about immediately, not stumbled on.

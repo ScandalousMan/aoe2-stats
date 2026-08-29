@@ -146,6 +146,10 @@ describe('MatchDetailContainer', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     navigateMock.mockClear()
+    // The redirect-driven tests below (`?replay_error=...`) navigate this file's shared jsdom
+    // `window` with the real `history` API rather than stubbing `location` — reset it so one
+    // test's query string never leaks into the next.
+    window.history.replaceState(null, '', '/')
   })
 
   // T327/T331: the match-detail route no longer assumes the match belongs to the caller — a
@@ -245,39 +249,31 @@ describe('MatchDetailContainer', () => {
     expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/11')
   })
 
-  // Follow-up to T341: `packages/design-system/specs/replay-availability.md` §10 mandates a real
-  // `<button>` triggering a same-tab navigation (no failure is script-observable), while §5's
-  // boundary-race case (`code: "expired_since_page_load"`) reads as if the click were a `fetch`
-  // this component could inspect. The resolution (`contracts/http-api.md`'s own sentence — the
-  // download route "also records the outcome, so the page is right the next time"): keep the
-  // navigation, and refetch `GET /api/matches/{game_id}` after the click so a row the server
-  // recorded as having 404'd comes back correct on its own, without ever reading the download
-  // response directly.
-  //
-  // Real timers throughout, deliberately: `screen.findAllByRole` below relies on
-  // testing-library's own real-`setTimeout` polling to observe the fetch mock's microtask
-  // resolution, the same reason `SearchContainer.test.tsx`'s fake-timer tests (T388) never mix
-  // `findBy*` with `vi.useFakeTimers()` — a fake clock that is never advanced past a `findBy`
-  // query's own poll interval hangs forever. `MatchDetailContainer.tsx`'s 1500ms reset window
-  // costs this test ~1.5s of real wall-clock time instead; acceptable once, for a single test.
-  it('refetches match detail after a point-of-view download click, and re-renders a row the server now reports differently (boundary race, FR-025)', async () => {
-    const assign = vi.fn()
-    vi.stubGlobal('location', { ...window.location, assign })
+  // 2026-08-29 remediation: a same-tab navigation to the download route that fails cannot be
+  // observed by this component at all (`api.ts`'s own note — `triggerReplayPointOfViewDownload`
+  // carries no completion signal), so a previous fix that deferred a client-side refetch never
+  // actually worked: a plain JSON failure response *navigates the browser away from this page*,
+  // destroying the pending timeout before it could ever fire. `routers/replays.py` now answers a
+  // same-origin `303` back to this exact page instead
+  // (`_match_page_redirect_for_download_failure`), carrying the failure as query parameters
+  // (`downloadFailure.ts`) this component reads once, on load — real navigation and reload, no
+  // fetch mock involved in the mechanism this test exercises, only in what the reloaded page's
+  // own `GET /api/matches/{game_id}` answers with.
 
-    let detailCallCount = 0
-    const fetchMock = installFakeApi({
+  it('renders the boundary-race sentence for the row the redirect names, from the URL alone (FR-025)', async () => {
+    // The server already wrote the boundary-race evidence before issuing the redirect
+    // (`_record_fetch_miss`), so the freshly-fetched detail this reload receives reports the
+    // affected profile `never_recorded` — the override below is what still shows the real
+    // boundary-race sentence for this one page load, not `never_recorded`'s own copy.
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=expired_since_page_load&replay_error_profile_id=11',
+    )
+    installFakeApi({
       profiles: [],
-      detail: () => {
-        detailCallCount += 1
-        if (detailCallCount === 1) {
-          // Rendered `obtainable`, offering a `DownloadAction` for profile 11.
-          return jsonResponse(baseDetail())
-        }
-        // The server's own answer to the download request 404'd at fetch time and recorded the
-        // outcome (`replay_fetch_misses`, T337) — `derive_availability` now reports this same
-        // profile `never_recorded`, `download_path: null` (FR-025), before this component ever
-        // reads the download route's own response.
-        return jsonResponse(
+      detail: () =>
+        jsonResponse(
           baseDetail({
             participants: [
               {
@@ -316,34 +312,76 @@ describe('MatchDetailContainer', () => {
               },
             ],
           }),
-        )
-      },
+        ),
     })
 
     renderMatch()
 
-    const [downloadButton] = await screen.findAllByRole('button', { name: 'Download' })
-    fireEvent.click(downloadButton!)
-
-    expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/11')
-
-    const countDetailCalls = () =>
-      fetchMock.mock.calls.filter(([input]) => /^\/api\/matches\/\d+$/.test(String(input))).length
-
-    // No second request yet — a refetch fired the instant `location.assign` runs would race the
-    // download route's own server-side write of the outcome it is trying to read (this
-    // component's own comment on the timing choice).
-    expect(countDetailCalls()).toBe(1)
-
-    // The refetch is deliberately deferred to the same 1500ms window
-    // `MatchDetailContainer.tsx`'s own comment explains — so this assertion only becomes true
-    // after that window elapses, on the real clock this test runs on.
-    await waitFor(() => expect(countDetailCalls()).toBe(2), { timeout: 3000 })
-    await waitFor(() => expect(screen.getByText('Never recorded')).toBeInTheDocument())
+    // Both rows read `Expired` — profile 11 via the redirect-carried override, profile 22
+    // because `baseDetail()`'s own fixture already seeds it that way — so this asserts the count
+    // rather than a single match.
+    expect(await screen.findAllByText('Expired')).toHaveLength(2)
+    expect(
+      screen.getByText('This recording expired while you were viewing this page.'),
+    ).toBeInTheDocument()
     // The row that lost its recording no longer offers a dead `DownloadAction` (FR-025) — the
-    // one button left is the other row's, which was already `expired` and never had one to
-    // begin with, so there must be none at all now.
+    // one button left, if any, would be the other row's, which was already `expired` and never
+    // had one to begin with, so there must be none at all.
     expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument()
+
+    // `replay-availability.md` §5's "distinct for exactly one page load": the parameter is
+    // cleared immediately so a refresh does not resurrect the alert.
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('renders the rate-limit alert with the exact retry_after the redirect carried (FR-028)', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=rate_limited&replay_error_profile_id=11&replay_error_retry_after=42',
+    )
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    expect(
+      await screen.findByText('You are downloading too quickly. Try again in 42 seconds.'),
+    ).toBeInTheDocument()
+    // The row itself is unchanged and still pressable (`replay-availability.md` §5: "never a row
+    // that looks like it gave up") — `baseDetail()`'s profile 11 is `obtainable`.
+    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1)
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('renders the generic failed-request alert for any other redirect-carried code', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=never_recorded&replay_error_profile_id=22',
+    )
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    await screen.findByText('Expired')
+    expect(
+      await screen.findByText('We could not start that download. Try again.'),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('renders no alert at all for an ordinary visit carrying no replay_error', async () => {
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    await screen.findByText('Obtainable')
+    expect(
+      screen.queryByText('We could not start that download. Try again.'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('This recording expired while you were viewing this page.'),
+    ).not.toBeInTheDocument()
   })
 
   it('offers no download for an unobtainable point of view — absent, never a button that fails (FR-025)', async () => {

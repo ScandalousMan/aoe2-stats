@@ -138,6 +138,25 @@ the one refusal that *does* make a real outbound call is metered too, the case t
 matters. `test_replay_download_rate_limit_applies_per_user` is the contrast case: a caller's own
 successful `archived` download still counts, so the fix above did not simply move the accounting
 from the refusal paths onto the success ones.
+
+**A failure of `GET /api/matches/{game_id}/replay/{profile_id}` answers a `303` back to the match
+page, for a browser navigation only** — decided 2026-08-29, replacing a first fix that deferred a
+client-side refetch instead and did not work: a same-tab navigation (`replay-availability.md` §10,
+`apps/web/src/features/replays/api.ts`'s `triggerReplayPointOfViewDownload`) that lands on a plain
+JSON error body destroys the SPA before any client code — including a `setTimeout` already
+scheduled — runs again, which is exactly what every failure response from this route used to do.
+`_is_browser_navigation` below tells that case apart from an API caller (this suite's own
+`TestClient` calls, which carry neither signal) using the Fetch Metadata `Sec-Fetch-Mode: navigate`
+header every current browser engine sends on a top-level navigation and never on a script-initiated
+`fetch`, with `Accept: text/html` as the fallback for a request that omits it. `_replay_not_found`,
+`_never_recorded_error`, `_expired_error`, `_expired_since_page_load_error` and the rate-limited
+`429`s (this route's own limiter and the source's) all still raise the identical `APIError` an API
+caller gets as JSON; `download_replay_point_of_view` below is what translates that same error into a
+`303` for a browser instead of letting it become the response body. The `303` carries the failing
+`code` (and `retry_after`, where the error has one) as query parameters on the match page's own URL,
+which `apps/web`'s `MatchDetailContainer` reads once on load and clears (`replay-availability.md`
+§5) — never the object-store signed URL redirect's own CORS problem, since this is a same-origin,
+relative redirect the browser follows exactly as it already follows any other same-tab navigation.
 """
 
 from __future__ import annotations
@@ -145,6 +164,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
@@ -663,6 +683,55 @@ async def _apply_replay_download_rate_limit(
         )
 
 
+def _is_browser_navigation(request: Request) -> bool:
+    """Tells a top-level browser navigation — `apps/web`'s `triggerReplayPointOfViewDownload`
+    (`api.ts`), a plain `window.location.assign` reaching this exact route — apart from a
+    programmatic or API caller (module docstring's "for a browser navigation only").
+
+    `Sec-Fetch-Mode: navigate` is the primary signal and, when present, the only one consulted:
+    every current major browser engine implements the Fetch Metadata Request Headers spec and
+    sets this header on a top-level navigation, and never on a script-initiated `fetch` or
+    `XMLHttpRequest` — a JSON API client (`apps/web/src/lib/api.ts`'s `apiRequest`, and every
+    call this suite's own `TestClient` makes) never sends it either. `Accept: text/html` is the
+    fallback for the one case the primary signal cannot see: a browser, or a network layer in
+    front of it, that strips or predates that header. A plain navigation still always asks for
+    `text/html` first; an API client of this service never does (`apiRequest`'s own
+    `Accept: application/json`, and this file's own JSON error envelope, `errors.py`).
+    """
+    sec_fetch_mode = request.headers.get("sec-fetch-mode")
+    if sec_fetch_mode is not None:
+        return sec_fetch_mode == "navigate"
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept
+
+
+def _match_page_redirect_for_download_failure(
+    *, game_id: int, profile_id: int, error: APIError
+) -> RedirectResponse:
+    """The `303` a browser navigation gets instead of `error`'s own JSON body (module docstring's
+    closing paragraph) — a same-origin, relative redirect back to `/matches/{game_id}`, the same
+    match page `apps/web/src/routes/matches.$gameId.tsx` already renders, carrying the failure as
+    query parameters `MatchDetailContainer` reads once on load and then clears
+    (`replay-availability.md` §5): `replay_error` is `error.code` verbatim — the identical string
+    an API caller reads from the JSON envelope's own `code` field, never a restatement of it —
+    `replay_error_profile_id` names which row the failure belongs to (this route is reachable for
+    any participant's point of view, never only the caller's own), and
+    `replay_error_retry_after` is carried only when `error.detail` has one
+    (`_apply_replay_download_rate_limit`'s own `{"retry_after": ...}`) —
+    `_source_rate_limited_error` raises the identical `rate_limited` code with no such figure to
+    give, and the client falls back to the generic failed-request copy for that case
+    (`replay-availability.md` §5's own "never a rounded or invented figure" rule, extended to
+    "never an absent one either")."""
+    params: dict[str, str] = {
+        "replay_error": error.code,
+        "replay_error_profile_id": str(profile_id),
+    }
+    retry_after = error.detail.get("retry_after") if error.detail else None
+    if retry_after is not None:
+        params["replay_error_retry_after"] = str(retry_after)
+    return RedirectResponse(url=f"/matches/{game_id}?{urlencode(params)}", status_code=303)
+
+
 @router.get("/matches/{game_id}/replay/{profile_id}")
 async def download_replay_point_of_view(
     game_id: int,
@@ -676,68 +745,88 @@ async def download_replay_point_of_view(
     participant point of view, of any match this service holds. `derive_availability` (T336)
     decides which of the four states applies; this route only supplies the rows it needs, checks
     participation and ownership for the states that require it, and carries out the state's own
-    action."""
+    action.
+
+    Every failure below still raises the identical `APIError` an API caller gets as JSON
+    (`test_replay_download.py`'s existing assertions on `code` are unchanged); the `try`/`except`
+    here only decides, for a browser navigation (`_is_browser_navigation`), whether that error
+    becomes this response's body or a `303` back to the match page instead (module docstring's
+    closing paragraph). `_require_session` above it is deliberately outside this: an
+    unauthenticated visit to this route is not a scenario the match page itself can reach — every
+    query it makes already requires a session — so it is out of this fix's scope and keeps
+    answering JSON exactly as it always has.
+    """
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
+    is_browser_navigation = _is_browser_navigation(request)
 
-    await _apply_replay_download_rate_limit(
-        db_session,
-        user_id=session_row.user_id,
-        limit=settings.replay_download_max_per_user_per_minute,
-    )
-
-    completed_at = await _match_completed_at_for_participant(
-        db_session, game_id=game_id, profile_id=profile_id
-    )
-    capture = await _capture_for_point_of_view(db_session, game_id=game_id, profile_id=profile_id)
-    recorded_404 = await _has_recorded_fetch_miss(
-        db_session, game_id=game_id, profile_id=profile_id
-    )
-    availability = derive_availability(
-        completed_at=completed_at,
-        now=datetime.now(UTC),
-        capture=capture,
-        recorded_404=recorded_404,
-        capture_budget_days=settings.capture_budget_days,
-    )
-
-    if availability.state is Availability.ARCHIVED:
-        assert capture is not None and capture.object_key is not None
-        if not await _caller_owns_profile(
-            db_session, profile_id=profile_id, user_id=session_row.user_id
-        ):
-            raise _replay_not_found()
-        signed_url = await object_store.signed_get_url(capture.object_key)
-        db_session.add(
-            ReplayAccessLog(
-                replay_capture_id=capture.id,
-                user_id=session_row.user_id,
-                purpose="download",
-            )
-        )
-        return RedirectResponse(url=signed_url, status_code=302)
-
-    if availability.state is Availability.NEVER_RECORDED:
-        raise _never_recorded_error()
-
-    if availability.state is Availability.EXPIRED:
-        raise _expired_error()
-
-    # Availability.OBTAINABLE: fetch from the source and stream it straight through — FR-027
-    # forbids storing it (module docstring).
-    provider = _build_replay_provider(db_session)
     try:
-        result = await provider.fetch_replay(game_id, profile_id)
-    except ProviderRateLimited as error:
-        await raise_rate_limited_alert(_RequestAlertSink(db_session), error, run_id=None)
-        raise _source_rate_limited_error() from error
+        await _apply_replay_download_rate_limit(
+            db_session,
+            user_id=session_row.user_id,
+            limit=settings.replay_download_max_per_user_per_minute,
+        )
 
-    if isinstance(result, NotFound):
-        await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
-        raise _expired_since_page_load_error()
+        completed_at = await _match_completed_at_for_participant(
+            db_session, game_id=game_id, profile_id=profile_id
+        )
+        capture = await _capture_for_point_of_view(
+            db_session, game_id=game_id, profile_id=profile_id
+        )
+        recorded_404 = await _has_recorded_fetch_miss(
+            db_session, game_id=game_id, profile_id=profile_id
+        )
+        availability = derive_availability(
+            completed_at=completed_at,
+            now=datetime.now(UTC),
+            capture=capture,
+            recorded_404=recorded_404,
+            capture_budget_days=settings.capture_budget_days,
+        )
 
-    return Response(
-        content=result.content,
-        media_type=result.content_type,
-        headers={"content-disposition": f'attachment; filename="{result.filename}"'},
-    )
+        if availability.state is Availability.ARCHIVED:
+            assert capture is not None and capture.object_key is not None
+            if not await _caller_owns_profile(
+                db_session, profile_id=profile_id, user_id=session_row.user_id
+            ):
+                raise _replay_not_found()
+            signed_url = await object_store.signed_get_url(capture.object_key)
+            db_session.add(
+                ReplayAccessLog(
+                    replay_capture_id=capture.id,
+                    user_id=session_row.user_id,
+                    purpose="download",
+                )
+            )
+            return RedirectResponse(url=signed_url, status_code=302)
+
+        if availability.state is Availability.NEVER_RECORDED:
+            raise _never_recorded_error()
+
+        if availability.state is Availability.EXPIRED:
+            raise _expired_error()
+
+        # Availability.OBTAINABLE: fetch from the source and stream it straight through — FR-027
+        # forbids storing it (module docstring).
+        provider = _build_replay_provider(db_session)
+        try:
+            result = await provider.fetch_replay(game_id, profile_id)
+        except ProviderRateLimited as error:
+            await raise_rate_limited_alert(_RequestAlertSink(db_session), error, run_id=None)
+            raise _source_rate_limited_error() from error
+
+        if isinstance(result, NotFound):
+            await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
+            raise _expired_since_page_load_error()
+
+        return Response(
+            content=result.content,
+            media_type=result.content_type,
+            headers={"content-disposition": f'attachment; filename="{result.filename}"'},
+        )
+    except APIError as error:
+        if is_browser_navigation:
+            return _match_page_redirect_for_download_failure(
+                game_id=game_id, profile_id=profile_id, error=error
+            )
+        raise

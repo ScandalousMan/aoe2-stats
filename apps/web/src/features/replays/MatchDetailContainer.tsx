@@ -27,6 +27,7 @@ import {
 } from '../profile/mappers'
 import { triggerReplayDownload, triggerReplayPointOfViewDownload } from './api'
 import { toReplayAvailabilityRows } from './availability'
+import { parseReplayDownloadFailure, searchWithoutReplayDownloadFailure } from './downloadFailure'
 import { parseGameId } from './gameId'
 
 // Wires `MatchDetailPanel` and `ProfileSummary/compact` (packages/design-system) to this
@@ -194,6 +195,32 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
     }
   }, [])
 
+  // 2026-08-29: a failed point-of-view download used to be handled entirely client-side — a
+  // deferred `matchQuery.refetch()` intended to let the row self-correct. It never worked: a `200`
+  // never navigates (nothing to correct), and every failure response was plain JSON with no
+  // `content-disposition`, so the browser *did* navigate — destroying this component, and the
+  // pending timeout along with it, before the refetch ever ran. `routers/replays.py` now answers a
+  // `303` back to this exact page instead (`_match_page_redirect_for_download_failure`), carrying
+  // the failure as query parameters `downloadFailure.ts` reads below — no client-side timer
+  // involved in observing the outcome at all.
+  const [replayDownloadFailure] = useState(() => parseReplayDownloadFailure(window.location.search))
+
+  useEffect(() => {
+    // Read once, above, from the URL this page loaded with; cleared immediately so a later
+    // refresh of the same page does not resurrect a stale alert (`replay-availability.md` §5's
+    // "distinct for exactly one page load" rule) — `history.replaceState`, never a router
+    // navigation, so clearing it adds no history entry and triggers no second fetch of anything.
+    if (!replayDownloadFailure) {
+      return
+    }
+    const cleanedSearch = searchWithoutReplayDownloadFailure(window.location.search)
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${cleanedSearch}${window.location.hash}`,
+    )
+  }, [replayDownloadFailure])
+
   function handlePointOfViewDownload(rowId: string) {
     const participant = rawParticipants.find((row) => String(row.profile_id) === rowId)
     const downloadPath = participant?.replay.download_path
@@ -211,37 +238,15 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
       window.clearTimeout(existingTimeout)
     }
     // Mirrors `handleDownload`'s own note: a same-tab navigation carries no completion signal
-    // (`api.ts`'s `triggerReplayPointOfViewDownload`), so this row returns to `idle` after the
-    // same short window `handleDownload` already uses, rather than staying `loading` forever.
-    //
-    // replay-availability.md §5's "boundary race" (`code: "expired_since_page_load"`) and §10's
-    // "a real `<button>` triggering a same-tab navigation... no failure is script-observable" are
-    // in tension: a navigation carries no response this component can read, so it cannot render
-    // the in-place transition §5 describes from a fetch it never makes. The resolution is
-    // `contracts/http-api.md`'s own sentence on that race: the download route "also records the
-    // outcome, so the page is right the next time" — `T337`'s `replay_fetch_misses` write,
-    // `derive_availability`'s read of it. Refetching `GET /api/matches/{game_id}` after a click
-    // makes this page *be* "the next time": a row that just 404'd server-side comes back
-    // `never_recorded` with `download_path: null` (FR-025), and `ReplayAvailabilityList`
-    // re-renders it with no `DownloadAction` — self-correcting without ever needing to observe
-    // the download response directly.
-    //
-    // Fired from this same 1500ms timeout, not synchronously with the click: a refetch issued the
-    // instant the navigation starts would race the download route's own write of
-    // `replay_fetch_misses`, which only happens server-side inside *that* request's handler —
-    // two independent requests starting together have no ordering guarantee between them. This
-    // timeout already exists to give the browser's own unobservable navigation attempt time to
-    // resolve before resetting the button's `loading` state (the note above); reusing that same
-    // window for the refetch, rather than inventing a second arbitrary delay, means the refetch
-    // fires only once the download request has had the same amount of time to complete server-side
-    // as the UI already assumes it needs. A successful download refetches identical state — one
-    // extra `GET /api/matches/{game_id}`, not a call to the download route itself, so it never
-    // consumes a `replay_download` rate-limit unit (FR-028) — which is an acceptable, deliberate
-    // cost for the case this exists to correct.
+    // (`api.ts`'s `triggerReplayPointOfViewDownload`) — a *success* never returns here at all (the
+    // browser follows the response instead), so this only ever fires after a navigation that,
+    // for whatever reason, did not leave the page (a `200` streamed in place, or this same route's
+    // own `303` reloading this exact page with a failure attached — the effect above already
+    // handles that case on the next render). The button returns to `idle` after this short window
+    // rather than staying `loading` forever, the same rule `handleDownload` already follows.
     const timeoutId = window.setTimeout(() => {
       setPointOfViewDownloadStates((previous) => ({ ...previous, [rowId]: 'idle' }))
       pointOfViewResetTimeouts.current.delete(rowId)
-      void matchQuery.refetch()
     }, 1500)
     pointOfViewResetTimeouts.current.set(rowId, timeoutId)
   }
@@ -330,7 +335,11 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
           <div className="mt-8">
             <ReplayAvailabilityList
               loading={matchStatus === 'loading'}
-              rows={toReplayAvailabilityRows(rawParticipants, pointOfViewDownloadStates)}
+              rows={toReplayAvailabilityRows(
+                rawParticipants,
+                pointOfViewDownloadStates,
+                replayDownloadFailure,
+              )}
               onDownload={handlePointOfViewDownload}
             />
           </div>

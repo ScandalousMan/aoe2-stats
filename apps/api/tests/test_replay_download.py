@@ -327,6 +327,13 @@ _T335_NON_PARTICIPANT_PROFILE_ID = 850_200_004
 #: Finding B: a profile absent from `aoe_profiles` entirely — the FK-violation case.
 _T335_UNKNOWN_PROFILE_ID = 850_200_005
 
+#: The 2026-08-29 remediation below: a browser navigation that fails must answer a `303` back to
+#: the match page, never the raw JSON body an API caller still gets — its own games, so exhausting
+#: a rate-limit window or racing the boundary in one of these tests never interferes with another.
+_T335_BROWSER_EXPIRED_GAME_ID = 850_100_011
+_T335_BROWSER_RATE_LIMIT_GAME_ID = 850_100_012
+_T335_BROWSER_BOUNDARY_RACE_GAME_ID = 850_100_013
+
 #: FR-024, amended 2026-08-29 (`research.md` R8): a match old enough to be `expired` under either
 #: the ~31-day rolling reading or the contradicted six-month epoch reading — the derivation stays
 #: conservative under either, so a match this old renders `expired` whichever the open question
@@ -999,3 +1006,153 @@ async def test_replay_download_refuses_a_profile_id_unknown_to_aoe_profiles(
         "FR-023: a profile_id that never played this match must never reach the source at all, "
         "whether or not it is known to aoe_profiles"
     )
+
+
+# ================================================================================================
+# 2026-08-29 remediation — a failure of this route redirects a browser navigation back to the
+# match page (`303`) instead of leaving it looking at a raw JSON error page, while an API caller
+# keeps getting the identical JSON `404`/`429` these tests above already assert.
+# `packages/design-system/specs/replay-availability.md` §5 and §10.
+# ================================================================================================
+
+
+def _browser_navigation_headers() -> dict[str, str]:
+    """Mirrors a real `window.location.assign` navigation
+    (`apps/web/src/features/replays/api.ts`'s `triggerReplayPointOfViewDownload`) closely enough
+    for `routers/replays.py`'s `_is_browser_navigation` to read it as one: every current browser
+    engine sets exactly this header on a top-level navigation, and every plain `client.get(...)`
+    call in this file above never does — which is the whole of the contrast this suite proves."""
+    return {"Sec-Fetch-Mode": "navigate"}
+
+
+async def test_expired_point_of_view_redirects_a_browser_to_the_match_page_with_the_code(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """The remediation's own contrast case, in one test: a browser navigation to an `expired`
+    point of view gets a `303` back to `/matches/{game_id}` carrying `replay_error=expired` and
+    `replay_error_profile_id` — what `apps/web/src/features/replays/MatchDetailContainer.tsx`
+    reads on load and renders as `replay-availability.md` §5's row-level alert — while the
+    identical failure, asked for without the browser's own Fetch Metadata header, still answers
+    the plain JSON `404` `test_expired_point_of_view_answers_404_with_a_distinguishing_code` above
+    already proves: the fix must not change what an API caller receives.
+    """
+    game_id = _T335_BROWSER_EXPIRED_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserExpired"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    browser_response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert browser_response.status_code == 303, (
+        f"Got {browser_response.status_code}: {browser_response.text}"
+    )
+    split = urlsplit(browser_response.headers["location"])
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+    api_response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert api_response.status_code == 404, f"Got {api_response.status_code}: {api_response.text}"
+    assert api_response.json()["error"]["code"] == "expired", (
+        "an API caller (no browser Fetch Metadata header) must keep getting the JSON error this "
+        "route always answered, unaffected by the redirect added for a browser navigation"
+    )
+
+
+async def test_rate_limited_download_redirects_a_browser_with_retry_after(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-028's `rate_limited` code, carried through the `303` with its own `retry_after` — the
+    exact seconds `replay-availability.md` §5 requires ("never a rounded or invented figure"),
+    never simply dropped because this path is a redirect rather than a JSON body."""
+    game_id = _T335_BROWSER_RATE_LIMIT_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287953"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID)
+    await db_session.commit()
+
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+    for attempt in range(limit):
+        response = client.get(
+            f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+        )
+        assert response.status_code == 302, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+
+    limited = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert limited.status_code == 303, f"Got {limited.status_code}: {limited.text}"
+    split = urlsplit(limited.headers["location"])
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["rate_limited"]
+    assert query["replay_error_profile_id"] == [str(_T335_OWNER_PROFILE_ID)]
+    assert query["replay_error_retry_after"][0].isdigit()
+    assert int(query["replay_error_retry_after"][0]) > 0
+
+
+async def test_boundary_race_redirects_a_browser_with_the_distinguishing_code(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary race (`expired_since_page_load`) reaches the browser through the identical
+    redirect mechanism, carrying the one code that lets the client render §5's own boundary-race
+    sentence — distinct from both the plain `expired` copy and `never_recorded`'s."""
+    game_id = _T335_BROWSER_BOUNDARY_RACE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserBoundaryRace"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    split = urlsplit(response.headers["location"])
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired_since_page_load"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]

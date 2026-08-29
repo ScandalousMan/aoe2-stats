@@ -40,11 +40,12 @@ export function triggerReplayDownload(gameId: number): void {
  * Triggers `GET /api/matches/{game_id}/replay/{profile_id}` (T337, FR-023) — one download per
  * participant point of view, reached from `ReplayAvailabilityList`'s own `DownloadAction`
  * (`packages/design-system/specs/replay-availability.md` §10: "a real `<button>` triggering a
- * same-tab navigation to the download endpoint... the URL is minted per click so FR-029's
- * access-log write happens server-side on that request, on every click, archived and obtainable
- * alike"). `path` is `matches/api.ts`'s own `ApiReplayAvailability.download_path`, server-minted —
- * never rebuilt client-side, matching every other identifier this feature refuses to derive on
- * its own (module docstring above).
+ * same-tab navigation to the download endpoint... the URL is minted per click, server-side, on
+ * that request" — never a claim that FR-029's access-log write happens on every click: it does
+ * not, only the `archived` branch writes one, corrected in that spec 2026-08-29). `path` is
+ * `matches/api.ts`'s own `ApiReplayAvailability.download_path`, server-minted — never rebuilt
+ * client-side, matching every other identifier this feature refuses to derive on its own (module
+ * docstring above).
  *
  * The same reasoning `triggerReplayDownload` carries applies twice over here: this single route
  * answers a 302-to-a-signed-URL for `archived` (a *cross-origin* redirect — the bucket has no
@@ -53,6 +54,12 @@ export function triggerReplayDownload(gameId: number): void {
  * same-origin streamed body for `obtainable` (FR-027: fetched from the source and streamed
  * straight through, never stored). A plain top-level navigation is the one mechanism that serves
  * both without a second, divergent code path per state.
+ *
+ * A failure of this same route (any of the four unobtainable codes, or FR-028's rate limit)
+ * answers a `303` back to this exact match page instead of a JSON body, for a browser navigation
+ * (`routers/replays.py`'s `_match_page_redirect_for_download_failure`) — the browser follows it as
+ * an ordinary continuation of this same navigation, and `downloadFailure.ts` is what the reloaded
+ * page reads to render `replay-availability.md` §5's row-level alert.
  */
 export function triggerReplayPointOfViewDownload(path: string): void {
   window.location.assign(path)

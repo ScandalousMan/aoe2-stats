@@ -94,4 +94,66 @@ describe('toReplayAvailabilityRows', () => {
   it('maps an empty participant list to an empty row list', () => {
     expect(toReplayAvailabilityRows([])).toEqual([])
   })
+
+  // 2026-08-29 remediation: the redirect-carried `failure` overrides exactly one row — the one
+  // `failure.profileId` names — never any other, and never when absent.
+
+  it('renders the boundary race as an in-place transition to expired, not a Callout', () => {
+    const rows = toReplayAvailabilityRows(
+      [
+        participant({
+          profile_id: 1,
+          replay: {
+            profile_id: 1,
+            // The freshly-fetched availability is already never_recorded (`derive_availability`'s
+            // own `recorded_404` reading) by the time this page reloads — the override below is
+            // what still shows the boundary-race sentence for this one render.
+            availability: 'never_recorded',
+            obtainable_until: null,
+            download_path: null,
+          },
+        }),
+      ],
+      {},
+      { code: 'expired_since_page_load', profileId: '1' },
+    )
+    expect(rows[0]?.availability).toBe('expired')
+    expect(rows[0]?.expiredSincePageLoad).toBe(true)
+    expect(rows[0]?.downloadState).toBe('idle')
+  })
+
+  it('renders rate_limited with the exact retry_after the redirect carried', () => {
+    const rows = toReplayAvailabilityRows(
+      [participant({ profile_id: 1 })],
+      {},
+      { code: 'rate_limited', profileId: '1', retryAfterSeconds: 42 },
+    )
+    expect(rows[0]?.downloadState).toBe('rate_limited')
+    expect(rows[0]?.retryAfterSeconds).toBe(42)
+  })
+
+  it('renders any other failure code as the generic could-not-start-download error', () => {
+    const rows = toReplayAvailabilityRows(
+      [participant({ profile_id: 1 })],
+      {},
+      { code: 'never_recorded', profileId: '1' },
+    )
+    expect(rows[0]?.downloadState).toBe('error')
+    expect(rows[0]?.availability).toBe('obtainable')
+  })
+
+  it('never applies the failure to a row it does not name', () => {
+    const rows = toReplayAvailabilityRows(
+      [participant({ profile_id: 1 }), participant({ profile_id: 2 })],
+      {},
+      { code: 'never_recorded', profileId: '1' },
+    )
+    expect(rows.find((row) => row.id === '2')?.downloadState).toBe('idle')
+  })
+
+  it('leaves every row untouched when no failure was carried', () => {
+    const rows = toReplayAvailabilityRows([participant({ profile_id: 1 })], {}, null)
+    expect(rows[0]?.downloadState).toBe('idle')
+    expect(rows[0]?.expiredSincePageLoad).toBeUndefined()
+  })
 })
