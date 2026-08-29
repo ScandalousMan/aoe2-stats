@@ -69,24 +69,35 @@ uses** (`profiles.py`'s and `replays.py`'s own module docstrings): a job id that
 exists for a different user, or names a different kind of `data_requests` row, all answer the
 identical `404 not_found` — never a `403`, which would itself disclose that the id belongs to
 someone.
+
+**`GET /api/privacy/erase` and `POST /api/privacy/erase` (T091).** `contracts/http-api.md`:
+"Requires an explicit confirmation token from a prior GET. Irreversible (FR-037)." The `GET`
+mints a short-lived, HMAC-signed `confirmation_token` bound to the caller's own user id and does
+nothing else; the `POST` verifies it and then, and only then, erases the account — every read and
+every write, `packages/core`'s `aoe2stats_core.privacy.erasure.pseudonymise_profile` again holding
+only the pure pseudonymisation plan (that module's own docstring), the same split `export.py`
+draws. `erase_account`'s own docstring carries what is deleted, what is cleared with its row kept,
+and what is pseudonymised in place.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
+from aoe2stats_core.privacy.erasure import pseudonymise_profile
 from aoe2stats_core.privacy.export import ExportBundle, build_export_archive
 from aoe2stats_storage.models import (
+    AoeProfile,
     CaptureStatus,
     DataRequest,
     DataRequestKind,
@@ -412,3 +423,205 @@ async def export_status(
         "status": "completed",
         "download_url": signed_url,
     }
+
+
+# --- POST /api/privacy/erase, and the GET that mints its confirmation token (T091) --------------
+
+
+class ErasureConfirmationRequest(BaseModel):
+    confirmation_token: str
+
+
+#: The Steam OpenID CSRF `state` (`security.py`'s own `CSRF_STATE_TTL`) is the codebase's own
+#: precedent for "how long does a confirmation value stay good": minutes, not hours, because the
+#: round trip it bridges — one `GET`, then one deliberate `POST` — is a single sitting, never a
+#: bookmark to come back to later.
+_ERASURE_CONFIRMATION_TTL = timedelta(minutes=10)
+
+#: Separates the two halves of the signed confirmation-token payload (`<user_id>|<issued_at>`).
+#: Never `:`: `datetime.isoformat()` on a timezone-aware value already contains colons of its own
+#: (the offset, `+00:00`), so splitting on the *last* `:` would cut the timestamp apart instead of
+#: the payload in two. Neither a UUID's hyphens nor an ISO 8601 timestamp ever contains `|`.
+_ERASURE_TOKEN_SEPARATOR = "|"
+
+
+def _issue_erasure_confirmation_token(
+    *, user_id: uuid.UUID, secret: str, now: datetime | None = None
+) -> str:
+    """A short-lived, HMAC-signed token binding one confirmation to one caller — reuses
+    `security._sign`, the same primitive the session and CSRF-state cookies are already signed
+    with, rather than a new table purely to hold a value that only ever needs to prove it was
+    minted here, for this user, recently. Self-verifying, so `GET /api/privacy/erase` needs no
+    write of its own — unlike `csrf_states`, which a state minted *before any session exists*
+    cannot avoid (`security.py`'s own docstring), a confirmation token minted for an already
+    signed-in caller has a `user_id` to bind itself to instead."""
+    moment = now or datetime.now(UTC)
+    payload = f"{user_id}{_ERASURE_TOKEN_SEPARATOR}{moment.isoformat()}"
+    return security._sign(payload, secret)
+
+
+def _verify_erasure_confirmation_token(
+    token: str, *, user_id: uuid.UUID, secret: str, now: datetime | None = None
+) -> bool:
+    """Whether `token` is a confirmation this exact caller was handed by a prior `GET`, minted
+    within `_ERASURE_CONFIRMATION_TTL`. Rejects a tampered signature, a token minted for a
+    different `user_id` (so one caller's own `GET` can never confirm another caller's erasure),
+    a malformed payload, and one that has simply expired — all identically, since none of those
+    distinctions is this caller's to learn (the same undifferentiated rejection `security._unsign`
+    already gives a tampered session cookie)."""
+    payload = security._unsign(token, secret)
+    if payload is None:
+        return False
+    raw_user_id, separator, raw_issued_at = payload.rpartition(_ERASURE_TOKEN_SEPARATOR)
+    if not separator or raw_user_id != str(user_id):
+        return False
+    try:
+        issued_at = datetime.fromisoformat(raw_issued_at)
+    except ValueError:
+        return False
+    moment = now or datetime.now(UTC)
+    return timedelta(0) <= moment - issued_at <= _ERASURE_CONFIRMATION_TTL
+
+
+def _erasure_confirmation_invalid() -> APIError:
+    return APIError(
+        status_code=403,
+        code="confirmation_token_invalid",
+        message="That confirmation token is invalid, was not issued to you, or has expired. "
+        "Request a fresh one from GET /api/privacy/erase.",
+    )
+
+
+@router.get("/privacy/erase")
+async def start_erasure(
+    request: Request, db_session: SessionDep, settings: SettingsDep
+) -> dict[str, Any]:
+    """`contracts/http-api.md`: "Requires an explicit confirmation token from a prior GET."
+    Mints that token and nothing else — no row is written, nothing about the account changes; the
+    explicit step FR-037 requires is this call existing at all, distinct from the irreversible one
+    below."""
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+    token = _issue_erasure_confirmation_token(user_id=session_row.user_id, secret=secret)
+    return {"confirmation_token": token}
+
+
+async def _pseudonymise_profile_id(db_session: AsyncSession, profile_id: int) -> None:
+    """The I/O half of `aoe2stats_core.privacy.erasure.pseudonymise_profile`, which computes only
+    the plan (that module's own docstring): insert the placeholder `aoe_profiles` row this
+    `profile_id`'s `match_players` rows are about to be retargeted onto (idempotent — a second call
+    over the same `profile_id` finds it already there), retarget them, and mask the original row's
+    own `alias`/`country` in place, since it usually survives this untouched otherwise (a
+    `favourites` row someone else holds naming it, a `rating_snapshots` row) and leaving its
+    identifying columns as they were would leave exactly the trace this exists to close."""
+    plan = pseudonymise_profile(profile_id)
+
+    if await db_session.get(AoeProfile, plan.pseudonymous_profile_id) is None:
+        db_session.add(
+            AoeProfile(
+                profile_id=plan.pseudonymous_profile_id, alias=plan.alias, country=plan.country
+            )
+        )
+        await db_session.flush()
+
+    await db_session.execute(
+        update(MatchPlayer)
+        .where(MatchPlayer.profile_id == profile_id)
+        .values(profile_id=plan.pseudonymous_profile_id)
+    )
+
+    original_profile = await db_session.get(AoeProfile, profile_id)
+    if original_profile is not None:
+        original_profile.alias = plan.alias
+        original_profile.country = plan.country
+
+
+@router.post("/privacy/erase")
+async def erase_account(
+    body: ErasureConfirmationRequest,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    object_store: ObjectStoreDep,
+) -> dict[str, Any]:
+    """FR-037, SC-008: irreversible erasure of the caller's own account, confirmed by a token only
+    `GET /api/privacy/erase` could have minted for this exact caller.
+
+    **Deleted**: the user row itself, every Steam identity, every session, every profile link,
+    every `rate_limit_counters` and `favourites` row — all by the database's own `ondelete`
+    actions on `users.id`, fired the moment the `DELETE FROM users` below runs, not by this
+    function walking each table itself (`packages/storage/.../models.py`'s own comments on each of
+    those foreign keys name the same cascade). The one thing no foreign key can reach into is the
+    object store: every `replay_captures` row naming one of this user's own profiles is deleted
+    here, its blob deleted from `object_store` first — quickstart scenario 10 point 2's "verified
+    by listing the bucket, not by trusting a success response" is a claim about the bucket, and
+    only an explicit `object_store.delete` earns it. Deleting each capture row cascades its own
+    `replay_access_log` rows (`ondelete="CASCADE"` on `replay_capture_id`) regardless of who made
+    the access; deleting the user cascades every `replay_access_log` row this user made as an
+    *accessor* of anyone else's capture, by the identical mechanism on `user_id` — both are the
+    schema's own design (`ReplayAccessLog`'s class docstring), not something this function decides.
+
+    **Cleared, row retained**: `match_analyses.requested_by_user_id` and
+    `retained_recordings.requested_by_user_id` — `ondelete="SET NULL"` on both, fired by the same
+    `DELETE FROM users`. Neither row nor, for `retained_recordings`, its object is ever touched
+    here: a published analysis must stay recomputable (constitution IV), and deleting a retained
+    recording is T092's objection route on the person it depicts, never this one on whoever merely
+    asked for it.
+
+    **Pseudonymised in place, row and match retained**: every `match_players` row naming one of
+    this user's own profiles, via `_pseudonymise_profile_id` — `matches` itself carries no
+    `profile_id` column to touch (`packages/storage/.../models.py`'s `Match`), so nothing about it
+    changes at all; it describes a game other people also played.
+
+    **The accountability record**: one `data_requests` row of kind `erasure`, inserted before
+    anything else so it exists to record what is about to happen, `subject_user_id` set to this
+    user for exactly as long as the row survives it — the same `ondelete="SET NULL"` nulls it the
+    moment the user is deleted, which is what lets SC-008's own requirement (verifiably resolved
+    even once the subject is gone) point at something once this call returns.
+    """
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+    user = await db_session.get(User, session_row.user_id)
+    if user is None:
+        raise APIError(
+            status_code=401, code="not_authenticated", message="Sign in to erase your account."
+        )
+    user_id = user.id
+
+    if not _verify_erasure_confirmation_token(
+        body.confirmation_token, user_id=user_id, secret=secret
+    ):
+        raise _erasure_confirmation_invalid()
+
+    profile_ids = await _owned_profile_ids(db_session, user_id=user_id)
+
+    data_request = DataRequest(kind=DataRequestKind.ERASURE, subject_user_id=user_id)
+    db_session.add(data_request)
+    await db_session.flush()
+
+    if profile_ids:
+        captures = list(
+            (
+                await db_session.execute(
+                    select(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for capture in captures:
+            if capture.object_key is not None:
+                await object_store.delete(capture.object_key)
+        await db_session.execute(
+            delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
+        )
+
+        for profile_id in profile_ids:
+            await _pseudonymise_profile_id(db_session, profile_id)
+
+    data_request.completed_at = datetime.now(UTC)
+    data_request.outcome = "account erased"
+
+    await db_session.execute(delete(User).where(User.id == user_id))
+
+    return {"status": "erased"}

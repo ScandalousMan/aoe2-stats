@@ -1,21 +1,9 @@
-"""Integration test for quickstart scenario 10, points 2 and 3 (T087) — implemented at **T091**
-(`packages/core/src/aoe2stats_core/privacy/erasure.py`) and its route, `POST /api/privacy/erase`
-(`contracts/http-api.md`).
+"""Integration test for quickstart scenario 10, points 2 and 3 (T087), implemented at **T091**
+(`packages/core/src/aoe2stats_core/privacy/erasure.py`) and its routes, `GET`/`POST
+/api/privacy/erase` (`contracts/http-api.md`), in `apps/api/src/aoe2stats_api/routers/privacy.py`.
 
-**Nothing this file exercises exists yet.** `routers/privacy.py` today holds only
-`POST /api/privacy/archival-objection` (T032/T405); there is no `/api/privacy/erase` route at all,
-so every request below answers a framework 404 with the generic envelope `app.py` builds for an
-unmatched route. `packages/core/src/aoe2stats_core/privacy/erasure.py` (T091) does not exist
-either — but this file never imports it: everything below drives the HTTP contract through
-`client`, exactly as `test_replay_download.py` and `test_analysis_routes.py` do for their own
-not-yet-built routes, so there is nothing missing to import at all. `xfail(strict=True,
-reason="T091 not implemented yet")` marks every test below for that reason; the marker comes off
-by itself the moment T091 makes an assertion here start passing (SubagentStop's own gate on a
-"never separately green" pair aside, `pytest.mark.xfail` is what turns a genuine regression back
-into a red run instead of a silently stale marker).
-
-**The endpoint shape asserted below is a reading of the contract, not a restatement of one that
-already exists.** `contracts/http-api.md`'s one row on this route reads: "Requires an explicit
+**The endpoint shape asserted below is a reading of the contract, confirmed by T091's own
+implementation.** `contracts/http-api.md`'s one row on this route reads: "Requires an explicit
 confirmation token from a prior `GET`. Irreversible (FR-037)." There is no `GET` row for this path
 in the table, and no schema is given anywhere for either call — the two-step, token-bearing shape
 (`GET /api/privacy/erase` mints an opaque `confirmation_token`; `POST /api/privacy/erase` accepts
@@ -25,8 +13,9 @@ one sentence, chosen because it is the one shape in this codebase's own vocabula
 way for the OpenID `state` parameter, never a bare `?confirm=true` repeat-the-same-call shape
 (`routers/profiles.py`'s `DELETE /api/profiles/{profile_id}`, which the contract deliberately does
 not use here: that one names no token and needs none, and the difference is exactly why the two
-routes read differently). If T091 lands with different field names, this file's own assertions —
-not the contract sentence above — are what a remediation task corrects.
+routes read differently). T091 implements exactly this shape, with a self-verifying HMAC-signed
+token bound to the caller's own user id rather than a new table purely to hold it — the field name
+below (`confirmation_token`) is now the contract, not merely a guess of it.
 
 **Verified by listing the bucket, not by trusting the response**, per quickstart scenario 10 point
 2 and `ObjectStore.list_keys`'s own docstring ("Erasure is verified 'by listing the bucket, not by
@@ -232,7 +221,6 @@ def _get_confirmation_token(client: TestClient) -> str:
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_post_erase_without_any_token_is_refused_and_erases_nothing(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -255,7 +243,6 @@ async def test_post_erase_without_any_token_is_refused_and_erases_nothing(
     assert survivor is not None, "a refused erasure attempt must not touch the account"
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_post_erase_with_a_tampered_token_is_refused_and_erases_nothing(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -283,7 +270,6 @@ async def test_post_erase_with_a_tampered_token_is_refused_and_erases_nothing(
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_deletes_the_user_identities_sessions_and_links(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -300,6 +286,13 @@ async def test_confirmed_erasure_deletes_the_user_identities_sessions_and_links(
     response = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
 
+    # `expire_all()` (`test_unlink.py`'s own convention): `user` is already in this session's
+    # identity map from `_seed_linked_user` above, and `session_factory` is built with
+    # `expire_on_commit=False` (`packages/storage/.../repositories/base.py`) for the app's own
+    # read-after-commit needs — so, left alone, `db_session.get` below would answer this test's own
+    # stale, pre-erasure copy of `user` instead of ever asking the database whether the row the
+    # *app's* session erased still exists.
+    db_session.expire_all()
     assert await db_session.get(User, user_id) is None, "the user row itself must be gone"
 
     identity_count = (
@@ -324,7 +317,6 @@ async def test_confirmed_erasure_deletes_the_user_identities_sessions_and_links(
     assert link_count == 0, "every profile link must be gone"
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_deletes_captures_and_verifies_the_blob_by_listing_the_bucket(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -357,6 +349,9 @@ async def test_confirmed_erasure_deletes_captures_and_verifies_the_blob_by_listi
     )
     await store.put(object_key, b"FAKE-REPLAY-BYTES")
     assert object_key in await store.list_keys(), "the capture's own blob must exist before erasure"
+    # Captured now, before `expire_all()` below — reading an id off an expired ORM instance
+    # outside of an awaited context raises `MissingGreenlet` (`test_unlink.py`'s own convention).
+    capture_id = capture.id
 
     token = _get_confirmation_token(client)
     response = client.post(_ERASE_PATH, json={"confirmation_token": token})
@@ -368,11 +363,11 @@ async def test_confirmed_erasure_deletes_captures_and_verifies_the_blob_by_listi
         f"the response body. Bucket still holds: {remaining_keys}"
     )
 
-    capture_after = await db_session.get(ReplayCapture, capture.id)
+    db_session.expire_all()  # `capture` is already in this session's identity map — see above
+    capture_after = await db_session.get(ReplayCapture, capture_id)
     assert capture_after is None, "the replay_captures row must be gone, not merely its blob"
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_deletes_replay_access_log_rows_for_the_erased_users_captures_only(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -483,7 +478,6 @@ async def test_confirmed_erasure_deletes_replay_access_log_rows_for_the_erased_u
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_erased_users_session_cookie_is_refused_on_the_very_next_request(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -515,7 +509,6 @@ async def test_erased_users_session_cookie_is_refused_on_the_very_next_request(
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_pseudonymises_the_profile_id_in_matches_and_match_players(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -608,7 +601,6 @@ async def test_confirmed_erasure_pseudonymises_the_profile_id_in_matches_and_mat
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_deletes_favourites_and_rate_limit_counters(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -658,7 +650,6 @@ async def test_confirmed_erasure_deletes_favourites_and_rate_limit_counters(
     assert counter_count == 0, "rate_limit_counters must be deleted with the user"
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_clears_but_retains_match_analyses_requested_by_the_user(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -700,6 +691,7 @@ async def test_confirmed_erasure_clears_but_retains_match_analyses_requested_by_
     response = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
 
+    db_session.expire_all()  # `MatchAnalysis` is already in this session's identity map — see above
     analysis_after = await db_session.get(MatchAnalysis, _ANALYSIS_GAME_ID)
     assert analysis_after is not None, "the published analysis row must be retained"
     assert analysis_after.state == MatchAnalysisState.PUBLISHED, (
@@ -713,7 +705,6 @@ async def test_confirmed_erasure_clears_but_retains_match_analyses_requested_by_
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_keeps_retained_recordings_whole(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -757,6 +748,9 @@ async def test_confirmed_erasure_keeps_retained_recordings_whole(
     response = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
 
+    db_session.expire_all()  # `RetainedRecording` is already in this session's identity map — see
+    # above; without this, re-selecting it below would still return this test's own stale,
+    # pre-erasure copy rather than asking the database what the app's session actually wrote.
     retained_after = (
         await db_session.execute(
             select(RetainedRecording).where(RetainedRecording.object_key == retained_object_key)
@@ -782,7 +776,6 @@ async def test_confirmed_erasure_keeps_retained_recordings_whole(
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T091 not implemented yet")
 async def test_confirmed_erasure_leaves_a_completed_data_request_with_the_subject_nulled(
     client: TestClient, db_session: AsyncSession
 ) -> None:
