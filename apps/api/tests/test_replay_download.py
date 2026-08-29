@@ -369,6 +369,14 @@ _T335_PROVIDER_CONTRACT_VIOLATION_GAME_ID = 850_100_020
 #: L3: the source's own `Retry-After`, forwarded — and its contrast case, no header at all.
 _T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID = 850_100_021
 
+#: The production defect (2026-08-29): two participants' points of view of the same match must
+#: never save under the identical filename. One game for each of the two upstream shapes the bug
+#: report asked to be tested — a well-formed, per-*match* upstream name (the shape that actually
+#: reached production) and no `content-disposition` header at all (the provider's own generated
+#: fallback).
+_T335_TWO_POVS_UPSTREAM_NAME_GAME_ID = 850_100_022
+_T335_TWO_POVS_NO_UPSTREAM_NAME_GAME_ID = 850_100_023
+
 #: Fast enough that a 503-exhausts-retries or timeout test does not spend real seconds asleep in
 #: `AsyncBaseProvider`'s exponential backoff — mirrors `packages/providers/tests/test_aoems.py`'s
 #: own `FAST_RETRY` byte for byte, monkeypatched onto `replays.py`'s module-level
@@ -425,6 +433,26 @@ async def _seed_match_player(db_session: AsyncSession, *, game_id: int, profile_
     below that exercises a real participant's point of view seeds it explicitly (`profile_id`
     itself must already exist in `aoe_profiles`, the FK `match_players.profile_id` carries)."""
     db_session.add(MatchPlayer(game_id=game_id, profile_id=profile_id))
+
+
+async def _seed_two_obtainable_participants(db_session: AsyncSession, *, game_id: int) -> None:
+    """A match with two real participants, both comfortably `obtainable` — the shape the filename
+    collision needs: one `game_id`, two different `profile_id`s, both fetched from the source
+    rather than served from the archive."""
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ParticipantA"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_B_PROFILE_ID, alias="ParticipantB"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_B_PROFILE_ID)
+    await db_session.commit()
 
 
 class _FakeAoemsUpstream:
@@ -694,6 +722,96 @@ async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(
     assert retained_count == 0, (
         "FR-027/SC-009: zero new retained_recordings rows for a plain download"
     )
+
+
+# ================================================================================================
+# Bug fix (2026-08-29): a user downloaded two different participants' points of view of a real
+# match and both files arrived named identically, because the source's own `content-disposition`
+# name is per-*match*, not per point of view (`docs/data-sources.md` §2). A prior fix appended
+# `profile_id` only to `AoemsReplayProvider._parse_filename`'s own *generated fallback*, which
+# cannot run while the source keeps sending a well-formed name — the branch production actually
+# hit stayed broken. These two tests assert the shape, not one instance: two different `profile_
+# id`s for the same `game_id` must answer two different `content-disposition` filenames, both when
+# the upstream supplies a name and when it does not — the pair that makes the previous, narrower
+# fix's own blind spot visible.
+# ================================================================================================
+
+
+async def test_two_participants_get_different_filenames_when_upstream_names_collide(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The exact production shape: the source answers both calls with the identical, well-formed,
+    per-match `content-disposition` header (`AgeIIDE_Replay_{gameId}.zip`, no `profileId`
+    anywhere in it) — yet the two downloads must still be distinguishable."""
+    game_id = _T335_TWO_POVS_UPSTREAM_NAME_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_two_obtainable_participants(db_session, game_id=game_id)
+
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=b"FAKE-AOE2RECORD-ZIP-BYTES-COLLIDING-NAME",
+            headers={
+                "content-disposition": f"attachment; filename=AgeIIDE_Replay_{game_id}.zip",
+                "content-type": "application/zip",
+            },
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response_a = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    response_b = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_B_PROFILE_ID}")
+
+    assert response_a.status_code == 200, f"Got {response_a.status_code}: {response_a.text}"
+    assert response_b.status_code == 200, f"Got {response_b.status_code}: {response_b.text}"
+
+    filename_a = response_a.headers["content-disposition"]
+    filename_b = response_b.headers["content-disposition"]
+    assert filename_a != filename_b, (
+        "two different participants' points of view of the same match must never save under the "
+        f"identical filename — both answered {filename_a!r}"
+    )
+    assert str(_T335_PARTICIPANT_A_PROFILE_ID) in filename_a
+    assert str(_T335_PARTICIPANT_B_PROFILE_ID) in filename_b
+
+
+async def test_two_participants_get_different_filenames_with_no_upstream_name_at_all(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contrast case in the same pair: the source sends no `content-disposition` header at
+    all, so `AoemsReplayProvider._parse_filename` falls back to its own generated name — already
+    disambiguated by `profile_id` since L4 (fourth-round review), and left that way. Both cases
+    are asserted so a fix that only reaches one of them — exactly what happened in production —
+    cannot pass this file."""
+    game_id = _T335_TWO_POVS_NO_UPSTREAM_NAME_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_two_obtainable_participants(db_session, game_id=game_id)
+
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=b"FAKE-AOE2RECORD-ZIP-BYTES-NO-UPSTREAM-NAME",
+            headers={"content-type": "application/zip"},
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response_a = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    response_b = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_B_PROFILE_ID}")
+
+    assert response_a.status_code == 200, f"Got {response_a.status_code}: {response_a.text}"
+    assert response_b.status_code == 200, f"Got {response_b.status_code}: {response_b.text}"
+
+    filename_a = response_a.headers["content-disposition"]
+    filename_b = response_b.headers["content-disposition"]
+    assert filename_a != filename_b, (
+        "two different participants' points of view of the same match must never save under the "
+        f"identical filename — both answered {filename_a!r}"
+    )
+    assert str(_T335_PARTICIPANT_A_PROFILE_ID) in filename_a
+    assert str(_T335_PARTICIPANT_B_PROFILE_ID) in filename_b
 
 
 async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(

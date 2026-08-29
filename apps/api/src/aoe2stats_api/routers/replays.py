@@ -36,8 +36,13 @@ handle a missing leaderboard entry.
 **`GET /api/replays/{game_id}/download` (T071, FR-028, FR-038, FR-040, FR-045).** The bucket is
 never public (constitution IV, `ObjectStore`'s own docstring): the only path a caller ever reaches
 is a freshly signed, short-expiry `ObjectStore.signed_get_url` — never a hand-built bucket URL —
-and every successful download writes one `replay_access_log` row (FR-040). Ownership is resolved
-the same way `_owned_active_link` resolves it above, except the row being reached for is a
+and every successful download writes one `replay_access_log` row (FR-040). This route resolves
+`game_id` alone, to the *caller's own* `stored` capture — `_stored_capture_for_caller` below
+answers exactly one point of view per call, never a participant chosen by the caller — so it cannot
+reproduce `_point_of_view_filename`'s collision below: there is no second point of view this route
+could ever be asked to name in the same breath. It also sets no `content-disposition` header of its
+own at all; the browser's filename comes from the signed URL it is redirected to. Ownership is
+resolved the same way `_owned_active_link` resolves it above, except the row being reached for is a
 `replay_captures` one addressed by `(game_id, profile_id)` rather than a `profile_links` one
 addressed by `profile_id` alone: `_stored_capture_for_caller` joins `replay_captures` to the
 caller's own active `profile_links` rows, so a `game_id` that names no match, a match the caller
@@ -93,7 +98,14 @@ Per-state behaviour (`contracts/http-api.md`):
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
-  only where a person deliberately asks for a match to be analysed).
+  only where a person deliberately asks for a match to be analysed). Its `content-disposition`
+  filename is `_point_of_view_filename` below, **never** `AoemsReplayProvider.fetch_replay`'s own
+  `ReplayBlob.filename` — see that function's docstring for why the disambiguation belongs at this
+  altitude and not the provider's. Production observed two participants of the same match both
+  save as `AgeIIDE_Replay_{game_id}.zip`, because the source's own name is per-*match*; a prior fix
+  added `profile_id` to `_parse_filename`'s *generated fallback* only, which cannot run on this
+  path when the source sends a well-formed name, so the collision survived it — this fix is the one
+  that actually reaches the branch production hit.
 - `expired`, `never_recorded` — `404` with the distinguishing `code`, no fetch attempted at all
   (`derive_availability` already decided this from rows and a clock — R8's whole point).
 
@@ -491,6 +503,45 @@ async def download_replay(
     )
 
     return RedirectResponse(url=signed_url, status_code=302)
+
+
+def _point_of_view_filename(*, game_id: int, profile_id: int) -> str:
+    """The `content-disposition` filename this route serves for the `obtainable` branch —
+    **always** `AgeIIDE_Replay_{game_id}_{profile_id}.zip`, derived here rather than carried from
+    `AoemsReplayProvider.fetch_replay`'s own `ReplayBlob.filename`.
+
+    This is a deliberate choice between two ways to disambiguate two participants' downloads of
+    the same match, made explicit because `aoems/provider.py::_parse_filename`'s own docstring
+    hands the decision up here rather than making it itself: that provider's discipline is "never
+    repair, never guess" about an upstream value, so it appends `profile_id` only to its own
+    *generated* fallback (no `content-disposition` header, or one this route's header encoding
+    cannot carry) and leaves a well-formed upstream name — which `docs/data-sources.md` §2 measures
+    as `AgeIIDE_Replay_{gameId}.zip`, **per match, not per point of view** — untouched. That
+    discipline is correct at the provider's altitude: it is reporting what the source sent.
+
+    This router is a different altitude. It is not reporting the source's header, it is deciding
+    the name of *its own* response, and `profile_id` is already the path parameter that selects
+    which participant's recording this call serves — there is no version of this route's contract
+    that does not already know it. Overriding the upstream name here is therefore not "guessing" in
+    the sense the provider's docstring refuses: nothing is inferred about the source, only this
+    response's own filename is chosen, uniformly, whether or not the source happened to send a
+    usable name today. The alternative — keep the upstream name and insert `profile_id` into it —
+    was rejected: it would still collide on the exact upstream string this route was seen
+    colliding on in production (`AgeIIDE_Replay_{gameId}.zip`, no per-participant token to insert
+    around), and it would make the served name depend on the source's own naming convention
+    changing at any time, for no benefit — nobody parses this filename back, quickstart scenario
+    6.2 only needs the two downloads to be visibly different.
+
+    A fixed, all-digit format needs none of `aoems/provider.py::_is_safe_header_filename`'s
+    latin-1/control-character checks — `game_id` and `profile_id` are `int` path parameters
+    FastAPI has already validated, so this string can never fail Starlette's own
+    `.encode("latin-1")` the way an upstream-sourced value could (the M1 fix this module's
+    docstring records). The `.zip` extension is not derived from `result.content_type`: every
+    observed response is `application/zip` (`docs/data-sources.md` §2), and a fixed extension
+    keeps this function needing nothing from the fetch beyond the two identifiers already in
+    hand before it runs.
+    """
+    return f"AgeIIDE_Replay_{game_id}_{profile_id}.zip"
 
 
 # --- GET /api/matches/{game_id}/replay/{profile_id} (T337, 003) ------------------------------
@@ -1028,10 +1079,11 @@ async def download_replay_point_of_view(
             await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
             raise _expired_since_page_load_error()
 
+        filename = _point_of_view_filename(game_id=game_id, profile_id=profile_id)
         return Response(
             content=result.content,
             media_type=result.content_type,
-            headers={"content-disposition": f'attachment; filename="{result.filename}"'},
+            headers={"content-disposition": f'attachment; filename="{filename}"'},
         )
     except APIError as error:
         if is_browser_navigation:
