@@ -205,7 +205,7 @@ view, and confirm both open in the game and show it from the expected player's s
 - [x] T339 [P] [US3] Write the component spec for the per-point-of-view availability list in `packages/design-system/specs/`, covering all four states and the remaining-time countdown, and stating how `expired` differs visually from `never_recorded` — FR-025 wants the difference visible, not merely present in the payload
 - [x] T340 [US3] Build the component in `packages/design-system/src/components/`, reusing `packages/design-system/src/components/CaptureStateBadge/countdown.ts` rather than writing a second countdown, with stories for all four states and for a match hours from its boundary
 - [x] T341 [US3] Wire the downloads into the match page in `apps/web/src/features/replays/`
-- [ ] T342 [US3] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T340 added, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T342 [US3] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T340 added, updating baselines in `packages/design-system/__screenshots__/`
 - [ ] T343 [US3] Walk scenario 6, points 2 and 4, of `specs/003-player-search-match-analysis/quickstart.md` by hand — two points of view opened in AgeII:DE, and a match you played whose own point of view is archived while the others have expired — and record the outcome in the pull request. Confirm that the availability stated for every point of view matches what the source actually answers at that moment (SC-004), and that obtaining any one of them takes at most two actions from the match page (SC-005)
 
 **Checkpoint**: every participant's recording is reachable while it exists, and honestly described when it is not.
