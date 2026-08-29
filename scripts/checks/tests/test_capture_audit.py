@@ -75,11 +75,28 @@ async def _seed_capture(
     return capture_id
 
 
-async def _seed_ingest_run(session: AsyncSession, *, expired_total: int) -> None:
+class _Unset:
+    """Distinguishes "caller did not pass `finished_at`" (default to `now`, the pre-existing shape
+    every other test here relies on) from "caller explicitly passed `finished_at=None`" (a
+    still-open run — `IngestRun.finished_at` is nullable for exactly that case). `None` itself
+    cannot be the default value, since that is the very case this needs to detect."""
+
+
+_UNSET = _Unset()
+
+
+async def _seed_ingest_run(
+    session: AsyncSession,
+    *,
+    expired_total: int,
+    started_at: datetime | None = None,
+    finished_at: datetime | _Unset | None = _UNSET,
+) -> None:
+    now = datetime.now(UTC)
     session.add(
         IngestRun(
-            started_at=datetime.now(UTC),
-            finished_at=datetime.now(UTC),
+            started_at=started_at if started_at is not None else now,
+            finished_at=now if isinstance(finished_at, _Unset) else finished_at,
             trigger="test",
             budget_seconds=240,
             expired_total=expired_total,
@@ -96,20 +113,111 @@ async def test_expired_total_is_zero_against_an_empty_ingest_runs_table(
 ) -> None:
     from scripts.checks.capture_audit import expired_total
 
-    assert await expired_total(db_session) == 0
+    now = datetime.now(UTC)
+    assert await expired_total(db_session, window_start=now - timedelta(days=3)) == 0, (
+        "COALESCE must survive an empty table, not raise on Postgres's NULL-for-SUM-over-zero-rows"
+    )
 
 
-async def test_expired_total_sums_across_every_ingest_runs_row(db_session: AsyncSession) -> None:
+async def test_expired_total_sums_multiple_rows_inside_the_window(
+    db_session: AsyncSession,
+) -> None:
     from scripts.checks.capture_audit import expired_total
 
-    await _seed_ingest_run(db_session, expired_total=0)
-    await _seed_ingest_run(db_session, expired_total=2)
-    await _seed_ingest_run(db_session, expired_total=1)
+    now = datetime.now(UTC)
+    window_start = now - timedelta(days=3)
+    await _seed_ingest_run(db_session, expired_total=0, finished_at=now)
+    await _seed_ingest_run(db_session, expired_total=2, finished_at=now)
+    await _seed_ingest_run(db_session, expired_total=1, finished_at=now)
 
-    assert await expired_total(db_session) == 3, (
+    assert await expired_total(db_session, window_start=window_start) == 3, (
         "constitution I: a single non-zero cycle is a real loss and must not be shadowed by "
-        "every other run's own zero — the audit sums across the whole table, not the newest row"
+        "another run's own zero — the audit sums across every row closed inside the window"
     )
+
+
+async def test_expired_total_counts_a_run_that_finished_inside_the_window(
+    db_session: AsyncSession,
+) -> None:
+    """The behaviour change this task exists for: a *recent* expiry still fails the check, even
+    though production now permanently carries 56 historical ones (the aoe.ms 301 outage backlog,
+    PR #17) that must not. This test pins the half of that change that must keep failing."""
+    from scripts.checks.capture_audit import expired_total
+
+    now = datetime.now(UTC)
+    await _seed_ingest_run(
+        db_session,
+        expired_total=1,
+        started_at=now - timedelta(days=1),
+        finished_at=now - timedelta(hours=1),
+    )
+
+    total = await expired_total(db_session, window_start=now - timedelta(days=3))
+
+    assert total == 1, "an expiry inside the trailing window must still fail the audit"
+
+
+async def test_expired_total_ignores_a_run_that_finished_outside_the_window(
+    db_session: AsyncSession,
+) -> None:
+    """The other half of the behaviour change, and the one that would silently regress if someone
+    "simplified" the query back to a lifetime sum: an old, already-investigated expiry (constitution
+    I's durable half of this now lives in alert_audit.py — see that module's own docstring) must age
+    out of this windowed check rather than being carried forever."""
+    from scripts.checks.capture_audit import expired_total
+
+    now = datetime.now(UTC)
+    await _seed_ingest_run(
+        db_session,
+        expired_total=56,
+        started_at=now - timedelta(days=10),
+        finished_at=now - timedelta(days=8),
+    )
+
+    total = await expired_total(db_session, window_start=now - timedelta(days=3))
+
+    assert total == 0, (
+        "an expiry that finished outside the trailing window must not fail the audit — it is "
+        "alert_audit.py's job, not this one, to keep an old unacknowledged loss visible"
+    )
+
+
+async def test_expired_total_boundary_includes_a_run_finished_exactly_at_window_start(
+    db_session: AsyncSession,
+) -> None:
+    """Pins the comparison operator (`>=`) rather than leaving it assumed: a run whose `finished_at`
+    lands exactly on `window_start` counts, matching `capture_lag_p95_seconds`'s own inclusive lower
+    bound."""
+    from scripts.checks.capture_audit import expired_total
+
+    window_start = datetime.now(UTC) - timedelta(days=3)
+    await _seed_ingest_run(
+        db_session,
+        expired_total=1,
+        started_at=window_start - timedelta(hours=1),
+        finished_at=window_start,
+    )
+
+    total = await expired_total(db_session, window_start=window_start)
+
+    assert total == 1, (
+        "a run finished exactly at window_start is inside the window (>=), not outside it"
+    )
+
+
+async def test_expired_total_excludes_a_run_still_open(db_session: AsyncSession) -> None:
+    """`finished_at IS NULL` never matches `>= window_start`: an open run's `expired_total` is not
+    yet final (`_close_ingest_run` writes it once, at close) and must not be summed."""
+    from scripts.checks.capture_audit import expired_total
+
+    now = datetime.now(UTC)
+    await _seed_ingest_run(
+        db_session, expired_total=1, started_at=now - timedelta(hours=1), finished_at=None
+    )
+
+    total = await expired_total(db_session, window_start=now - timedelta(days=3))
+
+    assert total == 0
 
 
 # --- captures pending past their own capture_deadline_at ------------------------------------------

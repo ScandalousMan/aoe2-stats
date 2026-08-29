@@ -20,6 +20,19 @@ acknowledged; `capture_audit.py`'s deadline check catches the underlying breach 
 ingester never ran at all to raise the alert in the first place — the reason T059a's alert exists is
 also the reason this audit exists to make sure it was seen. Neither subsumes the other.
 
+**This script is now the durable half of constitution I's zero-loss guarantee.** `capture_audit.py`
+windowed its own `expired_total` assertion (2026-08-29, after 56 historical, already-investigated
+expirations from the `aoe.ms` 301 outage made a lifetime sum permanently non-zero and therefore
+useless as an alarm — see that module's own docstring for the incident): it now only answers "is
+anything being lost *right now*", over a trailing few days, and recovers on its own once a loss ages
+out of that window. That is a genuine weakening on its own, and this script is the mitigation, not
+an afterthought to it: `EXPIRED_CAPTURE` (T056) is severity 1, this script fails on *any*
+unacknowledged severity-1 row with no window at all, and constitution I permits acknowledging "only
+after investigating, never before" — so an expiry stays visible here, and this check stays red,
+until a human has actually looked at it, however long ago it happened. `capture_audit.py` answers
+"is anything being lost right now"; this script answers "has every loss been **investigated**", and
+only a human acting on it, never the passage of time, clears that.
+
 Uses `aoe2stats_core.alerting.find_unacknowledged_severity_one_alerts` — the exact same read the
 ingester's own producers (T052/T055/T056/T059a/T100) would use if any of them ever needed to check
 their own work — rather than a second, independently written query, so "unacknowledged severity-1"
