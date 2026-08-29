@@ -78,6 +78,32 @@ every write, `packages/core`'s `aoe2stats_core.privacy.erasure.pseudonymise_prof
 only the pure pseudonymisation plan (that module's own docstring), the same split `export.py`
 draws. `erase_account`'s own docstring carries what is deleted, what is cleared with its row kept,
 and what is pseudonymised in place.
+
+**`POST /api/privacy/object` (T092).** `contracts/http-api.md`: "the one unauthenticated write in
+the system" — the person objecting is by definition not a user, so there is no session cookie to
+require and none is asked for. Two properties follow, both asserted by `apps/api/tests/
+test_third_party_objection.py` (T088): reachable with no session at all, and rate limited, because
+the absence of a session is exactly what makes an unthrottled version of this route a
+denial-of-service vector against the data (nothing about *who* is calling stops a scripted flood
+the way a per-user bucket would for every other write in this API). `_check_objection_rate_limit`
+below therefore counts recent rows in `data_requests` itself rather than keying a limit to a
+caller this route has no identity for — the fixed-window counter `ratelimit.py`'s
+`check_and_increment` gives every other route does not fit here at all: `rate_limit_counters.
+user_id` is a `NOT NULL` foreign key into `users`, and this route's caller is, by construction,
+never a row in that table.
+
+**Records rather than acts** — `data-model.md`'s `data_requests` section and the contract both say
+it: this call writes one row, `kind = third_party_objection`, `subject_profile_id` set to the
+profile named, `subject_user_id` null (the objector is not a user, `requested_at` set,
+`completed_at` null), and pseudonymises nothing itself. FR-039's "MUST pseudonymise their
+identifiers on request" is carried out later, by a person, through `resolve_third_party_objection`
+below — the deferred second caller data-model.md already named for `_pseudonymise_profile_id`
+("the same mechanism FR-039 gives third parties"), T091's `POST /api/privacy/erase` being the
+first. `resolve_third_party_objection` is deliberately not wired to any route: an endpoint that
+pseudonymised a named profile on an unauthenticated call would be the identical denial-of-service
+vector the rate limit above exists to close, only worse, since it would act rather than merely
+record. `docs/privacy/processing-register.md`'s handling-procedure section names who runs it and
+within what delay.
 """
 
 from __future__ import annotations
@@ -88,7 +114,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
@@ -96,6 +122,7 @@ from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_core.privacy.erasure import pseudonymise_profile
 from aoe2stats_core.privacy.export import ExportBundle, build_export_archive
+from aoe2stats_ingester import discover
 from aoe2stats_storage.models import (
     AoeProfile,
     CaptureStatus,
@@ -625,3 +652,123 @@ async def erase_account(
     await db_session.execute(delete(User).where(User.id == user_id))
 
     return {"status": "erased"}
+
+
+# --- POST /api/privacy/object, and the deferred resolution it hands to a human (T092) -----------
+
+
+class ThirdPartyObjectionRequest(BaseModel):
+    profile_id: int
+
+
+#: This route's own rate limit, counted against `data_requests` itself rather than through
+#: `ratelimit.py`'s `check_and_increment` (module docstring): there is no caller identity here to
+#: key a per-user bucket on, so the limit this route carries bounds the route as a whole, in the
+#: one window below, rather than any one caller. Sized the same order of magnitude as the sibling
+#: per-user buckets (`PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE=20`, `.env.example`) — a literal here,
+#: not a `Settings` field, for the same reason `_ERASURE_CONFIRMATION_TTL` above is one: it tunes
+#: this module's own internal behaviour rather than something an operator needs to change per
+#: deployment.
+_OBJECTION_RATE_LIMIT = 20
+_OBJECTION_RATE_LIMIT_WINDOW = timedelta(minutes=1)
+
+
+def _objection_rate_limited() -> APIError:
+    return APIError(
+        status_code=429,
+        code="rate_limited",
+        message="Too many objections. Try again shortly.",
+        detail={"retry_after": int(_OBJECTION_RATE_LIMIT_WINDOW.total_seconds())},
+    )
+
+
+async def _check_objection_rate_limit(db_session: AsyncSession, *, now: datetime) -> None:
+    """Raises `_objection_rate_limited()` once this route has already recorded
+    `_OBJECTION_RATE_LIMIT` objections within `_OBJECTION_RATE_LIMIT_WINDOW` of `now` — a plain
+    `COUNT` over `data_requests`, which is itself the durable, database-backed state this needs
+    (constitution XII: no shared process between two invocations on this platform, so nothing
+    module-scoped would count anything in production). Reading before writing, exactly like
+    `check_and_increment`'s own contract, so a caller past the limit never gets a row recorded for
+    a request this route is refusing anyway."""
+    window_start = now - _OBJECTION_RATE_LIMIT_WINDOW
+    recent = await db_session.execute(
+        select(func.count())
+        .select_from(DataRequest)
+        .where(
+            DataRequest.kind == DataRequestKind.THIRD_PARTY_OBJECTION,
+            DataRequest.requested_at >= window_start,
+        )
+    )
+    if recent.scalar_one() >= _OBJECTION_RATE_LIMIT:
+        raise _objection_rate_limited()
+
+
+@router.post("/privacy/object", status_code=202)
+async def object_to_processing(
+    body: ThirdPartyObjectionRequest, db_session: SessionDep
+) -> dict[str, Any]:
+    """FR-039: a non-user appearing in an archived match objects. Unauthenticated by design
+    (module docstring) — no session is read or required. Records one `data_requests` row for a
+    human to resolve later (`resolve_third_party_objection` below) and pseudonymises nothing
+    itself: an endpoint that pseudonymised `body.profile_id` on this call would let anyone
+    silently rewrite `match_players` for any profile they name, which is the exact
+    denial-of-service surface `apps/api/tests/test_third_party_objection.py` (T088) asserts this
+    route does not open.
+
+    `data_requests.subject_profile_id` carries a foreign key into `aoe_profiles`
+    (`packages/storage/.../models.py`), so `discover.touch_aoe_profile` — the identical idempotent
+    upsert `apps/ingester`'s own discovery already runs the first time any match participant is
+    seen — runs here first: in the ordinary case the objecting profile already has a row, from
+    appearing in the match this objection is about, and this is a no-op beyond its own
+    `last_seen_at` touch; for a `profile_id` this service has never itself observed, it creates
+    the same placeholder row first contact would have, rather than this route rejecting or
+    silently dropping an objection over a fact ingestion has simply not reached yet.
+    """
+    now = datetime.now(UTC)
+    await _check_objection_rate_limit(db_session, now=now)
+
+    await discover.touch_aoe_profile(db_session, body.profile_id)
+
+    data_request = DataRequest(
+        kind=DataRequestKind.THIRD_PARTY_OBJECTION,
+        subject_profile_id=body.profile_id,
+    )
+    db_session.add(data_request)
+    await db_session.flush()
+
+    return {"id": str(data_request.id), "status": "recorded"}
+
+
+async def resolve_third_party_objection(
+    db_session: AsyncSession, data_request_id: uuid.UUID
+) -> DataRequest:
+    """FR-039's second half, carried out — the instrument `POST /api/privacy/object` above
+    deliberately defers to a person rather than exercising itself (module docstring). Not a
+    route: reachable only by calling this function directly, against a session of the caller's
+    own (an admin shell, a one-off operational script) — never through any unauthenticated path,
+    which is the exact denial-of-service vector `_check_objection_rate_limit` above and T088's
+    test both exist to keep this route from being. `docs/privacy/processing-register.md`'s
+    handling-procedure section names who runs it and within what delay.
+
+    Pseudonymises the objection's own `subject_profile_id` through `_pseudonymise_profile_id` —
+    the identical instrument `POST /api/privacy/erase` (T091) already calls over a departing
+    user's own linked profiles (`data-model.md`: "the same mechanism FR-039 gives third
+    parties") — then marks this row resolved, which is this procedure's own trace.
+
+    Raises `ValueError` for a `data_request_id` that does not name an unresolved third-party
+    objection with a profile to act on: an operator's mistake here should fail loudly rather than
+    silently no-op or resolve the wrong row.
+    """
+    data_request = await db_session.get(DataRequest, data_request_id)
+    if data_request is None or data_request.kind is not DataRequestKind.THIRD_PARTY_OBJECTION:
+        raise ValueError(f"No third-party objection request found for id {data_request_id}.")
+    if data_request.subject_profile_id is None:
+        raise ValueError(f"Data request {data_request_id} names no profile to pseudonymise.")
+    if data_request.completed_at is not None:
+        raise ValueError(f"Data request {data_request_id} was already resolved.")
+
+    await _pseudonymise_profile_id(db_session, data_request.subject_profile_id)
+
+    data_request.completed_at = datetime.now(UTC)
+    data_request.outcome = f"pseudonymised profile {data_request.subject_profile_id}"
+    return data_request

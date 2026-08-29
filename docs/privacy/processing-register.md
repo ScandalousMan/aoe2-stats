@@ -151,6 +151,52 @@ The disclosure itself — that any signed-in caller, not only a participant, now
 chat and actions at all — is a real and separate widening, and it is weighed on its own terms in
 activity 4's 2026-08-29 amendment, not smuggled into this log's absence.
 
+## Handling procedure for activity 6's third-party objection (FR-039)
+
+Activity 6 above is a legal obligation (Art. 6-1-c), not legitimate interest, so it carries no
+balancing test — this section is the launch-item commitment the "Open items" list below names,
+written once implementation existed to describe rather than promised in advance of it.
+
+**Where an objection lands.** `POST /api/privacy/object`
+(`apps/api/src/aoe2stats_api/routers/privacy.py`, T092) is the one unauthenticated write in this
+system — the person objecting is, by definition, not a user and carries no session. The call
+records one `data_requests` row (`kind = third_party_objection`, `subject_profile_id` set to the
+profile named, `subject_user_id` null, `requested_at` set, `completed_at` null) and acts on
+nothing else. It is rate limited — counted against `data_requests` itself, in a single window
+shared by every caller, rather than per caller, since there is no caller identity here to key a
+limit to the way every other write in this API can (`privacy.py`'s own module docstring) — closing
+the denial-of-service surface an unthrottled anonymous write would otherwise open.
+
+**Who resolves it, and within what delay.** The controller (the project owner, named at the top
+of this file) — there is no second role or admin console to name at this stage of the project, and
+inventing one here would describe a process that does not exist. Resolution is due within 30 days
+of `requested_at`, the same period GDPR Article 12(3) gives a controller to act on a data-subject
+rights request generally: this row is the one deferred request in the feature (export and erasure
+both act synchronously, inside their own `POST`), so it is the one that needs a delay stated at
+all.
+
+**The mechanism, named rather than left implied.** `resolve_third_party_objection`
+(`apps/api/src/aoe2stats_api/routers/privacy.py`) is the instrument: a plain function, not a
+route, that the controller calls directly — from a one-off script or a database shell against the
+production database, naming the unresolved `data_requests.id` — never through any unauthenticated
+path, which is the exact vector the rate limit above exists to close. It looks the row up,
+pseudonymises `subject_profile_id` through `_pseudonymise_profile_id`, the identical mechanism
+`POST /api/privacy/erase` (T091) already calls over a departing user's own linked profiles
+(`specs/001-steam-link-replay-ingestion/data-model.md`'s own phrase: "the same mechanism FR-039
+gives third parties"), and then sets `completed_at` and `outcome` on the same row — the row is
+this procedure's own trace, readable afterwards without needing to trust that anything happened.
+Recording an objection is not pseudonymising one; this is the sentence that used to be missing,
+naming the actor, the delay and the instrument together rather than leaving a human the first two
+with no way to carry out the third.
+
+**What this procedure does not yet cover.** No route or script surfaces the _list_ of unresolved
+`data_requests` rows of this kind to the controller — today that means a direct query against
+`data_requests WHERE kind = 'third_party_objection' AND completed_at IS NULL`. A dashboard for
+this is a legitimate future improvement, not a gap in the obligation itself: the row exists, the
+instrument to resolve it exists, and the delay is stated, which is what this launch item asked
+for. Publishing a form a non-user can actually reach — the front end this JSON endpoint is not by
+itself, per the "Open items" list below — is T095's, not this procedure's.
+
 ## Balancing test for activity 7
 
 - **Interest pursued**: letting a user find a player by name without already knowing a numeric
@@ -258,10 +304,16 @@ to be promised here and built nowhere. `scripts/checks/spec_lint.py` enforces th
 - [ ] Publish the privacy policy page and link it from the footer — T093, T095, T098a.
 - [ ] Publish the third-party objection form and document its handling procedure — T092 writes the
       procedure and the endpoint, T094 specifies the form, T095 builds it on a route outside the
-      session. The endpoint alone would not be a way for a non-user to object. The procedure T092
-      writes must name the _instrument_ as well as the actor and the delay: recording an objection
-      is not pseudonymising one, and no task in feature 001 currently gives whoever resolves it a
-      way to carry the act out.
+      session. The endpoint alone would not be a way for a non-user to object. **T092 done**: the
+      endpoint (`POST /api/privacy/object`) and the handling procedure above (who resolves it,
+      within what delay, and the `resolve_third_party_objection` instrument that carries out the
+      pseudonymisation) both exist now. This item stays open for T094 and T095: an unauthenticated
+      JSON endpoint is not, by itself, a way for the person it exists for — who has no reason to
+      know it exists — to object.
+- [ ] Publish a dashboard over unresolved third-party objections — out of scope for any task in
+      feature 001; today's procedure above names the direct `data_requests` query in its place. A
+      legitimate future improvement, not a gap in the obligation itself: the row, the delay and
+      the resolving instrument all already exist.
 - [ ] Record controller identity and contact details above — out of scope for any task: an act of
       the controller, not of the code. Blocks public launch, not implementation.
 - [ ] Define and document the breach-notification procedure — out of scope: nothing in feature 001

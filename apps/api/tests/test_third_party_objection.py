@@ -18,12 +18,11 @@ third the same paragraph states directly:
   unauthenticated call would let anyone silently rewrite `match_players` for any profile they name,
   which is the exact denial-of-service surface the "records rather than acts" design closes.
 
-None of this route's implementation (`apps/api/src/aoe2stats_api/routers/privacy.py`, T092) exists
-yet, so every test below is `xfail(strict=True)`: the assertions run for real against the app this
-suite already builds (`client`, `apps/api/tests/conftest.py`), and today's honest failure is a 404
-for a route FastAPI has never heard of — not an import error, since nothing here imports anything
-T092 has not written. The marker comes off the moment T092 makes these pass, which is what turns a
-regression back into a red test instead of a silently stale one (T025a's convention, `CLAUDE.md`).
+T092 implements the route in `apps/api/src/aoe2stats_api/routers/privacy.py`; every assertion below
+runs for real against the app this suite already builds (`client`, `apps/api/tests/conftest.py`).
+These tests carried `xfail(strict=True, reason="T092 not implemented yet")` until T092 made them
+pass — the marker's removal is what turns a regression back into a red test instead of a silently
+stale one (T025a's convention, `CLAUDE.md`).
 
 **Request body.** Nothing in `contracts/http-api.md` or `data-model.md` fixes its shape, only that
 the row it produces carries a `subject_profile_id` (`data_requests`). `{"profile_id": ...}` is the
@@ -104,7 +103,6 @@ async def _seed_third_party_match(
     return game_id
 
 
-@pytest.mark.xfail(strict=True, reason="T092 not implemented yet")
 def test_object_endpoint_is_reachable_without_a_session(client: TestClient) -> None:
     """The person objecting is by definition not a user (module docstring): a bare `client`, with
     no `session_id` cookie set anywhere in this test, must be able to reach the route at all.
@@ -117,7 +115,6 @@ def test_object_endpoint_is_reachable_without_a_session(client: TestClient) -> N
     assert response.status_code != 401
 
 
-@pytest.mark.xfail(strict=True, reason="T092 not implemented yet")
 def test_object_endpoint_is_rate_limited(client: TestClient) -> None:
     """No session means no per-user identity to scope a limit to, which is exactly why the
     contract calls this route out as needing one anyway: an unthrottled anonymous write would be a
@@ -133,7 +130,6 @@ def test_object_endpoint_is_rate_limited(client: TestClient) -> None:
     assert 429 in statuses
 
 
-@pytest.mark.xfail(strict=True, reason="T092 not implemented yet")
 async def test_object_records_a_data_request_without_pseudonymising_immediately(
     client: TestClient, db_session: AsyncSession
 ) -> None:
