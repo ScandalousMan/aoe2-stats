@@ -13,29 +13,72 @@ now carries a `signed_get_url` that deterministically encodes `key` and `expires
 returned string (T066): the redirect target can only carry that shape if the router asked the
 object store to sign it, never if it built a bucket URL by hand. A raw `{endpoint}/{bucket}/{key}`
 would not match `_FAKE_SIGNED_PREFIX` and would fail every assertion below.
+
+---
+
+**T335 (003) below**: `GET /api/matches/{game_id}/replay/{profile_id}` — `contracts/http-api.md`'s
+"Recorded games, per point of view" table, quickstart.md scenario 6, and the per-participant
+`replay` object `GET /api/matches/{game_id}` gains alongside it. This is a *different* route from
+001's `GET /api/replays/{game_id}/download` above: 001's route is the caller's own dashboard
+download by `game_id` alone; this one is reachable for *any* participant's point of view of *any*
+match, `profile_id` named explicitly, which is the whole of US3 (FR-023).
+
+Two implementing tasks split this file's markers. `routers/replays.py` (already registered by
+`app.py`) gains the new route at **T337**; `routers/matches.py`'s existing `GET /api/matches/
+{game_id}` gains the per-participant `replay` object at **T338**, wiring `download_path` and
+`obtainable_until` onto the response `test_match_detail.py` already exercises. Both tasks touch
+code that exists today — `replays.py` and `matches.py` are real modules with real routes already —
+so every test below calls through `client` exactly like the tests above it; nothing is imported
+from either module at module scope or inside a test body, because there is nothing missing to
+import, only a route and a response field not yet present. `xfail(strict=True, reason="T338 not
+implemented yet")` marks the one test about the match-detail `replay` object; every other test
+below carries `reason="T337 not implemented yet"` — see each test's own marker.
+
+`obtainable_until` is asserted `null` throughout, never a date: FR-024 was amended 2026-08-29 —
+the source's retention window is contradicted and unresolved (`research.md` R8) — so no promise
+about a future date may be derived from a window that may not be the real one. That amendment is
+independent of T337/T338 and is asserted here because SC-004 is explicitly not claimable while it
+stands (R8's own words), which this file's assertions must not contradict by asserting a date.
+
+`_T335_AOEMS_HOST`, `_FakeAoemsUpstream` and `_install_fake_aoems_upstream` mirror
+`test_third_party_history.py`'s own `_RELIC_HOST`/`_FakeRelicMatchHistoryUpstream` seam — the
+provider a router builds privately (`AoemsReplayProvider`, `packages/providers/src/
+aoe2stats_providers/aoems/provider.py`) has no `Depends()` this file could override, so the one
+seam through which a real, unmodified download call can be driven end to end is `httpx.AsyncClient.
+send`, intercepted by host.
 """
 
 from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aoe2stats_api import security
+from aoe2stats_api import ratelimit, security
+from aoe2stats_api.deps import get_object_store
+from aoe2stats_api.routers import replays as replays_router
 from aoe2stats_api.settings import get_settings
+from aoe2stats_providers.base import ProviderContractViolation, RetryPolicy, TokenBucket
 from aoe2stats_storage.models import (
+    Alert,
+    AlertKind,
     AoeProfile,
     CaptureSource,
     CaptureStatus,
     Match,
+    MatchPlayer,
     ProfileLink,
     ReplayAccessLog,
     ReplayCapture,
+    ReplayFetchMiss,
+    RetainedRecording,
     SteamIdentity,
     User,
 )
@@ -247,3 +290,1343 @@ async def test_replay_download_refuses_a_caller_who_did_not_play_the_match(
         "only the owner's successful download may be logged; a refusal is not an access"
     )
     assert log_rows[0].user_id == owner.id
+
+
+# ================================================================================================
+# T335 (003) — `GET /api/matches/{game_id}/replay/{profile_id}` and the match-detail `replay`
+# object
+# ================================================================================================
+
+#: The one host `AoemsReplayProvider` ever calls (`packages/providers/src/aoe2stats_providers/
+#: aoems/provider.py`'s own `AOEMS_BASE_URL`) — the interception seam below is keyed on it exactly
+#: as `test_third_party_history.py`'s `_RELIC_HOST` keys its own.
+_T335_AOEMS_HOST = "aoe.ms"
+
+_T335_OWNER_PROFILE_ID = 850_200_001
+_T335_PARTICIPANT_A_PROFILE_ID = 850_200_002
+_T335_PARTICIPANT_B_PROFILE_ID = 850_200_003
+
+_T335_MATCH_DETAIL_GAME_ID = 850_100_001
+_T335_ARCHIVED_GAME_ID = 850_100_002
+_T335_OBTAINABLE_GAME_ID = 850_100_003
+_T335_EXPIRED_GAME_ID = 850_100_004
+_T335_BOUNDARY_RACE_GAME_ID = 850_100_005
+_T335_RATE_LIMIT_GAME_ID = 850_100_006
+_T335_SOURCE_REFUSAL_GAME_ID_BASE = 850_100_100
+#: Finding A remediation (rate limit rolled back on every refused path) — a clean refusal (no
+#: outbound call) and the boundary-race refusal (a real outbound call) each get their own game,
+#: so exhausting the limit on one never interferes with the other.
+_T335_RATE_LIMIT_REFUSED_GAME_ID = 850_100_007
+_T335_RATE_LIMIT_BOUNDARY_RACE_GAME_ID = 850_100_008
+#: Finding B remediation (no participation check) — a match that exists, with a `profile_id` that
+#: never played in it: one already known to `aoe_profiles` and one that is not known at all.
+_T335_NON_PARTICIPANT_GAME_ID = 850_100_009
+_T335_UNKNOWN_PROFILE_GAME_ID = 850_100_010
+
+#: Finding B: a profile registered in `aoe_profiles` (the common case — every opponent ever
+#: ingested lives there) but never a `match_players` row for the games above.
+_T335_NON_PARTICIPANT_PROFILE_ID = 850_200_004
+#: Finding B: a profile absent from `aoe_profiles` entirely — the FK-violation case.
+_T335_UNKNOWN_PROFILE_ID = 850_200_005
+
+#: The 2026-08-29 remediation below: a browser navigation that fails must answer a `303` back to
+#: the match page, never the raw JSON body an API caller still gets — its own games, so exhausting
+#: a rate-limit window or racing the boundary in one of these tests never interferes with another.
+_T335_BROWSER_EXPIRED_GAME_ID = 850_100_011
+_T335_BROWSER_RATE_LIMIT_GAME_ID = 850_100_012
+_T335_BROWSER_BOUNDARY_RACE_GAME_ID = 850_100_013
+
+#: L13 remediation: `_is_browser_navigation`'s `Accept: text/html` fallback (no `Sec-Fetch-Mode`
+#: header at all) and the negative case that matters most — a same-origin `fetch` sends `Sec-Fetch-
+#: Mode: cors`, never `navigate`, and must get JSON, not a redirect.
+_T335_ACCEPT_HTML_FALLBACK_GAME_ID = 850_100_014
+_T335_CORS_FETCH_GAME_ID = 850_100_015
+
+#: FR-024, amended 2026-08-29 (`research.md` R8): a match old enough to be `expired` under either
+#: the ~31-day rolling reading or the contradicted six-month epoch reading — the derivation stays
+#: conservative under either, so a match this old renders `expired` whichever the open question
+#: eventually settles.
+_T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
+
+#: Comfortably inside every credible reading of the retention window.
+_T335_DEFINITELY_OBTAINABLE_AGE = timedelta(days=2)
+
+#: B3 remediation (third-round review): a source 5xx or timeout, both API-caller and browser-
+#: navigation shapes, plus the M12 oracle test's `unavailable` extension below — each gets its own
+#: game so exhausting a rate-limit window or retrying in one never interferes with another.
+_T335_SOURCE_UNAVAILABLE_GAME_ID = 850_100_016
+_T335_SOURCE_TIMEOUT_GAME_ID = 850_100_017
+_T335_BROWSER_SOURCE_UNAVAILABLE_GAME_ID = 850_100_018
+
+#: Fourth-round review remediation — each finding gets its own game so none of these interferes
+#: with a rate-limit window or a fetch-miss row another test in this file already wrote.
+#: M1: a real, wire-shaped UTF-8 filename the route must stream rather than 500 on.
+_T335_NON_LATIN1_FILENAME_GAME_ID = 850_100_019
+#: M2: `ProviderContractViolation`, the one `ProviderError` subclass not reachable from
+#: `AoemsReplayProvider` today — reached here only via a `_build_replay_provider` double, since
+#: nothing in the real provider raises it (the finding's own words: "not a live defect").
+_T335_PROVIDER_CONTRACT_VIOLATION_GAME_ID = 850_100_020
+#: L3: the source's own `Retry-After`, forwarded — and its contrast case, no header at all.
+_T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID = 850_100_021
+
+#: Fast enough that a 503-exhausts-retries or timeout test does not spend real seconds asleep in
+#: `AsyncBaseProvider`'s exponential backoff — mirrors `packages/providers/tests/test_aoems.py`'s
+#: own `FAST_RETRY` byte for byte, monkeypatched onto `replays.py`'s module-level
+#: `_AOEMS_RETRY_POLICY` rather than passed as a constructor argument, since this router builds its
+#: provider privately per request (`_build_replay_provider`) rather than accepting one as a
+#: `Depends()` this file could override.
+_FAST_RETRY = RetryPolicy(
+    max_attempts=3, base_delay_seconds=0.001, max_delay_seconds=0.002, jitter_seconds=0.0
+)
+
+#: The identical reasoning, applied to the module-level `_AOEMS_RATE_LIMITER`: three attempts
+#: against the real `AOEMS_MAX_REQUESTS_PER_SECOND=1` token bucket every other test in this file
+#: shares would otherwise serialise this test behind roughly two real seconds of waiting, for no
+#: assertion this test makes about pacing.
+_FAST_RATE_LIMITER = TokenBucket(1000.0)
+
+
+async def _seed_bare_user(db_session: AsyncSession) -> User:
+    """A signed-in user with no linked profile at all. Downloading a third party's `obtainable`
+    point of view needs no ownership of anything — US3's own independent test opens "a recent
+    third-party match" as any signed-in user, never only a participant."""
+    user = User(allowlisted_at=datetime.now(UTC))
+    db_session.add(user)
+    await db_session.flush()
+    await db_session.commit()
+    return user
+
+
+async def _seed_participant_profile(
+    db_session: AsyncSession, *, profile_id: int, alias: str
+) -> None:
+    db_session.add(AoeProfile(profile_id=profile_id, alias=alias, country="FR"))
+
+
+async def _seed_open_match(
+    db_session: AsyncSession, *, game_id: int, completed_at: datetime
+) -> None:
+    """A bare `matches` row with no capture and no participant — callers add
+    `_seed_participant_profile`/`MatchPlayer` rows on top as each test needs them."""
+    db_session.add(
+        Match(
+            game_id=game_id,
+            leaderboard_id=3,
+            completed_at=completed_at,
+            source="relic",
+            raw_payload={},
+        )
+    )
+
+
+async def _seed_match_player(db_session: AsyncSession, *, game_id: int, profile_id: int) -> None:
+    """A bare `match_players` row for `(game_id, profile_id)` — Finding B remediation: the T337
+    route now requires this row before it will derive any availability state at all, so every test
+    below that exercises a real participant's point of view seeds it explicitly (`profile_id`
+    itself must already exist in `aoe_profiles`, the FK `match_players.profile_id` carries)."""
+    db_session.add(MatchPlayer(game_id=game_id, profile_id=profile_id))
+
+
+class _FakeAoemsUpstream:
+    """Answers every `GET https://aoe.ms/replay/?gameId=&profileId=` call with a fixed
+    `httpx.Response`, counting how many times it was actually called — mirrors
+    `test_third_party_history.py`'s own `_FakeRelicMatchHistoryUpstream`, the identical seam for a
+    router that builds its provider privately rather than through a FastAPI `Depends()` this file
+    could override.
+
+    `raises`, when given instead of `response` (B3 remediation, third-round review), is raised on
+    every call rather than returned — the shape a transport-level timeout takes, which is not a
+    response at all and so cannot be simulated by any `httpx.Response` this fake could hand back."""
+
+    def __init__(
+        self, response: httpx.Response | None = None, *, raises: Exception | None = None
+    ) -> None:
+        if (response is None) == (raises is None):
+            raise ValueError("give exactly one of response or raises")
+        self._response = response
+        self._raises = raises
+        self.request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        if self._raises is not None:
+            raise self._raises
+        assert self._response is not None
+        return self._response
+
+
+def _install_fake_aoems_upstream(monkeypatch: pytest.MonkeyPatch, fake: _FakeAoemsUpstream) -> None:
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != _T335_AOEMS_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+
+class _TrackingObjectStore:
+    """A `get_object_store` override that records every `put`, unlike `conftest.py`'s shared
+    `_FakeObjectStore` (T066), which implements only `list_keys` and `signed_get_url`. FR-027's
+    "stores nothing" needs the write path observed, not merely absent by omission — a fake with no
+    `put` at all would make a router that mistakenly calls it fail with a bare `AttributeError`
+    instead of a assertion this file can name.
+    """
+
+    def __init__(self) -> None:
+        self.put_calls: list[str] = []
+
+    async def list_keys(self, prefix: str = "") -> list[str]:
+        return list(self.put_calls)
+
+    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
+        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+
+    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+        self.put_calls.append(key)
+
+    async def get(self, key: str) -> bytes:
+        raise AssertionError(f"unexpected object-store read of {key!r} during a plain download")
+
+    async def delete(self, key: str) -> None:
+        raise AssertionError(f"unexpected object-store delete of {key!r} during a plain download")
+
+
+def _freeze_rate_limit_clock(monkeypatch: pytest.MonkeyPatch, *, moment: datetime) -> None:
+    """Pins the clock `ratelimit.check_and_increment` reads to a single, fixed `moment` for the
+    rest of a test — mirrors `test_players_routes.py`'s own `_freeze_rate_limiter_clock` byte for
+    byte (its own docstring explains why a real-time loop can otherwise race an epoch-aligned
+    window boundary)."""
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return moment if tz is None else moment.astimezone(tz)
+
+    monkeypatch.setattr(ratelimit, "datetime", _FrozenDateTime)
+
+
+async def test_match_detail_replay_object_offers_one_download_per_participant_point_of_view(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-023, quickstart scenario 6.1: `GET /api/matches/{game_id}` carries a per-participant
+    `replay` object (`contracts/http-api.md`'s "Recorded games, per point of view" table) — one
+    entry per participant, never more, never fewer. The caller's own archived point of view reads
+    `archived`; a co-participant with no archive, in the same match still inside the retention
+    window, reads `obtainable`. `obtainable_until` is `null` for every entry regardless of state —
+    FR-024's 2026-08-29 amendment (module docstring): no date may be derived while the source's
+    retention window is contradicted and unresolved (`research.md` R8).
+    """
+    game_id = _T335_MATCH_DETAIL_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287950"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ParticipantA"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_B_PROFILE_ID, alias="ParticipantB"
+    )
+    await db_session.commit()
+
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+
+    for profile_id, team_id, result in (
+        (_T335_OWNER_PROFILE_ID, 1, "win"),
+        (_T335_PARTICIPANT_A_PROFILE_ID, 2, "loss"),
+        (_T335_PARTICIPANT_B_PROFILE_ID, 2, "loss"),
+    ):
+        db_session.add(
+            MatchPlayer(
+                game_id=game_id,
+                profile_id=profile_id,
+                team_id=team_id,
+                civ_id=1,
+                color_id=1,
+                result=result,
+                rating=1500,
+                rating_diff=10,
+            )
+        )
+    await db_session.commit()
+
+    await _sign_in(client, db_session, owner)
+    response = client.get(f"/api/matches/{game_id}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    participants = response.json()["participants"]
+    assert len(participants) == 3
+    replay_by_profile = {p["profile_id"]: p.get("replay") for p in participants}
+    assert set(replay_by_profile) == {
+        _T335_OWNER_PROFILE_ID,
+        _T335_PARTICIPANT_A_PROFILE_ID,
+        _T335_PARTICIPANT_B_PROFILE_ID,
+    }, "FR-023: one download offered per participant point of view, never more, never fewer"
+
+    for profile_id, replay in replay_by_profile.items():
+        assert replay is not None, f"missing `replay` object for participant {profile_id}"
+        assert replay["profile_id"] == profile_id
+        assert replay["obtainable_until"] is None, (
+            "FR-024, amended 2026-08-29: obtainable_until must be null while the retention "
+            "window is unresolved (research.md R8), for every state"
+        )
+
+    owner_replay = replay_by_profile[_T335_OWNER_PROFILE_ID]
+    assert owner_replay["availability"] == "archived"
+    assert (
+        owner_replay["download_path"] == f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}"
+    )
+
+    for profile_id in (_T335_PARTICIPANT_A_PROFILE_ID, _T335_PARTICIPANT_B_PROFILE_ID):
+        other_replay = replay_by_profile[profile_id]
+        assert other_replay["availability"] == "obtainable"
+        assert other_replay["download_path"] == f"/api/matches/{game_id}/replay/{profile_id}"
+
+
+async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-026, FR-029, quickstart scenario 6.4: the caller's own archived point of view is served
+    through this new, per-participant path exactly as 001's own `GET /api/replays/{game_id}/
+    download` above is — a 302 to a freshly signed, short-expiry URL, never a bare bucket URL —
+    and the access is logged. `replay_access_log` was widened by 003 to carry a nullable
+    `retained_recording_id` alongside `replay_capture_id` (data-model.md); this row must set the
+    first and leave the second null, since an archived download is never a read of a
+    `retained_recordings` row (R8, R9)."""
+    game_id = _T335_ARCHIVED_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287951"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    capture = await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+    )
+
+    assert response.status_code == 302, f"Got {response.status_code}: {response.text}"
+    key, expires_in = _decode_signed_url(response.headers["location"])
+    assert key == object_key
+    assert 1 <= expires_in <= _MAX_SIGNED_URL_EXPIRES_IN_SECONDS
+
+    log_result = await db_session.execute(
+        select(ReplayAccessLog).where(ReplayAccessLog.replay_capture_id == capture.id)
+    )
+    log_rows = log_result.scalars().all()
+    assert len(log_rows) == 1, "FR-029: every access to an archived point of view must be logged"
+    assert log_rows[0].user_id == owner.id
+    assert log_rows[0].retained_recording_id is None, (
+        "R9/FR-048: an archived download logs against replay_captures, never retained_recordings"
+    )
+
+
+async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-023, FR-027, SC-009, quickstart scenario 6.3: a point of view this service has not
+    archived is fetched from the source and streamed straight through to the caller. "Stores
+    nothing" is asserted, not assumed: zero new object-store writes (via `_TrackingObjectStore`,
+    substituted for `conftest.py`'s shared `_FakeObjectStore`, which cannot observe a `put` at
+    all) and zero new `retained_recordings` rows — downloading is not analysing, and constitution
+    IX permits retention only where a person deliberately asks for a match to be analysed
+    (FR-033), which a download request is not.
+    """
+    game_id = _T335_OBTAINABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="Obtainable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_bytes = b"FAKE-AOE2RECORD-ZIP-BYTES-FOR-T335"
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=fake_bytes,
+            headers={
+                "content-disposition": f"attachment; filename=AgeIIDE_Replay_{game_id}.zip",
+                "content-type": "application/zip",
+            },
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    tracking_store = _TrackingObjectStore()
+    # `client.app` is typed as a bare ASGI app by `starlette.testclient.TestClient` — the concrete
+    # `FastAPI` instance `conftest.py`'s own `client` fixture builds always carries
+    # `dependency_overrides`, which is why every other test in this suite family reaches for it
+    # the same way (`test_configuration_envelope.py`, `test_index_entrypoint.py`).
+    client.app.dependency_overrides[get_object_store] = lambda: tracking_store  # type: ignore[attr-defined]
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert response.content == fake_bytes
+
+    assert tracking_store.put_calls == [], (
+        "FR-027: downloading is not analysing — a recording obtained solely to serve a download "
+        "must store zero new bytes"
+    )
+
+    retained_count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(RetainedRecording)
+            .where(RetainedRecording.game_id == game_id)
+        )
+    ).scalar_one()
+    assert retained_count == 0, (
+        "FR-027/SC-009: zero new retained_recordings rows for a plain download"
+    )
+
+
+async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-025: a point of view whose match completed outside the retention window answers `404`
+    with a `code` that names the reason as `expired` — distinct from `never_recorded`, proven
+    alongside it below."""
+    game_id = _T335_EXPIRED_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ExpiredPointOfView"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "expired"
+
+
+async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_recorded(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-025's own edge case, quickstart scenario 6 and `contracts/http-api.md`'s "boundary
+    race" paragraph (`research.md` R8): a point of view offered as `obtainable` that answers 404
+    at the source when actually fetched is `expired_since_page_load` — never conflated with
+    `never_recorded`, which means the source never had it at all (R8's derivation table). The
+    call also *records* the outcome, so the identical request the next moment answers
+    `never_recorded` instead of repeating the same 404 as a fresh surprise: "That call also
+    records the outcome, so the page is right the next time" (contracts/http-api.md). This is
+    also this file's proof that `expired` (the window closed, tested above),
+    `expired_since_page_load` (it closed between page load and click) and `never_recorded` (the
+    source never had it) are three distinct codes, never any two of them conflated.
+    """
+    game_id = _T335_BOUNDARY_RACE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BoundaryRace"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    first = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert first.status_code == 404, f"Got {first.status_code}: {first.text}"
+    first_code = first.json()["error"]["code"]
+    assert first_code == "expired_since_page_load", (
+        "a recording offered as obtainable that 404s at fetch time must say so, distinctly from "
+        "never having been recorded at all"
+    )
+
+    second = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert second.status_code == 404, f"Got {second.status_code}: {second.text}"
+    second_code = second.json()["error"]["code"]
+    assert second_code == "never_recorded", (
+        "the first call's outcome must be recorded, so the identical request answers "
+        "never_recorded rather than expired_since_page_load a second time"
+    )
+    assert second_code != first_code
+    assert second_code != "expired", (
+        "never_recorded (the source never had it) and expired (the window closed) are FR-025's "
+        "two distinct unobtainable reasons and must never share a code"
+    )
+
+
+async def test_replay_download_rate_limit_applies_per_user(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-028's first half, R10: past `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`, the route
+    answers `rate_limited` with a `retry_after` — the identical envelope
+    `test_players_routes.py`'s own `test_search_rate_limits_per_user_and_answers_retry_after`
+    proves for the `search` bucket, now proven for the `replay_download` bucket
+    (data-model.md's `rate_limit_counters` section names both)."""
+    game_id = _T335_RATE_LIMIT_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287952"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID)
+    await db_session.commit()
+
+    #: `REPLAY_DOWNLOAD_MAX_PER_USER_PER_MINUTE`'s own window (R10: a fixed window, per bucket).
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+
+    for attempt in range(limit):
+        response = client.get(
+            f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+        )
+        assert response.status_code == 302, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+
+    limited = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+    )
+    assert limited.status_code == 429, (
+        f"the call past the configured limit of {limit} must be refused. Got "
+        f"{limited.status_code}: {limited.text}"
+    )
+    limited_body = limited.json()
+    assert limited_body["error"]["code"] == "rate_limited"
+    assert isinstance(limited_body["error"]["detail"].get("retry_after"), int)
+    assert limited_body["error"]["detail"]["retry_after"] > 0
+
+
+async def test_replay_download_rate_limit_applies_on_a_refused_path(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding A: the limit must be reached by a refusal too, not only by the `archived` success
+    path `test_replay_download_rate_limit_applies_per_user` above proves. An `expired` point of
+    view is the clean refusal case — it makes no outbound call at all — so a counter that only
+    survives on a success path (`check_and_increment`'s own docstring: it "does not commit"; every
+    refusal this route raises is an `APIError`, and `deps.py`'s `session_scope` rolls `db_session`'s
+    whole transaction back the moment one propagates) would let this loop repeat `expired` forever
+    and never reach `429`."""
+    game_id = _T335_RATE_LIMIT_REFUSED_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="RateLimitRefused"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+
+    for attempt in range(limit):
+        response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+        assert response.status_code == 404, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+        assert response.json()["error"]["code"] == "expired"
+
+    limited = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert limited.status_code == 429, (
+        f"the call past the configured limit of {limit} must be refused, even though every prior "
+        f"call was itself a refusal. Got {limited.status_code}: {limited.text}"
+    )
+    assert limited.json()["error"]["code"] == "rate_limited"
+
+
+async def test_boundary_race_path_still_consumes_the_rate_limit(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding A's deepest case: the boundary-race path makes a real outbound call to `aoe.ms`
+    before answering 404 (`contracts/http-api.md`'s boundary-race paragraph) — that outbound call
+    is exactly the "unmetered third-party traffic driven by user input" constitution I forbids if
+    its own counter is then rolled back. Only the first call in this loop actually reaches the
+    source (`_record_fetch_miss` makes every later call for the same pair answer `never_recorded`
+    from the recorded row instead); every call, including that first one, must still count toward
+    the limit."""
+    game_id = _T335_RATE_LIMIT_BOUNDARY_RACE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="RateLimitBoundaryRace"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+
+    for attempt in range(limit):
+        response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+        assert response.status_code == 404, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+
+    limited = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert limited.status_code == 429, (
+        f"the call past the configured limit of {limit} must be refused, even though the very "
+        f"first of those calls made a real outbound call to the source. Got "
+        f"{limited.status_code}: {limited.text}"
+    )
+    assert limited.json()["error"]["code"] == "rate_limited"
+    assert fake_upstream.request_count == 1, (
+        "only the first call actually reaches the source (later calls read the recorded fetch "
+        "miss instead) — the rate limit still applies to every one of them regardless"
+    )
+
+
+@pytest.mark.parametrize("source_status", [403, 429])
+async def test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    source_status: int,
+) -> None:
+    """FR-028's second half, 001 FR-021: a throttling or refusal signal from the source (a 429,
+    or an unexpected 403 — `AoemsReplayProvider`'s own module docstring: both are read the same
+    way every other provider reads them) stops the request rather than being retried through —
+    `AsyncBaseProvider._request` never retries either through its own backoff policy, only a 5xx
+    or a timeout reaches it — and raises the identical severity-2 `rate_limited` alert 001's own
+    ingester already raises for the same source (`AlertKind.RATE_LIMITED`; data-model.md's own
+    "Alert vocabulary" section adds only `analysis_cap_reached` here, so this route must reuse
+    the existing kind rather than invent a second one).
+    """
+    game_id = _T335_SOURCE_REFUSAL_GAME_ID_BASE + source_status
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceRefusal"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    alerts_before = (await db_session.execute(select(func.count()).select_from(Alert))).scalar_one()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(source_status, text="refused"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert fake_upstream.request_count == 1, (
+        f"a {source_status} from the source must stop the request rather than being retried "
+        "through (FR-028)"
+    )
+    assert response.status_code == 429, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "rate_limited"
+    assert response.json()["error"]["detail"] == {}, (
+        "L3 contrast case: a source refusal with no Retry-After header must not manufacture a "
+        f"retry_after. Got detail={response.json()['error']['detail']!r}"
+    )
+
+    alert_result = await db_session.execute(
+        select(Alert).where(Alert.kind == AlertKind.RATE_LIMITED).order_by(Alert.raised_at.desc())
+    )
+    alert_row = alert_result.scalars().first()
+    assert alert_row is not None, (
+        "FR-028/001 FR-021: a source throttling or refusal signal must raise a rate_limited alert"
+    )
+    assert alert_row.severity == 2
+
+    alerts_after = (await db_session.execute(select(func.count()).select_from(Alert))).scalar_one()
+    assert alerts_after == alerts_before + 1, "exactly one alert per refused request"
+
+
+# ================================================================================================
+# B3 (third-round review) — a source 5xx or timeout must answer `source_unavailable`, `502`, never
+# a bare `500`: before this fix, `AsyncBaseProvider._request`/`AoemsReplayProvider.fetch_replay`
+# raised `ProviderUnavailable` on exactly these two triggers, and this route's `try`/`except` above
+# caught `ProviderRateLimited` only — the uncaught exception fell to `app.py`'s generic
+# `@app.exception_handler(Exception)` and became a bare `500`, the raw-JSON stranding the `303`
+# remediation above exists to eliminate, on the third-party failure most likely to actually occur.
+# ================================================================================================
+
+
+async def test_source_5xx_answers_source_unavailable_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The API-caller half: a 503 exhausting the retry budget must answer the identical `APIError`
+    shape every other refusal on this route already does — `502`, `source_unavailable` — rather than
+    escaping this route's own `try`/`except` and becoming a bare `500` with no `code` at all. Also
+    proves the retry budget really is exhausted (not one attempt read as terminal) and that no
+    `replay_fetch_misses` row is written: a source failure is not evidence the recording never
+    existed, unlike the boundary-race 404 case above."""
+    game_id = _T335_SOURCE_UNAVAILABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceUnavailable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(503, text="service unavailable"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    misses_before = (
+        await db_session.execute(select(func.count()).select_from(ReplayFetchMiss))
+    ).scalar_one()
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+    assert fake_upstream.request_count == _FAST_RETRY.max_attempts, (
+        f"expected the retry budget ({_FAST_RETRY.max_attempts} attempts) to be exhausted, got "
+        f"{fake_upstream.request_count} calls"
+    )
+
+    misses_after = (
+        await db_session.execute(select(func.count()).select_from(ReplayFetchMiss))
+    ).scalar_one()
+    assert misses_after == misses_before, (
+        "a source failure is not evidence the recording never existed and must never be recorded "
+        "as a fetch miss"
+    )
+
+
+async def test_source_timeout_answers_source_unavailable(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other trigger for the identical `ProviderUnavailable`: `AsyncBaseProvider._request`'s
+    own `except httpx.TimeoutException` branch, exhausted the same way a 5xx is (`base.py`). This
+    route must read the two identically — `502`, `source_unavailable` — never distinguish a timeout
+    from a 5xx the way it already must not distinguish `expired` from `never_recorded`'s own
+    reasons."""
+    game_id = _T335_SOURCE_TIMEOUT_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceTimeout"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(raises=httpx.ConnectTimeout("simulated timeout"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+    assert fake_upstream.request_count == _FAST_RETRY.max_attempts, (
+        f"expected the retry budget ({_FAST_RETRY.max_attempts} attempts) to be exhausted, got "
+        f"{fake_upstream.request_count} calls"
+    )
+
+
+async def test_source_5xx_redirects_a_browser_with_source_unavailable(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B3's browser half: the identical failure, reached by a top-level navigation, must get the
+    `303` back to the match page carrying `replay_error=source_unavailable` — the exact SPA-
+    destroying raw-JSON shape the 2026-08-29 remediation above exists to eliminate, reached this
+    time through the source's own failure rather than an ordinary refusal, which is exactly what
+    was still possible before this fix."""
+    game_id = _T335_BROWSER_SOURCE_UNAVAILABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserSourceUnavailable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(503, text="service unavailable"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["source_unavailable"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+    api_response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert api_response.status_code == 502, f"Got {api_response.status_code}: {api_response.text}"
+    assert api_response.json()["error"]["code"] == "source_unavailable", (
+        "an API caller (no browser Fetch Metadata header) must keep getting the JSON error this "
+        "route answers, unaffected by the redirect added for a browser navigation"
+    )
+
+
+async def test_replay_download_refuses_a_profile_id_that_never_played_the_match(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding B: FR-023 offers "one download per participant point of view" — `profile_id` is not
+    a free parameter. A `profile_id` this service knows about (registered in `aoe_profiles`, the
+    common case since that table holds every opponent ever ingested) but that never played
+    `game_id` must answer `404 not_found`, exactly as an unknown `game_id` does, and — the part
+    that matters — must never reach the source at all and must never write a `replay_fetch_misses`
+    row: without the participation check, a recent match falls through to `obtainable` and this
+    route fetches a pair `docs/data-sources.md` documents the source as never meaningfully
+    answering for."""
+    game_id = _T335_NON_PARTICIPANT_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_NON_PARTICIPANT_PROFILE_ID, alias="NeverPlayedThisMatch"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(200, content=b"should never be fetched"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_NON_PARTICIPANT_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "not_found"
+
+    assert fake_upstream.request_count == 0, (
+        "FR-023: a profile_id that never played this match must never reach the source at all"
+    )
+
+    misses_result = await db_session.execute(
+        select(ReplayFetchMiss).where(
+            ReplayFetchMiss.game_id == game_id,
+            ReplayFetchMiss.profile_id == _T335_NON_PARTICIPANT_PROFILE_ID,
+        )
+    )
+    assert misses_result.scalars().first() is None, (
+        "a refusal for a non-participant is not a boundary-race 404 and must not be recorded as "
+        "evidence of one"
+    )
+
+
+async def test_replay_download_refuses_a_profile_id_unknown_to_aoe_profiles(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding B's sharper case: a `profile_id` absent from `aoe_profiles` entirely must still
+    answer `404 not_found`, never a `500`. Without the participation check, this pair falls through
+    to `obtainable`, the source's 404 drives `_record_fetch_miss`, and that insert violates
+    `replay_fetch_misses.profile_id`'s foreign key to `aoe_profiles` — the `IntegrityError` escapes
+    the route's own handler and the caller gets a `500` where a `404` was intended
+    (`infra/migrations/versions/b7cc0beaab35_replay_fetch_misses.py`)."""
+    game_id = _T335_UNKNOWN_PROFILE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_UNKNOWN_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "not_found"
+    assert fake_upstream.request_count == 0, (
+        "FR-023: a profile_id that never played this match must never reach the source at all, "
+        "whether or not it is known to aoe_profiles"
+    )
+
+
+# ================================================================================================
+# 2026-08-29 remediation — a failure of this route redirects a browser navigation back to the
+# match page (`303`) instead of leaving it looking at a raw JSON error page, while an API caller
+# keeps getting the identical JSON `404`/`429` these tests above already assert.
+# `packages/design-system/specs/replay-availability.md` §5 and §10.
+# ================================================================================================
+
+
+def _browser_navigation_headers() -> dict[str, str]:
+    """Mirrors a real `window.location.assign` navigation
+    (`apps/web/src/features/replays/api.ts`'s `triggerReplayPointOfViewDownload`) closely enough
+    for `routers/replays.py`'s `_is_browser_navigation` to read it as one: every current browser
+    engine sets exactly this header on a top-level navigation, and every plain `client.get(...)`
+    call in this file above never does — which is the whole of the contrast this suite proves."""
+    return {"Sec-Fetch-Mode": "navigate"}
+
+
+def _assert_absolute_match_page_redirect(location: str, *, game_id: int) -> None:
+    """B2 remediation: the `303` this route answers a browser navigation with must be an absolute
+    URL rooted at `settings.public_base_url`, never a relative `/matches/{game_id}` — a relative
+    redirect from an API route lands on the API's own origin under this repository's own documented
+    local topology (`.env.example`'s `PUBLIC_BASE_URL=http://localhost:5173`, a different origin
+    from the API), and only ever worked in production because `vercel.json`'s rewrite collapses the
+    two. `urlsplit(location).path == f"/matches/{game_id}"` alone (the three assertions this
+    remediation replaces) passes for either shape, which is why the bug survived them."""
+    public_base_url = get_settings().public_base_url
+    assert location.startswith(f"{public_base_url}/matches/{game_id}?"), (
+        f"expected an absolute redirect rooted at {public_base_url!r}, got {location!r}"
+    )
+    split = urlsplit(location)
+    assert split.scheme and split.netloc, (
+        f"the redirect must be absolute, never a relative /matches/{game_id} path: {location!r}"
+    )
+
+
+async def test_expired_point_of_view_redirects_a_browser_to_the_match_page_with_the_code(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """The remediation's own contrast case, in one test: a browser navigation to an `expired`
+    point of view gets a `303` back to `/matches/{game_id}` carrying `replay_error=expired` and
+    `replay_error_profile_id` — what `apps/web/src/features/replays/MatchDetailContainer.tsx`
+    reads on load and renders as `replay-availability.md` §5's row-level alert — while the
+    identical failure, asked for without the browser's own Fetch Metadata header, still answers
+    the plain JSON `404` `test_expired_point_of_view_answers_404_with_a_distinguishing_code` above
+    already proves: the fix must not change what an API caller receives.
+    """
+    game_id = _T335_BROWSER_EXPIRED_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserExpired"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    browser_response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert browser_response.status_code == 303, (
+        f"Got {browser_response.status_code}: {browser_response.text}"
+    )
+    location = browser_response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+    api_response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert api_response.status_code == 404, f"Got {api_response.status_code}: {api_response.text}"
+    assert api_response.json()["error"]["code"] == "expired", (
+        "an API caller (no browser Fetch Metadata header) must keep getting the JSON error this "
+        "route always answered, unaffected by the redirect added for a browser navigation"
+    )
+
+
+async def test_rate_limited_download_redirects_a_browser_with_retry_after(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-028's `rate_limited` code, carried through the `303` with its own `retry_after` — the
+    exact seconds `replay-availability.md` §5 requires ("never a rounded or invented figure"),
+    never simply dropped because this path is a redirect rather than a JSON body."""
+    game_id = _T335_BROWSER_RATE_LIMIT_GAME_ID
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_T335_OWNER_PROFILE_ID, steam_id64="76561197960287953"
+    )
+    await _sign_in(client, db_session, owner)
+    object_key = f"replays/{game_id}/{_T335_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID, object_key=object_key
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_OWNER_PROFILE_ID)
+    await db_session.commit()
+
+    window_seconds = 60
+    window_start = ratelimit._window_start(datetime.now(UTC), window_seconds)
+    _freeze_rate_limit_clock(
+        monkeypatch, moment=window_start + timedelta(seconds=window_seconds // 2)
+    )
+
+    limit = get_settings().replay_download_max_per_user_per_minute
+    for attempt in range(limit):
+        response = client.get(
+            f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}", follow_redirects=False
+        )
+        assert response.status_code == 302, (
+            f"call {attempt + 1} of {limit} should still be within the limit. Got "
+            f"{response.status_code}: {response.text}"
+        )
+
+    limited = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_OWNER_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert limited.status_code == 303, f"Got {limited.status_code}: {limited.text}"
+    location = limited.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["rate_limited"]
+    assert query["replay_error_profile_id"] == [str(_T335_OWNER_PROFILE_ID)]
+    assert query["replay_error_retry_after"][0].isdigit()
+    assert int(query["replay_error_retry_after"][0]) > 0
+
+
+async def test_boundary_race_redirects_a_browser_with_the_distinguishing_code(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary race (`expired_since_page_load`) reaches the browser through the identical
+    redirect mechanism, carrying the one code that lets the client render §5's own boundary-race
+    sentence — distinct from both the plain `expired` copy and `never_recorded`'s."""
+    game_id = _T335_BROWSER_BOUNDARY_RACE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserBoundaryRace"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired_since_page_load"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+
+async def test_expired_point_of_view_with_accept_html_and_no_sec_fetch_mode_redirects(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """L13: `_is_browser_navigation`'s `Accept: text/html` fallback, exercised for real — a request
+    that carries no `Sec-Fetch-Mode` header at all (a browser, or a network layer in front of one,
+    that strips or predates the Fetch Metadata header) but still asks for `text/html` first, exactly
+    as a plain navigation always does, must be treated as a browser navigation and get the `303`
+    redirect, not the raw JSON body. The three tests above this remediation only ever exercised the
+    primary `Sec-Fetch-Mode: navigate` signal or no headers at all; neither reaches this branch."""
+    game_id = _T335_ACCEPT_HTML_FALLBACK_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="AcceptHtmlFallback"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers={"Accept": "text/html,application/xhtml+xml"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+
+async def test_expired_point_of_view_with_sec_fetch_mode_cors_answers_json_never_a_redirect(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """L13's negative case, the one that matters most: a same-origin `fetch()` call sends
+    `Sec-Fetch-Mode: cors`, never `navigate` — the exact call `apps/web/src/lib/api.ts`'s
+    `apiRequest` would make against this route if it ever did (it does not; this route is only ever
+    reached by `window.location.assign`), and the shape any other legitimate `fetch`-based caller on
+    the same origin would send. `_is_browser_navigation` must read this as *not* a browser
+    navigation — the primary `Sec-Fetch-Mode` signal is present and answers the question directly,
+    so the `Accept: text/html` fallback below it is never consulted — and this route must answer the
+    plain JSON `404` an API caller gets, never the `303`."""
+    game_id = _T335_CORS_FETCH_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="CorsFetch"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers={"Sec-Fetch-Mode": "cors", "Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert "location" not in response.headers
+    assert response.json()["error"]["code"] == "expired"
+
+
+# ================================================================================================
+# M1 (fourth-round review) — the reachable sibling of the CR/LF filename fix: a genuine UTF-8
+# filename in the source's own `content-disposition` must stream through, never reach a browser
+# navigation as a bare 500. Built from raw `(bytes, bytes)` header pairs, not a `dict[str, str]`
+# (`httpx.Headers.__init__`'s own `.encode("ascii")` refuses a non-ASCII `str` outright) — this is
+# the shape `httpx`'s transport layer hands back after decoding real wire bytes, the one a browser
+# navigation can actually receive over a real connection. CR/LF, by contrast, cannot survive HTTP
+# wire parsing at all (`aoems/provider.py`'s own `_is_safe_header_filename` docstring) — this test
+# is the case that *can* arrive, driven through the real route rather than the provider alone.
+# ================================================================================================
+
+
+async def test_obtainable_point_of_view_with_a_non_latin1_filename_streams_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before this fix, `AoemsReplayProvider._parse_filename` refused a control character
+    (`\\x00`-`\\x1f`, `\\x7f`) only, never a codepoint above U+00FF — so this route's own
+    `Response(headers={"content-disposition": ...})` reached Starlette's `.encode("latin-1")`
+    with a genuine UTF-8 filename and raised `UnicodeEncodeError`, uncaught here, escaping to
+    `app.py`'s generic handler as a bare `500` on a browser navigation — the exact raw-JSON
+    stranding B3's `303` fix exists to eliminate, through the very header that fix already
+    hardened once, for CR/LF, the one case that could never actually reach it this way."""
+    game_id = _T335_NON_LATIN1_FILENAME_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="NonLatin1Filename"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_bytes = b"FAKE-AOE2RECORD-ZIP-BYTES-NON-LATIN1"
+    # A euro sign (U+20AC): unremarkable UTF-8, unrepresentable in Latin-1 — exactly the shape
+    # `httpx`'s own transport layer would hand back after decoding real wire bytes. A `dict[str,
+    # str]` header, unlike this one, cannot even construct this value: `httpx.Headers.__init__`
+    # refuses a non-ASCII `str` outright with its own `.encode("ascii")`.
+    raw_filename = "replay_€.zip".encode()
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=fake_bytes,
+            headers=[
+                (b"content-type", b"application/zip"),
+                (b"content-disposition", b'attachment; filename="' + raw_filename + b'"'),
+            ],
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200, (
+        f"a non-Latin-1 upstream filename must never strand a browser navigation on a bare 500. "
+        f"Got {response.status_code}: {response.text}"
+    )
+    assert response.content == fake_bytes
+    disposition = response.headers["content-disposition"]
+    disposition.encode("latin-1")  # must not raise — this is the served header, not this test's
+    assert disposition == (
+        f'attachment; filename="AgeIIDE_Replay_{game_id}_{_T335_PARTICIPANT_A_PROFILE_ID}.zip"'
+    ), (
+        "the unsafe upstream filename must fall back to the safe, generated name rather than "
+        f"being carried through: got {disposition!r}"
+    )
+
+
+# ================================================================================================
+# M2 (fourth-round review) — the trailing `except ProviderError` catches the one `ProviderError`
+# subclass B3 left unnamed. Not reachable from the real `AoemsReplayProvider` today (the finding's
+# own words: "not a live defect"), so this drives it through a `_build_replay_provider` double
+# rather than the fake-upstream seam every other test in this file uses — the only way to prove
+# the route's own handling without a fourth real trigger to reach it with.
+# ================================================================================================
+
+
+class _ContractViolatingProvider:
+    """A `fetch_replay` that always raises `ProviderContractViolation` — the one `ProviderError`
+    subclass `AoemsReplayProvider` never raises today, standing in for the day it, or a successor,
+    does."""
+
+    async def fetch_replay(self, game_id: int, profile_id: int) -> None:
+        raise ProviderContractViolation(
+            "simulated contract violation", provider="aoems", endpoint="replay"
+        )
+
+
+async def test_provider_contract_violation_answers_source_unavailable_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M2: before this fix, the route's `try`/`except` around `fetch_replay` named
+    `ProviderRateLimited` and `ProviderUnavailable` only — a `ProviderContractViolation` fell
+    straight through, uncaught, to a bare `500`, the identical shape B3 already fixed one round
+    earlier for `ProviderUnavailable`."""
+    game_id = _T335_PROVIDER_CONTRACT_VIOLATION_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ContractViolation"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        replays_router,
+        "_build_replay_provider",
+        lambda db_session: _ContractViolatingProvider(),
+    )
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+
+
+# ================================================================================================
+# L3 (fourth-round review) — the source's own `Retry-After`, forwarded through the identical
+# `detail.retry_after` shape this route's own limiter already uses on the same `rate_limited`
+# code. The contrast case (no `Retry-After` at all) is asserted inline on
+# `test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert` above, which already
+# exercises a source 429 with no such header.
+# ================================================================================================
+
+
+async def test_source_rate_limited_forwards_the_source_retry_after(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 429 from the source that carries `Retry-After` must not be trimmed of it before reaching
+    the caller — `ProviderRateLimited.retry_after_seconds` (`base.py`) is parsed already; this
+    route used to drop it on the floor rather than forward it, unlike
+    `_apply_replay_download_rate_limit`'s own figure on the identical `rate_limited` code."""
+    game_id = _T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceRetryAfter"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(429, text="slow down", headers={"Retry-After": "30"})
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 429, f"Got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["error"]["code"] == "rate_limited"
+    assert body["error"]["detail"].get("retry_after") == 30, (
+        f"the source's own Retry-After must be forwarded, not dropped: got "
+        f"{body['error']['detail']!r}"
+    )

@@ -141,6 +141,12 @@ function participant(overrides: Partial<ApiMatchParticipant> = {}): ApiMatchPart
     result: 'loss',
     rating: 1500,
     rating_diff: -12,
+    replay: {
+      profile_id: 2,
+      availability: 'obtainable',
+      obtainable_until: null,
+      download_path: '/api/matches/700800900/replay/2',
+    },
     ...overrides,
   }
 }

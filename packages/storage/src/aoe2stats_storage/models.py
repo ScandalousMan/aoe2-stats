@@ -632,7 +632,7 @@ class DataRequest(Base):
 
 
 # --- 003: player search, favourites and on-demand match analysis --------------------------------
-# Five new tables, per `specs/003-player-search-match-analysis/data-model.md`. `aoe_profiles` and
+# Six new tables, per `specs/003-player-search-match-analysis/data-model.md`. `aoe_profiles` and
 # `replay_access_log` above are the two existing tables that feature widens.
 
 
@@ -805,3 +805,65 @@ class RateLimitCounter(Base):
     bucket: Mapped[str] = mapped_column(Text, primary_key=True)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ReplayFetchMiss(Base):
+    """`replay_fetch_misses` — T337's own record that the source answered 404 for one exact point
+    of view, so a repeat of the identical download request reads `never_recorded` from this row
+    rather than fetching the source a second time (FR-025's boundary race, `research.md` R8,
+    `contracts/http-api.md`'s "That call also records the outcome, so the page is right the next
+    time"). `derive_availability`'s `recorded_404` parameter (`availability.py`, T336) is this
+    table, read by `(game_id, profile_id)`.
+
+    **Deliberately not a `replay_captures` row, and not a fourth column bolted onto it** — a
+    decision this table's whole existence is, not an oversight `data-model.md`'s "this feature adds
+    no column to ... `replay_captures`" merely states. `replay_captures` is the single table 001's
+    automatic capture pipeline claims from with no ownership filter at all
+    (`apps/ingester/.../capture.py::_claim_batch` and its `_enqueue_capture` counterpart in
+    `discover.py`): any `pending` row it finds, for any `profile_id`, is downloaded and archived on
+    the very next cycle, and a `stored`/`unavailable`/`expired` row it finds already occupying a
+    `(game_id, profile_id)` pair is left untouched forever (`_enqueue_capture`'s own `ON CONFLICT DO
+    NOTHING`, `discover.py`). A download of an `obtainable` point of view is, by construction, a
+    point of view this service has **not** captured — most often because nobody who played it has
+    ever linked an account here. Writing *any* status into `replay_captures` for that pair would
+    therefore do one of two things, both forbidden: a `pending` row would have the automatic
+    pipeline fetch and **store** a third-party recording as a direct consequence of a download
+    click, which is exactly what FR-012 and FR-027 forbid ("downloading is not analysing"); any
+    terminal status (`unavailable`, `stored`, `expired`, ...) would permanently block the *real*
+    capture that pipeline owes that profile's owner the day they link their account, since
+    `_enqueue_capture`'s `ON CONFLICT DO NOTHING` would then silently no-op forever against the
+    synthetic row. Neither risk is hypothetical or bounded to this feature's own tests; both are
+    constitution I and FR-012 violations reachable from production traffic. This table carries
+    nothing `replay_captures`' claim query, `_enqueue_capture`'s upsert or any alert-sweep script
+    reads, so it cannot participate in either failure by construction.
+
+    Not a fresh `availability` cache either (`data-model.md`'s "What this model deliberately does
+    not have"): that bullet rejects storing the *computed*, clock-dependent four-state answer,
+    which would go stale the moment the retention window's own boundary passes it. This row stores
+    one immutable, already-true fact instead — the source answered 404 for this exact pair, once,
+    at a moment inside what this service believed was the obtainable window — which does not
+    become false with the passage of time the way a cached `obtainable`/`expired` label would.
+
+    Insert-only, `ON CONFLICT DO NOTHING` on the primary key (`replays.py`): two callers racing the
+    same boundary each try to record the same fact, and the first one wins with no error for the
+    second. Never updated, never deleted by anything in this feature — read-only evidence, exactly
+    like `replay_captures.status = unavailable` is for a linked user's own point of view, except
+    scoped so that writing it can never touch the pipeline that owns that table.
+
+    **Erasure/export**: not personal data about the requester — it names a match and a participant's
+    point of view, the same footing `replay_captures.status = unavailable` already stands on for a
+    linked user, and constitution IX's per-person pseudonymisation of `match_players`/`aoe_profiles`
+    already reaches whichever profile this table's `profile_id` refers to.
+    """
+
+    __tablename__ = "replay_fetch_misses"
+
+    game_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("matches.game_id"), primary_key=True
+    )
+    profile_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aoe_profiles.profile_id"), primary_key=True
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

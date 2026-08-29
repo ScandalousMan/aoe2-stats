@@ -92,23 +92,98 @@ _ENDPOINT = "replay"
 # `(?!\*)` after `filename` is what keeps this from matching `filename*=` instead: without it,
 # `re.search` on `'...filename=a.zip; filename*=UTF-8...'` would still find the first `filename=`
 # correctly, but a header ordered the other way around would not.
+#
+# `[^";]+` admits any byte other than `"`/`;`, including CR/LF (L21, third-round review) and any
+# codepoint above U+00FF (M1, fourth-round review). Neither is header injection by itself — a
+# compliant ASGI server rejects a control character in an outbound header value outright — but both
+# turn a malformed or merely non-Latin-1 upstream `content-disposition` into an unhandled `500` on
+# `GET /api/matches/{game_id}/replay/{profile_id}` (`routers/replays.py`), which is exactly the
+# raw-JSON stranding B3's own fix exists to eliminate, just from the source's headers rather than
+# its status line. `_is_safe_header_filename` below is what actually excludes both; this pattern
+# still admits everything so a legitimate but unsafe value reaches that check rather than being
+# silently mangled here.
 _FILENAME_PATTERN = re.compile(r'filename(?!\*)\s*=\s*"?([^";]+)"?')
+
+# Control characters (`\x00`-`\x1f`, `\x7f`) — the set a header value must never carry (RFC 7230
+# §3.2, `field-vchar`) and the one `_FILENAME_PATTERN` above does not itself exclude.
+_CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _is_safe_header_filename(candidate: str) -> bool:
+    """`True` only for a value this provider may hand straight to
+    `apps/api/.../routers/replays.py`'s `Response(headers={"content-disposition": ...})` — that
+    call's own header encoding (Starlette's `Response.init_headers`, ASGI's own wire format, not a
+    choice made here) is a bare `str.encode("latin-1")`, and neither of this function's two checks
+    subsumes the other:
+
+    - `_CONTROL_CHARACTER_PATTERN` alone (the third-round review's own L21 fix) never looked past
+      `\\x00`-`\\x1f`/`\\x7f` — every codepoint above U+00FF sails through it untouched, and
+      `str.encode("latin-1")` raises `UnicodeEncodeError` for exactly that codepoint, uncaught,
+      which is M1: a genuine, wire-reachable UTF-8 filename (`obs-text`, which h11 accepts and
+      httpx decodes) reaching this route as a bare `500` — the case CR/LF, which HTTP header
+      parsing itself refuses to let survive onto the wire, cannot produce.
+    - `str.encode("latin-1")` alone is not enough in the other direction: every control character
+      maps one-to-one into a `latin-1` byte (`"\\r\\n".encode("latin-1") == b"\\r\\n"`, no exception
+      raised), so an encodability-only check would let a CR/LF value straight through to
+      `Response.init_headers`, which does not itself reject one either — only a compliant HTTP
+      server further down the stack does, a guarantee this provider must not assume on its own
+      behalf.
+
+    `_parse_filename` rejects a candidate that fails either test rather than trying to strip and
+    keep the rest: a filename an upstream sent broken is not this provider's to repair, only to
+    refuse.
+    """
+    if _CONTROL_CHARACTER_PATTERN.search(candidate) is not None:
+        return False
+    try:
+        candidate.encode("latin-1")
+    except UnicodeEncodeError:
+        return False
+    return True
+
 
 _DEFAULT_CONTENT_TYPE = "application/zip"
 
 
-def _parse_filename(content_disposition: str | None, *, game_id: int) -> str:
+def _parse_filename(content_disposition: str | None, *, game_id: int, profile_id: int) -> str:
     """The reference-replay naming convention (`docs/data-sources.md` §2:
-    `attachment; filename=AgeIIDE_Replay_{gameId}.zip`) is the fallback for the one case the wire
-    contract does not actually promise a header for — every observed response carries one, but
-    nothing here should raise over a missing `content-disposition` when the bytes themselves are
-    fine.
+    `attachment; filename=AgeIIDE_Replay_{gameId}.zip`), with `profile_id` appended (L4, fourth-
+    round review), is the fallback for two cases now, not one: the wire contract does not actually
+    promise a `content-disposition` header at all (every observed response carries one, but nothing
+    here should raise over a missing one when the bytes themselves are fine), and — L21/M1, third-
+    and fourth-round review — a `filename=` value `_is_safe_header_filename` refuses (a control
+    character, or a codepoint this route's own response header cannot carry). Falling back to the
+    safe, generated name in that case, rather than raising, keeps a malformed or unsafe upstream
+    header from turning into the caller's own `500` — the bytes are still good even when the name
+    describing them is not.
+
+    `profile_id` in the fallback (L4): the upstream's own name is per-*match*
+    (`docs/data-sources.md` §2's own convention names only `gameId`), so two participants of the
+    same match who both land on this fallback — the missing-header or unsafe-header case, not the
+    ordinary path — would otherwise download indistinguishable files, defeating quickstart.md
+    scenario 6's own "confirm each shows the match from the expected player's side" the moment two
+    such downloads sit side by side in a Downloads folder.
+
+    Deliberately scoped to the fallback only: the upstream's *own*, well-formed name is left
+    untouched. This provider's whole discipline (this function's own docstring, one paragraph up)
+    is to report what the source sent faithfully — never repair, never guess, only refuse a value
+    it cannot pass on safely — and the ordinary `obtainable` response's `content-disposition`
+    matches `_FILENAME_PATTERN` and passes `_is_safe_header_filename` almost every time
+    (`docs/data-sources.md` §2's own measurement), so rewriting a real upstream string to
+    disambiguate it would be exactly the repair this module refuses to do everywhere else, and
+    from the *caller* the router would then have no way to tell "the source's own name" from "this
+    provider's already-disambiguated fallback" without a second field this contract does not carry
+    today. If per-point-of-view disambiguation of the ordinary path turns out to matter more than
+    that discipline, it belongs one layer up, in `routers/replays.py`, which already knows
+    `profile_id` at the point it builds the served response and can make that call explicitly
+    rather than this provider silently reinterpreting a third party's own header on its behalf.
     """
+    fallback = f"AgeIIDE_Replay_{game_id}_{profile_id}.zip"
     if content_disposition is not None:
         match = _FILENAME_PATTERN.search(content_disposition)
-        if match is not None:
+        if match is not None and _is_safe_header_filename(match.group(1)):
             return match.group(1)
-    return f"AgeIIDE_Replay_{game_id}.zip"
+    return fallback
 
 
 class AoemsReplayProvider(AsyncBaseProvider):
@@ -160,7 +235,9 @@ class AoemsReplayProvider(AsyncBaseProvider):
             return ReplayBlob(
                 content=response.content,
                 filename=_parse_filename(
-                    response.headers.get("content-disposition"), game_id=game_id
+                    response.headers.get("content-disposition"),
+                    game_id=game_id,
+                    profile_id=profile_id,
                 ),
                 content_type=response.headers.get("content-type", _DEFAULT_CONTENT_TYPE),
             )

@@ -2,7 +2,9 @@
 
 **Feature**: `003-player-search-match-analysis` | **Date**: 2026-08-23
 
-Five new tables and two widened ones, in one migration. Everything 001 built stays as it is:
+Six new tables and two widened ones. **Amended 2026-08-29**: this file said five, and `replay_fetch_misses`
+is the sixth — added by T337 rather than at planning time, because the need for it only became
+provable once the download route existed. Its own section below carries the reasoning. Everything 001 built stays as it is:
 this feature adds no column to `matches`, `match_players`, `replay_captures` or `rating_snapshots`,
 and it changes the meaning of none of them.
 
@@ -251,6 +253,39 @@ user's data.
 
 ---
 
+## Evidence of a missing recording
+
+### `replay_fetch_misses`
+
+`game_id` (bigint, fk `matches.game_id`, pk), `profile_id` (bigint, fk `aoe_profiles.profile_id`,
+pk), `observed_at` (timestamptz).
+
+**Added 2026-08-29, by T337 rather than at planning time.** R8 names two sources of evidence that a
+recording was never made — 001's `replay_captures` for a linked user's own point of view, and an
+analysis fetch that 404s for a third party's — and the download route's own boundary-race 404 is a
+third that no artifact had decided a home for. `contracts/http-api.md` requires that call to record
+its outcome ("so the page is right the next time"); this table is that record, and
+`derive_availability`'s `recorded_404` parameter reads it.
+
+**Why not a `replay_captures` row**, which is where the evidence would naturally go. That table is
+claimed by 001's automatic capture pipeline with no ownership filter, so both available statuses are
+forbidden here, in opposite directions: a `pending` row would have the pipeline fetch and **store** a
+third party's recording as a direct consequence of a download click (FR-012, FR-027 — downloading is
+not analysing), while any terminal status would sit in the `(game_id, profile_id)` pair that
+`_enqueue_capture`'s `ON CONFLICT DO NOTHING` needs, silently no-opping the real capture this service
+owes that profile's owner the day they link an account. Both are reachable from production traffic,
+not just from tests. A separate table participates in neither query and so can cause neither.
+
+Insert-only, `ON CONFLICT DO NOTHING` on the primary key: two callers racing the same boundary record
+the same fact and the first wins. Never updated, never swept (FR-044).
+
+**Erasure**: nothing to do — the row is a fact about a match and a point of view, not about the
+requester, on the same footing as `replay_captures.status = unavailable`, and constitution IX's
+pseudonymisation of `match_players` and `aoe_profiles` already reaches whichever profile the
+`profile_id` names. **Export**: not included; it is not the requester's data.
+
+---
+
 ## Widened for access logging
 
 ### `replay_access_log` (widened)
@@ -317,7 +352,11 @@ R3's memory bound, not an incident.
 - **No availability table.** The spec calls "recorded game availability" a *view* over what the
   retention window and 001's captures already establish, and R8 shows it is arithmetic plus rows that
   already exist. A table would be a second copy of a truth that changes with the clock — wrong within
-  a day, and wrong in a way nothing would notice.
+  a day, and wrong in a way nothing would notice. **`replay_fetch_misses` is not that table**
+  (amended 2026-08-29): it stores no computed state and no four-state label, only the one immutable
+  fact that the source answered 404 for one exact point of view at one moment. A cached
+  `obtainable`/`expired` goes stale when the window's boundary passes it; "the source did not have
+  this" does not become false with the passage of time.
 - **No favourite count, anywhere.** See `favourites`.
 - **No `analysis_requests` table separate from `match_analyses`.** The spec lists "analysis request"
   as an entity so that concurrent askers share one piece of work; the primary key on `game_id` *is*

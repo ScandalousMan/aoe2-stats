@@ -82,6 +82,16 @@ describe('assertMatchesResponse', () => {
 
 // T076: `GET /api/matches/{game_id}`'s response shape (`api.ts`'s own `ApiMatchDetail`).
 
+function validReplay(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    profile_id: 2,
+    availability: 'obtainable',
+    obtainable_until: null,
+    download_path: '/api/matches/700800900/replay/2',
+    ...overrides,
+  }
+}
+
 function validParticipant() {
   return {
     profile_id: 2,
@@ -93,6 +103,7 @@ function validParticipant() {
     result: 'loss',
     rating: 1500,
     rating_diff: -12,
+    replay: validReplay(),
   }
 }
 
@@ -187,6 +198,54 @@ describe('assertMatchDetailResponse', () => {
 
   it('rejects a non-string, non-null capture_deadline_at', () => {
     const body = { ...validDetail(), capture_deadline_at: 42 }
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  // T338/T341: the per-participant `replay` object (FR-023, `contracts/http-api.md`'s "Recorded
+  // games, per point of view").
+
+  it('accepts each of the four replay availability states', () => {
+    for (const availability of ['archived', 'obtainable', 'expired', 'never_recorded']) {
+      const body = validDetail()
+      body.participants = [{ ...validParticipant(), replay: validReplay({ availability }) }]
+      expect(() => assertMatchDetailResponse(body)).not.toThrow()
+    }
+  })
+
+  it('accepts a null obtainable_until (FR-024, amended 2026-08-29)', () => {
+    const body = validDetail()
+    body.participants = [{ ...validParticipant(), replay: validReplay({ obtainable_until: null }) }]
+    expect(() => assertMatchDetailResponse(body)).not.toThrow()
+  })
+
+  it('accepts a null download_path for an unobtainable state (FR-025)', () => {
+    const body = validDetail()
+    body.participants = [
+      {
+        ...validParticipant(),
+        replay: validReplay({ availability: 'expired', download_path: null }),
+      },
+    ]
+    expect(() => assertMatchDetailResponse(body)).not.toThrow()
+  })
+
+  it('rejects a participant missing "replay" entirely', () => {
+    const body = validDetail()
+    const participant = validParticipant() as Record<string, unknown>
+    delete participant.replay
+    body.participants = [participant as unknown as ReturnType<typeof validParticipant>]
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a replay object with an unrecognised availability value', () => {
+    const body = validDetail()
+    body.participants = [{ ...validParticipant(), replay: validReplay({ availability: 'lost' }) }]
+    expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
+  })
+
+  it('rejects a non-string, non-null replay.download_path', () => {
+    const body = validDetail()
+    body.participants = [{ ...validParticipant(), replay: validReplay({ download_path: 42 }) }]
     expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
   })
 })
