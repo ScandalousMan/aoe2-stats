@@ -245,6 +245,107 @@ describe('MatchDetailContainer', () => {
     expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/11')
   })
 
+  // Follow-up to T341: `packages/design-system/specs/replay-availability.md` §10 mandates a real
+  // `<button>` triggering a same-tab navigation (no failure is script-observable), while §5's
+  // boundary-race case (`code: "expired_since_page_load"`) reads as if the click were a `fetch`
+  // this component could inspect. The resolution (`contracts/http-api.md`'s own sentence — the
+  // download route "also records the outcome, so the page is right the next time"): keep the
+  // navigation, and refetch `GET /api/matches/{game_id}` after the click so a row the server
+  // recorded as having 404'd comes back correct on its own, without ever reading the download
+  // response directly.
+  //
+  // Real timers throughout, deliberately: `screen.findAllByRole` below relies on
+  // testing-library's own real-`setTimeout` polling to observe the fetch mock's microtask
+  // resolution, the same reason `SearchContainer.test.tsx`'s fake-timer tests (T388) never mix
+  // `findBy*` with `vi.useFakeTimers()` — a fake clock that is never advanced past a `findBy`
+  // query's own poll interval hangs forever. `MatchDetailContainer.tsx`'s 1500ms reset window
+  // costs this test ~1.5s of real wall-clock time instead; acceptable once, for a single test.
+  it('refetches match detail after a point-of-view download click, and re-renders a row the server now reports differently (boundary race, FR-025)', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+
+    let detailCallCount = 0
+    const fetchMock = installFakeApi({
+      profiles: [],
+      detail: () => {
+        detailCallCount += 1
+        if (detailCallCount === 1) {
+          // Rendered `obtainable`, offering a `DownloadAction` for profile 11.
+          return jsonResponse(baseDetail())
+        }
+        // The server's own answer to the download request 404'd at fetch time and recorded the
+        // outcome (`replay_fetch_misses`, T337) — `derive_availability` now reports this same
+        // profile `never_recorded`, `download_path: null` (FR-025), before this component ever
+        // reads the download route's own response.
+        return jsonResponse(
+          baseDetail({
+            participants: [
+              {
+                profile_id: 11,
+                alias: 'aoe2villain',
+                team_id: 1,
+                civ_id: 3,
+                civ_name: 'Celts',
+                color_id: 1,
+                result: 'win',
+                rating: 1800,
+                rating_diff: 12,
+                replay: {
+                  profile_id: 11,
+                  availability: 'never_recorded',
+                  obtainable_until: null,
+                  download_path: null,
+                },
+              },
+              {
+                profile_id: 22,
+                alias: 'rival_ace',
+                team_id: 2,
+                civ_id: 9,
+                civ_name: 'Turks',
+                color_id: 2,
+                result: 'loss',
+                rating: 1750,
+                rating_diff: -12,
+                replay: {
+                  profile_id: 22,
+                  availability: 'expired',
+                  obtainable_until: null,
+                  download_path: null,
+                },
+              },
+            ],
+          }),
+        )
+      },
+    })
+
+    renderMatch()
+
+    const [downloadButton] = await screen.findAllByRole('button', { name: 'Download' })
+    fireEvent.click(downloadButton!)
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/11')
+
+    const countDetailCalls = () =>
+      fetchMock.mock.calls.filter(([input]) => /^\/api\/matches\/\d+$/.test(String(input))).length
+
+    // No second request yet — a refetch fired the instant `location.assign` runs would race the
+    // download route's own server-side write of the outcome it is trying to read (this
+    // component's own comment on the timing choice).
+    expect(countDetailCalls()).toBe(1)
+
+    // The refetch is deliberately deferred to the same 1500ms window
+    // `MatchDetailContainer.tsx`'s own comment explains — so this assertion only becomes true
+    // after that window elapses, on the real clock this test runs on.
+    await waitFor(() => expect(countDetailCalls()).toBe(2), { timeout: 3000 })
+    await waitFor(() => expect(screen.getByText('Never recorded')).toBeInTheDocument())
+    // The row that lost its recording no longer offers a dead `DownloadAction` (FR-025) — the
+    // one button left is the other row's, which was already `expired` and never had one to
+    // begin with, so there must be none at all now.
+    expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument()
+  })
+
   it('offers no download for an unobtainable point of view — absent, never a button that fails (FR-025)', async () => {
     installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
     renderMatch()

@@ -170,6 +170,30 @@ not this vocabulary's `error` or `empty`.
     exactly the row the race touched; a reload of the page shows the plain `expired` copy from then on,
     because the server records the outcome on that same request (FR-025, `contracts/http-api.md`
     §"boundary race").
+
+    **Amended 2026-08-29 — how this row actually reaches that state.** As first written, §5 and §10
+    contradicted each other: §10 requires `DownloadAction` to be a real button triggering a same-tab
+    navigation, archived and obtainable alike, and a navigation returns nothing a script can observe,
+    so no client code could ever detect the 404 that this transition is a reaction to. Written that
+    way, the state was reachable from Storybook and from nowhere else — a specified behaviour with no
+    path to it in production, which is the shape of gap this repository keeps writing tasks to close.
+
+    §10 wins, and the transition is obtained from the server instead of from the click. `apps/web`
+    refetches `GET /api/matches/{game_id}` after a point-of-view download click; T337 has by then
+    written the `replay_fetch_misses` row, so the affected row comes back `never_recorded` with a null
+    `download_path` and the dead action disappears on its own. That is `contracts/http-api.md`'s own
+    sentence — "records the outcome, so the page is right the next time" — delivered literally rather
+    than approximated in the client.
+
+    **What that costs, stated rather than hidden**: the wording above is the one thing not delivered.
+    The row self-corrects to `never_recorded`'s copy, not to "This recording expired while you were
+    viewing this page." The distinction the paragraph above argues for — the recording existed a
+    moment ago — is real, and it is preserved in the API (`expired_since_page_load` is a distinct code
+    and stays one), but it is not currently shown to the user. Recovering it needs the download to be
+    something a script can observe, which §10 refuses for good reasons (CORS on the archived signed-URL
+    redirect; a doubled rate-limit unit and a doubled `replay_access_log` row on the obtainable path).
+    The states remain in the component and in its stories, unreached by this wiring: they are what a
+    later transport would render, not decoration.
 - **empty** — a match with no participants is not a case this component receives; `MatchDetailPanel`
   never renders with zero rows (`match-history.md` FR-011). What _is_ a real empty case: **every row
   is `expired`/`never_recorded`** (a match old enough, or unlucky enough, that nothing is obtainable

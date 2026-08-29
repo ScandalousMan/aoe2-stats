@@ -213,9 +213,35 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
     // Mirrors `handleDownload`'s own note: a same-tab navigation carries no completion signal
     // (`api.ts`'s `triggerReplayPointOfViewDownload`), so this row returns to `idle` after the
     // same short window `handleDownload` already uses, rather than staying `loading` forever.
+    //
+    // replay-availability.md §5's "boundary race" (`code: "expired_since_page_load"`) and §10's
+    // "a real `<button>` triggering a same-tab navigation... no failure is script-observable" are
+    // in tension: a navigation carries no response this component can read, so it cannot render
+    // the in-place transition §5 describes from a fetch it never makes. The resolution is
+    // `contracts/http-api.md`'s own sentence on that race: the download route "also records the
+    // outcome, so the page is right the next time" — `T337`'s `replay_fetch_misses` write,
+    // `derive_availability`'s read of it. Refetching `GET /api/matches/{game_id}` after a click
+    // makes this page *be* "the next time": a row that just 404'd server-side comes back
+    // `never_recorded` with `download_path: null` (FR-025), and `ReplayAvailabilityList`
+    // re-renders it with no `DownloadAction` — self-correcting without ever needing to observe
+    // the download response directly.
+    //
+    // Fired from this same 1500ms timeout, not synchronously with the click: a refetch issued the
+    // instant the navigation starts would race the download route's own write of
+    // `replay_fetch_misses`, which only happens server-side inside *that* request's handler —
+    // two independent requests starting together have no ordering guarantee between them. This
+    // timeout already exists to give the browser's own unobservable navigation attempt time to
+    // resolve before resetting the button's `loading` state (the note above); reusing that same
+    // window for the refetch, rather than inventing a second arbitrary delay, means the refetch
+    // fires only once the download request has had the same amount of time to complete server-side
+    // as the UI already assumes it needs. A successful download refetches identical state — one
+    // extra `GET /api/matches/{game_id}`, not a call to the download route itself, so it never
+    // consumes a `replay_download` rate-limit unit (FR-028) — which is an acceptable, deliberate
+    // cost for the case this exists to correct.
     const timeoutId = window.setTimeout(() => {
       setPointOfViewDownloadStates((previous) => ({ ...previous, [rowId]: 'idle' }))
       pointOfViewResetTimeouts.current.delete(rowId)
+      void matchQuery.refetch()
     }, 1500)
     pointOfViewResetTimeouts.current.set(rowId, timeoutId)
   }
