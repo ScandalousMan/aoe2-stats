@@ -393,9 +393,11 @@ the same viewport, so a poll that turns `running` into `published` shows no refl
 - `StaleRecomputeNotice`'s `Badge` label is real text, immediately followed by its `Button` in document
   order — never colour alone (constitution VI), matching `capture-state-badge.md` §11's identical rule
   for its own badge-plus-context pairing.
-- `AnalysisFailureNotice` uses `Callout`'s own tone-to-role mapping: `role="alert"` for `danger`
-  (`failed`, `unavailable`) and for `warning` (`refused`) alike, since both are outcomes the user did not
-  expect and must be told about immediately (`shared-primitives.md`'s `Callout` accessibility rule).
+- `AnalysisFailureNotice` uses `Callout`'s own tone-to-role mapping (`shared-primitives.md`'s `Callout`
+  accessibility rule): `role="alert"` for `danger` (`failed`, `unavailable`) and `role="status"` for
+  `warning` (`refused`). `refused` is a state the user can act on rather than an error thrown at them —
+  it carries a "Try requesting analysis" button — so `status` (polite) is the correct live-region
+  politeness for it, not `alert` (assertive). The component follows this real mapping.
 - The poll (§5) that refreshes a `queued`/`running` page carries no `aria-live` region of its own: the
   transition from progress to a result is a full re-render of this section, not a status line that
   updates in place, so there is nothing here that would double-announce the way `shared-primitives.md`

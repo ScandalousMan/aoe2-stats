@@ -323,7 +323,7 @@ function StaleRecomputeNotice({
       <Badge variant="info">Newer analysis engine available</Badge>
       <Button
         variant="secondary"
-        size="md"
+        size="lg"
         loading={requesting}
         loadingLabel="Recomputing…"
         onClick={onRequestAnalysis}

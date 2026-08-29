@@ -282,7 +282,7 @@ different user and confirm the analysis is shown immediately and was not recompu
 - [x] T370 [P] [US4] Write the component specs for the analysis timeline, its progress state and its three failure states in `packages/design-system/specs/`. State what a *stale* published analysis looks like — the facts stay on the page and the recompute is offered beside them, never a warning that hides the result (FR-041) — how an unnamed technology or unit identifier is presented (FR-043a) and how an age-up time is labelled so it reads as **ordered** and not reached (FR-043c) — the wording is the requirement here, and it is decided in the spec, not in the component
 - [x] T371 [US4] Build the analysis components from tokens in `packages/design-system/src/components/`, with stories for published, published-and-stale, running, failed, unavailable and refused
 - [ ] T372 [US4] Wire the analysis into the match page in `apps/web/src/features/analysis/`, including leaving and returning to a running analysis (FR-035) and offering the recompute only while the match-detail response reports `stale: true` (FR-041)
-- [ ] T373 [US4] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T371 added, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T373 [US4] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T371 added, updating baselines in `packages/design-system/__screenshots__/`
 
 **Checkpoint**: every story is complete.
 

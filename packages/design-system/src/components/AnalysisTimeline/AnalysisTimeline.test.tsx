@@ -1,8 +1,50 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { AnalysisTeamGroupData } from './index'
 import { AnalysisTimeline } from './index'
+
+// jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here, so
+// the touch-target assertions below cannot render a real box and measure it. Same precedent as
+// `MatchDetailPanel.test.tsx` / `Menu.test.tsx` (T035d): derive the pixel height a `Button`'s
+// `h-<n>` utility actually resolves to from `tokens/space.json`, the single source of truth,
+// rather than a literal copied into the test.
+const SPACE_TOKENS_PATH = path.resolve(__dirname, '../../../tokens/space.json')
+const ROOT_FONT_SIZE_PX = 16 // jsdom's default <html> font-size, same as an un-overridden browser.
+
+function spacingUnitPx(): number {
+  const { unit } = JSON.parse(readFileSync(SPACE_TOKENS_PATH, 'utf8')) as { unit: string }
+  const remMatch = /^([\d.]+)rem$/.exec(unit)
+  if (!remMatch) throw new Error(`tokens/space.json "unit" is not a rem value: ${unit}`)
+  return Number.parseFloat(remMatch[1]) * ROOT_FONT_SIZE_PX
+}
+
+/** Stands in for jsdom's missing layout engine: derives the height a rendered element's own
+ * `h-<n>` utility actually resolves to, from the real spacing token, instead of hardcoding a pixel
+ * count in the test. An element with no such class measures as 0, so a `Button` that stops setting
+ * an explicit height at all fails loudly rather than reading as compliant. */
+function mockButtonHeightLayout() {
+  const unitPx = spacingUnitPx()
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    const match = /\bh-(\d+)\b/.exec(this.className)
+    const height = match ? Number.parseInt(match[1], 10) * unitPx : 0
+    return {
+      height,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect
+  })
+}
 
 const teams: AnalysisTeamGroupData[] = [
   {
@@ -272,6 +314,32 @@ describe('AnalysisTimeline', () => {
       await user.click(screen.getByRole('button', { name: 'Try requesting analysis' }))
 
       expect(onRequestAnalysis).toHaveBeenCalledOnce()
+    })
+  })
+
+  // shared-primitives.md's Button rule: any button reachable on a touch viewport clears the 44px
+  // floor. Measured, not matched against a class name (T035d) — see `mockButtonHeightLayout` above.
+  describe('touch target floor (shared-primitives.md Button rule)', () => {
+    it("the stale-notice 'Recompute' rendered box clears the 44px touch floor", () => {
+      const getBoundingClientRect = mockButtonHeightLayout()
+      try {
+        render(<AnalysisTimeline state="published" stale teams={teams} />)
+        const button = screen.getByRole('button', { name: 'Recompute' })
+        expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+      } finally {
+        getBoundingClientRect.mockRestore()
+      }
+    })
+
+    it("the refused-state 'Try requesting analysis' rendered box clears the 44px touch floor", () => {
+      const getBoundingClientRect = mockButtonHeightLayout()
+      try {
+        render(<AnalysisTimeline state="refused" />)
+        const button = screen.getByRole('button', { name: 'Try requesting analysis' })
+        expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+      } finally {
+        getBoundingClientRect.mockRestore()
+      }
     })
   })
 })
