@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { SignInContainer } from '../features/auth/SignInContainer'
+import { isSafeReturnPath } from '../features/auth/returnLocation'
 
 export interface SignInSearch {
   /** `contracts/http-api.md`'s Authentication failure codes, echoed verbatim off
@@ -11,12 +12,21 @@ export interface SignInSearch {
    * literal string `'1'` or `true`); left `undefined` otherwise, including when the parameter is
    * absent, so the router does not serialise it back onto the URL of an ordinary first visit. */
   link?: boolean
+  /** US5 scenario 5, `favourite-toggle.md` §5a and `favourites-list.md` §5a: where to send the
+   * caller back after a real sign-in — `features/auth/returnLocation.ts`'s
+   * `buildSignInHref` is the one place that builds this URL. Left `undefined` for an ordinary
+   * visit (no round trip pending) or an unsafe value, exactly `isSafeReturnPath`'s own check. */
+  return?: string
 }
 
 export function validateSignInSearch(search: Record<string, unknown>): SignInSearch {
   return {
     error: typeof search.error === 'string' ? search.error : undefined,
     link: search.link === '1' || search.link === true ? true : undefined,
+    return:
+      typeof search.return === 'string' && isSafeReturnPath(search.return)
+        ? search.return
+        : undefined,
   }
 }
 
@@ -49,6 +59,7 @@ function SignInRoute() {
     <SignInContainer
       linkMode={linkMode}
       errorCode={search.error}
+      returnTo={search.return}
       onNavigateHome={() => {
         void navigate({ to: '/' })
       }}

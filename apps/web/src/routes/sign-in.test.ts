@@ -23,3 +23,23 @@ describe('validateSignInSearch', () => {
     expect(validateSignInSearch({ link: value }).link).toBeUndefined()
   })
 })
+
+// US5 scenario 5, `features/auth/returnLocation.ts` — `return` carries the caller's place across
+// the sign-in prompt (`FavouriteToggle`/`FavouritesList`'s own `signInHref`).
+describe('validateSignInSearch — return', () => {
+  it('leaves return undefined when the parameter is absent', () => {
+    expect(validateSignInSearch({}).return).toBeUndefined()
+  })
+
+  it('carries a safe, relative return path through', () => {
+    expect(validateSignInSearch({ return: '/players/12345' }).return).toBe('/players/12345')
+  })
+
+  it('drops a protocol-relative return value (an off-site redirect)', () => {
+    expect(validateSignInSearch({ return: '//evil.example' }).return).toBeUndefined()
+  })
+
+  it('drops a non-string return value', () => {
+    expect(validateSignInSearch({ return: 123 }).return).toBeUndefined()
+  })
+})

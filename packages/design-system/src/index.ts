@@ -23,6 +23,10 @@ export * from './components/PlayerResultRow'
 // Replay availability (T340, packages/design-system/specs/replay-availability.md).
 export * from './components/ReplayAvailabilityList'
 
+// Favourites (T348, packages/design-system/specs/{favourite-toggle,favourites-list}.md).
+export * from './components/FavouriteToggle'
+export * from './components/FavouritesList'
+
 // Screens (T035, packages/design-system/specs/{sign-in-screen,archival-control,profile-summary}.md).
 // T036/T037 build the routes that mount these; this package builds what they compose.
 // `ArchivalControl` was `ConsentStep` until T406 (constitution IX 4.0.0): the opt-in gate it drew

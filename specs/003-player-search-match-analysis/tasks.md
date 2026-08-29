@@ -225,16 +225,16 @@ current standing and reachable in one click.
 
 ### Tests for User Story 5
 
-- [ ] T344 [P] [US5] Write the favourites route tests in `apps/api/tests/test_favourites.py`, `xfail(strict=True, reason="T346 not implemented yet")`, encoding quickstart scenario 11: `PUT` twice is one row and two `200`s and `DELETE` is idempotent, so a player can be marked and unmarked (FR-013); the list carries each player's current standing and links to their profile in one step (FR-014); the per-user bound answers `favourites_limit_reached` (FR-016); an unauthenticated call answers `sign_in_required` (US5 scenario 5); and one user never sees another's favourites (FR-015). Add the assertion that has no route to test: **grep the router module for any aggregate over `profile_id`** and fail if one exists — "how many people follow this player" is a question this system must not be able to answer, and the only way to test an absence is to test for it
-- [ ] T345 [P] [US5] Write the no-capture test in `apps/ingester/tests/test_favourite_no_capture.py`, `xfail(strict=True, reason="T346 not implemented yet")`: favouriting a player enqueues no capture, ingests nothing and archives nothing, asserted across a full `run_once` after the favourite exists (FR-012, US5 scenario 4). Capture remains what 001 defines it as — the consenting user's own point of view — and a favourite is a bookmark
+- [x] T344 [P] [US5] Write the favourites route tests in `apps/api/tests/test_favourites.py`, `xfail(strict=True, reason="T346 not implemented yet")`, encoding quickstart scenario 11: `PUT` twice is one row and two `200`s and `DELETE` is idempotent, so a player can be marked and unmarked (FR-013); the list carries each player's current standing and links to their profile in one step (FR-014); the per-user bound answers `favourites_limit_reached` (FR-016); an unauthenticated call answers `sign_in_required` (US5 scenario 5); and one user never sees another's favourites (FR-015). Add the assertion that has no route to test: **grep the router module for any aggregate over `profile_id`** and fail if one exists — "how many people follow this player" is a question this system must not be able to answer, and the only way to test an absence is to test for it
+- [x] T345 [P] [US5] Write the no-capture test in `apps/ingester/tests/test_favourite_no_capture.py`, `xfail(strict=True, reason="T346 not implemented yet")`: favouriting a player enqueues no capture, ingests nothing and archives nothing, asserted across a full `run_once` after the favourite exists (FR-012, US5 scenario 4). Capture remains what 001 defines it as — the consenting user's own point of view — and a favourite is a bookmark
 
 ### Implementation for User Story 5
 
-- [ ] T346 [US5] Implement `apps/api/src/aoe2stats_api/routers/favourites.py` with `GET`, `PUT` and `DELETE`, registered in `app.py`, and remove T344's and T345's markers
-- [ ] T347 [P] [US5] Write the component specs for the favourite toggle and the favourites list in `packages/design-system/specs/`, including the signed-out state that prompts sign-in without losing the user's place
-- [ ] T348 [US5] Build the toggle and the list from tokens in `packages/design-system/src/components/`, with stories including the at-the-bound and signed-out states
-- [ ] T349 [US5] Wire favourites in `apps/web/src/features/favourites/`, with `apps/web/src/routes/favourites.tsx` and the toggle on the profile page, returning the user where they were after a sign-in prompt
-- [ ] T350 [US5] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T348 added, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T346 [US5] Implement `apps/api/src/aoe2stats_api/routers/favourites.py` with `GET`, `PUT` and `DELETE`, registered in `app.py`, and remove T344's and T345's markers
+- [x] T347 [P] [US5] Write the component specs for the favourite toggle and the favourites list in `packages/design-system/specs/`, including the signed-out state that prompts sign-in without losing the user's place
+- [x] T348 [US5] Build the toggle and the list from tokens in `packages/design-system/src/components/`, with stories including the at-the-bound and signed-out states
+- [x] T349 [US5] Wire favourites in `apps/web/src/features/favourites/`, with `apps/web/src/routes/favourites.tsx` and the toggle on the profile page, returning the user where they were after a sign-in prompt
+- [x] T350 [US5] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T348 added, updating baselines in `packages/design-system/__screenshots__/`
 
 **Checkpoint**: US1, US2, US3 and US5 are complete. The product is useful without any analysis at all.
 

@@ -16,6 +16,8 @@ component carries a hard-coded style value.
 | [`match-history.md`](./match-history.md)             | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`      | 001, US3; 003, US2 |
 | [`player-search.md`](./player-search.md)             | `src/components/SearchBox/`, `src/components/PlayerResultRow/`      | 003, US1           |
 | [`replay-availability.md`](./replay-availability.md) | `src/components/ReplayAvailabilityList/`                            | 003, US3           |
+| [`favourite-toggle.md`](./favourite-toggle.md)       | `src/components/FavouriteToggle/`                                   | 003, US5           |
+| [`favourites-list.md`](./favourites-list.md)         | `src/components/FavouritesList/`                                    | 003, US5           |
 
 ## Every spec has nine sections
 

@@ -2,6 +2,9 @@
 # beta user but never publicly indexed. The `X-Robots-Tag: noindex, nofollow` response header
 # (apps/api/.../app.py's `_NoIndexHeaderMiddleware`, T309) covers the API routes these pages call;
 # this file covers the client-side routes themselves (`routes/search.tsx`, T322).
+# /favourites (T349, `routes/favourites.tsx`) follows the same precedent — FR-015: one user's
+# favourites are private to them, so the page is never publicly indexed either.
 User-agent: *
 Disallow: /search
 Disallow: /players
+Disallow: /favourites
