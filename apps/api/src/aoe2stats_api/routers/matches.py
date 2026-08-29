@@ -76,6 +76,20 @@ FR-025 forbids offering as an action — `expired` and `never_recorded` — and 
 `obtainable_until` is carried through from `derive_availability` unmodified: it is already `None`
 in every state (FR-024, amended 2026-08-29 — see `availability.py`'s own module docstring), so no
 date arithmetic happens here either.
+
+**Ownership still gates `archived`, inside this response, not only at the download route
+(remediation, FR-026).** `contracts/http-api.md`'s `archived` state is "the caller's own captured
+replay, and **only** that" — a `stored` `replay_captures` row this route found by `(game_id,
+profile_id) IN participants` says nothing about who owns it, so `_replay_by_profile` also takes
+`owner_profile_ids` — the same list `get_match_detail` already computed for FR-022's own archival
+state, not a new query — and refuses to let a `stored` capture the caller does not own read as
+`archived`: it falls through to `derive_availability`'s ordinary age comparison instead, exactly as
+if no capture existed, and comes back `expired` or `obtainable` on its own merits. Nulling only
+`_replay_json`'s `download_path` while leaving the state `archived` would not be enough — FR-026's
+"and only that" is about the state itself, not merely the click it enables, because `availability:
+"archived"` on a stranger's point of view is already the disclosure `test_no_public_directory.py`'s
+property 4 exists to catch: it says an account controls that profile, whether or not the button
+underneath it ever works.
 """
 
 from __future__ import annotations
@@ -94,7 +108,7 @@ from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
-from aoe2stats_storage.models import ProfileLink, ReplayCapture, ReplayFetchMiss
+from aoe2stats_storage.models import CaptureStatus, ProfileLink, ReplayCapture, ReplayFetchMiss
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
     DEFAULT_PAGE_SIZE,
@@ -194,21 +208,38 @@ async def _replay_by_profile(
     game_id: int,
     profile_ids: Sequence[int],
     completed_at: datetime,
+    owner_profile_ids: Sequence[int],
+    capture_budget_days: int,
 ) -> dict[int, AvailabilityView]:
     """`derive_availability` (T336) for every participant of `game_id`, from two queries scoped to
     the whole match rather than one per participant (module docstring). `derive_availability`
     itself stays pure — no provider, no I/O, no database query of its own (`availability.py`'s own
     module docstring) — so this function is the one place that supplies the rows it needs, batched
-    rather than per row."""
+    rather than per row.
+
+    `owner_profile_ids` is the caller's own active `profile_links` (`_owned_profile_ids`,
+    `get_match_detail`'s existing call — no query added here for it): a `stored` capture for a
+    `profile_id` outside that set is excluded from `capture_by_profile` below, so
+    `derive_availability` receives `capture=None` for it and falls through to the ordinary age
+    comparison, never `archived` (module docstring's remediation paragraph, FR-026).
+    `capture_budget_days` is threaded straight through to `derive_availability`, which now
+    requires it explicitly rather than owning its own window constant — `Settings.
+    capture_budget_days` (`CAPTURE_BUDGET_DAYS`), the same value the caller already reads."""
     if not profile_ids:
         return {}
+
+    owned_profile_ids = set(owner_profile_ids)
 
     captures_result = await db_session.execute(
         select(ReplayCapture).where(
             ReplayCapture.game_id == game_id, ReplayCapture.profile_id.in_(profile_ids)
         )
     )
-    capture_by_profile = {capture.profile_id: capture for capture in captures_result.scalars()}
+    capture_by_profile = {
+        capture.profile_id: capture
+        for capture in captures_result.scalars()
+        if capture.status is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids
+    }
 
     misses_result = await db_session.execute(
         select(ReplayFetchMiss.profile_id).where(
@@ -224,6 +255,7 @@ async def _replay_by_profile(
             now=now,
             capture=capture_by_profile.get(profile_id),
             recorded_404=profile_id in recorded_404_profiles,
+            capture_budget_days=capture_budget_days,
         )
         for profile_id in profile_ids
     }
@@ -393,7 +425,10 @@ async def get_match_detail(
     signed-in caller, with no ownership scope at all (module docstring). `owner_profile_ids` is
     still resolved and still passed through, but only so `MatchesRepository.get_match_detail` can
     carry FR-022's own archival state and capture deadline for this match (T070e) when the caller
-    played in it — it no longer decides whether `detail` comes back at all."""
+    played in it — it no longer decides whether `detail` comes back at all. The same list is also
+    passed to `_replay_by_profile` below, so it is the one query that both gates FR-026's
+    `archived` state (module docstring's remediation paragraph) and resolves FR-022's — never a
+    second query for the same fact."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     owner_profile_ids = await _owned_profile_ids(db_session, user_id=session_row.user_id)
@@ -410,6 +445,8 @@ async def get_match_detail(
         game_id=game_id,
         profile_ids=[participant.profile_id for participant in detail.participants],
         completed_at=detail.completed_at,
+        owner_profile_ids=owner_profile_ids,
+        capture_budget_days=settings.capture_budget_days,
     )
 
     return _match_detail_json(detail, replay_by_profile=replay_by_profile)

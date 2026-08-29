@@ -23,8 +23,8 @@ carries no profile in its own path and therefore no "mine" name to keep — is w
 feature (FR-018, FR-021, T327), and the four tests below replace the single T067 assertion that
 used to cover it.
 
-**The four properties, one test each — one still carrying its own `xfail` marker, never one for
-the file; the first three need none anymore.** Per `contracts/http-api.md`:
+**The four properties — all four live now, none behind an `xfail` marker.** Per
+`contracts/http-api.md`:
 
 1. no anonymous reach to any route this feature adds — asserted directly, no `xfail`, since T319
    landed and registered the three routes it covers: `GET /api/players/search`, `GET
@@ -39,11 +39,16 @@ the file; the first three need none anymore.** Per `contracts/http-api.md`:
 3. no disclosure of a relationship between a player's accounts, on any profile (FR-009, 001
    FR-045 restated and unchanged) — asserted directly, no `xfail`, since T328 landed and
    registered `GET /api/players/{profile_id}/matches`;
-4. ownership still deciding a user's own archived replay (`xfail(..., reason="T337 not
-   implemented yet")`, against `GET /api/matches/{game_id}/replay/{profile_id}`, the route T337
-   adds — the one place this feature's widening must stop dead: a captured replay still leaves
-   this service only for the participant who owns the capture, whatever else about the match is
-   now public).
+4. ownership still deciding a user's own archived replay — asserted directly, no `xfail`, since
+   T337 landed and `GET /api/matches/{game_id}/replay/{profile_id}`, the route it names, now
+   exists and answers for real. A second test carries the identical property one layer up, inside
+   `GET /api/matches/{game_id}`'s own response: a remediation, since that route (widened by T327)
+   was found reporting `availability: "archived"` and a live `download_path` for a point of view
+   the caller did not own — an "in our archive" badge and a button that then 404s, and, on its
+   own, the exact account-linkage disclosure this file exists to catch, independent of whether the
+   download itself was ever refused. A captured replay still leaves this service, in the report
+   that points at it and in the download itself, only for the participant who owns the capture,
+   whatever else about the match is now public.
 
 Not T339: that task writes a design-system component spec and can make no assertion in this file
 pass — a marker naming it would turn the tree red at a task with no way to fix it.
@@ -55,27 +60,19 @@ constants said as much), so the constants had already stopped doing anything by 
 docstring was last touched. Removed rather than left, because an unused reason constant sitting
 beside four genuine ones invites a future reader to wonder which of the five is stale.
 
-**Positive controls, kept where the collision risk that motivated them still exists.** The three
-live tests below keep their positive controls (the caller's own data, asserted to come back for
-real) exactly as T067 wrote them, because `GET /api/matches`, `GET /api/profiles/{profile_id}/
-ratings` and now `GET /api/players/{profile_id}/matches` (T328) all already exist and a bare
-"foreign profile_id gets `not_found`"-shaped assertion is indistinguishable from an accidental
-pass only where a route's *existence* is not yet the thing under test. The one remaining `xfail`
-test below (property 4) reaches for a route that does not exist at all yet —
-`replays.py` carries no `/api/matches/{game_id}/replay/{profile_id}` route (T337) — so a
-cross-account request already 404s on Starlette's own unmatched path rather than answering the
-outcome the assertion asks for — a different result than the assertion asks for, which is what
-makes that `xfail` genuine without needing a matching positive control. Property 4's own test
-keeps a positive control anyway, because it names a *specific outcome* (a signed URL an owner
-must actually receive) that a route's mere existence would not itself prove.
-
-Properties 1, 2 and 3's tests need none of this. `players.py` is registered now (T319, T328), so
-every anonymous request property 1 makes already answers the real `401` the assertion asks for
-directly, without relying on a route's absence to manufacture a different status code. `matches.py`
-carries no ownership scope on `GET /api/matches/{game_id}` now (T327), so property 2's requests
-already answer the real `200` and header the assertion asks for directly; `GET /api/players/
-{profile_id}/matches` is a real route now (T328), so property 3's request answers the real `200`
-too — which is why none of the three carries an `xfail` any more.
+**Positive controls, kept where the collision risk that motivated them still exists.** Every live
+test below keeps its positive control — the caller's own data, or the owner's own download or
+archived report, asserted to come back for real — because a bare "foreign profile_id gets
+`not_found`"-shaped assertion is indistinguishable from an accidental pass wherever the route
+itself, or the specific outcome it answers with, is also new enough to be in doubt. `GET /api/
+matches`, `GET /api/profiles/{profile_id}/ratings` and `GET /api/players/{profile_id}/matches`
+(T328) already existed before this narrowing, so their positive controls (properties 1-3) prove
+the narrowing itself rather than a route's mere existence. `GET /api/matches/{game_id}/replay/
+{profile_id}` (T337) and the ownership gate inside `GET /api/matches/{game_id}`'s own response
+(this remediation) are newer still, so property 4's two tests each keep a positive control that
+names a *specific outcome* — a signed URL the owner actually receives, an `archived` state and
+working `download_path` the owner's own participant row actually carries — that a route's mere
+existence, or only the negative case, would not itself prove.
 
 **Harness and response-shape assumptions** follow the sibling files these routes share, byte for
 byte where they overlap: `test_replay_status.py`'s `client`/`db_session`/`_sign_in` conventions;
@@ -153,6 +150,17 @@ _MULTI_GAME_TWO_ID = 900_200_501
 _REPLAY_OWNER_PROFILE_ID = 900_100_600
 _REPLAY_STRANGER_PROFILE_ID = 900_100_601
 _REPLAY_GAME_ID = 900_200_600
+
+# Property 4's remediation corollary
+# (`test_match_detail_never_reports_an_archived_replay_the_caller_does_not_own`): the identical
+# ownership question, one layer up — inside `GET /api/matches/{game_id}`'s own response rather
+# than at the download route the previous test already covers. A third, never-linked profile
+# stands in as the match's second participant, so the caller below (a fully unrelated account)
+# never plays in this match at all — the widest reach `GET /api/matches/{game_id}` allows.
+_MATCH_DETAIL_OWNER_PROFILE_ID = 900_100_610
+_MATCH_DETAIL_STRANGER_PROFILE_ID = 900_100_611
+_MATCH_DETAIL_OPPONENT_PROFILE_ID = 900_100_612
+_MATCH_DETAIL_GAME_ID = 900_200_610
 
 
 def _contains_value(payload: object, needle: object) -> bool:
@@ -599,6 +607,19 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
     # copy of this replay that can possibly exist, which is what makes "ownership, not age" the
     # only thing left that can be gating the stranger's request below.
     await _seed_match(db_session, game_id=_REPLAY_GAME_ID, completed_at=now - timedelta(days=60))
+    # `_match_completed_at_for_participant` (replays.py) confirms `profile_id` as a recorded
+    # participant of `game_id` before answering anything — a plain `Match` row with no
+    # `match_players` alongside it 404s regardless of ownership, which is not the property this
+    # test is about.
+    await _seed_match_player(
+        db_session,
+        game_id=_REPLAY_GAME_ID,
+        profile_id=_REPLAY_OWNER_PROFILE_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
     object_key = f"replays/{_REPLAY_GAME_ID}/{_REPLAY_OWNER_PROFILE_ID}.zip"
     db_session.add(
         ReplayCapture(
@@ -643,6 +664,142 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
     )
     assert object_key not in stranger_response.text
     assert "location" not in stranger_response.headers
+
+
+async def test_match_detail_never_reports_an_archived_replay_the_caller_does_not_own(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a property 4's remediation corollary (FR-025, FR-026): the test above proves the
+    *download* route refuses a stranger. This one proves the *report* that points a caller at it
+    never lies in the first place. `GET /api/matches/{game_id}` (T327) is open to any signed-in
+    caller with no ownership scope at all (module docstring, property 2) — but
+    `contracts/http-api.md`'s `archived` state is "the caller's own captured replay, and only
+    that" (FR-026): a `stored` `replay_captures` row belongs to whichever account captured it, not
+    to whoever happens to be looking, and the widened route must never say otherwise.
+
+    Before this remediation, `_replay_by_profile` (`matches.py`) selected by `(game_id,
+    profile_id) IN participants` alone — no ownership predicate — so any signed-in caller saw
+    `availability: "archived"` and a live `download_path` for a stranger's point of view; clicking
+    it 404s, because the download route (`replays.py`, untouched by this fix) already enforces
+    ownership on its own. That gap is FR-025's own violation by itself — an "in our archive" badge
+    and a button that then fails — and, independent of FR-025, `availability: "archived"` for a
+    profile is itself the disclosure this whole file exists to catch: it says an account controls
+    that profile, whether or not the click underneath it ever works. Nulling only `download_path`
+    while leaving the state `archived` would not have been enough for either reason.
+
+    The match is seeded 60 days old — past the capture budget window — so a `stored` capture is
+    the only thing that could possibly read as anything other than `expired`; if the state read
+    below is not `expired` for the stranger, ownership is not what gated it.
+
+    The stranger below is not a participant of this match at all, and never links to either
+    profile in it — matching `GET /api/matches/{game_id}`'s own "any signed-in caller" reach
+    (module docstring) rather than the narrower case of a co-participant, so this proves the
+    property for the widest caller the route allows.
+    """
+    owner = await _seed_user(db_session)
+    await _seed_profile(
+        db_session, profile_id=_MATCH_DETAIL_OWNER_PROFILE_ID, alias="MatchDetailOwnerAlias"
+    )
+    await _link_profile(
+        db_session,
+        user=owner,
+        profile_id=_MATCH_DETAIL_OWNER_PROFILE_ID,
+        steam_id64="76561197960287960",
+    )
+    stranger = await _seed_user(db_session)
+    await _seed_profile(
+        db_session, profile_id=_MATCH_DETAIL_STRANGER_PROFILE_ID, alias="MatchDetailStrangerAlias"
+    )
+    await _link_profile(
+        db_session,
+        user=stranger,
+        profile_id=_MATCH_DETAIL_STRANGER_PROFILE_ID,
+        steam_id64="76561197960287961",
+    )
+    await _seed_profile(
+        db_session,
+        profile_id=_MATCH_DETAIL_OPPONENT_PROFILE_ID,
+        alias="MatchDetailOpponentAlias",
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+    completed_at = now - timedelta(days=60)
+    await _seed_match(db_session, game_id=_MATCH_DETAIL_GAME_ID, completed_at=completed_at)
+    await _seed_match_player(
+        db_session,
+        game_id=_MATCH_DETAIL_GAME_ID,
+        profile_id=_MATCH_DETAIL_OWNER_PROFILE_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_MATCH_DETAIL_GAME_ID,
+        profile_id=_MATCH_DETAIL_OPPONENT_PROFILE_ID,
+        team_id=2,
+        civ_id=10,
+        result="loss",
+        rating_diff=-15,
+    )
+    db_session.add(
+        ReplayCapture(
+            game_id=_MATCH_DETAIL_GAME_ID,
+            profile_id=_MATCH_DETAIL_OWNER_PROFILE_ID,
+            status=CaptureStatus.STORED,
+            capture_deadline_at=completed_at + timedelta(days=19),
+            first_seen_at=completed_at,
+            stored_at=completed_at + timedelta(days=1),
+            object_key=f"replays/{_MATCH_DETAIL_GAME_ID}/{_MATCH_DETAIL_OWNER_PROFILE_ID}.zip",
+            zip_bytes=1024,
+            zip_sha256="c" * 64,
+            inner_filename="replay.aoe2record",
+            inner_bytes=2048,
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+    await db_session.commit()
+
+    detail_path = f"/api/matches/{_MATCH_DETAIL_GAME_ID}"
+    expected_download_path = (
+        f"/api/matches/{_MATCH_DETAIL_GAME_ID}/replay/{_MATCH_DETAIL_OWNER_PROFILE_ID}"
+    )
+
+    def _owner_replay(payload: dict[str, object]) -> dict[str, object]:
+        participants = payload["participants"]
+        assert isinstance(participants, list)
+        for participant in participants:
+            if participant["profile_id"] == _MATCH_DETAIL_OWNER_PROFILE_ID:
+                replay = participant["replay"]
+                assert isinstance(replay, dict)
+                return replay
+        raise AssertionError("the owner's participant row is missing from the response")
+
+    await _sign_in(client, db_session, stranger)
+    stranger_response = client.get(detail_path)
+    assert stranger_response.status_code == 200, stranger_response.text
+    stranger_replay = _owner_replay(stranger_response.json())
+    assert stranger_replay["availability"] != "archived", (
+        "a caller who does not own the capture must never see it reported as archived — FR-026's "
+        f"'and only that'. Got {stranger_replay!r}"
+    )
+    assert stranger_replay["download_path"] is None, (
+        f"an unowned capture must carry no download path either. Got {stranger_replay!r}"
+    )
+    assert expected_download_path not in stranger_response.text
+
+    client.cookies.clear()
+    await _sign_in(client, db_session, owner)
+    owner_response = client.get(detail_path)
+    assert owner_response.status_code == 200, owner_response.text
+    owner_replay = _owner_replay(owner_response.json())
+    assert owner_replay["availability"] == "archived", (
+        "the actual owner must still see their own captured replay as archived (FR-026), "
+        f"regardless of the match's age. Got {owner_replay!r}"
+    )
+    assert owner_replay["download_path"] == expected_download_path
 
 
 async def test_ratings_never_returns_the_curve_of_a_profile_the_caller_has_not_linked(

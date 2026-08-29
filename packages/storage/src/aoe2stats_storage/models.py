@@ -632,7 +632,7 @@ class DataRequest(Base):
 
 
 # --- 003: player search, favourites and on-demand match analysis --------------------------------
-# Five new tables, per `specs/003-player-search-match-analysis/data-model.md`. `aoe_profiles` and
+# Six new tables, per `specs/003-player-search-match-analysis/data-model.md`. `aoe_profiles` and
 # `replay_access_log` above are the two existing tables that feature widens.
 
 

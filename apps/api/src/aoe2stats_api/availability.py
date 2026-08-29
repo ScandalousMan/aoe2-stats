@@ -19,7 +19,7 @@ exactly as empty as it started.
 | ---------------- | -------------------------------------------------------------------------- |
 | `archived`       | a `replay_captures` row in `stored` — that row only, any age (FR-026)     |
 | `never_recorded` | `recorded_404`, or a `replay_captures` row in `unavailable`               |
-| `obtainable`     | no evidence either way, and completed inside the shortest credible window |
+| `obtainable`     | no evidence either way, and completed inside `capture_budget_days`       |
 | `expired`        | no evidence either way, and completed outside it                         |
 
 **A `retained_recordings` row is not an input, and cannot become one by accident.** R8, decided
@@ -42,17 +42,24 @@ null for. This module therefore performs no date arithmetic at all for `obtainab
 window-length value feeds it; the day that becomes claimable again is a `research.md` R8 decision to
 re-derive it, not a change owed here.
 
-**The `obtainable`/`expired` split still needs one number, and R8 says which:** "the derivation
-stays conservative and unchanged: a match older than the shortest credible window renders expired
-[...] under either reading that is safe in the direction FR-025 actually guards — it never presents
-an unobtainable download as an action that then fails, because it only ever under-offers."
-`_SHORTEST_CREDIBLE_WINDOW` below is that floor, not a claim about the true window (which is exactly
-what is unresolved): it is chosen short enough to stay safe under either contested reading, so this
-function is wrong, if at all, only in the direction of saying `expired` for a recording the source
-would still serve — never the reverse. It is this module's own constant, defined and used nowhere
-else (`test_replay_availability.py`'s own docstring calls it exactly that), and it is not restated
-from — nor a substitute for — the measurement itself, which stays where it is measured, in
-`docs/data-sources.md`, unresolved, until a later change settles it.
+**The `obtainable`/`expired` split still needs one number, and it must be a conservative floor,
+never the measurement itself.** R8: "the derivation stays conservative and unchanged: a match
+older than the shortest credible window renders expired [...] under either reading that is safe in
+the direction FR-025 actually guards — it never presents an unobtainable download as an action
+that then fails." Reading that number as `docs/data-sources.md`'s own "approximately 31 days" —
+bisected to a ~4 h interval, and itself contradicted there by a second, later sample — offers zero
+margin: a match at day 30.9 would still render `obtainable` for a recording that source may already
+have discarded, which is exactly the failure FR-025 forbids. Constitution I settles what the floor
+must be instead: "Capture runs against a budget strictly shorter than the shortest credible window,
+configured (`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a setting, not
+code." `capture_budget_days` below is that same setting, threaded in by the caller from
+`apps/api/src/aoe2stats_api/settings.py`'s `Settings.capture_budget_days` — the identical value
+`apps/ingester/src/aoe2stats_ingester/discover.py` already threads for the same reason and the same
+number. It is strictly shorter than either contested reading of the retention window, so the
+derivation genuinely, rather than only nominally, under-offers: this function is wrong, if at all,
+only in the direction of saying `expired` for a recording the source would still serve — never the
+reverse — and with margin, not at exact equality. `derive_availability` takes no default for it: a
+default would be a hard-coded window under another name, the same restatement this replaces.
 """
 
 from __future__ import annotations
@@ -62,12 +69,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from aoe2stats_storage.models import CaptureStatus, ReplayCapture
-
-#: R8's "shortest credible window": short enough to stay safe under either contested reading of
-#: `docs/data-sources.md`'s retention measurement (a ~31-day rolling window, or a fixed epoch many
-#: months wide) — see the module docstring's closing paragraph for why this is a conservative floor
-#: and not a restatement of either reading.
-_SHORTEST_CREDIBLE_WINDOW = timedelta(days=31)
 
 
 class Availability(enum.StrEnum):
@@ -97,6 +98,7 @@ def derive_availability(
     now: datetime,
     capture: ReplayCapture | None,
     recorded_404: bool,
+    capture_budget_days: int,
 ) -> AvailabilityView:
     """FR-025's four states, from rows the caller already has and nothing else.
 
@@ -104,6 +106,10 @@ def derive_availability(
     when this service never attempted to capture it — the normal case for a third party (FR-012).
     `recorded_404` is the caller's own evidence, from wherever it was recorded, that the source has
     answered 404 for this point of view; T337 is what records it, not this function.
+    `capture_budget_days` is the caller's own `Settings.capture_budget_days`
+    (`CAPTURE_BUDGET_DAYS`) — the module docstring's closing paragraph is why this must be that
+    setting and not a literal: it is required, with no default, so a value can only ever come from
+    configuration.
 
     Order matters and is R8's own: `archived` is checked first because it holds regardless of the
     match's age (FR-026) and must never fall through to a time comparison; `never_recorded` is
@@ -118,7 +124,7 @@ def derive_availability(
     if recorded_404 or (capture is not None and capture.status is CaptureStatus.UNAVAILABLE):
         return AvailabilityView(state=Availability.NEVER_RECORDED, obtainable_until=None)
 
-    if now - completed_at > _SHORTEST_CREDIBLE_WINDOW:
+    if now - completed_at > timedelta(days=capture_budget_days):
         return AvailabilityView(state=Availability.EXPIRED, obtainable_until=None)
 
     return AvailabilityView(state=Availability.OBTAINABLE, obtainable_until=None)

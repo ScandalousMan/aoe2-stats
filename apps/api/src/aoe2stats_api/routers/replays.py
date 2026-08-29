@@ -55,6 +55,22 @@ specification; `specs/003-player-search-match-analysis/research.md` R8 is the st
 implements to, through `availability.py`'s `derive_availability` (T336) — this router never
 re-derives the four states itself.
 
+**`profile_id` must itself be a recorded participant of `game_id`, checked before any state is
+derived.** FR-023 is "one download per participant point of view" — the *participant* half of that
+is enforced here, in `_match_completed_at_for_participant`; the *caller* half (does the signed-in
+user own the point of view being served) is a separate question, answered only for the `archived`
+branch below, where FR-026 requires it. `_match_completed_at_for_participant` answers the identical
+`not_found` FR-045 requires for "no such match" for this case too, by joining `match_players` in
+the same query rather than checking existence and participation separately — a caller cannot tell
+"there is no such match" from "`profile_id` never played it", the same indistinguishability FR-045
+already requires of ownership. This check runs *after* the rate limit below, not before it:
+`check_and_increment`'s own contract is that the limit bounds *any* call this route receives,
+valid pair or not, and an invalid-pair probe is itself part of the enumeration FR-028 exists to
+stop — running the participation check first would let exactly that probing through uncounted. It
+runs before every other query this route makes, so an invalid pair costs nothing beyond the one
+query that proves it invalid: no capture lookup, no fetch-miss lookup, and — the case that matters
+most, since it was reaching the source before this fix — no outbound call to `aoe.ms`.
+
 Per-state behaviour (`contracts/http-api.md`):
 
 - `archived` — `derive_availability` answers this only from a `replay_captures` row in `stored`,
@@ -91,18 +107,37 @@ tables"; that omission is reported in this task's own hand-back for the artifact
 hand alongside the code, per this repository's own rule that spec-kit artifacts never drift from
 what actually shipped.**
 
-**Every write this route makes on a path that ends in an error answers to its own short-lived
+**Every write this route makes that must survive a rollback answers to its own short-lived
 session, never `db_session`** (`_audit_session` below) — `deps.py`'s `session_scope` rolls the
-whole request's transaction back the moment any exception (including `APIError`) propagates, and
-three of this route's writes each happen on exactly such a path: the `rate_limited` alert
-(FR-028's second half) precedes a `429`, and the fetch-miss row precedes a `404`. Mirrors
-`routers/players.py`'s `_relic_call_sink`, which the same reasoning already governs there.
+whole request's transaction back the moment any exception (including `APIError`) propagates. Four
+of this route's writes go through it, for two different reasons. Three only ever run on a path
+that already ends in an error and would otherwise be discarded along with it: the `rate_limited`
+alert (FR-028's second half) precedes a `429`, the fetch-miss row precedes a `404`, and the
+`provider_calls` row (`_aoems_call_sink`) is written mid-fetch, before either outcome is known.
+Mirrors `routers/players.py`'s `_relic_call_sink`, which the same reasoning already governs there.
+
+The fourth, the rate-limit counter itself (`_apply_replay_download_rate_limit`), is different in
+kind: `check_and_increment`'s own docstring is explicit that it does not commit and leaves that to
+its caller, and every refusal this route raises is an `APIError` — `not_found`, `never_recorded`,
+`expired`, the source's own `429`, `expired_since_page_load`, and the limiter's own `429` below.
+Before this was fixed, the caller deciding when that increment became durable was `db_session`, so
+`session_scope` rolled it back on every one of those paths and left only the two success shapes
+(`archived`'s 302, `obtainable`'s 200) actually metered — the boundary-race path in particular kept
+making a real outbound call to `aoe.ms` while its own accounting was discarded, unmetered
+third-party traffic driven by user input (constitution I). `_apply_replay_download_rate_limit` now
+commits its own increment through `_audit_session` immediately, before this route does anything
+else with the request, so it survives every outcome rather than only the ones that end well.
 
 **The rate limit (FR-028's first half, R10) applies before anything else this route does**, in its
 own `replay_download` bucket (`data-model.md`'s `rate_limit_counters` section) — `contracts/
-http-api.md` states it applies to the whole route, not only the `obtainable` branch, and
-`test_replay_download_rate_limit_applies_per_user` exhausts it against a caller's own `archived`
-point of view to prove exactly that.
+http-api.md` states it applies to the whole route, not only the `obtainable` branch.
+`test_replay_download_rate_limit_applies_on_a_refused_path` exhausts it against a caller's own
+`expired` point of view — a refusal that makes no outbound call at all — to prove the limit reaches
+every refusal, not only a success. `test_boundary_race_path_still_consumes_the_rate_limit` proves
+the one refusal that *does* make a real outbound call is metered too, the case that actually
+matters. `test_replay_download_rate_limit_applies_per_user` is the contrast case: a caller's own
+successful `archived` download still counts, so the fix above did not simply move the accounting
+from the refusal paths onto the success ones.
 """
 
 from __future__ import annotations
@@ -136,6 +171,7 @@ from aoe2stats_storage.models import (
     Alert,
     CaptureStatus,
     Match,
+    MatchPlayer,
     ProfileLink,
     ProviderCall,
     ReplayAccessLog,
@@ -393,11 +429,24 @@ def _audit_session(db_session: AsyncSession) -> AsyncSession:
     return AsyncSession(bind=AsyncEngine(bind))
 
 
-async def _match_completed_at(db_session: AsyncSession, game_id: int) -> datetime:
-    """`Match.completed_at` for `game_id`, or the single `not_found` FR-045 requires — this route
-    answers the identical code for "no such match" as it does for every other refusal (module
-    docstring, `_replay_not_found`'s own reasoning)."""
-    result = await db_session.execute(select(Match.completed_at).where(Match.game_id == game_id))
+async def _match_completed_at_for_participant(
+    db_session: AsyncSession, *, game_id: int, profile_id: int
+) -> datetime:
+    """`Match.completed_at` for `game_id`, but only once `profile_id` is confirmed as a recorded
+    participant of it — FR-023's "one download per participant point of view", the participant half
+    (module docstring's own paragraph on this). Joins `match_players` in the same query as the
+    match lookup, rather than checking existence and participation separately, which is what makes
+    "no such match" and "profile_id never played it" answer the identical `not_found` FR-045
+    requires for free: there is exactly one query and one branch, so there is nothing for a second
+    branch to drift out of sync with (`_replay_not_found`'s own reasoning). Without this join,
+    `profile_id` never needed to have played `game_id` at all: any `aoe_profiles` row — or, worse,
+    an unknown one, see `_record_fetch_miss`'s foreign key — would fall through to `obtainable` for
+    a pair `docs/data-sources.md` documents the source as never meaningfully answering for."""
+    result = await db_session.execute(
+        select(Match.completed_at)
+        .join(MatchPlayer, MatchPlayer.game_id == Match.game_id)
+        .where(Match.game_id == game_id, MatchPlayer.profile_id == profile_id)
+    )
     completed_at = result.scalar_one_or_none()
     if completed_at is None:
         raise _replay_not_found()
@@ -575,6 +624,45 @@ class _RequestAlertSink:
         )
 
 
+async def _apply_replay_download_rate_limit(
+    db_session: AsyncSession, *, user_id: Any, limit: int
+) -> None:
+    """Increments FR-028's `replay_download` counter for `user_id` and raises the `429`
+    `rate_limited` error the moment this call's own increment exceeds `limit` (module docstring's
+    "The rate limit ... applies before anything else" paragraph).
+
+    Committed through `_audit_session`, immediately, unconditionally — never `db_session`.
+    `check_and_increment`'s own docstring is explicit that it does not commit and leaves that to
+    its caller; every refusal this route raises is an `APIError`, and `deps.py`'s `session_scope`
+    rolls `db_session`'s whole transaction back the moment one propagates. Passing `db_session`
+    itself here would silently discard the increment on every refusal — `not_found`,
+    `never_recorded`, `expired`, the source's own `429`, `expired_since_page_load`, and this
+    function's own `429` below — leaving only the two success shapes actually metered, which is
+    exactly the bug this function exists to not have. `_audit_session` already exists in this file
+    for the identical "must survive `db_session`'s own rollback" reason (three writes below); reused
+    here rather than calling `db_session.commit()` mid-request, so this route keeps exactly one
+    mechanism that decides "does this write survive a rollback", instead of splitting that decision
+    between two.
+    """
+    async with _audit_session(db_session) as audit_session:
+        outcome = await check_and_increment(
+            audit_session,
+            user_id=user_id,
+            bucket=_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET,
+            limit=limit,
+            window_seconds=_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS,
+        )
+        await audit_session.commit()
+
+    if not outcome.allowed:
+        raise APIError(
+            status_code=429,
+            code="rate_limited",
+            message="Too many replay downloads. Try again shortly.",
+            detail={"retry_after": outcome.retry_after},
+        )
+
+
 @router.get("/matches/{game_id}/replay/{profile_id}")
 async def download_replay_point_of_view(
     game_id: int,
@@ -587,26 +675,20 @@ async def download_replay_point_of_view(
     """FR-023, FR-025, FR-026, FR-027, FR-028, FR-029 (module docstring): one download per
     participant point of view, of any match this service holds. `derive_availability` (T336)
     decides which of the four states applies; this route only supplies the rows it needs, checks
-    ownership for the one state that requires it, and carries out the state's own action."""
+    participation and ownership for the states that require it, and carries out the state's own
+    action."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
 
-    rate_limit = await check_and_increment(
+    await _apply_replay_download_rate_limit(
         db_session,
         user_id=session_row.user_id,
-        bucket=_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET,
         limit=settings.replay_download_max_per_user_per_minute,
-        window_seconds=_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS,
     )
-    if not rate_limit.allowed:
-        raise APIError(
-            status_code=429,
-            code="rate_limited",
-            message="Too many replay downloads. Try again shortly.",
-            detail={"retry_after": rate_limit.retry_after},
-        )
 
-    completed_at = await _match_completed_at(db_session, game_id)
+    completed_at = await _match_completed_at_for_participant(
+        db_session, game_id=game_id, profile_id=profile_id
+    )
     capture = await _capture_for_point_of_view(db_session, game_id=game_id, profile_id=profile_id)
     recorded_404 = await _has_recorded_fetch_miss(
         db_session, game_id=game_id, profile_id=profile_id
@@ -616,6 +698,7 @@ async def download_replay_point_of_view(
         now=datetime.now(UTC),
         capture=capture,
         recorded_404=recorded_404,
+        capture_budget_days=settings.capture_budget_days,
     )
 
     if availability.state is Availability.ARCHIVED:

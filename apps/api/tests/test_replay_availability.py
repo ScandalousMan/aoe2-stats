@@ -10,24 +10,32 @@ whole workspace suite down, which is a different and worse failure than an expec
 
 **The interface under test is designed here, not merely exercised**, following the shape T307's
 own first test file (`test_rate_limits.py`) used for the same reason: `derive_availability(*,
-completed_at, now, capture, recorded_404)` returning an `AvailabilityView(state, obtainable_until)`
-— `state` one of `Availability.ARCHIVED / OBTAINABLE / EXPIRED / NEVER_RECORDED`, matching
-`contracts/http-api.md`'s four literal strings exactly. `capture` is a `ReplayCapture | None` — the
-row for this exact `(game_id, profile_id)` pair, or `None` when this service never attempted to
-capture it, which is the normal case for a third party. `recorded_404` is a plain `bool`: the
-caller's own evidence, from wherever it was recorded (an analysis fetch that 404'd, for a third
-party — T337's job, not this module's), that the source has no recording for this point of view.
-T336's task text calls this "a pure function over rows and a clock — no provider, no I/O", which is
-exactly why neither parameter is itself a query: whoever calls `derive_availability` has already
-fetched the one row that matters and already knows whether a 404 was seen.
+completed_at, now, capture, recorded_404, capture_budget_days)` returning an
+`AvailabilityView(state, obtainable_until)` — `state` one of `Availability.ARCHIVED / OBTAINABLE /
+EXPIRED / NEVER_RECORDED`, matching `contracts/http-api.md`'s four literal strings exactly.
+`capture` is a `ReplayCapture | None` — the row for this exact `(game_id, profile_id)` pair, or
+`None` when this service never attempted to capture it, which is the normal case for a third
+party. `recorded_404` is a plain `bool`: the caller's own evidence, from wherever it was recorded
+(an analysis fetch that 404'd, for a third party — T337's job, not this module's), that the source
+has no recording for this point of view. `capture_budget_days` is the caller's own
+`Settings.capture_budget_days` (`CAPTURE_BUDGET_DAYS`) — required, with no default, so this
+module never falls back to an undeclared window of its own (see the dedicated section below). T336's
+task text calls this "a pure function over rows and a clock — no provider, no I/O", which is
+exactly why none of the parameters is itself a query: whoever calls `derive_availability` has
+already fetched the one row that matters, already knows whether a 404 was seen, and already read
+its own configured budget.
 
-**No window-length constant is asserted against anywhere below.** R8's 2026-08-29 amendment leaves
-the retention window contradicted and unresolved (`docs/data-sources.md`), and states only that
-"the derivation stays conservative and unchanged: a match older than the shortest credible window
-renders expired" — without settling what that window's length is. Every `completed_at` below is
-therefore chosen to be unambiguous under *any* credible reading: days for "obviously still inside
-whatever window T336 picks" and well over a year for "obviously outside it", never a value close
-enough to a specific day-count that this file would need to know or restate T336's own constant.
+**No window-length constant is asserted against `derive_availability`'s own arithmetic anywhere
+below**, only against the parameter it is given. R8's 2026-08-29 amendment leaves the true
+retention window contradicted and unresolved (`docs/data-sources.md`), and states only that "the
+derivation stays conservative and unchanged: a match older than the shortest credible window
+renders expired" — without settling what that window's length is, and the module this fix landed
+in no longer owns a constant claiming to. Most `completed_at` values below are therefore chosen to
+be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
+budget the caller supplies" and well over a year for "obviously outside it". The one exception is
+the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
+`.env.example`'s own `CAPTURE_BUDGET_DAYS=21` — supplied as any caller would, through the
+parameter, never restated as an assertion about what `derive_availability` computes internally.
 That restraint is the same one `research.md`'s own header states for itself: a number that exists
 in two files is wrong in one of them.
 
@@ -127,6 +135,7 @@ def test_archived_comes_only_from_a_stored_capture_row_regardless_of_match_age()
         now=_NOW,
         capture=_capture(status=CaptureStatus.STORED),
         recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.ARCHIVED
@@ -154,6 +163,7 @@ def test_a_capture_row_that_is_not_stored_does_not_yield_archived(
         now=_NOW,
         capture=_capture(status=status),
         recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state != Availability.ARCHIVED
@@ -170,7 +180,11 @@ def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> 
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
-        completed_at=_RECENT_COMPLETION, now=_NOW, capture=None, recorded_404=False
+        completed_at=_RECENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.OBTAINABLE
@@ -183,7 +197,11 @@ def test_expired_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> N
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
-        completed_at=_ANCIENT_COMPLETION, now=_NOW, capture=None, recorded_404=False
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.EXPIRED
@@ -201,7 +219,11 @@ def test_never_recorded_from_explicit_evidence_even_inside_the_window() -> None:
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
-        completed_at=_RECENT_COMPLETION, now=_NOW, capture=None, recorded_404=True
+        completed_at=_RECENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=True,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.NEVER_RECORDED
@@ -219,6 +241,7 @@ def test_never_recorded_from_the_callers_own_unavailable_capture_row() -> None:
         now=_NOW,
         capture=_capture(status=CaptureStatus.UNAVAILABLE),
         recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.NEVER_RECORDED
@@ -270,7 +293,11 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
     await db_session.flush()
 
     view = derive_availability(
-        completed_at=_ANCIENT_COMPLETION, now=_NOW, capture=None, recorded_404=False
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.EXPIRED
@@ -308,10 +335,110 @@ def test_obtainable_until_is_null_in_every_state_while_the_window_is_unresolved(
     from aoe2stats_api.availability import derive_availability
 
     view = derive_availability(
-        completed_at=completed_at, now=_NOW, capture=capture, recorded_404=recorded_404
+        completed_at=completed_at,
+        now=_NOW,
+        capture=capture,
+        recorded_404=recorded_404,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.obtainable_until is None
+
+
+# --- `capture_budget_days`: the window comes from configuration, never a module constant --------
+
+#: Mirrors `.env.example`'s `CAPTURE_BUDGET_DAYS=21` default, exactly as `apps/ingester/tests/
+#: test_backfill.py`, `test_idempotency.py`, `test_reconcile.py` and `test_shared_match.py`
+#: already mirror it for the identical number. Supplied here as any caller would — through the
+#: parameter — never restated as this module's own threshold.
+_CAPTURE_BUDGET_DAYS = 21
+
+
+def test_derive_availability_requires_capture_budget_days_with_no_default() -> None:
+    """`derive_availability` previously owned `_SHORTEST_CREDIBLE_WINDOW = timedelta(days=31)` —
+    not a derived floor but the exact `docs/data-sources.md` measurement (itself contradicted
+    there 2026-08-28) restated as a literal, with zero margin. The window is a required
+    keyword-only parameter instead, so a value can only ever come from the caller —
+    `apps/api/src/aoe2stats_api/settings.py`'s `Settings.capture_budget_days`
+    (`CAPTURE_BUDGET_DAYS`, `.env.example`), the same setting `apps/ingester/src/
+    aoe2stats_ingester/discover.py` already threads for the identical number (constitution I: "a
+    re-measurement changes a setting, not code"). A default here would reopen exactly that hole
+    by letting this module silently fall back to a hard-coded window, so this asserts there is
+    none."""
+    from aoe2stats_api.availability import derive_availability
+
+    parameters = inspect.signature(derive_availability).parameters
+    assert "capture_budget_days" in parameters, (
+        "derive_availability must take capture_budget_days as an explicit parameter — the window "
+        "must come from the caller, never a module-owned constant"
+    )
+    assert parameters["capture_budget_days"].default is inspect.Parameter.empty, (
+        "capture_budget_days must have no default; a default would let this module fall back to "
+        "an undeclared, hard-coded window instead of the caller's configured value"
+    )
+
+
+def test_the_obtainable_expired_split_moves_only_with_capture_budget_days() -> None:
+    """The parameter is not decorative: the identical `completed_at` renders `expired` under one
+    `capture_budget_days` and `obtainable` under a wider one, with nothing else about the call
+    changing. This is what makes a `docs/data-sources.md` re-measurement a matter of changing
+    `CAPTURE_BUDGET_DAYS` — a setting — rather than editing this module, exactly the property
+    constitution I states for this number."""
+    from aoe2stats_api.availability import Availability, derive_availability
+
+    completed_at = _NOW - timedelta(days=25)
+
+    narrower = derive_availability(
+        completed_at=completed_at,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+    wider = derive_availability(
+        completed_at=completed_at,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=40,
+    )
+
+    assert narrower.state == Availability.EXPIRED
+    assert wider.state == Availability.OBTAINABLE
+
+
+def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_reading() -> None:
+    """R8 (2026-08-29 amendment) claims the derivation "only ever *under*-offers" under either
+    contested reading of `docs/data-sources.md`'s retention measurement. That was false at the
+    boundary as previously coded: a `days=31` constant taken from a reading bisected to a ~4 h
+    interval offers zero margin, so a match at day 30.9 rendered `obtainable` for a recording that
+    may already be gone.
+
+    `_CAPTURE_BUDGET_DAYS` (21, mirroring `.env.example`) is strictly shorter than 31 — the
+    shorter of the two contradicted readings `docs/data-sources.md` records — with real room to
+    spare: a match completed 25 days ago sits comfortably *inside* that 31-day reading, and still
+    renders `expired` once the configured budget is applied, precisely the margin the old,
+    unconfigured constant had none of. Nothing here asserts what `derive_availability` computes
+    equals `timedelta(days=21)` — a fixed day-count check on this module's own math would recreate
+    the defect being fixed one layer up; this instead pins that the configured value is what
+    decides the split, and that a realistic configured value clears the measured floor with
+    margin."""
+    from aoe2stats_api.availability import Availability, derive_availability
+
+    # Inside docs/data-sources.md's shorter contradicted reading (~31 days) with days to spare,
+    # yet outside the configured budget.
+    completed_at = _NOW - timedelta(days=25)
+    assert _CAPTURE_BUDGET_DAYS < 31, "the configured budget must stay under the shorter reading"
+
+    view = derive_availability(
+        completed_at=completed_at,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+    assert view.state == Availability.EXPIRED
 
 
 # --- The assertion this file exists for: no outbound request, ever ------------------------------
@@ -340,17 +467,35 @@ async def test_deriving_availability_issues_no_outbound_request(db_session: Asyn
         now=_NOW,
         capture=_capture(status=CaptureStatus.STORED),
         recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
-    derive_availability(completed_at=_RECENT_COMPLETION, now=_NOW, capture=None, recorded_404=False)
     derive_availability(
-        completed_at=_ANCIENT_COMPLETION, now=_NOW, capture=None, recorded_404=False
+        completed_at=_RECENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
-    derive_availability(completed_at=_RECENT_COMPLETION, now=_NOW, capture=None, recorded_404=True)
+    derive_availability(
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+    derive_availability(
+        completed_at=_RECENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404=True,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
     derive_availability(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=CaptureStatus.UNAVAILABLE),
         recorded_404=False,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     after = await _provider_call_count(db_session)
