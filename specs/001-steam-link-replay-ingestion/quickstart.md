@@ -47,20 +47,35 @@ curl -X POST localhost:8000/api/cron/ingest -H "Authorization: Bearer $CRON_SECR
 
 Covers FR-001 to FR-003, FR-006.
 
-## Scenario 2 — Nothing happens without consent
+## Scenario 2 — Archival is on by default, and an objection stops it
 
-1. Create an account and **decline** ingestion consent.
-2. Trigger a cycle.
-3. Expect zero `replay_captures` rows for that user, and zero requests to the replay endpoint in
-   `provider_calls`.
+**Amended 2026-08-25** (constitution IX 4.0.0). This scenario used to read "Nothing happens without
+consent" and opened by declining an opt-in. There is no opt-in left to decline: ingestion and
+archival rest on legitimate interest (Art. 6-1-f), archival is on by default for any linked profile,
+and the Art. 21 right to object is what gives the user control. The scenario inverts, and it now has
+two halves because the retired gate got the first one backwards.
 
-Covers FR-034 and the part of FR-016 that is easiest to get wrong. Consent must be a condition of the
-query that selects work, not a branch somewhere downstream — a branch can be bypassed by a new code
-path, a `WHERE` clause cannot.
+1. Create an account, link a profile, and **answer no privacy question at all**.
+2. Trigger a cycle. Expect `replay_captures` rows for that user's matches and matching requests to
+   the replay endpoint in `provider_calls`. A user who has decided nothing is archived in full — the
+   old gate archived nothing here, which is the bug 4.0.0 was written to end.
+3. `POST /api/privacy/archival-objection`. Confirm `users.archival_objected_at` is set.
+4. Trigger another cycle. Expect **no new** captures for that user and no new replay-endpoint calls,
+   **while match discovery and rating refresh continue unchanged**. An objection stops capture only.
+5. Confirm the recordings archived at step 2 are still stored. An objection is not an erasure.
+6. `POST /api/privacy/archival-objection` again to resume. `archival_objected_at` returns to null and
+   the next cycle captures again — the column is current state, not a record of a past grant.
+
+Covers FR-034, FR-035 and the part of FR-016 that is easiest to get wrong. The objection must be a
+condition of the query that selects work, not a branch somewhere downstream — a branch can be
+bypassed by a new code path, a `WHERE` clause cannot. Step 4's second half is where this last went
+wrong: `DiscoverStage` gated *discovery* on the privacy flag rather than gating *capture*, so an
+objecting user silently lost match discovery and rating refresh too. It reads as a passing test
+until you look at what stopped happening.
 
 ## Scenario 3 — Backfill rescues the window
 
-1. Consent and link an account that has played in the last 31 days.
+1. Link an account that has played in the last 31 days.
 2. Trigger a cycle. Repeat until the report shows an empty backlog.
 3. Compare the archived set against the official stats page for that player.
 

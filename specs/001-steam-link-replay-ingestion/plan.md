@@ -76,7 +76,7 @@ functional requirements.
 | **VI. Tokens first** | Every front-end component is built from design-system tokens, from a product-designer spec, with a story. | PASS |
 | **VII. Visual tests** | Diff-scoped visual regression on pull requests; full coverage nightly. | PASS |
 | **VIII. No secrets in the clear** | Configuration entirely from environment variables. The cron endpoint requires a shared secret and returns 401 without it. Session cookies are opaque. | PASS |
-| **IX. GDPR by design** | Point-of-view capture only; consent separate from account creation; export and erasure covering blobs; third-party objection; replay access logged; all regions EU. FR-045 additionally forbids inferring links between a user's accounts. | PASS |
+| **IX. GDPR by design** | *Re-checked 2026-08-29 against IX 4.0.0; this read "consent separate from account creation", a gate that no longer exists.* Point-of-view capture only; archival on by default under legitimate interest, with an Art. 21 objection separate from account creation and never a precondition for ingestion; export and erasure covering blobs; third-party objection; replay access logged; all regions EU. FR-045 additionally forbids inferring links between a user's accounts. | PASS |
 | **X. Intellectual property** | No game asset anywhere. Disclaimer in README and footer. | PASS |
 | **XI. English** | Every artifact in this feature is in English. | PASS |
 | **XII. Portable by construction** | The ingester is a library exposing `run_once(budget_seconds)`; the cron handler and the worker loop are each about ten lines. No broker, no local filesystem state, all configuration from the environment. | PASS |
@@ -132,7 +132,7 @@ apps/
 │       ├── profiles.py            # linked profiles, primary selection, unlink
 │       ├── matches.py             # history, detail
 │       ├── replays.py             # capture status, download, manual upload
-│       ├── privacy.py             # consent, export, erasure, third-party objection
+│       ├── privacy.py             # archival objection, export, erasure, third-party objection
 │       ├── health.py
 │       └── cron.py                 # the local trigger. Ten lines around run_once(), like the
 │                                   # Vercel shim it deliberately does not call (see T018)

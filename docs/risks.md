@@ -6,7 +6,7 @@ cannot be recreated by anyone, at any price.
 
 | #       | Risk                                                                                                                                                                                                            | Severity | Mitigation                                                                                                                                                                                                                                                                                                                                             |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **R1**  | **31-day retention window.** An ingestion outage longer than the capture budget loses replays permanently                                                                                                       | Critical | 21-day capture budget (10 days of slack); daily reconciliation over 25 days; alert when a capture passes its 21-day capture deadline, with ~10 days still left to act; `expired_total` treated as a severity-1 alert; full backfill on account linking                                                                                                 |
+| **R1**  | **Source retention window — and its shape is not settled.** An ingestion outage longer than the capture budget loses replays permanently. Contradicted 2026-08-28 (`docs/data-sources.md`): rolling window or fixed epoch, unresolved. An epoch can be purged wholesale with no notice, which is a second loss mode the slack below does not cover                                                                                                       | Critical | 21-day capture budget; daily reconciliation over 25 days; **re-measure the boundary on a second profile and again a week later** — pinned means epoch, advanced means rolling — because until that lands the slack cannot be sized and constitution I 4.1.0 forbids widening the budget on the uncorroborated sample; alert when a capture passes its 21-day capture deadline; `expired_total` treated as a severity-1 alert; full backfill on account linking                                                                                                 |
 | **R2**  | **`aoe.ms` rate limits or blocking.** Undocumented, and none observed so far — which is not the same as none existing                                                                                           | High     | <= 1 req/s globally, serial downloads, jitter, honest identifying `User-Agent`; exponential backoff; on 429/403 stop the run and alert rather than pushing through; per-user quotas; strictly non-commercial use                                                                                                                                       |
 | **R3**  | **A game patch breaks the parser.** Demonstrated, not hypothetical: `aoc-mgz` has been broken since the 2026-02-17 DLC and unfixed for six months, which also killed aoestats                                   | Medium   | Downgraded from High by the switch to `aoe2rec-py`, which shipped a fix 4 days after that same DLC. Pluggable engine interface; nightly canary on both engines; versions recorded per parse; bulk re-parse designed into the schema. Fallbacks: build aoe2rec from source with maturin, `AoEInsights/mgz-fast`, or mgz PR #142 in a fork. See ADR 0001 |
 | **R4**  | **A third-party API breaks.** Relic is undocumented and has already moved host (reliclink -> worldsedgelink); aoe2companion is unlicensed and returns 403 intermittently; aoestats has been dead since February | High     | Abstract `DataProvider`, so a provider is replaced without touching the domain; Relic primary, companion as degradable enrichment; nightly contract tests; raw payloads retained verbatim so a transformation can be replayed after the fact                                                                                                           |
@@ -71,13 +71,20 @@ properties a test plan has to establish.
 **Ingestion** — the real measure of the MVP
 
 - [ ] Linking an account marks it for backfill, and the next cycle enqueues every match in the
-      31-day window
+      backfill window `docs/data-sources.md` records — the figure lives there and is not restated here
 - [ ] After a real match, the stored object appears within 48 hours — the daily cadence spends ~25 h
       on detection before a capture is even attempted
 - [ ] A run interrupted by its time budget leaves nothing in progress and resumes cleanly
 - [ ] Replaying the same match creates no duplicate and rewrites no file
 - [ ] A network failure mid-download leaves no capture marked stored without its file
 - [ ] `expired_total` is 0 after a week of operation
+- [ ] **The retention boundary has been re-measured on a profile other than 2322168, and again at
+      least a week after the 2026-08-28 sample**, and `docs/data-sources.md` records the outcome as
+      settled or still open. This is the only thing that resolves R1's two readings, and nothing else
+      in this repository is watching for it: the nightly `aoe.ms` probe draws its candidates from
+      `getRecentMatchHistory`, which serves only a recent window, so its "old replay is 404" branch
+      finds no candidate and reports a note instead of a result. Until this lands the capture budget
+      may be tightened and may not be widened (constitution I 4.1.0)
 
 **Hosting**
 
@@ -116,7 +123,7 @@ jurisdiction, `<account>.r2...` does not).
 - [ ] Export contains the archived replays
 - [ ] Erasure removes account, links, capture records and storage objects, verified by listing the
       bucket **under 001's capture prefix**. The retention prefix is excluded and that is not an
-      oversight: constitution IX 3.0.0 (2026-08-24) stopped erasure and third-party objection from
+      oversight: constitution IX 3.0.0 (2026-08-24, and unchanged by 4.0.0) stopped erasure and third-party objection from
       deleting a recording retained under its public-recording basis, so a check that lists the whole
       bucket now fails correctly. What those two routes must be verified to do there is
       **pseudonymise every identifier this service holds** about a person appearing in a recording,

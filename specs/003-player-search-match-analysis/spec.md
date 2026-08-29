@@ -27,12 +27,27 @@ directions:
 - It exists for approximately **31 days**. After that it answers `404` for everyone, forever.
 
 So third-party recorded games are freely readable *and* permanently perishable, and this service
-archives none of them. That is not an oversight — it is what constitution IX ("we capture only the
-consenting user's point of view") and principle I (capture budget belongs to consenting users)
-require. The consequence is the central design fact of this feature: **for the signed-in user's own
-matches these two CTAs work forever; for everyone else's they work for about a month and then
-disappear.** Every requirement below either follows from that or exists to make it honest to the
-user rather than a broken button.
+archives none of them. That is not an oversight — it is what constitution IX (only the linked user's
+own point of view is ever captured automatically) and principle I (the capture budget belongs to
+linked users) require. The consequence is the central design fact of this feature: **for the
+signed-in user's own matches these two CTAs work forever; for everyone else's they work for about a
+month and then disappear.** Every requirement below either follows from that or exists to make it
+honest to the user rather than a broken button.
+
+**Amended 2026-08-25** (constitution IX 4.0.0). The paragraph above quoted IX as "we capture only the
+consenting user's point of view", and gave principle I's capture budget to "consenting users".
+Neither phrase is in the constitution any more: the opt-in gate was retired for legitimate interest
+(Art. 6-1-f) with a mandatory right to object (Art. 21), so a linked profile is archived by default
+and a user who has answered nothing is ingested in full. The quotation is corrected in place rather
+than footnoted, because a rule *attributed to the constitution* that the constitution does not
+contain misleads in a way a note beside it cannot repair. **Nothing this feature decided changes**:
+what the paragraph rests on is the **point-of-view limit**, which survived 4.0.0 untouched and is now
+IX's real constraint on automatic capture (FR-012, 001 FR-016).
+
+The same substitution governs the narrative below wherever it spoke of 001 capturing for *consenting*
+users. Requirement text carries its own dated notes (FR-012, FR-048), and "Clarifications / Session
+2026-08-23" is left exactly as it was decided that day — it is anchored to IX 2.0.0 and reads
+correctly against that version, which is what a frozen record is for.
 
 ## Challenging the requirement: does on-demand analysis need a nightly cron and blob storage?
 
@@ -43,7 +58,7 @@ below and the answer is no. The second turned out to be the real question, and i
 other way (Q2, session 2026-08-23).
 
 **1. The nightly cron and the object store are not analysis infrastructure.** They exist in 001 to
-beat the ~31-day purge for consenting users, mandated by constitution principle I. They are already
+beat the ~31-day purge for linked users, mandated by constitution principle I. They are already
 built, they are not up for removal, and this feature neither needs nor extends them. The real
 question is not "does analysis need them" but "does analysis need **more** of them". For the cron,
 the answer is a flat no: **this feature adds no scheduled job at all.** Nothing is fetched on a
@@ -61,7 +76,7 @@ would have been for, and it is why there isn't one.
 **Amended 2026-08-24: reading 001's capture is not the same as being able to keep reading it.** An
 own match is read from the capture and then **retained under FR-033's own basis anyway**, as a second
 object under the retention prefix. It looks like duplication and is not: the capture exists under the
-user's explicit consent and is deleted when that user erases, while the analysis derived from it is
+linked user's own basis and is deleted when that user erases, while the analysis derived from it is
 published to everyone who opens the match and must stay recomputable for years (constitution IV).
 Without the second copy, one erasure destroys the raw of a conclusion shown to strangers — the exact
 failure FR-033 exists to prevent, arriving by the one path nobody was watching. The cost is stated
@@ -94,7 +109,11 @@ control:
   of personal data, so FR-045 puts it in the processing register with its own legal basis, and
   FR-046 puts it inside the third-party objection route and erasure — which, as amended 2026-08-24,
   reach every identifier this service holds about a person appearing in a recording and leave the
-  recording itself intact.
+  recording itself intact. **Amended 2026-08-25** (IX 4.0.0), against the 2.0.0 text this bullet
+  records: automatic capture is the *linked* user's own point of view, consent having been retired,
+  and "never a side effect of browsing" no longer holds for match *metadata* — FR-011 records a third
+  party's public match data precisely because somebody browsed. It still holds for *recordings*,
+  which is the half that mattered and the half FR-012 enforces.
 - **Growth driven by clicking rather than by playing.** Real, and now constitutionally required to be
   bounded: FR-047 caps it and rate-limits it. Storage volume must remain a function of deliberate
   human requests, never of traffic.
@@ -105,8 +124,8 @@ control:
 and it retains both its derived result and the recording it was derived from. It adds **no scheduled
 job and no background sweep** — which was the actual question, and the answer to it is unchanged by
 Q2. What grows is storage, bounded and on request; what does not grow is the cron table. Recordings
-are still never fetched speculatively, and 001's archive still holds only consenting users' own
-points of view. What this feature must also add is **honesty**: a recording that will stop being
+are still never fetched speculatively, and 001's archive still holds only linked users' own points
+of view. What this feature must also add is **honesty**: a recording that will stop being
 fetchable must say so, with its date, before the user relies on it — FR-024, FR-025 and FR-034 exist
 for that and for nothing else.
 
@@ -544,7 +563,11 @@ their current standing and reachable in one click.
   recording shows the game from one participant's perspective.
 - **FR-024**: System MUST show, for each offered point of view, whether it is currently obtainable,
   and for those that are, the date after which it will stop being — derived from the source's
-  measured retention window in `docs/data-sources.md`, not from a value restated here.
+  measured retention window in `docs/data-sources.md`, not from a value restated here. **Amended
+  2026-08-29**: that window is contradicted and unresolved as of 2026-08-28, so the date MUST be
+  **null while the question is open** rather than derived from the superseded reading. A promise
+  about the future drawn from a window that may not exist is worse than no promise. The reasoning is
+  recorded once, in [research.md](./research.md) R8, and is not restated here.
 - **FR-025**: System MUST distinguish and display, per point of view: obtainable now, held in this
   service's own archive, never recorded by the game, and expired beyond the source's retention
   window. It MUST NOT present an unobtainable download as an action that then fails.
@@ -700,7 +723,11 @@ their current standing and reachable in one click.
   including matches whose recordings expired, with no field left blank or wrong.
 - **SC-004**: For 100% of matches shown, the availability stated for every point of view matches what
   the source actually answers at that moment; a download offered as available succeeds, and one
-  offered as expired is not clickable.
+  offered as expired is not clickable. **Amended 2026-08-29**: this criterion is measured against the
+  source's *settled* window. While `docs/data-sources.md` records that window as contradicted (see
+  [research.md](./research.md) R8), SC-004 is **not claimable** — under the fixed-epoch reading the
+  derivation fails it by construction rather than by implementation error. It becomes measurable
+  again when the re-measurement settles the question.
 - **SC-005**: A user can obtain any participant's point of view of a match inside the retention
   window in at most two actions from the match page.
 - **SC-006**: A match is parsed at most once: for any match, the number of times its recorded game is
@@ -741,9 +768,12 @@ their current standing and reachable in one click.
 - Retention under FR-033 is bounded by human requests, so its volume is a product design question
   before it is a capacity question. At the measured sizes — ~0.87 MB for a ranked 1v1, ~2.5 MB for an
   eight-player game — the cap in FR-047 is what decides the bill, not the traffic.
-- The ~31-day retention window and its consequences are as recorded in `docs/data-sources.md`. This
+- The source's retention window and its consequences are as recorded in `docs/data-sources.md`. This
   spec deliberately restates no measured number; where a date or a deadline is shown to the user it
-  is derived from that file.
+  is derived from that file. **Amended 2026-08-29**: this sentence named "~31 days" while promising
+  to restate no number, and that window is now recorded there as contradicted and unresolved. The
+  figure is removed; the renvoi is the whole of the assumption, and R8 carries what the open question
+  costs this feature.
 - Whether the search source answers from the production platform's egress addresses is **not yet
   verified** — `docs/data-sources.md` §3 records it as open, alongside observed intermittent 403s
   from datacentre addresses. This is why FR-004d exists: if the answer turns out to be no, search

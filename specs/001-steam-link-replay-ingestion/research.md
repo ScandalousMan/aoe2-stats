@@ -63,9 +63,12 @@ identifier, with session state in Postgres.
 
 **Rationale**: A self-contained token would avoid the database read, but it cannot be revoked, and
 this application must be able to end a session immediately on erasure (FR-037), and to end it
-without waiting for a token to expire on sign-out. Withdrawing ingestion consent is deliberately
-not in this list: FR-034 requires an account that keeps working when consent is declined, so a
-withdrawal that signed the user out would be punishing them for exercising the choice. The cookie is opaque so nothing about the user leaks into browser storage. The
+without waiting for a token to expire on sign-out. Objecting to archival is deliberately not in this
+list: FR-035 requires an account that keeps working when the user objects, so an objection that
+signed the user out would be punishing them for exercising an Art. 21 right. (**Amended 2026-08-29**:
+this said "withdrawing ingestion consent" and cited FR-034's account-keeps-working clause. IX 4.0.0
+retired the consent gate; the rationale is unchanged and now attaches to the objection, which is the
+choice that replaced it.) The cookie is opaque so nothing about the user leaks into browser storage. The
 lookup is one indexed read on a request path that already touches the database.
 
 **Alternatives considered**: JWT in a cookie (revocation problem); JWT in local storage (adds XSS

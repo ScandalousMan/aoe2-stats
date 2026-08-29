@@ -363,12 +363,29 @@ def _replay_window() -> None:
         disp = resp.headers.get("content-disposition", "")
         assert f"AgeIIDE_Replay_{fresh['id']}.zip" in disp, f"naming convention changed: {disp!r}"
 
+    # The retention *boundary* is evidence-gathering, not a contract assertion — amended 2026-08-29.
+    #
+    # Two things were wrong here. The candidate came from `getRecentMatchHistory`, which serves only
+    # a recent window (docs/data-sources.md §1: "a match leaves the recent window and cannot be
+    # fetched back"), so this branch almost always found nothing and returned a quiet note — the
+    # boundary was effectively never under test while reading as though it were. And the failure
+    # message told the reader to widen the capture budget, which constitution I 4.1.0 forbids doing
+    # on an uncorroborated sample.
+    #
+    # So a 200 here is no longer a failure. It is the open question (docs/data-sources.md,
+    # contradicted 2026-08-28: rolling window or fixed epoch) showing up in the nightly, and what
+    # settles it is a deliberate two-point re-measurement that this probe cannot perform from a
+    # recent-window feed.
     old = next(
         (m for m in matches if now - m["completiontime"] > 40 * 86400),
         None,
     )
     if old is None:
-        notes.append("no match older than 40 days available to confirm the retention boundary")
+        notes.append(
+            "retention boundary not exercised: getRecentMatchHistory served no match older than "
+            "40 days for the probe profile. This is the normal outcome, not a transient — see "
+            "docs/risks.md R1 for the re-measurement that actually resolves the boundary."
+        )
         return
     with session.get(
         REPLAY,
@@ -376,9 +393,19 @@ def _replay_window() -> None:
         timeout=TIMEOUT,
         stream=True,
     ) as resp:
+        age_d = (now - old["completiontime"]) / 86400
+        if resp.status_code == 200:
+            notes.append(
+                f"a {age_d:.0f} day old replay returned 200. This is evidence for the fixed-epoch "
+                "reading recorded in docs/data-sources.md (2026-08-28), NOT a licence to widen "
+                "CAPTURE_BUDGET_DAYS: constitution I 4.1.0 permits widening only once that file "
+                "records the question as settled, corroborated across more than one profile and "
+                "more than one date. Tighten freely; widen never, on this alone."
+            )
+            return
         assert resp.status_code == 404, (
-            f"a 40+ day old replay returned {resp.status_code}, expected 404. "
-            "If retention grew, update docs/data-sources.md and the capture budget."
+            f"a {age_d:.0f} day old replay returned {resp.status_code}; expected 200 or 404. "
+            "An unexpected status means the endpoint moved again — re-read docs/data-sources.md §2."
         )
         # 16-ish bytes of plain text — reading this body costs nothing extra, unlike the 200 case.
         # ReplayProvider.fetch_replay's NotFound case; the caller's three-way reading of *why* is
