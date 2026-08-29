@@ -20,6 +20,11 @@ export interface FavouriteStandingData {
   status?: StatValueStatus
   label: ReactNode
   value?: ReactNode
+  /** The rank (`"#3"`), a **figure**, not a unit label — `FavouriteRow` composes it into
+   * `StatValue`'s own `value` slot rather than its `unit` slot (§10 bullet 2, §6 "mono for
+   * Standing's figures"), because `StatValue.unit` renders `font-sans text-secondary`
+   * (`shared-primitives.md#StatValue`), right for a genuine unit and wrong for a number that must
+   * align digit-for-digit with the rating above it. */
   unit?: ReactNode
   delta?: StatValueDelta
   secondaryLine?: ReactNode
@@ -68,6 +73,24 @@ export interface FavouritesListProps {
 }
 
 const EMPTY_ENTRIES: FavouriteEntryData[] = []
+
+// §10 bullet 2, §6: "shows the rating and rank in font-mono, aligning digit-for-digit down the
+// column." Composing the rank inside `StatValue`'s own `value` slot — instead of its `unit` slot
+// — lets it inherit that slot's `font-mono font-semibold tracking-tight`
+// (`shared-primitives.md#StatValue`) from its ancestor span; `font-mono` is repeated explicitly on
+// the rank's own span too, so the treatment holds even if `StatValue`'s value markup changes
+// later, and so it is a directly assertable class rather than an inherited one. Only colour is
+// overridden (`text-secondary`), the same distinction `unit` used to carry, now without giving up
+// the mono alignment `StatValue`'s own figures depend on.
+function renderStandingValue(standing: FavouriteStandingData): ReactNode {
+  if (!standing.unit) return standing.value
+  return (
+    <>
+      {standing.value}
+      <span className="ml-2 font-mono text-text-secondary">{standing.unit}</span>
+    </>
+  )
+}
 
 /** One place to find the players a signed-in user cares about again, without searching — each
  * entry showing its current standing and reaching the profile in one step (FR-014), with a remove
@@ -225,8 +248,7 @@ function FavouriteRow({
           variant="compact"
           label={entry.standing.label}
           status={entry.standing.status}
-          value={entry.standing.value}
-          unit={entry.standing.unit}
+          value={renderStandingValue(entry.standing)}
           delta={entry.standing.delta}
           secondaryLine={entry.standing.secondaryLine}
         />

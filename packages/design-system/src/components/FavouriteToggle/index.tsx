@@ -97,26 +97,42 @@ export function FavouriteToggle({
   const loadingLabel = favourited ? 'Removing…' : 'Adding…'
   const label = favourited ? 'Remove from favourites' : 'Add to favourites'
 
+  // §10 bullet 5: "the loading story shows a spinner ... at the same width as at rest." `Button`
+  // itself only reserves its leading-icon slot (shared-primitives.md#Button), so swapping this
+  // control's own label for the shorter present-participle ("Adding…"/"Removing…") still narrows
+  // the whole control. The invisible sizer below always renders the *resting* label for this
+  // marked/unmarked state, in normal flow, so it — not any hard-coded width — determines the
+  // wrapper's box; the real, interactive button overlays it exactly via `absolute inset-0` inside
+  // that `relative` wrapper. A pure layout technique: no pixel value, no computed width.
   const button = (
-    <Button
-      type="button"
-      variant="ghost"
-      size={size}
-      aria-pressed={favourited}
-      disabled={bounded}
-      loading={loading}
-      loadingLabel={loadingLabel}
-      leadingIcon={<StateGlyph filled={favourited} />}
-      aria-describedby={bounded ? explanationId : undefined}
-      onClick={favourited ? onRemove : onAdd}
-      // Only wrapped in a layout `<div>` for the bounded case below (§2's "Explanation, present
-      // only in the bounded and disabled cases"), so `className` lands on the button itself in
-      // every other state — the same seam `PlayerResultRow` and `MatchRow` give their own root
-      // element, and what lets a consumer size or align this control without reaching past it.
-      className={bounded ? undefined : className}
-    >
-      {label}
-    </Button>
+    <span className={cx('relative inline-block', bounded ? undefined : className)}>
+      <Button
+        type="button"
+        variant="ghost"
+        size={size}
+        aria-hidden="true"
+        tabIndex={-1}
+        leadingIcon={<StateGlyph filled={favourited} />}
+        className="invisible pointer-events-none"
+      >
+        {label}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size={size}
+        aria-pressed={favourited}
+        disabled={bounded}
+        loading={loading}
+        loadingLabel={loadingLabel}
+        leadingIcon={<StateGlyph filled={favourited} />}
+        aria-describedby={bounded ? explanationId : undefined}
+        onClick={favourited ? onRemove : onAdd}
+        className="absolute inset-0"
+      >
+        {label}
+      </Button>
+    </span>
   )
 
   if (!bounded) return button

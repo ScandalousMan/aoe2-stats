@@ -98,6 +98,27 @@ describe('FavouriteToggle', () => {
       render(<FavouriteToggle favourited authenticated loading />)
       expect(screen.getByRole('button', { name: /Removing…/ })).toBeInTheDocument()
     })
+
+    // Regression, favourite-toggle.md §10 bullet 5: "the loading story shows a spinner with an
+    // 'Adding…'/'Removing…' label at the same width as at rest". The control must reserve the
+    // resting label's width so the shorter in-flight label never narrows it. jsdom does not lay
+    // out text, so this asserts the structural invariant that guarantees the width is held: the
+    // resting label stays present in the DOM as an `aria-hidden`, `invisible` sizer occupying the
+    // control's normal-flow box, while the real interactive control overlays it — never a bare
+    // spinner-only button with no reserved space for the resting text.
+    it("reserves the resting label's width for a PUT in flight (favourited: false)", () => {
+      render(<FavouriteToggle favourited={false} authenticated loading />)
+      const sizer = screen.getByText('Add to favourites').closest('button')
+      expect(sizer).toHaveAttribute('aria-hidden', 'true')
+      expect(sizer).toHaveClass('invisible')
+    })
+
+    it("reserves the resting label's width for a DELETE in flight (favourited: true)", () => {
+      render(<FavouriteToggle favourited authenticated loading />)
+      const sizer = screen.getByText('Remove from favourites').closest('button')
+      expect(sizer).toHaveAttribute('aria-hidden', 'true')
+      expect(sizer).toHaveClass('invisible')
+    })
   })
 
   describe('signed-out (§5a, US5 scenario 5, FR-015)', () => {

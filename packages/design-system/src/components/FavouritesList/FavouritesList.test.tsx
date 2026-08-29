@@ -85,6 +85,15 @@ describe('FavouritesList', () => {
       expect(onRemove).toHaveBeenCalledExactlyOnceWith('1')
     })
 
+    // Regression, favourites-list.md §10 bullet 2 / §6 "mono for Standing's figures": the rank is
+    // a figure that must align digit-for-digit with the rating, not a sans-serif unit label.
+    it('renders the rank figure in font-mono, not font-sans (§10 bullet 2, §6)', () => {
+      render(<FavouritesList entries={entries} />)
+      const rank = screen.getByText('#3')
+      expect(rank).toHaveClass('font-mono')
+      expect(rank).not.toHaveClass('font-sans')
+    })
+
     it('calls onNavigate for a profile link click, mirroring T388', async () => {
       const onNavigate = vi.fn()
       const user = userEvent.setup()
