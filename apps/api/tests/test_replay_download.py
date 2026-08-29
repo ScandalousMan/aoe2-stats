@@ -53,7 +53,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 import pytest
@@ -101,6 +101,9 @@ _MAX_SIGNED_URL_EXPIRES_IN_SECONDS = 900
 _OWNER_PROFILE_ID = 555111333
 _OTHER_PROFILE_ID = 555111444
 _GAME_ID = 9001
+#: The production defect (2026-08-29): the same owner's archived downloads of two *different*
+#: matches must never save under the identical filename.
+_SECOND_GAME_ID = 9002
 
 
 async def _seed_linked_profile(
@@ -159,19 +162,26 @@ async def _seed_stored_capture(
     game_id: int = _GAME_ID,
     profile_id: int,
     object_key: str,
+    create_match: bool = True,
 ) -> ReplayCapture:
     """A match with one already-archived (`stored`) capture from `profile_id`'s point of view —
-    the only state a download can meaningfully serve."""
+    the only state a download can meaningfully serve.
+
+    `create_match=False` (2026-08-29) lets a caller add a *second* participant's own archived
+    capture onto a match this function, or `_seed_open_match`, already created — `matches.game_id`
+    is the primary key, so inserting it twice for the same `game_id` is a integrity error, not a
+    second row."""
     now = datetime.now(UTC)
-    db_session.add(
-        Match(
-            game_id=game_id,
-            leaderboard_id=3,
-            completed_at=now - timedelta(days=2),
-            source="relic",
-            raw_payload={},
+    if create_match:
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=now - timedelta(days=2),
+                source="relic",
+                raw_payload={},
+            )
         )
-    )
     capture = ReplayCapture(
         game_id=game_id,
         profile_id=profile_id,
@@ -194,6 +204,15 @@ async def _seed_stored_capture(
 
 def _decode_signed_url(location: str) -> tuple[str, int]:
     """The `(key, expires_in)` pair `_FakeObjectStore.signed_get_url` encoded into `location`."""
+    key, expires_in, _filename = _decode_signed_url_with_filename(location)
+    return key, expires_in
+
+
+def _decode_signed_url_with_filename(location: str) -> tuple[str, int, str | None]:
+    """The `(key, expires_in, filename)` triple `_FakeObjectStore.signed_get_url` encoded into
+    `location` — the 2026-08-29 fix's own assertion surface: `filename` is `None` only when the
+    route asked `signed_get_url` for no disposition override at all, distinct from an empty
+    string, which the router never sends."""
     assert location.startswith(_FAKE_SIGNED_PREFIX), (
         "the redirect must go through ObjectStore.signed_get_url, never a hand-built bucket URL "
         f"(bucket never public): got {location!r}"
@@ -203,7 +222,8 @@ def _decode_signed_url(location: str) -> tuple[str, int]:
     key = split.path.removeprefix("/")
     query = parse_qs(split.query)
     expires_in = int(query["expires_in"][0])
-    return key, expires_in
+    filename = query["filename"][0] if "filename" in query else None
+    return key, expires_in, filename
 
 
 async def test_replay_download_requires_authentication(client: TestClient) -> None:
@@ -293,6 +313,64 @@ async def test_replay_download_refuses_a_caller_who_did_not_play_the_match(
 
 
 # ================================================================================================
+# Bug fix (2026-08-29): a user downloaded their own archived point of view of match 458465070 and
+# the file saved as `2322168.zip` — their bare `profile_id`, the `game_id` gone entirely. Cause:
+# this route's redirect target came from `ObjectStore.signed_get_url(object_key)` with no
+# `filename` argument, so a browser derived the saved name from the signed URL's own last path
+# segment (`replay_object_key`'s `{game_id}/{profile_id}.zip`, only the last segment ever reaching
+# the browser) rather than from anything naming the match. PR #25 enumerated this exact branch as
+# a sibling of the collision it fixed and concluded it was safe — "the archived branch redirects
+# to a signed URL whose object key already embeds `profile_id`" — which is true of the *key* and
+# irrelevant to the *browser-derived filename*, a different thing entirely.
+# ================================================================================================
+
+
+async def test_archived_downloads_of_two_different_matches_get_different_filenames(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """The exact production defect: the same owner's archived point of view of two different
+    matches must never save under the identical filename. Asserted on the `filename` query
+    parameter `_FakeObjectStore.signed_get_url` (conftest.py) deterministically encodes — which is
+    only present at all if the router passed `signed_get_url` a `filename` argument, so this also
+    proves the router asks for one rather than relying on the object key alone."""
+    owner = await _seed_linked_profile(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960287930"
+    )
+    await _sign_in(client, db_session, owner)
+    first_key = f"replays/{_GAME_ID}/{_OWNER_PROFILE_ID}.zip"
+    second_key = f"replays/{_SECOND_GAME_ID}/{_OWNER_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=_GAME_ID, profile_id=_OWNER_PROFILE_ID, object_key=first_key
+    )
+    await _seed_stored_capture(
+        db_session, game_id=_SECOND_GAME_ID, profile_id=_OWNER_PROFILE_ID, object_key=second_key
+    )
+
+    first_response = client.get(f"/api/replays/{_GAME_ID}/download", follow_redirects=False)
+    second_response = client.get(f"/api/replays/{_SECOND_GAME_ID}/download", follow_redirects=False)
+
+    assert first_response.status_code == 302, (
+        f"Got {first_response.status_code}: {first_response.text}"
+    )
+    assert second_response.status_code == 302, (
+        f"Got {second_response.status_code}: {second_response.text}"
+    )
+    _, _, first_filename = _decode_signed_url_with_filename(first_response.headers["location"])
+    _, _, second_filename = _decode_signed_url_with_filename(second_response.headers["location"])
+
+    assert first_filename is not None, (
+        "the redirect must carry a filename override — a browser derives its saved name from the "
+        "signed URL's own last path segment, never from the object key inside it"
+    )
+    assert first_filename != second_filename, (
+        "the same owner's archived downloads of two different matches must never save under the "
+        f"identical filename — both answered {first_filename!r}"
+    )
+    assert str(_GAME_ID) in first_filename
+    assert str(_SECOND_GAME_ID) in second_filename
+
+
+# ================================================================================================
 # T335 (003) — `GET /api/matches/{game_id}/replay/{profile_id}` and the match-detail `replay`
 # object
 # ================================================================================================
@@ -376,6 +454,12 @@ _T335_SOURCE_RATE_LIMITED_RETRY_AFTER_GAME_ID = 850_100_021
 #: fallback).
 _T335_TWO_POVS_UPSTREAM_NAME_GAME_ID = 850_100_022
 _T335_TWO_POVS_NO_UPSTREAM_NAME_GAME_ID = 850_100_023
+
+#: The production defect's sibling axis, asserted on the `archived` branch too (2026-08-29): two
+#: different participants' own archived points of view of the *same* match must never save under
+#: the identical filename either — the axis PR #25 fixed for `obtainable`, asserted here so the
+#: two branches cannot drift apart again.
+_T335_TWO_ARCHIVED_POVS_GAME_ID = 850_100_024
 
 #: Fast enough that a 503-exhausts-retries or timeout test does not spend real seconds asleep in
 #: `AsyncBaseProvider`'s exponential backoff — mirrors `packages/providers/tests/test_aoems.py`'s
@@ -508,8 +592,13 @@ class _TrackingObjectStore:
     async def list_keys(self, prefix: str = "") -> list[str]:
         return list(self.put_calls)
 
-    async def signed_get_url(self, key: str, *, expires_in: int = 300) -> str:
-        return f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+    async def signed_get_url(
+        self, key: str, *, expires_in: int = 300, filename: str | None = None
+    ) -> str:
+        url = f"https://fake-object-store.example/signed/{key}?expires_in={expires_in}"
+        if filename is not None:
+            url += f"&filename={quote(filename)}"
+        return url
 
     async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
         self.put_calls.append(key)
@@ -655,6 +744,60 @@ async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access
     assert log_rows[0].retained_recording_id is None, (
         "R9/FR-048: an archived download logs against replay_captures, never retained_recordings"
     )
+
+
+async def test_two_participants_archived_downloads_of_one_match_get_different_filenames(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """The sibling axis, asserted on the `archived` branch: PR #25 fixed the identical collision
+    for the `obtainable` branch below (`test_two_participants_get_different_filenames_when_
+    upstream_names_collide`); asserting it here too against the `archived` branch is what keeps
+    the two branches of this same route from drifting apart again — each participant downloads
+    their *own* archived point of view of the same match, and the two filenames must differ."""
+    game_id = _T335_TWO_ARCHIVED_POVS_GAME_ID
+    owner_a = await _seed_linked_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, steam_id64="76561197960287952"
+    )
+    owner_b = await _seed_linked_profile(
+        db_session, profile_id=_T335_PARTICIPANT_B_PROFILE_ID, steam_id64="76561197960287953"
+    )
+    key_a = f"replays/{game_id}/{_T335_PARTICIPANT_A_PROFILE_ID}.zip"
+    key_b = f"replays/{game_id}/{_T335_PARTICIPANT_B_PROFILE_ID}.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, object_key=key_a
+    )
+    await _seed_stored_capture(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_B_PROFILE_ID,
+        object_key=key_b,
+        create_match=False,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_B_PROFILE_ID)
+    await db_session.commit()
+
+    await _sign_in(client, db_session, owner_a)
+    response_a = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}", follow_redirects=False
+    )
+    await _sign_in(client, db_session, owner_b)
+    response_b = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_B_PROFILE_ID}", follow_redirects=False
+    )
+
+    assert response_a.status_code == 302, f"Got {response_a.status_code}: {response_a.text}"
+    assert response_b.status_code == 302, f"Got {response_b.status_code}: {response_b.text}"
+    _, _, filename_a = _decode_signed_url_with_filename(response_a.headers["location"])
+    _, _, filename_b = _decode_signed_url_with_filename(response_b.headers["location"])
+
+    assert filename_a is not None
+    assert filename_a != filename_b, (
+        "two different participants' own archived points of view of the same match must never "
+        f"save under the identical filename — both answered {filename_a!r}"
+    )
+    assert str(_T335_PARTICIPANT_A_PROFILE_ID) in filename_a
+    assert str(_T335_PARTICIPANT_B_PROFILE_ID) in filename_b
 
 
 async def test_obtainable_point_of_view_is_streamed_and_stores_nothing(

@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import threading
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from botocore.exceptions import ClientError
@@ -67,10 +68,24 @@ class _FakeS3Client:
     def generate_presigned_url(self, client_method: str, **kwargs: Any) -> str:
         self.calling_threads.add(threading.get_ident())
         self.presign_calls.append({"client_method": client_method, **kwargs})
-        bucket = kwargs["Params"]["Bucket"]
-        key = kwargs["Params"]["Key"]
+        params = kwargs["Params"]
+        bucket = params["Bucket"]
+        key = params["Key"]
         expires_in = kwargs["ExpiresIn"]
-        return f"https://example-bucket.invalid/{bucket}/{key}?expires={expires_in}"
+        url = f"https://example-bucket.invalid/{bucket}/{key}?expires={expires_in}"
+        # Mirrors real SigV4 presigned-URL behaviour: every `Params` entry beyond `Bucket`/`Key`
+        # (e.g. `ResponseContentDisposition`) rides on the URL's own query string, covered by the
+        # signature — never applied out-of-band by the client. A test that only inspected
+        # `presign_calls` (the kwargs this fake was handed) could pass even if a real
+        # implementation dropped the parameter before it ever reached the URL; encoding it here,
+        # in the returned string itself, is what closes that gap.
+        for param_name, query_name in (
+            ("ResponseContentDisposition", "response-content-disposition"),
+            ("ResponseContentType", "response-content-type"),
+        ):
+            if param_name in params:
+                url += f"&{query_name}={quote(params[param_name], safe='')}"
+        return url
 
     def get_paginator(self, operation_name: str) -> _FakePaginator:
         assert operation_name == "list_objects_v2"
@@ -197,6 +212,45 @@ async def test_signed_get_url_expiry_is_overridable_and_short_lived_by_default(
     assert client.presign_calls[0]["ExpiresIn"] == 60
     # contracts/http-api.md: the bucket is never public, every read is short-lived.
     assert DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS <= 900
+
+
+async def test_signed_get_url_omits_response_content_disposition_when_no_filename_is_given(
+    config: ObjectStoreConfig,
+) -> None:
+    """`filename` is optional (a genuine existing caller, `apps/ingester/tests/test_quarantine.py`,
+    wants no disposition override) — omitting it must not add the parameter at all."""
+    client = _FakeS3Client()
+    store = ObjectStore(config, client=client)
+
+    url = await store.signed_get_url("replays/1/2.zip")
+
+    assert "ResponseContentDisposition" not in client.presign_calls[0]["Params"]
+    assert "response-content-disposition" not in url
+
+
+async def test_signed_get_url_with_filename_puts_response_content_disposition_on_the_url_itself(
+    config: ObjectStoreConfig,
+) -> None:
+    """The production fix (2026-08-29): `filename` must ride on the *signed URL itself* — the
+    query string a browser or curl actually receives — never merely reach the signer as a keyword
+    argument that could then be dropped before signing. Asserting on the returned `url` string
+    (rather than only on `client.presign_calls`, which would pass even if a real implementation
+    silently discarded the parameter) is the point of this test."""
+    client = _FakeS3Client()
+    store = ObjectStore(config, client=client)
+
+    url = await store.signed_get_url(
+        "replays/458465070/2322168.zip",
+        filename="AgeIIDE_Replay_458465070_2322168.zip",
+    )
+
+    assert client.presign_calls[0]["Params"]["ResponseContentDisposition"] == (
+        'attachment; filename="AgeIIDE_Replay_458465070_2322168.zip"'
+    )
+    assert (
+        "response-content-disposition=attachment%3B%20filename%3D%22AgeIIDE_Replay_458465070_2322168.zip%22"
+        in url
+    )
 
 
 # --- delete ------------------------------------------------------------------------------------
