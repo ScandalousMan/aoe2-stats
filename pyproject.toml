@@ -85,6 +85,7 @@ testpaths = [
   "packages/storage/tests",
   "apps/api/tests",
   "apps/ingester/tests",
+  "apps/analyzer/tests",
   "scripts/checks/tests",
   "scripts/ops/tests",
   "tests/architecture",

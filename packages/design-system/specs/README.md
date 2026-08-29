@@ -18,6 +18,7 @@ component carries a hard-coded style value.
 | [`replay-availability.md`](./replay-availability.md) | `src/components/ReplayAvailabilityList/`                            | 003, US3           |
 | [`favourite-toggle.md`](./favourite-toggle.md)       | `src/components/FavouriteToggle/`                                   | 003, US5           |
 | [`favourites-list.md`](./favourites-list.md)         | `src/components/FavouritesList/`                                    | 003, US5           |
+| [`analysis-timeline.md`](./analysis-timeline.md)     | `src/components/AnalysisTimeline/`                                  | 003, US4           |
 
 ## Every spec has nine sections
 
