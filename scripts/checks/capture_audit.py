@@ -2,10 +2,37 @@
 """Nightly capture audit (T061): three assertions over `replay_captures` and `ingest_runs`,
 none of them redundant with the other two or with `alert_audit.py`.
 
-- **`expired_total == 0`** (constitution I, `data-model.md`'s `ingest_runs` section: "expected to
-  be permanently zero, and the nightly audit asserts exactly that"). Summed across every
-  `ingest_runs` row ever closed, not only the newest: a single non-zero cycle, even a stale one, is
-  a replay that was lost and stays a fact worth catching regardless of how long ago it happened.
+- **`expired_total` sums to `0` over a trailing window** (constitution I, `data-model.md`'s
+  `ingest_runs` section: "expected to be permanently zero, and the nightly audit asserts exactly
+  that"). Originally summed across every `ingest_runs` row ever closed, full stop. Changed
+  2026-08-29: the `aoe.ms` 301 outage (fixed by PR #17) left a 78-item capture backlog, and when it
+  drained on 2026-08-28 the source had already passed retention for 56 of those 78
+  (`http_status = 404`, `last_error = "replay never became available at source before
+  capture_deadline_at (404)"`; the other 22 stored fine on HTTP 200). Production now carries a
+  permanent, historical 56 that a lifetime sum can never return to zero — the check went red and
+  stays red regardless of whether capture is healthy today, which means it can never again report a
+  *new* loss: red-to-red teaches nobody anything. Windowed to `_EXPIRED_CAPTURE_WINDOW_DAYS` (below)
+  instead: a genuinely new expiry still fails the check, and an old, already-investigated one
+  eventually ages out on its own rather than being carried forever.
+
+  Filtered on `finished_at`, not `started_at`: `expired_total` is written exactly once, by
+  `_close_ingest_run`, at the moment a run closes (`run.py`'s own module docstring draws the same
+  distinction: "the row's absence means nothing ran at all, its open `finished_at` means something
+  did and did not finish") — an open row's counter is not final yet, and `finished_at IS NULL`
+  already drops it out of any `>=` window comparison with no separate clause needed. A long
+  backlog-drain run — exactly what produced the 56 above — can `start` long before the window and
+  still `finish` inside it; anchoring on `started_at` would drop the very run this change exists to
+  keep visible.
+
+  `_EXPIRED_CAPTURE_WINDOW_DAYS` is deliberately **not** `_TRAILING_WINDOW_DAYS` (SC-002's lag
+  target, seven days, below), even though reusing it is tempting: the two answer different
+  questions that happen to share the word "recent". SC-002 is a service-level cadence target,
+  measured over newly discovered captures; this window asks "has anything been lost lately" and has
+  nothing to do with lag. Sharing one constant would make a future retune of SC-002's target
+  silently retune this incident window too. `_EXPIRED_CAPTURE_WINDOW_DAYS` is set to 3: this audit
+  runs once a night (`.github/workflows/nightly.yml`, `cron: "0 3 * * *"`), so 3 days survives the
+  workflow itself skipping a run or two — a GitHub Actions outage, a temporarily disabled
+  schedule — without holding a stale, already-handled entry anywhere near as long as a full week.
 - **No capture pending past its own deadline.** The same condition `apps/ingester/src/
   aoe2stats_ingester/run.py`'s `_raise_deadline_breach_alert` (T059a/T059b) raises `deadline_breach`
   against — every `replay_captures` row whose `capture_deadline_at` (`completed_at +
@@ -38,6 +65,21 @@ alert nobody acknowledged is `alert_audit.py`'s job (T059a is why that alert exi
 place); a breach that occurred without the ingester ever running to raise it is this script's job.
 Neither subsumes the other.
 
+That same division of labour is what makes the `expired_total` windowing above safe rather than
+merely convenient. Constitution I's corollary says `expired_total` is expected to stay at zero
+*permanently*, and moving this script's own check to a trailing window is a genuine weakening of
+that guarantee: an expiry from eight days ago that nobody investigated would now silently age out of
+`expired_total`'s check with nothing else here to catch it. The mitigation is not new, only newly
+load-bearing: `EXPIRED_CAPTURE` (T056) is a severity-1 `alerts` row, and `alert_audit.py` fails on
+*any* unacknowledged severity-1 row — with no window of its own. That row stays visible, and the
+check that reads it stays red, until a human acknowledges it, and constitution I permits
+acknowledging "only after investigating, never before". Put plainly, the two scripts now split
+constitution I's guarantee cleanly in two: this script answers "is anything being lost **right
+now**" and recovers on its own once a loss ages out of the window; `alert_audit.py` answers "has
+every loss been **investigated**" and is durable — it clears only by a human acting on it, never by
+the passage of time. Neither script owns both halves, and after this change the durable half of
+constitution I's zero-loss guarantee lives in `alert_audit.py` alone.
+
 Usage:  uv run scripts/checks/capture_audit.py
 Exit:   0 if all three assertions hold, 1 otherwise (every failure is reported, not only the first).
 """
@@ -68,6 +110,11 @@ _SC002_TARGET_HOURS = 48
 #: per-run window, and this script's own scope alone.
 _TRAILING_WINDOW_DAYS = 7
 
+#: The trailing window `expired_total` is summed over — a deliberately separate constant from
+#: `_TRAILING_WINDOW_DAYS` above, not a reuse of it. See the module docstring's first bullet for
+#: why the two must not share a number and why 3 (not 7) is the right size for this one.
+_EXPIRED_CAPTURE_WINDOW_DAYS = 3
+
 #: Mirrors `run.py`'s `_DEADLINE_BREACH_EXCLUDED_STATUSES` exactly (T059b keeps this comment true
 #: after adding the two terminal statuses there — `EXPIRED` and `FAILED` — kept in sync by hand
 #: since this script deliberately sits outside the uv workspace and does not import `run.py`): a
@@ -91,12 +138,21 @@ def _nearest_rank(sorted_values: Sequence[int], fraction: float) -> int:
     return sorted_values[min(rank, len(sorted_values)) - 1]
 
 
-async def expired_total(session: AsyncSession) -> int:
-    """The sum of `ingest_runs.expired_total` across every row ever closed. `0` when the table is
-    empty or every row's counter is `0` — `COALESCE` rather than a bare `SUM`, since Postgres
-    returns `NULL` for a `SUM` over zero rows.
+async def expired_total(session: AsyncSession, *, window_start: datetime) -> int:
+    """The sum of `ingest_runs.expired_total` across every row closed (`finished_at` non-null) at
+    or after `window_start` — see the module docstring's first bullet for why this is windowed
+    rather than lifetime, why `finished_at` rather than `started_at`, and why the boundary is
+    inclusive (`>=`, matching `capture_lag_p95_seconds`'s own window bounds below). `0` when the
+    table is empty, every row in the window has a `0` counter, or nothing closed in the window at
+    all — `COALESCE` rather than a bare `SUM`, since Postgres returns `NULL` for a `SUM` over zero
+    rows. `finished_at IS NULL` (a run still open) never matches `>= window_start`, so an
+    unfinished run's not-yet-final counter is excluded without a separate clause.
     """
-    result = await session.execute(select(func.coalesce(func.sum(IngestRun.expired_total), 0)))
+    result = await session.execute(
+        select(func.coalesce(func.sum(IngestRun.expired_total), 0)).where(
+            IngestRun.finished_at >= window_start
+        )
+    )
     return int(result.scalar_one())
 
 
@@ -153,24 +209,30 @@ async def _run() -> int:
 
     session_factory = build_session_factory(build_engine(database_url))
     now = datetime.now(UTC)
-    window_start = now - timedelta(days=_TRAILING_WINDOW_DAYS)
+    lag_window_start = now - timedelta(days=_TRAILING_WINDOW_DAYS)
+    expired_window_start = now - timedelta(days=_EXPIRED_CAPTURE_WINDOW_DAYS)
 
     async with session_factory() as session:
-        total_expired = await expired_total(session)
+        total_expired = await expired_total(session, window_start=expired_window_start)
         overdue = await captures_pending_past_deadline(session, now=now)
         p95_seconds = await capture_lag_p95_seconds(
-            session, window_start=window_start, window_end=now
+            session, window_start=lag_window_start, window_end=now
         )
 
     ok = True
 
     if total_expired == 0:
-        print("capture-audit: OK — expired_total is 0 across every ingest_runs row.")
+        print(
+            "capture-audit: OK — expired_total is 0 over the trailing "
+            f"{_EXPIRED_CAPTURE_WINDOW_DAYS} days of ingest_runs."
+        )
     else:
         ok = False
         print(
-            f"capture-audit: FAIL — expired_total sums to {total_expired} across ingest_runs. "
-            "Constitution I: this is expected to be permanently zero. See docs/risks.md."
+            f"capture-audit: FAIL — expired_total sums to {total_expired} over the trailing "
+            f"{_EXPIRED_CAPTURE_WINDOW_DAYS} days of ingest_runs. Constitution I: a lost replay is "
+            "gone forever; see docs/risks.md. Any severity-1 EXPIRED_CAPTURE alert behind this "
+            "stays visible in alert_audit.py until acknowledged, independently of this window."
         )
 
     if not overdue:

@@ -68,14 +68,15 @@ dev = [
 # --- pytest --------------------------------------------------------------------------------------
 # One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
 # `uv run pytest -q` from the repository root with `PYTEST_DISABLE_NETWORK=1`. `testpaths` lists
-# every workspace member's `tests/` directory plus `scripts/checks/tests` and `tests/architecture`
-# — neither is a uv workspace member (both are deliberately excluded from `[tool.uv.workspace]`
-# above, predating this config for the former), so without naming them here T048's liveness-check
-# test and T018d's architecture guards would never be collected. `tests/architecture` holds only
-# import-graph guards that span more than one workspace member (constitution III, V, XII) and so
-# cannot live inside any single member's own `tests/`. Most of these directories do not exist yet;
-# pytest does not error on a `testpaths` entry that is missing, it simply finds nothing there until
-# the story that owns it lands.
+# every workspace member's `tests/` directory plus `scripts/checks/tests`, `scripts/ops/tests` and
+# `tests/architecture` — none of the three is a uv workspace member (all deliberately excluded from
+# `[tool.uv.workspace]` above, predating this config for the first two), so without naming them
+# here T048's liveness-check test, `acknowledge_alerts.py`'s own tests, and T018d's architecture
+# guards would never be collected. `tests/architecture` holds only import-graph guards that span
+# more than one workspace member (constitution III, V, XII) and so cannot live inside any single
+# member's own `tests/`. Most of these directories do not exist yet; pytest does not error on a
+# `testpaths` entry that is missing, it simply finds nothing there until the story that owns it
+# lands.
 [tool.pytest.ini_options]
 testpaths = [
   "packages/core/tests",
@@ -85,6 +86,7 @@ testpaths = [
   "apps/api/tests",
   "apps/ingester/tests",
   "scripts/checks/tests",
+  "scripts/ops/tests",
   "tests/architecture",
 ]
 # `tests/conftest.py` (the network-blocking autouse fixture, constitution III) is not an ancestor
@@ -144,21 +146,24 @@ quote-style = "double"
 indent-style = "space"
 
 # --- mypy (strict) ------------------------------------------------------------------------------
-# Scoped to the seven workspace members' `src/` trees, plus the whole `scripts/checks/` directory
-# (T061a, widened by T061c): `files` names the directory rather than enumerating its scripts one by
-# one, so a script added later (T100's `free_tier_watch.py`, and whatever follows it) is under this
-# gate the moment it exists, with nothing to remember to update here. `exclude` then carves
-# `scripts/checks/tests/` back out, because test suites are excluded from this gate everywhere else
-# in the tree (only ruff runs over them), and the same holds here — without it, naming the directory
-# in `files` would pull its tests under strict mypy too. Every other member's own `tests/` is kept
-# out the same way `apps/analyzer/tests` is (T302): `files` names only its `src/` tree, never the
-# member's root, so there is nothing for `exclude` to carve back out there. `scripts/checks` is
-# listed in `mypy_path` (not only `files`) for a different reason: `contract_sources.py` imports its
-# sibling `publication_delay.py` as a bare top-level module (`from publication_delay import
-# append_sample`, matching how `uv run scripts/checks/contract_sources.py` actually resolves it —
-# the script's own directory on `sys.path`), and `explicit_package_bases` needs that directory
-# declared as a root to resolve it the same way. `scripts/hooks/` is shell, not Python, and mypy has
-# nothing to check there.
+# Scoped to the seven workspace members' `src/` trees, plus the whole `scripts/checks/` and
+# `scripts/ops/` directories (T061a, widened by T061c, then by the alert-acknowledgement tool):
+# `files` names each directory rather than enumerating its scripts one by one, so a script added
+# later (T100's `free_tier_watch.py`, and whatever follows it) is under this gate the moment it
+# exists, with nothing to remember to update here. `exclude` then carves `scripts/checks/tests/`
+# and `scripts/ops/tests/` back out, because test suites are excluded from this gate everywhere
+# else in the tree (only ruff runs over them), and the same holds here — without it, naming the
+# directory in `files` would pull its tests under strict mypy too. Every other member's own
+# `tests/` is kept out the same way `apps/analyzer/tests` is (T302): `files` names only its `src/`
+# tree, never the member's root, so there is nothing for `exclude` to carve back out there.
+# `scripts/checks` is listed in `mypy_path` (not only `files`) for a different reason:
+# `contract_sources.py` imports its sibling `publication_delay.py` as a bare top-level module
+# (`from publication_delay import append_sample`, matching how `uv run scripts/checks/
+# contract_sources.py` actually resolves it — the script's own directory on `sys.path`), and
+# `explicit_package_bases` needs that directory declared as a root to resolve it the same way.
+# `scripts/ops` needs no such entry: `acknowledge_alerts.py` imports only installed workspace
+# packages, never a sibling script. `scripts/hooks/` is shell, not Python, and mypy has nothing to
+# check there.
 [tool.mypy]
 python_version = "3.13"
 strict = true
@@ -183,9 +188,11 @@ files = [
   "apps/ingester/src",
   "apps/analyzer/src",
   "scripts/checks",
+  "scripts/ops",
 ]
 exclude = [
   "^scripts/checks/tests/",
+  "^scripts/ops/tests/",
 ]
 
 [[tool.mypy.overrides]]
