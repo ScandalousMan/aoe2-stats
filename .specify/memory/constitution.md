@@ -1,5 +1,54 @@
 <!--
-Sync Impact Report — 2026-08-25
+Sync Impact Report — 2026-08-28
+
+Version change: 4.0.0 -> 4.1.0
+
+4.1.0 (MINOR: materially expanded guidance, no principle removed or redefined) — principle I stops
+asserting a retention figure and gains a ratchet.
+
+The trigger is a defect this constitution created for itself. Principle I carried "approximately 31
+days (measured 2026-08-19)" as a statement of fact. `docs/data-sources.md` recorded on 2026-08-28
+that a second, larger sample (78 captures, profile 2322168) puts an equally sharp boundary six
+months back rather than 31 days, with the replay endpoint having moved between the two measurements
+and the question unresolved. The constitution therefore asserted as settled something `docs/` marks
+as contradicted — and `CLAUDE.md` names this exact failure mode: a measurement written in two homes
+goes stale in one of them. The measured window is a property of the outside world, so it belongs in
+`docs/data-sources.md` and only there; principle I now points at it instead of restating it.
+
+What the amendment adds beyond the deletion, and why it is MINOR rather than PATCH: a new normative
+rule that new retention evidence may tighten the capture budget at any time but may only widen it
+once `docs/data-sources.md` records the question as settled with corroboration across more than one
+profile and more than one date. The unresolved reading is longer than the old one, which makes the
+comfortable inference — replays are safe for months, capture can relax — the one this principle must
+forbid explicitly. It also names the budget's mechanism (`CAPTURE_BUDGET_DAYS`, configured) rather
+than its value, so a re-measurement changes a setting and not this document.
+
+Unchanged and deliberate: the ordering itself ("any trade-off ... resolves in favour of capture"),
+the no-degradation rule, and the `expired_total` corollary. The 21-day budget is unchanged; it is
+conservative under either reading.
+
+Modified principles:
+- I. Capture Outranks Analysis — retention figure removed in favour of a pointer to
+  `docs/data-sources.md`; budget-ratchet rule added.
+
+Added sections: none. Removed sections: none.
+
+Formatting: rewrapped principle IV's recomputability sentence, which sat on one ~135-char line.
+
+Follow-up TODOs — none deferred in this file. Two dependent artifacts named by the 4.0.0 report are
+still not in line, and this amendment does not touch them either (scope: constitution only):
+- `specs/001-steam-link-replay-ingestion/quickstart.md` scenario 2, still titled "Nothing happens
+  without consent" and still instructing the reader to decline consent. Under 4.0.0 there is nothing
+  to decline; the scenario inverts to an objection that stops capture.
+- `specs/003-player-search-match-analysis/spec.md`, which quotes principle IX as "we capture only
+  the consenting user's point of view" (~l.31) and reasons from "consenting users" at l.46, l.92 and
+  l.108. The point-of-view limit it relies on survives 4.0.0; the word "consenting" does not.
+
+Everything else on that list landed: 001 FR-034/FR-035, the register's activities 3 and 4 and its
+balancing test, and `discover.py`'s gate — now `archival_objected_at`, excluded rather than
+required. Neither remaining item is caused by this amendment, and both predate it.
+
+Prior report — 2026-08-25
 
 Version change: 3.0.1 -> 4.0.0
 
@@ -87,10 +136,27 @@ already recorded in specs/003-player-search-match-analysis/spec.md session 2026-
 
 ### I. Capture Outranks Analysis (NON-NEGOTIABLE)
 
-Microsoft's replay retention window is approximately 31 days (measured 2026-08-19). An uncaptured
-replay is gone forever. Any trade-off between shipping an analysis feature and hardening capture
-resolves in favour of capture. No PR may degrade the ingestion pipeline to serve a display feature.
-Corollary: `expired_total` must stay at zero; any non-zero value is a severity-1 incident.
+The source destroys recordings on a schedule this project neither controls nor reliably predicts. An
+uncaptured replay is gone forever. Any trade-off between shipping an analysis feature and hardening
+capture resolves in favour of capture. No PR may degrade the ingestion pipeline to serve a display
+feature. Corollary: `expired_total` must stay at zero; any non-zero value is a severity-1 incident.
+
+**This principle states no retention figure.** The measured window is a property of the outside
+world and lives in `docs/data-sources.md` alone. A number written down twice goes stale in one of
+the two copies, and that is not hypothetical here: the 31-day reading this principle carried from
+2026-08-19 was contradicted on 2026-08-28 by an equally sharp boundary sitting six months back,
+measured after the replay endpoint had moved. The contradiction is unresolved, and this document
+does not get to decide it.
+
+**Capture runs against a budget strictly shorter than the shortest credible window**, configured
+(`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a setting, not code.
+
+**A longer or unresolved reading never widens that budget.** New evidence MAY tighten it at any
+time. Widening it requires `docs/data-sources.md` to record the question as settled, corroborated
+across more than one profile and more than one date. Until then the ambiguity argues for capturing
+sooner, not later: an unexplained boundary may be a fixed epoch rather than a rolling window, and an
+epoch can be emptied wholesale with no notice. A PR that relaxes capture on the strength of an
+uncorroborated measurement is rejected.
 
 ### II. Python Backend
 
@@ -120,8 +186,8 @@ principle IX's public-recording basis is not — IX carries that rule and this p
 override it. The two are different objects with different legal bases even when they are the same
 match, so the exception is written against the basis and not against the file.
 
-Every derived artifact records the version of the tool that produced it and must be fully recomputable from the raw. No migration may
-ever be required to re-parse history.
+Every derived artifact records the version of the tool that produced it and must be fully
+recomputable from the raw. No migration may ever be required to re-parse history.
 
 ### V. Parsing Runs in an Isolated, Pluggable Engine
 
@@ -266,4 +332,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 4.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-25
+**Version**: 4.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-28
