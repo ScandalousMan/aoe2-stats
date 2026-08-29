@@ -55,7 +55,16 @@ function baseProfile(overrides: Partial<ApiPlayerProfile> = {}): ApiPlayerProfil
   }
 }
 
-function installFakeApi(profileHandler: () => Response) {
+function installFakeApi(
+  profileHandler: () => Response,
+  {
+    favouritesHandler = () => jsonResponse({ favourites: [] }),
+    favouriteMutationHandler,
+  }: {
+    favouritesHandler?: () => Response
+    favouriteMutationHandler?: (method: string, profileId: string) => Response
+  } = {},
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
     const method = init?.method ?? 'GET'
@@ -65,6 +74,20 @@ function installFakeApi(profileHandler: () => Response) {
     }
     if (/^\/api\/players\/\d+$/.test(path) && method === 'GET') {
       return profileHandler()
+    }
+    if (path === '/api/favourites' && method === 'GET') {
+      return favouritesHandler()
+    }
+    const favouriteMutationMatch = /^\/api\/favourites\/(\d+)$/.exec(path)
+    if (
+      favouriteMutationMatch &&
+      (method === 'PUT' || method === 'DELETE') &&
+      favouriteMutationMatch[1]
+    ) {
+      const profileId = favouriteMutationMatch[1]
+      return favouriteMutationHandler
+        ? favouriteMutationHandler(method, profileId)
+        : jsonResponse({ profile_id: Number(profileId), favourited: method === 'PUT' })
     }
     throw new Error(`Unhandled fetch in test: ${method} ${path}`)
   })
@@ -172,6 +195,102 @@ describe('PlayerProfileContainer', () => {
       ),
     )
     renderProfile()
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' }))
+  })
+
+  // T349: `FavouriteToggle` (US5), wired into `ProfileSummary`'s own slot.
+
+  it("shows the unmarked toggle for a profile that is not one of the caller's favourites", async () => {
+    installFakeApi(() => jsonResponse(baseProfile()))
+    renderProfile()
+
+    expect(await screen.findByRole('button', { name: 'Add to favourites' })).toBeInTheDocument()
+  })
+
+  it("shows the marked toggle for a profile already in the caller's favourites", async () => {
+    installFakeApi(() => jsonResponse(baseProfile()), {
+      favouritesHandler: () =>
+        jsonResponse({
+          favourites: [
+            { profile_id: 87654321, alias: 'rival_ace', country: 'Germany', ratings: [] },
+          ],
+        }),
+    })
+    renderProfile()
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove from favourites' }),
+    ).toBeInTheDocument()
+  })
+
+  it('marks a profile as favourite (FR-013) and refreshes the toggle from the 200', async () => {
+    let added = false
+    installFakeApi(() => jsonResponse(baseProfile()), {
+      favouritesHandler: () =>
+        jsonResponse({
+          favourites: added
+            ? [{ profile_id: 87654321, alias: 'rival_ace', country: 'Germany', ratings: [] }]
+            : [],
+        }),
+      favouriteMutationHandler: (method, profileId) => {
+        added = method === 'PUT'
+        return jsonResponse({ profile_id: Number(profileId), favourited: added })
+      },
+    })
+    const user = userEvent.setup()
+    renderProfile()
+
+    await user.click(await screen.findByRole('button', { name: 'Add to favourites' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove from favourites' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a warning callout on the FR-016 bound race, without a fabricated max', async () => {
+    installFakeApi(() => jsonResponse(baseProfile()), {
+      favouriteMutationHandler: () =>
+        jsonResponse(
+          { error: { code: 'favourites_limit_reached', message: 'You have reached the limit.' } },
+          409,
+        ),
+    })
+    const user = userEvent.setup()
+    renderProfile()
+
+    await user.click(await screen.findByRole('button', { name: 'Add to favourites' }))
+
+    expect(await screen.findByText('You have reached your favourites limit')).toBeInTheDocument()
+    // The control itself stays pressable — never stuck disabled (favourite-toggle.md §5, "error").
+    expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled()
+  })
+
+  it('shows a danger callout when the PUT fails outright', async () => {
+    installFakeApi(() => jsonResponse(baseProfile()), {
+      favouriteMutationHandler: () =>
+        jsonResponse({ error: { code: 'unknown_error', message: 'boom' } }, 500),
+    })
+    const user = userEvent.setup()
+    renderProfile()
+
+    await user.click(await screen.findByRole('button', { name: 'Add to favourites' }))
+
+    expect(await screen.findByText('We could not update your favourites')).toBeInTheDocument()
+  })
+
+  it('redirects to sign-in when the session expires between load and the toggle click', async () => {
+    installFakeApi(() => jsonResponse(baseProfile()), {
+      favouriteMutationHandler: () =>
+        jsonResponse(
+          { error: { code: 'sign_in_required', message: 'Sign in to manage your favourites.' } },
+          401,
+        ),
+    })
+    const user = userEvent.setup()
+    renderProfile()
+
+    await user.click(await screen.findByRole('button', { name: 'Add to favourites' }))
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' }))
   })

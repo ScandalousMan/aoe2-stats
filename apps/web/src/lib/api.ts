@@ -57,7 +57,7 @@ export function isApiErrorCode(error: unknown, code: ApiErrorCode): error is Api
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: unknown
 }
 
@@ -111,6 +111,11 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}): Promis
 export const api = {
   get: <T>(path: string) => apiRequest<T>(path),
   post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'POST', body }),
+  // `PUT /api/favourites/{profile_id}` (T346, contracts/http-api.md's Favourites table) is the
+  // first `PUT` this client calls — idempotent in the database itself (the composite primary
+  // key), which is the contract's own reason for choosing the verb (that router's module
+  // docstring).
+  put: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'PUT', body }),
   delete: <T>(path: string) => apiRequest<T>(path, { method: 'DELETE' }),
 }
 

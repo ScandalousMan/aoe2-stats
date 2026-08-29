@@ -108,6 +108,40 @@ describe('SignInContainer', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  // US5 scenario 5 — `returnTo` (`sign-in.tsx`'s `?return=`) must survive the full-page reload to
+  // Steam and back, which only `sessionStorage` can do (`returnLocation.ts`'s own docstring).
+  it('saves a pending return location before navigating to Steam when returnTo is set', async () => {
+    runDeferredNavigationSynchronously()
+    vi.stubGlobal('location', { ...window.location, assign: vi.fn() })
+    window.sessionStorage.clear()
+    const user = userEvent.setup()
+
+    render(
+      <SignInContainer
+        linkMode={false}
+        errorCode={undefined}
+        returnTo="/players/12345"
+        onNavigateHome={() => {}}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Continue with Steam' }))
+
+    expect(window.sessionStorage.getItem('aoe2stats:sign-in-return-to')).toBe('/players/12345')
+    window.sessionStorage.clear()
+  })
+
+  it('saves nothing when returnTo is absent (an ordinary sign-in)', async () => {
+    runDeferredNavigationSynchronously()
+    vi.stubGlobal('location', { ...window.location, assign: vi.fn() })
+    window.sessionStorage.clear()
+    const user = userEvent.setup()
+
+    render(<SignInContainer linkMode={false} errorCode={undefined} onNavigateHome={() => {}} />)
+    await user.click(screen.getByRole('button', { name: 'Continue with Steam' }))
+
+    expect(window.sessionStorage.getItem('aoe2stats:sign-in-return-to')).toBeNull()
+  })
+
   it('retry actions reuse the same real effect: a fresh /api/auth/steam/start round trip', async () => {
     runDeferredNavigationSynchronously()
     const assign = vi.fn()

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { SignInScreen, type SignInScreenPhase } from 'design-system'
 import { resolveOutcome } from './outcome'
+import { savePendingReturnLocation } from './returnLocation'
 import { buildSteamStartUrl } from './steamStart'
 
 export interface SignInContainerProps {
@@ -9,6 +10,12 @@ export interface SignInContainerProps {
   linkMode: boolean
   /** The `?error=` query parameter, verbatim from the URL. */
   errorCode: string | undefined
+  /** `sign-in.tsx`'s `?return=`, already validated (`isSafeReturnPath`) — US5 scenario 5. Saved to
+   * `sessionStorage` (`returnLocation.ts`) immediately before the full-page navigation to Steam,
+   * so it survives the reload and `routes/index.tsx`'s `beforeLoad` can send the caller back here
+   * on success, instead of the ordinary `/dashboard`. `undefined` for every sign-in that was not
+   * reached from a "sign in and come back" prompt. */
+  returnTo?: string
   /** Client-side navigation back to the app, for `Cancel` (`link` variant) and the outcome that
    * shares it, `profile_already_linked`. Never a `window.location` assignment: unlike "Continue
    * with Steam" this never leaves the SPA. */
@@ -21,19 +28,27 @@ export interface SignInContainerProps {
  * into the app — and to nothing else. Every visual state lives in the component; this module owns
  * none of its own.
  */
-export function SignInContainer({ linkMode, errorCode, onNavigateHome }: SignInContainerProps) {
+export function SignInContainer({
+  linkMode,
+  errorCode,
+  returnTo,
+  onNavigateHome,
+}: SignInContainerProps) {
   const [phase, setPhase] = useState<SignInScreenPhase>('default')
   const outcome = resolveOutcome(errorCode)
 
   const continueWithSteam = useCallback(() => {
     setPhase('leaving')
+    if (returnTo) {
+      savePendingReturnLocation(returnTo)
+    }
     // `window.location.assign` unloads this SPA (module docstring, steamStart.ts) — deferred one
     // tick so React commits the `leaving` phase's "Taking you to Steam…" label before that
     // happens, rather than racing the navigation against the paint.
     window.setTimeout(() => {
       window.location.assign(buildSteamStartUrl(linkMode))
     }, 0)
-  }, [linkMode])
+  }, [linkMode, returnTo])
 
   return (
     <SignInScreen
