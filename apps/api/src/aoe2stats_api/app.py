@@ -37,6 +37,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aoe2stats_api.errors import APIError, error_response
 from aoe2stats_api.routers import (
+    analysis,
     auth,
     cron,
     favourites,
@@ -240,6 +241,7 @@ def create_app() -> FastAPI:
     app.include_router(matches.router, prefix="/api")
     app.include_router(players.router, prefix="/api")
     app.include_router(favourites.router, prefix="/api")
+    app.include_router(analysis.router, prefix="/api")
 
     return app
 

@@ -305,7 +305,6 @@ def test_no_fixed_byte_offset_in_build_data_recovers_player_id() -> None:
             )
 
 
-@pytest.mark.xfail(strict=True, reason="T354 not implemented yet")
 def test_decode_build_action_recovers_the_pinned_building_type_offset() -> None:
     """A single golden example, pinned literally: the very first `Build` action in the reference
     replay's operation stream (`world_time=1352`), a 2-villager House build. `data[12:16]`, read as
@@ -362,7 +361,6 @@ def test_decode_build_action_recovers_the_pinned_building_type_offset() -> None:
     assert decoded.building_id == 70
 
 
-@pytest.mark.xfail(strict=True, reason="T354 not implemented yet")
 def test_all_326_build_actions_in_the_reference_replay_decode() -> None:
     """The golden test proper: every one of the 326 `Build` actions in the committed reference
     replay decodes to a `player_id` and a building identifier, and the resulting distribution of

@@ -2,12 +2,12 @@
 `specs/003-player-search-match-analysis/contracts/analysis.md`'s `MatchTimeline` and
 `ParticipantTimeline`.
 
-`aoe2stats_core.replay.analysis` does not exist until T352 lands, so every test below imports it
-inside its own body rather than at module scope — a module-scope import of a module that does not
-exist yet is a collection error that takes the whole workspace suite down, not one failing test —
-and carries `@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")`. `strict=True` is
-what forces T352 to remove each marker rather than leaving a stale one that would hide a
-regression.
+T352 landed `aoe2stats_core.replay.analysis`; each test below still imports it inside its own body
+rather than at module scope, kept from the pre-T352 form where a module-scope import of a module
+that did not exist yet would have been a collection error taking the whole workspace suite down,
+not one failing test. The `xfail(strict=True, reason="T352 not implemented yet")` markers that
+forced T352 to remove each one rather than leave a stale marker hiding a regression are gone now
+that the tests pass.
 
 Field introspection, not construction: what is asserted is the *shape* of the dataclass, via
 `dataclasses.fields`, so a field that should not exist cannot be smuggled past a test that only
@@ -27,8 +27,6 @@ to test for the presence.
 from __future__ import annotations
 
 import dataclasses
-
-import pytest
 
 # The exact field sets from contracts/analysis.md. Listed here, not derived from the module under
 # test, so a change to the contract and a change to the implementation are two edits that this
@@ -71,21 +69,18 @@ def _field_names(cls: type) -> set[str]:
     return {f.name for f in dataclasses.fields(cls)}
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_match_timeline_carries_exactly_the_contract_fields() -> None:
     from aoe2stats_core.replay.analysis import MatchTimeline
 
     assert _field_names(MatchTimeline) == _MATCH_TIMELINE_FIELDS
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_participant_timeline_carries_exactly_the_contract_fields() -> None:
     from aoe2stats_core.replay.analysis import ParticipantTimeline
 
     assert _field_names(ParticipantTimeline) == _PARTICIPANT_TIMELINE_FIELDS
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_match_timeline_has_no_field_named_for_a_resource_or_a_reconstructed_quantity() -> None:
     from aoe2stats_core.replay.analysis import MatchTimeline
 
@@ -99,7 +94,6 @@ def test_match_timeline_has_no_field_named_for_a_resource_or_a_reconstructed_qua
     assert names.isdisjoint(_FORBIDDEN_EXACT_NAMES)
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_participant_timeline_has_no_field_named_for_a_resource() -> None:
     """FR-043b: 'No resources, anywhere, and no reconstructed quantity of any kind.' A
     `.aoe2record` is a command log, not a state log — resources are recoverable only by partial
@@ -115,7 +109,6 @@ def test_participant_timeline_has_no_field_named_for_a_resource() -> None:
             )
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_participant_timeline_has_no_villagers_or_villagers_trained_field() -> None:
     """FR-043b, in the contract's own words: '"villagers_ordered", not "villagers".' The field
     that exists counts training *commands* net of observed cancellations — what the player ordered
@@ -132,7 +125,6 @@ def test_participant_timeline_has_no_villagers_or_villagers_trained_field() -> N
     assert villager_named == {"villagers_ordered"}
 
 
-@pytest.mark.xfail(strict=True, reason="T352 not implemented yet")
 def test_both_value_objects_are_frozen() -> None:
     """Immutable, like `ReplayValidationResult` beside it — a published analysis is a fact about
     one parse, not a value a caller should be able to mutate after the fact."""

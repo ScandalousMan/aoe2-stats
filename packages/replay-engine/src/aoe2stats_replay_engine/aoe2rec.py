@@ -1,9 +1,13 @@
-"""The `aoe2rec-py` adapter satisfying `aoe2stats_core.replay.validation.ReplayValidator`.
+"""The `aoe2rec-py` adapter satisfying `aoe2stats_core.replay.validation.ReplayValidator`, and the
+`Build`-action decoder (R4, T353/T354).
 
 Imported only by the ingester, which contains it behind the `BaseException`-catching barrier in
 T055 — never by `packages/core`, which the API imports (constitution V), and never directly by
 anything outside this package's own boundary (the `replay-parsing` skill: "Never import either
-[engine] directly outside its adapter").
+[engine] directly outside its adapter"). `decode_build_action` is this same kind of engine-format
+knowledge — which bytes of one wheel's output mean what — and lives here for the same reason:
+constitution V wants it swappable with the engine, never leaked into `apps/analyzer`, which will
+consume it only through the `ReplayExtractor` Protocol (T352).
 
 Well-formedness is checked before the engine ever sees a byte, per the skill's extraction-safety
 discipline: exactly one member, an inner filename matching the naming scheme aoe.ms publishes
@@ -15,12 +19,25 @@ out, so an archive that under-declares its size is still caught, and caught befo
 inflated in memory (T013a). Only a well-formed archive is handed to `aoe2rec_py.parse_rec`, whose
 job is limited here to confirming the inner bytes are a replay it can open — nothing about match
 content is read or returned.
+
+`decode_build_action` (T354) decodes one raw `Build` action dict from the pinned wheel
+(`aoe2rec-py==0.1.21`). `player_id` is already present on the field the wheel provides — R4 and
+ADR-0001's 2026-08-24 correction are wrong on this point, measured directly against the pinned
+wheel in `tests/test_aoe2rec.py` — so it is passed through unchanged, never re-derived from `data`.
+What the wheel genuinely does not expose as a named field is the building-type identifier: the AoE2
+DE Genie building id, recovered from `data[12:16]`, an unsigned little-endian 32-bit integer. That
+offset was found empirically (swept across every byte position and all 17 distinct `action_length`
+groups in the reference replay) and cross-checked against known Genie ids — see the test file's
+module docstring and `_EXPECTED_BUILDING_TYPE_COUNTS` for the full derivation.
 """
 
 from __future__ import annotations
 
 import re
+import struct
 import zipfile
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from importlib import metadata
 from io import BytesIO
 from typing import cast
@@ -211,3 +228,45 @@ def _read_bounded(stream: zipfile.ZipExtFile, *, cap: int, filename: str) -> byt
             )
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+# The offset within `Build.data` where the AoE2 DE Genie building-type identifier sits, an
+# unsigned little-endian 32-bit integer. Found empirically and pinned by
+# `tests/test_aoe2rec.py`: see this module's docstring for the derivation.
+_BUILDING_TYPE_OFFSET = 12
+_BUILDING_TYPE_STRUCT = struct.Struct("<I")
+
+
+@dataclass(frozen=True, slots=True)
+class DecodedBuildAction:
+    """One `Build` action's `player_id` and building-type identifier (T354, R4).
+
+    `player_id` is read straight from the field the pinned wheel already provides on every `Build`
+    action, never re-derived from `data` — see `test_the_pinned_wheel_already_returns_a_player_id_
+    for_build_actions` and `test_no_fixed_byte_offset_in_build_data_recovers_player_id` in
+    `tests/test_aoe2rec.py`, which pin this as measured fact against the pinned
+    `aoe2rec-py==0.1.21` wheel and correct R4 / ADR-0001's now-superseded claim that the field is
+    missing entirely. `building_id` is the one piece genuinely absent from the wheel's own output:
+    the AoE2 DE Genie building id, decoded from raw bytes.
+    """
+
+    player_id: int
+    building_id: int
+
+
+def decode_build_action(build_action: Mapping[str, object]) -> DecodedBuildAction:
+    """Decode a raw `Build` action dict from the pinned `aoe2rec-py` wheel.
+
+    `build_action` is the `{"player_id", "action_length", "data"}` dict the wheel hands back for
+    one `Build` action (`parsed["operations"][i]["Action"]["action_data"]["Build"]`). `player_id`
+    passes through unchanged. `building_id` is decoded from `data[12:16]`, an unsigned
+    little-endian 32-bit integer — the offset `tests/test_aoe2rec.py` pins against all 326 `Build`
+    actions in the reference replay, cross-checked there against known AoE2 DE Genie building ids.
+    """
+    data = cast(Sequence[int], build_action["data"])
+    building_bytes = bytes(data[_BUILDING_TYPE_OFFSET : _BUILDING_TYPE_OFFSET + 4])
+    (building_id,) = _BUILDING_TYPE_STRUCT.unpack(building_bytes)
+    return DecodedBuildAction(
+        player_id=cast(int, build_action["player_id"]),
+        building_id=building_id,
+    )

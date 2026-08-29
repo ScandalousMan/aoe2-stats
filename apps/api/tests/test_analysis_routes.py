@@ -70,6 +70,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import ratelimit, security
@@ -145,7 +146,18 @@ async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> 
 
 
 async def _seed_participant(db_session: AsyncSession, *, profile_id: int, alias: str) -> None:
-    db_session.add(AoeProfile(profile_id=profile_id, alias=alias, country="FR"))
+    """One `aoe_profiles` row. `ON CONFLICT DO NOTHING`, not a plain `add`: `_STALE_MATCHING_
+    GAME_ID`/`_STALE_MISMATCHED_GAME_ID` and the three `_DISTINGUISH_*_GAME_ID` cases each seed a
+    *second* (or third) match sharing this file's own default `(_PARTICIPANT_A, _PARTICIPANT_B)`
+    pair — `aoe_profiles.profile_id` is a shared identity across every match a profile ever played,
+    never scoped to one, so seeding it again for a second match must be a no-op rather than a
+    duplicate-key error the way a second `MatchPlayer`/`Match` row for the same pair already is."""
+    statement = (
+        pg_insert(AoeProfile)
+        .values(profile_id=profile_id, alias=alias, country="FR")
+        .on_conflict_do_nothing(index_elements=[AoeProfile.profile_id])
+    )
+    await db_session.execute(statement)
 
 
 async def _seed_match(db_session: AsyncSession, *, game_id: int) -> None:
@@ -336,7 +348,6 @@ def _freeze_rate_limiter_clock(monkeypatch: pytest.MonkeyPatch, *, moment: datet
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T368 not implemented yet")
 async def test_published_analysis_answers_a_result_for_every_participant(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -398,7 +409,6 @@ _SEVEN_STATE_CASES: tuple[tuple[str, MatchAnalysisState | None, int], ...] = (
 )
 
 
-@pytest.mark.xfail(strict=True, reason="T368 not implemented yet")
 @pytest.mark.parametrize(
     "expected_state,stored_state,game_id",
     _SEVEN_STATE_CASES,
@@ -458,7 +468,6 @@ async def test_analysis_object_appears_on_match_detail_in_every_state(
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T368 not implemented yet")
 async def test_stale_is_computed_on_read_from_the_running_engine_version(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -525,7 +534,6 @@ _GET_ANALYSIS_CASES: tuple[tuple[str, int, MatchAnalysisState | None, int], ...]
 )
 
 
-@pytest.mark.xfail(strict=True, reason="T368 not implemented yet")
 @pytest.mark.parametrize(
     "case_id,expected_status,stored_state,game_id",
     _GET_ANALYSIS_CASES,
@@ -645,7 +653,6 @@ async def test_analysis_request_bucket_enforces_the_configured_daily_cap(
 # ================================================================================================
 
 
-@pytest.mark.xfail(strict=True, reason="T368 not implemented yet")
 async def test_absent_unavailable_and_refused_are_distinguishable_in_the_payload(
     client: TestClient, db_session: AsyncSession
 ) -> None:

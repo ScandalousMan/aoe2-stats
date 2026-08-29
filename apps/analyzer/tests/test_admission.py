@@ -81,7 +81,6 @@ from aoe2stats_storage.models import (
 # shape) is not the convention here, unlike `apps/ingester/tests/conftest.py`'s per-directory
 # re-export.
 
-_XFAIL_REASON = "T359 not implemented yet"
 _LEADERBOARD_ID = 3
 _AOEMS_PROVIDER = "aoems"
 _AOEMS_ENDPOINT = "replay"
@@ -193,7 +192,6 @@ async def _seed_retained_recording(
 # --- Gate 1 — the deadline gate: capture's backlog (FR-039, R7) --------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 @pytest.mark.parametrize("status", _UNSTORED_STATUSES)
 async def test_deadline_gate_refuses_while_an_unstored_capture_is_past_its_deadline(
     db_session: AsyncSession,
@@ -212,7 +210,6 @@ async def test_deadline_gate_refuses_while_an_unstored_capture_is_past_its_deadl
     assert await deadline_gate_admits(db_session, now=_NOW) is False
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_deadline_gate_admits_when_no_capture_is_past_its_own_deadline(
     db_session: AsyncSession,
 ) -> None:
@@ -229,7 +226,6 @@ async def test_deadline_gate_admits_when_no_capture_is_past_its_own_deadline(
     assert await deadline_gate_admits(db_session, now=_NOW) is True
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 @pytest.mark.parametrize("status", _RESOLVED_STATUSES)
 async def test_deadline_gate_ignores_a_capture_already_resolved_however_late(
     db_session: AsyncSession,
@@ -257,7 +253,6 @@ async def test_deadline_gate_ignores_a_capture_already_resolved_however_late(
 # --- Gate 2 — the budget gate: analysis's own, smaller allowance (R7) ---------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_budget_gate_admits_below_the_daily_allowance(db_session: AsyncSession) -> None:
     from aoe2stats_analyzer.admission import budget_gate_admits
 
@@ -267,7 +262,6 @@ async def test_budget_gate_admits_below_the_daily_allowance(db_session: AsyncSes
     assert await budget_gate_admits(db_session, now=_NOW, max_source_requests_per_day=3) is True
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_budget_gate_refuses_once_the_daily_allowance_is_exhausted(
     db_session: AsyncSession,
 ) -> None:
@@ -279,7 +273,6 @@ async def test_budget_gate_refuses_once_the_daily_allowance_is_exhausted(
     assert await budget_gate_admits(db_session, now=_NOW, max_source_requests_per_day=3) is False
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_budget_gate_counts_only_calls_to_the_replay_source(db_session: AsyncSession) -> None:
     """A `provider_calls` row from the unrelated search source (`companion`,
     `packages/providers/src/aoe2stats_providers/companion`) never counts against analysis's own
@@ -295,7 +288,6 @@ async def test_budget_gate_counts_only_calls_to_the_replay_source(db_session: As
     assert await budget_gate_admits(db_session, now=_NOW, max_source_requests_per_day=1) is True
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_budget_gate_excludes_calls_from_outside_the_daily_window(
     db_session: AsyncSession,
 ) -> None:
@@ -311,7 +303,6 @@ async def test_budget_gate_excludes_calls_from_outside_the_daily_window(
     assert await budget_gate_admits(db_session, now=_NOW, max_source_requests_per_day=2) is True
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_budget_gate_exhaustion_leaves_the_deadline_gate_unaffected(
     db_session: AsyncSession,
 ) -> None:
@@ -343,7 +334,6 @@ async def test_budget_gate_exhaustion_leaves_the_deadline_gate_unaffected(
 # --- Gate 3 — the storage gate: FR-047's retention cap ------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_storage_gate_admits_below_the_retention_cap(db_session: AsyncSession) -> None:
     from aoe2stats_analyzer.admission import storage_gate_admits
 
@@ -354,7 +344,6 @@ async def test_storage_gate_admits_below_the_retention_cap(db_session: AsyncSess
     assert await storage_gate_admits(db_session, retention_cap_bytes=2_000_000) is True
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_storage_gate_refuses_at_the_retention_cap(db_session: AsyncSession) -> None:
     from aoe2stats_analyzer.admission import storage_gate_admits
 
@@ -368,7 +357,6 @@ async def test_storage_gate_refuses_at_the_retention_cap(db_session: AsyncSessio
     assert await storage_gate_admits(db_session, retention_cap_bytes=2_000_000) is False
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_storage_gate_counts_only_retained_recordings_never_a_capture(
     db_session: AsyncSession,
 ) -> None:
@@ -398,7 +386,6 @@ async def test_storage_gate_counts_only_retained_recordings_never_a_capture(
 # --- The combined entry point: FR-047's own wire code -------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_check_admission_reports_analysis_cap_reached_at_the_retention_cap(
     db_session: AsyncSession,
 ) -> None:
@@ -425,7 +412,6 @@ async def test_check_admission_reports_analysis_cap_reached_at_the_retention_cap
     assert outcome.code == _ANALYSIS_CAP_REACHED_CODE
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_check_admission_admits_when_every_gate_is_open(db_session: AsyncSession) -> None:
     from aoe2stats_analyzer.admission import check_admission
 

@@ -44,7 +44,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
@@ -102,7 +101,6 @@ async def _seed_match_analysis(
     await session.commit()
 
 
-@pytest.mark.xfail(strict=True, reason="T361 not implemented yet")
 async def test_claim_is_exclusive_under_for_update_skip_locked(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -154,7 +152,6 @@ async def test_claim_is_exclusive_under_for_update_skip_locked(
     assert outcome_after_release.attempts == 1
 
 
-@pytest.mark.xfail(strict=True, reason="T361 not implemented yet")
 async def test_an_expired_lease_is_reclaimable(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -197,7 +194,6 @@ async def test_an_expired_lease_is_reclaimable(
     assert outcome.attempts == 2
 
 
-@pytest.mark.xfail(strict=True, reason="T361 not implemented yet")
 async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_second_parse(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -240,7 +236,6 @@ async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_sec
     assert second_asker.lease_expires_at == first_asker.lease_expires_at
 
 
-@pytest.mark.xfail(strict=True, reason="T361 not implemented yet")
 async def test_nothing_sweeps_an_expired_lease(
     session_factory: async_sessionmaker[AsyncSession],
     db_session: AsyncSession,
