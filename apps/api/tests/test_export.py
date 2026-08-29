@@ -1,6 +1,6 @@
 """Integration test for `POST /api/privacy/export` and `GET /api/privacy/export/{id}` (T086),
 implemented at **T090** (`packages/core/src/aoe2stats_core/privacy/export.py` and
-`apps/api/src/aoe2stats_api/routers/privacy.py`) — none of that exists yet.
+`apps/api/src/aoe2stats_api/routers/privacy.py`).
 
 Covers quickstart.md scenario 10 point 1 and FR-036: "Users MUST be able to export all their
 personal data, match records and archived replays." `contracts/http-api.md`'s "Privacy" table:
@@ -13,26 +13,14 @@ the dates) and the analyses the user requested (match ids and dates) — and two
 public search, the second is rate-limiting bookkeeping, and both "shed their own rows" on a
 schedule that has nothing to do with any one person's export).
 
-**Every test below is `xfail(strict=True, reason="T090 not implemented yet")`.** Neither the route
-nor `packages/core/src/aoe2stats_core/privacy/export.py` exists today, so every request below
-resolves to the app's own framework 404 (wrapped by `app.py`'s `HTTPException` handler into
-`{"error": {"code": "not_found", ...}}`) rather than anything this file asks for — the assertions
-fail for that reason, not by coincidence. Nothing here imports `aoe2stats_core.privacy.export` at
-all, module scope or otherwise: every assertion below is driven through `client`, the one seam
-that already exists (`privacy.py`'s router is real, only these two routes are missing from it), so
-there is no not-yet-existent module to import in the first place — unlike a sibling test that
-reaches for `packages/core/.../erasure.py` directly.
-
 **The exact archive shape below is this file's own proposal, not a shape fixed by
 `contracts/http-api.md` or `data-model.md`.** Neither document goes further than "an archive
 assembled from the records and the blobs" (T090's task text) and "a signed URL to the archive"
 (contracts/http-api.md). What follows is a concrete, defensible reading of both — a zip archive
-with one JSON document per table plus a `replays/` prefix mirroring
+with one JSON document per table plus replay entries named by
 `aoe2stats_storage.objects.replay_object_key`'s own `replays/{game_id}/{profile_id}.zip` scheme —
-written here so T090 has a contract to implement against rather than reinventing one. Since every
-assertion below is unreachable today (the route 404s before any of them run), pinning a shape here
-costs nothing this session and saves T090 from guessing the whole of the archive layout from
-prose alone.
+written here so T090 had a contract to implement against rather than reinventing one, and T090's
+own implementation agrees with it exactly.
 
 Follows `test_replay_download.py`'s harness conventions: `client`/`db_session` against the real
 throwaway database (`conftest.py`), a `sessions` row inserted directly and signed exactly as
@@ -304,7 +292,6 @@ async def _sign_in(client: TestClient, db_session: AsyncSession, user: User) -> 
     client.cookies.set(SESSION_COOKIE_NAME, security._sign(session_id, secret))
 
 
-@pytest.mark.xfail(strict=True, reason="T090 not implemented yet")
 def test_export_requires_authentication(client: TestClient) -> None:
     """No session cookie at all: `401 not_authenticated`, never a job reference — mirrors every
     other `/api/privacy/*` route's own discipline (`test_archival_objection.py`,
@@ -315,7 +302,6 @@ def test_export_requires_authentication(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "not_authenticated"
 
 
-@pytest.mark.xfail(strict=True, reason="T090 not implemented yet")
 async def test_export_archive_contains_records_and_replay_blobs_but_excludes_caches(
     client: TestClient, db_session: AsyncSession
 ) -> None:
