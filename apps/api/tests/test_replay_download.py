@@ -422,7 +422,6 @@ def _freeze_rate_limit_clock(monkeypatch: pytest.MonkeyPatch, *, moment: datetim
     monkeypatch.setattr(ratelimit, "datetime", _FrozenDateTime)
 
 
-@pytest.mark.xfail(strict=True, reason="T338 not implemented yet")
 async def test_match_detail_replay_object_offers_one_download_per_participant_point_of_view(
     client: TestClient, db_session: AsyncSession
 ) -> None:

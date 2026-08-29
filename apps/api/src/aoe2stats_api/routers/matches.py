@@ -63,10 +63,25 @@ repository did not itself issue — malformed, tampered, or built for a differen
 router turns into the same `422`/`validation_error` FastAPI's own query-parameter validation
 already answers with for a missing `profile_id`, rather than letting it fall through to the
 generic `internal_error` handler.
+
+**The per-participant `replay` object (T338, FR-023).** `derive_availability` (`availability.py`,
+T336) is a pure function over rows and a clock; this router is what supplies those rows for every
+participant of `game_id` at once — `_replay_by_profile` below issues exactly two queries scoped to
+the whole match (one over `replay_captures`, one over `replay_fetch_misses`), never one per
+participant, because this route answers with every participant already and a query per row would
+be exactly the N+1 the task text warns against. `_replay_json` then turns each `AvailabilityView`
+into the wire shape `contracts/http-api.md` fixes, with `download_path` `None` for the two states
+FR-025 forbids offering as an action — `expired` and `never_recorded` — and pointing at
+`replays.py`'s `GET /api/matches/{game_id}/replay/{profile_id}` (T337) for the two that are.
+`obtainable_until` is carried through from `derive_availability` unmodified: it is already `None`
+in every state (FR-024, amended 2026-08-29 — see `availability.py`'s own module docstring), so no
+date arithmetic happens here either.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -74,11 +89,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
+from aoe2stats_api.availability import Availability, AvailabilityView, derive_availability
 from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
-from aoe2stats_storage.models import ProfileLink
+from aoe2stats_storage.models import ProfileLink, ReplayCapture, ReplayFetchMiss
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
     DEFAULT_PAGE_SIZE,
@@ -169,6 +185,74 @@ async def _owned_profile_ids(db_session: AsyncSession, *, user_id: Any) -> list[
     return list(result.scalars().all())
 
 
+# --- The per-participant `replay` object (T338, module docstring) ------------------------------
+
+
+async def _replay_by_profile(
+    db_session: AsyncSession,
+    *,
+    game_id: int,
+    profile_ids: Sequence[int],
+    completed_at: datetime,
+) -> dict[int, AvailabilityView]:
+    """`derive_availability` (T336) for every participant of `game_id`, from two queries scoped to
+    the whole match rather than one per participant (module docstring). `derive_availability`
+    itself stays pure — no provider, no I/O, no database query of its own (`availability.py`'s own
+    module docstring) — so this function is the one place that supplies the rows it needs, batched
+    rather than per row."""
+    if not profile_ids:
+        return {}
+
+    captures_result = await db_session.execute(
+        select(ReplayCapture).where(
+            ReplayCapture.game_id == game_id, ReplayCapture.profile_id.in_(profile_ids)
+        )
+    )
+    capture_by_profile = {capture.profile_id: capture for capture in captures_result.scalars()}
+
+    misses_result = await db_session.execute(
+        select(ReplayFetchMiss.profile_id).where(
+            ReplayFetchMiss.game_id == game_id, ReplayFetchMiss.profile_id.in_(profile_ids)
+        )
+    )
+    recorded_404_profiles = set(misses_result.scalars().all())
+
+    now = datetime.now(UTC)
+    return {
+        profile_id: derive_availability(
+            completed_at=completed_at,
+            now=now,
+            capture=capture_by_profile.get(profile_id),
+            recorded_404=profile_id in recorded_404_profiles,
+        )
+        for profile_id in profile_ids
+    }
+
+
+def _replay_json(
+    *, game_id: int, profile_id: int, availability: AvailabilityView
+) -> dict[str, Any]:
+    """`contracts/http-api.md`'s per-participant `replay` object (FR-023): one entry per
+    participant point of view. `download_path` is `None` for the two states FR-025 forbids
+    presenting as an action that then fails — `expired` and `never_recorded` — a null path being
+    the mechanism that makes rendering one impossible rather than merely discouraged (T338's own
+    task text); for the other two it points at `replays.py`'s `GET /api/matches/{game_id}/replay/
+    {profile_id}` (T337). `obtainable_until` is carried through from `derive_availability`
+    unmodified — already `None` in every state, FR-024 amended 2026-08-29 — so no date is derived
+    here either."""
+    obtainable = availability.state in (Availability.ARCHIVED, Availability.OBTAINABLE)
+    return {
+        "profile_id": profile_id,
+        "availability": availability.state.value,
+        "obtainable_until": (
+            availability.obtainable_until.isoformat()
+            if availability.obtainable_until is not None
+            else None
+        ),
+        "download_path": f"/api/matches/{game_id}/replay/{profile_id}" if obtainable else None,
+    }
+
+
 # --- Response shaping --------------------------------------------------------------------------
 
 
@@ -209,7 +293,12 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
     }
 
 
-def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
+def _match_detail_json(
+    detail: MatchDetail, *, replay_by_profile: dict[int, AvailabilityView]
+) -> dict[str, Any]:
+    """`replay_by_profile` carries one `AvailabilityView` per participant (T338, `_replay_by_
+    profile` above) — every id in `detail.participants` is a key in it, since both are built from
+    the same participant list in `get_match_detail`."""
     return {
         "game_id": detail.game_id,
         "started_at": detail.started_at.isoformat() if detail.started_at is not None else None,
@@ -233,6 +322,13 @@ def _match_detail_json(detail: MatchDetail) -> dict[str, Any]:
                 "result": participant.result,
                 "rating": participant.rating,
                 "rating_diff": participant.rating_diff,
+                # FR-023 (T338, module docstring): one download offered per participant point of
+                # view, never more, never fewer.
+                "replay": _replay_json(
+                    game_id=detail.game_id,
+                    profile_id=participant.profile_id,
+                    availability=replay_by_profile[participant.profile_id],
+                ),
             }
             for participant in detail.participants
         ],
@@ -307,4 +403,13 @@ async def get_match_detail(
     if detail is None:
         raise _match_not_found()
 
-    return _match_detail_json(detail)
+    # T338: one `replay` object per participant point of view (FR-023), derived for the whole
+    # match in two queries rather than one per participant (`_replay_by_profile`'s own docstring).
+    replay_by_profile = await _replay_by_profile(
+        db_session,
+        game_id=game_id,
+        profile_ids=[participant.profile_id for participant in detail.participants],
+        completed_at=detail.completed_at,
+    )
+
+    return _match_detail_json(detail, replay_by_profile=replay_by_profile)
