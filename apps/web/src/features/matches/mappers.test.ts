@@ -75,6 +75,12 @@ describe('toMatchRowData', () => {
     expect(toMatchRowData(row({ result: 'loss' })).outcome).toBe('loss')
   })
 
+  // match-history.md §2a: `match_players.result` is `null` for every row this system has written
+  // so far — the outcome must read "unknown", never a guessed "loss" (the reported defect).
+  it('maps a null result to the "unknown" outcome, never "loss"', () => {
+    expect(toMatchRowData(row({ result: null })).outcome).toBe('unknown')
+  })
+
   it('carries a positive rating_diff as a StatValueDelta', () => {
     const result = toMatchRowData(row({ rating_diff: 18 }))
     expect(result.ratingChange).toEqual({ value: 18, formatted: '18' })
@@ -196,8 +202,16 @@ describe('toParticipantData', () => {
     expect(toParticipantData(participant({ result: 'win' })).result).toBe('win')
   })
 
-  it('falls back to "loss" for an unrecognised result, never letting it reach the component', () => {
-    expect(toParticipantData(participant({ result: null })).result).toBe('loss')
+  it('maps a loss result to the "loss" outcome', () => {
+    expect(toParticipantData(participant({ result: 'loss' })).result).toBe('loss')
+  })
+
+  // match-history.md §2a: the same rule `toMatchRowData` follows above — a participant's own
+  // result is `null` for every row this system has written so far, and must read "unknown", never
+  // a guessed "loss" (the reported production defect, an eight-player match shown as eight
+  // losses).
+  it('maps a null result to the "unknown" outcome, never a guessed "loss"', () => {
+    expect(toParticipantData(participant({ result: null })).result).toBe('unknown')
   })
 
   it('carries a rating_diff as a StatValueDelta with a positive formatted magnitude', () => {

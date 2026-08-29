@@ -38,12 +38,19 @@ export function formatDuration(durationSeconds: number | null): string {
   return `${minutes} min`
 }
 
-/** `MatchRowData.outcome` — the API's `result` is `"win"` or `"loss"` today (`api.ts`'s own note);
- * anything else (should not happen, but a network payload is never trusted blindly per T037a)
- * falls back to `"loss"` rather than letting an unrecognised string reach a component whose type
- * demands exactly one of the two. */
-export function formatOutcome(result: string | null): 'win' | 'loss' {
-  return result === 'win' ? 'win' : 'loss'
+/** `MatchRowData.outcome` / `ParticipantData.result` — `match_players.result` is `null` for every
+ * row this system has written so far (no enrichment stage yet fills it in — `discover.py`'s own
+ * `upsert_match_player` docstring), and a wire payload is never trusted blindly either (T037a), so
+ * anything that is not literally `"win"` or `"loss"` reads as **`"unknown"`**, never as a guessed
+ * `"loss"`. Coercing an unknown result to a loss used to render a match this service has no result
+ * for as a confident, false defeat for every participant — the same failure FR-020 already forbids
+ * for a name this service cannot resolve (match-history.md §2a), applied here to `result` instead.
+ * `MatchRow`/`MatchDetailPanel` (packages/design-system) render `"unknown"` as its own state, never
+ * folded into `"loss"`. */
+export function formatOutcome(result: string | null): 'win' | 'loss' | 'unknown' {
+  if (result === 'win') return 'win'
+  if (result === 'loss') return 'loss'
+  return 'unknown'
 }
 
 /** `MatchRowData.civilisation` — `matches.py` now sends `civilisation_name` alongside the raw

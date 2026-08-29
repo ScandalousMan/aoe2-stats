@@ -26,7 +26,8 @@ participant, and the one action a `stored` replay is for — downloading it.
 
 ```
 MatchRow                                                       one per match, the whole row is a link
-├─ Outcome              "Win" / "Loss" as text, success/danger coloured — never colour alone
+├─ Outcome              "Win" / "Loss" / "Unknown" as text, success/danger/neutral — never colour
+│                       alone. "Unknown" whenever the result is not yet known (§2a)
 ├─ Opponent             1v1: the opponent's alias. Team game: primary opponent + "and N others"
 ├─ Map                  factual name, text only — no map thumbnail (constitution X)
 ├─ Civilisation         the caller's own civilisation, factual name, text only — no civ emblem
@@ -43,7 +44,7 @@ MatchDetailPanel
 ├─ DownloadAction                Button/secondary — present only when capture_status = "stored"
 ├─ ParticipantsTable             FR-011: every participant, grouped by team
 │  └─ TeamGroup ×n
-│     └─ ParticipantRow ×n       alias, civilisation, result, rating change
+│     └─ ParticipantRow ×n       alias, civilisation, result (§2a), rating change
 └─ StatusRegion                  Callout ×0..1 — the detail failed to load, or nothing to show
 ```
 
@@ -56,6 +57,46 @@ describe the same region twice; T084 places it below `DownloadAction`'s position
 **IP note**: map names and civilisation names are factual names, set as text in our own typeface —
 the same rule `profile-summary.md` states for leaderboard names. No map thumbnail, no civilisation
 emblem, no in-game font, no portrait. Constitution X.
+
+### 2a. The unknown outcome, never rendered as a loss (Amended 2026-08-29)
+
+**A `result` this service has not yet recorded is not the same fact as a loss, and must never read
+as one.** `match_players.result` is `null` for every row this system has written to date
+(`apps/ingester/src/aoe2stats_ingester/discover.py`'s `upsert_match_player` inserts only
+`(game_id, profile_id)`; no enrichment stage yet fills in a player's result). Before this amendment,
+`formatOutcome` coerced anything that was not literally `"win"` — `null` included — to `"loss"`,
+which meant an eight-player match with no known result anywhere rendered as eight losses: a
+confident, false statement produced from an absence of information. This is the same failure
+`spec.md`'s FR-020 already forbids for `Civilisation` and `Map` (§11.2's "a guess dressed as a fact
+is worse than an admitted gap"), applied here to `result` instead of a name.
+
+**`Outcome` (`MatchRow`) and the `ParticipantsTable` `Result` column (`MatchDetailPanel`) each carry
+a third state, `"unknown"`, alongside `"win"` and `"loss"`.** Rendered as the literal word
+**"Unknown"**, matching this file's own "Unknown map" / "Unknown civilisation" / "Unknown opponent"
+wording elsewhere (`format.ts`) rather than inventing a different phrase for the same kind of gap.
+Three properties distinguish it from a resolved outcome, the same discipline §11.2 already states
+for an unresolved identifier:
+
+- **Never `success` or `danger`.** Those two tokens assert a fact this service does not have; the
+  unknown state is `text-secondary` — the same "one step down the hierarchy" §11.2 already uses for
+  an unresolved identifier and `profile-summary.md`'s `FreshnessLine` use for a stale figure.
+- **Not bold in the same way a resolved outcome is** — `font-semibold` is unchanged (a lighter weight
+  here would itself be a second, quieter way of asserting confidence this service does not have, the
+  opposite of the intended read); the colour step is what carries the distinction, not weight.
+- **The word itself reads as a gap, not a result** — "Unknown" is neither "Win" nor "Loss" textually,
+  so the distinction survives a screen reader, a greyscale conversion, or a colour-blind reading
+  without the colour token doing any of the work alone (constitution VI).
+
+**`MatchDetailPanel`'s `ParticipantsTable` renders the same three-state result, per participant, not
+just per row.** A match with no consenting participant among this service's own users can still
+carry every participant's result unknown — the eight-player case that motivated this amendment — and
+each participant reads "Unknown" independently; nothing here collapses the row into a single
+combined message, matching §11.4's "a match with no consenting participant still renders in full."
+
+**This does not change when a result is unknown, only how it renders.** Filling the ingestion gap
+`discover.py`'s own docstring names — a stage that resolves `result` after the fact — is separate
+work, out of scope here. What this section fixes is that the *absence* of that data must read as
+absence, not as the specific, false fact "Loss."
 
 ## 3. Variants and sizes
 
@@ -125,9 +166,10 @@ matches/{game_id}` no longer has an ownership scope to leak (T327) — "no such 
 Colour: `background` (page), `surface` (row/panel), `surface-raised` (`CaptureStateBadge` pill fill,
 via that component), `surface-sunken` (row hover, skeleton fill), `border` (row/table rules),
 `border-strong` (`DownloadAction`'s boundary, per `Button/secondary`), `text-primary` (aliases, map,
-civilisation, outcome text), `text-secondary` (labels, "When", duration), `success`/`danger`
-(outcome text and `RatingChange` sign — see `capture-state-badge.md` §5 for the badge's own use of
-these two plus `warning`/`info`), `focus-ring`.
+civilisation, a resolved outcome's text), `text-secondary` (labels, "When", duration, and the
+unknown-outcome text, §2a — no new token), `success`/`danger` (a resolved outcome's text and
+`RatingChange` sign — see `capture-state-badge.md` §5 for the badge's own use of these two plus
+`warning`/`info`), `focus-ring`.
 
 Typography: `mono` for `RatingChange` and any other figure compared vertically down the list (DS-8);
 `sans` for every label, name and sentence. Sizes: row text `sm`; outcome `sm` `semibold`;
@@ -187,8 +229,10 @@ it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
 - `MatchDetailPanel`'s `ParticipantsTable`: a real `<table>` per `TeamGroup`, with a visually hidden
   `<caption>` naming the team, `<th scope="col">` on every column and `<th scope="row">` on each
   participant's alias.
-- Outcome ("Win"/"Loss") and `RatingChange`'s sign are both text, never colour-only, matching
-  `profile-summary.md`'s delta rule ("+12"/"−12", not a rotated arrow).
+- Outcome ("Win"/"Loss"/"Unknown", §2a) and `RatingChange`'s sign are both text, never colour-only,
+  matching `profile-summary.md`'s delta rule ("+12"/"−12", not a rotated arrow). "Unknown" is
+  additionally distinct from either resolved word by its own wording, so a screen reader or a
+  greyscale screenshot never has to rely on the colour step alone.
 - `DownloadAction` triggers a same-tab navigation to the signed-URL redirect (FR-028); it is a real
   `<button>` that calls the download endpoint, not a bare `<a href>` to an unsigned URL — the URL is
   minted per click (FR-040's access-log write happens server-side on that request).
@@ -213,6 +257,9 @@ it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
       a blank page.
 - [ ] The loading screenshot's skeleton row count matches the loaded screenshot's row count at the
       same viewport, with no reflow between the two.
+- [ ] A story seeded with `outcome: 'unknown'` renders the literal word "Unknown" in `text-secondary`
+      — never "Win", never "Loss", and never the `success`/`danger` colour (§2a). A story seeded with
+      every row unknown (the all-unresolved-result match) renders no row implying a win or a loss.
 
 **Detail**
 
@@ -224,7 +271,8 @@ it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
 - [ ] The not-found story shows a single danger callout and a link back to the match list — no field
       on the page distinguishes "this match does not exist" from "this match is not yours".
 - [ ] Converting either component's screenshot to greyscale leaves outcome, rating change and capture
-      state all still legible from text alone.
+      state all still legible from text alone — the unknown-outcome story's "Unknown" reads as
+      distinct from "Win"/"Loss" by wording alone, with no colour to lean on (§2a).
 
 ---
 

@@ -49,6 +49,16 @@ export const Loss: Story = {
   },
 }
 
+// match-history.md §2a: `match_players.result` not yet recorded — "Unknown", `text-secondary`,
+// never coloured `success`/`danger` and never read as "Loss". No rating change either: a change is
+// derived from the same result this ingestion stage has not recorded yet.
+export const UnknownOutcome: Story = {
+  name: 'Unknown outcome — never rendered as a loss (§2a)',
+  args: {
+    match: { ...base, gameId: '1009', outcome: 'unknown', ratingChange: undefined },
+  },
+}
+
 // §4: a team match names the first opposing-team participant and appends "and N others", never a
 // bare count and never every alias crammed onto the row.
 export const TeamMatchWithOthers: Story = {
@@ -134,6 +144,21 @@ export const ListError: Story = {
 export const ListEmpty: Story = {
   name: 'MatchList — empty, "No matches yet"',
   render: () => <MatchList status="empty" />,
+}
+
+// §2a's own reproduction: the production page this fix responds to showed eight participants, all
+// with `result: null`, as eight losses. This is the same gap at the list level — every row's own
+// outcome unrecorded — and every row here MUST read "Unknown", never "Loss".
+const allUnknown: MatchRowData[] = populated.map((match, index) => ({
+  ...match,
+  gameId: `3-${index}`,
+  outcome: 'unknown',
+  ratingChange: undefined,
+}))
+
+export const ListAllOutcomesUnknown: Story = {
+  name: 'MatchList — every outcome unknown (the production reproduction, §2a)',
+  render: () => <MatchList matches={allUnknown} />,
 }
 
 // §11.3 (003, US2): `players.$profileId.matches.tsx` (T331) renders this same component with

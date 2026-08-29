@@ -4,6 +4,7 @@ import { useBreakpoint } from '../../lib/useMediaQuery'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
 import { CaptureStateBadge } from '../CaptureStateBadge'
+import type { MatchOutcome } from '../MatchRow'
 import { Skeleton } from '../Skeleton'
 import type { StatValueDelta } from '../StatValue'
 
@@ -23,7 +24,11 @@ export interface ParticipantData {
    * only when this service's own reference data cannot name `civId` (FR-020, §11.2). Renders as
    * `UnresolvedIdentifier` rather than being filled in with `civId` as if it were a name. */
   civName: ReactNode | null
-  result: 'win' | 'loss'
+  /** `"unknown"` whenever this system has not recorded a result for this participant yet
+   * (`match_players.result` is `null` for every row today — `discover.py`'s own docstring) —
+   * never coerced to `"loss"`; renders as its own state, never as a false defeat (match-history.md
+   * §2a). Shared with `MatchRow.outcome`, imported from that module. */
+  result: MatchOutcome
   /** Absent when the match carries no rating change to report for this participant. */
   ratingChange?: StatValueDelta
 }
@@ -108,11 +113,24 @@ function TableRatingChange({ delta }: { delta: StatValueDelta }) {
   )
 }
 
-function ResultLabel({ result }: { result: 'win' | 'loss' }) {
-  const won = result === 'win'
+// match-history.md §2a: the same three-state treatment `MatchRow.OutcomeLabel` gives `outcome` —
+// "Unknown" in `text-secondary`, never `success`/`danger`, never folded into "Loss".
+const RESULT_LABEL_TEXT: Record<MatchOutcome, string> = {
+  win: 'Win',
+  loss: 'Loss',
+  unknown: 'Unknown',
+}
+
+const RESULT_LABEL_TONE: Record<MatchOutcome, string> = {
+  win: 'text-success',
+  loss: 'text-danger',
+  unknown: 'text-secondary',
+}
+
+function ResultLabel({ result }: { result: MatchOutcome }) {
   return (
-    <span className={cx('font-sans text-sm font-semibold', won ? 'text-success' : 'text-danger')}>
-      {won ? 'Win' : 'Loss'}
+    <span className={cx('font-sans text-sm font-semibold', RESULT_LABEL_TONE[result])}>
+      {RESULT_LABEL_TEXT[result]}
     </span>
   )
 }

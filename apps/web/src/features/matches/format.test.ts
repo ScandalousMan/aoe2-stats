@@ -58,9 +58,16 @@ describe('formatOutcome', () => {
     expect(formatOutcome('loss')).toBe('loss')
   })
 
-  it('falls back to "loss" for anything unrecognised, never letting it reach the component', () => {
-    expect(formatOutcome('draw')).toBe('loss')
-    expect(formatOutcome(null)).toBe('loss')
+  // The reported production defect: `match_players.result` is `null` for every row this system
+  // has written so far (`discover.py`'s own docstring), and coercing that gap to "loss" rendered
+  // an eight-player match with no known result anywhere as eight losses — a confident, false
+  // statement. `null` must read as unknown, never as a guessed defeat (match-history.md §2a).
+  it('reads a null result as "unknown", never as a guessed "loss"', () => {
+    expect(formatOutcome(null)).toBe('unknown')
+  })
+
+  it('reads an unrecognised result as "unknown" too, not as a guessed "loss"', () => {
+    expect(formatOutcome('draw')).toBe('unknown')
   })
 })
 

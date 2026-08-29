@@ -79,6 +79,24 @@ describe('MatchRow', () => {
     expect(screen.getByText('Loss')).toBeInTheDocument()
   })
 
+  // match-history.md §2a: the reported production defect — an unknown result must never render
+  // as "Loss", and must render as its own, differently-coloured state, not folded into either
+  // resolved outcome.
+  it('shows an unknown outcome as "Unknown", never as "Win" or "Loss"', () => {
+    render(<MatchRow match={{ ...match, outcome: 'unknown' }} />)
+    expect(screen.getByText('Unknown')).toBeInTheDocument()
+    expect(screen.queryByText('Win')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loss')).not.toBeInTheDocument()
+  })
+
+  it('does not colour the unknown outcome success or danger', () => {
+    render(<MatchRow match={{ ...match, outcome: 'unknown' }} />)
+    const label = screen.getByText('Unknown')
+    expect(label.className).not.toContain('text-success')
+    expect(label.className).not.toContain('text-danger')
+    expect(label.className).toContain('text-secondary')
+  })
+
   it('names the first opposing participant and appends "and N others" for a team match', () => {
     render(<MatchRow match={{ ...match, opponent: { alias: 'aoe2villain', othersCount: 3 } }} />)
     expect(screen.getByText('aoe2villain and 3 others')).toBeInTheDocument()
@@ -213,6 +231,23 @@ describe('MatchList', () => {
     expect(screen.getByText('Archived')).toBeInTheDocument()
     expect(screen.getByText('Lost')).toBeInTheDocument()
     expect(screen.getByText('Needs review')).toBeInTheDocument()
+  })
+
+  // match-history.md §2a's own reproduction: the production page this fix responds to showed
+  // eight participants, none with a known result, all rendered as losses. Reproduced here at the
+  // list level — every row's own outcome unrecorded — and every one MUST read "Unknown", never
+  // imply anyone lost.
+  it('renders an all-unknown-outcome match without implying anyone lost', () => {
+    const rows: MatchRowData[] = Array.from({ length: 8 }, (_, index) => ({
+      ...match,
+      gameId: `unknown-${index}`,
+      outcome: 'unknown' as const,
+      ratingChange: undefined,
+    }))
+    render(<MatchList matches={rows} />)
+    expect(screen.getAllByText('Unknown')).toHaveLength(8)
+    expect(screen.queryByText('Win')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loss')).not.toBeInTheDocument()
   })
 
   function mockMatchMediaAt(widthPx: number): () => void {
