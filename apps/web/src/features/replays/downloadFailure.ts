@@ -27,21 +27,28 @@ const REPLAY_ERROR_RETRY_AFTER_PARAM = 'replay_error_retry_after'
 // `analysis_*` — none reachable from this redirect): `_replay_not_found` (`not_found`),
 // `_never_recorded_error`, `_expired_error`, `_expired_since_page_load_error`,
 // `_source_rate_limited_error` / `_apply_replay_download_rate_limit`'s own `429`
-// (`rate_limited`, both same `code`). A `replay_error` outside this set — forged, or a stale link
-// from a future release that adds one — is treated exactly like no `replay_error` at all, never
-// rendered.
+// (`rate_limited`, both same `code`), and now `source_unavailable` (2026-08-29 remediation):
+// `_match_page_redirect_for_download_failure` used to translate `APIError` only, so a source
+// 5xx, a timeout, or any other non-200/404 `aoe.ms` response raised `ProviderUnavailable`
+// straight past this redirect to the generic 500 handler — the exact raw-JSON-page outcome this
+// route exists to prevent. The server now folds that into an `APIError` carrying this code
+// (HTTP 502) before it reaches the redirect. A `replay_error` outside this set — forged, or a
+// stale link from a future release that adds one — is treated exactly like no `replay_error` at
+// all, never rendered.
 const KNOWN_REPLAY_ERROR_CODES = new Set([
   'not_found',
   'never_recorded',
   'expired',
   'expired_since_page_load',
   'rate_limited',
+  'source_unavailable',
 ])
 
 export interface ReplayDownloadFailure {
   /** `contracts/http-api.md`'s stable `code` — `expired_since_page_load`, `rate_limited`, or any
-   * other failure this route can raise (`never_recorded`, `expired`, `not_found`), all folded into
-   * the same generic "could not start" alert by `availability.ts`'s own mapping. */
+   * other failure this route can raise (`never_recorded`, `expired`, `not_found`,
+   * `source_unavailable`), all folded into the same generic "could not start" alert by
+   * `availability.ts`'s own mapping. */
   code: string
   /** `ReplayAvailabilityRowData.id` — `String(profile_id)`, matching `availability.ts`'s own key
    * (`toReplayAvailabilityRows`), never rebuilt or re-derived from anything else on this page. */

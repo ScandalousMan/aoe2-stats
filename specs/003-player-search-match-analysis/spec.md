@@ -575,7 +575,15 @@ their current standing and reachable in one click.
   recorded once, in [research.md](./research.md) R8, and is not restated here.
 - **FR-025**: System MUST distinguish and display, per point of view: obtainable now, held in this
   service's own archive, never recorded by the game, and expired beyond the source's retention
-  window. It MUST NOT present an unobtainable download as an action that then fails.
+  window. It MUST NOT present an unobtainable download as an action that then fails. **Amended
+  2026-08-29**: the "expired beyond the source's retention window" clause describes what the display
+  is meant to mean, not what the derivation computes — the `obtainable`/`expired` split runs against
+  `capture_budget_days`, a configured budget deliberately shorter than either contested reading of the
+  source's own window, so a match can render `expired` here while the source would still serve it. The
+  reasoning, and the cost accepted, are recorded once in [research.md](./research.md) R8 and are not
+  restated here. The clause forbidding an unobtainable download from being presented as an action that
+  then fails is unaffected: that half is satisfied — the derivation is conservative, not merely
+  approximate, so it never claims obtainable for a recording that has actually expired.
 - **FR-026**: System MUST serve the signed-in user's own point of view from this service's archive
   when it holds one, so that it remains available regardless of the match's age (001 FR-028).
 - **FR-027**: System MUST NOT store a recorded game obtained solely to serve a download. Downloading

@@ -180,6 +180,19 @@ _ORACLE_WITH_CAPTURE_GAME_ID = 900_200_630
 _ORACLE_WITHOUT_CAPTURE_GAME_ID = 900_200_631
 _ORACLE_AOEMS_HOST = "aoe.ms"
 
+# M12 remediation (third-round review): the identical oracle, one status short of B1's own —
+# `unavailable` rather than `stored`. `derive_availability` reads `unavailable` on its own
+# (`availability.py`'s table, `never_recorded`), so before this fix a stranger's `unavailable`
+# capture answered `never_recorded` while the identical pair with no capture at all fell through to
+# a fetch attempt and answered something else — the same asymmetry, unfiltered because B1's own
+# filter checked `capture.status is CaptureStatus.STORED` explicitly. Separate ids from the `stored`
+# oracle above so the two never share a match or a participant.
+_UNAVAILABLE_ORACLE_CALLER_PROFILE_ID = 900_100_640
+_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID = 900_100_641
+_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID = 900_100_642
+_UNAVAILABLE_ORACLE_WITH_CAPTURE_GAME_ID = 900_200_640
+_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_GAME_ID = 900_200_641
+
 
 def _contains_value(payload: object, needle: object) -> bool:
     """Whether `needle` appears anywhere in a JSON-decoded body, at any depth, as a value —
@@ -1037,4 +1050,146 @@ async def test_replay_download_oracle_closed_for_a_strangers_unowned_stored_capt
     assert with_capture_response.json()["error"]["code"] == "expired_since_page_load", (
         "both must fall through to the ordinary obtainable-fetch path and observe the fake "
         f"source's 404 identically. Got {with_capture_response.json()!r}"
+    )
+
+
+async def test_replay_download_oracle_closed_for_a_strangers_unowned_unavailable_capture(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M12 remediation (third-round review): the identical oracle as the `stored` test above, one
+    status short. `derive_availability` (`availability.py`'s own table) answers `never_recorded`
+    for *either* `recorded_404` *or* a `replay_captures` row in `unavailable` — B1's own filter in
+    `_capture_for_point_of_view` checked `capture.status is CaptureStatus.STORED` explicitly, which
+    left `unavailable` unfiltered: a stranger's `unavailable` capture for a recent, otherwise
+    untouched match answered `never_recorded` immediately, with no outbound call at all, while the
+    identical pair with no capture fell through to a real fetch attempt and answered whatever that
+    produced — the same account-existence asymmetry B1 closed for `stored`, reopened here for
+    `unavailable`.
+
+    Both matches are seeded recent, exactly as the `stored` oracle test above requires — inside the
+    obtainable window, never `expired` by age alone, since a match old enough to read `expired`
+    regardless of ownership cannot show this asymmetry at all. The fake source below answers every
+    request with a fixed 404, so what distinguishes the two responses can only be this route's own
+    logic, never the upstream's answer — identically to the `stored` test's own reasoning."""
+    caller = await _seed_user(db_session)
+    await _seed_profile(
+        db_session,
+        profile_id=_UNAVAILABLE_ORACLE_CALLER_PROFILE_ID,
+        alias="UnavailableOracleCaller",
+    )
+    await _link_profile(
+        db_session,
+        user=caller,
+        profile_id=_UNAVAILABLE_ORACLE_CALLER_PROFILE_ID,
+        steam_id64="76561197960287980",
+    )
+
+    stranger = await _seed_user(db_session)
+    await _seed_profile(
+        db_session,
+        profile_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        alias="UnavailableOracleStrangerAlias",
+    )
+    await _link_profile(
+        db_session,
+        user=stranger,
+        profile_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        steam_id64="76561197960287981",
+    )
+    await _seed_profile(
+        db_session,
+        profile_id=_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID,
+        alias="UnavailableOracleNoCaptureAlias",
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+    # Recent — comfortably inside the obtainable window, never `expired` by age alone (module
+    # docstring's own reasoning for the `stored` oracle above): age must not be what distinguishes
+    # the two responses below.
+    completed_at = now - timedelta(days=2)
+
+    await _seed_match(
+        db_session, game_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_GAME_ID, completed_at=completed_at
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_GAME_ID,
+        profile_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    db_session.add(
+        ReplayCapture(
+            game_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_GAME_ID,
+            profile_id=_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+            status=CaptureStatus.UNAVAILABLE,
+            capture_deadline_at=completed_at + timedelta(days=19),
+            first_seen_at=completed_at,
+            source=CaptureSource.AUTOMATIC,
+            http_status=404,
+            last_error="replay not found at source after the publication grace",
+        )
+    )
+
+    await _seed_match(
+        db_session, game_id=_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_GAME_ID, completed_at=completed_at
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_GAME_ID,
+        profile_id=_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await db_session.commit()
+
+    # The source has no idea about either point of view — a fixed 404 for every request, so what
+    # distinguishes the two responses below can only be this route's own logic, never the fake
+    # upstream's answer.
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != _ORACLE_AOEMS_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return httpx.Response(404, text="Not Found")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    await _sign_in(client, db_session, caller)
+
+    with_capture_response = client.get(
+        f"/api/matches/{_UNAVAILABLE_ORACLE_WITH_CAPTURE_GAME_ID}/replay/"
+        f"{_UNAVAILABLE_ORACLE_WITH_CAPTURE_PARTICIPANT_ID}",
+        follow_redirects=False,
+    )
+    without_capture_response = client.get(
+        f"/api/matches/{_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_GAME_ID}/replay/"
+        f"{_UNAVAILABLE_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID}",
+        follow_redirects=False,
+    )
+
+    assert with_capture_response.status_code == without_capture_response.status_code, (
+        "an unowned unavailable capture must not change the status code for an otherwise "
+        f"identical point of view. Got {with_capture_response.status_code} for the capture case "
+        f"({with_capture_response.text}) vs {without_capture_response.status_code} for the "
+        f"no-capture case ({without_capture_response.text})"
+    )
+    assert (
+        with_capture_response.json()["error"]["code"]
+        == without_capture_response.json()["error"]["code"]
+    ), (
+        "the identical (game_id, profile_id) shape must answer the identical error code whether "
+        "or not a stranger's account happens to hold an unavailable capture for it — a "
+        "differentiated code is itself an account-existence oracle (FR-045). Got "
+        f"{with_capture_response.json()!r} vs {without_capture_response.json()!r}"
+    )
+    assert with_capture_response.json()["error"]["code"] == "expired_since_page_load", (
+        "both must fall through to the ordinary obtainable-fetch path and observe the fake "
+        f"source's 404 identically — an unowned unavailable capture must be invisible to this "
+        f"caller, not read as never_recorded. Got {with_capture_response.json()!r}"
     )

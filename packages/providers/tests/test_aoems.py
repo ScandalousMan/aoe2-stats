@@ -177,6 +177,45 @@ async def test_fetch_replay_returns_a_replay_blob_on_200() -> None:
     assert not recorder.calls[0].rate_limited
 
 
+# --- fetch_replay: 200 with a control character in `filename=` falls back to the generated name
+# (L21, third-round review) ------------------------------------------------------------------------
+#
+# `_FILENAME_PATTERN`'s `[^";]+` admits any byte other than `"`/`;`, CR and LF included. This is not
+# header injection by itself — httpx/an ASGI server reject a control character in an outbound
+# header value outright — but reading such a value as a genuine filename and handing it straight to
+# `routers/replays.py`'s own `Response(headers={"content-disposition": ...})` turns a malformed
+# upstream header into that caller's own unhandled `500`, on the exact route B3's fix exists to
+# keep off a raw JSON error page. `fetch_replay` must still return the bytes as a `ReplayBlob` — the
+# body is not in question, only the name describing it — under the same safe, generated filename
+# `_parse_filename` already falls back to when the header is absent entirely.
+
+
+async def test_fetch_replay_falls_back_to_the_generated_filename_on_a_control_character() -> None:
+    content = REPLAY_ZIP.read_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=content,
+            headers={
+                "content-type": "application/zip",
+                "content-disposition": 'attachment; filename="evil\r\nX-Injected: 1"',
+            },
+        )
+
+    provider, _ = _provider(handler)
+
+    blob = await provider.fetch_replay(REFERENCE_GAME_ID, REFERENCE_PROFILE_ID)
+
+    assert isinstance(blob, ReplayBlob)
+    assert blob.content == content
+    assert blob.filename == f"AgeIIDE_Replay_{REFERENCE_GAME_ID}.zip", (
+        f"a control character in the upstream filename must be refused, never carried through: "
+        f"got {blob.filename!r}"
+    )
+    assert "\r" not in blob.filename and "\n" not in blob.filename
+
+
 # --- fetch_replay: a 301 is followed to the replay, never accepted as-is (2026-08-28 incident) ----
 #
 # `aoe.ms/replay/` now answers every request with a 301 to `api.ageofempires.com`'s own equivalent

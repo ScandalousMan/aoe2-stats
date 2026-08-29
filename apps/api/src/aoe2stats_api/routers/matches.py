@@ -82,14 +82,28 @@ date arithmetic happens here either.
 replay, and **only** that" — a `stored` `replay_captures` row this route found by `(game_id,
 profile_id) IN participants` says nothing about who owns it, so `_replay_by_profile` also takes
 `owner_profile_ids` — the same list `get_match_detail` already computed for FR-022's own archival
-state, not a new query — and refuses to let a `stored` capture the caller does not own read as
-`archived`: it falls through to `derive_availability`'s ordinary age comparison instead, exactly as
-if no capture existed, and comes back `expired` or `obtainable` on its own merits. Nulling only
-`_replay_json`'s `download_path` while leaving the state `archived` would not be enough — FR-026's
-"and only that" is about the state itself, not merely the click it enables, because `availability:
-"archived"` on a stranger's point of view is already the disclosure `test_no_public_directory.py`'s
-property 4 exists to catch: it says an account controls that profile, whether or not the button
-underneath it ever works.
+state, not a new query — and refuses to let *any* capture row the caller does not own read as
+anything but absent: it falls through to `derive_availability`'s ordinary age comparison instead,
+exactly as if no capture existed, and comes back `expired` or `obtainable` on its own merits.
+Nulling only `_replay_json`'s `download_path` while leaving the state `archived` would not be
+enough — FR-026's "and only that" is about the state itself, not merely the click it enables,
+because `availability: "archived"` on a stranger's point of view is already the disclosure
+`test_no_public_directory.py`'s property 4 exists to catch: it says an account controls that
+profile, whether or not the button underneath it ever works.
+
+**Widened past `stored` alone (M12, third-round review).** The filter used to read `capture.status
+is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids` — `stored` only.
+`derive_availability` also reads `unavailable` on its own (`availability.py`'s table,
+`never_recorded`), so a stranger's `unavailable` capture for a recent match answered
+`never_recorded` while the identical pair with no capture at all answered `obtainable` — the
+account-existence asymmetry FR-026's ownership gate exists to close, one status short of complete
+here too (`replays.py`'s `_capture_for_point_of_view`, widened for the same reason, is this
+route's own sibling for the download route). `derive_availability` only ever branches on `stored`
+and `unavailable`; every other `CaptureStatus` (`pending`, `downloading`, `failed`, `quarantined`,
+`expired`) is already unreadable by it regardless of ownership, so filtering by ownership alone —
+`capture.profile_id in owned_profile_ids`, full stop, dropping the status check entirely — is not a
+behaviour change for those five and does not depend on remembering which two statuses currently
+matter if `derive_availability` ever learns to read a third.
 """
 
 from __future__ import annotations
@@ -108,7 +122,7 @@ from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
-from aoe2stats_storage.models import CaptureStatus, ProfileLink, ReplayCapture, ReplayFetchMiss
+from aoe2stats_storage.models import ProfileLink, ReplayCapture, ReplayFetchMiss
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
     DEFAULT_PAGE_SIZE,
@@ -218,10 +232,11 @@ async def _replay_by_profile(
     rather than per row.
 
     `owner_profile_ids` is the caller's own active `profile_links` (`_owned_profile_ids`,
-    `get_match_detail`'s existing call — no query added here for it): a `stored` capture for a
+    `get_match_detail`'s existing call — no query added here for it): *any* capture row for a
     `profile_id` outside that set is excluded from `capture_by_profile` below, so
     `derive_availability` receives `capture=None` for it and falls through to the ordinary age
-    comparison, never `archived` (module docstring's remediation paragraph, FR-026).
+    comparison, never `archived` or `never_recorded` off a row that belongs to someone else
+    (module docstring's remediation paragraph, FR-026, widened at M12).
     `capture_budget_days` is threaded straight through to `derive_availability`, which now
     requires it explicitly rather than owning its own window constant — `Settings.
     capture_budget_days` (`CAPTURE_BUDGET_DAYS`), the same value the caller already reads."""
@@ -238,7 +253,7 @@ async def _replay_by_profile(
     capture_by_profile = {
         capture.profile_id: capture
         for capture in captures_result.scalars()
-        if capture.status is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids
+        if capture.profile_id in owned_profile_ids
     }
 
     misses_result = await db_session.execute(

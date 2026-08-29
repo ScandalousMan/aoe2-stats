@@ -159,20 +159,26 @@ The boundary race is named rather than hidden: a recording offered as `obtainabl
 at fetch time returns `code: "expired_since_page_load"`, distinct from `never_recorded` (FR-025, and
 the spec's own edge case). That call also records the outcome, so the page is right the next time.
 
-**A failure of this route answers `303`, not `404`/`429`, when the caller is a browser navigating
-to it directly** (decided 2026-08-29) — every case above (`expired`, `never_recorded`,
-`expired_since_page_load`, and this route's own or the source's `rate_limited`). The route decides
-"browser navigation" from `Sec-Fetch-Mode: navigate`, falling back to `Accept: text/html` when that
-header is absent; a request presenting neither — every API caller, including this contract's own
-JSON expectations above — gets the identical error body and status this section already documents,
-unchanged. The `303` redirects to the match page for `game_id`, carrying three query parameters:
-`replay_error` (the failing `code`, verbatim — the same string a JSON caller reads from the error
-envelope's `code` field), `replay_error_profile_id` (the `profile_id` the failure belongs to, since
-this route is reachable for any participant's point of view), and `replay_error_retry_after`
-(present only when the error carries a `retry_after`, i.e. the rate-limited cases). This is a
-transport decision for the same-tab navigation `apps/web` performs to reach this route; it changes
-no state this contract already describes, adds no new `code`, and the response an API caller
-receives is unaffected.
+**A failure of this route answers `303`, not `404`/`429`/`502`, when the caller is a browser
+navigating to it directly** (decided 2026-08-29) — every case above (`expired`, `never_recorded`,
+`expired_since_page_load`, and this route's own or the source's `rate_limited`), plus two more raised
+inside the same `try`: `not_found` — the `archived` branch's own ownership check, when the caller is
+not this match's participant or the row is not theirs, per `replay-availability.md` §5 — and
+`source_unavailable`, the source answering a 5xx, timing out, or answering a status that is neither
+`200` nor `404`. `source_unavailable` carries its own `502`: it is the source failing this service,
+not evidence the recording never existed, and it must not be folded into `never_recorded`'s meaning.
+The route decides "browser navigation" from `Sec-Fetch-Mode: navigate`, falling back to
+`Accept: text/html` when that header is absent; a request presenting neither — every API caller,
+including this contract's own JSON expectations above — gets the identical error body and status this
+section already documents, unchanged. The `303` redirects to the match page for `game_id`, carrying
+three query parameters: `replay_error` (the failing `code`, verbatim — the same string a JSON caller
+reads from the error envelope's `code` field), `replay_error_profile_id` (the `profile_id` the failure
+belongs to, since this route is reachable for any participant's point of view), and
+`replay_error_retry_after` (present only when the error carries a `retry_after`, i.e. the
+rate-limited cases). This is a transport decision for the same-tab navigation `apps/web` performs to
+reach this route; it changes no state this contract already describes, adds no new `code` of its
+own — `not_found` and `source_unavailable` are the route's, raised regardless of transport, only
+enumerated here — and the response an API caller receives is unaffected.
 
 ## Analysis
 
@@ -239,6 +245,11 @@ signed-in person and must not be retained by a shared cache or found by a crawle
 | `analysis_unavailable`     | the window closed and it was never analysed                                       |
 | `analysis_cap_reached`     | FR-047                                                                            |
 | `analysis_failed`          | the recording could not be parsed; carries the failure class, never the traceback |
+| `source_unavailable`       | `502`. The replay source answered a 5xx, timed out, or answered a status that is neither `200` nor `404` on a download fetch — the source failing this service, not evidence the recording never existed (`GET /api/matches/{game_id}/replay/{profile_id}`) |
+
+**Added 2026-08-29**: `source_unavailable` above is not `search_source_unavailable` below — the first
+is this route's own error code with its own `502`, the second is a `reason` in a successful search
+response. The two names are close on purpose only in what they describe, never in shape.
 
 `search_source_unavailable` is deliberately absent from this table: it is a `reason` in a successful
 body, not an error code, because the request succeeded and the answer is reduced rather than missing.

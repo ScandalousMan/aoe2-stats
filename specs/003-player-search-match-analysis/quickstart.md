@@ -141,6 +141,12 @@ different scenario. There is nothing to walk here.
    contradicted and unresolved (R8), so `obtainable_until` is null in every state and no date is
    shown. A walker who expects one and finds none is reading this scenario against a superseded
    requirement, not finding a defect.
+   **Amended 2026-08-29**: "recent" here means inside `CAPTURE_BUDGET_DAYS` (`.env.example`, 21 days
+   today), not inside the source's own measured retention window — R8's `obtainable`/`expired` split
+   runs on the former, deliberately shorter than either contested reading of the latter. A match aged
+   22-31 days renders `expired` on every row even though the source would likely still serve it; that
+   is the accepted cost R8 states, not a defect to chase while walking this scenario. Pick a match
+   inside 21 days old to see `obtainable` at all.
 2. Download two different participants' points of view. Open both in the game and confirm each shows
    the match from the expected player's side (US3 independent test).
 3. Check the object store and `retained_recordings`. **Expect zero new bytes and zero new rows**

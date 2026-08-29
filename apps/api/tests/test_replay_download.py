@@ -63,7 +63,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.deps import get_object_store
+from aoe2stats_api.routers import replays as replays_router
 from aoe2stats_api.settings import get_settings
+from aoe2stats_providers.base import RetryPolicy, TokenBucket
 from aoe2stats_storage.models import (
     Alert,
     AlertKind,
@@ -349,6 +351,29 @@ _T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
 #: Comfortably inside every credible reading of the retention window.
 _T335_DEFINITELY_OBTAINABLE_AGE = timedelta(days=2)
 
+#: B3 remediation (third-round review): a source 5xx or timeout, both API-caller and browser-
+#: navigation shapes, plus the M12 oracle test's `unavailable` extension below — each gets its own
+#: game so exhausting a rate-limit window or retrying in one never interferes with another.
+_T335_SOURCE_UNAVAILABLE_GAME_ID = 850_100_016
+_T335_SOURCE_TIMEOUT_GAME_ID = 850_100_017
+_T335_BROWSER_SOURCE_UNAVAILABLE_GAME_ID = 850_100_018
+
+#: Fast enough that a 503-exhausts-retries or timeout test does not spend real seconds asleep in
+#: `AsyncBaseProvider`'s exponential backoff — mirrors `packages/providers/tests/test_aoems.py`'s
+#: own `FAST_RETRY` byte for byte, monkeypatched onto `replays.py`'s module-level
+#: `_AOEMS_RETRY_POLICY` rather than passed as a constructor argument, since this router builds its
+#: provider privately per request (`_build_replay_provider`) rather than accepting one as a
+#: `Depends()` this file could override.
+_FAST_RETRY = RetryPolicy(
+    max_attempts=3, base_delay_seconds=0.001, max_delay_seconds=0.002, jitter_seconds=0.0
+)
+
+#: The identical reasoning, applied to the module-level `_AOEMS_RATE_LIMITER`: three attempts
+#: against the real `AOEMS_MAX_REQUESTS_PER_SECOND=1` token bucket every other test in this file
+#: shares would otherwise serialise this test behind roughly two real seconds of waiting, for no
+#: assertion this test makes about pacing.
+_FAST_RATE_LIMITER = TokenBucket(1000.0)
+
 
 async def _seed_bare_user(db_session: AsyncSession) -> User:
     """A signed-in user with no linked profile at all. Downloading a third party's `obtainable`
@@ -396,14 +421,26 @@ class _FakeAoemsUpstream:
     `httpx.Response`, counting how many times it was actually called — mirrors
     `test_third_party_history.py`'s own `_FakeRelicMatchHistoryUpstream`, the identical seam for a
     router that builds its provider privately rather than through a FastAPI `Depends()` this file
-    could override."""
+    could override.
 
-    def __init__(self, response: httpx.Response) -> None:
+    `raises`, when given instead of `response` (B3 remediation, third-round review), is raised on
+    every call rather than returned — the shape a transport-level timeout takes, which is not a
+    response at all and so cannot be simulated by any `httpx.Response` this fake could hand back."""
+
+    def __init__(
+        self, response: httpx.Response | None = None, *, raises: Exception | None = None
+    ) -> None:
+        if (response is None) == (raises is None):
+            raise ValueError("give exactly one of response or raises")
         self._response = response
+        self._raises = raises
         self.request_count = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.request_count += 1
+        if self._raises is not None:
+            raise self._raises
+        assert self._response is not None
         return self._response
 
 
@@ -932,6 +969,153 @@ async def test_source_refusal_stops_the_request_and_raises_a_rate_limited_alert(
 
     alerts_after = (await db_session.execute(select(func.count()).select_from(Alert))).scalar_one()
     assert alerts_after == alerts_before + 1, "exactly one alert per refused request"
+
+
+# ================================================================================================
+# B3 (third-round review) — a source 5xx or timeout must answer `source_unavailable`, `502`, never
+# a bare `500`: before this fix, `AsyncBaseProvider._request`/`AoemsReplayProvider.fetch_replay`
+# raised `ProviderUnavailable` on exactly these two triggers, and this route's `try`/`except` above
+# caught `ProviderRateLimited` only — the uncaught exception fell to `app.py`'s generic
+# `@app.exception_handler(Exception)` and became a bare `500`, the raw-JSON stranding the `303`
+# remediation above exists to eliminate, on the third-party failure most likely to actually occur.
+# ================================================================================================
+
+
+async def test_source_5xx_answers_source_unavailable_never_a_bare_500(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The API-caller half: a 503 exhausting the retry budget must answer the identical `APIError`
+    shape every other refusal on this route already does — `502`, `source_unavailable` — rather than
+    escaping this route's own `try`/`except` and becoming a bare `500` with no `code` at all. Also
+    proves the retry budget really is exhausted (not one attempt read as terminal) and that no
+    `replay_fetch_misses` row is written: a source failure is not evidence the recording never
+    existed, unlike the boundary-race 404 case above."""
+    game_id = _T335_SOURCE_UNAVAILABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceUnavailable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(503, text="service unavailable"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    misses_before = (
+        await db_session.execute(select(func.count()).select_from(ReplayFetchMiss))
+    ).scalar_one()
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+    assert fake_upstream.request_count == _FAST_RETRY.max_attempts, (
+        f"expected the retry budget ({_FAST_RETRY.max_attempts} attempts) to be exhausted, got "
+        f"{fake_upstream.request_count} calls"
+    )
+
+    misses_after = (
+        await db_session.execute(select(func.count()).select_from(ReplayFetchMiss))
+    ).scalar_one()
+    assert misses_after == misses_before, (
+        "a source failure is not evidence the recording never existed and must never be recorded "
+        "as a fetch miss"
+    )
+
+
+async def test_source_timeout_answers_source_unavailable(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other trigger for the identical `ProviderUnavailable`: `AsyncBaseProvider._request`'s
+    own `except httpx.TimeoutException` branch, exhausted the same way a 5xx is (`base.py`). This
+    route must read the two identically — `502`, `source_unavailable` — never distinguish a timeout
+    from a 5xx the way it already must not distinguish `expired` from `never_recorded`'s own
+    reasons."""
+    game_id = _T335_SOURCE_TIMEOUT_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="SourceTimeout"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(raises=httpx.ConnectTimeout("simulated timeout"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 502, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "source_unavailable"
+    assert fake_upstream.request_count == _FAST_RETRY.max_attempts, (
+        f"expected the retry budget ({_FAST_RETRY.max_attempts} attempts) to be exhausted, got "
+        f"{fake_upstream.request_count} calls"
+    )
+
+
+async def test_source_5xx_redirects_a_browser_with_source_unavailable(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B3's browser half: the identical failure, reached by a top-level navigation, must get the
+    `303` back to the match page carrying `replay_error=source_unavailable` — the exact SPA-
+    destroying raw-JSON shape the 2026-08-29 remediation above exists to eliminate, reached this
+    time through the source's own failure rather than an ordinary refusal, which is exactly what
+    was still possible before this fix."""
+    game_id = _T335_BROWSER_SOURCE_UNAVAILABLE_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserSourceUnavailable"
+    )
+    await _seed_open_match(
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    monkeypatch.setattr(replays_router, "_AOEMS_RETRY_POLICY", _FAST_RETRY)
+    monkeypatch.setattr(replays_router, "_AOEMS_RATE_LIMITER", _FAST_RATE_LIMITER)
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(503, text="service unavailable"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers=_browser_navigation_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["source_unavailable"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+    api_response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+    assert api_response.status_code == 502, f"Got {api_response.status_code}: {api_response.text}"
+    assert api_response.json()["error"]["code"] == "source_unavailable", (
+        "an API caller (no browser Fetch Metadata header) must keep getting the JSON error this "
+        "route answers, unaffected by the redirect added for a browser navigation"
+    )
 
 
 async def test_replay_download_refuses_a_profile_id_that_never_played_the_match(

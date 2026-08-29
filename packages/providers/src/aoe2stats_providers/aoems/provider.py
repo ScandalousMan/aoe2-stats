@@ -92,23 +92,41 @@ _ENDPOINT = "replay"
 # `(?!\*)` after `filename` is what keeps this from matching `filename*=` instead: without it,
 # `re.search` on `'...filename=a.zip; filename*=UTF-8...'` would still find the first `filename=`
 # correctly, but a header ordered the other way around would not.
+#
+# `[^";]+` admits any byte other than `"`/`;`, CR and LF included (L21, third-round review). That
+# is not header injection on its own — `httpx.Headers` and every ASGI server this project runs
+# behind reject a control character in an outbound header value outright — but it does turn a
+# malformed upstream `content-disposition` into an unhandled `500` on `GET /api/matches/{game_id}/
+# replay/{profile_id}` (`routers/replays.py`), which is exactly the raw-JSON stranding B3's own
+# fix exists to eliminate, just from the source's headers rather than its status line.
 _FILENAME_PATTERN = re.compile(r'filename(?!\*)\s*=\s*"?([^";]+)"?')
+
+# Control characters only (`\x00`-`\x1f`, `\x7f`) — the set a header value must never carry
+# (RFC 7230 §3.2, `field-vchar`) and the one `_FILENAME_PATTERN` above does not itself exclude.
+# `_parse_filename` rejects a candidate that matches this rather than trying to strip and keep the
+# rest: a filename an upstream sent broken is not this provider's to repair, only to refuse.
+_CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
 
 _DEFAULT_CONTENT_TYPE = "application/zip"
 
 
 def _parse_filename(content_disposition: str | None, *, game_id: int) -> str:
     """The reference-replay naming convention (`docs/data-sources.md` §2:
-    `attachment; filename=AgeIIDE_Replay_{gameId}.zip`) is the fallback for the one case the wire
-    contract does not actually promise a header for — every observed response carries one, but
-    nothing here should raise over a missing `content-disposition` when the bytes themselves are
-    fine.
+    `attachment; filename=AgeIIDE_Replay_{gameId}.zip`) is the fallback for two cases now, not one:
+    the wire contract does not actually promise a `content-disposition` header at all (every
+    observed response carries one, but nothing here should raise over a missing one when the bytes
+    themselves are fine), and — L21, third-round review — a `filename=` value that itself carries a
+    control character (CR/LF in particular), which `_FILENAME_PATTERN` admits but no legitimate
+    filename or ASGI response header ever does. Falling back to the safe, generated name in that
+    case, rather than raising, keeps a malformed upstream header from turning into the caller's own
+    `500` — the bytes are still good even when the name describing them is not.
     """
+    fallback = f"AgeIIDE_Replay_{game_id}.zip"
     if content_disposition is not None:
         match = _FILENAME_PATTERN.search(content_disposition)
-        if match is not None:
+        if match is not None and _CONTROL_CHARACTER_PATTERN.search(match.group(1)) is None:
             return match.group(1)
-    return f"AgeIIDE_Replay_{game_id}.zip"
+    return fallback
 
 
 class AoemsReplayProvider(AsyncBaseProvider):

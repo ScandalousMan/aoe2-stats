@@ -43,9 +43,12 @@ const RATE_LIMITED_CODE = 'rate_limited'
  *   (M9, 2026-08-29): entering that state without the figure it documents would be honoured only
  *   by accident, on the strength of the component's own null-check silently choosing the right
  *   words rather than this mapping choosing them on purpose.
- * - every other code (`never_recorded`, `expired`, `not_found`) renders the generic
- *   "could not start that download" `Callout` — the request never reached a state worth a more
- *   specific message of its own.
+ * - every other code (`never_recorded`, `expired`, `not_found`, `source_unavailable`) renders the
+ *   generic "could not start that download" `Callout` — the request never reached a state worth a
+ *   more specific message of its own. `source_unavailable` in particular (2026-08-29) is a source
+ *   5xx or timeout from `aoe.ms`, never evidence the recording itself is gone — folding it into
+ *   the same wording as the others, rather than a message implying the recording no longer
+ *   exists, is what tells the reader retrying later is worth doing.
  */
 export function toReplayAvailabilityRows(
   participants: readonly ApiMatchParticipant[],

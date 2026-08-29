@@ -154,25 +154,36 @@ not this vocabulary's `error` or `empty`.
 - **error** — two distinct causes, never merged into one message. **All three of the states below are
   now reachable in production**, through the one `303` redirect mechanism the 2026-08-29 amendment
   below describes: the generic failed-request `Callout`, the rate-limited `Callout` (with a
-  `retry_after` where the response carries one), and the boundary race's in-place transition. Every
-  point-of-view download failure used to navigate the browser to a raw JSON error page before any of
-  the three could render at all — a first attempt at a fix addressed only the boundary race's own
-  wording (retiring it to `never_recorded`'s copy, below) and never mentioned that the other two
-  shared the identical root cause and were equally unreachable.
+  `retry_after` where the response carries one), and the boundary race's transition to the `expired`
+  badge (via that same reload, not in place — corrected 2026-08-29, below). Every point-of-view
+  download failure used to navigate the browser to a raw JSON error page before any of the three could
+  render at all — a first attempt at a fix addressed only the boundary race's own wording (retiring it
+  to `never_recorded`'s copy, below) and never mentioned that the other two shared the identical root
+  cause and were equally unreachable.
   - **The generic failed-request Callout**: the reload this route's `303` triggers
     (`apps/api/.../routers/replays.py`'s `_match_page_redirect_for_download_failure`) finds the row's
     state has moved since the page loaded — `not_found` (the `archived` branch's own ownership check
-    failed a second time, or the caller is not this match's participant), `expired`, or
-    `never_recorded`, the three `404` codes `download_replay_point_of_view` raises for those states.
-    **Never a network failure**: `DownloadAction` triggers a same-tab navigation
-    (`apps/web/src/features/replays/api.ts`'s `triggerReplayPointOfViewDownload`), not a `fetch`, so a
-    network-level failure is not a thing this component can observe or distinguish — there is no
-    script left running to catch it. The row returns to `default` and `DownloadAction` is pressable
-    again (`Button`'s own rule: "the button returns to default and to being pressable" — never a state
-    that makes retrying unreachable). A `Callout/danger` (`role="alert"`,
-    `shared-primitives.md`'s tone-to-role mapping) renders beneath the row: "We could not start that
-    download. Try again." — the identical copy for all three codes, since none of them is worth a more
-    specific message of its own here (`apps/web/src/features/replays/availability.ts`'s own mapping).
+    failed a second time, or the caller is not this match's participant), `expired`, `never_recorded`,
+    the three `404` codes `download_replay_point_of_view` raises for those states, or
+    `source_unavailable` — its own `502`, raised when the replay source itself answers a 5xx, times
+    out, or answers a status that is neither `200` nor `404`: the source failing this service, not
+    evidence the recording never existed, and folded into this same generic bullet rather than
+    `never_recorded`'s because a reader must not conclude from the copy that the game never recorded
+    it (**added 2026-08-29**).
+    **Narrowed 2026-08-29 — never a _client-side_ network failure**: `DownloadAction` triggers a
+    same-tab navigation (`apps/web/src/features/replays/api.ts`'s
+    `triggerReplayPointOfViewDownload`), not a `fetch`, so a failure in _this browser's_ connection to
+    `apps/api` is not a thing this component can observe or distinguish — there is no script left
+    running to catch it. That says nothing about the leg beyond `apps/api`: a _source-side_ failure
+    (`source_unavailable`, above) is exactly this service reaching `aoe.ms` and getting a 5xx, a
+    timeout or an unrecognised status, and it reaches this row the same way every other 404 above
+    does — as a completed `303` response, not a dropped connection. The row returns to `default` and
+    `DownloadAction` is pressable again (`Button`'s own rule: "the button returns to default and to
+    being pressable" — never a state that makes retrying unreachable). A `Callout/danger`
+    (`role="alert"`, `shared-primitives.md`'s tone-to-role mapping) renders beneath the row: "We could
+    not start that download. Try again." — the identical copy for all four codes now, since none of
+    them is worth a more specific message of its own here
+    (`apps/web/src/features/replays/availability.ts`'s own mapping).
   - **FR-028's rate limit** takes its own `rate_limited` `downloadState`
     (`ReplayAvailabilityList`'s own type, `index.tsx`), never this generic bullet. Two distinct causes
     answer the identical `rate_limited` code, and only one of them has a figure to give: this
@@ -185,8 +196,11 @@ not this vocabulary's `error` or `empty`.
     identical "We could not start that download. Try again." copy above when it is not
     (`ReplayAvailabilityRowData.retryAfterSeconds`'s own null-check, `index.tsx`).
   - **The boundary race** (`code: "expired_since_page_load"`, `contracts/http-api.md`): a row rendered
-    `obtainable` whose download 404s at fetch time. The row transitions **in place** — no page reload —
-    to the `expired` badge and tone (§3), `DownloadAction` is removed, and `SecondaryLine` reads "This
+    `obtainable` whose download 404s at fetch time. **Corrected 2026-08-29**: this used to say the row
+    transitions "in place — no page reload". It does not, and the amendment below this bullet says so
+    at length — the row reaches the `expired` badge and tone (§3) through the same-tab `303` reload
+    every other case in this section uses, never in place, because no script observes the navigation
+    that carries the failure. `DownloadAction` is removed, and `SecondaryLine` reads "This
     recording expired while you were viewing this page." **This sentence is distinct from both §3.1
     strings**: it is not the static "no longer available" reason a row that loaded already-`expired`
     carries, and it must never be confused with `never_recorded`'s wording — the recording existed

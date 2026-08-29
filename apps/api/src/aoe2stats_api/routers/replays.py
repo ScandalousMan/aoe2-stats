@@ -77,16 +77,16 @@ Per-state behaviour (`contracts/http-api.md`):
   regardless of who owns it (FR-026's "own point of view" is not a parameter `derive_availability`
   takes — module docstring, `availability.py`); this router is what applies FR-026's ownership
   requirement, and it does so *before* that row ever reaches `derive_availability`.
-  `_capture_for_point_of_view` filters a `stored` row the caller does not own out to `None`
-  (B1 remediation, its own docstring), so `derive_availability` falls through to the ordinary age
-  comparison for it instead — `archived` therefore cannot be reached here for a capture the caller
-  does not own, and the `assert caller_owns_profile` in this branch below exists only to fail loudly
-  if that ever stops being true. FR-026 is explicit that `archived` is "the caller's own captured
-  replay, and only that", and `test_no_public_directory.py`'s own property-4 test seeds a
-  *stranger's* `stored` capture, old enough that the source has long since lost it too, and still
-  requires a `404 not_found` — never `expired`, which would itself disclose that an archive exists
-  for someone else's account. A caller who owns it gets the identical 302-to-a-signed-URL-and-log
-  shape 001's own route above already implements.
+  `_capture_for_point_of_view` filters *any* row the caller does not own out to `None` (B1
+  remediation, widened at M12 — its own docstring), so `derive_availability` falls through to the
+  ordinary age comparison for it instead — `archived` therefore cannot be reached here for a
+  capture the caller does not own, and the `assert caller_owns_profile` in this branch below exists
+  only to fail loudly if that ever stops being true. FR-026 is explicit that `archived` is "the
+  caller's own captured replay, and only that", and `test_no_public_directory.py`'s own property-4
+  test seeds a *stranger's* `stored` capture, old enough that the source has long since lost it
+  too, and still requires a `404 not_found` — never `expired`, which would itself disclose that an
+  archive exists for someone else's account. A caller who owns it gets the identical
+  302-to-a-signed-URL-and-log shape 001's own route above already implements.
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
@@ -161,13 +161,14 @@ scheduled — runs again, which is exactly what every failure response from this
 `TestClient` calls, which carry neither signal) using the Fetch Metadata `Sec-Fetch-Mode: navigate`
 header every current browser engine sends on a top-level navigation and never on a script-initiated
 `fetch`, with `Accept: text/html` as the fallback for a request that omits it. `_replay_not_found`,
-`_never_recorded_error`, `_expired_error`, `_expired_since_page_load_error` and the rate-limited
-`429`s (this route's own limiter and the source's) all still raise the identical `APIError` an API
-caller gets as JSON; `download_replay_point_of_view` below is what translates that same error into a
-`303` for a browser instead of letting it become the response body. The `303` carries the failing
-`code` (and `retry_after`, where the error has one) as query parameters on the match page's own URL,
-which `apps/web`'s `MatchDetailContainer` reads once on load and clears (`replay-availability.md`
-§5). **Rooted at `settings.public_base_url`, absolute, never a relative `/matches/{game_id}`**
+`_never_recorded_error`, `_expired_error`, `_expired_since_page_load_error`, `_source_unavailable_
+error` (B3 remediation, third-round review — see its own docstring) and the rate-limited `429`s
+(this route's own limiter and the source's) all still raise the identical `APIError` an API caller
+gets as JSON; `download_replay_point_of_view` below is what translates that same error into a `303`
+for a browser instead of letting it become the response body. The `303` carries the failing `code`
+(and `retry_after`, where the error has one) as query parameters on the match page's own URL, which
+`apps/web`'s `MatchDetailContainer` reads once on load and clears (`replay-availability.md` §5).
+**Rooted at `settings.public_base_url`, absolute, never a relative `/matches/{game_id}`**
 (B1/B2 remediation, 2026-08-29, `_match_page_redirect_for_download_failure`'s own docstring): a
 relative redirect only ever worked because `vercel.json`'s `/api/(.*)` rewrite collapses the API
 and the SPA onto one origin in production, and this repository's own documented local topology
@@ -175,6 +176,17 @@ and the SPA onto one origin in production, and this repository's own documented 
 problem does not arise here regardless, since the browser is never asked to read this response's
 body across an origin, only to follow the `Location` header, exactly as it already follows any
 other cross-origin redirect a top-level navigation reaches.
+
+**B3 (third-round review): a source 5xx, timeout, or non-200/404 status also went straight to a
+raw JSON `500`, browser navigation or not — the one `except` clause here caught
+`ProviderRateLimited` only, and `AsyncBaseProvider._request`/`AoemsReplayProvider.fetch_replay`
+raise `ProviderUnavailable` (and its `ProviderMoved` subtype) for every one of those, never that.**
+A second `except ProviderUnavailable` clause below now turns it into `_source_unavailable_error()`
+— `502`, `source_unavailable` — the identical `APIError` shape every other refusal on this route
+already is, so it is caught by the outer `except APIError` exactly like the rest and reaches a
+browser navigation as the same `303` this section already describes. No `replay_fetch_misses` row
+is written on this path (`_source_unavailable_error`'s own docstring): a source failure is not
+evidence the recording never existed.
 """
 
 from __future__ import annotations
@@ -204,7 +216,12 @@ from aoe2stats_ingester.ratelimit import (
     raise_rate_limited_alert,
 )
 from aoe2stats_providers.aoems.provider import AoemsReplayProvider
-from aoe2stats_providers.base import NotFound, ProviderCallRecord, ProviderRateLimited
+from aoe2stats_providers.base import (
+    NotFound,
+    ProviderCallRecord,
+    ProviderRateLimited,
+    ProviderUnavailable,
+)
 from aoe2stats_providers.wiring import build_async_client_resources
 from aoe2stats_storage.models import (
     Alert,
@@ -495,12 +512,13 @@ async def _match_completed_at_for_participant(
 async def _capture_for_point_of_view(
     db_session: AsyncSession, *, game_id: int, profile_id: int, caller_owns_profile: bool
 ) -> ReplayCapture | None:
-    """The `replay_captures` row for this exact `(game_id, profile_id)` pair — but a `stored` row
-    the caller does not own is treated as if it did not exist, mirroring `routers/matches.py`'s own
+    """The `replay_captures` row for this exact `(game_id, profile_id)` pair — but *any* row the
+    caller does not own is treated as if it did not exist, mirroring `routers/matches.py`'s own
     `_replay_by_profile`, which excludes exactly this same shape from `capture_by_profile` before
     `derive_availability` ever sees it. `derive_availability` (T336) then falls through to the
-    ordinary age comparison for that pair instead of answering `archived`, since FR-026 is "the
-    caller's own captured replay, and only that" — never "whoever it belongs to".
+    ordinary age comparison for that pair instead of reading anything off a row that belongs to
+    someone else, since FR-026 is "the caller's own captured replay, and only that" — never
+    "whoever it belongs to".
 
     Before this fix (B1), this function returned the row regardless of ownership and left the check
     to the `archived` branch below, which produced two violations at once: a stranger's `stored`
@@ -512,14 +530,29 @@ async def _capture_for_point_of_view(
     account-existence oracle (FR-045) — the identical `(game_id, profile_id)` answers `not_found`
     only when a stranger's account happens to hold a `stored` capture for it, `expired`/
     `expired_since_page_load`/`200` otherwise. Filtering here removes the second query this route
-    used to answer differently from the first, rather than reconciling the two."""
+    used to answer differently from the first, rather than reconciling the two.
+
+    **Widened past `stored` alone (M12, third-round review).** B1's filter checked
+    `capture.status is CaptureStatus.STORED` explicitly, leaving `unavailable` unfiltered:
+    `derive_availability` also reads `unavailable` on its own (`availability.py`'s own table,
+    `never_recorded`), so a stranger's `unavailable` capture for a recent match answered
+    `never_recorded` while the identical pair with no capture at all answered `obtainable` — the
+    same shape of asymmetry B1 closed, one status short of complete, and observable as a timing
+    difference too (no outbound call in the `unavailable` case). Every other `CaptureStatus` value
+    (`pending`, `downloading`, `failed`, `quarantined`, `expired`) is already unreadable by
+    `derive_availability` regardless of ownership — it only branches on `stored` and `unavailable` —
+    so filtering by ownership alone, rather than re-deriving which statuses currently matter, is not
+    a behaviour change for those five: it costs nothing today and, unlike enumerating the two
+    statuses that happen to matter now, does not quietly reopen this exact finding the next time
+    `derive_availability` learns to read a third one. The predicate is now the simplest one that is
+    still correct: *any* row the caller does not own reads as absent, full stop."""
     result = await db_session.execute(
         select(ReplayCapture).where(
             ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
         )
     )
     capture = result.scalar_one_or_none()
-    if capture is not None and capture.status is CaptureStatus.STORED and not caller_owns_profile:
+    if capture is not None and not caller_owns_profile:
         return None
     return capture
 
@@ -600,6 +633,36 @@ def _source_rate_limited_error() -> APIError:
         status_code=429,
         code="rate_limited",
         message="The replay source is throttling requests. Try again later.",
+    )
+
+
+def _source_unavailable_error() -> APIError:
+    """B3 remediation, third-round review: `AsyncBaseProvider._request` raises
+    `ProviderUnavailable` for a 5xx that outlives the retry budget or a timeout, and
+    `AoemsReplayProvider.fetch_replay` raises it (via its `ProviderMoved` subtype, or directly for
+    an unnamed status — see that module's own docstring) for a residual 3xx or any status this
+    endpoint has never been measured to send as a terminal answer, including the ordinary case
+    left live by the 2026-08-28 `aoe.ms` -> `api.ageofempires.com` move. Before this fix, none of
+    those was an `APIError`, so none was caught here: they fell to `app.py`'s generic
+    `@app.exception_handler(Exception)` and became a bare `500`, which for a browser navigation
+    means the exact raw-JSON stranding the `303` remediation above exists to eliminate, on the
+    third-party failure most likely to actually occur.
+
+    `502`, not `404`/`429`: this is not evidence the recording never existed (`never_recorded`
+    would say that) and it is not this route's or the source's own rate limit (`rate_limited`
+    already names that) — it is the upstream itself failing to answer at all, which is what a
+    Bad Gateway means for a service that proxies a third party's bytes through. `source_unavailable`
+    is a new, stable `code` (`contracts/http-api.md`'s "Error codes this feature adds" table),
+    chosen to match the client's own reading of it rather than invented independently.
+
+    No `replay_fetch_misses` row is written for this path, unlike the boundary-race 404 branch
+    below: a source failure says nothing about whether the recording exists, so it must never be
+    read later as evidence that it does not (module docstring's own reasoning for why that table
+    exists at all)."""
+    return APIError(
+        status_code=502,
+        code="source_unavailable",
+        message="The replay source is temporarily unavailable. Try again later.",
     )
 
 
@@ -851,14 +914,20 @@ async def download_replay_point_of_view(
         )
 
         if availability.state is Availability.ARCHIVED:
-            assert capture is not None and capture.object_key is not None
-            # `caller_owns_profile` gates `_capture_for_point_of_view` above, not this branch: a
-            # `stored` capture the caller does not own was already filtered out of `capture` before
-            # `derive_availability` ran, so `ARCHIVED` cannot be reached here for one — this assert
-            # is redundant-by-construction, kept so a future change to the filtering above fails
-            # loudly here rather than silently serving a stranger's replay (B1 remediation,
-            # `_capture_for_point_of_view`'s own docstring).
-            assert caller_owns_profile
+            # `caller_owns_profile` gates `_capture_for_point_of_view` above, not this branch: any
+            # row the caller does not own was already filtered out of `capture` before
+            # `derive_availability` ran, so `ARCHIVED` cannot be reached here for one under
+            # ordinary operation. **L20 remediation (third-round review): a real, raised check, not
+            # a bare `assert`.** `assert` is a no-op under `python -O`, which would turn a
+            # regression in the filtering above into a stranger's replay served silently instead of
+            # failing loudly — the exact failure mode this check exists to prevent cannot depend on
+            # an interpreter flag nobody here controls at deploy time. `_replay_not_found()` is the
+            # identical FR-045 answer `_stored_capture_for_caller` (001's own route above) already
+            # gives for the equivalent anomaly (a missing `object_key` on an otherwise-matched row),
+            # never a differentiated code that would itself become new evidence for FR-045's
+            # "indistinguishable causes" rule.
+            if capture is None or capture.object_key is None or not caller_owns_profile:
+                raise _replay_not_found()
             signed_url = await object_store.signed_get_url(capture.object_key)
             db_session.add(
                 ReplayAccessLog(
@@ -883,6 +952,12 @@ async def download_replay_point_of_view(
         except ProviderRateLimited as error:
             await raise_rate_limited_alert(_RequestAlertSink(db_session), error, run_id=None)
             raise _source_rate_limited_error() from error
+        except ProviderUnavailable as error:
+            # `ProviderMoved` is a `ProviderUnavailable` subtype (`base.py`'s own docstring) and is
+            # caught here too, deliberately not ahead of this clause: this route has no separate
+            # reaction to "the source moved" versus "the source is down" (`_source_unavailable_
+            # error`'s own docstring).
+            raise _source_unavailable_error() from error
 
         if isinstance(result, NotFound):
             await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)

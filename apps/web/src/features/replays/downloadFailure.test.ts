@@ -70,6 +70,31 @@ describe('parseReplayDownloadFailure', () => {
       parseReplayDownloadFailure('?replay_error=sign_in_required&replay_error_profile_id=11'),
     ).toBeNull()
   })
+
+  // 2026-08-29 remediation: a source 5xx, a timeout, or any other non-200/404 `aoe.ms` response
+  // now reaches `_match_page_redirect_for_download_failure` as `source_unavailable` (translated
+  // from `ProviderUnavailable`, `apps/api/.../routers/replays.py`) rather than escaping to the
+  // generic 500 handler — this route's own allow-list has to widen to admit it.
+
+  it('accepts source_unavailable — a source outage, not evidence the recording never existed', () => {
+    const failure = parseReplayDownloadFailure(
+      '?replay_error=source_unavailable&replay_error_profile_id=11',
+    )
+    expect(failure).toEqual({
+      code: 'source_unavailable',
+      profileId: '11',
+      retryAfterSeconds: undefined,
+    })
+  })
+
+  // The allow-list widens deliberately, one exact string at a time — it must not have loosened
+  // into accepting anything that merely looks like a real code.
+
+  it('still rejects a code that only resembles source_unavailable', () => {
+    expect(
+      parseReplayDownloadFailure('?replay_error=source_unreachable&replay_error_profile_id=11'),
+    ).toBeNull()
+  })
 })
 
 describe('searchWithoutReplayDownloadFailure', () => {

@@ -370,6 +370,35 @@ describe('MatchDetailContainer', () => {
     await waitFor(() => expect(window.location.search).toBe(''))
   })
 
+  // 2026-08-29 remediation: a source 5xx, a timeout, or any other non-200/404 from `aoe.ms` now
+  // reaches this redirect as `source_unavailable` (translated from `ProviderUnavailable`,
+  // `apps/api/.../routers/replays.py`) instead of escaping to the generic 500 handler. It folds
+  // into the same generic Callout as `never_recorded` / `expired` / `not_found` above — a source
+  // outage is not evidence the recording never existed, so it must land on the row it names
+  // without being presented as though the recording is gone.
+
+  it('renders the generic failed-request alert for source_unavailable, on the row it names', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=source_unavailable&replay_error_profile_id=11',
+    )
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    expect(
+      await screen.findByText('We could not start that download. Try again.'),
+    ).toBeInTheDocument()
+    // Profile 11's own availability is `obtainable` in `baseDetail()` — a source outage must not
+    // recolour it as `expired`/`never_recorded` (that would tell the user the recording is gone,
+    // which a transient source failure does not establish); the button stays present and
+    // pressable, same as the rate-limit case above, so retrying later is visibly worth doing.
+    await screen.findByText('Obtainable')
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
   // H3 remediation (2026-08-29): a redirect-carried failure used to be held in `useState` for the
   // component's whole lifetime, unconditionally overriding `downloadStates[id]` — a retry of the
   // failing row never showed its own `loading` state, and a successful retry (a `200` that never

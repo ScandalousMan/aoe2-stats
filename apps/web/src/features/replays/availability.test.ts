@@ -142,6 +142,21 @@ describe('toReplayAvailabilityRows', () => {
     expect(rows[0]?.availability).toBe('obtainable')
   })
 
+  // 2026-08-29 remediation: `source_unavailable` (a source 5xx or timeout from `aoe.ms`, folded
+  // into an `APIError` by `_match_page_redirect_for_download_failure`) is not evidence the
+  // recording never existed — it must fold into the same generic error as `never_recorded`
+  // above, never overriding `availability` the way the boundary race does.
+
+  it('renders source_unavailable as the generic error too, without touching availability', () => {
+    const rows = toReplayAvailabilityRows(
+      [participant({ profile_id: 1 })],
+      {},
+      { code: 'source_unavailable', profileId: '1' },
+    )
+    expect(rows[0]?.downloadState).toBe('error')
+    expect(rows[0]?.availability).toBe('obtainable')
+  })
+
   // M9 remediation (2026-08-29): `_source_rate_limited_error` (`apps/api/.../routers/replays.py`)
   // raises the identical `rate_limited` code with no `retry_after` at all — `ReplayAvailabilityList`
   // documents `retryAfterSeconds` as required once `downloadState === 'rate_limited'`, so this
