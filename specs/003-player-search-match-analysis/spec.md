@@ -563,7 +563,11 @@ their current standing and reachable in one click.
   recording shows the game from one participant's perspective.
 - **FR-024**: System MUST show, for each offered point of view, whether it is currently obtainable,
   and for those that are, the date after which it will stop being — derived from the source's
-  measured retention window in `docs/data-sources.md`, not from a value restated here.
+  measured retention window in `docs/data-sources.md`, not from a value restated here. **Amended
+  2026-08-29**: that window is contradicted and unresolved as of 2026-08-28, so the date MUST be
+  **null while the question is open** rather than derived from the superseded reading. A promise
+  about the future drawn from a window that may not exist is worse than no promise. The reasoning is
+  recorded once, in [research.md](./research.md) R8, and is not restated here.
 - **FR-025**: System MUST distinguish and display, per point of view: obtainable now, held in this
   service's own archive, never recorded by the game, and expired beyond the source's retention
   window. It MUST NOT present an unobtainable download as an action that then fails.
@@ -719,7 +723,11 @@ their current standing and reachable in one click.
   including matches whose recordings expired, with no field left blank or wrong.
 - **SC-004**: For 100% of matches shown, the availability stated for every point of view matches what
   the source actually answers at that moment; a download offered as available succeeds, and one
-  offered as expired is not clickable.
+  offered as expired is not clickable. **Amended 2026-08-29**: this criterion is measured against the
+  source's *settled* window. While `docs/data-sources.md` records that window as contradicted (see
+  [research.md](./research.md) R8), SC-004 is **not claimable** — under the fixed-epoch reading the
+  derivation fails it by construction rather than by implementation error. It becomes measurable
+  again when the re-measurement settles the question.
 - **SC-005**: A user can obtain any participant's point of view of a match inside the retention
   window in at most two actions from the match page.
 - **SC-006**: A match is parsed at most once: for any match, the number of times its recorded game is
@@ -760,9 +768,12 @@ their current standing and reachable in one click.
 - Retention under FR-033 is bounded by human requests, so its volume is a product design question
   before it is a capacity question. At the measured sizes — ~0.87 MB for a ranked 1v1, ~2.5 MB for an
   eight-player game — the cap in FR-047 is what decides the bill, not the traffic.
-- The ~31-day retention window and its consequences are as recorded in `docs/data-sources.md`. This
+- The source's retention window and its consequences are as recorded in `docs/data-sources.md`. This
   spec deliberately restates no measured number; where a date or a deadline is shown to the user it
-  is derived from that file.
+  is derived from that file. **Amended 2026-08-29**: this sentence named "~31 days" while promising
+  to restate no number, and that window is now recorded there as contradicted and unresolved. The
+  figure is removed; the renvoi is the whole of the assumption, and R8 carries what the open question
+  costs this feature.
 - Whether the search source answers from the production platform's egress addresses is **not yet
   verified** — `docs/data-sources.md` §3 records it as open, alongside observed intermittent 403s
   from datacentre addresses. This is why FR-004d exists: if the answer turns out to be no, search

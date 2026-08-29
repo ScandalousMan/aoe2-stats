@@ -355,7 +355,7 @@ records or in storage.
 - **FR-032**: System MUST never let an upload overwrite an existing archived replay.
 - **FR-033**: System MUST record that a replay was manually supplied rather than captured.
 
-**Consent, privacy and data rights**
+**Privacy and data rights**
 
 - **FR-034**: System MUST archive a linked user's own recordings without asking for consent, on the
   basis of legitimate interest, and MUST tell them at linking time that it does so and how to stop

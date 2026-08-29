@@ -380,6 +380,36 @@ So the four states FR-025 requires are each derived from something this service 
 | expired | the match completed outside it |
 | never recorded by the game | a prior attempt that answered 404 while inside the window |
 
+### The retention window is not settled, and this table assumed it was — decided 2026-08-29
+
+The two middle rows read "the retention window" as a **rolling** window of known length. On
+2026-08-28 `docs/data-sources.md` recorded a second, larger sample that contradicts that reading: an
+equally sharp boundary six months back rather than 31 days, measured after the replay endpoint moved,
+with a **fixed epoch** fitting the sample as well as any rolling window. The question is open, and
+constitution I 4.1.0 forbids settling it by assumption.
+
+**What is decided, and what is not.** The derivation stays conservative and unchanged: a match older
+than the shortest credible window renders `expired`. Under either reading that is safe in the
+direction FR-025 actually guards — it never presents an unobtainable download as an action that then
+fails, because it only ever *under*-offers.
+
+**What changes is the date.** `obtainable_until` is a promise about the future, and under an
+unresolved window there is no honest one to make. It is therefore **null while the question is open**,
+and FR-024's date appears only once `docs/data-sources.md` records the window as settled. A date
+derived from a window that may not exist is worse than no date: the user plans around it.
+
+**The cost is stated rather than hidden.** Under the epoch reading this service tells a user `expired`
+for a recording the source would still serve. That is a real defect and it is accepted knowingly, for
+one turn of the argument: the alternative is probing, and probing is a full download per participant
+per page view (`HEAD` answers `405`), which is the browsing-driven bulk read of third-party recordings
+constitution IX forbids and FR-012 restates. There is no cheap third option. **SC-004 cannot be
+claimed while this stands** — it measures stated availability against what the source actually
+answers, and under the epoch reading it fails by construction, not by implementation error.
+
+This reverses the moment the measurement settles, and what would settle it is written down in
+`docs/data-sources.md`: re-measure on a different profile, and again a week later. Until then this
+paragraph is the reason a reader does not have to re-derive any of it from the diff.
+
 **A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
 from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
 only copy anyone holds. It is refused, and 3.0.0 strengthens the refusal rather than weakening it — the bytes now survive an
@@ -424,10 +454,14 @@ on `replay_captures` and never under 001's key scheme.
 ### Rationale
 
 FR-048 requires that the two remain distinguishable, and gives the reason: different legal bases,
-different consent, different points of view. The failure it is guarding against is not confusion in
-someone's head, it is a `SELECT count(*)` that quietly answers a question nobody asked — "how many
-replays do we hold" meaning one thing to the processing register (activity 3, explicit consent) and
-another to the free-tier watch (bytes in the bucket).
+different points of view. The failure it is guarding against is not confusion in someone's head, it is
+a `SELECT count(*)` that quietly answers a question nobody asked — "how many replays do we hold"
+meaning one thing to the processing register (activity 3) and another to the free-tier watch (bytes in
+the bucket). (**Amended 2026-08-29**: this said the two differ by "different consent", and called
+activity 3 "explicit consent". Constitution IX 4.0.0 retired that gate — activity 3 now rests on
+legitimate interest with a right to object, and FR-033's retention on IX's public-recording basis. The
+distinction survives and its reason narrows to *legal basis and point of view*, exactly as spec.md's
+FR-048 already records.)
 
 A separate table makes the ambiguous query impossible to write by accident: there is no column to
 forget to filter on. A separate key prefix extends the same property to the bucket, where the
@@ -612,7 +646,10 @@ gate whose written reason is false is a gate the next reader removes.
 FR-017 points at 001 FR-036 and FR-037, and FR-046 at 001 FR-037 and FR-039. Those are the export
 job, erasure, and the third-party objection endpoint: tasks T090, T091 and T092 in
 `specs/001-steam-link-replay-ingestion/tasks.md`, all still open. `apps/api/src/aoe2stats_api/routers/privacy.py`
-today implements consent and nothing else.
+today implements the archival objection and nothing else. (**Corrected 2026-08-29**: this read "implements
+consent", which was true when written and false since T405 renamed the route to
+`POST /api/privacy/archival-objection` under constitution IX 4.0.0. The sequencing fact it supports is
+unchanged — export, erasure and the third-party objection route are still T090 to T092, still open.)
 
 This is a sequencing fact for `/speckit-tasks`, not a design problem: what this feature owes is that
 its new tables are covered when those jobs are written, and the way to owe it without depending on it
