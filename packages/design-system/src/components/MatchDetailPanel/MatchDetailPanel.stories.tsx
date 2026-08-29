@@ -177,6 +177,75 @@ const unresolvedIdentifierMatch: MatchDetailData = {
   ],
 }
 
+// match-history.md §2a — a resolved win and a resolved loss beside an unknown result, so the
+// distinct wording ("Win" / "Loss" / "Unknown") and the distinct colour step (`text-secondary`,
+// never `success`/`danger`) both read in one frame.
+const mixedResultMatch: MatchDetailData = {
+  ...baseMatch,
+  gameId: '1008',
+  teams: [
+    {
+      id: 'team-1',
+      name: 'Team 1',
+      participants: [
+        {
+          id: 'p1',
+          alias: 'aoe2guy',
+          civId: 10,
+          civName: 'Franks',
+          result: 'win',
+          ratingChange: { value: 12 },
+        },
+      ],
+    },
+    {
+      id: 'team-2',
+      name: 'Team 2',
+      participants: [
+        {
+          id: 'p2',
+          alias: 'aoe2villain',
+          civId: 20,
+          civName: 'Mongols',
+          result: 'unknown',
+        },
+      ],
+    },
+  ],
+}
+
+// §2a's own reproduction: `match_players.result` is `null` for every row this system has written
+// so far — this is the eight-player match a real production page showed as eight losses before
+// this fix. No participant here carries a rating change either, matching that same gap
+// (`rating_diff` is derived from the result this ingestion stage has not recorded).
+const allUnknownResultMatch: MatchDetailData = {
+  ...baseMatch,
+  gameId: '1009',
+  leaderboardName: 'Free-for-All',
+  teams: [
+    { civId: 10, civName: 'Franks', alias: 'aoe2guy' },
+    { civId: 20, civName: 'Mongols', alias: 'aoe2villain' },
+    { civId: 5, civName: 'Britons', alias: 'aoe2friend' },
+    { civId: 15, civName: 'Huns', alias: 'aoe2foe' },
+    { civId: 3, civName: 'Aztecs', alias: 'aoe2rando1' },
+    { civId: 8, civName: 'Byzantines', alias: 'aoe2rando2' },
+    { civId: 1, civName: 'Aztecs', alias: 'aoe2rando3' },
+    { civId: 30, civName: 'Mayans', alias: 'aoe2rando4' },
+  ].map((p, index) => ({
+    id: `team-${index + 1}`,
+    name: `Team ${index + 1}`,
+    participants: [
+      {
+        id: `p${index + 1}`,
+        alias: p.alias,
+        civId: p.civId,
+        civName: p.civName,
+        result: 'unknown' as const,
+      },
+    ],
+  })),
+}
+
 export const Archived: Story = {
   name: 'Archived — DownloadAction present',
   args: { match: baseMatch },
@@ -225,6 +294,16 @@ export const EightPlayerFreeForAll: Story = {
 export const UnnameableIdentifier: Story = {
   name: 'Unresolved civilisation and map — raw identifier, never a guess (FR-020, §11.2)',
   args: { match: unresolvedIdentifierMatch },
+}
+
+export const MixedResult: Story = {
+  name: 'Unknown result beside a win and a loss — "Unknown", never "Loss" (§2a)',
+  args: { match: mixedResultMatch },
+}
+
+export const AllResultsUnknown: Story = {
+  name: 'Eight participants, every result unknown — the production reproduction (§2a)',
+  args: { match: allUnknownResultMatch },
 }
 
 export const DownloadPreparing: Story = {

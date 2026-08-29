@@ -150,6 +150,50 @@ describe('MatchDetailPanel', () => {
     expect(screen.getByText('−12')).toBeInTheDocument()
   })
 
+  // match-history.md §2a: the reported production defect — a participant's own unrecorded result
+  // must never render as "Loss", and must render as its own, differently-coloured state.
+  it('shows an unknown participant result as "Unknown", never as "Win" or "Loss"', () => {
+    const withUnknown: MatchDetailData = {
+      ...match,
+      teams: [
+        {
+          ...match.teams[0],
+          participants: [{ ...match.teams[0].participants[0], result: 'unknown' }],
+        },
+        match.teams[1],
+      ],
+    }
+    render(<MatchDetailPanel match={withUnknown} />)
+    expect(screen.getByText('Unknown')).toBeInTheDocument()
+    expect(screen.queryByText('Win')).not.toBeInTheDocument()
+    expect(screen.getByText('Loss')).toBeInTheDocument()
+  })
+
+  // §2a's own reproduction: the production page this fix responds to showed eight participants,
+  // none with a known result, all rendered as losses.
+  it('renders a match with every participant result unknown without implying anyone lost', () => {
+    const allUnknown: MatchDetailData = {
+      ...match,
+      teams: Array.from({ length: 8 }, (_, index) => ({
+        id: `team-${index + 1}`,
+        name: `Team ${index + 1}`,
+        participants: [
+          {
+            id: `p${index + 1}`,
+            alias: `player${index + 1}`,
+            civId: 10,
+            civName: 'Franks',
+            result: 'unknown' as const,
+          },
+        ],
+      })),
+    }
+    render(<MatchDetailPanel match={allUnknown} />)
+    expect(screen.getAllByText('Unknown')).toHaveLength(8)
+    expect(screen.queryByText('Win')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loss')).not.toBeInTheDocument()
+  })
+
   it('shows a load-failed callout with a retry, distinct wording from not-found', () => {
     const onRetry = vi.fn()
     render(<MatchDetailPanel status="error" onRetry={onRetry} />)

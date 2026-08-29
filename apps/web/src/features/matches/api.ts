@@ -36,9 +36,11 @@ export interface ApiMatchListRow {
    * id `aoe2stats_api.civilizations` does not recognise (it falls back to "Civilisation <id>"
    * there, not here — see `format.ts`'s own note on why this module no longer hand-maps one). */
   civilisation_name: string | null
-  /** The caller's own result — `"win"` or `"loss"` today; not narrowed further here so an
-   * unrecognised value still type-checks (`mappers.ts` is where it is turned into `MatchRowData`'s
-   * strict `'win' | 'loss'` union, defensively). */
+  /** The caller's own result — `"win"` or `"loss"` when known, `null` for every row this system
+   * has not yet enriched (`match_players.result`'s own gap, `discover.py`). Not narrowed further
+   * here so `null` and any unrecognised value still type-check (`format.ts`'s `formatOutcome` is
+   * where it becomes `MatchRowData`'s `'win' | 'loss' | 'unknown'` union — `null`/unrecognised
+   * read as `'unknown'`, never coerced to `'loss'`, per match-history.md §2a). */
   result: string | null
   rating_diff: number | null
   /** Every other participant on a **different team** than the caller's own — `matches.py`'s

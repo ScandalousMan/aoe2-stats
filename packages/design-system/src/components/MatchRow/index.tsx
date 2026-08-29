@@ -11,6 +11,14 @@ import type { StatValueDelta } from '../StatValue'
 
 // packages/design-system/specs/match-history.md
 
+/** Shared by `MatchRow.outcome` and `MatchDetailPanel`'s `ParticipantData.result` (imported there
+ * from here, mirroring how both components already share `StatValueDelta` from `StatValue`) —
+ * `"unknown"` is not a fallback spelling of `"loss"`: it is the state a `result` this service has
+ * not yet recorded (`match_players.result` is `null` for every row today — `discover.py`'s own
+ * docstring) must render as, per match-history.md §2a. `apps/web/src/features/matches/format.ts`'s
+ * `formatOutcome` is the one place a wire `result` becomes this union. */
+export type MatchOutcome = 'win' | 'loss' | 'unknown'
+
 export interface MatchRowOpponent {
   /** The first opposing-team participant's alias (§4). */
   alias: string
@@ -23,7 +31,7 @@ export interface MatchRowData {
   gameId: string
   /** The match detail route (T076's `matches.$gameId.tsx`). `MatchRow` never invents this path. */
   href: string
-  outcome: 'win' | 'loss'
+  outcome: MatchOutcome
   opponent: MatchRowOpponent
   map: ReactNode
   /** The caller's own civilisation for this match — factual name only, no emblem (§2 IP note). */
@@ -61,11 +69,25 @@ function OpponentLabel({ opponent }: { opponent: MatchRowOpponent }) {
   )
 }
 
-function OutcomeLabel({ outcome }: { outcome: 'win' | 'loss' }) {
-  const won = outcome === 'win'
+// match-history.md §2a: "Win"/"Loss" assert a fact this service has; "Unknown" (`text-secondary`,
+// never `success`/`danger`) is the one state that does not, and reads as a gap by wording alone —
+// never colour alone (constitution VI).
+const OUTCOME_LABEL_TEXT: Record<MatchOutcome, string> = {
+  win: 'Win',
+  loss: 'Loss',
+  unknown: 'Unknown',
+}
+
+const OUTCOME_LABEL_TONE: Record<MatchOutcome, string> = {
+  win: 'text-success',
+  loss: 'text-danger',
+  unknown: 'text-secondary',
+}
+
+function OutcomeLabel({ outcome }: { outcome: MatchOutcome }) {
   return (
-    <span className={cx('font-sans text-sm font-semibold', won ? 'text-success' : 'text-danger')}>
-      {won ? 'Win' : 'Loss'}
+    <span className={cx('font-sans text-sm font-semibold', OUTCOME_LABEL_TONE[outcome])}>
+      {OUTCOME_LABEL_TEXT[outcome]}
     </span>
   )
 }
@@ -296,7 +318,6 @@ function MatchTableRow({
   match: MatchRowData
   onNavigate?: (href: string) => void
 }) {
-  const won = match.outcome === 'win'
   return (
     <tr className="group relative border-b border-border transition-colors duration-120 ease-standard hover:bg-surface-sunken">
       <th scope="row" className="py-3 pr-5 font-normal">
@@ -306,10 +327,10 @@ function MatchTableRow({
           className={cx(
             'static font-sans text-sm font-semibold after:absolute after:inset-0',
             focusRing,
-            won ? 'text-success' : 'text-danger',
+            OUTCOME_LABEL_TONE[match.outcome],
           )}
         >
-          {won ? 'Win' : 'Loss'}
+          {OUTCOME_LABEL_TEXT[match.outcome]}
         </a>
       </th>
       <td className="py-3 pr-5 text-text-primary">
