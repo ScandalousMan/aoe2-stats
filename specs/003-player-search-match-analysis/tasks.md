@@ -231,8 +231,8 @@ current standing and reachable in one click.
 ### Implementation for User Story 5
 
 - [x] T346 [US5] Implement `apps/api/src/aoe2stats_api/routers/favourites.py` with `GET`, `PUT` and `DELETE`, registered in `app.py`, and remove T344's and T345's markers
-- [ ] T347 [P] [US5] Write the component specs for the favourite toggle and the favourites list in `packages/design-system/specs/`, including the signed-out state that prompts sign-in without losing the user's place
-- [ ] T348 [US5] Build the toggle and the list from tokens in `packages/design-system/src/components/`, with stories including the at-the-bound and signed-out states
+- [x] T347 [P] [US5] Write the component specs for the favourite toggle and the favourites list in `packages/design-system/specs/`, including the signed-out state that prompts sign-in without losing the user's place
+- [x] T348 [US5] Build the toggle and the list from tokens in `packages/design-system/src/components/`, with stories including the at-the-bound and signed-out states
 - [ ] T349 [US5] Wire favourites in `apps/web/src/features/favourites/`, with `apps/web/src/routes/favourites.tsx` and the toggle on the profile page, returning the user where they were after a sign-in prompt
 - [ ] T350 [US5] Run `visual-reviewer` locally, then `pnpm test:visual --changed` over the stories T348 added, updating baselines in `packages/design-system/__screenshots__/`
 
