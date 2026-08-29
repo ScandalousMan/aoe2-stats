@@ -72,6 +72,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_storage.models import (
     CaptureSource,
     CaptureStatus,
+    Match,
     ProviderCall,
     ReplayCapture,
     RetainedRecording,
@@ -115,7 +116,6 @@ async def _provider_call_count(db_session: AsyncSession) -> int:
 # --- `archived`: a `replay_captures` row in `stored`, and only that -----------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 def test_archived_comes_only_from_a_stored_capture_row_regardless_of_match_age() -> None:
     """R8's table: "held in this service's archive — a `replay_captures` row in `stored` — that
     row only." FR-026: served regardless of the match's age, so an ancient completion still
@@ -132,7 +132,6 @@ def test_archived_comes_only_from_a_stored_capture_row_regardless_of_match_age()
     assert view.state == Availability.ARCHIVED
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 @pytest.mark.parametrize(
     "status",
     [
@@ -164,7 +163,6 @@ def test_a_capture_row_that_is_not_stored_does_not_yield_archived(
 # --- `obtainable` / `expired`: arithmetic over the match's completion time ----------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> None:
     """R8's table: "obtainable now — the match completed inside the retention window." No capture
     row at all is the ordinary shape for a third party this service never automatically captures
@@ -178,7 +176,6 @@ def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> 
     assert view.state == Availability.OBTAINABLE
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 def test_expired_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> None:
     """R8's table: "expired — the match completed outside it", and the 2026-08-29 amendment: "the
     derivation stays conservative and unchanged: a match older than the shortest credible window
@@ -195,7 +192,6 @@ def test_expired_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> N
 # --- `never_recorded`: the one state that needs evidence rather than arithmetic (R8) ------------
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 def test_never_recorded_from_explicit_evidence_even_inside_the_window() -> None:
     """R8: "an analysis fetch that 404s inside the window records it for a third party's" — a
     match that is otherwise well inside the window still reports `never_recorded`, not
@@ -211,7 +207,6 @@ def test_never_recorded_from_explicit_evidence_even_inside_the_window() -> None:
     assert view.state == Availability.NEVER_RECORDED
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 def test_never_recorded_from_the_callers_own_unavailable_capture_row() -> None:
     """R8: "1 records exactly this outcome on `replay_captures` for a user's own matches" —
     `CaptureStatus.UNAVAILABLE` is 001's own recorded 404 for the point of view this service tried
@@ -232,7 +227,6 @@ def test_never_recorded_from_the_callers_own_unavailable_capture_row() -> None:
 # --- The `retained_recordings` refusal, asserted behaviourally and structurally -----------------
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter(
     db_session: AsyncSession,
 ) -> None:
@@ -252,6 +246,18 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
     """
     from aoe2stats_api.availability import Availability, derive_availability
 
+    # `retained_recordings.game_id` is a foreign key to `matches.game_id` (data-model.md), so a row
+    # for `_GAME_ID` must exist first — mirroring `test_match_detail.py`'s own `_seed_match`, kept
+    # inline here since this file's only other use of the database is this one test.
+    db_session.add(
+        Match(
+            game_id=_GAME_ID,
+            leaderboard_id=3,
+            completed_at=_ANCIENT_COMPLETION,
+            source="relic",
+            raw_payload={"matchHistoryId": _GAME_ID},
+        )
+    )
     db_session.add(
         RetainedRecording(
             game_id=_GAME_ID,
@@ -280,7 +286,6 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
 # --- `obtainable_until`: null in every state while the window is unresolved (FR-024, 2026-08-29) --
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 @pytest.mark.parametrize(
     ("completed_at", "capture", "recorded_404"),
     [
@@ -312,7 +317,6 @@ def test_obtainable_until_is_null_in_every_state_while_the_window_is_unresolved(
 # --- The assertion this file exists for: no outbound request, ever ------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")
 async def test_deriving_availability_issues_no_outbound_request(db_session: AsyncSession) -> None:
     """T336's own task text: "a pure function over rows and a clock — no provider, no I/O". Every
     provider this codebase owns writes one `provider_calls` row per attempt through its shared
