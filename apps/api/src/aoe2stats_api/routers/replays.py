@@ -73,15 +73,20 @@ most, since it was reaching the source before this fix — no outbound call to `
 
 Per-state behaviour (`contracts/http-api.md`):
 
-- `archived` — `derive_availability` answers this only from a `replay_captures` row in `stored`,
+- `archived` — `derive_availability` itself answers this from a `replay_captures` row in `stored`
   regardless of who owns it (FR-026's "own point of view" is not a parameter `derive_availability`
-  takes — module docstring, `availability.py`). **Ownership is checked here, in this branch, before
-  anything is served**: FR-026 is explicit that `archived` is "the caller's own captured replay,
-  and only that", and `test_no_public_directory.py`'s own property-4 test seeds a *stranger's*
-  `stored` capture, old enough that the source has long since lost it too, and still requires a
-  `404 not_found` — never `expired`, which would itself disclose that an archive exists for someone
-  else's account. A caller who owns it gets the identical 302-to-a-signed-URL-and-log shape 001's
-  own route above already implements.
+  takes — module docstring, `availability.py`); this router is what applies FR-026's ownership
+  requirement, and it does so *before* that row ever reaches `derive_availability`.
+  `_capture_for_point_of_view` filters a `stored` row the caller does not own out to `None`
+  (B1 remediation, its own docstring), so `derive_availability` falls through to the ordinary age
+  comparison for it instead — `archived` therefore cannot be reached here for a capture the caller
+  does not own, and the `assert caller_owns_profile` in this branch below exists only to fail loudly
+  if that ever stops being true. FR-026 is explicit that `archived` is "the caller's own captured
+  replay, and only that", and `test_no_public_directory.py`'s own property-4 test seeds a
+  *stranger's* `stored` capture, old enough that the source has long since lost it too, and still
+  requires a `404 not_found` — never `expired`, which would itself disclose that an archive exists
+  for someone else's account. A caller who owns it gets the identical 302-to-a-signed-URL-and-log
+  shape 001's own route above already implements.
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
@@ -102,31 +107,38 @@ exists). `replay_fetch_misses` is read-only evidence with none of `replay_captur
 `_has_recorded_fetch_miss` below feeds `derive_availability`'s own `recorded_404` parameter, and
 `_record_fetch_miss` writes it, once, the moment a point of view offered as `obtainable` answers
 404 at fetch time — so the identical next request reads `never_recorded` from the row instead of
-probing the source a second time. **This table is not named in `data-model.md`'s "five new
-tables"; that omission is reported in this task's own hand-back for the artifact to be amended by
-hand alongside the code, per this repository's own rule that spec-kit artifacts never drift from
-what actually shipped.**
+probing the source a second time. **`data-model.md` now names this table explicitly as the
+sixth (amended 2026-08-29, carrying its own section) — this table is no longer an
+undocumented gap between the code and the artifact.**
 
-**Every write this route makes that must survive a rollback answers to its own short-lived
-session, never `db_session`** (`_audit_session` below) — `deps.py`'s `session_scope` rolls the
-whole request's transaction back the moment any exception (including `APIError`) propagates. Four
-of this route's writes go through it, for two different reasons. Three only ever run on a path
-that already ends in an error and would otherwise be discarded along with it: the `rate_limited`
-alert (FR-028's second half) precedes a `429`, the fetch-miss row precedes a `404`, and the
-`provider_calls` row (`_aoems_call_sink`) is written mid-fetch, before either outcome is known.
-Mirrors `routers/players.py`'s `_relic_call_sink`, which the same reasoning already governs there.
+**Every write this route makes mid-request, after other work has already happened on `db_session`,
+answers to its own short-lived session instead, never `db_session`** (`_audit_session` below) —
+`deps.py`'s `session_scope` rolls the whole request's transaction back the moment any exception
+(including `APIError`) propagates. Three of this route's writes go through it, for the identical
+reason: each only ever runs on a path that already ends in an error and would otherwise be
+discarded along with it. The `rate_limited` alert (FR-028's second half) precedes a `429`, the
+fetch-miss row precedes a `404`, and the `provider_calls` row (`_aoems_call_sink`) is written
+mid-fetch, before either outcome is known. Mirrors `routers/players.py`'s `_relic_call_sink`, which
+the same reasoning already governs there.
 
-The fourth, the rate-limit counter itself (`_apply_replay_download_rate_limit`), is different in
-kind: `check_and_increment`'s own docstring is explicit that it does not commit and leaves that to
-its caller, and every refusal this route raises is an `APIError` — `not_found`, `never_recorded`,
-`expired`, the source's own `429`, `expired_since_page_load`, and the limiter's own `429` below.
-Before this was fixed, the caller deciding when that increment became durable was `db_session`, so
-`session_scope` rolled it back on every one of those paths and left only the two success shapes
-(`archived`'s 302, `obtainable`'s 200) actually metered — the boundary-race path in particular kept
-making a real outbound call to `aoe.ms` while its own accounting was discarded, unmetered
-third-party traffic driven by user input (constitution I). `_apply_replay_download_rate_limit` now
-commits its own increment through `_audit_session` immediately, before this route does anything
-else with the request, so it survives every outcome rather than only the ones that end well.
+The rate-limit counter itself (`_apply_replay_download_rate_limit`) needs the identical durability
+but gets it a different way, on `db_session` directly (M11 remediation, 2026-08-29): `check_and_
+increment`'s own docstring is explicit that it does not commit and leaves that to its caller, and
+every refusal this route raises is an `APIError` — `not_found`, `never_recorded`, `expired`, the
+source's own `429`, `expired_since_page_load`, and the limiter's own `429` below. Before this was
+first fixed, the caller deciding when that increment became durable was `db_session`, so `session_
+scope` rolled it back on every one of those paths and left only the two success shapes (`archived`'s
+302, `obtainable`'s 200) actually metered — the boundary-race path in particular kept making a real
+outbound call to `aoe.ms` while its own accounting was discarded, unmetered third-party traffic
+driven by user input (constitution I). `_apply_replay_download_rate_limit` now commits its own
+increment on `db_session` itself, immediately, as the very first thing this route does inside its
+`try` block — before any other read or write on `db_session` that a later rollback would need to
+undo — so it survives every outcome rather than only the ones that end well, at the cost of zero
+extra database connections rather than one per call. It ran through `_audit_session` briefly
+between these two fixes; that traded a correctness bug (the increment discarded) for a cost one
+(a second Neon connection, concurrent with `db_session`'s own, on every single call to this route —
+a free-tier hosting concern, `docs/adr/0002-hosting.md`) rather than eliminating it, which
+`_apply_replay_download_rate_limit`'s own docstring now explains in full.
 
 **The rate limit (FR-028's first half, R10) applies before anything else this route does**, in its
 own `replay_download` bucket (`data-model.md`'s `rate_limit_counters` section) — `contracts/
@@ -155,8 +167,14 @@ caller gets as JSON; `download_replay_point_of_view` below is what translates th
 `303` for a browser instead of letting it become the response body. The `303` carries the failing
 `code` (and `retry_after`, where the error has one) as query parameters on the match page's own URL,
 which `apps/web`'s `MatchDetailContainer` reads once on load and clears (`replay-availability.md`
-§5) — never the object-store signed URL redirect's own CORS problem, since this is a same-origin,
-relative redirect the browser follows exactly as it already follows any other same-tab navigation.
+§5). **Rooted at `settings.public_base_url`, absolute, never a relative `/matches/{game_id}`**
+(B1/B2 remediation, 2026-08-29, `_match_page_redirect_for_download_failure`'s own docstring): a
+relative redirect only ever worked because `vercel.json`'s `/api/(.*)` rewrite collapses the API
+and the SPA onto one origin in production, and this repository's own documented local topology
+(`.env.example`) already puts them on two — the object-store signed URL redirect's own CORS
+problem does not arise here regardless, since the browser is never asked to read this response's
+body across an origin, only to follow the `Location` header, exactly as it already follows any
+other cross-origin redirect a top-level navigation reaches.
 """
 
 from __future__ import annotations
@@ -178,6 +196,7 @@ from aoe2stats_api.availability import Availability, derive_availability
 from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.ratelimit import check_and_increment
+from aoe2stats_api.settings import Settings
 from aoe2stats_core.alerting import AlertRecord
 from aoe2stats_ingester.ratelimit import (
     build_aoems_rate_limiter,
@@ -474,24 +493,43 @@ async def _match_completed_at_for_participant(
 
 
 async def _capture_for_point_of_view(
-    db_session: AsyncSession, *, game_id: int, profile_id: int
+    db_session: AsyncSession, *, game_id: int, profile_id: int, caller_owns_profile: bool
 ) -> ReplayCapture | None:
-    """The `replay_captures` row for this exact `(game_id, profile_id)` pair, whoever it belongs
-    to — `derive_availability` (T336) needs it regardless of ownership (its own module docstring:
-    "no session and no query... its parameter list carries nothing that names it either"); this
-    route is what applies FR-026's ownership check, in the `archived` branch below, before serving
-    anything from it."""
+    """The `replay_captures` row for this exact `(game_id, profile_id)` pair — but a `stored` row
+    the caller does not own is treated as if it did not exist, mirroring `routers/matches.py`'s own
+    `_replay_by_profile`, which excludes exactly this same shape from `capture_by_profile` before
+    `derive_availability` ever sees it. `derive_availability` (T336) then falls through to the
+    ordinary age comparison for that pair instead of answering `archived`, since FR-026 is "the
+    caller's own captured replay, and only that" — never "whoever it belongs to".
+
+    Before this fix (B1), this function returned the row regardless of ownership and left the check
+    to the `archived` branch below, which produced two violations at once: a stranger's `stored`
+    capture made `derive_availability` answer `archived` while the identical point of view with no
+    capture at all answered `obtainable`, so a caller who clicked the `obtainable` button the match
+    page (`routers/matches.py`, already ownership-filtered) had offered them landed here and got
+    `not_found` instead of a fetch (FR-025's "MUST NOT present an unobtainable download as an
+    action that then fails"); and, independently, `not_found` for that one pair shape became an
+    account-existence oracle (FR-045) — the identical `(game_id, profile_id)` answers `not_found`
+    only when a stranger's account happens to hold a `stored` capture for it, `expired`/
+    `expired_since_page_load`/`200` otherwise. Filtering here removes the second query this route
+    used to answer differently from the first, rather than reconciling the two."""
     result = await db_session.execute(
         select(ReplayCapture).where(
             ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
         )
     )
-    return result.scalar_one_or_none()
+    capture = result.scalar_one_or_none()
+    if capture is not None and capture.status is CaptureStatus.STORED and not caller_owns_profile:
+        return None
+    return capture
 
 
 async def _caller_owns_profile(db_session: AsyncSession, *, profile_id: int, user_id: Any) -> bool:
     """Whether `user_id` holds an active `profile_links` row for `profile_id` — the ownership test
-    FR-026 requires before an `archived` point of view may be served (module docstring)."""
+    FR-026 requires before an `archived` point of view may be served (module docstring). Called
+    once, before `_capture_for_point_of_view`, so a stranger's `stored` capture is filtered out of
+    `capture` before `derive_availability` ever runs, rather than checked only after `derive_
+    availability` has already answered `archived` for it (B1 remediation)."""
     result = await db_session.execute(
         select(ProfileLink.profile_id).where(
             ProfileLink.profile_id == profile_id,
@@ -651,28 +689,38 @@ async def _apply_replay_download_rate_limit(
     `rate_limited` error the moment this call's own increment exceeds `limit` (module docstring's
     "The rate limit ... applies before anything else" paragraph).
 
-    Committed through `_audit_session`, immediately, unconditionally — never `db_session`.
-    `check_and_increment`'s own docstring is explicit that it does not commit and leaves that to
-    its caller; every refusal this route raises is an `APIError`, and `deps.py`'s `session_scope`
-    rolls `db_session`'s whole transaction back the moment one propagates. Passing `db_session`
-    itself here would silently discard the increment on every refusal — `not_found`,
+    Committed on `db_session` itself, immediately — **not** `_audit_session` (M11 remediation,
+    2026-08-29). `check_and_increment`'s own docstring is explicit that it does not commit and
+    leaves that to its caller; every refusal this route raises is an `APIError`, and `deps.py`'s
+    `session_scope` rolls `db_session`'s whole transaction back the moment one propagates. Not
+    committing at all here would silently discard the increment on every refusal — `not_found`,
     `never_recorded`, `expired`, the source's own `429`, `expired_since_page_load`, and this
     function's own `429` below — leaving only the two success shapes actually metered, which is
-    exactly the bug this function exists to not have. `_audit_session` already exists in this file
-    for the identical "must survive `db_session`'s own rollback" reason (three writes below); reused
-    here rather than calling `db_session.commit()` mid-request, so this route keeps exactly one
-    mechanism that decides "does this write survive a rollback", instead of splitting that decision
-    between two.
+    exactly the bug this function exists to not have.
+
+    `_audit_session` is what the other three writes below use for the identical durability need,
+    but each of those runs mid-request, after other reads and writes this route has already made on
+    `db_session` — opening a second, independent connection there is the only way to commit just
+    that one write without also committing (or needing to roll back) everything `db_session` is
+    mid-way through. This call is different: it is the very first thing `download_replay_point_of_
+    view` does inside its `try` block, before any other query, so `db_session` carries nothing else
+    yet to commit early. `db_session.commit()` here therefore commits only this increment — real,
+    durable, survives every later rollback exactly as `_audit_session` would — for the cost of zero
+    extra connections rather than one per call (`docs/adr/0002-hosting.md`: free-tier Neon, no
+    connection pool of this process's own, `build_engine`'s own `NullPool`).
+    `expire_on_commit=False` (`build_session_factory`) is what makes this safe: `session_row`,
+    already loaded above, stays readable after this commit with no implicit re-fetch, which an
+    `AsyncSession` would otherwise need an `await` for and could not get from a plain attribute
+    access.
     """
-    async with _audit_session(db_session) as audit_session:
-        outcome = await check_and_increment(
-            audit_session,
-            user_id=user_id,
-            bucket=_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET,
-            limit=limit,
-            window_seconds=_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS,
-        )
-        await audit_session.commit()
+    outcome = await check_and_increment(
+        db_session,
+        user_id=user_id,
+        bucket=_REPLAY_DOWNLOAD_RATE_LIMIT_BUCKET,
+        limit=limit,
+        window_seconds=_REPLAY_DOWNLOAD_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    await db_session.commit()
 
     if not outcome.allowed:
         raise APIError(
@@ -706,22 +754,33 @@ def _is_browser_navigation(request: Request) -> bool:
 
 
 def _match_page_redirect_for_download_failure(
-    *, game_id: int, profile_id: int, error: APIError
+    *, settings: Settings, game_id: int, profile_id: int, error: APIError
 ) -> RedirectResponse:
     """The `303` a browser navigation gets instead of `error`'s own JSON body (module docstring's
-    closing paragraph) — a same-origin, relative redirect back to `/matches/{game_id}`, the same
-    match page `apps/web/src/routes/matches.$gameId.tsx` already renders, carrying the failure as
-    query parameters `MatchDetailContainer` reads once on load and then clears
-    (`replay-availability.md` §5): `replay_error` is `error.code` verbatim — the identical string
-    an API caller reads from the JSON envelope's own `code` field, never a restatement of it —
-    `replay_error_profile_id` names which row the failure belongs to (this route is reachable for
+    closing paragraph) — an absolute redirect back to `{settings.public_base_url}/matches/
+    {game_id}`, the same match page `apps/web/src/routes/matches.$gameId.tsx` already renders,
+    carrying the failure as query parameters `MatchDetailContainer` reads once on load and then
+    clears (`replay-availability.md` §5): `replay_error` is `error.code` verbatim — the identical
+    string an API caller reads from the JSON envelope's own `code` field, never a restatement of it
+    — `replay_error_profile_id` names which row the failure belongs to (this route is reachable for
     any participant's point of view, never only the caller's own), and
     `replay_error_retry_after` is carried only when `error.detail` has one
     (`_apply_replay_download_rate_limit`'s own `{"retry_after": ...}`) —
     `_source_rate_limited_error` raises the identical `rate_limited` code with no such figure to
     give, and the client falls back to the generic failed-request copy for that case
     (`replay-availability.md` §5's own "never a rounded or invented figure" rule, extended to
-    "never an absent one either")."""
+    "never an absent one either").
+
+    **Absolute, rooted at `settings.public_base_url` — never a relative `/matches/{game_id}`
+    (B2 remediation).** `PUBLIC_BASE_URL` is this service's own SPA origin (`routers/auth.py` uses
+    it for every other browser redirect back to the SPA, `settings.py`'s own field), and
+    `.env.example`'s documented local topology puts the API and the SPA on different origins
+    (`http://localhost:5173` for the SPA, a different port for the API) — a relative redirect from
+    an API route lands on the API's own origin and 404s there. It only ever worked in production
+    because `vercel.json`'s `/api/(.*)` rewrite collapses the two origins into one; Phase 2
+    (OVH VPS + Docker Compose, `docs/adr/0002-hosting.md`) carries no such rewrite, and nothing in
+    this codebase may depend on running specifically on Vercel or specifically on a VPS
+    (constitution)."""
     params: dict[str, str] = {
         "replay_error": error.code,
         "replay_error_profile_id": str(profile_id),
@@ -729,7 +788,8 @@ def _match_page_redirect_for_download_failure(
     retry_after = error.detail.get("retry_after") if error.detail else None
     if retry_after is not None:
         params["replay_error_retry_after"] = str(retry_after)
-    return RedirectResponse(url=f"/matches/{game_id}?{urlencode(params)}", status_code=303)
+    location = f"{settings.public_base_url}/matches/{game_id}?{urlencode(params)}"
+    return RedirectResponse(url=location, status_code=303)
 
 
 @router.get("/matches/{game_id}/replay/{profile_id}")
@@ -770,8 +830,14 @@ async def download_replay_point_of_view(
         completed_at = await _match_completed_at_for_participant(
             db_session, game_id=game_id, profile_id=profile_id
         )
+        caller_owns_profile = await _caller_owns_profile(
+            db_session, profile_id=profile_id, user_id=session_row.user_id
+        )
         capture = await _capture_for_point_of_view(
-            db_session, game_id=game_id, profile_id=profile_id
+            db_session,
+            game_id=game_id,
+            profile_id=profile_id,
+            caller_owns_profile=caller_owns_profile,
         )
         recorded_404 = await _has_recorded_fetch_miss(
             db_session, game_id=game_id, profile_id=profile_id
@@ -786,10 +852,13 @@ async def download_replay_point_of_view(
 
         if availability.state is Availability.ARCHIVED:
             assert capture is not None and capture.object_key is not None
-            if not await _caller_owns_profile(
-                db_session, profile_id=profile_id, user_id=session_row.user_id
-            ):
-                raise _replay_not_found()
+            # `caller_owns_profile` gates `_capture_for_point_of_view` above, not this branch: a
+            # `stored` capture the caller does not own was already filtered out of `capture` before
+            # `derive_availability` ran, so `ARCHIVED` cannot be reached here for one — this assert
+            # is redundant-by-construction, kept so a future change to the filtering above fails
+            # loudly here rather than silently serving a stranger's replay (B1 remediation,
+            # `_capture_for_point_of_view`'s own docstring).
+            assert caller_owns_profile
             signed_url = await object_store.signed_get_url(capture.object_key)
             db_session.add(
                 ReplayAccessLog(
@@ -827,6 +896,6 @@ async def download_replay_point_of_view(
     except APIError as error:
         if is_browser_navigation:
             return _match_page_redirect_for_download_failure(
-                game_id=game_id, profile_id=profile_id, error=error
+                settings=settings, game_id=game_id, profile_id=profile_id, error=error
             )
         raise

@@ -13,9 +13,10 @@ and store a third party's recording as a direct consequence of a download click 
 FR-012 and FR-027), and any terminal status would permanently block the real capture that pipeline
 owes that profile's owner if they later link their account (`discover.py`'s `_enqueue_capture`,
 `ON CONFLICT DO NOTHING`). See `ReplayFetchMiss`'s own docstring in
-`packages/storage/src/aoe2stats_storage/models.py` for the full reasoning. This is reported in the
-implementation's hand-back for `data-model.md` to be amended by hand alongside it, per this
-repository's own rule that spec-kit artifacts are never left to drift from the code they describe.
+`packages/storage/src/aoe2stats_storage/models.py` for the full reasoning. `data-model.md` has since
+been amended by hand to name this as the sixth table (it said five) and now carries this table's
+own "Evidence of a missing recording" section, per this repository's own rule that spec-kit
+artifacts are never left to drift from the code they describe.
 """
 
 from __future__ import annotations

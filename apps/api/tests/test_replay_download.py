@@ -334,6 +334,12 @@ _T335_BROWSER_EXPIRED_GAME_ID = 850_100_011
 _T335_BROWSER_RATE_LIMIT_GAME_ID = 850_100_012
 _T335_BROWSER_BOUNDARY_RACE_GAME_ID = 850_100_013
 
+#: L13 remediation: `_is_browser_navigation`'s `Accept: text/html` fallback (no `Sec-Fetch-Mode`
+#: header at all) and the negative case that matters most — a same-origin `fetch` sends `Sec-Fetch-
+#: Mode: cors`, never `navigate`, and must get JSON, not a redirect.
+_T335_ACCEPT_HTML_FALLBACK_GAME_ID = 850_100_014
+_T335_CORS_FETCH_GAME_ID = 850_100_015
+
 #: FR-024, amended 2026-08-29 (`research.md` R8): a match old enough to be `expired` under either
 #: the ~31-day rolling reading or the contradicted six-month epoch reading — the derivation stays
 #: conservative under either, so a match this old renders `expired` whichever the open question
@@ -1025,6 +1031,24 @@ def _browser_navigation_headers() -> dict[str, str]:
     return {"Sec-Fetch-Mode": "navigate"}
 
 
+def _assert_absolute_match_page_redirect(location: str, *, game_id: int) -> None:
+    """B2 remediation: the `303` this route answers a browser navigation with must be an absolute
+    URL rooted at `settings.public_base_url`, never a relative `/matches/{game_id}` — a relative
+    redirect from an API route lands on the API's own origin under this repository's own documented
+    local topology (`.env.example`'s `PUBLIC_BASE_URL=http://localhost:5173`, a different origin
+    from the API), and only ever worked in production because `vercel.json`'s rewrite collapses the
+    two. `urlsplit(location).path == f"/matches/{game_id}"` alone (the three assertions this
+    remediation replaces) passes for either shape, which is why the bug survived them."""
+    public_base_url = get_settings().public_base_url
+    assert location.startswith(f"{public_base_url}/matches/{game_id}?"), (
+        f"expected an absolute redirect rooted at {public_base_url!r}, got {location!r}"
+    )
+    split = urlsplit(location)
+    assert split.scheme and split.netloc, (
+        f"the redirect must be absolute, never a relative /matches/{game_id} path: {location!r}"
+    )
+
+
 async def test_expired_point_of_view_redirects_a_browser_to_the_match_page_with_the_code(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -1057,7 +1081,9 @@ async def test_expired_point_of_view_redirects_a_browser_to_the_match_page_with_
     assert browser_response.status_code == 303, (
         f"Got {browser_response.status_code}: {browser_response.text}"
     )
-    split = urlsplit(browser_response.headers["location"])
+    location = browser_response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
     assert split.path == f"/matches/{game_id}"
     query = parse_qs(split.query)
     assert query["replay_error"] == ["expired"]
@@ -1112,7 +1138,9 @@ async def test_rate_limited_download_redirects_a_browser_with_retry_after(
     )
 
     assert limited.status_code == 303, f"Got {limited.status_code}: {limited.text}"
-    split = urlsplit(limited.headers["location"])
+    location = limited.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
     assert split.path == f"/matches/{game_id}"
     query = parse_qs(split.query)
     assert query["replay_error"] == ["rate_limited"]
@@ -1151,8 +1179,81 @@ async def test_boundary_race_redirects_a_browser_with_the_distinguishing_code(
     )
 
     assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
-    split = urlsplit(response.headers["location"])
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
     assert split.path == f"/matches/{game_id}"
     query = parse_qs(split.query)
     assert query["replay_error"] == ["expired_since_page_load"]
     assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+
+async def test_expired_point_of_view_with_accept_html_and_no_sec_fetch_mode_redirects(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """L13: `_is_browser_navigation`'s `Accept: text/html` fallback, exercised for real — a request
+    that carries no `Sec-Fetch-Mode` header at all (a browser, or a network layer in front of one,
+    that strips or predates the Fetch Metadata header) but still asks for `text/html` first, exactly
+    as a plain navigation always does, must be treated as a browser navigation and get the `303`
+    redirect, not the raw JSON body. The three tests above this remediation only ever exercised the
+    primary `Sec-Fetch-Mode: navigate` signal or no headers at all; neither reaches this branch."""
+    game_id = _T335_ACCEPT_HTML_FALLBACK_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="AcceptHtmlFallback"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers={"Accept": "text/html,application/xhtml+xml"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, f"Got {response.status_code}: {response.text}"
+    location = response.headers["location"]
+    _assert_absolute_match_page_redirect(location, game_id=game_id)
+    split = urlsplit(location)
+    assert split.path == f"/matches/{game_id}"
+    query = parse_qs(split.query)
+    assert query["replay_error"] == ["expired"]
+    assert query["replay_error_profile_id"] == [str(_T335_PARTICIPANT_A_PROFILE_ID)]
+
+
+async def test_expired_point_of_view_with_sec_fetch_mode_cors_answers_json_never_a_redirect(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """L13's negative case, the one that matters most: a same-origin `fetch()` call sends
+    `Sec-Fetch-Mode: cors`, never `navigate` — the exact call `apps/web/src/lib/api.ts`'s
+    `apiRequest` would make against this route if it ever did (it does not; this route is only ever
+    reached by `window.location.assign`), and the shape any other legitimate `fetch`-based caller on
+    the same origin would send. `_is_browser_navigation` must read this as *not* a browser
+    navigation — the primary `Sec-Fetch-Mode` signal is present and answers the question directly,
+    so the `Accept: text/html` fallback below it is never consulted — and this route must answer the
+    plain JSON `404` an API caller gets, never the `303`."""
+    game_id = _T335_CORS_FETCH_GAME_ID
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="CorsFetch"
+    )
+    await _seed_open_match(
+        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    )
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}",
+        headers={"Sec-Fetch-Mode": "cors", "Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert "location" not in response.headers
+    assert response.json()["error"]["code"] == "expired"

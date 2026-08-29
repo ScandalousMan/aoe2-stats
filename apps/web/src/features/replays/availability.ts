@@ -34,7 +34,15 @@ const RATE_LIMITED_CODE = 'rate_limited'
  *   availability.py`): the row was `obtainable` a moment ago, and that is the fact this one
  *   render states, once.
  * - `rate_limited` renders the row's own `Callout` in its rate-limit wording, carrying the exact
- *   `retryAfterSeconds` the server sent (never rounded or invented).
+ *   `retryAfterSeconds` the server sent (never rounded or invented) — **only when the server sent
+ *   one**. `_source_rate_limited_error` (`replays.py`) raises the identical `rate_limited` code
+ *   with no `retry_after` at all (the AoE2 source's own `429` carries no such figure to relay), so
+ *   a `rate_limited` failure with `retryAfterSeconds === undefined` falls through to the generic
+ *   "could not start" `Callout` below instead — `ReplayAvailabilityList`'s own contract documents
+ *   `retryAfterSeconds` as required once `downloadState === 'rate_limited'`
+ *   (M9, 2026-08-29): entering that state without the figure it documents would be honoured only
+ *   by accident, on the strength of the component's own null-check silently choosing the right
+ *   words rather than this mapping choosing them on purpose.
  * - every other code (`never_recorded`, `expired`, `not_found`) renders the generic
  *   "could not start that download" `Callout` — the request never reached a state worth a more
  *   specific message of its own.
@@ -58,7 +66,11 @@ export function toReplayAvailabilityRows(
     }
     const rowFailure = failure && failure.profileId === id ? failure : undefined
     const isBoundaryRace = rowFailure?.code === BOUNDARY_RACE_CODE
-    const isRateLimited = rowFailure?.code === RATE_LIMITED_CODE
+    // M9: `rate_limited` only when the server actually sent a figure to show — see this
+    // function's own docstring. Without one, `rowFailure` still exists and still isn't the
+    // boundary race, so it falls through to the generic `'error'` branch below on its own.
+    const isRateLimited =
+      rowFailure?.code === RATE_LIMITED_CODE && rowFailure.retryAfterSeconds !== undefined
 
     return [
       {

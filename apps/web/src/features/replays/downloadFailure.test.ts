@@ -53,6 +53,23 @@ describe('parseReplayDownloadFailure', () => {
       retryAfterSeconds: undefined,
     })
   })
+
+  // L15 remediation (2026-08-29): `replay_error` is read straight off the URL, unauthenticated —
+  // a caller can type any string. Only the fixed set `download_replay_point_of_view`
+  // (`apps/api/.../routers/replays.py`) can actually raise through this redirect may drive an
+  // alert on the page; anything else is ignored exactly like an ordinary visit.
+
+  it('ignores a code outside the fixed set this route can actually raise', () => {
+    expect(
+      parseReplayDownloadFailure('?replay_error=totally_bogus&replay_error_profile_id=11'),
+    ).toBeNull()
+  })
+
+  it('ignores a code from a different feature’s error-code table (contracts/http-api.md)', () => {
+    expect(
+      parseReplayDownloadFailure('?replay_error=sign_in_required&replay_error_profile_id=11'),
+    ).toBeNull()
+  })
 })
 
 describe('searchWithoutReplayDownloadFailure', () => {

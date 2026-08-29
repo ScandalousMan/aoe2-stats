@@ -11,8 +11,9 @@
 ## Context
 
 Feature 001 makes the service useful to the person signed in: their profile, their ratings, their
-matches, their replays archived before the ~31-day window closes. Everything it presents is about
-one person, and everything it captures belongs to that person.
+matches, their replays archived before the source's own retention window closes
+(`docs/data-sources.md` §2). Everything it presents is about one person, and everything it captures
+belongs to that person.
 
 This feature opens the product to **everyone else**. A player looks up an opponent, a rival or a
 well-known name, follows them, reads their matches, and — the two things 001 deliberately deferred —
@@ -24,27 +25,29 @@ directions:
 - The replay endpoint has **no ownership check**. Any `(gameId, profileId)` pair that is a real
   participant pair answers `200`. Anyone's recorded game, from anyone's point of view, is public
   while it exists.
-- It exists for approximately **31 days**. After that it answers `404` for everyone, forever.
+- It exists only for a limited window the source itself controls, measured in `docs/data-sources.md`
+  §2 — and, as of 2026-08-28, recorded there as contradicted and unresolved rather than settled.
+  After that window closes it answers `404` for everyone, forever.
 
-So third-party recorded games are freely readable *and* permanently perishable, and this service
+So third-party recorded games are freely readable _and_ permanently perishable, and this service
 archives none of them. That is not an oversight — it is what constitution IX (only the linked user's
 own point of view is ever captured automatically) and principle I (the capture budget belongs to
 linked users) require. The consequence is the central design fact of this feature: **for the
-signed-in user's own matches these two CTAs work forever; for everyone else's they work for about a
-month and then disappear.** Every requirement below either follows from that or exists to make it
-honest to the user rather than a broken button.
+signed-in user's own matches these two CTAs work forever; for everyone else's they work only until
+the source's own retention window closes, and then disappear.** Every requirement below either
+follows from that or exists to make it honest to the user rather than a broken button.
 
 **Amended 2026-08-25** (constitution IX 4.0.0). The paragraph above quoted IX as "we capture only the
 consenting user's point of view", and gave principle I's capture budget to "consenting users".
 Neither phrase is in the constitution any more: the opt-in gate was retired for legitimate interest
 (Art. 6-1-f) with a mandatory right to object (Art. 21), so a linked profile is archived by default
 and a user who has answered nothing is ingested in full. The quotation is corrected in place rather
-than footnoted, because a rule *attributed to the constitution* that the constitution does not
+than footnoted, because a rule _attributed to the constitution_ that the constitution does not
 contain misleads in a way a note beside it cannot repair. **Nothing this feature decided changes**:
 what the paragraph rests on is the **point-of-view limit**, which survived 4.0.0 untouched and is now
 IX's real constraint on automatic capture (FR-012, 001 FR-016).
 
-The same substitution governs the narrative below wherever it spoke of 001 capturing for *consenting*
+The same substitution governs the narrative below wherever it spoke of 001 capturing for _consenting_
 users. Requirement text carries its own dated notes (FR-012, FR-048), and "Clarifications / Session
 2026-08-23" is left exactly as it was decided that day — it is anchored to IX 2.0.0 and reads
 correctly against that version, which is what a frozen record is for.
@@ -58,7 +61,8 @@ below and the answer is no. The second turned out to be the real question, and i
 other way (Q2, session 2026-08-23).
 
 **1. The nightly cron and the object store are not analysis infrastructure.** They exist in 001 to
-beat the ~31-day purge for linked users, mandated by constitution principle I. They are already
+beat the source's own purge window for linked users (`docs/data-sources.md` §2), mandated by
+constitution principle I. They are already
 built, they are not up for removal, and this feature neither needs nor extends them. The real
 question is not "does analysis need them" but "does analysis need **more** of them". For the cron,
 the answer is a flat no: **this feature adds no scheduled job at all.** Nothing is fetched on a
@@ -87,8 +91,8 @@ copy.
 whole cost sits.** Discarding them after the parse looks free and is not. Because this service
 archives no third-party recording under 001, discarding would mean:
 
-- The analyse CTA on a third-party match works for ~31 days after that match, and then never again —
-  acceptable, and honestly displayable.
+- The analyse CTA on a third-party match works only until the source's own retention window closes
+  (`docs/data-sources.md` §2), and then never again — acceptable, and honestly displayable.
 - **An analysis published from a discarded stream can never be re-derived.** If the parser later
   improves, or is found wrong, that result can be deleted but not corrected. Every viewer of that
   match sees a conclusion that nothing can check. Constitution IV forbids exactly this: a derived
@@ -99,20 +103,21 @@ archives no third-party recording under 001, discarding would mean:
 alternative was weighed and taken (Q2, session 2026-08-23): a recording that is analysed **is**
 retained. The reason is principle IV. The analysis is shown to every viewer of that match, and a
 published conclusion that can never be checked or corrected is not a conclusion this project may
-publish — and after ~31 days there is nothing left to check it against. The three costs do not
+publish — and once the source's own retention window closes (`docs/data-sources.md` §2) there is
+nothing left to check it against. The three costs do not
 disappear because the decision went the other way; each becomes something the requirements must
 control:
 
-- **Privacy.** Constitution IX was amended for this (2.0.0, 2026-08-23). It now separates *automatic
-  capture* — still the consenting user's own point of view, still never a side effect of browsing —
-  from *user-initiated retention of an already-public recording*. What that costs is a new category
+- **Privacy.** Constitution IX was amended for this (2.0.0, 2026-08-23). It now separates _automatic
+  capture_ — still the consenting user's own point of view, still never a side effect of browsing —
+  from _user-initiated retention of an already-public recording_. What that costs is a new category
   of personal data, so FR-045 puts it in the processing register with its own legal basis, and
   FR-046 puts it inside the third-party objection route and erasure — which, as amended 2026-08-24,
   reach every identifier this service holds about a person appearing in a recording and leave the
   recording itself intact. **Amended 2026-08-25** (IX 4.0.0), against the 2.0.0 text this bullet
-  records: automatic capture is the *linked* user's own point of view, consent having been retired,
-  and "never a side effect of browsing" no longer holds for match *metadata* — FR-011 records a third
-  party's public match data precisely because somebody browsed. It still holds for *recordings*,
+  records: automatic capture is the _linked_ user's own point of view, consent having been retired,
+  and "never a side effect of browsing" no longer holds for match _metadata_ — FR-011 records a third
+  party's public match data precisely because somebody browsed. It still holds for _recordings_,
   which is the half that mattered and the half FR-012 enforces.
 - **Growth driven by clicking rather than by playing.** Real, and now constitutionally required to be
   bounded: FR-047 caps it and rate-limits it. Storage volume must remain a function of deliberate
@@ -145,7 +150,7 @@ for that and for nothing else.
   > specified and built after this one** — it depends on this feature's extraction, on the recordings
   > FR-033 retains, and on a way to verify a derived number against the game itself. Recomputing the
   > analyses published in the meantime costs nothing and reaches no source, which is exactly what
-  > FR-033 and FR-041 were decided for. Age-up times were also narrowed to age-up *commands*, for the
+  > FR-033 and FR-041 were decided for. Age-up times were also narrowed to age-up _commands_, for the
   > same reason. FR-043 is rewritten accordingly and FR-043b and FR-043c record the two rulings.
   > `specs/003-player-search-match-analysis/research.md` R1 and R5 carry the measurements.
   >
@@ -155,7 +160,7 @@ for that and for nothing else.
 
 - **Q: May a streamed third-party recording be persisted, given that constitution IV demands
   recomputability and IX limited capture to the consenting user?** A: yes — persist it, and amend the
-  constitution. IV wins because the analysis is *published*: every viewer of that match sees it, and
+  constitution. IV wins because the analysis is _published_: every viewer of that match sees it, and
   the source destroys the evidence after ~31 days, so not keeping the recording means standing behind
   a conclusion nobody can ever re-derive. Constitution IX was amended to 2.0.0 to draw the line in
   the right place: automatic capture stays consenting-user-only, while retention of an
@@ -178,10 +183,10 @@ for that and for nothing else.
   exists to avoid, and it still covers only ranked players. Two things make the risk acceptable —
   FR-004d gives search a fallback that needs no external source at all, and nothing else in the
   feature depends on search. Two things made it safe — FR-004b stripped the account-linking fields
-  the response carries, which would otherwise have breached 001's FR-045 silently. *(FR-004b was
+  the response carries, which would otherwise have breached 001's FR-045 silently. _(FR-004b was
   superseded 2026-08-24 by constitution IX 3.0.0; the field is now carried as an unverified claim and
   what remains of FR-045 is the prohibition on acting on it. This entry records the 2026-08-23 state
-  and is left as written.)* (A third safeguard, FR-004c's
+  and is left as written.)_ (A third safeguard, FR-004c's
   hidden flag, was written here and retired on measurement the same day — see FR-004c.) Resolves
   FR-004.
 
@@ -193,7 +198,7 @@ for that and for nothing else.
   the business model and gets its own specification. The only limits that distinguish one request
   from another are FR-040's per-user rate limit and FR-047's cap, and both apply to everyone
   equally. During the closed beta "signed-in" already implies "allowlisted", because 001's FR-005
-  gates account *creation* — so no separate entitlement check exists or is needed. Resolves FR-030's
+  gates account _creation_ — so no separate entitlement check exists or is needed. Resolves FR-030's
   silence on the actor, and confirms FR-033 stands: retention follows from publishing an analysis,
   and analysis is open, so retention is open too — bounded by deliberate requests (FR-044, FR-047)
   and never by traffic.
@@ -222,7 +227,7 @@ for that and for nothing else.
   dispositions were put: withdraw the analysis with the capture, or let it stand without its raw.
   **Neither was taken.** Amending principle IX so that a retained recording survives erasure and
   objection makes a third and better one available: retain a copy under FR-033's basis at analysis
-  time, *including for a match the requester played themselves*, so the analysis stands **and stays
+  time, _including for a match the requester played themselves_, so the analysis stands **and stays
   recomputable**. Principle IV is therefore not amended at all — it is satisfied, not overridden —
   and the own-match hole closes with no special rule. `.aoe2record` bytes are never modified, which
   FR-033 already required and the amendment restates. The amendment landed the same day as
@@ -238,7 +243,7 @@ for that and for nothing else.
   privacy argument that was settled against:
 
   **It is an unverified third-party claim and MUST be presented as one.** 001's FR-006 makes a
-  *proven* Steam link the one this service stands behind — established by a real Steam sign-in. The
+  _proven_ Steam link the one this service stands behind — established by a real Steam sign-in. The
   community source's `steamId` is an assertion this service cannot check. Publishing both without
   distinguishing them would have the service vouch for something it did not verify, which is an
   accuracy fault and survives the privacy decision untouched.
@@ -253,7 +258,7 @@ for that and for nothing else.
   artifacts followed, and the code that still enforces the retired rule is Phase 11 — including
   T400, which amends 001's FR-045 to carve carriage out from action.
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Find any player and see where they stand (Priority: P1)
 
@@ -437,7 +442,7 @@ their current standing and reachable in one click.
 - The analyse CTA is used as a way to make this service hammer the replay source.
 - A user with no linked profile at all — or not signed in — reaches a match page directly by URL.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -505,7 +510,7 @@ their current standing and reachable in one click.
 - **FR-008a**: This feature **supersedes 001's FR-038** and narrows it to what constitution IX
   actually requires. 001 read it as "no endpoint returns the history of a profile the caller does not
   own", which made a third party's profile unreachable even to a signed-in user; the constitution
-  forbids third parties being *publicly indexed*, which is a different line. Any signed-in,
+  forbids third parties being _publicly indexed_, which is a different line. Any signed-in,
   allowlisted user MAY read any player's profile and history, and the four properties that replace
   001's rule MUST hold: no anonymous access to any route added here; no indexing, by response header
   and by `robots.txt`; no disclosure of a relationship between a player's accounts (FR-009); and
@@ -600,10 +605,11 @@ their current standing and reachable in one click.
 - **FR-033**: System MUST retain the recorded game it analysed, byte-for-byte with a checksum
   recorded at the time and verifiable on retrieval, for every analysis it publishes — third-party
   matches included. A published analysis that cannot be recomputed from its raw is forbidden by
-  constitution IV, and the source destroys the raw after ~31 days, so the choice is between keeping
-  the recording and publishing an unfalsifiable conclusion. Retained recordings are **never modified
+  constitution IV, and the source eventually destroys the raw on its own retention window
+  (`docs/data-sources.md` §2), so the choice is between keeping the recording and publishing an
+  unfalsifiable conclusion. Retained recordings are **never modified
   and never deleted** — amended 2026-08-24 under constitution IX 3.0.0; the previous rule deleted one
-  on an erasure or objection by a person appearing in it. Erasure and objection reach the *link* between a recording and a person, never the artifact:
+  on an erasure or objection by a person appearing in it. Erasure and objection reach the _link_ between a recording and a person, never the artifact:
   `requested_by_user_id` is cleared and the identifiers this service holds are pseudonymised, while
   the bytes stand so the published analysis stays recomputable (constitution IV). The same rule now
   covers a match the requester played themselves — a copy is retained under this basis at analysis
@@ -683,7 +689,7 @@ their current standing and reachable in one click.
 - **FR-048**: System MUST keep recordings retained under FR-033 distinguishable from replays captured
   under 001, so that the two never blur: they have different legal bases and different points of
   view, and a report that counts them together would misstate both. **Amended 2026-08-25**: the pair
-  no longer differ by *consent* — constitution IX 4.0.0 retired that gate, and 001's capture now rests
+  no longer differ by _consent_ — constitution IX 4.0.0 retired that gate, and 001's capture now rests
   on legitimate interest with a right to object, while FR-033's retention rests on IX's
   public-recording basis and is not reached by that objection.
 
@@ -696,7 +702,7 @@ their current standing and reachable in one click.
 - **Match**: as 001 defines it. Shared by every participant, never duplicated per viewer.
 - **Recorded game availability**: what is known about one participant's point of view of one match —
   whether it is obtainable from the source, held in this service's archive, never recorded, or
-  expired, and the date it stops being obtainable. This is a *view* over what 001's replay capture
+  expired, and the date it stops being obtainable. This is a _view_ over what 001's replay capture
   and the measured retention window already establish, not a second record of the same truth.
 - **Match analysis**: the derived result of parsing one match's recorded game once — which point of
   view it came from, which parser version produced it, when it ran, its state, and its outcome or
@@ -708,7 +714,7 @@ their current standing and reachable in one click.
 - **Analysis request**: the intent to analyse one match, so that concurrent askers share one piece of
   work and an interrupted run can be resumed.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -724,7 +730,7 @@ their current standing and reachable in one click.
 - **SC-004**: For 100% of matches shown, the availability stated for every point of view matches what
   the source actually answers at that moment; a download offered as available succeeds, and one
   offered as expired is not clickable. **Amended 2026-08-29**: this criterion is measured against the
-  source's *settled* window. While `docs/data-sources.md` records that window as contradicted (see
+  source's _settled_ window. While `docs/data-sources.md` records that window as contradicted (see
   [research.md](./research.md) R8), SC-004 is **not claimable** — under the fixed-epoch reading the
   derivation fails it by construction rather than by implementation error. It becomes measurable
   again when the re-measurement settles the question.

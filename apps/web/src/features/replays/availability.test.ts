@@ -142,6 +142,22 @@ describe('toReplayAvailabilityRows', () => {
     expect(rows[0]?.availability).toBe('obtainable')
   })
 
+  // M9 remediation (2026-08-29): `_source_rate_limited_error` (`apps/api/.../routers/replays.py`)
+  // raises the identical `rate_limited` code with no `retry_after` at all — `ReplayAvailabilityList`
+  // documents `retryAfterSeconds` as required once `downloadState === 'rate_limited'`, so this
+  // mapping must not enter that state without the figure it documents, rather than relying on the
+  // component's own null-check to silently choose the generic wording instead.
+
+  it('falls back to the generic error, not rate_limited, when the redirect carried no retry_after', () => {
+    const rows = toReplayAvailabilityRows(
+      [participant({ profile_id: 1 })],
+      {},
+      { code: 'rate_limited', profileId: '1', retryAfterSeconds: undefined },
+    )
+    expect(rows[0]?.downloadState).toBe('error')
+    expect(rows[0]?.retryAfterSeconds).toBeUndefined()
+  })
+
   it('never applies the failure to a row it does not name', () => {
     const rows = toReplayAvailabilityRows(
       [participant({ profile_id: 1 }), participant({ profile_id: 2 })],

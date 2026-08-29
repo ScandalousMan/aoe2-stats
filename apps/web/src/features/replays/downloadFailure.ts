@@ -17,6 +17,27 @@ const REPLAY_ERROR_PARAM = 'replay_error'
 const REPLAY_ERROR_PROFILE_ID_PARAM = 'replay_error_profile_id'
 const REPLAY_ERROR_RETRY_AFTER_PARAM = 'replay_error_retry_after'
 
+// L15 remediation (2026-08-29): these three parameters are read straight off the URL a browser
+// navigated to, unauthenticated and unsigned — this is not this route's own redirect any more
+// than any other query string a caller can type by hand, so `code` has to be checked against the
+// fixed set `download_replay_point_of_view` (`apps/api/.../routers/replays.py`) can actually raise
+// through `_match_page_redirect_for_download_failure` before it is trusted to drive an alert on
+// someone else's screen. Read off that function's own error constructors, not restated from
+// `contracts/http-api.md`'s wider table (`sign_in_required`, `favourites_limit_reached`,
+// `analysis_*` — none reachable from this redirect): `_replay_not_found` (`not_found`),
+// `_never_recorded_error`, `_expired_error`, `_expired_since_page_load_error`,
+// `_source_rate_limited_error` / `_apply_replay_download_rate_limit`'s own `429`
+// (`rate_limited`, both same `code`). A `replay_error` outside this set — forged, or a stale link
+// from a future release that adds one — is treated exactly like no `replay_error` at all, never
+// rendered.
+const KNOWN_REPLAY_ERROR_CODES = new Set([
+  'not_found',
+  'never_recorded',
+  'expired',
+  'expired_since_page_load',
+  'rate_limited',
+])
+
 export interface ReplayDownloadFailure {
   /** `contracts/http-api.md`'s stable `code` — `expired_since_page_load`, `rate_limited`, or any
    * other failure this route can raise (`never_recorded`, `expired`, `not_found`), all folded into
@@ -37,10 +58,13 @@ export function parseReplayDownloadFailure(search: string): ReplayDownloadFailur
   const params = new URLSearchParams(search)
   const code = params.get(REPLAY_ERROR_PARAM)
   const profileId = params.get(REPLAY_ERROR_PROFILE_ID_PARAM)
-  if (!code || !profileId) {
+  if (!code || !profileId || !KNOWN_REPLAY_ERROR_CODES.has(code)) {
     return null
   }
   const retryAfterRaw = params.get(REPLAY_ERROR_RETRY_AFTER_PARAM)
+  // `/^\d+$/` already rejects a negative sign, a decimal point, and anything non-numeric — the
+  // "plausible non-negative number" L15 asks for, not merely "parses with `Number()`" (which would
+  // also accept `-5`, `1e9`, or `Infinity`).
   const retryAfterSeconds =
     retryAfterRaw !== null && /^\d+$/.test(retryAfterRaw) ? Number(retryAfterRaw) : undefined
   return { code, profileId, retryAfterSeconds }

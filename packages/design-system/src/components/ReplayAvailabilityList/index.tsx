@@ -37,8 +37,14 @@ export interface ReplayAvailabilityRowData {
   expiredSincePageLoad?: boolean
   /** Defaults to `'idle'`. */
   downloadState?: ReplayDownloadState
-  /** Required when `downloadState === 'rate_limited'` — the exact seconds the response carried
-   * (FR-028), never rounded or invented (§5). */
+  /** Present when `downloadState === 'rate_limited'` **and** the caller has a figure to give — the
+   * exact seconds the response carried, never rounded or invented (§5). Not required even then:
+   * `rate_limited` has two distinct causes, and only one carries a `retry_after` to pass on. This
+   * service's own per-caller limit (FR-028, `_apply_replay_download_rate_limit`) knows its own
+   * `retry_after`. The replay source refusing this service's own request (`_source_rate_limited_error`,
+   * a 403/429 from `aoe.ms`) does not — `aoe.ms` gives this service no figure to relay — so that cause
+   * reaches `rate_limited` with this prop `undefined`, and §5's rendering already falls back to the
+   * generic failed-request copy for that case (this component's own null-check below, unchanged). */
   retryAfterSeconds?: number
 }
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiMatchDetail } from '../matches/api'
@@ -368,6 +368,202 @@ describe('MatchDetailContainer', () => {
       await screen.findByText('We could not start that download. Try again.'),
     ).toBeInTheDocument()
     await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  // H3 remediation (2026-08-29): a redirect-carried failure used to be held in `useState` for the
+  // component's whole lifetime, unconditionally overriding `downloadStates[id]` — a retry of the
+  // failing row never showed its own `loading` state, and a successful retry (a `200` that never
+  // navigates) left the stale `Callout` on screen forever. `MatchDetailContainer.tsx`'s
+  // `handlePointOfViewDownload` now clears the failure for exactly the row being retried, the
+  // moment the retry starts.
+
+  it('clicking the failing row again shows its own loading state, not the stale failure', async () => {
+    // `vi.stubGlobal('location', ...)` below replaces `window.location` with a plain object
+    // spread at call time — `pushState` must run first, or the stub's own `search` is frozen to
+    // whatever the URL was *before* this test's own navigation, and `MatchDetailContainer`'s
+    // mount-time `parseReplayDownloadFailure(window.location.search)` reads nothing.
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=not_found&replay_error_profile_id=11',
+    )
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    expect(
+      await screen.findByText('We could not start that download. Try again.'),
+    ).toBeInTheDocument()
+
+    const downloadButton = await screen.findByRole('button', { name: 'Download' })
+    fireEvent.click(downloadButton)
+
+    expect(
+      screen.queryByText('We could not start that download. Try again.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preparing your download…' })).toBeInTheDocument()
+  })
+
+  it('a successful retry — a stream that never navigates — returns the row to default with no alert', async () => {
+    vi.useFakeTimers()
+    try {
+      // Same ordering note as the previous test: `pushState` first, then the `location` stub.
+      window.history.pushState(
+        {},
+        '',
+        '/matches/700800900?replay_error=not_found&replay_error_profile_id=11',
+      )
+      const assign = vi.fn()
+      vi.stubGlobal('location', { ...window.location, assign })
+      installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+      renderMatch()
+
+      await vi.waitFor(() =>
+        expect(
+          screen.getByText('We could not start that download. Try again.'),
+        ).toBeInTheDocument(),
+      )
+
+      const downloadButton = screen.getByRole('button', { name: 'Download' })
+      fireEvent.click(downloadButton)
+
+      // The `303`-carried failure never returns here again — this row's own `200` stream is
+      // in-place, so nothing else touches this component's state until the reset timeout below,
+      // the same one `handleDownload`'s own note describes for the header's `DownloadAction`.
+      // Wrapped in `act`: the reset fires from a `setTimeout` callback, outside any event RTL
+      // wraps on its own, and React 19 will not flush the resulting state update to the DOM
+      // before the next assertion otherwise.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500)
+      })
+
+      expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
+      expect(
+        screen.queryByText('We could not start that download. Try again.'),
+      ).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a failure on one row does not affect another row’s state, in either direction', async () => {
+    // Same ordering note as above: `pushState` first, then the `location` stub.
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=not_found&replay_error_profile_id=11',
+    )
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    installFakeApi({
+      profiles: [],
+      detail: () =>
+        jsonResponse(
+          baseDetail({
+            participants: [
+              {
+                profile_id: 11,
+                alias: 'aoe2villain',
+                team_id: 1,
+                civ_id: 3,
+                civ_name: 'Celts',
+                color_id: 1,
+                result: 'win',
+                rating: 1800,
+                rating_diff: 12,
+                replay: {
+                  profile_id: 11,
+                  availability: 'obtainable',
+                  obtainable_until: null,
+                  download_path: '/api/matches/700800900/replay/11',
+                },
+              },
+              {
+                profile_id: 33,
+                alias: 'third_party',
+                team_id: 2,
+                civ_id: 9,
+                civ_name: 'Turks',
+                color_id: 2,
+                result: 'loss',
+                rating: 1750,
+                rating_diff: -12,
+                replay: {
+                  profile_id: 33,
+                  availability: 'obtainable',
+                  obtainable_until: null,
+                  download_path: '/api/matches/700800900/replay/33',
+                },
+              },
+            ],
+          }),
+        ),
+    })
+
+    renderMatch()
+
+    expect(
+      await screen.findByText('We could not start that download. Try again.'),
+    ).toBeInTheDocument()
+
+    const [, otherRowButton] = await screen.findAllByRole('button', { name: 'Download' })
+    fireEvent.click(otherRowButton!)
+
+    // Row 33's own click must not touch row 11's failure — the alert is still row 11's, and row
+    // 33 shows its own `loading` state rather than inheriting row 11's `error`.
+    expect(screen.getByText('We could not start that download. Try again.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preparing your download…' })).toBeInTheDocument()
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/api/matches/700800900/replay/33')
+  })
+
+  // L15 remediation (2026-08-29): `replay_error` is read straight off the URL, unauthenticated —
+  // a forged or stale code outside the fixed set `download_replay_point_of_view` can actually
+  // raise must be ignored, not rendered as if the server had sent it.
+
+  it('ignores a crafted/unknown replay_error value rather than rendering it', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/matches/700800900?replay_error=totally_bogus&replay_error_profile_id=11',
+    )
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    await screen.findByText('Obtainable')
+    expect(
+      screen.queryByText('We could not start that download. Try again.'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('This recording expired while you were viewing this page.'),
+    ).not.toBeInTheDocument()
+    // The row is unaffected: still pressable, not stuck in any failure-derived state.
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
+  })
+
+  // M7 remediation (2026-08-29): `history.replaceState(null, ...)` used to wipe
+  // `window.history.state` for this entry along with the URL — `@tanstack/react-router`'s history
+  // layer owns that object. The redirect-driven tests above only ever assert `location.search`;
+  // this one pushes a real (non-empty) state object first, the way the router's own navigation
+  // does, and asserts the cleanup preserves it rather than replacing it with `null`.
+
+  it('preserves window.history.state when clearing the redirect-carried query parameters', async () => {
+    const routerState = { key: 'abc123', idx: 3 }
+    window.history.pushState(
+      routerState,
+      '',
+      '/matches/700800900?replay_error=not_found&replay_error_profile_id=11',
+    )
+    installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
+
+    renderMatch()
+
+    await screen.findByText('We could not start that download. Try again.')
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(window.history.state).toEqual(routerState)
   })
 
   it('renders no alert at all for an ordinary visit carrying no replay_error', async () => {

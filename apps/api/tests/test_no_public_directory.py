@@ -89,6 +89,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,6 +162,23 @@ _MATCH_DETAIL_OWNER_PROFILE_ID = 900_100_610
 _MATCH_DETAIL_STRANGER_PROFILE_ID = 900_100_611
 _MATCH_DETAIL_OPPONENT_PROFILE_ID = 900_100_612
 _MATCH_DETAIL_GAME_ID = 900_200_610
+
+# B1 remediation (`replays.py`'s `_capture_for_point_of_view`): the account-existence oracle. Two
+# recent matches — inside the obtainable window, never `expired` by age alone — one whose
+# participant's replay happens to sit in a *stranger's* archive as a `stored` capture, one with no
+# capture at all. Before the fix, the first answered `not_found` (an unowned `stored` capture read
+# as `archived`, then refused) while the second answered whatever the fetch attempt produced —
+# distinct codes for one identical `(game_id, profile_id)` shape, which is the oracle itself. The
+# caller below owns neither profile and is unrelated to the account that captured the first replay.
+_ORACLE_CALLER_PROFILE_ID = 900_100_630
+# Linked to a separate, unrelated account — the "stranger" whose archive the caller must not be
+# able to infer the existence of.
+_ORACLE_WITH_CAPTURE_PARTICIPANT_ID = 900_100_631
+# Never linked to anyone — the control case, identical in every other respect.
+_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID = 900_100_632
+_ORACLE_WITH_CAPTURE_GAME_ID = 900_200_630
+_ORACLE_WITHOUT_CAPTURE_GAME_ID = 900_200_631
+_ORACLE_AOEMS_HOST = "aoe.ms"
 
 
 def _contains_value(payload: object, needle: object) -> bool:
@@ -584,6 +602,18 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
     stranger is refused" would be indistinguishable from "the route does not exist yet, so nobody
     can download anything" — the same collision `test_replay_download.py`'s own equivalent test
     names as its reason for asserting the owner's download first, in the same test.
+
+    **The stranger's own `code` is `expired`, not `not_found` (B1 remediation, 2026-08-29).**
+    `_capture_for_point_of_view` (`replays.py`) now filters a `stored` capture the caller does not
+    own out to `None` *before* `derive_availability` ever runs, so the stranger's request falls
+    through to the identical age comparison this 60-day-old match would answer for any caller with
+    no capture at all — `expired`. That is deliberate, not a regression: before this fix, the
+    unowned capture made `derive_availability` answer `archived`, which this route then refused
+    with `not_found` — a code a caller never sees for an old match with *no* capture, which is
+    exactly the account-existence oracle `test_replay_download_oracle_closed_for_a_strangers_
+    unowned_stored_capture` (below) names directly. `not_found` here would reintroduce it; `expired`
+    is what makes the stranger's refusal genuinely indistinguishable from a stranger asking about
+    any other old match, capture or no capture — the property this test is actually about.
     """
     owner = await _seed_user(db_session)
     await _seed_profile(db_session, profile_id=_REPLAY_OWNER_PROFILE_ID, alias="ReplayOwnerAlias")
@@ -658,9 +688,11 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
         f"{{game_id}} would now show them this match (T327). Got "
         f"{stranger_response.status_code}: {stranger_response.text}"
     )
-    assert stranger_response.json()["error"]["code"] == "not_found", (
-        "never a differentiated cause: FR-045's discipline applies here exactly as it does to "
-        "every other ownership check in this codebase (replays.py's own module docstring)"
+    assert stranger_response.json()["error"]["code"] == "expired", (
+        "B1 remediation: an unowned stored capture must read identically to no capture at all — "
+        "the same `expired` a stranger gets for this 60-day-old match either way, never a "
+        "differentiated `not_found` that would itself disclose the archive's existence (this "
+        "docstring's own paragraph, FR-045)"
     )
     assert object_key not in stranger_response.text
     assert "location" not in stranger_response.headers
@@ -862,3 +894,147 @@ async def test_ratings_never_returns_the_curve_of_a_profile_the_caller_has_not_l
     assert never_linked_response.status_code == 404
     assert never_linked_response.json()["error"]["code"] == "not_found"
     assert str(never_linked_rating) not in never_linked_response.text
+
+
+async def test_replay_download_oracle_closed_for_a_strangers_unowned_stored_capture(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B1 remediation (FR-025, FR-008a property 4 / FR-045): before this fix, `GET /api/matches/
+    {game_id}/replay/{profile_id}` answered `not_found` for one and only one reason a caller could
+    not otherwise observe — a *different* account's `stored` capture existing for that exact
+    `(game_id, profile_id)` pair. The identical pair with no capture at all answered something else
+    entirely (here, `expired_since_page_load`, once the fake source below has answered 404 for it).
+    That asymmetry is an account-existence oracle: a caller who tries enough profile ids against a
+    match they can already see (`GET /api/matches/{game_id}` is open to any signed-in caller, T327)
+    learns which ones are linked to an account on this service, from the download route's `code`
+    alone, with no ownership of anything themselves.
+
+    Both matches below are seeded recent — inside the obtainable window, the shape `_capture_for_
+    point_of_view`'s own remediation targets — because `test_replay_download_ownership_survives_
+    the_match_detail_widening` above seeds its match 60 days old, past the capture budget, where
+    the stranger's row already reads `expired` regardless of ownership and this asymmetry cannot
+    appear at all; that is the gap this test exists to close, not a duplicate of that one.
+
+    The assertion is equality: the same `status_code` and the same `error.code`, not merely "not
+    `not_found`" — anything narrower would leave room for the fixed route to introduce a *different*
+    asymmetry between the two shapes and still pass.
+    """
+    caller = await _seed_user(db_session)
+    await _seed_profile(db_session, profile_id=_ORACLE_CALLER_PROFILE_ID, alias="OracleCallerAlias")
+    await _link_profile(
+        db_session,
+        user=caller,
+        profile_id=_ORACLE_CALLER_PROFILE_ID,
+        steam_id64="76561197960287970",
+    )
+
+    stranger = await _seed_user(db_session)
+    await _seed_profile(
+        db_session,
+        profile_id=_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        alias="OracleStrangerCaptureAlias",
+    )
+    await _link_profile(
+        db_session,
+        user=stranger,
+        profile_id=_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        steam_id64="76561197960287971",
+    )
+    await _seed_profile(
+        db_session,
+        profile_id=_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID,
+        alias="OracleNoCaptureAlias",
+    )
+    await db_session.flush()
+
+    now = datetime.now(UTC)
+    # Recent — comfortably inside the obtainable window, never `expired` by age alone (module
+    # docstring): age must not be what distinguishes the two responses below.
+    completed_at = now - timedelta(days=2)
+
+    await _seed_match(db_session, game_id=_ORACLE_WITH_CAPTURE_GAME_ID, completed_at=completed_at)
+    await _seed_match_player(
+        db_session,
+        game_id=_ORACLE_WITH_CAPTURE_GAME_ID,
+        profile_id=_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    db_session.add(
+        ReplayCapture(
+            game_id=_ORACLE_WITH_CAPTURE_GAME_ID,
+            profile_id=_ORACLE_WITH_CAPTURE_PARTICIPANT_ID,
+            status=CaptureStatus.STORED,
+            capture_deadline_at=completed_at + timedelta(days=19),
+            first_seen_at=completed_at,
+            stored_at=completed_at + timedelta(days=1),
+            object_key=(
+                f"replays/{_ORACLE_WITH_CAPTURE_GAME_ID}/{_ORACLE_WITH_CAPTURE_PARTICIPANT_ID}.zip"
+            ),
+            zip_bytes=1024,
+            zip_sha256="d" * 64,
+            inner_filename="replay.aoe2record",
+            inner_bytes=2048,
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+
+    await _seed_match(
+        db_session, game_id=_ORACLE_WITHOUT_CAPTURE_GAME_ID, completed_at=completed_at
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=_ORACLE_WITHOUT_CAPTURE_GAME_ID,
+        profile_id=_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await db_session.commit()
+
+    # The source has no idea about either point of view — a fixed 404 for every request, so what
+    # distinguishes the two responses below can only be this route's own logic, never the fake
+    # upstream's answer.
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != _ORACLE_AOEMS_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return httpx.Response(404, text="Not Found")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    await _sign_in(client, db_session, caller)
+
+    with_capture_response = client.get(
+        f"/api/matches/{_ORACLE_WITH_CAPTURE_GAME_ID}/replay/{_ORACLE_WITH_CAPTURE_PARTICIPANT_ID}",
+        follow_redirects=False,
+    )
+    without_capture_response = client.get(
+        f"/api/matches/{_ORACLE_WITHOUT_CAPTURE_GAME_ID}/replay/"
+        f"{_ORACLE_WITHOUT_CAPTURE_PARTICIPANT_ID}",
+        follow_redirects=False,
+    )
+
+    assert with_capture_response.status_code == without_capture_response.status_code, (
+        "an unowned stored capture must not change the status code for an otherwise identical "
+        f"point of view. Got {with_capture_response.status_code} for the capture case "
+        f"({with_capture_response.text}) vs {without_capture_response.status_code} for the "
+        f"no-capture case ({without_capture_response.text})"
+    )
+    assert (
+        with_capture_response.json()["error"]["code"]
+        == without_capture_response.json()["error"]["code"]
+    ), (
+        "the identical (game_id, profile_id) shape must answer the identical error code whether "
+        "or not a stranger's account happens to hold a stored capture for it — a differentiated "
+        "code is itself an account-existence oracle (FR-045). Got "
+        f"{with_capture_response.json()!r} vs {without_capture_response.json()!r}"
+    )
+    assert with_capture_response.json()["error"]["code"] == "expired_since_page_load", (
+        "both must fall through to the ordinary obtainable-fetch path and observe the fake "
+        f"source's 404 identically. Got {with_capture_response.json()!r}"
+    )

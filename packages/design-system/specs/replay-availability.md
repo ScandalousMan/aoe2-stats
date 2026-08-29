@@ -153,19 +153,37 @@ not this vocabulary's `error` or `empty`.
     for the caller's own `DownloadAction`, because it is the identical wait for the identical reason.
 - **error** — two distinct causes, never merged into one message. **All three of the states below are
   now reachable in production**, through the one `303` redirect mechanism the 2026-08-29 amendment
-  below describes: the generic failed-request `Callout`, the rate-limited `Callout` with its
-  `retry_after`, and the boundary race's in-place transition. Every point-of-view download failure
-  used to navigate the browser to a raw JSON error page before any of the three could render at
-  all — a first attempt at a fix addressed only the boundary race's own wording (retiring it to
-  `never_recorded`'s copy, below) and never mentioned that the other two shared the identical root
-  cause and were equally unreachable.
-  - **The request could not be started at all** (a network failure, or FR-028's rate limit): the row
-    returns to `default` and `DownloadAction` is pressable again (`Button`'s own rule: "the button
-    returns to default and to being pressable" — never a state that makes retrying unreachable). A
-    `Callout/danger` (`role="alert"`, `shared-primitives.md`'s tone-to-role mapping) renders beneath
-    the row: "We could not start that download. Try again." — or, when the cause is FR-028's rate
-    limit, "You are downloading too quickly. Try again in `<retry_after>`." with the exact seconds the
-    response carries, never a rounded or invented figure.
+  below describes: the generic failed-request `Callout`, the rate-limited `Callout` (with a
+  `retry_after` where the response carries one), and the boundary race's in-place transition. Every
+  point-of-view download failure used to navigate the browser to a raw JSON error page before any of
+  the three could render at all — a first attempt at a fix addressed only the boundary race's own
+  wording (retiring it to `never_recorded`'s copy, below) and never mentioned that the other two
+  shared the identical root cause and were equally unreachable.
+  - **The generic failed-request Callout**: the reload this route's `303` triggers
+    (`apps/api/.../routers/replays.py`'s `_match_page_redirect_for_download_failure`) finds the row's
+    state has moved since the page loaded — `not_found` (the `archived` branch's own ownership check
+    failed a second time, or the caller is not this match's participant), `expired`, or
+    `never_recorded`, the three `404` codes `download_replay_point_of_view` raises for those states.
+    **Never a network failure**: `DownloadAction` triggers a same-tab navigation
+    (`apps/web/src/features/replays/api.ts`'s `triggerReplayPointOfViewDownload`), not a `fetch`, so a
+    network-level failure is not a thing this component can observe or distinguish — there is no
+    script left running to catch it. The row returns to `default` and `DownloadAction` is pressable
+    again (`Button`'s own rule: "the button returns to default and to being pressable" — never a state
+    that makes retrying unreachable). A `Callout/danger` (`role="alert"`,
+    `shared-primitives.md`'s tone-to-role mapping) renders beneath the row: "We could not start that
+    download. Try again." — the identical copy for all three codes, since none of them is worth a more
+    specific message of its own here (`apps/web/src/features/replays/availability.ts`'s own mapping).
+  - **FR-028's rate limit** takes its own `rate_limited` `downloadState`
+    (`ReplayAvailabilityList`'s own type, `index.tsx`), never this generic bullet. Two distinct causes
+    answer the identical `rate_limited` code, and only one of them has a figure to give: this
+    service's own per-caller limit (`_apply_replay_download_rate_limit`, FR-028) knows its own
+    `retry_after` and carries it through as `<retry_after>`; the replay **source** refusing this
+    service's own outbound request (`_source_rate_limited_error`, a 403/429 `aoe.ms` itself returns)
+    carries none, because `aoe.ms` gives this service nothing to pass on. The `Callout/danger` reads
+    "You are downloading too quickly. Try again in `<retry_after>`." with the exact seconds the
+    response carries, never a rounded or invented figure, when one is present, and falls back to the
+    identical "We could not start that download. Try again." copy above when it is not
+    (`ReplayAvailabilityRowData.retryAfterSeconds`'s own null-check, `index.tsx`).
   - **The boundary race** (`code: "expired_since_page_load"`, `contracts/http-api.md`): a row rendered
     `obtainable` whose download 404s at fetch time. The row transitions **in place** — no page reload —
     to the `expired` badge and tone (§3), `DownloadAction` is removed, and `SecondaryLine` reads "This

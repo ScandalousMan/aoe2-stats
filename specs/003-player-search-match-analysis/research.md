@@ -33,22 +33,22 @@ reference replay, with the pinned `aoe2rec-py` 0.1.21 the project already ships.
 
 What the parse yields, and what each FR-043 clause maps onto:
 
-| FR-043 asks for | In 003 | From |
-| --- | --- | --- |
-| the order in which they built, with times | yes, with R4's caveat | `Build` actions, `world_time` |
-| the order in which they trained, with times | yes | `DeQueue` actions — the DE train command, carrying `unit_id`, `amount`, `building_type` |
-| the time they reached each age | **command time only** | `Research` with `technology_type` 101/102/103 — see R5 |
-| resources at each age-up | **deferred** | reconstruction only — see below |
-| villager count at each age-up | **deferred** | reconstruction only — see below |
-| technologies researched, with times | yes, as identifiers | `Research`, `technology_type` — see R13 |
-| units trained, with counts | yes, as identifiers | `DeQueue`, `unit_id` and `amount` |
-| actions per minute | yes | `Action` operations per `player_id` over the world clock |
-| when they were defeated or resigned | yes | `Resign` action; the `PostGame` `WorldTime` block ends the clock |
+| FR-043 asks for                             | In 003                | From                                                                                    |
+| ------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------- |
+| the order in which they built, with times   | yes, with R4's caveat | `Build` actions, `world_time`                                                           |
+| the order in which they trained, with times | yes                   | `DeQueue` actions — the DE train command, carrying `unit_id`, `amount`, `building_type` |
+| the time they reached each age              | **command time only** | `Research` with `technology_type` 101/102/103 — see R5                                  |
+| resources at each age-up                    | **deferred**          | reconstruction only — see below                                                         |
+| villager count at each age-up               | **deferred**          | reconstruction only — see below                                                         |
+| technologies researched, with times         | yes, as identifiers   | `Research`, `technology_type` — see R13                                                 |
+| units trained, with counts                  | yes, as identifiers   | `DeQueue`, `unit_id` and `amount`                                                       |
+| actions per minute                          | yes                   | `Action` operations per `player_id` over the world clock                                |
+| when they were defeated or resigned         | yes                   | `Resign` action; the `PostGame` `WorldTime` block ends the clock                        |
 
 A `.aoe2record` is a **command log**, not a state log. It records what each player told the game to
 do; the game's response — resources gathered and spent, units lost in combat, buildings destroyed —
 exists only in the simulation, which is why every client needs the same deterministic engine to
-replay it. Anything about *state* is therefore a reconstruction, not a reading, and the two must not
+replay it. Anything about _state_ is therefore a reconstruction, not a reading, and the two must not
 be published through the same requirement as if they carried the same confidence.
 
 ### What a reconstruction needs, and where it stops
@@ -56,7 +56,7 @@ be published through the same requirement as if they carried the same confidence
 Villager count is the tractable end of the problem and is worth writing out, because it shows the
 shape of the whole:
 
-- a `DeQueue` is an *order to train*, not a villager. The villager exists one training duration later,
+- a `DeQueue` is an _order to train_, not a villager. The villager exists one training duration later,
   and that duration varies by civilisation (Persians' faster town centres, Chinese' extra starting
   villagers, Mayans' cheaper ones) and by game speed;
 - an `Unqueue` cancels it. The action vocabulary carries `Unqueue`, `FarmUnqueue` and
@@ -87,7 +87,7 @@ The parser's type table also carries an **`Achievements`** post-game block, alon
 `num_blocks: 2` and 389 serialised bytes, and no achievements section. So the engine knows how to
 read such a block; this game does not carry one.
 
-Whether *any* current-patch ranked DE recording carries it is **unverified and worth one measurement
+Whether _any_ current-patch ranked DE recording carries it is **unverified and worth one measurement
 before the derivation feature commits to simulating anything**, because an achievements block in the
 recorded game reports gathered resources and unit counts as facts. If it is ever present, part of
 FR-043 is a read rather than a reconstruction, and the two paths have very different costs. This is
@@ -135,7 +135,7 @@ commands are present in the single recording — 5 583 actions for player 1 and 
 `zheader.game_settings.players` carries each slot's `profile_id`, `name`, `civ_id`, `color_id` and
 `resolved_team_id`, which is what joins the parse to `match_players` without guessing.
 
-The recorded game differs between points of view only in what its owner could *see*; the command
+The recorded game differs between points of view only in what its owner could _see_; the command
 stream is the full, shared, deterministic log. This is why one parse is enough, and why FR-031's
 "at most once per match" is achievable rather than aspirational.
 
@@ -175,7 +175,7 @@ enough to the ceiling that it must be treated as a real failure mode rather than
 2 GB, which puts the break-even near 22 MB of raw recording. `ANALYSIS_MAX_RAW_BYTES` therefore
 defaults to **24 MB**, and the choice is deliberate rather than conservative: an eight-player game at
 ~20 MB raw lands near 1.8 GB, inside the ceiling and uncomfortably close to it. Refusing it up front
-would decide by configuration a case quickstart §8.4 says must be allowed to fail *visibly*;
+would decide by configuration a case quickstart §8.4 says must be allowed to fail _visibly_;
 admitting it keeps FR-036's path real. The key exists to refuse what is certainly impossible before
 paying for a fetch, not to guarantee what is merely tight. The existing `_MAX_INNER_BYTES = 200 MB`
 in `packages/replay-engine` stays what it is — a zip-bomb guard, about a different threat, and ~9×
@@ -251,7 +251,7 @@ Two things are visible in the raw stream and both matter. First, player 2's feud
 the command twice, and a naive reading reports five age-ups in a two-player game. First occurrence
 wins.
 
-Second, a research *command* is not a research *completion*. The age is reached when the research
+Second, a research _command_ is not a research _completion_. The age is reached when the research
 finishes, which is the command time plus the technology's research duration, adjusted for game speed
 and for any civilisation bonus. This repository holds no technology-duration table: 002 wrote the
 re-derivation procedure for civilisations only, deliberately structured so a second identifier can be
@@ -300,7 +300,7 @@ depends on it in production today, and `scripts/checks/spa-routing.mjs` encodes 
 as an executable check.
 
 The property this buys, and the reason it is worth stating plainly: `running` in this system means
-*someone was working on this recently*, not *work is happening now*. A lease with an expiry is the
+_someone was working on this recently_, not _work is happening now_. A lease with an expiry is the
 only honest representation, and every state transition in [data-model.md](./data-model.md) is written
 against that reading. A match that is abandoned mid-parse and that nobody ever opens again stays
 unanalysed forever — which is correct, because nobody is waiting for it.
@@ -343,8 +343,8 @@ means it can be asserted in a test and read in production without instrumentatio
 001 chose the database-as-queue for.
 
 The ordering matters and is the reason there are three rather than one: they fail in different
-directions. The deadline gate protects the *window*, the budget gate protects the *source's patience*
-and the storage gate protects the *allowance*. Capture can be starved by any of the three
+directions. The deadline gate protects the _window_, the budget gate protects the _source's patience_
+and the storage gate protects the _allowance_. Capture can be starved by any of the three
 independently.
 
 ### Alternatives considered
@@ -373,12 +373,12 @@ by browsing — which constitution IX forbids in the same sentence FR-012 restat
 
 So the four states FR-025 requires are each derived from something this service already knows:
 
-| State | Derived from |
-| --- | --- |
-| held in this service's archive | a `replay_captures` row in `stored` — that row only, see below |
-| obtainable now | the match completed inside the retention window |
-| expired | the match completed outside it |
-| never recorded by the game | a prior attempt that answered 404 while inside the window |
+| State                          | Derived from                                                          |
+| ------------------------------ | --------------------------------------------------------------------- |
+| held in this service's archive | a `replay_captures` row in `stored` — that row only, see below        |
+| obtainable now                 | the match completed inside the capture budget (`capture_budget_days`) |
+| expired                        | the match completed outside it                                        |
+| never recorded by the game     | a prior attempt that answered 404 while inside the window             |
 
 ### The retention window is not settled, and this table assumed it was — decided 2026-08-29
 
@@ -388,10 +388,17 @@ equally sharp boundary six months back rather than 31 days, measured after the r
 with a **fixed epoch** fitting the sample as well as any rolling window. The question is open, and
 constitution I 4.1.0 forbids settling it by assumption.
 
-**What is decided, and what is not.** The derivation stays conservative and unchanged: a match older
-than the shortest credible window renders `expired`. Under either reading that is safe in the
-direction FR-025 actually guards — it never presents an unobtainable download as an action that then
-fails, because it only ever *under*-offers.
+**What is decided, and what is not.** The derivation stays conservative, but it no longer reads the
+measured window at all: the `obtainable`/`expired` split now runs against `capture_budget_days`
+(`CAPTURE_BUDGET_DAYS`, constitution I), a configured budget deliberately **shorter** than either
+contested reading of the window, not a restatement of it. Reading the split as `docs/data-sources.md`'s
+own "approximately 31 days" — itself the reading the second sample above contradicts — offered zero
+margin: a match at day 30.9 rendered `obtainable` for a recording the source may already have
+discarded, which is exactly the failure FR-025 forbids. `capture_budget_days` is strictly shorter than
+either reading of the window, so the derivation genuinely under-offers, with margin rather than at
+exact equality: it renders `expired` sooner than either reading of the window requires and never
+later, so it still never presents an unobtainable download as an action that then fails — the same
+guarantee as before, now held by a number this project configures rather than one it measures.
 
 **What changes is the date.** `obtainable_until` is a promise about the future, and under an
 unresolved window there is no honest one to make. It is therefore **null while the question is open**,
@@ -414,8 +421,8 @@ paragraph is the reason a reader does not have to re-derive any of it from the d
 from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
 only copy anyone holds. It is refused, and 3.0.0 strengthens the refusal rather than weakening it — the bytes now survive an
 erasure, so serving them would redistribute a recording of someone who has asked this service to
-forget them. Constitution IX permits retention so that a *published
-analysis stays recomputable*; handing those bytes to any signed-in caller is redistribution of a third
+forget them. Constitution IX permits retention so that a _published
+analysis stays recomputable_; handing those bytes to any signed-in caller is redistribution of a third
 party's recording after the source destroyed its own, which is a second processing purpose with no
 basis and no register entry. FR-026 says "the signed-in user's **own** point of view", and a retained
 recording generally is not one.
@@ -460,7 +467,7 @@ meaning one thing to the processing register (activity 3) and another to the fre
 the bucket). (**Amended 2026-08-29**: this said the two differ by "different consent", and called
 activity 3 "explicit consent". Constitution IX 4.0.0 retired that gate — activity 3 now rests on
 legitimate interest with a right to object, and FR-033's retention on IX's public-recording basis. The
-distinction survives and its reason narrows to *legal basis and point of view*, exactly as spec.md's
+distinction survives and its reason narrows to _legal basis and point of view_, exactly as spec.md's
 FR-048 already records.)
 
 A separate table makes the ambiguous query impossible to write by accident: there is no column to
@@ -470,7 +477,7 @@ against.
 
 `packages/storage`'s existing `replay_object_key(game_id, profile_id)` is deliberately not reused for
 the same reason it was written the way it was — it is idempotent per `(game_id, profile_id)`, and a
-retained recording and a captured replay of the *same* pair are two different things with two
+retained recording and a captured replay of the _same_ pair are two different things with two
 different bases and must not resolve to one object.
 
 ### Alternatives considered
@@ -493,7 +500,7 @@ retention those requests cause (FR-047).
 ### Rationale
 
 The API has no rate limiting today. `packages/providers` has token buckets, but those are
-*outbound* limits protecting a source from this service; four requirements here need an *inbound*
+_outbound_ limits protecting a source from this service; four requirements here need an _inbound_
 limit protecting this service and its sources from one user. They are different mechanisms and the
 existing one cannot be pointed at the new problem.
 
@@ -602,7 +609,7 @@ added beside it, and it wrote down the reason a guess is worse than a number: a 
 carries no hint of doubt. 001's first civilisation table asserted thirteen names from an assumed
 ordering and every one was wrong.
 
-Technology 101/102/103 are the age-ups and are named here because the analysis is *about* them. The
+Technology 101/102/103 are the age-ups and are named here because the analysis is _about_ them. The
 remaining identifiers ship as identifiers. Naming them is 002's procedure applied to a second
 identifier, and it can happen later without any change to what is stored — which is the property
 worth protecting, and the reason the published analysis stores identifiers rather than names.

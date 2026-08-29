@@ -203,19 +203,36 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
   // `303` back to this exact page instead (`_match_page_redirect_for_download_failure`), carrying
   // the failure as query parameters `downloadFailure.ts` reads below — no client-side timer
   // involved in observing the outcome at all.
-  const [replayDownloadFailure] = useState(() => parseReplayDownloadFailure(window.location.search))
+  // H3 remediation (2026-08-29): held in `useState` for this whole render's lifetime, which used
+  // to make it sticky — see `setReplayDownloadFailure` below, and `handlePointOfViewDownload`'s
+  // own call into it. `useState`'s own setter, not module state or a ref: clearing it must
+  // re-render `ReplayAvailabilityList` with the row's `downloadStates` entry taking over instead.
+  const [replayDownloadFailure, setReplayDownloadFailure] = useState(() =>
+    parseReplayDownloadFailure(window.location.search),
+  )
 
   useEffect(() => {
     // Read once, above, from the URL this page loaded with; cleared immediately so a later
     // refresh of the same page does not resurrect a stale alert (`replay-availability.md` §5's
-    // "distinct for exactly one page load" rule) — `history.replaceState`, never a router
-    // navigation, so clearing it adds no history entry and triggers no second fetch of anything.
+    // "distinct for exactly one page load" rule).
+    //
+    // M7 remediation (2026-08-29): `history.replaceState(null, ...)` used to wipe
+    // `window.history.state` for this entry along with the URL — `@tanstack/react-router`'s
+    // history layer owns that object (its `key`/`index` bookkeeping for `back`/`forward`), and a
+    // `null` here silently corrupted it from outside the router. Passing the router's own current
+    // `window.history.state` back through keeps the entry the router already wrote, changing only
+    // the URL string, which is all this cleanup ever needed to do. A router `navigate({ replace:
+    // true, search })` was considered instead (M7's own preferred fix) and rejected: this route
+    // (`routes/matches.$gameId.tsx`) declares no `validateSearch`, so `useNavigate`'s search type
+    // here is the router's untyped fallback, and reaching for it would trade one way of touching
+    // history the router does not fully own for another rather than actually using its API — the
+    // one thing M7 asks not to do.
     if (!replayDownloadFailure) {
       return
     }
     const cleanedSearch = searchWithoutReplayDownloadFailure(window.location.search)
     window.history.replaceState(
-      null,
+      window.history.state,
       '',
       `${window.location.pathname}${cleanedSearch}${window.location.hash}`,
     )
@@ -231,6 +248,18 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
     if (!downloadPath) {
       return
     }
+    // H3 remediation (2026-08-29): `replayDownloadFailure` is carried for this whole component's
+    // lifetime (the effect above only ever clears the *URL*, never this state), so without this a
+    // retry of the row it names would still lose to `availability.ts`'s `rowFailure` override —
+    // the row would never show its own `loading` state, and a *successful* retry (a `200` that
+    // never navigates, so nothing else here ever runs again for it) would leave the stale
+    // `Callout` on screen forever. Cleared here, keyed to `rowId`, so a retry of the failing row
+    // clears only that row's failure — a click on any other row leaves it untouched, and a second
+    // failure of this same row reaches this component again through a fresh page load (the `303`
+    // redirect), carrying its own new failure from scratch.
+    setReplayDownloadFailure((previous) =>
+      previous && previous.profileId === rowId ? null : previous,
+    )
     setPointOfViewDownloadStates((previous) => ({ ...previous, [rowId]: 'loading' }))
     triggerReplayPointOfViewDownload(downloadPath)
     const existingTimeout = pointOfViewResetTimeouts.current.get(rowId)
