@@ -109,6 +109,7 @@ function installFakeApi(options: {
   session?: FakeSession
   profiles?: ApiProfile[]
   detail?: () => Response
+  upload?: () => Response
 }) {
   const session = options.session ?? baseSession()
   const profiles = options.profiles ?? []
@@ -125,6 +126,11 @@ function installFakeApi(options: {
     }
     if (/^\/api\/matches\/\d+$/.test(path) && method === 'GET') {
       return options.detail ? options.detail() : jsonResponse(baseDetail())
+    }
+    if (/^\/api\/replays\/\d+\/upload$/.test(path) && method === 'POST') {
+      return options.upload
+        ? options.upload()
+        : jsonResponse({ status: 'stored', source: 'manual' })
     }
     throw new Error(`Unhandled fetch in test: ${method} ${path}`)
   })
@@ -652,5 +658,123 @@ describe('MatchDetailContainer', () => {
     renderMatch()
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' }))
+  })
+
+  // T084 (US4, FR-029..FR-033): `UploadControl` renders only where no archive exists —
+  // `manual-upload.md` §2's recommended gate, the three "Lost" statuses `capture-state-badge.md`
+  // §3 groups together — and never for `stored` (`DownloadAction` covers it),
+  // `pending`/`downloading` (capture may still succeed) or `quarantined` (bytes already stored).
+
+  describe('manual upload gating', () => {
+    it.each(['unavailable', 'expired', 'failed'])(
+      'shows "Add the replay yourself" for the Lost capture status %s',
+      async (captureStatus) => {
+        installFakeApi({
+          profiles: [],
+          detail: () => jsonResponse(baseDetail({ capture_status: captureStatus })),
+        })
+        renderMatch()
+
+        expect(await screen.findByText('Add the replay yourself')).toBeInTheDocument()
+      },
+    )
+
+    it.each(['stored', 'pending', 'downloading', 'quarantined'])(
+      'hides "Add the replay yourself" for the capture status %s',
+      async (captureStatus) => {
+        installFakeApi({
+          profiles: [],
+          detail: () => jsonResponse(baseDetail({ capture_status: captureStatus })),
+        })
+        renderMatch()
+
+        // Waits on a fact that only exists once real data replaced the loading skeleton, so the
+        // absence assertion below is not just "too early to tell".
+        await screen.findByText('Arabia')
+        expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+      },
+    )
+
+    it('hides "Add the replay yourself" when no replay_captures row exists yet (capture_status null)', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: null })),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    it('never renders alongside DownloadAction — mutually exclusive for one match', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'stored' })),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
+      expect(screen.getByRole('button', { name: 'Download replay' })).toBeInTheDocument()
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+  })
+
+  // T084: a successful upload re-reads the match so `capture_status` flips to `stored` and
+  // `DownloadAction` replaces `UploadControl` in the same slot (manual-upload.md §5 "succeeded").
+
+  it('a successful upload refetches the match so DownloadAction replaces UploadControl', async () => {
+    let captureStatus = 'expired'
+    installFakeApi({
+      profiles: [],
+      detail: () => jsonResponse(baseDetail({ capture_status: captureStatus })),
+      upload: () => {
+        captureStatus = 'stored'
+        return jsonResponse({ status: 'stored', source: 'manual' })
+      },
+    })
+    const { container } = renderMatch()
+
+    expect(await screen.findByText('Add the replay yourself')).toBeInTheDocument()
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array(4)], 'MP Replay v101.103 (1).aoe2record', {
+      type: 'application/octet-stream',
+    })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    const submitButton = await screen.findByRole('button', { name: 'Upload and archive' })
+    fireEvent.click(submitButton)
+
+    // manual-upload.md §5 "succeeded": the caller re-reads the match in the background, in
+    // parallel with `UploadControl`'s own success callout — in this fixture the mocked refetch
+    // settles as fast as the upload itself, so the two race, and the observable, deterministic
+    // outcome is the *final* one: `capture_status` reads `stored`, `UploadControl` is gone, and
+    // `DownloadAction` (`MatchDetailPanel`'s own `Download replay` button, §5's own "takes
+    // `UploadControl`'s slot") has taken its place.
+    expect(await screen.findByRole('button', { name: 'Download replay' })).toBeInTheDocument()
+    expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+  })
+
+  it('an upload rejected as already_archived shows the info outcome, never claiming success', async () => {
+    installFakeApi({
+      profiles: [],
+      detail: () => jsonResponse(baseDetail({ capture_status: 'expired' })),
+      upload: () =>
+        jsonResponse({ error: { code: 'already_archived', message: 'Already archived.' } }, 409),
+    })
+    const { container } = renderMatch()
+
+    await screen.findByText('Add the replay yourself')
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array(4)], 'MP Replay v101.103 (1).aoe2record', {
+      type: 'application/octet-stream',
+    })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Upload and archive' }))
+
+    expect(
+      await screen.findByText('This match already has an archived replay.'),
+    ).toBeInTheDocument()
   })
 })

@@ -559,7 +559,7 @@ games folder, and confirm it is archived and attached to the right match.
 - [x] T081 [US4] Create or update the `replay_captures` row with `source = 'manual'` and `validated_by` recorded, including the case where no capture row existed, in `packages/storage/src/aoe2stats_storage/repositories/captures.py`
 - [x] T082 [P] [US4] Write the component spec for the upload control and its rejection states, in `packages/design-system/specs/`
 - [x] T083 [US4] Build the upload component from tokens with its story, in `packages/design-system/src/` and its `*.stories.tsx`
-- [ ] T084 [US4] Wire the upload into the match detail route, shown only where no archive exists, in `apps/web/src/features/replays/`
+- [x] T084 [US4] Wire the upload into the match detail route, shown only where no archive exists, in `apps/web/src/features/replays/`
 - [ ] T085 [US4] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T083, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
 
 **Checkpoint**: The safety net works, and a manually supplied replay is distinguishable from a
