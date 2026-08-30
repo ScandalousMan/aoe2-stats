@@ -550,8 +550,8 @@ games folder, and confirm it is archived and attached to the right match.
 
 ### Tests for User Story 4 ⚠️ Write first, watch them fail
 
-- [ ] T078 [P] [US4] Integration test for quickstart scenario 8, all four points: uploading the matching file for an `expired` capture yields `stored` flagged manual; a text file renamed `.aoe2record` is rejected with nothing stored; a valid replay for a match the user did not play is rejected; an upload over an existing archive is refused with a reason and does not overwrite (FR-029, FR-030, FR-031, FR-032, FR-033), in `apps/api/tests/test_manual_upload.py`
-- [ ] T079 [P] [US4] Unit test for the validation engine against the committed reference replay in `tests/fixtures/replays/` and against truncated, empty and non-replay inputs, in `packages/replay-engine/tests/test_aoe2rec.py`. It sits with the adapter and not in `packages/core`, which holds only the Protocol (T013): a test importing the engine from `core`'s suite would put `replay-engine` in `core`'s dependency graph, which is the exact coupling the split exists to prevent
+- [x] T078 [P] [US4] Integration test for quickstart scenario 8, all four points: uploading the matching file for an `expired` capture yields `stored` flagged manual; a text file renamed `.aoe2record` is rejected with nothing stored; a valid replay for a match the user did not play is rejected; an upload over an existing archive is refused with a reason and does not overwrite (FR-029, FR-030, FR-031, FR-032, FR-033), in `apps/api/tests/test_manual_upload.py`
+- [x] T079 [P] [US4] Unit test for the validation engine against the committed reference replay in `tests/fixtures/replays/` and against truncated, empty and non-replay inputs, in `packages/replay-engine/tests/test_aoe2rec.py`. It sits with the adapter and not in `packages/core`, which holds only the Protocol (T013): a test importing the engine from `core`'s suite would put `replay-engine` in `core`'s dependency graph, which is the exact coupling the split exists to prevent
 
 ### Implementation for User Story 4
 
