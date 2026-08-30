@@ -45,3 +45,8 @@ export * from './components/PrivacyNotice'
 export * from './components/DataExportPanel'
 export * from './components/AccountErasurePanel'
 export * from './components/ThirdPartyObjectionForm'
+
+// Manual upload (T083, packages/design-system/specs/manual-upload.md). Rendered by T084 inside
+// `MatchDetailPanel`'s route, only where no archive exists — mutually exclusive with
+// `DownloadAction`.
+export * from './components/UploadControl'

@@ -550,17 +550,26 @@ games folder, and confirm it is archived and attached to the right match.
 
 ### Tests for User Story 4 ⚠️ Write first, watch them fail
 
-- [ ] T078 [P] [US4] Integration test for quickstart scenario 8, all four points: uploading the matching file for an `expired` capture yields `stored` flagged manual; a text file renamed `.aoe2record` is rejected with nothing stored; a valid replay for a match the user did not play is rejected; an upload over an existing archive is refused with a reason and does not overwrite (FR-029, FR-030, FR-031, FR-032, FR-033), in `apps/api/tests/test_manual_upload.py`
-- [ ] T079 [P] [US4] Unit test for the validation engine against the committed reference replay in `tests/fixtures/replays/` and against truncated, empty and non-replay inputs, in `packages/replay-engine/tests/test_aoe2rec.py`. It sits with the adapter and not in `packages/core`, which holds only the Protocol (T013): a test importing the engine from `core`'s suite would put `replay-engine` in `core`'s dependency graph, which is the exact coupling the split exists to prevent
+- [x] T078 [P] [US4] Integration test for quickstart scenario 8, all four points: uploading the matching file for an `expired` capture yields `stored` flagged manual; a text file renamed `.aoe2record` is rejected with nothing stored; a valid replay for a match the user did not play is rejected; an upload over an existing archive is refused with a reason and does not overwrite (FR-029, FR-030, FR-031, FR-032, FR-033), in `apps/api/tests/test_manual_upload.py`
+- [x] T079 [P] [US4] Unit test for the validation engine against the committed reference replay in `tests/fixtures/replays/` and against truncated, empty and non-replay inputs, in `packages/replay-engine/tests/test_aoe2rec.py`. It sits with the adapter and not in `packages/core`, which holds only the Protocol (T013): a test importing the engine from `core`'s suite would put `replay-engine` in `core`'s dependency graph, which is the exact coupling the split exists to prevent
 
 ### Implementation for User Story 4
 
-- [ ] T080 [US4] Implement `POST /api/replays/{game_id}/upload`: multipart, participation check, validation through the same engine interface capture uses, refusal when an archive already exists, and the same write ordering — blob first, row second — in `apps/api/src/aoe2stats_api/routers/replays.py`
-- [ ] T081 [US4] Create or update the `replay_captures` row with `source = 'manual'` and `validated_by` recorded, including the case where no capture row existed, in `packages/storage/src/aoe2stats_storage/repositories/captures.py`
-- [ ] T082 [P] [US4] Write the component spec for the upload control and its rejection states, in `packages/design-system/specs/`
-- [ ] T083 [US4] Build the upload component from tokens with its story, in `packages/design-system/src/` and its `*.stories.tsx`
-- [ ] T084 [US4] Wire the upload into the match detail route, shown only where no archive exists, in `apps/web/src/features/replays/`
-- [ ] T085 [US4] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T083, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
+- [x] T080 [US4] Implement `POST /api/replays/{game_id}/upload`: multipart, participation check, validation through the same engine interface capture uses, refusal when an archive already exists, and the same write ordering — blob first, row second — in `apps/api/src/aoe2stats_api/routers/replays.py`
+- [x] T081 [US4] Create or update the `replay_captures` row with `source = 'manual'` and `validated_by` recorded, including the case where no capture row existed, in `packages/storage/src/aoe2stats_storage/repositories/captures.py`
+- [x] T082 [P] [US4] Write the component spec for the upload control and its rejection states, in `packages/design-system/specs/`
+- [x] T083 [US4] Build the upload component from tokens with its story, in `packages/design-system/src/` and its `*.stories.tsx`
+- [x] T084 [US4] Wire the upload into the match detail route, shown only where no archive exists, in `apps/web/src/features/replays/`
+- [x] T085 [US4] Run `visual-reviewer` then `pnpm test:visual --changed` over the stories added by T083, per constitution VII, updating baselines in `packages/design-system/__screenshots__/`
+
+### Phase 6 remediation (post-visual-review)
+
+Added by hand after `visual-reviewer` returned FAIL on T085. Both are defects in T083's component
+found only because T085 was the first task to screenshot it, listed here rather than edited into the
+task text so the record shows what was built, what was wrong, and when it was found. T085 does not
+close until these do — its missing baseline is the evidence.
+
+- [x] T083a Make the "Checking the file…" state deterministically renderable and stop end-cutting the file name, in `packages/design-system/src/components/UploadControl/index.tsx`, its `UploadControl.stories.tsx` and `UploadControl.test.tsx`. Two defects. **The blocking one**: the validating label switches on a 1200 ms `setTimeout` (a module-constant delay), but the visual harness screenshots as soon as two consecutive frames match — which happens inside that delay — so `composite-uploadcontrol--uploading-validating` captures "Uploading…", pixel-identical to the plain `Uploading` baseline, and depicts a state it is named against but does not show (the T038b/T108 failure shape). The story's `play()` awaits the label but the harness never waits for `play()` to settle. Fix it in the component's own testability seam rather than the shared harness: add an optional `validatingLabelDelayMs` prop defaulting to that same 1200 ms constant, thread it into the timeout, and set it to `0` in the `UploadingValidating` story so "Checking the file…" renders immediately and stays (its `onUpload` never resolves), giving a baseline that genuinely shows the switched label. **The second**: `FileChip` renders the file name with Tailwind `truncate` (single-line end-ellipsis), so at 375 px a real name collapses to ~5 characters ("MP Re…"), against `manual-upload.md` §8 which requires the name wrap or middle-truncate and never be cut without recourse. Satisfy §8, and add a `visual-mobile`-tagged story at the 375 px width so the mobile boundary is exercised and the regression is guarded — nothing screenshots this width today. Assert both in the component test: the validating label is present with the delay at 0, and the rendered name is not end-truncated to a stub.
 
 **Checkpoint**: The safety net works, and a manually supplied replay is distinguishable from a
 captured one.

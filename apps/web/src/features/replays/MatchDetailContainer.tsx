@@ -7,6 +7,7 @@ import {
   MatchDetailPanel,
   ProfileSummary,
   ReplayAvailabilityList,
+  UploadControl,
 } from 'design-system'
 import type {
   DownloadActionState,
@@ -14,7 +15,7 @@ import type {
   ProfileSummaryStatus,
   ReplayDownloadState,
 } from 'design-system'
-import { isApiErrorCode, meQueryOptions } from '../../lib/api'
+import { ApiRequestError, isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { matchDetailQueryOptions } from '../matches/api'
 import { toMatchDetailData } from '../matches/mappers'
 import { profilesQueryOptions, setPrimaryProfile } from '../profile/api'
@@ -25,10 +26,11 @@ import {
   toRatingEntries,
   toViewedProfile,
 } from '../profile/mappers'
-import { triggerReplayDownload, triggerReplayPointOfViewDownload } from './api'
+import { triggerReplayDownload, triggerReplayPointOfViewDownload, uploadReplay } from './api'
 import { toReplayAvailabilityRows } from './availability'
 import { parseReplayDownloadFailure, searchWithoutReplayDownloadFailure } from './downloadFailure'
 import { parseGameId } from './gameId'
+import { isUploadEligible } from './uploadEligibility'
 
 // Wires `MatchDetailPanel` and `ProfileSummary/compact` (packages/design-system) to this
 // feature's real effects, the same discipline `MatchHistoryContainer.tsx` (T075) established for
@@ -285,6 +287,37 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
   // single unified message; there is no match to offer recordings for in either case.
   const showReplayAvailability = matchStatus === 'loading' || matchStatus === 'default'
 
+  // --- Manual upload (T084, US4, FR-029..FR-033) ----------------------------------------------
+  //
+  // `manual-upload.md` §2: rendered only for the three "Lost" statuses `CaptureStateBadge` groups
+  // together — never `stored` (`DownloadAction` above already covers it), `pending`/`downloading`
+  // (capture may still succeed on its own) or `quarantined` (bytes already stored; an upload would
+  // be the overwrite FR-032 forbids). Gated on the same `matchDetail.captureStatus` the header's
+  // `CaptureStateBadge` and `DownloadAction` already derive off `GET /api/matches/{game_id}`
+  // (T070e), not a second read of the wire.
+  const showUpload = matchDetail !== undefined && isUploadEligible(matchDetail.captureStatus)
+
+  async function handleUpload(file: File): Promise<void> {
+    if (numericGameId === null) {
+      // Unreachable in practice — `showUpload` above requires `matchDetail`, which requires a
+      // valid `numericGameId` to have ever been fetched — but `UploadControlProps.onUpload`'s
+      // contract is a `Promise<void>` regardless, so this still answers the same shape
+      // `stateForFailure` (`UploadControl`) already knows how to read.
+      throw new ApiRequestError(404, { code: 'not_found', message: 'No such match.' })
+    }
+    await uploadReplay(numericGameId, file)
+    // manual-upload.md §5 "succeeded": "the caller re-reads the match, its `capture_status` is now
+    // `stored`, and `MatchDetailPanel` renders `DownloadAction` in the slot this control occupied.
+    // The success callout may remain until that re-render" — deliberately not awaited: `onUpload`
+    // must resolve on the upload itself so `UploadControl` renders its own `succeeded` callout
+    // first, exactly as that section describes; awaiting the invalidation here would race React
+    // Query's own re-render against this promise settling and could unmount the control (and its
+    // callout) before it ever painted.
+    void queryClient.invalidateQueries({
+      queryKey: matchDetailQueryOptions(numericGameId).queryKey,
+    })
+  }
+
   return (
     <main className="min-h-svh bg-background">
       {/* T327/T331: `GET /api/matches/{game_id}` carries no ownership scope any more — a caller
@@ -356,6 +389,16 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
           onDownload={handleDownload}
           onRetry={() => void matchQuery.refetch()}
         />
+
+        {/* match-history.md §2: "an upload affordance for a `lost` capture is not part of
+         * `MatchDetailPanel`'s anatomy... T084 places it below `DownloadAction`'s position when
+         * `DownloadAction` itself is absent." `space-6` mirrors that same spec's own "`DownloadAction`
+         * to `ParticipantsTable`" step (§7) — the role this control fills here. */}
+        {showUpload && numericGameId !== null && (
+          <div className="mt-6">
+            <UploadControl gameId={numericGameId} onUpload={handleUpload} />
+          </div>
+        )}
 
         {/* replay-availability.md §8: `space-8` between this section and `ParticipantsTable`
          * above it (inside `MatchDetailPanel`) — "a download action and a table of facts are two

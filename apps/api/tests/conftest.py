@@ -227,11 +227,21 @@ class _FakeObjectStore:
 
     def __init__(self, *, fails: bool = False) -> None:
         self._fails = fails
+        #: `test_manual_upload.py` (T080): every `put` this fake receives, in call order — the
+        #: blob-first-row-second write ordering that route's own module docstring fixes means a
+        #: test can assert on this list directly, the same shape `apps/ingester`'s own
+        #: `_FakeObjectStore` fakes (`test_idempotency.py`, `test_interruption.py`) already use.
+        self.put_calls: list[tuple[str, bytes]] = []
 
     async def list_keys(self, prefix: str = "") -> list[str]:
         if self._fails:
             raise RuntimeError("simulated object store outage")
         return []
+
+    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        self.put_calls.append((key, body))
 
     async def signed_get_url(
         self, key: str, *, expires_in: int = 300, filename: str | None = None

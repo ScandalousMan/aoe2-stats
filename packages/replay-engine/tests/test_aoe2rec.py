@@ -2,9 +2,14 @@
 
 Covers the adapter's own well-formedness logic against the committed reference fixture and small
 constructed archives. `packages/replay-engine` is the only package allowed to import the engine
-(the `replay-parsing` skill) and the only place that should hold this test — T079 later extends
-this same file with the full truncated/empty/non-replay matrix against `tests/fixtures/replays/`;
-this task seeds it with the cases needed to prove the adapter's own logic is correct.
+(the `replay-parsing` skill) and the only place that should hold this test. T013 seeded this file
+with the cases needed to prove the adapter's own well-formedness logic is correct; T079 closes the
+remaining coverage gap against FR-030's four scenarios — the committed reference replay, a
+truncated upload, an empty upload, and a non-replay upload — see
+`test_the_committed_reference_replay_validates`, `test_a_truncated_upload_of_the_reference_replay_
+is_rejected` (plus the inner-content truncation already covered by
+`test_a_truncated_reference_replay_still_reaches_the_engine_uncaught`), `test_an_empty_input_is_
+rejected`, and `test_not_a_zip_is_rejected` respectively.
 
 The bottom of the file covers `decode_build_action` (T354, not yet implemented — see the
 `xfail(strict=True)` markers). Measured directly against the pinned wheel (`aoe2rec-py==0.1.21`,
@@ -136,6 +141,30 @@ def test_a_truncated_reference_replay_still_reaches_the_engine_uncaught(
         validator.validate(truncated)
 
     assert not isinstance(excinfo.value, Exception)
+
+
+def test_a_truncated_upload_of_the_reference_replay_is_rejected(
+    validator: Aoe2RecValidator,
+) -> None:
+    """T079: a whole-file truncation — the shape an interrupted upload actually produces — not
+    the inner-content truncation above. Cutting bytes off the end of the real archive removes its
+    end-of-central-directory record, so `zipfile.ZipFile` itself refuses to open it
+    (`zipfile.BadZipFile`, confirmed empirically against this exact fixture) and `validator`
+    rejects it cleanly through `_well_formed_member`, before a single byte reaches the engine —
+    unlike `test_a_truncated_reference_replay_still_reaches_the_engine_uncaught`, which truncates
+    only the *inner* replay content inside an otherwise well-formed, freshly-rezipped archive and
+    so is rejected by the engine panicking, not by the adapter's own well-formedness check.
+    """
+    zip_bytes = REFERENCE_REPLAY.read_bytes()
+    truncated = zip_bytes[: len(zip_bytes) // 2]
+
+    with pytest.raises(MalformedArchiveError, match="not a zip archive"):
+        validator.validate(truncated)
+
+
+def test_an_empty_input_is_rejected(validator: Aoe2RecValidator) -> None:
+    with pytest.raises(MalformedArchiveError, match="not a zip archive"):
+        validator.validate(b"")
 
 
 def _lie_about_declared_size(zip_bytes: bytes, lie_size: int) -> bytes:

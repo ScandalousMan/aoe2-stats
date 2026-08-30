@@ -6,6 +6,11 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "pydantic-settings>=2.6",
   "fastapi>=0.115",
+  # `routers/replays.py`'s `POST /api/replays/{game_id}/upload` (T080) is this package's one
+  # multipart route — FastAPI's own `UploadFile`/`File(...)` machinery raises at route-registration
+  # time without this, Starlette's own multipart parser dependency, never bundled with FastAPI
+  # itself.
+  "python-multipart>=0.0.9",
   "aoe2stats-storage",
   # `routers/auth.py` (T029) builds the one `httpx.Client`/`httpx.AsyncClient` pair every
   # per-request `SteamAuthProvider`/`RelicProfileProvider` instance shares by calling
