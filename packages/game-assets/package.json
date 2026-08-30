@@ -1,0 +1,19 @@
+{
+  "name": "game-assets",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Licence-recorded game asset packs (civilisation icons, minimaps, flags) and the resolver that keys a name onto a URL under /game-assets/. Holds no component and no React.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^3.2.4"
+  }
+}

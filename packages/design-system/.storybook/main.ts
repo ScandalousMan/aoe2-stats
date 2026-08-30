@@ -17,7 +17,11 @@ const config: StorybookConfig = {
   core: {
     disableTelemetry: true,
   },
-  staticDirs: [],
+  // Mounts packages/game-assets at /game-assets/ — the same prefix apps/web/vite.config.ts serves
+  // it under (T401) — so a story's image URL and the app's image URL are the same string, and
+  // visual regression runs against the real licenced packs instead of missing images (research.md
+  // D5; constitution VII).
+  staticDirs: [{ from: '../../game-assets', to: '/game-assets' }],
   // `@storybook/react-vite` gives us a Vite build but not Tailwind: without this plugin the
   // `@import`/`@theme`/`@custom-variant` at-rules in tokens/tailwind.css pass through unprocessed
   // and every utility class in a story silently resolves to nothing. Same plugin apps/web uses
