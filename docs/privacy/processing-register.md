@@ -301,15 +301,21 @@ Every item below names the task that delivers it, or says it is out of scope and
 a set of commitments rather than a description, and an unowned commitment is how three of them came
 to be promised here and built nowhere. `scripts/checks/spec_lint.py` enforces the convention.
 
-- [ ] Publish the privacy policy page and link it from the footer — T093, T095, T098a.
-- [ ] Publish the third-party objection form and document its handling procedure — T092 writes the
+- [ ] Publish the privacy policy page and link it from the footer — T093, T095, T098a. **T093 and
+      T095 done**: the notice has its own component spec and `apps/web/src/routes/privacy-notice.tsx`
+      builds and serves it, reachable today from the privacy route. This item stays open for T098a:
+      the site has no footer yet for that page to be linked from.
+- [x] Publish the third-party objection form and document its handling procedure — T092 writes the
       procedure and the endpoint, T094 specifies the form, T095 builds it on a route outside the
       session. The endpoint alone would not be a way for a non-user to object. **T092 done**: the
       endpoint (`POST /api/privacy/object`) and the handling procedure above (who resolves it,
       within what delay, and the `resolve_third_party_objection` instrument that carries out the
-      pseudonymisation) both exist now. This item stays open for T094 and T095: an unauthenticated
-      JSON endpoint is not, by itself, a way for the person it exists for — who has no reason to
-      know it exists — to object.
+      pseudonymisation) both exist now. **T094 and T095 done too**: the form has its own component
+      spec, and `apps/web/src/routes/object.tsx` builds it on a route outside the session, reachable
+      today from the privacy notice (`PrivacyNoticeContainer`'s own link to `/object`) — the
+      unauthenticated JSON endpoint now has a way for the person it exists for, who has no reason to
+      know it exists otherwise, to actually reach it. A second path in from the footer is still
+      pending on T098a, tracked by the item above rather than restated here.
 - [ ] Publish a dashboard over unresolved third-party objections — out of scope for any task in
       feature 001; today's procedure above names the direct `data_requests` query in its place. A
       legitimate future improvement, not a gap in the obligation itself: the row, the delay and

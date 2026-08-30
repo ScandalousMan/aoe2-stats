@@ -50,7 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
 from aoe2stats_api.app import create_app
-from aoe2stats_api.deps import get_object_store, get_session
+from aoe2stats_api.deps import get_object_store, get_response_cache, get_session
 from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
@@ -136,6 +136,25 @@ def _reset_companion_breaker() -> Iterator[None]:
     players_router._companion_breaker.cache_clear()
     yield
     players_router._companion_breaker.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_response_cache() -> Iterator[None]:
+    """T102's `ResponseCache` (`aoe2stats_api.deps.get_response_cache`) is process-lifetime, the
+    same `functools.lru_cache(maxsize=1)` shape as `get_engine`/`get_object_store` above — and,
+    exactly like `_reset_companion_breaker` above it, its whole purpose is to answer a later call
+    without re-running the query underneath it. Left uncleared, a cache entry one test's `client`
+    populates (matches, ratings or a profile list, all keyed by ids this suite reuses across many
+    test functions and files — `_CALLER_PROFILE_ID` among them) would survive `clean_database`'s
+    truncation and answer a *later* test's identical request with the earlier test's data. Cleared
+    both before and after, the same discipline `_reset_companion_breaker` already applies, so a
+    leftover from an earlier session (or a future one) never leaks in either direction. Autouse for
+    the identical reason that fixture is: a process-wide cache is a defect exactly one test forgets
+    to isolate away from, not one any single test introduces.
+    """
+    get_response_cache().clear()
+    yield
+    get_response_cache().clear()
 
 
 @pytest.fixture

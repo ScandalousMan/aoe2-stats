@@ -50,3 +50,8 @@ export * from './components/ThirdPartyObjectionForm'
 // `MatchDetailPanel`'s route, only where no archive exists — mutually exclusive with
 // `DownloadAction`.
 export * from './components/UploadControl'
+
+// Site chrome (T098, packages/design-system/specs/footer.md). Carries the Microsoft Game Content
+// Usage Rules disclaimer (constitution X); mounted once in `apps/web/src/routes/__root.tsx` by
+// T098a, so it renders on every route.
+export * from './components/Footer'

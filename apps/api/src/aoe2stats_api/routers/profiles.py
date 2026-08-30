@@ -62,7 +62,7 @@ from sqlalchemy import Row, and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
-from aoe2stats_api.deps import SessionDep, SettingsDep
+from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_storage.models import (
@@ -193,31 +193,43 @@ async def _latest_ratings_by_profile(
 
 @router.get("/profiles")
 async def list_profiles(
-    request: Request, db_session: SessionDep, settings: SettingsDep
+    request: Request, db_session: SessionDep, settings: SettingsDep, cache: ResponseCacheDep
 ) -> dict[str, Any]:
     """FR-008: the caller's linked profiles, each with its current rating, rank and win/loss
     record per leaderboard. FR-043's second half: every active link is listed, primary or not —
-    the others stay reachable rather than hidden."""
+    the others stay reachable rather than hidden.
+
+    **T102.** Keyed on `session_row.user_id` alone (resolved fresh, uncached, above) — a caller's
+    own session already scopes this response to exactly their own linked profiles, so there is no
+    separate ownership check to run before consulting the cache the way `routers/matches.py`'s
+    `profile_id`-scoped routes need one. `set_primary_profile` and `unlink_profile` below both
+    mutate what this response carries (`is_primary`, and which profiles are listed at all) from
+    inside this same process, so both call `cache.invalidate_prefix` on this exact
+    `("profiles", "list", user_id)` key rather than leaving a caller looking at their own stale
+    primary flag for up to the TTL (`ResponseCache`'s own docstring)."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
 
-    links = await _active_links_with_profiles(db_session, session_row.user_id)
-    profile_ids = [profile.profile_id for _link, profile in links]
-    ratings_by_profile = await _latest_ratings_by_profile(db_session, profile_ids)
+    async def _fetch_profiles() -> dict[str, Any]:
+        links = await _active_links_with_profiles(db_session, session_row.user_id)
+        profile_ids = [profile.profile_id for _link, profile in links]
+        ratings_by_profile = await _latest_ratings_by_profile(db_session, profile_ids)
 
-    return {
-        "profiles": [
-            {
-                "profile_id": profile.profile_id,
-                "alias": profile.alias,
-                "country": profile.country,
-                "is_primary": link.is_primary,
-                "linked_at": link.linked_at.isoformat(),
-                "ratings": ratings_by_profile.get(profile.profile_id, []),
-            }
-            for link, profile in links
-        ]
-    }
+        return {
+            "profiles": [
+                {
+                    "profile_id": profile.profile_id,
+                    "alias": profile.alias,
+                    "country": profile.country,
+                    "is_primary": link.is_primary,
+                    "linked_at": link.linked_at.isoformat(),
+                    "ratings": ratings_by_profile.get(profile.profile_id, []),
+                }
+                for link, profile in links
+            ]
+        }
+
+    return await cache_get_or_set(cache, ("profiles", "list", session_row.user_id), _fetch_profiles)
 
 
 # --- POST /api/profiles/{profile_id}/primary --------------------------------------------------
@@ -225,12 +237,20 @@ async def list_profiles(
 
 @router.post("/profiles/{profile_id}/primary")
 async def set_primary_profile(
-    profile_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
+    profile_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    cache: ResponseCacheDep,
 ) -> dict[str, Any]:
     """FR-043: designate `profile_id` as the caller's primary profile. Two sequential `UPDATE`s —
     unset whatever is currently primary, then set the target — so the partial unique index
     enforcing "exactly one primary per user" (module docstring) is never asked to hold two rows
-    true at once."""
+    true at once.
+
+    **T102.** Changes `is_primary`, exactly the field `GET /api/profiles` caches — invalidated
+    below so the caller's own next read is not stale for up to the TTL (`list_profiles`'s own
+    docstring)."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     link = await _owned_active_link(db_session, profile_id=profile_id, user_id=session_row.user_id)
@@ -247,6 +267,7 @@ async def set_primary_profile(
     await db_session.execute(
         update(ProfileLink).where(ProfileLink.id == link.id).values(is_primary=True)
     )
+    cache.invalidate_prefix(("profiles", "list", session_row.user_id))
 
     return {"profile_id": profile_id, "is_primary": True}
 
@@ -271,11 +292,19 @@ async def _stored_replay_count(db_session: AsyncSession, profile_id: int) -> int
 
 @router.delete("/profiles/{profile_id}")
 async def unlink_profile(
-    profile_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
+    profile_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    cache: ResponseCacheDep,
 ) -> dict[str, Any]:
     """FR-004: preview the consequence for archived replays before the user confirms, then act
     only once `?confirm=true` is present. Unlinking sets `unlinked_at` and never deletes the row
-    or touches a single `replay_captures` entry (module docstring)."""
+    or touches a single `replay_captures` entry (module docstring).
+
+    **T102.** The preview call (no `?confirm=true`) writes nothing and invalidates nothing. Only
+    the confirmed branch below changes what `GET /api/profiles` caches — which profiles are listed
+    at all, and possibly which one is primary — so only it calls `cache.invalidate_prefix`."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     link = await _owned_active_link(db_session, profile_id=profile_id, user_id=session_row.user_id)
@@ -319,6 +348,8 @@ async def unlink_profile(
                 .values(is_primary=True)
             )
 
+    cache.invalidate_prefix(("profiles", "list", session_row.user_id))
+
     return {
         "confirmed": True,
         "unlinked_at": now.isoformat(),
@@ -331,7 +362,11 @@ async def unlink_profile(
 
 @router.get("/profiles/{profile_id}/ratings")
 async def profile_rating_history(
-    profile_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
+    profile_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    cache: ResponseCacheDep,
 ) -> dict[str, Any]:
     """FR-009: the rating curve from `rating_snapshots` for the caller's own `profile_id`, oldest
     first — the order a chart reads left to right — across every leaderboard it has played.
@@ -343,13 +378,28 @@ async def profile_rating_history(
     FR-038 forbids (T067). A profile the caller does own but with no snapshots yet — freshly
     linked, before the first discovery cycle — gets an empty list, not an error: the profile is
     real and owned, the history is simply not there yet.
+
+    **T102.** `_owned_active_link` runs fresh, uncached, above, exactly as `routers/matches.py`'s
+    `list_matches` reasons about its own `profile_id`-keyed cache entry (`ResponseCache`'s
+    "Ownership and the cache key"): only a caller already proven to own `profile_id` ever reaches
+    the cache read below, so keying on `profile_id` alone cannot answer one caller with another's
+    history. Nothing in this process writes `rating_snapshots` — only the daily ingestion cycle
+    does, a different process entirely (`ResponseCache`'s own docstring) — so this route carries no
+    explicit invalidation call; the TTL alone bounds how long a fresh snapshot can take to appear,
+    and a once-a-day writer was never going to be faster than that regardless.
     """
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     await _owned_active_link(db_session, profile_id=profile_id, user_id=session_row.user_id)
 
-    snapshots = await RatingsRepository(db_session).history_for_profile(profile_id=profile_id)
+    async def _fetch_ratings() -> dict[str, Any]:
+        snapshots = await RatingsRepository(db_session).history_for_profile(profile_id=profile_id)
+        return _ratings_response_json(snapshots)
 
+    return await cache_get_or_set(cache, ("ratings", profile_id), _fetch_ratings)
+
+
+def _ratings_response_json(snapshots: Sequence[RatingSnapshot]) -> dict[str, Any]:
     return {
         "ratings": [
             {

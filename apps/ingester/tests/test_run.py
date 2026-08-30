@@ -20,7 +20,7 @@ stored captures only.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -41,6 +41,27 @@ from aoe2stats_storage.models import (
     Match,
     ReplayCapture,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_ingester_logger_disabled_state() -> Iterator[None]:
+    """T103's own caplog assertions below share this file with `tests/db.py`'s session-scoped
+    `database_url` fixture, which runs the real Alembic migrations the first time anything in this
+    session needs the throwaway database — and `infra/migrations/env.py` calls `logging.config.
+    fileConfig` on `alembic.ini` as a side effect of that (its own module docstring). `fileConfig`'s
+    default `disable_existing_loggers=True` disables every logger that already existed at that
+    moment and is not named in the ini — `run_module.logger` (created at import time, by this very
+    file's own `import aoe2stats_ingester.run as run_module` above) among them. A disabled
+    `Logger.info()`/`.error()` is a silent no-op (`logging.Logger.disabled` short-circuits
+    `isEnabledFor`), so a caplog assertion below would otherwise pass or fail depending on which
+    test in the session happened to trigger that first migration — an order-dependent heisenbug
+    with nothing to do with `run_once`'s own logging. Reset before and after, the same discipline
+    `apps/api/tests/conftest.py`'s own `_reset_companion_breaker` applies to a different
+    process-lifetime leak; nothing here reaches outside this file's own `run_module.logger`.
+    """
+    run_module.logger.disabled = False
+    yield
+    run_module.logger.disabled = False
 
 
 class FakeClock:
@@ -487,6 +508,60 @@ class _NoOpReplayProvider:
 
     async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | NotFound:
         raise AssertionError("no pending capture exists for the drain to claim in this test")
+
+
+# --- T103: structured logging carries the run id and never a raw exception value --------------
+
+
+async def test_run_once_logs_the_run_id_on_start_and_finish(
+    caplog: pytest.LogCaptureFixture,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """Both the start and the finish line name this call's own `ingest_runs` row id, so an
+    operator reading the process log can go straight from either line to the row FR-024 asks for
+    — the same correlation `test_run_once_opens_the_ingest_runs_row_before_any_stage_runs` proves
+    at the database layer, asserted here at the log layer instead."""
+    with caplog.at_level("INFO", logger="aoe2stats_ingester"):
+        report = await run_once(60, trigger="cron", session_factory=session_factory)
+
+    run_id_text = str(report.ingest_run_id)
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(run_id_text in message and "started" in message for message in messages)
+    assert any(run_id_text in message and "finished" in message for message in messages)
+
+
+async def test_run_once_logs_the_run_id_and_failure_class_never_the_exception_message(
+    caplog: pytest.LogCaptureFixture,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """Constitution VIII: a stage's own exception message is not something `run_once` can vouch
+    for — this simulates the concrete risk (a provider or database error echoing back a value the
+    cycle handled) and asserts the failure line names the run id and the exception's *class*
+    while never repeating the secret-shaped text the exception carried, mirroring
+    `apps/api/tests/test_configuration_envelope.py`'s own "names keys and never values" assertion
+    for the sibling handler this task also touches."""
+    _leaked_looking_value = "S3_SECRET_ACCESS_KEY=cd1f9e7b2a6e4c0f9b7a3d5e8c1a2b3d"
+
+    class _ExplodingStage:
+        name = "drain"
+
+        async def __call__(self, budget: Budget) -> Mapping[str, Any]:
+            raise RuntimeError(f"upstream request failed: {_leaked_looking_value}")
+
+    with caplog.at_level("ERROR", logger="aoe2stats_ingester"), pytest.raises(RuntimeError):
+        await run_once(
+            30, trigger="cron", stages=[_ExplodingStage()], session_factory=session_factory
+        )
+
+    failure_records = [record for record in caplog.records if record.levelname == "ERROR"]
+    assert len(failure_records) == 1
+    message = failure_records[0].getMessage()
+    assert "RuntimeError" in message
+    assert "failed" in message
+    assert _leaked_looking_value not in message
+    assert "upstream request failed" not in message
 
 
 async def test_run_once_folds_a_real_capture_drains_report_into_the_row(
