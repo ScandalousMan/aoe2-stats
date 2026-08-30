@@ -580,7 +580,7 @@ the archived replays; then erase and confirm nothing remains, in the records or 
 - [x] T086 [P] [US5] Integration test for quickstart scenario 10 point 1: the export contains the account, the Steam identities, the profile links, the match records **and the replay blobs** (FR-036), in `apps/api/tests/test_export.py`
 - [x] T087 [P] [US5] Integration test for quickstart scenario 10 points 2 and 3: erasure requires an explicit confirmation token, removes the user, identities, sessions, links, captures, `replay_access_log` rows and blobs — **verified by listing the bucket, not by trusting the response** — and the erased user's session cookie is refused on the very next request, while `matches` and `match_players` survive with the departing user's `profile_id` pseudonymised (FR-037, FR-039, SC-008), in `apps/api/tests/test_erasure.py`
 - [x] T088 [P] [US5] Integration test for `POST /api/privacy/object`: unauthenticated by design, rate limited, and recording a request for a human rather than pseudonymising immediately (FR-039), in `apps/api/tests/test_third_party_objection.py`
-- [ ] T089 [P] [US5] Integration test for the edge case where consent is withdrawn while captures are queued: no further download occurs for that user on the next cycle (FR-035), in `apps/ingester/tests/test_consent_withdrawal.py`
+- [x] T089 [P] [US5] Integration test for the edge case where consent is withdrawn while captures are queued: no further download occurs for that user on the next cycle (FR-035), in `apps/ingester/tests/test_consent_withdrawal.py`
 
 ### Implementation for User Story 5
 
