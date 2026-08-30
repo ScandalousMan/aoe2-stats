@@ -272,7 +272,10 @@ does not carry can be deleted, moved or forgotten independently of the files it 
 record to sit _in_ the pack means a pack cannot be copied in without it travelling along, and it
 makes SC-003 ("100% of packs have a recorded source and permitted usage; a pack without that record
 is absent") a one-line executable check instead of a promise: every directory under
-`packages/game-assets/` either has a `LICENCE.md` with the four required fields, or the check fails.
+`packages/game-assets/` either has a `LICENCE.md` with all five required fields (Source, Licence,
+Permitted usage, Ruling, Checked — [contracts/asset-pack.md](./contracts/asset-pack.md)), or the
+check fails. (Feature 002's SC-002 fixed three fields; the two additions — Ruling and Checked — only
+matter once files are copied rather than transcribed.)
 
 ---
 
@@ -366,17 +369,24 @@ so nothing that reads it breaks, and the full list arrives as a new `participant
 Corrected in this feature, because the packs cannot land while the repository says they may not exist.
 The constitution's own "Open follow-ups" list names the third of these.
 
-| Where                                          | Says                                                | Must say                                                                                                                        |
-| ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md:29`                                 | "uses no assets from the game"                      | it uses game assets under GCUR — while keeping the disclaimer at `:31-34` **verbatim**, which `Footer.test.tsx` asserts against |
-| `packages/design-system/specs/README.md:48-51` | "No game asset, ever… this is a legal boundary"     | the boundary is the licence record, not the asset                                                                               |
-| `docs/risks.md:R7`                             | "no game asset in the repository"                   | the packs, their basis, and D3's residual extraction risk                                                                       |
-| `MatchRow/index.tsx:38`                        | "factual name only, no emblem (§2 IP note)"         | the icon prop and its degrade rule                                                                                              |
-| `UploadControl.test.tsx:343`                   | asserts no `<svg>`/`<img>` anywhere but the spinner | scope to the component, not the codebase                                                                                        |
+| Where                                          | Says                                                                  | Must say                                                                                                                                                                                                                                   |
+| ---------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `README.md:29`                                 | "uses no assets from the game"                                        | it uses game assets under GCUR — while keeping the disclaimer at `:31-34` **verbatim**, which `Footer.test.tsx` asserts against                                                                                                            |
+| `packages/design-system/specs/README.md:48-51` | "No game asset, ever… this is a legal boundary"                       | the boundary is the licence record, not the asset                                                                                                                                                                                          |
+| `docs/risks.md:R7`                             | "no game asset in the repository"                                     | the packs, their basis, and D3's residual extraction risk                                                                                                                                                                                  |
+| `MatchRow/index.tsx:38`                        | "factual name only, no emblem (§2 IP note)"                           | the icon prop and its degrade rule                                                                                                                                                                                                         |
+| `UploadControl.test.tsx:343`                   | asserts no `<svg>`/`<img>` anywhere but the spinner                   | scope to the component, not the codebase                                                                                                                                                                                                   |
+| `.claude/skills/design-system/SKILL.md:45`     | "No game asset in the repository: no civilisation icon, no portrait…" | the constraint is a recorded licence, not an absent asset. **This file is loaded into an agent's context before every UI task in this feature** — a dispatched agent otherwise reads a standing ban on the thing it is being told to build |
+| `.claude/agents/product-designer.md:15`        | "without ever reusing a single game asset"                            | the agent that owns `packages/design-system/specs/` and every token; game assets under GCUR are now in scope for it to spec                                                                                                                |
+
+The first five are the pre-existing list; the two `.claude/` rows are **living documents that gate
+agent behaviour** and so are corrected first — see T411.
 
 Also stale, and touched only where this feature's components reach them:
 `specs/sign-in-screen.md:40`, `profile-summary.md:53`, `player-search.md:40-41`,
-`favourites-list.md:44-45`, `favourite-toggle.md:37`.
+`favourites-list.md:44-45`, `favourite-toggle.md:37`, `manual-upload.md:249` ("§4's ban"). The
+`(no game assets)` gloss in `tests/architecture/test_import_graph.py:18`'s module docstring is a
+comment with no assertion behind it; correct it in the same pass.
 
 ---
 

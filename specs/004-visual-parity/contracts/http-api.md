@@ -69,9 +69,14 @@ widening safe, and it must keep passing.**
 | `color_id`     | `int \| null` | 1..8. `null` whenever companion has not supplied one — the FR-010 degrade path, and a permanent resting state for a match companion does not know (data-model.md §6). |
 | `participants` | `array`       | **All** participants, the viewer included.                                                                                                                            |
 
-`opponents` is **unchanged and retained**. It excludes teammates by design — "the field is named
-`opponents`" — and `participants` is a sibling, not a replacement, so nothing reading `opponents`
-changes.
+`opponents` keeps its **shape** and is retained; `participants` is a sibling, not a replacement, so
+nothing reading `opponents` changes structurally. Its **content** is corrected as a side effect of
+this feature, and that is intended, not a regression. `_opponents_by_game` excludes teammates by a
+`team_id` filter (`repositories/matches.py:308-362`), but its own docstring records that when the
+caller's `team_id` is `NULL` nothing is excluded — and **every `team_id` is `NULL` today** (D1), so
+`opponents` presently returns teammates too. Once T413/T415 populate `team_id`, a team match's
+`opponents` stops including teammates and the field's name finally becomes true. This property has
+never been observable before, so T422 asserts it explicitly.
 
 ### `participants[]`
 
@@ -90,9 +95,13 @@ changes.
 }
 ```
 
-Identical in shape to match detail's participant entry, so `apps/web`'s
-`features/matches/mappers.ts:77` (`toParticipantData`) serves both and the list and detail views
-cannot disagree about a match.
+Match detail's participant entry **minus `replay`**, which is detail-only — one download offered
+per point of view (FR-023, `_match_detail_json`) — and is absent here. `toParticipantData`
+(`apps/web/src/features/matches/mappers.ts:77`) serves both shapes because it reads none of the
+`replay` fields, so the list and detail views cannot disagree about a match. The **shape validator**
+is where the difference bites: `api.ts`'s `assertMatchParticipant` calls
+`assertReplayAvailability(participant.replay, …)` unconditionally, so the list must not reuse it
+as-is — it needs its own validator, or a `replay`-optional one, or every match-list response throws.
 
 | Field      | Notes                                                                                                                                                                                             |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

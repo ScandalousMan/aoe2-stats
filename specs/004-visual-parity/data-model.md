@@ -88,12 +88,13 @@ is the one provider whose failure is not an error, and a missing key is normal.
 
 `EnrichedParticipant` (new, `StrictProviderModel`), keyed by `profile_id`:
 
-| Field                   | Wire                  | Note                                                 |
-| ----------------------- | --------------------- | ---------------------------------------------------- |
-| `color_id: int \| None` | `color`               | the only field this feature consumes today           |
-| `team_id: int \| None`  | `team`                | carried for the cross-check against Relic's `teamid` |
-| `won: bool \| None`     | `won`                 | same                                                 |
-| `rating: int \| None`   | `ratingDiff`/`rating` | same                                                 |
+| Field                      | Wire         | Note                                                                 |
+| -------------------------- | ------------ | -------------------------------------------------------------------- |
+| `color_id: int \| None`    | `color`      | the only field this feature consumes today                           |
+| `team_id: int \| None`     | `team`       | carried for the cross-check against Relic's `teamid`                 |
+| `won: bool \| None`        | `won`        | same                                                                 |
+| `rating: int \| None`      | `rating`     | carried for the cross-check; Relic's `newrating` stays authoritative |
+| `rating_diff: int \| None` | `ratingDiff` | same — two distinct wire keys, two distinct fields, never merged     |
 
 Only `color_id` is written. The rest exist so a disagreement with Relic is _visible_ rather than
 discovered later; Relic stays authoritative for everything it serves (`docs/data-sources.md` §1 vs
@@ -193,17 +194,17 @@ state when `result` is `NULL`.
 
 ## 5. Validation rules
 
-| Rule                                                                          | Where enforced                                             |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `result` is `win`, `loss`, or `NULL` — never a coerced third string           | projection function, unit-tested against the Relic fixture |
-| `rating_diff` is `NULL` when either rating is missing — never `0`             | projection function                                        |
-| A Relic-only refresh never nulls a companion-supplied `color_id`              | the upsert's `SET` clause omits `color_id`                 |
-| A projection disagreeing with `matchhistoryreportresults` raises, not guesses | projection function                                        |
-| Every pack directory has a `LICENCE.md` with all four fields                  | `scripts/checks/asset_packs.py` (SC-003)                   |
-| `packages/game-assets` total ≤10 MB                                           | same check                                                 |
-| An id outside a pack yields `undefined`, never a URL that 404s                | the pack's `src/index.ts`, unit-tested for a known miss    |
-| The footer disclaimer stays byte-identical to `README.md`                     | `Footer.test.tsx`, already in place                        |
-| `EXPECTED_SCHEMA_REVISION` equals `alembic heads`                             | `apps/api/tests/test_schema_revision.py`, already in place |
+| Rule                                                                                                             | Where enforced                                             |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `result` is `win`, `loss`, or `NULL` — never a coerced third string                                              | projection function, unit-tested against the Relic fixture |
+| `rating_diff` is `NULL` when either rating is missing — never `0`                                                | projection function                                        |
+| A Relic-only refresh never nulls a companion-supplied `color_id`                                                 | the upsert's `SET` clause omits `color_id`                 |
+| A projection disagreeing with `matchhistoryreportresults` raises, not guesses                                    | projection function                                        |
+| Every pack directory has a `LICENCE.md` with all five fields (Source, Licence, Permitted usage, Ruling, Checked) | `scripts/checks/asset_packs.py` (SC-003)                   |
+| `packages/game-assets` total ≤10 MB                                                                              | same check                                                 |
+| An id outside a pack yields `undefined`, never a URL that 404s                                                   | the pack's `src/index.ts`, unit-tested for a known miss    |
+| The footer disclaimer stays byte-identical to `README.md`                                                        | `Footer.test.tsx`, already in place                        |
+| `EXPECTED_SCHEMA_REVISION` equals `alembic heads`                                                                | `apps/api/tests/test_schema_revision.py`, already in place |
 
 ## 6. State transitions
 
