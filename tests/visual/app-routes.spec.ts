@@ -70,6 +70,18 @@ const PROFILES_RESPONSE = {
   ],
 }
 
+// A full-page screenshot of a built route carries far more anti-aliased text than an isolated
+// component story — the whole sign-in screen or dashboard, plus the footer — so its cross-machine
+// anti-aliasing drift is correspondingly larger: a baseline generated on one Linux renders ~2% of
+// pixels different against another (GitHub's `ubuntu-latest` vs the Playwright container measured
+// here), which clears playwright.config.ts's 0.01 default that the small component stories stay
+// under. 0.05 absorbs that machine noise while staying an order of magnitude below the regression
+// this suite exists to catch — T107's every-screen-unstyled defect changed essentially every
+// pixel, not two in a hundred. Keeping the ratio here rather than in the config leaves the
+// component floor tight and lets these baselines regenerate on any dev machine, the same way the
+// design-system ones already do.
+const FULL_PAGE = { fullPage: true, maxDiffPixelRatio: 0.05 } as const
+
 let server: ChildProcess | undefined
 
 async function isReachable(): Promise<boolean> {
@@ -149,7 +161,7 @@ test.describe('the built application, served and stubbed', () => {
     await page.waitForURL('**/sign-in')
     await expect(page.getByRole('button', { name: 'Continue with Steam' })).toBeVisible()
 
-    await expect(page).toHaveScreenshot('app-signed-out-sign-in.png', { fullPage: true })
+    await expect(page).toHaveScreenshot('app-signed-out-sign-in.png', FULL_PAGE)
   })
 
   test('a signed-in visitor lands on the dashboard', async ({ page }) => {
@@ -161,6 +173,6 @@ test.describe('the built application, served and stubbed', () => {
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
     await expect(page.getByText('VisualSuitePlayer')).toBeVisible()
 
-    await expect(page).toHaveScreenshot('app-signed-in-dashboard.png', { fullPage: true })
+    await expect(page).toHaveScreenshot('app-signed-in-dashboard.png', FULL_PAGE)
   })
 })
