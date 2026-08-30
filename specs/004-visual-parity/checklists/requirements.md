@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,13 +31,11 @@
 
 ## Notes
 
-- **Two [NEEDS CLARIFICATION] markers remain by design**, both product-scope decisions with no safe
-  default, left for `/speckit-clarify` to resolve:
-  - **FR-015 (avatar)**: omit, render-time Steam CDN reference, or ingest+store — the avatar is not
-    in the current data model, so this decides whether the feature stays pure presentation.
-  - **FR-016 (map depth)**: compact map icon/glyph vs full minimap thumbnail — materially different
-    asset and licence surface.
-- The spec is therefore **ready for `/speckit-clarify`, not yet `/speckit-plan`**. Everything else
-  passes.
+- **Both clarifications resolved in Session 2026-08-30** (see spec `## Clarifications`):
+  - **FR-015 (avatar)**: display via the Steam avatars CDN
+    (`https://avatars.steamstatic.com/<avatarhash>_full.jpg`), hash surfaced from the companion
+    provider; not copied into the repo, not a game asset.
+  - **FR-016 (map depth)**: minimap thumbnail per map (under the FR-011 licence gate).
+- The spec is therefore **ready for `/speckit-plan`**. All checklist items pass.
 - Scope deliberately excludes unit/building/resource icons (no backing data until V2 replay parsing)
   and defers the choice of community asset source(s) and their licences to planning under FR-011.

@@ -25,6 +25,20 @@ any game asset into the repository. Constitution 5.0.0 (principle X) lifts that 
 non-commercial + disclaimer + per-pack-licence gate. This feature is the presentation and the
 assets; it changes nothing about what is ingested.
 
+## Clarifications
+
+### Session 2026-08-30
+
+- Q: How should the player avatar be handled, given it is available from the companion provider
+  (`avatarhash`) but is not stored in the data model? → A: Display it as peers do, by referencing the
+  Steam avatars CDN at render time — the URL is `https://avatars.steamstatic.com/<avatarhash>_full.jpg`,
+  built from the hash. The hash is not a game asset and is not copied into the repository; it must be
+  surfaced to the client (it originates from the companion provider, enrichment-only and degradable).
+- Q: How deep should the map representation go — a compact icon per map, or a rendered minimap
+  thumbnail per map as peers show? → A: A minimap thumbnail per map. This is the larger asset set and
+  licence surface, and it is in scope; the packs are chosen and licence-recorded at planning under the
+  FR-011 gate.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - A match is legible at a glance (Priority: P1)
@@ -125,7 +139,8 @@ the footer disclaimer is still rendered.
 
 - **FR-001**: The match view MUST present each participant's civilisation as an icon and name derived
   from `civ_id`, using the civilisation mapping owned by feature 002; no raw `civ_id` is shown.
-- **FR-002**: The match view MUST present the map (name and imagery) derived from `map_name`.
+- **FR-002**: The match view MUST present the map as a minimap thumbnail and name derived from
+  `map_name`.
 - **FR-003**: The match view MUST present each participant in the canonical in-game player colour for
   their `color_id`.
 - **FR-004**: The match view MUST distinguish the winning side from the losing side, derived from
@@ -138,6 +153,10 @@ the footer disclaimer is still rendered.
   secondary reference; when `alias` is absent it MUST fall back to the numeric id.
 - **FR-008**: The profile view MUST show a country flag derived from `country` when present, and omit
   it cleanly when absent.
+- **FR-008a**: The profile view MUST show the player's avatar, referenced from the Steam avatars CDN
+  at `https://avatars.steamstatic.com/<avatarhash>_full.jpg` built from the avatar hash supplied by
+  the companion provider; when the hash is unavailable it MUST show a neutral placeholder, never a
+  broken image. The avatar hash is not a game asset and is not copied into the repository.
 - **FR-009**: The application MUST present a header with primary navigation on every page, and MUST
   keep the existing footer and its Game Content Usage Rules disclaimer.
 - **FR-010**: Any identifier not covered by an asset pack or mapping (`civ_id`, `map_name`,
@@ -153,14 +172,15 @@ the footer disclaimer is still rendered.
 - **FR-014**: The front end MUST obtain all data it presents from the existing API and MUST NOT
   introduce any outbound network call outside `packages/providers`; this feature MUST NOT change what
   data is ingested nor degrade the capture pipeline.
-- **FR-015**: Avatar handling — [NEEDS CLARIFICATION: the Steam avatar is available from the
-  companion provider (`avatarhash`) but is NOT currently stored in the data model. Options: (a) omit
-  avatars from this feature (scope stays pure presentation of already-stored data); (b) display the
-  avatar by constructing the Steam CDN image reference at render time; (c) ingest and store the avatar
-  reference (adds an ingestion concern that belongs to feature 001). Which?]
-- **FR-016**: Map representation depth — [NEEDS CLARIFICATION: should the map be a compact
-  icon/glyph keyed to the map (small asset set), or a rendered minimap thumbnail per map as peers
-  show (a substantially larger asset set and licence surface)?]
+- **FR-015**: The avatar hash originates from the companion provider (a `packages/providers` source,
+  enrichment-only and degradable) and MUST be surfaced through the API to the client. The image itself
+  is loaded by the browser from the Steam avatars CDN (a client-side image reference, not a backend
+  provider call), so it does not constitute an outbound connection from `apps/*` or `packages/core`
+  under FR-014. When the hash is absent, the feature MUST degrade gracefully (FR-008a) rather than
+  block the profile view.
+- **FR-016**: The map is represented as a minimap thumbnail per map (not a compact glyph). The
+  thumbnails are a game-asset pack subject to the FR-011 licence gate; an unknown `map_name` degrades
+  per FR-010.
 
 ### Key Entities _(include if feature involves data)_
 
@@ -170,10 +190,10 @@ the footer disclaimer is still rendered.
   licence gate applies to.
 - **Civilisation presentation**: the icon and display name for a `civ_id`, keyed by the same ids as
   feature 002's mapping.
-- **Map presentation**: the imagery and display name for a `map_name`.
+- **Map presentation**: the minimap thumbnail and display name for a `map_name`.
 - **Player colour**: the canonical in-game colour for a `color_id` (a fixed, small set).
-- **Profile presentation**: how a profile's identity is shown — `alias`, `country`, ratings, and the
-  demoted numeric id.
+- **Profile presentation**: how a profile's identity is shown — `alias`, `country`, avatar (referenced
+  from the Steam CDN via the companion `avatarhash`), ratings, and the demoted numeric id.
 - **Match presentation**: how a stored match is shown — civilisations, map, player colours, outcome,
   and rating movement — for the participants of one `game_id`.
 
@@ -212,8 +232,13 @@ the footer disclaimer is still rendered.
   Microsoft Game Content Usage Rules; civilisation, map, unit and building imagery are.
 - Player colours are a small fixed set defined by the game's canonical player colours; they are
   represented as design-system colour values rather than bitmap assets where possible.
-- The specific community asset source(s) for civilisation and map imagery (e.g. those documented in
-  feature 002 — aoe2techtree, aoc-reference-data, aoe2-apis) and their individual licences are chosen
-  and recorded during planning under the FR-011 gate; the spec fixes the requirement, not the source.
+- The specific community asset source(s) for civilisation icons and map minimap thumbnails (e.g. those
+  documented in feature 002 — aoe2techtree, aoc-reference-data, aoe2-apis) and their individual
+  licences are chosen and recorded during planning under the FR-011 gate; the spec fixes the
+  requirement, not the source.
+- The player avatar is not a game asset: it is the user's own Steam avatar, referenced from the Steam
+  CDN and never copied into the repository. The FR-011 licence gate therefore does not apply to it;
+  the companion provider that yields the hash is enrichment-only and degradable, so a missing avatar
+  never blocks the view.
 - This feature depends on constitution 5.0.0 (principle X) being in effect; it is stacked on that
   amendment's pull request.
