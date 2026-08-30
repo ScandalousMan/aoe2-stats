@@ -46,7 +46,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -230,7 +229,6 @@ async def _seed_linked_user(
     return user_id
 
 
-@pytest.mark.xfail(strict=True, reason="T089a not implemented yet")
 async def test_a_capture_queued_before_objection_is_not_downloaded_on_the_next_cycle(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

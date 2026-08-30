@@ -171,7 +171,7 @@ from aoe2stats_providers.base import (
     ReplayProvider,
 )
 from aoe2stats_storage.models import Alert as AlertRow
-from aoe2stats_storage.models import CaptureStatus, Match, ReplayCapture
+from aoe2stats_storage.models import CaptureStatus, Match, ProfileLink, ReplayCapture, User
 from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
 
 #: `alerts.kind` for a quarantine (`AlertKind.VALIDATION_FAILED` in
@@ -615,20 +615,56 @@ class CaptureDrain:
         `exclude_ids` is the current cycle's own already-attempted set (`__call__`'s
         `attempted_ids`) — see that method's docstring for why a row reverted to `pending` this
         same cycle must not be immediately reclaimed by it again.
+
+        **The archival gate (T089a).** `discover.py`'s `_archiving_profile_ids()` keeps a linked
+        user's Art. 21 objection (`users.archival_objected_at IS NOT NULL`) from ever enqueueing a
+        *new* `replay_captures` row, but a row enqueued while archival was still active stays
+        `pending` right through the objection — the queue between discovery and this claim can be
+        days deep. Left alone, this claim's own status/`next_attempt_at` predicate has no archival
+        clause of any kind and would download and store it anyway on the very next cycle, which is
+        the exact edge case spec.md lists and `test_consent_withdrawal.py` asserts against.
+
+        `_objecting` below is a correlated `EXISTS`, against this row's own `profile_id`, for the
+        *currently active* link's owner having objected — `profile_links.unlinked_at IS NULL AND
+        users.archival_objected_at IS NOT NULL`, joined the same way discovery joins it
+        (`profile_links` to `users`) — and this claim excludes exactly the rows it matches. Phrased
+        as an exclusion, not `_archiving_profile_ids()`'s own inclusion, on purpose: that method's
+        query only ever runs over profiles discovery already knows are linked, so "no active link"
+        never arises there, but `replay_captures` carries rows with no such context at all (every
+        capture-mechanics test in this package, seeded directly against `Match`/`ReplayCapture`
+        with no `profile_links`/`users` rows to speak of, being the concrete case). A capture with
+        no active, objecting owner on record is eligible exactly as it always was — only a *found*
+        objection ever removes one from this claim, never the mere absence of ownership context.
+        An already-`stored` row is never touched by this claim in the first place (its status is
+        neither `pending` nor stale `downloading`), so this gate only ever stops a capture that has
+        not yet fetched anything — objection stops further capture (FR-035); erasure, not this, is
+        what removes what was already captured (FR-037).
         """
         now = datetime.now(UTC)
         stale_before = now - timedelta(seconds=self._max_claim_age_seconds)
 
-        eligibility = or_(
-            and_(
-                ReplayCapture.status == CaptureStatus.PENDING,
-                ReplayCapture.next_attempt_at <= now,
+        _objecting = (
+            select(ProfileLink.profile_id)
+            .join(User, User.id == ProfileLink.user_id)
+            .where(ProfileLink.profile_id == ReplayCapture.profile_id)
+            .where(ProfileLink.unlinked_at.is_(None))
+            .where(User.archival_objected_at.is_not(None))
+            .exists()
+        )
+
+        eligibility = and_(
+            or_(
+                and_(
+                    ReplayCapture.status == CaptureStatus.PENDING,
+                    ReplayCapture.next_attempt_at <= now,
+                ),
+                and_(
+                    ReplayCapture.status == CaptureStatus.DOWNLOADING,
+                    ReplayCapture.claimed_at.is_not(None),
+                    ReplayCapture.claimed_at < stale_before,
+                ),
             ),
-            and_(
-                ReplayCapture.status == CaptureStatus.DOWNLOADING,
-                ReplayCapture.claimed_at.is_not(None),
-                ReplayCapture.claimed_at < stale_before,
-            ),
+            ~_objecting,
         )
         claimable_ids = select(ReplayCapture.id).where(eligibility)
         if exclude_ids:
