@@ -29,6 +29,22 @@ export const colorTokens = {
   'info-contrast': 'var(--ds-color-info-contrast)',
   'focus-ring': 'var(--ds-color-focus-ring)',
   'overlay': 'var(--ds-color-overlay)',
+  'player-1': 'var(--ds-color-player-1)',
+  'player-1-contrast': 'var(--ds-color-player-1-contrast)',
+  'player-2': 'var(--ds-color-player-2)',
+  'player-2-contrast': 'var(--ds-color-player-2-contrast)',
+  'player-3': 'var(--ds-color-player-3)',
+  'player-3-contrast': 'var(--ds-color-player-3-contrast)',
+  'player-4': 'var(--ds-color-player-4)',
+  'player-4-contrast': 'var(--ds-color-player-4-contrast)',
+  'player-5': 'var(--ds-color-player-5)',
+  'player-5-contrast': 'var(--ds-color-player-5-contrast)',
+  'player-6': 'var(--ds-color-player-6)',
+  'player-6-contrast': 'var(--ds-color-player-6-contrast)',
+  'player-7': 'var(--ds-color-player-7)',
+  'player-7-contrast': 'var(--ds-color-player-7-contrast)',
+  'player-8': 'var(--ds-color-player-8)',
+  'player-8-contrast': 'var(--ds-color-player-8-contrast)',
 } as const
 export type ColorToken = keyof typeof colorTokens
 
@@ -62,6 +78,17 @@ export const radiusTokens = {
   'full': 'var(--ds-radius-full)',
 } as const
 export type RadiusToken = keyof typeof radiusTokens
+
+export const iconTokens = {
+  'xs': 'var(--ds-icon-xs)',
+  'sm': 'var(--ds-icon-sm)',
+  'md': 'var(--ds-icon-md)',
+  'lg': 'var(--ds-icon-lg)',
+  'xl': 'var(--ds-icon-xl)',
+  '2xl': 'var(--ds-icon-2xl)',
+  '3xl': 'var(--ds-icon-3xl)',
+} as const
+export type IconToken = keyof typeof iconTokens
 
 export const elevationTokens = {
   'none': 'var(--ds-elevation-none)',

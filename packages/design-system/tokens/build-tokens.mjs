@@ -48,6 +48,7 @@ function cssVar(name) {
 const color = readJson('color')
 const space = readJson('space')
 const radius = readJson('radius')
+const icon = readJson('icon')
 const font = readJson('font')
 const elevation = readJson('elevation')
 const motion = readJson('motion')
@@ -81,6 +82,12 @@ function spaceVars() {
 function radiusVars() {
   return Object.fromEntries(
     Object.entries(radius).map(([key, value]) => [cssVar(`radius-${cssKey(key)}`), value]),
+  )
+}
+
+function iconVars() {
+  return Object.fromEntries(
+    Object.entries(icon).map(([key, value]) => [cssVar(`icon-${cssKey(key)}`), value]),
   )
 }
 
@@ -122,6 +129,7 @@ function renderBlock(vars, indent = '  ') {
 const rootVars = {
   ...spaceVars(),
   ...radiusVars(),
+  ...iconVars(),
   ...fontVars(),
   ...motionVars(),
   ...colorVars('light'),
@@ -133,8 +141,8 @@ const darkVars = {
 }
 
 const tokensCss = `${CSS_BANNER}
-/* Untheme families (space, radius, font, motion) plus the light theme's colour and elevation —
- * light is the default so a component works before any theme is chosen. */
+/* Untheme families (space, radius, icon, font, motion) plus the light theme's colour and elevation
+ * — light is the default so a component works before any theme is chosen. */
 :root {
 ${renderBlock(rootVars)}
 }
@@ -167,6 +175,10 @@ const themeLines = [
   '',
   '  /* radius */',
   ...themeEntries('radius', Object.keys(radius), 'radius'),
+  '',
+  '  /* icon — no Tailwind theme namespace maps a fixed size-* scale onto w-*/h-*/size-* the way',
+  '   * radius maps onto rounded-*, so icon sizes are consumed via iconTokens / --ds-icon-* only,',
+  '   * never through a Tailwind utility class. Re-visit if that changes. */',
   '',
   '  /* font */',
   ...Object.keys(font.family).map(
@@ -220,6 +232,7 @@ function keyed(obj, cssPrefix, dsPrefix) {
 const colorTs = keyed(color.light, 'color', 'color')
 const spaceTs = { unit: cssVar('space-unit'), ...keyed(space.scale, 'space', 'space') }
 const radiusTs = keyed(radius, 'radius', 'radius')
+const iconTs = keyed(icon, 'icon', 'icon')
 const elevationTs = keyed(elevation.light, 'elevation', 'elevation')
 const fontFamilyTs = keyed(font.family, 'font-family', 'font-family')
 const fontSizeTs = Object.fromEntries(
@@ -248,6 +261,11 @@ export const radiusTokens = {
 ${tsObject(radiusTs)}
 } as const
 export type RadiusToken = keyof typeof radiusTokens
+
+export const iconTokens = {
+${tsObject(iconTs)}
+} as const
+export type IconToken = keyof typeof iconTokens
 
 export const elevationTokens = {
 ${tsObject(elevationTs)}

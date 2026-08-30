@@ -1,8 +1,8 @@
 /* GENERATED FILE — do not hand-edit.
  * Source: packages/design-system/tokens/*.json
  * Regenerate with `pnpm --filter design-system tokens:build`. */
-/* Untheme families (space, radius, font, motion) plus the light theme's colour and elevation —
- * light is the default so a component works before any theme is chosen. */
+/* Untheme families (space, radius, icon, font, motion) plus the light theme's colour and elevation
+ * — light is the default so a component works before any theme is chosen. */
 :root {
   --ds-space-unit: 0.25rem;
   --ds-space-0: 0rem;
@@ -27,6 +27,13 @@
   --ds-radius-xl: 0.75rem;
   --ds-radius-2xl: 1rem;
   --ds-radius-full: 9999px;
+  --ds-icon-xs: 0.75rem;
+  --ds-icon-sm: 1rem;
+  --ds-icon-md: 1.5rem;
+  --ds-icon-lg: 2rem;
+  --ds-icon-xl: 2.75rem;
+  --ds-icon-2xl: 4rem;
+  --ds-icon-3xl: 6rem;
   --ds-font-family-sans: 'Inter', system-ui, sans-serif;
   --ds-font-family-display: 'Fraunces', Georgia, serif;
   --ds-font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -84,6 +91,22 @@
   --ds-color-info-contrast: #f4ecd8;
   --ds-color-focus-ring: #2f5f73;
   --ds-color-overlay: rgb(43 32 19 / 55%);
+  --ds-color-player-1: #405BFF;
+  --ds-color-player-1-contrast: #fffaf0;
+  --ds-color-player-2: #FF0000;
+  --ds-color-player-2-contrast: #000000;
+  --ds-color-player-3: #00FF00;
+  --ds-color-player-3-contrast: #000000;
+  --ds-color-player-4: #FFFF00;
+  --ds-color-player-4-contrast: #000000;
+  --ds-color-player-5: #00FFFF;
+  --ds-color-player-5-contrast: #000000;
+  --ds-color-player-6: #FF57B3;
+  --ds-color-player-6-contrast: #000000;
+  --ds-color-player-7: #797979;
+  --ds-color-player-7-contrast: #000000;
+  --ds-color-player-8: #FF9600;
+  --ds-color-player-8-contrast: #000000;
   --ds-elevation-none: none;
   --ds-elevation-raised: 0 1px 2px 0 rgb(43 32 19 / 12%);
   --ds-elevation-overlay: 0 4px 12px 0 rgb(43 32 19 / 18%);
@@ -117,6 +140,22 @@
   --ds-color-info-contrast: #101a1e;
   --ds-color-focus-ring: #6fa8c0;
   --ds-color-overlay: rgb(0 0 0 / 65%);
+  --ds-color-player-1: #405BFF;
+  --ds-color-player-1-contrast: #fffaf0;
+  --ds-color-player-2: #FF0000;
+  --ds-color-player-2-contrast: #000000;
+  --ds-color-player-3: #00FF00;
+  --ds-color-player-3-contrast: #000000;
+  --ds-color-player-4: #FFFF00;
+  --ds-color-player-4-contrast: #000000;
+  --ds-color-player-5: #00FFFF;
+  --ds-color-player-5-contrast: #000000;
+  --ds-color-player-6: #FF57B3;
+  --ds-color-player-6-contrast: #000000;
+  --ds-color-player-7: #797979;
+  --ds-color-player-7-contrast: #000000;
+  --ds-color-player-8: #FF9600;
+  --ds-color-player-8-contrast: #000000;
   --ds-elevation-none: none;
   --ds-elevation-raised: 0 1px 2px 0 rgb(0 0 0 / 40%);
   --ds-elevation-overlay: 0 4px 12px 0 rgb(0 0 0 / 50%);

@@ -24,7 +24,23 @@
     "info": "#2f5f73",
     "info-contrast": "#f4ecd8",
     "focus-ring": "#2f5f73",
-    "overlay": "rgb(43 32 19 / 55%)"
+    "overlay": "rgb(43 32 19 / 55%)",
+    "player-1": "#405BFF",
+    "player-1-contrast": "#fffaf0",
+    "player-2": "#FF0000",
+    "player-2-contrast": "#000000",
+    "player-3": "#00FF00",
+    "player-3-contrast": "#000000",
+    "player-4": "#FFFF00",
+    "player-4-contrast": "#000000",
+    "player-5": "#00FFFF",
+    "player-5-contrast": "#000000",
+    "player-6": "#FF57B3",
+    "player-6-contrast": "#000000",
+    "player-7": "#797979",
+    "player-7-contrast": "#000000",
+    "player-8": "#FF9600",
+    "player-8-contrast": "#000000"
   },
   "dark": {
     "background": "#1c1710",
@@ -50,6 +66,22 @@
     "info": "#6fa8c0",
     "info-contrast": "#101a1e",
     "focus-ring": "#6fa8c0",
-    "overlay": "rgb(0 0 0 / 65%)"
+    "overlay": "rgb(0 0 0 / 65%)",
+    "player-1": "#405BFF",
+    "player-1-contrast": "#fffaf0",
+    "player-2": "#FF0000",
+    "player-2-contrast": "#000000",
+    "player-3": "#00FF00",
+    "player-3-contrast": "#000000",
+    "player-4": "#FFFF00",
+    "player-4-contrast": "#000000",
+    "player-5": "#00FFFF",
+    "player-5-contrast": "#000000",
+    "player-6": "#FF57B3",
+    "player-6-contrast": "#000000",
+    "player-7": "#797979",
+    "player-7-contrast": "#000000",
+    "player-8": "#FF9600",
+    "player-8-contrast": "#000000"
   }
 }
