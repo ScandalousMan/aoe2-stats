@@ -308,6 +308,54 @@ function InfoTable({
   )
 }
 
+function StackedRow({
+  columns,
+  values,
+}: {
+  columns: readonly string[]
+  values: readonly ReactNode[]
+}) {
+  return (
+    <dl className="flex flex-col gap-2 border-b border-border pb-3 last:border-b-0 last:pb-0">
+      {columns.map((column, index) => (
+        <TermRow key={column} term={column} value={values[index]} />
+      ))}
+    </dl>
+  )
+}
+
+// §8 — below `md` `ProcessorList` and `OutwardCallList` stack as one labelled block per row, the
+// same `<dl>` pattern `CategoryEntry` uses: three columns of prose cannot be read at 375px without
+// either horizontal scrolling or truncation, and §10 forbids both, in any section, including these
+// two tables. At `md` and up they render as the real `<table>`s §9 describes. Both representations
+// are in the DOM; only one is ever visible. `display: none` (Tailwind's `hidden`), unlike
+// `visibility: hidden` or clipping, removes the inactive one from the accessibility tree and from
+// find-in-page, so there is never a second, hidden copy of this legal text for a screen reader to
+// double-read.
+function ResponsiveInfoTable({
+  caption,
+  columns,
+  rows,
+}: {
+  caption: string
+  columns: readonly string[]
+  rows: readonly (readonly ReactNode[])[]
+}) {
+  return (
+    <>
+      <div className="mt-3 flex flex-col gap-3 md:hidden">
+        {rows.map((row, index) => (
+          // eslint-disable-next-line react/no-array-index-key
+          <StackedRow key={index} columns={columns} values={row} />
+        ))}
+      </div>
+      <div className="hidden md:block">
+        <InfoTable caption={caption} columns={columns} rows={rows} />
+      </div>
+    </>
+  )
+}
+
 function RightsItem({
   heading,
   what,
@@ -463,7 +511,7 @@ export function PrivacyNotice({
           anyone for their own purposes. Three companies handle it on our behalf, because we do not
           own servers:
         </p>
-        <InfoTable
+        <ResponsiveInfoTable
           caption="Processors handling data on our behalf"
           columns={['Provider', 'Role', 'Where']}
           rows={processors.map((processor) => [processor.name, processor.role, processor.location])}
@@ -476,7 +524,7 @@ export function PrivacyNotice({
           We also send requests out to three services that we do not run, and this is everything we
           send them:
         </p>
-        <InfoTable
+        <ResponsiveInfoTable
           caption="Outside services we send requests to"
           columns={['Service', 'What we send', 'Why']}
           rows={OUTWARD_CALLS.map((call) => [call.service, call.what, call.why])}

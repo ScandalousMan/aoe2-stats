@@ -110,6 +110,11 @@ function main() {
           stories.map((entry) => ({
             id: entry.id,
             fullPage: (entry.tags ?? []).includes('visual-full-page'),
+            // A story tagged `visual-mobile` names a subject whose bug is invisible at the
+            // suite's default (desktop) viewport — PrivacyNotice's storage tables (T096 defect 1)
+            // shipped because no story captured the width their overflow only shows at. Captured
+            // at 375px, alongside (never instead of) the desktop baseline for the same component.
+            mobile: (entry.tags ?? []).includes('visual-mobile'),
           })),
         ),
       },
