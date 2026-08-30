@@ -149,13 +149,18 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://aoe2-stats.com' }}
 
-  # TODO(feature-1): enable once T100 lands.
-  #
-  # free-tier-watch:
-  #   Warns at 70% of any free allowance (R2 bytes stored, Neon storage, Vercel
-  #   invocations) so the phase-2 migration is planned, not forced. Raises a severity-2
-  #   `free_tier` alert through `raise_alert` rather than only printing a warning
-  #   (T100) — this job's own `needs:` entry on `report` follows in the same task.
+  free-tier-watch:
+    name: Free-tier watch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Warn at 70% of any free allowance (docs/adr/0002-hosting.md)
+        run: uv run scripts/checks/free_tier_watch.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   # TODO(design-system): enable once packages/design-system exists.
   #
@@ -167,7 +172,16 @@ jobs:
   report:
     name: Open an issue on failure
     runs-on: ubuntu-latest
-    needs: [contracts, parser-canary, cron-liveness, capture-audit, alert-audit, production-smoke]
+    needs:
+      [
+        contracts,
+        parser-canary,
+        cron-liveness,
+        capture-audit,
+        alert-audit,
+        production-smoke,
+        free-tier-watch,
+      ]
     if: failure()
     steps:
       - uses: actions/github-script@v7
