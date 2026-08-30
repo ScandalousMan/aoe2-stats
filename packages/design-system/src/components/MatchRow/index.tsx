@@ -34,7 +34,9 @@ export interface MatchRowData {
   outcome: MatchOutcome
   opponent: MatchRowOpponent
   map: ReactNode
-  /** The caller's own civilisation for this match — factual name only, no emblem (§2 IP note). */
+  /** The caller's own civilisation for this match — text only for now. Constitution X 5.0.0 no
+   * longer bans a civilisation icon here; this feature (004) widens `MatchRow` to take one in a
+   * later phase, not yet landed. */
   civilisation: ReactNode
   /** Absent when the match carries no rating change to report. */
   ratingChange?: StatValueDelta

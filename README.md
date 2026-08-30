@@ -26,7 +26,9 @@ pnpm install
 
 ## Non-commercial
 
-This project is strictly non-commercial and uses no assets from the game.
+This project is strictly non-commercial and uses game assets (civilisation icons, map minimaps,
+country flags, player colours) under Microsoft's Game Content Usage Rules, each recorded with its
+source and permitted usage in `docs/asset-packs.md`.
 
 > aoe2-stats was created under Microsoft's "Game Content Usage Rules" using assets from
 > Age of Empires II: Definitive Edition, (c) Microsoft Corporation.

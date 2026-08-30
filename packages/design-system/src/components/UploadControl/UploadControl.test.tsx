@@ -340,7 +340,10 @@ describe('UploadControl — no shield/lock/tick icon, no reassurance', () => {
     'this keeps your account safe',
   ]
 
-  it('renders no <svg> or <img> anywhere but the shared Button spinner (uploading only)', () => {
+  it('renders no <svg> or <img> in this container but the shared Button spinner (uploading only)', () => {
+    // Scoped to this component's rendered container, not a codebase-wide ban — constitution X
+    // 5.0.0 permits a licensed game asset elsewhere. This control specifically shows no imagery:
+    // no reassurance iconography (shield/lock/padlock/tick) and nothing else either, on purpose.
     // `uploading` is excluded on purpose: `Button`'s own loading spinner is a shared primitive
     // already reviewed for the checklist, not the shield/lock/padlock/tick this rule bans.
     const states: Array<

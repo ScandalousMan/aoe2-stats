@@ -15,11 +15,12 @@ prose that nothing checked:
 
 **This module does not cover the constitution table.** The other nine rows — I (capture priority),
 II (Python backend), IV (raw is sacred), VI (tokens first), VII (visual tests), VIII (no secrets in
-the clear), IX (GDPR by design), X (no game assets), XI (English) — are process and design claims: a
-`product-designer` spec was written, a `reviewer` pass happened, nightly visual regression runs, no
-asset was copied in. None of them reduces to an import-graph test, or to any other kind of automated
-test; a green run here says nothing about them. Only III and V (elsewhere) and XII are checked by
-code, because only those three are actually claims about what imports what.
+the clear), IX (GDPR by design), X (intellectual property), XI (English) — are process and design
+claims: a `product-designer` spec was written, a `reviewer` pass happened, nightly visual regression
+runs, every copied-in asset carries the licence record `scripts/checks/asset_packs.py` enforces.
+None of them reduces to an import-graph test, or to any other kind of automated test; a green run
+here says nothing about them. Only III and V (elsewhere) and XII are checked by code, because only
+those three are actually claims about what imports what.
 
 **Method — the import graph, not source text.** Each check parses every module under its roots with
 `ast.parse` and inspects the parsed `Import`/`ImportFrom`/`Call` nodes, not the raw text: `import
