@@ -12,14 +12,15 @@ findings that were not questions when the spec was written because nobody had lo
 The spec calls 004 "the presentation and the assets; it changes nothing about what is ingested".
 That is half true. **The presentation layer has almost nothing to present**: five of the six
 per-participant facts US1 needs are declared as columns, read by three routers, and written by
-nobody. A sixth (`color_id`) has no source at all in the primary provider. Feature 004 is therefore
-a data-availability feature with a presentation layer on top, and the plan is sequenced accordingly.
+nobody. The sixth (`color_id`) is not in the primary provider at all — it comes from the enrichment
+provider, read-time and replay-free. Feature 004 is therefore a data-availability feature with a
+presentation layer on top, and the plan is sequenced accordingly.
 
-| #      | Finding                                                                                 | Consequence                                                                           |
-| ------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| **D1** | `match_players.civ_id/team_id/color_id/result/rating/rating_diff` are **never written** | US1 needs a projection stage + backfill before any pixel changes                      |
-| **D2** | Relic serves no player colour, in any field, including the two opaque blobs             | `color_id` must come from aoe2companion, or FR-003 is unimplementable                 |
-| **D3** | No openly-licensed AoE2 asset pack exists anywhere                                      | The FR-011 gate must accept a GCUR-only pack, or constitution X 5.0.0 permits nothing |
+| #      | Finding                                                                                  | Consequence                                                                           |
+| ------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **D1** | `match_players.civ_id/team_id/color_id/result/rating/rating_diff` are **never written**  | US1 needs a projection stage + backfill before any pixel changes                      |
+| **D2** | Relic serves no player colour anywhere; aoe2companion's match API serves it, replay-free | `color_id` is read-time enrichment from companion, no replay and no FR-014 change     |
+| **D3** | No openly-licensed AoE2 asset pack exists anywhere                                       | The FR-011 gate must accept a GCUR-only pack, or constitution X 5.0.0 permits nothing |
 
 ---
 
@@ -74,58 +75,90 @@ make cheap — the backfill is a `SELECT raw_payload` loop, no re-fetch, and it 
   same facts is how the export starts lying.
 
 **Consequence for FR-014.** FR-014 says the feature "MUST NOT change what data is ingested". A
-projection does not; this decision is inside FR-014 as written. D2 is not — see below.
+projection does not; this decision is inside FR-014 as written, and so is D2 — see below.
 
 ---
 
-## D2 — Player colour has no source in Relic
+## D2 — Player colour: Relic has none, aoe2companion serves it without a replay
 
-**Decision**: `color_id` comes from aoe2companion, by extending `MatchEnrichment` with the
-per-participant fields the provider already receives and discards. When companion is degraded,
-`color_id` stays `NULL` and the view degrades under FR-010.
+**Decision**: `color_id` is the one display fact the primary provider does not carry. It is sourced
+from **aoe2companion's match endpoint as read-time enrichment** — companion's designated
+"enrichment, degradable" role — merged into the API response and cached opportunistically into
+`match_players.color_id`. No replay is captured or parsed, the ingester's capture path is not
+touched, and FR-014 stays as written. When companion is degraded the colour is absent and the view
+degrades under FR-010.
 
-**Evidence — Relic has no colour, and the blobs do not hide one.** `matchhistorymember` has thirteen
-keys, none of them colour. The two opaque fields were decoded (base64 + zlib, measured 2026-08-30):
+**Evidence — Relic has no colour, confirmed three ways (measured 2026-08-30).** `matchhistorymember`
+has thirteen keys, none of them colour. The two opaque `slotinfo`/`options` blobs were decoded
+(base64 + zlib), and one field inside `slotinfo` was itself a second base64 layer:
 
-- `slotinfo` → plain JSON: `profileInfo.id`, `stationID`, `teamID`, `factionID`, `raceID`,
+- `slotinfo` → plain JSON per slot: `profileInfo.id`, `stationID`, `teamID`, `factionID`, `raceID`,
   `rankLevel`, `rankMatchTypeID`, `timePerFrameMS`, `isReady`, `status`, `metaData`. `raceID`
-  duplicates `civilization_id` (28 = 28). **No colour field.** `stationID` is not a colour proxy
-  either: the observed values on a 4-player match are `1, 2, 3, 16`, not a contiguous slot index.
-- `options` → a length-prefixed `key:value` bag of lobby settings (`11:Rage Forest 2026.rms`,
-  `8:220`, `72:10000` …). Game rules, not participants.
+  duplicates `civilization_id`. **No colour.** `stationID` is not a colour proxy — on an 8-player
+  match the values are `1, 2, 3, 16, 6, 12, 8, 13`, running past 8 and skipping, i.e. a lobby-station
+  id, not a 1..8 index.
+- `slotinfo[].metaData` → a second base64 layer decoding to a tiny key/value record holding only
+  `ScenarioPlayerIndex` and `Team`. **No colour.**
+- `options` → a length-prefixed `key:value` bag of lobby settings (map name, population cap, …). Game
+  rules, not participants.
 
-Neither is worth reverse-engineering further, and Microsoft's Game Content Usage Rules forbid
-reverse engineering _the game_ to reach assets — a line worth staying well clear of for a field that
-another provider serves in the clear.
+So the colour a player actually used is genuinely absent from every Relic field. Reverse-engineering
+the game's own files to recover it is both unnecessary and a line Microsoft's Game Content Usage
+Rules forbid crossing.
 
-**Evidence — companion serves it, and we already fetch it.**
-`packages/providers/fixtures/companion/matches.json`, `teams[].players[]` carries `color` (int) and
-`colorHex`, alongside `rating`, `ratingDiff`, `won`, `team`, `country`, `slot`, `civ`, `civName`.
-`_parse_matches` (`companion/provider.py:303-341`) walks that exact structure today and keeps only
-`civName`. So this is a **parse change, not a new endpoint and not a new request shape**.
+**Evidence — companion serves colour directly, without a replay.** Verified live against the user's
+test game **501455090** (Azhague33, profile 1807091), 2026-08-30:
 
-**The honest part**: `enrich_matches` is currently called from nowhere in production
-(`search_players` is the only companion method wired up). Wiring it in _is_ a new outbound call, and
-that is the one place this feature touches ingestion. It is compliant — aoe2companion is a
-`packages/providers` provider, listed in the constitution's Technology Constraints as "enrichment
-only, degradable", behind the existing circuit breaker, token bucket and `provider_calls` sink — but
-it is a change FR-014 does not anticipate, and it is recorded in the plan's Complexity Tracking
-rather than smuggled in.
+| Endpoint              | Call                                                | Returns                                                                       |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| List a player's games | `GET /api/matches?profile_ids=<id>&page=&per_page=` | a page of matches, each already carrying full `teams[].players[]` with colour |
+| One game's details    | `GET /api/matches/<matchId>`                        | one match, same per-player shape                                              |
 
-**Where the write happens**: one enrichment step, shared by the ingester's `DiscoverStage` and the
-on-demand `_refresh_third_party_history` path (`routers/players.py:162`) that already performs a live
-Relic fetch when a third-party profile is viewed. One writer, one degrade path, and the display path
-keeps reading only the database.
+For 501455090 the colours came back `Ygrid33=4` (yellow), `Azhague33=8` (orange), `iBenj=3` (green),
+`cpt_kernel=1` (blue) — an exact match to the reference screenshot, as were the ratings, the signed
+diffs and the winning side. **Every player on that match has `replay: false`**: no replay was ever
+captured, and companion still has the colour. Companion sources it from live match/lobby data, not
+from a recording, so colour is available for essentially every ranked match regardless of whether its
+replay was ever caught — better coverage than the capture pipeline itself.
+
+**Why read-time enrichment and not the ingester.** The colour is companion's, and companion is
+"enrichment only, degradable" by the constitution's Technology Constraints. Reading it when a match
+is displayed — the way the app already pulls civ names from companion, and the way
+`_refresh_third_party_history` (`routers/players.py:162`) already fetches on view — keeps it out of
+the capture path entirely. FR-014's subject is what the ingester _captures_; a display-time
+enrichment does not change that. The colour is cached back into `match_players.color_id` so a second
+view of the same match is a database read, but that cache is written by the enrichment step, never by
+the ingester and never on the capture path, and colour never changes once a match is over, so the
+cache is trivially correct and idempotent. This is the `color_id` exception to D1's projection: its
+five siblings come from Relic's `raw_payload`, colour comes from companion.
+
+**Companion's rating/civ/winner are a cross-check, not a source.** The same response carries civ,
+rating, `ratingDiff`, `won` and `team`. Relic is primary and authoritative for all of those (D1), so
+they stay Relic-derived; companion supplies only the one field Relic lacks. A companion value that
+disagrees with Relic is a signal to investigate, not a value to write.
+
+**Wiring.** `MatchEnrichment` (`base.py:215`) gains a `participants` map parsed from
+`teams[].players[]` — a parse widening of the response `enrich_matches` already fetches, plus wiring
+that method into the match read paths. Everything else — timeout, retry, token bucket, circuit
+breaker, the `provider_calls` sink — is inherited unchanged.
 
 **Alternatives considered.**
 
-- _Derive colour from `team_id` + participant ordering._ Rejected: it would be an invention presented
-  as a fact, and AoE2:DE assigns colour by lobby slot, not by team order. Feature 002's
-  "gaps are decisions, not oversights" discipline says show the gap, never interpolate.
-- _Hotlink companion's rendered images._ Rejected for colour (it is a number, not an image) and see
-  D3 for why it is rejected for civ and map imagery too.
-- _Drop FR-003 from scope._ Rejected: it is a P1 acceptance scenario, the source exists, and the cost
-  is a parser widening on a provider that is already wired, rate-limited and breaker-protected.
+- _The replay header._ Rejected. The parsed `.aoe2record` carries an explicit
+  `zheader.game_settings.players[].color_id` (0-indexed; `+1` gives the canonical 1..8 scheme), so it
+  is a valid source — but it exists only for matches whose replay was captured _and_ parsed, which is
+  strictly worse coverage than companion (which has colour for `replay: false` matches), and it pulls
+  a slice of replay parsing forward from V2 and gives the parser its first write into application
+  tables. Companion needs neither.
+- _Derive colour from `team_id` + participant ordering._ Rejected: an invention presented as a fact.
+  Players pick their own colours in the lobby — on 501455090 the seat order does not equal the colour
+  order — and feature 002's "gaps are decisions, not oversights" forbids interpolating.
+- _Make companion the primary match-list source._ Rejected: the constitution fixes Relic as primary
+  and companion as degradable enrichment. Companion returns the whole list with colour in one call,
+  which is convenient, but adopting it as the source would invert that ordering and make the match
+  list vanish whenever companion 403s.
+- _Drop FR-003 from scope._ Rejected: it is a P1 acceptance scenario, the source exists and is proven,
+  and the cost is a parse widening on a provider already wired, rate-limited and breaker-protected.
 
 ---
 
@@ -357,7 +390,7 @@ Also stale, and touched only where this feature's components reach them:
 | Where the licence record lives            | `docs/asset-packs.md` + per-pack `LICENCE.md` + a check — **D4**            |
 | Where flags come from                     | `lipis/flag-icons`, MIT — **D3**                                            |
 | The eight player colours                  | measured hex values, shipped as tokens — **D3**                             |
-| Where `color_id` comes from               | aoe2companion `teams[].players[].color` — **D2**                            |
+| Where `color_id` comes from               | companion `GET /api/matches`, read-time, replay-free — **D2**               |
 | Where the avatar hash is stored           | new `aoe_profiles.avatar_hash` — **D6**                                     |
 | Whether the data US1 needs exists         | it does not; projection + backfill required — **D1**                        |
 | Asset payload budget                      | WebP, ≤10 MB for the package, checked — **D5**                              |

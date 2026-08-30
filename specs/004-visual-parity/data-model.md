@@ -48,15 +48,19 @@ have never been written (research.md **D1**). This feature makes them true.
 participants. It is the **cross-check, not a second source**: a projection that disagrees with it is
 a bug to raise, never a tie to break silently.
 
-**Write paths, and there are exactly two, both idempotent:**
+**Write paths, and there are exactly two, both idempotent — but they run in different places:**
 
-1. `upsert_match_player` widens from `ON CONFLICT DO NOTHING` to `ON CONFLICT DO UPDATE`, setting the
-   five Relic-derived columns from the response the same transaction already holds. Re-seeing a match
-   refreshes them from the freshest response, matching `upsert_match`'s existing posture.
-   **`color_id` is not in this statement's `SET` clause** — a Relic-only refresh must never null out a
-   colour companion supplied earlier.
-2. The enrichment step writes `color_id` alone, keyed `(game_id, profile_id)`, and only when
-   companion returned a value. A degraded companion writes nothing; it does not write `NULL`.
+1. **The five Relic-derived columns**, on the ingester's capture path. `upsert_match_player` widens
+   from `ON CONFLICT DO NOTHING` to `ON CONFLICT DO UPDATE`, setting them from the response the same
+   transaction already holds. Re-seeing a match refreshes them from the freshest response, matching
+   `upsert_match`'s existing posture. **`color_id` is not in this statement's `SET` clause** — a
+   Relic-only refresh must never null out a colour the enrichment supplied earlier.
+2. **`color_id` alone**, on the display path, not the ingester (D2). When a match is shown, the
+   companion enrichment (`GET /api/matches`, batched over the page) supplies colour, which is written
+   back to `match_players.color_id` keyed `(game_id, profile_id)` as a cache — only when companion
+   returned a value. A degraded companion writes nothing; it does not write `NULL`. Colour never
+   changes once a match is over, so the cache is trivially correct, and a second view of the match is
+   a database read. This keeps colour off the capture path, so FR-014 is untouched.
 
 **Backfill** (`scripts/ops/backfill_match_players.py`): reads `matches.raw_payload` for rows whose
 `match_players` are still NULL, applies the same projection function as path 1, and writes. It never
@@ -212,11 +216,12 @@ Only one, and it is per participant:
         ▼
 (civ_id, team_id, result, rating, rating_diff written; color_id still NULL)
         │
-        ├── companion enrichment succeeds
+        ├── shown to a user: companion enrichment on view succeeds, colour cached
         ▼
 (fully populated)
 ```
 
-Every state renders. The middle state is FR-010's degrade path for colour alone and is a legitimate
-resting state, not a migration in progress — a match companion has never heard of stays there
-permanently, and the view is still correct.
+Every state renders. The first transition is on the ingester's capture path; the second is on the
+display path (D2). The middle state is FR-010's degrade path for colour alone and is a legitimate
+resting state, not a migration in progress — a match never shown, or one companion has never heard
+of, stays there, and the view is still correct.

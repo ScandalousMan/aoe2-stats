@@ -73,7 +73,7 @@ if it issues a provider call, the design is wrong.
 
 ---
 
-## Scenario 3 — Colour arrives, and its absence is a resting state (D2, FR-003)
+## Scenario 3 — Colour arrives from companion at read time, no replay (D2, FR-003)
 
 ```bash
 uv run pytest packages/providers/tests/test_companion.py -q
@@ -81,16 +81,28 @@ uv run pytest packages/providers/tests/test_companion.py -q
 
 **Expect**: `MatchEnrichment.participants` parsed from `packages/providers/fixtures/companion/matches.json`
 with `color_id` present; and, critically, that a **degraded companion writes nothing** rather than
-writing `NULL` — a Relic-only refresh must never null out a colour supplied earlier.
+writing `NULL` — a Relic-only refresh must never null out a colour cached earlier.
 
-Verify the negative directly:
+The colour is read from companion's `GET /api/matches` **when a match is shown**, not by the ingester
+and not from a replay. This is verifiable by hand against the endpoint the code uses (colour comes
+back for a match whose players all report `replay: false`):
+
+```bash
+curl -sS -H 'User-Agent: aoe2-stats/0.1' 'https://data.aoe2companion.com/api/matches/501455090' \
+  | python3 -c 'import sys,json; m=json.load(sys.stdin); [print(p["name"], p["color"], p["replay"]) for t in m["teams"] for p in t["players"]]'
+```
+
+**Expect**: colour present for every player with `replay` false — proof no capture is required. (In
+the test suite this endpoint is served from a fixture; the socket guard blocks the live call.)
+
+Then verify the cached-absence state directly:
 
 ```sql
-SELECT color_id, civ_id, result FROM match_players WHERE game_id = <a match companion does not know>;
+SELECT color_id, civ_id, result FROM match_players WHERE game_id = <a match not yet viewed, or companion does not know>;
 ```
 
 **Expect**: `color_id` NULL with `civ_id` and `result` populated. That row must render correctly —
-it is a permanent legitimate state, not a migration in progress (data-model.md §6).
+it is a legitimate resting state, not a migration in progress (data-model.md §6).
 
 ---
 
