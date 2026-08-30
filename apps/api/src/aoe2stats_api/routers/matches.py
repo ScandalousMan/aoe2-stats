@@ -139,7 +139,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_api import security
 from aoe2stats_api.availability import Availability, AvailabilityView, derive_availability
 from aoe2stats_api.civilizations import civilisation_name
-from aoe2stats_api.deps import SessionDep, SettingsDep
+from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_storage.models import (
@@ -520,19 +520,56 @@ async def list_matches(
     request: Request,
     db_session: SessionDep,
     settings: SettingsDep,
+    cache: ResponseCacheDep,
     profile_id: int,
     cursor: str | None = None,
     limit: int = Query(default=DEFAULT_PAGE_SIZE, gt=0),
 ) -> dict[str, Any]:
     """FR-010 / FR-027: `profile_id`'s matches, newest first, cursor paginated, each row carrying
-    its capture status and deadline unmodified (module docstring)."""
+    its capture status and deadline unmodified (module docstring).
+
+    **T102.** `_owned_active_link` below always runs against the database, uncached — ownership is
+    never the thing this cache is asked to remember (`ResponseCache`'s own docstring, "Ownership
+    and the cache key"). Only once that has passed does the cache key fold `profile_id` in on its
+    own: any caller that reaches the `cache_get_or_set` call below has already been proven to own
+    `profile_id`, so a hit can only ever answer that same caller with their own data.
+
+    **Only a page reached through an explicit `cursor` is cached — the first page, `cursor is
+    None`, never is.** `test_matches_list_cursor_pagination_is_stable_across_insertions`'s own
+    docstring names the property that makes the difference: a page fetched through a cursor is
+    "bound to [a] match's position" and provably unaffected by any row inserted after it, newer or
+    older, which is the entire reason a cursor exists instead of an `OFFSET`. The first page carries
+    no such guarantee — it is defined as "whatever is newest right now", so it is exactly the page
+    whose answer changes the moment a new match is discovered, whether that discovery is the daily
+    ingestion cycle (`apps/ingester`, a separate process — module docstring) or, as that same test
+    proves directly against this route, a plain insert in the same request/response cycle. Caching
+    it would mean a player could reload their own match history and not see a match they were just
+    told was captured, which is the one delay constitution I's "capture outranks analysis" (`docs/
+    data-sources.md`) exists to forbid trading away for a comfort target plan.md itself calls
+    exactly that. A successful upload through `routers/replays.py::upload_replay` still calls
+    `cache.invalidate_prefix` on `("matches", "list", profile_id)` regardless — it clears whatever
+    cached continuation pages exist for this profile too, since a capture status change on an
+    existing match changes what an already-cached later page would answer with just as much as the
+    first page."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     await _owned_active_link(db_session, profile_id=profile_id, user_id=session_row.user_id)
 
     repository = MatchesRepository(db_session)
-    try:
+
+    async def _fetch_page() -> dict[str, Any]:
         page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
+        return {
+            "matches": [match_row_json(row) for row in page.matches],
+            "next_cursor": page.next_cursor,
+        }
+
+    try:
+        if cursor is None:
+            return await _fetch_page()
+        return await cache_get_or_set(
+            cache, ("matches", "list", profile_id, cursor, limit), _fetch_page
+        )
     except ValueError as exc:
         raise APIError(
             status_code=422,
@@ -541,18 +578,17 @@ async def list_matches(
             detail={"errors": [str(exc)]},
         ) from exc
 
-    return {
-        "matches": [match_row_json(row) for row in page.matches],
-        "next_cursor": page.next_cursor,
-    }
-
 
 # --- GET /api/matches/{game_id} -------------------------------------------------------------------
 
 
 @router.get("/matches/{game_id}")
 async def get_match_detail(
-    game_id: int, request: Request, db_session: SessionDep, settings: SettingsDep
+    game_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    cache: ResponseCacheDep,
 ) -> dict[str, Any]:
     """FR-018/FR-021 (T327): every participant of `game_id`, with team, civilisation, result and
     rating change, plus map, ladder, game version, start time and duration — readable by any
@@ -562,30 +598,56 @@ async def get_match_detail(
     played in it — it no longer decides whether `detail` comes back at all. The same list is also
     passed to `_replay_by_profile` below, so it is the one query that both gates FR-026's
     `archived` state (module docstring's remediation paragraph) and resolves FR-022's — never a
-    second query for the same fact."""
+    second query for the same fact.
+
+    **T102.** `owner_profile_ids` is resolved fresh, uncached, on every call — the ownership
+    lookup itself is never what this cache remembers (`ResponseCache`'s "Ownership and the cache
+    key"). But the *response* this route builds is not caller-independent even though the route
+    is readable by anyone signed in: `detail.capture_status`, `detail.capture_deadline_at` and
+    every participant's `replay.availability` all narrow on `owner_profile_ids` (FR-026's ownership
+    gate, the module docstring's remediation paragraph — a stranger's `archived` state must never
+    be visible to a caller who does not own that point of view). Caching the finished response by
+    `game_id` alone would let one caller's cached answer, complete with their own `archived` state,
+    leak to the next caller who asks for the same match — so the cache key below folds in
+    `frozenset(owner_profile_ids)` as well, which keeps two different callers' answers apart while
+    still letting the *same* caller's repeat view of the *same* match answer from memory, which is
+    what this task exists for. A successful upload through `routers/replays.py::upload_replay`
+    calls `cache.invalidate_prefix` on `("match_detail", game_id)` — a prefix that matches every
+    `owner_profile_ids` variant for that match, not only the uploader's own, since anyone's next
+    view of a match whose capture state just changed should see the new state rather than wait out
+    the TTL."""
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
     owner_profile_ids = await _owned_profile_ids(db_session, user_id=session_row.user_id)
 
     repository = MatchesRepository(db_session)
-    detail = await repository.get_match_detail(game_id=game_id, owner_profile_ids=owner_profile_ids)
-    if detail is None:
-        raise _match_not_found()
 
-    # T338: one `replay` object per participant point of view (FR-023), derived for the whole
-    # match in two queries rather than one per participant (`_replay_by_profile`'s own docstring).
-    replay_by_profile = await _replay_by_profile(
-        db_session,
-        game_id=game_id,
-        profile_ids=[participant.profile_id for participant in detail.participants],
-        completed_at=detail.completed_at,
-        owner_profile_ids=owner_profile_ids,
-        capture_budget_days=settings.capture_budget_days,
+    async def _fetch_detail_response() -> dict[str, Any]:
+        detail = await repository.get_match_detail(
+            game_id=game_id, owner_profile_ids=owner_profile_ids
+        )
+        if detail is None:
+            raise _match_not_found()
+
+        # T338: one `replay` object per participant point of view (FR-023), derived for the whole
+        # match in two queries rather than one per participant (`_replay_by_profile`'s own
+        # docstring).
+        replay_by_profile = await _replay_by_profile(
+            db_session,
+            game_id=game_id,
+            profile_ids=[participant.profile_id for participant in detail.participants],
+            completed_at=detail.completed_at,
+            owner_profile_ids=owner_profile_ids,
+            capture_budget_days=settings.capture_budget_days,
+        )
+
+        # T368: the `analysis` summary object, computed from whatever `match_analyses` row (if
+        # any) this exact game_id carries — `_analysis_json`'s own docstring for the seven states.
+        analysis_row = await _analysis_row(db_session, game_id=game_id)
+        analysis = _analysis_json(game_id=game_id, row=analysis_row)
+
+        return _match_detail_json(detail, replay_by_profile=replay_by_profile, analysis=analysis)
+
+    return await cache_get_or_set(
+        cache, ("match_detail", game_id, frozenset(owner_profile_ids)), _fetch_detail_response
     )
-
-    # T368: the `analysis` summary object, computed from whatever `match_analyses` row (if any)
-    # this exact game_id carries — `_analysis_json`'s own docstring for the seven states.
-    analysis_row = await _analysis_row(db_session, game_id=game_id)
-    analysis = _analysis_json(game_id=game_id, row=analysis_row)
-
-    return _match_detail_json(detail, replay_by_profile=replay_by_profile, analysis=analysis)

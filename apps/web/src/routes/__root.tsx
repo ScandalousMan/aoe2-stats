@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { Outlet, createRootRouteWithContext } from '@tanstack/react-router'
+import { Footer } from 'design-system'
 import { type MeResponse, meQueryOptions } from '../lib/api'
 
 // The web shell (T017). Two responsibilities live here and nowhere else:
@@ -9,8 +10,8 @@ import { type MeResponse, meQueryOptions } from '../lib/api'
 //    instead of firing its own request. T036 (sign-in) and T037 (dashboard) key their redirects
 //    off `context.session.authenticated` rather than re-deriving it.
 // 2. The site chrome that is not any one route's business. The footer with the Microsoft
-//    disclaimer is mounted here by T098a, once it exists (constitution X) — this file is the
-//    place T098a is told to edit, not a new one.
+//    disclaimer is mounted here by T098a (constitution X), on every route, linking to the two
+//    routes US5 built for a person's rights over their own data: `/privacy-notice` and `/object`.
 export interface RouterContext {
   queryClient: QueryClient
 }
@@ -30,7 +31,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 })
 
 function RootLayout() {
-  return <Outlet />
+  return (
+    <div className="flex min-h-svh flex-col">
+      <div className="flex-1">
+        <Outlet />
+      </div>
+      <Footer privacyNoticeHref="/privacy-notice" objectionHref="/object" />
+    </div>
+  )
 }
 
 function RootPending() {

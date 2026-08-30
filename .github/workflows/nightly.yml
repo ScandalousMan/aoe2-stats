@@ -149,25 +149,69 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://aoe2-stats.com' }}
 
-  # TODO(feature-1): enable once T100 lands.
-  #
-  # free-tier-watch:
-  #   Warns at 70% of any free allowance (R2 bytes stored, Neon storage, Vercel
-  #   invocations) so the phase-2 migration is planned, not forced. Raises a severity-2
-  #   `free_tier` alert through `raise_alert` rather than only printing a warning
-  #   (T100) — this job's own `needs:` entry on `report` follows in the same task.
+  free-tier-watch:
+    name: Free-tier watch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Warn at 70% of any free allowance (docs/adr/0002-hosting.md)
+        run: uv run scripts/checks/free_tier_watch.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-  # TODO(design-system): enable once packages/design-system exists.
-  #
-  # visual-full:
-  #   Full Playwright visual regression across every story, as opposed to the
-  #   diff-scoped run in pr.yml. CI is a court, not a factory: broad coverage
-  #   belongs here, not on every pull request.
+  # T101: `pr.yml`'s `visual` job runs `pnpm test:visual --changed` — diff-scoped on purpose,
+  # per its own comment ("CI is a court, not a factory"). This job is the factory side of that
+  # split: `pnpm test:visual` with no flag (scripts/visual/run.mjs) walks every story in the
+  # built Storybook rather than only the ones a diff touched, and — because that always spawns
+  # Playwright against the whole of `tests/visual` (playwright.config.ts's `testDir`), unlike
+  # `--changed`'s short-circuit when no story file changed — also runs `focus-ring.spec.ts`,
+  # `privacy-notice-responsive.spec.ts` and, once `apps/web/dist` exists (the `pnpm --filter web
+  # build` step below), `app-routes.spec.ts` (T108's built-application spec). `pr.yml` invokes
+  # that last one explicitly a second time only to guarantee it on a PR whose diff never touched
+  # a story file at all; here the unscoped run already reaches it, so no second invocation is
+  # needed.
+  visual-full:
+    name: Visual regression — full suite, every story and the built application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter design-system build-storybook
+      # Needed for tests/visual/app-routes.spec.ts, part of the same testDir this job's
+      # unscoped `pnpm test:visual` below walks in full — see the job comment above.
+      - run: pnpm --filter web build
+      - run: pnpm test:visual
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: visual-diffs-nightly
+          path: |
+            playwright-report/
+            test-results/
 
   report:
     name: Open an issue on failure
     runs-on: ubuntu-latest
-    needs: [contracts, parser-canary, cron-liveness, capture-audit, alert-audit, production-smoke]
+    needs:
+      [
+        contracts,
+        parser-canary,
+        cron-liveness,
+        capture-audit,
+        alert-audit,
+        production-smoke,
+        free-tier-watch,
+        visual-full,
+      ]
     if: failure()
     steps:
       - uses: actions/github-script@v7

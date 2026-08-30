@@ -176,9 +176,13 @@ jobs:
       - run: node scripts/checks/spa-routing.mjs
 
   visual:
-    name: Visual regression — affected stories only
+    name: Visual regression — affected stories and the built application
     needs: changes
-    if: needs.changes.outputs.design == 'true'
+    # T108: this used to gate on `design` alone, which only ever covers packages/design-system —
+    # an apps/web-only change (a route, `__root.tsx`, anything under `src/features/`) never
+    # triggered this job at all, story-based or otherwise. `web` is `design`'s superset (see the
+    # `changes` job's filters above), so this now runs for both.
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,8 +198,17 @@ jobs:
           path: packages/design-system/__screenshots__
           key: visual-baselines-${{ runner.os }}-${{ github.base_ref || 'main' }}
       - run: pnpm --filter design-system build-storybook
+      # T108: `tests/visual/app-routes.spec.ts` serves this build (stubbing `/api/*` itself,
+      # never `apps/api`) instead of screenshotting only the component library — the T107 defect
+      # (every screen unstyled in production) never touched a Storybook story, so nothing above
+      # this line could have caught it.
+      - run: pnpm --filter web build
       # Scoped on purpose: CI is a court, not a factory. Full coverage runs nightly.
       - run: pnpm test:visual --changed
+      # `--changed` only diff-scopes Storybook stories (scripts/visual/run.mjs) — app-routes.spec.ts
+      # is not a story and always runs, screenshotting the routes a signed-in and a signed-out
+      # visitor reach against the build the step above just produced.
+      - run: pnpm exec playwright test tests/visual/app-routes.spec.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

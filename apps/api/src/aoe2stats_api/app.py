@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -136,6 +137,57 @@ class _NoIndexHeaderMiddleware:
         await self._app(scope, receive, _send_with_headers)
 
 
+class _RequestIdMiddleware:
+    """A per-request correlation id — `request.state.request_id` for every handler and exception
+    handler in this process, `X-Request-Id` on the response for whoever is on the other end of
+    it — so one log line naming it is enough to find every other line the same request produced,
+    and enough for an operator to match a bug report to a server-side log without exchanging
+    anything else about the request (T103).
+
+    **Never a value a caller supplied.** The id is a fresh `uuid4`, generated inside this process
+    on every request; it is never read from an incoming header or cookie, so nothing here needs a
+    trust decision about it. The session cookie (`security.py`) is the one per-request identifier
+    this application already had before this task, and it stays out of every log line for the
+    reason a bearer token does (constitution VIII): its value *is* the credential, so writing it
+    anywhere a log ends up would hand out something that authenticates, not merely something that
+    correlates.
+
+    Plain ASGI, the same shape as `_NoIndexHeaderMiddleware` above and for the same reason: this
+    only ever attaches one header to whatever the app already answers and stashes one value on the
+    scope before the request reaches routing, so there is nothing here that needs
+    `BaseHTTPMiddleware`'s response-wrapping.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        request_id = str(uuid.uuid4())
+        scope.setdefault("state", {})["request_id"] = request_id
+
+        async def _send_with_request_id(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers: list[tuple[bytes, bytes]] = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("ascii")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self._app(scope, receive, _send_with_request_id)
+
+
+def _request_id(request: Request) -> str | None:
+    """`request.state.request_id`, set by `_RequestIdMiddleware` for every real request. `getattr`
+    rather than a plain attribute access: Starlette's `State.__getattr__` raises `AttributeError`
+    for a name nothing ever set, which a request built without going through the middleware stack
+    (a narrow unit test constructing a route in isolation, say) would otherwise turn into a 500 of
+    this handler's own making rather than the fault it is actually reporting."""
+    return getattr(request.state, "request_id", None)
+
+
 def _http_status_error_code(status_code: int) -> str:
     """A generic `code` for a plain `HTTPException` Starlette or FastAPI raised on its own.
 
@@ -156,6 +208,7 @@ def create_app() -> FastAPI:
     test can build a fresh app if it ever needs to, without reimporting the module."""
     app = FastAPI(title="aoe2-stats API")
     app.add_middleware(_NoIndexHeaderMiddleware)
+    app.add_middleware(_RequestIdMiddleware)
 
     @app.exception_handler(APIError)
     async def _handle_api_error(_: Request, exc: APIError) -> object:
@@ -207,8 +260,14 @@ def create_app() -> FastAPI:
         # the response of an unauthenticated route is deliberate and matches `health.py`'s own
         # reasoning: a key *name* is diagnosis the caller cannot already have, while the value
         # behind it stays out of the response and out of this log line.
+        #
+        # `request_id` (T103) is `_RequestIdMiddleware`'s fresh `uuid4`, never anything the caller
+        # supplied — see that class's own docstring for why a value read from the request itself
+        # would not belong in a log line at all.
         logger.error(
-            "Settings failed to build while handling %s %s: missing or invalid keys %s",
+            "request_id=%s Settings failed to build while handling %s %s: "
+            "missing or invalid keys %s",
+            _request_id(request),
             request.method,
             request.url.path,
             exc.keys,
@@ -222,10 +281,24 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def _handle_unexpected_error(request: Request, exc: Exception) -> object:
-        # Constitution VIII: never a secret in a log. Nothing about the request body or headers
-        # is logged here, only the method and path, and the traceback logging captures whatever
-        # the exception itself carries — the same discipline `raise_alert` callers owe (T014a).
-        logger.exception("Unhandled error handling %s %s", request.method, request.url.path)
+        # Constitution VIII / T103. This handler catches literally any exception any router or
+        # provider call raises, so it cannot vouch for what the exception itself carries:
+        # `packages/providers/base.py`'s `ProviderUnavailable`/`ProviderMoved` fold the raw
+        # `httpx` exception into their own message, and a SQLAlchemy statement error embeds its
+        # bound parameters in `str()` by default — either could echo back a value this very
+        # request supplied. `logger.exception(...)`, this handler's previous shape, always
+        # attached the full traceback — whose last line is exactly that string — to the log.
+        # The fix is T014e's own rule (`health.py`), applied to a probe this code did not choose
+        # to write: name the failure *class*, the diagnosis an operator can act on, and never the
+        # value the exception carried. `request_id` is `_RequestIdMiddleware`'s own `uuid4`, never
+        # anything the caller supplied.
+        logger.error(
+            "request_id=%s Unhandled error handling %s %s: %s",
+            _request_id(request),
+            request.method,
+            request.url.path,
+            type(exc).__name__,
+        )
         return error_response(
             status_code=500,
             code="internal_error",

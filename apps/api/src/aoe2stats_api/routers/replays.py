@@ -297,7 +297,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.availability import Availability, derive_availability
-from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
+from aoe2stats_api.deps import ObjectStoreDep, ResponseCacheDep, SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.ratelimit import check_and_increment
 from aoe2stats_api.settings import Settings
@@ -686,12 +686,20 @@ async def upload_replay(
     db_session: SessionDep,
     settings: SettingsDep,
     object_store: ObjectStoreDep,
+    cache: ResponseCacheDep,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, Any]:
     """FR-029 to FR-033 (module docstring): the manual fallback for a replay the automatic pipeline
     never captured or has already given up on. Participation, then validation, then the
     already-archived refusal, then the blob-first-row-second write — in that order, exactly as the
     module docstring describes.
+
+    **T102.** A successful upload changes the `capture_status` `routers/matches.py`'s list and
+    detail routes both cache — `cache.invalidate_prefix` below drops every cached page for this
+    profile's match list and every cached variant of this match's detail, so the caller sees their
+    own upload on the very next request rather than waiting out `ResponseCache`'s TTL (see that
+    class's own docstring, and `routers/matches.py`'s two call sites, for why this is the one
+    write path in this feature that needs to reach into the cache explicitly).
     """
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
@@ -731,6 +739,13 @@ async def upload_replay(
         match_completed_at=completed_at,
         capture_budget_days=settings.capture_budget_days,
     )
+
+    # T102: this upload's `capture_status` is exactly what `routers/matches.py`'s list and detail
+    # routes cache — invalidate both namespaces now rather than leave the caller waiting out
+    # `ResponseCache`'s TTL for their own upload to appear (see this function's own docstring and
+    # `ResponseCache`'s in `deps.py`).
+    cache.invalidate_prefix(("matches", "list", profile_id))
+    cache.invalidate_prefix(("match_detail", game_id))
 
     return {"status": capture.status.value, "source": capture.source.value}
 

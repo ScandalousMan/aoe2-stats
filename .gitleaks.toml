@@ -1,0 +1,26 @@
+# gitleaks configuration for aoe2-stats.
+#
+# Keeps the full default ruleset (useDefault) and adds one narrow allowlist: the fabricated,
+# non-secret, credential-shaped string used by the T103 log-redaction tests. Those tests
+# (apps/api/tests/test_error_logging.py, apps/ingester/tests/test_run.py) raise an exception whose
+# message embeds this value and then assert the log line has redacted it — so the fixture must,
+# by design, contain a string shaped like a leaked S3 secret. The default `generic-api-key` rule
+# fires on its entropy; this allowlist tells the scanner it is the test fixture, not a real leak.
+#
+# The allowlist is scoped to this exact literal, not to a path or a broad pattern, so a genuine
+# secret committed anywhere — the test tree included — is still caught. Applied from the working
+# tree at scan time, it also covers the historical commit that first introduced the fixture, which
+# a same-line `gitleaks:allow` marker added later cannot reach.
+
+title = "aoe2-stats gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fabricated, non-secret credential-shaped fixtures asserted-redacted by the T103 log tests"
+regexes = [
+  # The bare value gitleaks captures for `generic-api-key` (the hex suffix, not the whole
+  # assignment) — allowlist regexes match against the captured secret by default.
+  '''cd1f9e7b2a6e4c0f9b7a3d5e8c1a2b3d''',
+]

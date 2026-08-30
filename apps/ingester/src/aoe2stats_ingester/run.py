@@ -83,6 +83,7 @@ rather than asserting `[]`, which is what caught this gap while it existed.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import uuid
@@ -99,6 +100,15 @@ from aoe2stats_ingester.budget import Budget
 from aoe2stats_storage.models import Alert as AlertRow
 from aoe2stats_storage.models import CaptureStatus, IngestRun, Match, ReplayCapture
 from aoe2stats_storage.repositories.base import build_engine, build_session_factory
+
+#: T103: this module carried no logging at all before this task — every entrypoint's own record
+#: of a cycle was the `ingest_runs` row itself, and a row a run died before writing is simply
+#: absent (`test_run.py`'s own docstring: "a fact worth having rather than a row that was never
+#: written"). `logging.getLogger("aoe2stats_ingester")` matches `apps/api`'s own convention
+#: (`aoe2stats_api.app`, `aoe2stats_api.routers.health` both name the package, not the module) so
+#: a deployment's log aggregator groups every line this package emits under one name regardless of
+#: which function inside it wrote the line.
+logger = logging.getLogger("aoe2stats_ingester")
 
 
 @runtime_checkable
@@ -584,10 +594,14 @@ async def run_once(
     never leaving a claim, a download or an upload half-done, and is why the reclaim path (T055)
     exists for the one row a hard process kill can still catch.
 
-    Nothing here catches an exception a stage raises: it propagates out of this call exactly as it
-    would have before this task, leaving the `ingest_runs` row this call opened exactly as open as
-    the module docstring describes — a fact worth having, never papered over with a `finished_at`
-    the cycle never actually reached.
+    Nothing here catches an exception a stage raises to swallow it or change what the caller sees:
+    it still propagates out of this call exactly as it would have before this task, leaving the
+    `ingest_runs` row this call opened exactly as open as the module docstring describes — a fact
+    worth having, never papered over with a `finished_at` the cycle never actually reached.
+    **T103** adds one `try`/`except` around the loop below whose only job is to log the run id and
+    the exception's own *class* before an unmodified `raise` hands the same exception back to this
+    same caller with the same traceback — see that block's own comment for why the class, and
+    never the exception's message, is the whole diagnosis this line owes an operator.
     """
     resolved_session_factory = session_factory or _default_session_factory()
 
@@ -601,44 +615,81 @@ async def run_once(
         trigger=trigger,
         budget_seconds=budget_seconds,
     )
+    # T103: `run_id` from here on is this cycle's own correlation id, the same one the `ingest_
+    # runs` row above was just opened with — every line this function logs for this call names it,
+    # so a line in the process log and a row in that table are always one lookup apart. `trigger`
+    # and `budget_seconds` are configuration this deployment already runs with, never a secret.
+    logger.info(
+        "ingest run %s started: trigger=%s budget_seconds=%s", run_id, trigger, budget_seconds
+    )
 
     stages_completed: list[str] = []
     stage_reports: dict[str, Mapping[str, Any]] = {}
     stopped_early = False
 
-    for stage in stages:
-        if budget.expired:
-            stopped_early = True
-            break
-        # T059c: bind this run's own id onto every stage that carries alerts of its own
-        # (`RunScoped`, currently `CaptureDrain` alone) before it ever runs, so a `rate_limited`,
-        # `validation_failed` or `expired_capture` alert raised inside this call lands with a real
-        # `ingest_run_id` rather than the `None` every one of them used to be handed — see
-        # `RunScoped`'s own docstring for why this is a per-call bind rather than a constructor
-        # argument or a widening of `Stage.__call__` itself.
-        if isinstance(stage, RunScoped):
-            stage.bind_run(run_id)
-        stage_reports[stage.name] = await stage(budget)
-        stages_completed.append(stage.name)
+    try:
+        for stage in stages:
+            if budget.expired:
+                stopped_early = True
+                break
+            # T059c: bind this run's own id onto every stage that carries alerts of its own
+            # (`RunScoped`, currently `CaptureDrain` alone) before it ever runs, so a
+            # `rate_limited`, `validation_failed` or `expired_capture` alert raised inside this
+            # call lands with a real `ingest_run_id` rather than the `None` every one of them used
+            # to be handed — see `RunScoped`'s own docstring for why this is a per-call bind
+            # rather than a constructor argument or a widening of `Stage.__call__` itself.
+            if isinstance(stage, RunScoped):
+                stage.bind_run(run_id)
+            stage_reports[stage.name] = await stage(budget)
+            stages_completed.append(stage.name)
 
-    finished_at = _now()
-    counters = _aggregate_counters(stage_reports)
-    # T059a: the deadline sweep runs after the drain, against this same still-open row, so its
-    # alert (if any) carries a real `ingest_run_id` and is counted in that row's `alerts_raised` —
-    # see the module docstring's T059a paragraph and `_raise_deadline_breach_alert`'s own docstring.
-    counters["alerts_raised"] += await _raise_deadline_breach_alert(
-        resolved_session_factory, run_id=run_id, deadline_reference=finished_at
-    )
-    capture_lag_p50_seconds, capture_lag_p95_seconds = await _capture_lag_seconds(
-        resolved_session_factory, window_start=started_at, window_end=finished_at
-    )
-    await _close_ingest_run(
-        resolved_session_factory,
-        run_id=run_id,
-        finished_at=finished_at,
-        counters=counters,
-        capture_lag_p50_seconds=capture_lag_p50_seconds,
-        capture_lag_p95_seconds=capture_lag_p95_seconds,
+        finished_at = _now()
+        counters = _aggregate_counters(stage_reports)
+        # T059a: the deadline sweep runs after the drain, against this same still-open row, so its
+        # alert (if any) carries a real `ingest_run_id` and is counted in that row's
+        # `alerts_raised` — see the module docstring's T059a paragraph and
+        # `_raise_deadline_breach_alert`'s own docstring.
+        counters["alerts_raised"] += await _raise_deadline_breach_alert(
+            resolved_session_factory, run_id=run_id, deadline_reference=finished_at
+        )
+        capture_lag_p50_seconds, capture_lag_p95_seconds = await _capture_lag_seconds(
+            resolved_session_factory, window_start=started_at, window_end=finished_at
+        )
+        await _close_ingest_run(
+            resolved_session_factory,
+            run_id=run_id,
+            finished_at=finished_at,
+            counters=counters,
+            capture_lag_p50_seconds=capture_lag_p50_seconds,
+            capture_lag_p95_seconds=capture_lag_p95_seconds,
+        )
+    except Exception as exc:
+        # Constitution VIII / T103: this function cannot vouch for what a stage's own exception
+        # carries — `discover.py`/`reconcile.py`/`capture.py` each call a `DataProvider` behind
+        # `packages/providers`, whose `ProviderUnavailable`/`ProviderMoved` fold the raw `httpx`
+        # exception into their own message, and a SQLAlchemy statement error embeds its bound
+        # parameters in `str()` by default — either could echo back a value this cycle handled.
+        # The exception *class* is the diagnosis an operator can act on without either risk, the
+        # same discipline `apps/api/src/aoe2stats_api/routers/health.py`'s `_failure_class`
+        # established (T014e). The `ingest_runs` row this call opened above is already the durable
+        # record that this run started and did not finish; this line exists only so that fact also
+        # reaches the process log, at the moment it happens, without a query against that table
+        # first — see the module docstring's "A run that dies leaves an open row" paragraph.
+        logger.error(
+            "ingest run %s failed after %s stage(s) completed: %s",
+            run_id,
+            len(stages_completed),
+            type(exc).__name__,
+        )
+        raise
+
+    logger.info(
+        "ingest run %s finished: trigger=%s stages_completed=%s stopped_early=%s counters=%s",
+        run_id,
+        trigger,
+        len(stages_completed),
+        stopped_early,
+        counters,
     )
 
     return RunReport(
