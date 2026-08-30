@@ -1,16 +1,14 @@
 // Resolver tests against contracts/asset-pack.md's "Resolution contract". Written test-first
-// (T408): `src/index.ts` is still the T409 placeholder (`export {}`), so every test that calls
-// `civilisationIcon` / `mapThumbnail` / `countryFlag` is expected to FAIL until T409 lands the real
-// implementation — do not add a stub implementation here to turn these green; that would defeat the
-// point of writing the contract down before the code exists.
-//
-// The green-tree gate (`scripts/hooks/gate-implementer.sh`) refuses a hand-back on a red `pnpm test`,
-// the same constraint the Python side resolves with `xfail(strict=True)`. Vitest's `test.fails(...)`
-// is the equivalent for these tests: the assertion body is unchanged, the expected failure is what
-// keeps the suite green today, and it flips to a hard failure the moment T409's implementation makes
-// the assertion pass — which is what forces `.fails` off instead of silently hiding a regression. The
-// three signature-shape assertions below already pass at runtime (`expectTypeOf` is a compile-time
-// construct, not a runtime check), so they stay plain `test(...)`.
+// (T408), when `src/index.ts` was still the T409 placeholder (`export {}`) and every test calling
+// `civilisationIcon` / `mapThumbnail` / `countryFlag` was expected to FAIL — wrapped in vitest's
+// `test.fails(...)`, the equivalent of the Python side's `xfail(strict=True)` for the green-tree
+// gate (`scripts/hooks/gate-implementer.sh`), which refuses a hand-back on a red `pnpm test`. That
+// wrapping meant the assertion body stayed unchanged while T408 alone was green, and would itself
+// start failing the moment an implementation made the wrapped assertion pass — forcing `.fails` off
+// instead of silently hiding a regression. T409 has since landed the real implementation, so those
+// wrappers are gone and every test below is a plain `test(...)`, including the three signature-shape
+// assertions that already passed at runtime under T408 (`expectTypeOf` is a compile-time construct,
+// not a runtime check).
 //
 // Fixtures are chosen for confidence rather than for exact pack inventory, since the civilisation,
 // map and flag packs are assembled by concurrent sibling tasks (T404/T405/T406) and may be partial
@@ -36,13 +34,13 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { civilisationIcon, countryFlag, mapThumbnail } from './index.js'
 
 describe('civilisationIcon', () => {
-  test.fails('a known civilisation name resolves to a URL under /game-assets/', () => {
+  test('a known civilisation name resolves to a URL under /game-assets/', () => {
     const result = civilisationIcon('Britons')
 
     expect(result).toBe('/game-assets/civilisations/britons.webp')
   })
 
-  test.fails('an unknown civilisation name misses cleanly', () => {
+  test('an unknown civilisation name misses cleanly', () => {
     const result = civilisationIcon('Not A Real Civilisation')
 
     // Value: the absent case is `undefined`, never a placeholder path.
@@ -61,26 +59,26 @@ describe('civilisationIcon', () => {
 })
 
 describe('mapThumbnail', () => {
-  test.fails('a known map name with no space resolves to a URL under /game-assets/', () => {
+  test('a known map name with no space resolves to a URL under /game-assets/', () => {
     const result = mapThumbnail('Arabia')
 
     expect(result).toBe('/game-assets/maps/arabia.webp')
   })
 
-  test.fails('a known map name containing a space resolves to a URL under /game-assets/', () => {
+  test('a known map name containing a space resolves to a URL under /game-assets/', () => {
     const result = mapThumbnail('Black Forest')
 
     expect(result).toBe('/game-assets/maps/black-forest.webp')
   })
 
-  test.fails('an unknown map name misses cleanly', () => {
+  test('an unknown map name misses cleanly', () => {
     const result = mapThumbnail('Not A Real Map Alpha Nine Thousand')
 
     expect(result).toBeUndefined()
     expectTypeOf(result).toEqualTypeOf<string | undefined>()
   })
 
-  test.fails('a map name containing punctuation resolves cleanly or misses cleanly', () => {
+  test('a map name containing punctuation resolves cleanly or misses cleanly', () => {
     // Not asserted as a pack hit — see the file header. What matters is that an apostrophe
     // surviving a naive lower-case + space-to-dash transform does not throw, does not produce a
     // URL that would 404, and never yields a placeholder.
@@ -102,13 +100,13 @@ describe('mapThumbnail', () => {
 })
 
 describe('countryFlag', () => {
-  test.fails('a known ISO 3166-1 alpha-2 code resolves to a URL under /game-assets/', () => {
+  test('a known ISO 3166-1 alpha-2 code resolves to a URL under /game-assets/', () => {
     const result = countryFlag('fr')
 
     expect(result).toBe('/game-assets/flags/fr.svg')
   })
 
-  test.fails('an unknown / unassigned country code misses cleanly', () => {
+  test('an unknown / unassigned country code misses cleanly', () => {
     // "zz" is not an assigned ISO 3166-1 alpha-2 code, so no flag pack can legitimately carry it.
     const result = countryFlag('zz')
 

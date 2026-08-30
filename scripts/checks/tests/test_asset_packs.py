@@ -3,17 +3,17 @@ against a fixture tree this file builds and controls, never the real `packages/g
 that package's real content lands under a different, concurrent set of tasks (T404-T406) and is
 not authoritative for what this check must reject.
 
-Every test below is `xfail(strict=True, reason="T403 not implemented yet")` because
-`scripts/checks/asset_packs.py` does not exist yet: T403 is a separate task, and `strict=True` is
-what will force every marker off the moment that module lands and these tests start passing for
-real, per the pattern `scripts/checks/tests/test_spec_lint.py`'s own history records for T201/T202.
-`pytest.importorskip` is deliberately not used anywhere here — a skip proves nothing about whether
-the check does what FR-011 and SC-003 require; an `xfail(strict=True)` on a genuine
-`ModuleNotFoundError` does, because it flips to a hard failure the day someone adds the module
-without making these tests pass.
+T403 implemented `scripts/checks/asset_packs.py` against exactly the interface documented below,
+and every `xfail(strict=True, reason="T403 not implemented yet")` marker that used to sit on each
+test — forced off by `strict=True` the moment the module landed and these tests started passing for
+real, per the pattern `scripts/checks/tests/test_spec_lint.py`'s own history records for T201/T202 —
+has been removed. `pytest.importorskip` was deliberately not used while the module did not exist: a
+skip proves nothing about whether the check does what FR-011 and SC-003 require; an
+`xfail(strict=True)` on a genuine `ModuleNotFoundError` does, because it flips to a hard failure the
+day someone adds the module without making these tests pass.
 
-**Interface this file assumes of `scripts/checks/asset_packs.py`.** T403 implements against
-exactly this — nothing here is inherited from an existing module, so it is nailed down explicitly:
+**Interface this file assumed of `scripts/checks/asset_packs.py`, and T403 implements exactly**
+— nothing here is inherited from an existing module, so it was nailed down explicitly:
 
     REQUIRED_FIELDS: tuple[str, ...]
         `("Source", "Licence", "Permitted usage", "Ruling", "Checked")` — contracts/asset-pack.md's
@@ -69,8 +69,6 @@ paragraph is the actual anchor being guarded and a synthetic stand-in would prov
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REAL_README = _REPO_ROOT / "README.md"
@@ -145,7 +143,6 @@ def _docs_row_for(pack_name: str, fields: dict[str, str]) -> dict[str, str]:
 # --------------------------------------------------------------------- (a) no LICENCE.md at all
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_pack_with_no_licence_md_fails(tmp_path: Path) -> None:
     """SC-003, the whole gate: a pack directory holding files but no `LICENCE.md` record."""
     from scripts.checks.asset_packs import check_pack
@@ -161,7 +158,6 @@ def test_pack_with_no_licence_md_fails(tmp_path: Path) -> None:
 # ------------------------------------------------------------- (b) one test per required field
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_licence_md_missing_source_field_fails(tmp_path: Path) -> None:
     from scripts.checks.asset_packs import check_pack
 
@@ -175,7 +171,6 @@ def test_licence_md_missing_source_field_fails(tmp_path: Path) -> None:
     assert "Source" in failures[0]
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_licence_md_missing_licence_field_fails(tmp_path: Path) -> None:
     from scripts.checks.asset_packs import check_pack
 
@@ -189,7 +184,6 @@ def test_licence_md_missing_licence_field_fails(tmp_path: Path) -> None:
     assert "Licence" in failures[0]
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_licence_md_missing_permitted_usage_field_fails(tmp_path: Path) -> None:
     from scripts.checks.asset_packs import check_pack
 
@@ -205,7 +199,6 @@ def test_licence_md_missing_permitted_usage_field_fails(tmp_path: Path) -> None:
     assert "Permitted usage" in failures[0]
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_licence_md_missing_ruling_field_fails(tmp_path: Path) -> None:
     from scripts.checks.asset_packs import check_pack
 
@@ -219,7 +212,6 @@ def test_licence_md_missing_ruling_field_fails(tmp_path: Path) -> None:
     assert "Ruling" in failures[0]
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_licence_md_missing_checked_field_fails(tmp_path: Path) -> None:
     from scripts.checks.asset_packs import check_pack
 
@@ -236,7 +228,6 @@ def test_licence_md_missing_checked_field_fails(tmp_path: Path) -> None:
 # --------------------------------------------------------------- (c) READ ONLY holding files
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_read_only_ruling_with_files_present_fails(tmp_path: Path) -> None:
     """A `Ruling` of `READ ONLY` states the source may be read but not copied in — a directory
     that holds files anyway is the exact thing constitution X forbids."""
@@ -254,7 +245,6 @@ def test_read_only_ruling_with_files_present_fails(tmp_path: Path) -> None:
     assert any("READ ONLY" in failure for failure in failures)
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_read_only_ruling_with_no_files_besides_licence_passes(tmp_path: Path) -> None:
     """The contrast case, so the check above is known to test the files and not merely the word
     `READ ONLY` appearing anywhere: a `READ ONLY` pack that holds no payload file at all is
@@ -273,7 +263,6 @@ def test_read_only_ruling_with_no_files_besides_licence_passes(tmp_path: Path) -
 # ---------------------------------------------------------------------- (d) the size budget
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_package_exceeding_size_budget_fails(tmp_path: Path) -> None:
     """research.md D5's budget — checked against a tiny synthetic threshold this test controls,
     never the real 10 MB figure, so the fixture needs bytes rather than megabytes."""
@@ -289,7 +278,6 @@ def test_package_exceeding_size_budget_fails(tmp_path: Path) -> None:
     assert any("budget" in failure.lower() for failure in failures)
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_package_within_size_budget_passes(tmp_path: Path) -> None:
     """The contrast case: the same shape, comfortably under the same kind of threshold."""
     from scripts.checks.asset_packs import check_size_budget
@@ -306,7 +294,6 @@ def test_package_within_size_budget_passes(tmp_path: Path) -> None:
 # ------------------------------------------------------------- (e) the docs/asset-packs.md mirror
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_pack_absent_from_docs_mirror_fails(tmp_path: Path) -> None:
     """SC-003's mirror half: a recorded pack that `docs/asset-packs.md` never mentions at all."""
     from scripts.checks.asset_packs import check_docs_mirror
@@ -323,7 +310,6 @@ def test_pack_absent_from_docs_mirror_fails(tmp_path: Path) -> None:
     assert any("undocumented-pack" in failure for failure in failures)
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_pack_disagreeing_with_docs_mirror_fails(tmp_path: Path) -> None:
     """The mirror exists and names the pack, but its `Ruling` cell no longer matches the
     `LICENCE.md` that is the normative copy — the drift D4 exists to prevent."""
@@ -345,7 +331,6 @@ def test_pack_disagreeing_with_docs_mirror_fails(tmp_path: Path) -> None:
     assert any("drifted-pack" in failure for failure in failures)
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_pack_agreeing_with_docs_mirror_passes(tmp_path: Path) -> None:
     """The contrast case: the mirror names the pack and every field matches exactly."""
     from scripts.checks.asset_packs import check_docs_mirror
@@ -365,7 +350,6 @@ def test_pack_agreeing_with_docs_mirror_passes(tmp_path: Path) -> None:
 # --------------------------------------------------------- (f) the disclaimer — the anchor itself
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_real_readme_carries_the_disclaimer(tmp_path: Path) -> None:
     """Sanity check against the real anchor, not a synthetic stand-in: today's `README.md` must
     pass, or every test below it is exercising a check against a paragraph that never existed."""
@@ -376,7 +360,6 @@ def test_real_readme_carries_the_disclaimer(tmp_path: Path) -> None:
     assert failures == []
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_disclaimer_deleted_from_readme_fails(tmp_path: Path) -> None:
     """The case the check exists for. Constitution X grants the permission on two anchors —
     non-commercial and the disclaimer — and 'remove either anchor and the permission lapses' is
@@ -411,7 +394,6 @@ def test_disclaimer_deleted_from_readme_fails(tmp_path: Path) -> None:
 # ------------------------------------------------------- (g) the aggregate — everything together
 
 
-@pytest.mark.xfail(strict=True, reason="T403 not implemented yet")
 def test_a_fully_compliant_tree_passes_every_check(tmp_path: Path) -> None:
     """The positive control: one clean, synthetic pack, correctly mirrored, comfortably inside
     budget, against the real README.md — `check_asset_packs` must report nothing at all. Without

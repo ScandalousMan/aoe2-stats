@@ -176,9 +176,9 @@ const themeLines = [
   '  /* radius */',
   ...themeEntries('radius', Object.keys(radius), 'radius'),
   '',
-  '  /* icon — no Tailwind theme namespace maps a fixed size-* scale onto w-*/h-*/size-* the way',
-  '   * radius maps onto rounded-*, so icon sizes are consumed via iconTokens / --ds-icon-* only,',
-  '   * never through a Tailwind utility class. Re-visit if that changes. */',
+  '  /* icon — no Tailwind theme namespace maps a fixed size scale onto width, height or size',
+  '   * utilities the way radius maps onto rounded-*, so icon sizes are consumed via iconTokens',
+  '   * / --ds-icon-* only, never through a Tailwind utility class. Re-visit if that changes. */',
   '',
   '  /* font */',
   ...Object.keys(font.family).map(

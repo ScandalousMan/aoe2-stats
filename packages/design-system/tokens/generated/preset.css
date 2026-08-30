@@ -58,9 +58,9 @@
   --radius-2xl: var(--ds-radius-2xl);
   --radius-full: var(--ds-radius-full);
 
-  /* icon — no Tailwind theme namespace maps a fixed size-* scale onto w-*/h-*/size-* the way
-   * radius maps onto rounded-*, so icon sizes are consumed via iconTokens / --ds-icon-* only,
-   * never through a Tailwind utility class. Re-visit if that changes. */
+  /* icon — no Tailwind theme namespace maps a fixed size scale onto width, height or size
+   * utilities the way radius maps onto rounded-*, so icon sizes are consumed via iconTokens
+   * / --ds-icon-* only, never through a Tailwind utility class. Re-visit if that changes. */
 
   /* font */
   --font-sans: var(--ds-font-family-sans);
