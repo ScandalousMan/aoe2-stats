@@ -4,7 +4,12 @@
 # this file covers the client-side routes themselves (`routes/search.tsx`, T322).
 # /favourites (T349, `routes/favourites.tsx`) follows the same precedent — FR-015: one user's
 # favourites are private to them, so the page is never publicly indexed either.
+# /privacy (T095, `routes/privacy.tsx`) carries one signed-in user's own export and erasure
+# controls — private to them, same reasoning. `/privacy-notice` and `/object` are deliberately
+# *not* listed here: both are public, unauthenticated pages (FR-039, FR-041) meant to be reachable
+# by anyone, including a non-user who has never signed in.
 User-agent: *
 Disallow: /search
 Disallow: /players
 Disallow: /favourites
+Disallow: /privacy

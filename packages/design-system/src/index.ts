@@ -37,3 +37,11 @@ export * from './components/AnalysisTimeline'
 export * from './components/SignInScreen'
 export * from './components/ArchivalControl'
 export * from './components/ProfileSummary'
+
+// Data rights (T095, packages/design-system/specs/{privacy-notice,privacy-data-rights,
+// third-party-objection}.md). `apps/web/src/routes/{privacy,privacy-notice,object}.tsx` compose
+// these; `object.tsx` sits outside the session (FR-039).
+export * from './components/PrivacyNotice'
+export * from './components/DataExportPanel'
+export * from './components/AccountErasurePanel'
+export * from './components/ThirdPartyObjectionForm'
