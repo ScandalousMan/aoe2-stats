@@ -246,7 +246,8 @@ Motion: `duration.fast` + `easing.standard` on button and drag-over boundary cha
   `duration.instant` and the progress bar, if present, stops animating and shows its value statically.
 
 Gaps in play: **DS-4** (focus ring), **DS-7** (no icon is required; if a plain, in-house upload glyph is
-ever added it sizes from the adjacent font-size and records its origin — never a game asset, §4's ban),
+ever added it sizes from the adjacent font-size and records its origin — an in-house glyph, not a game
+asset, and if it ever became one it would still need the recorded licence README §3 requires),
 **DS-8** (mono for the file name). **No file-size ceiling is hard-coded**: client-side pre-checks are
 limited to the `accept=".aoe2record"` filter, and well-formedness is the server's `invalid_replay` call
 alone. A size limit, if wanted, comes from configuration, not a literal in this component — flagged here,
@@ -312,7 +313,7 @@ not invented.
 **The control and its resting shape**
 
 - [ ] In the `idle` frame at 375, 768 and 1280, there is a labelled drop zone with a visible `Choose
-    file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit button.
+  file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit button.
 - [ ] The heading reads "Add the replay yourself"; the explanation names the `.aoe2record` file and the
       saved games folder, and says the file is kept unchanged and marked as supplied by the user.
 - [ ] `UploadControl` never appears in the same frame as a `DownloadAction` — the two are mutually

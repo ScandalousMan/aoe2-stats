@@ -24,6 +24,7 @@ component carries a hard-coded style value.
 | [`favourite-toggle.md`](./favourite-toggle.md)           | `src/components/FavouriteToggle/`                                        | 003, US5           |
 | [`favourites-list.md`](./favourites-list.md)             | `src/components/FavouritesList/`                                         | 003, US5           |
 | [`analysis-timeline.md`](./analysis-timeline.md)         | `src/components/AnalysisTimeline/`                                       | 003, US4           |
+| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)               | 004                |
 
 ## Every spec has nine sections
 
@@ -45,12 +46,15 @@ disabling it would be wrong, and here is what happens instead".
    `packages/design-system/tokens`. Where a needed token does not exist, this directory says so in
    the gap register below and names the interim; a spec never publishes a raw value for a component
    to copy.
-3. **No game asset, ever.** No civilisation icon, portrait, font, sound or screenshot from Age of
-   Empires II. The visual language — parchment, stone, bronze, illuminated hierarchy — is evoked
-   with original drawing and free-licensed assets only. Constitution X; this is a legal boundary,
-   not a taste. Every non-text mark used by a component records its origin in the component's spec.
-4. **Colour is never the only carrier of meaning.** Win/loss, success/failure, primary/non-primary
-   all carry a text or shape signal alongside the colour.
+3. **No game asset without a recorded licence.** No civilisation icon, portrait, font, sound or
+   screenshot from Age of Empires II may sit in the repository **without a `LICENCE.md` recording its
+   source and permitted usage** (constitution X 5.0.0; feature 004 D3/D4). The visual language —
+   parchment, stone, bronze, illuminated hierarchy — is original drawing and free- or GCUR-licensed
+   assets only; the boundary is the licence record, not the absence of the asset. Every non-text mark
+   a component uses records its origin in the component's spec.
+4. **Colour is never the only carrier of meaning.** Win/loss, success/failure, primary/non-primary,
+   and a player's colour all carry a text or shape signal alongside the colour — a `PlayerColourSwatch`
+   always sits beside the player's name.
 5. **Reduced motion is a real state.** Under `prefers-reduced-motion: reduce`, every transition uses
    `motion.duration.instant` and every looping animation (skeleton pulse above all) stops on its
    resting frame.
@@ -142,6 +146,32 @@ The asymmetry is the thing to remember: **the dark theme is comfortable and the 
 tight.** Every light-theme pair above now clears the normal-text floor it owes — see the rule below
 the gap register for `warning`'s history. Judge light first.
 
+### Player colour swatches (feature 004, T410)
+
+**Theme-invariant** — a player's colour is their identity and does not re-tint per theme, so the
+`player-N` fill and its `player-N-contrast` ink carry one value in both theme blocks of `color.json`
+and the ratio is the same in both themes (full decision and rationale:
+[`game-asset-tokens.md`](./game-asset-tokens.md)). Each pair owes **4.5:1** — a glyph on a swatch is
+treated as normal text, the conservative floor — and `build-tokens.test.mjs` asserts all eight.
+
+| Foreground          | Background (fill) | Ratio | Verdict                                            |
+| ------------------- | ----------------- | ----- | -------------------------------------------------- |
+| `player-1-contrast` | `player-1` Blue   | 4.8   | AA — Blue is the one fill that needs the light ink |
+| `player-2-contrast` | `player-2` Red    | 5.2   | AA                                                 |
+| `player-3-contrast` | `player-3` Green  | 15.3  | AAA                                                |
+| `player-4-contrast` | `player-4` Yellow | 19.5  | AAA                                                |
+| `player-5-contrast` | `player-5` Teal   | 16.7  | AAA                                                |
+| `player-6-contrast` | `player-6` Purple | 7.2   | AA                                                 |
+| `player-7-contrast` | `player-7` Grey   | 4.8   | AA — mid-grey is the tightest fill                 |
+| `player-8-contrast` | `player-8` Orange | 9.6   | AA                                                 |
+
+Every swatch is drawn with a 1px **`border-strong` frame** so a pale fill (Yellow, Green, Teal)
+stays a distinct chip against the light parchment without the canonical hex being distorted per
+theme. That frame's boundary is the existing `border-strong` rows above (3.5 on `surface`, 3.4 on
+`surface-raised` in light), already asserted; the swatch adds no new frame assertion. An out-of-range
+or `NULL` `color_id` renders a `surface-sunken` fill inside the same frame, with the player's name
+carrying the meaning (rule 4).
+
 ## Token gap register
 
 Open items. Each names what is missing, what a component does until it exists, and who has to act.
@@ -154,7 +184,6 @@ An implementer who finds themselves needing a value not covered here stops and a
 | **DS-4** | No border-width, focus-ring-width or focus-ring-offset tokens.                                        | The focus ring — required on every interactive element — cannot be fully token-backed. | One uniform ring everywhere: Tailwind's `outline-2 outline-offset-2` with `outline-focus-ring`. No arbitrary values, no per-component variation.                                                                                               | Ratify Tailwind's built-in width scale as token-equivalent for hairlines and rings, and record that decision, **or** add a `border-width` family. Owner: design-system.                                                                                                                                                     |
 | **DS-5** | No breakpoint tokens.                                                                                 | Responsive sections cannot name breakpoints in our own vocabulary.                     | Specs name Tailwind's default breakpoints (`md` = 768px, `lg` = 1024px, `xl` = 1280px) and the review viewports stay 375 / 768 / 1280.                                                                                                         | Optional. Adopting Tailwind's defaults verbatim is a defensible answer; write it down either way.                                                                                                                                                                                                                           |
 | **DS-6** | No container / max-width / reading-measure tokens.                                                    | Text columns and centred panels have no token-backed width.                            | Tailwind's `max-w-*` scale, and `max-w-prose` for any paragraph column.                                                                                                                                                                        | Add a `size` family if panel widths start diverging between routes.                                                                                                                                                                                                                                                         |
-| **DS-7** | No icon-size tokens.                                                                                  | —                                                                                      | Icons size from the adjacent font-size token (`1em`) or from `space-4` / `space-5`.                                                                                                                                                            | Add if icon-only controls multiply.                                                                                                                                                                                                                                                                                         |
 | **DS-8** | No numeric-typography role. Tabular alignment currently rides on `font.family.mono` being monospaced. | A future change of mono family silently breaks column alignment on every rating table. | Numeric cells use `font-mono`.                                                                                                                                                                                                                 | Add a `font.role.numeric` alias, or a `font-variant-numeric: tabular-nums` utility, so the intent is recorded rather than inferred. Number legibility is this product's functional priority; it should not depend on a coincidence.                                                                                         |
 | **DS-9** | No link colour role, and `accent` on `surface-raised` is not in the measured contrast table.          | Long-form prose with inline links has no sanctioned link colour on every background.   | Inline links use `accent` with a permanent underline, **on `surface` only** — the one pair measured (4.9 light / 7.7 dark). A link that would sit on `surface-raised` renders `text-primary` with an underline instead. Never colour alone.    | Add a `link` / `link-hover` / `link-visited` role, **or** measure `accent` on `surface-raised` and `surface-sunken` and add the rows. Raised by `privacy-notice.md`, the first component whose body copy is mostly prose with links in it. Owner: design-system. Until then no component paints a link on a raised surface. |
 
@@ -175,6 +204,16 @@ with the defects they describe. T034b has removed the DS-1 and DS-2 citations fr
 `shared-primitives.md`, `sign-in-screen.md`, `consent-step.md` and `profile-summary.md`, including
 the button table that had encoded the interim as the design; the gaps those files still list are
 the ones genuinely open.
+
+**Closed — DS-7 (feature 004).** There was no icon-size token family; marks sized from `1em` or
+`space-4`/`space-5`. Feature 004's five image/icon marks — `CivilisationIcon`, `MapThumbnail`,
+`PlayerColourSwatch`, `CountryFlag`, `PlayerAvatar` — need a shared, sanctioned scale. A new **`icon`**
+family (`tokens/icon.json`, seven steps `icon-xs`…`icon-3xl`) closes it: six steps are `space`-scale
+multiples so icon size and layout gaps share one rhythm, and `icon-xl` is fixed at 44px as the WCAG
+2.5.8 touch-target floor an interactive icon must fill. Values, per-component mapping, and the
+generator wiring T410 owes (it is hand-wired like `radius`, not auto-discovered) are in
+[`game-asset-tokens.md`](./game-asset-tokens.md). The id is kept rather than renumbered so this
+register and the commit history line up with the gap it describes.
 
 **Closed — light `warning` (T038a).** `warning` colours only the stripe and the heading of a
 callout, never its body: callout body text is always `text-primary`. That structural rule is

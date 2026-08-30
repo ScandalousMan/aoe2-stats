@@ -42,9 +42,14 @@ A component is done only when all eight are true.
 
 ## IP constraint
 
-No game asset in the repository: no civilisation icon, no portrait, no font, no sound, no screenshot.
-Everything is redrawn or free-licensed, with the licence documented. The Microsoft "Game Content
-Usage Rules" disclaimer sits in the site footer.
+No unrecorded pack: a game asset (civilisation icon, minimap, flag) MAY be copied into
+`packages/game-assets/` and served, but only carrying the five-field licence record
+`specs/004-visual-parity/contracts/asset-pack.md` requires — Source, Licence, Permitted usage,
+Ruling, Checked — and `scripts/checks/asset_packs.py` fails the build on any pack that doesn't. A
+portrait, font, sound or screenshot stays out; nothing else has been ruled on. Redrawn or
+free-licensed assets still need their licence documented the same way. The Microsoft "Game Content
+Usage Rules" disclaimer sits in the site footer and in `README.md` — removing either lapses the
+permission (constitution X).
 
 ## Layout
 

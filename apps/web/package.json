@@ -34,6 +34,7 @@
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
+    "vite-plugin-static-copy": "^3.4.0",
     "vitest": "^3.2.4"
   }
 }

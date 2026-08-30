@@ -82,6 +82,19 @@ jobs:
       - name: Parse the reference replay with every known engine
         run: uv run --with aoe2rec-py --with mgz scripts/checks/parser_canary.py
 
+  asset-packs:
+    name: Asset packs — the licence gate (constitution X, FR-011, SC-003)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Unscoped, unlike `pr.yml`'s path-filtered job: a licence can lapse without a pull request
+      # touching this repository at all — Microsoft's own rules changing underneath a recorded
+      # `Checked` date is exactly the kind of drift this workflow exists to notice.
+      - run: uv run scripts/checks/asset_packs.py
+
   # T061: each of the three jobs below connects to the production database with `DATABASE_URL`
   # (a repository secret, never a value checked in — constitution VIII/XII) and needs nothing else
   # installed beyond `uv sync`'s own resolution of the workspace, since `aoe2stats-storage` and
@@ -205,6 +218,7 @@ jobs:
       [
         contracts,
         parser-canary,
+        asset-packs,
         cron-liveness,
         capture-audit,
         alert-audit,

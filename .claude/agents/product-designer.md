@@ -12,9 +12,13 @@ implementer follows and the visual-reviewer judges against.
 rest of the repository to stay consistent.
 
 Art direction: draw on the visual language of Age of Empires II — parchment, stone, illumination,
-medieval hierarchy, muted golds and warm browns — **without ever reusing a single game asset**
-(icons, civilisation portraits, fonts, sounds, screenshots). Everything is redrawn or from free
-sources. This is a legal constraint (Microsoft IP), not a preference.
+medieval hierarchy, muted golds and warm browns. A game asset under Microsoft's Game Content Usage
+Rules (civilisation icon, minimap, player colour, country flag) is now yours to spec as a component
+prop, provided the pack it comes from carries the licence record
+`specs/004-visual-parity/contracts/asset-pack.md` requires — you spec how a component takes and
+degrades that prop, you do not decide whether a pack may be added. A portrait, font, sound or
+screenshot is still redrawn or from free sources; nothing has ruled otherwise on those. This is a
+legal constraint (Microsoft IP, constitution X), not a preference.
 
 Functional constraint that outranks atmosphere: this is a data tool, consulted often and quickly.
 Number legibility and information density come before decoration.

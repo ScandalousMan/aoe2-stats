@@ -32,6 +32,22 @@
   --color-info-contrast: var(--ds-color-info-contrast);
   --color-focus-ring: var(--ds-color-focus-ring);
   --color-overlay: var(--ds-color-overlay);
+  --color-player-1: var(--ds-color-player-1);
+  --color-player-1-contrast: var(--ds-color-player-1-contrast);
+  --color-player-2: var(--ds-color-player-2);
+  --color-player-2-contrast: var(--ds-color-player-2-contrast);
+  --color-player-3: var(--ds-color-player-3);
+  --color-player-3-contrast: var(--ds-color-player-3-contrast);
+  --color-player-4: var(--ds-color-player-4);
+  --color-player-4-contrast: var(--ds-color-player-4-contrast);
+  --color-player-5: var(--ds-color-player-5);
+  --color-player-5-contrast: var(--ds-color-player-5-contrast);
+  --color-player-6: var(--ds-color-player-6);
+  --color-player-6-contrast: var(--ds-color-player-6-contrast);
+  --color-player-7: var(--ds-color-player-7);
+  --color-player-7-contrast: var(--ds-color-player-7-contrast);
+  --color-player-8: var(--ds-color-player-8);
+  --color-player-8-contrast: var(--ds-color-player-8-contrast);
 
   /* radius */
   --radius-none: var(--ds-radius-none);
@@ -41,6 +57,10 @@
   --radius-xl: var(--ds-radius-xl);
   --radius-2xl: var(--ds-radius-2xl);
   --radius-full: var(--ds-radius-full);
+
+  /* icon — no Tailwind theme namespace maps a fixed size scale onto width, height or size
+   * utilities the way radius maps onto rounded-*, so icon sizes are consumed via iconTokens
+   * / --ds-icon-* only, never through a Tailwind utility class. Re-visit if that changes. */
 
   /* font */
   --font-sans: var(--ds-font-family-sans);

@@ -23,6 +23,7 @@ jobs:
       design: ${{ steps.filter.outputs.design }}
       migrations: ${{ steps.filter.outputs.migrations }}
       config: ${{ steps.filter.outputs.config }}
+      asset-packs: ${{ steps.filter.outputs.asset-packs }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -44,6 +45,12 @@ jobs:
             web:
               - 'apps/web/**'
               - 'packages/design-system/**'
+              # 004 T403: without this, a pack-only change (an icon added, removed or re-encoded)
+              # runs neither `pnpm test` — so T408's resolver tests never execute — nor the
+              # `visual` job below, even though Storybook mounts this exact directory via
+              # `staticDirs` (T401), which would make a pack change the definition of a visual
+              # change invisible to constitution VII's mandatory gate.
+              - 'packages/game-assets/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
             design:
@@ -59,6 +66,14 @@ jobs:
               - 'specs/**'
               - '.env.example'
               - 'scripts/checks/spec_lint.py'
+            asset-packs:
+              - 'packages/game-assets/**'
+              - 'docs/asset-packs.md'
+              # 004 T403, load-bearing: the Game Content Usage Rules disclaimer anchor
+              # (constitution X) can be removed by a pull request that touches no asset at all,
+              # and this job has to run on exactly that pull request.
+              - 'README.md'
+              - 'scripts/checks/asset_packs.py'
 
   specs:
     name: Specs — cross-artifact lint
@@ -82,6 +97,24 @@ jobs:
             uv run scripts/checks/spec_lint.py --feature "$feature" || status=1
           done
           exit $status
+
+  asset-packs:
+    name: Asset packs — the licence gate (constitution X, FR-011, SC-003)
+    needs: changes
+    if: needs.changes.outputs.asset-packs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Read-only, no network, stdlib only — every pack under packages/game-assets/ must carry a
+      # complete LICENCE.md, a `READ ONLY` ruling must hold no payload file, the package must stay
+      # under its size budget, docs/asset-packs.md must mirror every LICENCE.md, and README.md
+      # must still carry the Game Content Usage Rules disclaimer. Removing either anchor — the
+      # non-commercial condition or the disclaimer — lapses the permission constitution X grants,
+      # which is why this job's own path filter (above) includes README.md and not only the packs.
+      - run: uv run scripts/checks/asset_packs.py
 
   config:
     name: Configuration — settings.py and .env.example agree

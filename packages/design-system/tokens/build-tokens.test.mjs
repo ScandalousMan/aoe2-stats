@@ -64,6 +64,7 @@ test('tokens.ts exports every family as a typed, var()-referencing const', () =>
     'colorTokens',
     'spaceTokens',
     'radiusTokens',
+    'iconTokens',
     'elevationTokens',
     'fontTokens',
     'motionTokens',
@@ -190,6 +191,30 @@ test('info, success and danger clear the 4.5:1 floor their Callout heading use o
       ['danger', danger],
     ]) {
       assertRealPair(theme, hex, surfaceRaised, 4.5, `${name} heading text on surface-raised`)
+    }
+  }
+})
+
+// --- Player colour swatches (T410, FR-003) ------------------------------------------------------
+// The eight canonical player colours are theme-invariant (a player's colour is their identity, not
+// a per-theme choice — packages/design-system/specs/game-asset-tokens.md, Decision 1), so every
+// `player-N` / `player-N-contrast` pair carries one value in both theme blocks. Each pair owes
+// 4.5:1: a glyph on the swatch (a winner marker) is treated as normal text, the conservative floor.
+// A colour shipped without a paired, verified contrast token is a component that hard-codes a
+// foreground the first time a bright fill (e.g. Yellow) needs a legible glyph on it.
+test('every player colour has a paired -contrast token that clears 4.5:1, in both theme blocks', () => {
+  for (const theme of ['light', 'dark']) {
+    for (let n = 1; n <= 8; n += 1) {
+      const fill = color[theme][`player-${n}`]
+      const contrast = color[theme][`player-${n}-contrast`]
+      assert.ok(fill, `color.json ${theme} is missing player-${n}`)
+      assert.ok(contrast, `color.json ${theme} is missing player-${n}-contrast`)
+      const ratio = contrastRatio(contrast, fill)
+      assert.ok(
+        ratio >= 4.5,
+        `player-${n}-contrast on player-${n} is ${ratio.toFixed(2)}:1 in the ${theme} theme, ` +
+          'below the 4.5:1 AA floor a glyph on the swatch needs',
+      )
     }
   }
 })
