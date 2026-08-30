@@ -13,6 +13,25 @@
  * component using `dark:bg-surface` never has to know which theme is active. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
+/* T096 defect 2 (visual review) — DS-4's focus ring fix, made once, here, instead of in every
+ * component that composes it. Tailwind's `outline-none` sets the shared `--tw-outline-style`
+ * custom property to `none` unconditionally
+ * (`.outline-none{--tw-outline-style:none;outline-style:none}`), and the width utility that
+ * builds the documented ring (`outline-2`, used as `focus-visible:outline-2`) only *reads* that
+ * property (`outline-style:var(--tw-outline-style)`) — it never sets it back. Every interactive
+ * primitive in this package (Button, the text inputs, the acknowledgement checkboxes, every inline
+ * link) composes `outline-none` (hide the default browser outline at rest) with
+ * `focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring` (DS-4's
+ * one uniform ring), so under `:focus-visible` the property stayed `none` and the ring never
+ * painted anywhere, in either theme — confirmed against the compiled CSS:
+ * `getComputedStyle(activeEl).outlineStyle === 'none'` even while `el.matches(':focus-visible')`.
+ * This rule restores it. It is unlayered on purpose: unlayered CSS always outranks anything
+ * Tailwind emits into `@layer utilities`, regardless of selector specificity or declaration order,
+ * so the fix cannot lose a future specificity fight the way a same-layer override could. */
+.outline-none:focus-visible {
+  --tw-outline-style: solid;
+}
+
 /* T107: Tailwind's automatic source detection walks outward from the stylesheet that imports it,
  * but stops at anything resolved through node_modules — which is exactly how every consumer
  * outside this package reaches this file (apps/web depends on `design-system` as a workspace
