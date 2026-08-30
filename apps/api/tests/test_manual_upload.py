@@ -87,8 +87,6 @@ from aoe2stats_storage.models import Session as UserSession
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
-_XFAIL_REASON = "T080 not implemented yet"
-
 #: See `test_replay_status.py`'s module docstring — this suite's working assumption, not yet fixed
 #: by a contract document beyond T028's own implementation.
 SESSION_COOKIE_NAME = "session_id"
@@ -210,7 +208,6 @@ async def _capture_row(
 # --- Scenario 8.1: uploading the matching file for an `expired` capture yields `stored`, manual ---
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_upload_for_an_expired_capture_stores_it_flagged_manual(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -268,7 +265,6 @@ async def test_upload_for_an_expired_capture_stores_it_flagged_manual(
 # --- Scenario 8.2: a text file renamed `.aoe2record` is rejected, nothing stored -----------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_upload_of_a_renamed_text_file_is_rejected_and_stores_nothing(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -309,7 +305,6 @@ async def test_upload_of_a_renamed_text_file_is_rejected_and_stores_nothing(
 # --- Scenario 8.3: a valid replay for a match the user did not play is rejected ------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_upload_of_a_valid_replay_for_a_match_the_user_did_not_play_is_rejected(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -363,7 +358,6 @@ async def test_upload_of_a_valid_replay_for_a_match_the_user_did_not_play_is_rej
 # --- Scenario 8.4: an upload over an existing archive is refused, never overwritten --------------
 
 
-@pytest.mark.xfail(strict=True, reason=_XFAIL_REASON)
 async def test_upload_over_an_existing_archive_is_refused_and_does_not_overwrite(
     client: TestClient, db_session: AsyncSession
 ) -> None:

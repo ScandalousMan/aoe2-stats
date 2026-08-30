@@ -62,6 +62,48 @@ match whose replay is not yet `stored` all answer the identical `not_found` FR-0
 — here, whether the match exists at all). Never a 403: that would already disclose the match
 exists. A refusal is not an access and writes nothing to `replay_access_log`.
 
+**`POST /api/replays/{game_id}/upload` (T080/T081, FR-029 to FR-033).** The manual fallback for a
+replay the automatic pipeline never captured or has already given up on — `test_manual_upload.py`
+is this route's own specification, scenario 8 of quickstart.md. Multipart, one `file` field. Three
+refusals, each the identical error shape FR-045 already establishes elsewhere in this module, and
+one non-negotiable ordering:
+
+- **Participation (FR-031).** `_participant_match_for_upload` joins `match_players` to the caller's
+  own active `profile_links` rows for `game_id` — the identical shape `_match_completed_at_for_
+  participant` above already uses for the point-of-view route, except restricted to profiles the
+  *caller* owns rather than one named explicitly in the path — and raises the same `_replay_not_
+  found()` this module already raises for "no such match" and "a match the caller did not play"
+  (module docstring's FR-045 precedent, reused verbatim rather than a fourth code for a fact this
+  module already has one word for).
+- **Validation (FR-030), through the same engine interface capture uses.** `Aoe2RecValidator`
+  (`packages/replay-engine`) is imported lazily, inside this handler, never at this module's own
+  top level — mirrors `routers/cron.py`'s and `ingest_stages.py`'s own T018c discipline: the API
+  must never load the replay engine merely by being imported (constitution V,
+  `test_engine_isolation.py`). A `ReplayValidationError` (`MalformedArchiveError` or
+  `EngineParseError` — `aoe2stats_core.replay.validation`, the Protocol `core` holds so the API
+  can import it without the engine) becomes `422`
+  `invalid_replay`; nothing is written for it, not even `quarantined` — quarantine is for a
+  downloaded blob that failed validation after the fact, never for an upload that never validated at
+  all (`CapturesRepository`'s own module docstring). Decompression bounds and the zip-bomb ratio
+  check are already enforced inside the adapter (T013a); this route calls `validate` once and reacts
+  to what it returns or raises, exactly as `CaptureDrain._process_one` does for a downloaded blob,
+  minus that module's own containment barrier — a native panic (`BaseException`) is that module's
+  concern for unattended, unauthenticated batch traffic, not this authenticated, one-file-at-a-time
+  route's.
+- **Already archived (FR-032).** Checked only *after* validation succeeds, matching the task's own
+  ordering: `_existing_capture` reads whatever row already exists for `(game_id, profile_id)` and
+  refuses `409` `already_archived` only when it is already `stored` — every other terminal or
+  in-flight status (`expired`, `unavailable`, `failed`, `quarantined`, or none at all) is exactly
+  what `CapturesRepository.record_manual_upload` exists to rescue (that repository's own module
+  docstring: "create-or-update, never a bare insert"). Never overwritten: this check runs, and
+  refuses, before either write below.
+- **Write ordering — blob first, row second, the identical non-negotiable order `capture.py`'s own
+  module docstring fixes for an automatic capture.** `object_store.put` under `replay_object_key`
+  (the same key scheme an automatic capture already uses for this pair — `replay_object_key`'s own
+  docstring: "shared by capture ... and manual upload ... both resolve to the same key") runs first;
+  `CapturesRepository.record_manual_upload` — the one write that follows, described in full in that
+  repository's own module docstring — runs only once the blob is durable.
+
 **`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
 above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
 one is reachable for *any* participant's point of view of *any* match this service holds,
@@ -240,12 +282,13 @@ working unchanged.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -259,6 +302,7 @@ from aoe2stats_api.errors import APIError
 from aoe2stats_api.ratelimit import check_and_increment
 from aoe2stats_api.settings import Settings
 from aoe2stats_core.alerting import AlertRecord
+from aoe2stats_core.replay.validation import ReplayValidationError
 from aoe2stats_ingester.ratelimit import (
     build_aoems_rate_limiter,
     build_aoems_retry_policy,
@@ -285,6 +329,8 @@ from aoe2stats_storage.models import (
     ReplayFetchMiss,
 )
 from aoe2stats_storage.models import Session as SessionRow
+from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
+from aoe2stats_storage.repositories.captures import CapturesRepository
 
 router = APIRouter(tags=["replays"])
 
@@ -572,6 +618,121 @@ def _point_of_view_filename(*, game_id: int, profile_id: int) -> str:
     hand before it runs.
     """
     return f"AgeIIDE_Replay_{game_id}_{profile_id}.zip"
+
+
+# --- POST /api/replays/{game_id}/upload (T080/T081, FR-029 to FR-033) -------------------------
+
+
+def _invalid_replay_error(reason: str) -> APIError:
+    """FR-030: a well-formedness or engine-parse failure, `422`, never a partial write (module
+    docstring's "Validation" paragraph)."""
+    return APIError(status_code=422, code="invalid_replay", message=reason)
+
+
+def _already_archived_error() -> APIError:
+    """FR-032: a `stored` capture already exists for this `(game_id, profile_id)` pair — refused,
+    never overwritten (module docstring's "Already archived" paragraph)."""
+    return APIError(
+        status_code=409,
+        code="already_archived",
+        message="A replay for this match has already been archived and cannot be overwritten.",
+    )
+
+
+async def _participant_match_for_upload(
+    db_session: AsyncSession, *, game_id: int, user_id: Any
+) -> tuple[datetime, int]:
+    """`(Match.completed_at, profile_id)` for whichever of the caller's own active `profile_links`
+    played `game_id`, or the identical `_replay_not_found()` FR-045/FR-031 requires for every other
+    case: no such match, or one the caller's own linked profiles never played (module docstring's
+    "Participation" paragraph). Mirrors `_match_completed_at_for_participant` above, restricted to
+    the caller's own profiles rather than one named explicitly in the path."""
+    result = await db_session.execute(
+        select(Match.completed_at, MatchPlayer.profile_id)
+        .join(MatchPlayer, MatchPlayer.game_id == Match.game_id)
+        .join(ProfileLink, ProfileLink.profile_id == MatchPlayer.profile_id)
+        .where(
+            Match.game_id == game_id,
+            ProfileLink.user_id == user_id,
+            ProfileLink.unlinked_at.is_(None),
+        )
+    )
+    row = result.first()
+    if row is None:
+        raise _replay_not_found()
+    completed_at, profile_id = row
+    return completed_at, profile_id
+
+
+async def _existing_capture(
+    db_session: AsyncSession, *, game_id: int, profile_id: int
+) -> ReplayCapture | None:
+    """The `replay_captures` row already on file for `(game_id, profile_id)`, whatever its status
+    — `None` if discovery never enqueued one for this pair. Read before either write below, so a
+    `stored` row is caught and refused before it is ever touched (module docstring's "Already
+    archived" paragraph)."""
+    result = await db_session.execute(
+        select(ReplayCapture).where(
+            ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+@router.post("/replays/{game_id}/upload")
+async def upload_replay(
+    game_id: int,
+    request: Request,
+    db_session: SessionDep,
+    settings: SettingsDep,
+    object_store: ObjectStoreDep,
+    file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """FR-029 to FR-033 (module docstring): the manual fallback for a replay the automatic pipeline
+    never captured or has already given up on. Participation, then validation, then the
+    already-archived refusal, then the blob-first-row-second write — in that order, exactly as the
+    module docstring describes.
+    """
+    secret = settings.app_secret_key.get_secret_value()
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
+
+    completed_at, profile_id = await _participant_match_for_upload(
+        db_session, game_id=game_id, user_id=session_row.user_id
+    )
+
+    content = await file.read()
+
+    # Imported here, not at this module's own top level — mirrors `routers/cron.py`'s and
+    # `ingest_stages.py`'s own T018c discipline: the API must never load the replay engine merely
+    # by being imported (constitution V, `test_engine_isolation.py`).
+    from aoe2stats_replay_engine.aoe2rec import Aoe2RecValidator
+
+    try:
+        result = Aoe2RecValidator().validate(content)
+    except ReplayValidationError as exc:
+        raise _invalid_replay_error(str(exc)) from exc
+
+    existing = await _existing_capture(db_session, game_id=game_id, profile_id=profile_id)
+    if existing is not None and existing.status is CaptureStatus.STORED:
+        raise _already_archived_error()
+
+    key = replay_object_key(game_id, profile_id)
+    await object_store.put(key, content, content_type=REPLAY_CONTENT_TYPE)
+
+    capture = await CapturesRepository(db_session).record_manual_upload(
+        game_id=game_id,
+        profile_id=profile_id,
+        object_key=key,
+        zip_bytes=len(content),
+        zip_sha256=hashlib.sha256(content).hexdigest(),
+        inner_filename=result.inner_filename,
+        inner_bytes=result.inner_bytes,
+        validated_by=f"{result.engine_name}@{result.engine_version}",
+        match_completed_at=completed_at,
+        capture_budget_days=settings.capture_budget_days,
+    )
+
+    return {"status": capture.status.value, "source": capture.source.value}
 
 
 # --- GET /api/matches/{game_id}/replay/{profile_id} (T337, 003) ------------------------------
