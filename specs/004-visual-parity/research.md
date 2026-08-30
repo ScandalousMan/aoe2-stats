@@ -390,17 +390,56 @@ comment with no assertion behind it; correct it in the same pass.
 
 ---
 
+## D9 — The map thumbnail source, revisited after PR review (2026-08-30)
+
+PR review rejected the maps as not matching the generic-starting-position style peers show, pointing
+at `https://www.aoe2insights.com/static/images/maps/{slug}.png` as the reference. Investigation
+found the rejection was aimed at the wrong layer:
+
+- **The style was already correct.** The vendored pack (D3, aoe2cm2 `public/images/maps/`) _is_ the
+  DE lobby random-map preview — a diamond map with coloured starting positions — the same asset
+  aoe2insights hosts. Compared `arabia.webp`/`black-forest.webp` against the reference directly.
+- **The real defect is resolution.** aoe2cm2 ships these previews at **140×140** natively; aoe2insights
+  hosts a higher-resolution copy of the same game asset (~256 px+), which is why it looks crisp and
+  the 140 px pack looks soft.
+- **The local AoE2 DE install — the highest-fidelity, authoritative source — is unavailable.** DE is
+  Windows/Xbox-only; there is no macOS build and none is installed on the development machine (Steam,
+  `appmanifest_813780`, `resources/_common/drs`, `.drs`/`.sld` archives, and Wine/CrossOver/Parallels
+  bottles all searched, all absent). Copying or DRS/SLD-extracting from the game (the game keeps these
+  previews as loose image files, not inside DRS/SLP, so extraction ≡ a file copy) can only be done on
+  a Windows/DE machine, by hand, as a manual step.
+- **aoe2insights is rejected as a programmatic source.** The whole domain sits behind an interactive
+  Cloudflare bot-challenge (`cf-mitigated: challenge`; scripted fetch → 403 interstitial; a real
+  browser escalates to a "verify you are human" checkbox). It must not be bypassed, automated or
+  solved, so it cannot back an automated or repeatable sync.
+
+**Decision (product call, 2026-08-30): keep aoe2cm2 at 140 px** — the maintained, openly-reachable
+mirror (last push four days before this note), correct style and naming, already recorded in
+`maps/LICENCE.md` and `docs/asset-packs.md`. The 140 px limitation is accepted; the higher-fidelity
+local-extraction route stays available to a future change but needs a Windows/DE machine to run.
+
+**The synchronisation the pool needs is a dev-time, network-free script** (T448):
+`scripts/ops/sync_map_thumbnails.py` re-encodes a local `--source-dir` of downloaded aoe2cm2 PNGs
+into `packages/game-assets/maps/`, reproducing the committed pack and adding only what is new. The
+network hop — downloading the source — stays a documented human step (`docs/runbooks/map-thumbnail-sync.md`),
+because committed project code makes no external call outside `packages/providers`
+(`scripts/checks/contract_sources.py` is the single sanctioned exception) and this feature vendors
+every asset by hand (D5, T404–T406). No openly-licensed or non-gated higher-resolution mirror was
+found; the licence basis is unchanged (GCUR, as D3).
+
+---
+
 ## Resolved unknowns from Technical Context
 
-| Unknown                                   | Resolution                                                                  |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| Which civ icon pack, and its licence      | aoe2techtree `img/Civs/`, GCUR-only, copied in — **D3**                     |
-| Which minimap pack, and its licence       | aoe2cm2 `public/images/maps/`, GCUR-only, copied in — **D3**                |
-| How a pack keys off `civ_id` / `map_name` | `name.lower()` with `_` and `-` respectively; 59/59 civs, 435 maps — **D3** |
-| Where the licence record lives            | `docs/asset-packs.md` + per-pack `LICENCE.md` + a check — **D4**            |
-| Where flags come from                     | `lipis/flag-icons`, MIT — **D3**                                            |
-| The eight player colours                  | measured hex values, shipped as tokens — **D3**                             |
-| Where `color_id` comes from               | companion `GET /api/matches`, read-time, replay-free — **D2**               |
-| Where the avatar hash is stored           | new `aoe_profiles.avatar_hash` — **D6**                                     |
-| Whether the data US1 needs exists         | it does not; projection + backfill required — **D1**                        |
-| Asset payload budget                      | WebP, ≤10 MB for the package, checked — **D5**                              |
+| Unknown                                   | Resolution                                                                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Which civ icon pack, and its licence      | aoe2techtree `img/Civs/`, GCUR-only, copied in — **D3**                                                                                    |
+| Which minimap pack, and its licence       | aoe2cm2 `public/images/maps/`, GCUR-only, copied in — **D3**; 140 px kept, aoe2insights rejected (Cloudflare), synced by a script — **D9** |
+| How a pack keys off `civ_id` / `map_name` | `name.lower()` with `_` and `-` respectively; 59/59 civs, 435 maps — **D3**                                                                |
+| Where the licence record lives            | `docs/asset-packs.md` + per-pack `LICENCE.md` + a check — **D4**                                                                           |
+| Where flags come from                     | `lipis/flag-icons`, MIT — **D3**                                                                                                           |
+| The eight player colours                  | measured hex values, shipped as tokens — **D3**                                                                                            |
+| Where `color_id` comes from               | companion `GET /api/matches`, read-time, replay-free — **D2**                                                                              |
+| Where the avatar hash is stored           | new `aoe_profiles.avatar_hash` — **D6**                                                                                                    |
+| Whether the data US1 needs exists         | it does not; projection + backfill required — **D1**                                                                                       |
+| Asset payload budget                      | WebP, ≤10 MB for the package, checked — **D5**                                                                                             |

@@ -54,7 +54,11 @@ members = [
 # stub-only package (T061a): `requests` itself is never a runtime dependency of any workspace
 # member — only `scripts/checks/contract_sources.py` imports it, via `uv run --with requests`, the
 # nightly contract job's own way of installing it — but that script is now under `[tool.mypy]`'s
-# `files`, and mypy needs the stub package to type-check a call to `requests` at all.
+# `files`, and mypy needs the stub package to type-check a call to `requests` at all. `Pillow` is
+# here for the same reason `alembic` is: a dev-time tool, never imported by any deployed
+# application code, this time `scripts/ops/sync_map_thumbnails.py` (research.md D9, T448), which
+# re-encodes local map images into `packages/game-assets/maps/` and needs it both to run and for
+# its own test suite to collect.
 [dependency-groups]
 dev = [
   "ruff>=0.8",
@@ -63,6 +67,7 @@ dev = [
   "alembic>=1.13",
   "pytest-asyncio>=0.24",
   "types-requests>=2.32",
+  "Pillow>=11.0",
 ]
 
 # --- pytest --------------------------------------------------------------------------------------
