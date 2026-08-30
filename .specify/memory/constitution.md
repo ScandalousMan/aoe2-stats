@@ -1,133 +1,43 @@
 <!--
-Sync Impact Report — 2026-08-28
+Sync Impact Report — compact changelog. Full rationale for each entry is in git history.
 
-Version change: 4.0.0 -> 4.1.0
+5.0.0 (2026-08-30, MAJOR) — Principle X: retire the ban on copying game assets into the repo. Asset
+packs needed to display game content MAY now be copied in and served, conditional on the two surviving
+anchors (non-commercial + the README/footer disclaimer) plus a per-pack licence record (feature 002's
+discipline). The ban was stricter than Microsoft's Game Content Usage Rules require for non-commercial
+fan use and gave up no protection those anchors don't already provide, while leaving the product
+poorer than every peer. Backward-incompatible: specs and the design-system "evoke without reusing"
+approach were written against it. Modified: X.
 
-4.1.0 (MINOR: materially expanded guidance, no principle removed or redefined) — principle I stops
-asserting a retention figure and gains a ratchet.
+4.1.0 (2026-08-28, MINOR) — Principle I: drop the hard-coded retention figure (a measurement lives
+only in docs/data-sources.md; the 31-day reading was contradicted on 2026-08-28 by a boundary six
+months back, unresolved). Add the budget ratchet: new evidence MAY tighten CAPTURE_BUDGET_DAYS at any
+time, may only widen it once docs/data-sources.md records the question settled across >1 profile and
+>1 date. Modified: I.
 
-The trigger is a defect this constitution created for itself. Principle I carried "approximately 31
-days (measured 2026-08-19)" as a statement of fact. `docs/data-sources.md` recorded on 2026-08-28
-that a second, larger sample (78 captures, profile 2322168) puts an equally sharp boundary six
-months back rather than 31 days, with the replay endpoint having moved between the two measurements
-and the question unresolved. The constitution therefore asserted as settled something `docs/` marks
-as contradicted — and `CLAUDE.md` names this exact failure mode: a measurement written in two homes
-goes stale in one of them. The measured window is a property of the outside world, so it belongs in
-`docs/data-sources.md` and only there; principle I now points at it instead of restating it.
+4.0.0 (2026-08-25, MAJOR) — Principle IX: retire the consent gate; ingestion and archival move to
+legitimate interest (Art. 6-1-f) with a mandatory Art. 21 right to object, archival on by default. The
+gate had forbidden what 003 FR-011 does by design and had stopped capture of the signed-in user's own
+matches while recording strangers'. IV's erasure exception rewritten "consenting" → "linked" user.
+Modified: IX, IV.
 
-What the amendment adds beyond the deletion, and why it is MINOR rather than PATCH: a new normative
-rule that new retention evidence may tighten the capture budget at any time but may only widen it
-once `docs/data-sources.md` records the question as settled with corroboration across more than one
-profile and more than one date. The unresolved reading is longer than the old one, which makes the
-comfortable inference — replays are safe for months, capture can relax — the one this principle must
-forbid explicitly. It also names the budget's mechanism (`CAPTURE_BUDGET_DAYS`, configured) rather
-than its value, so a re-measurement changes a setting and not this document.
+3.0.1 (2026-08-24, PATCH) — Principle IV: erasure exception rewritten against the legal basis, not the
+file, so it no longer covers a recording IX retains. Found by /speckit-analyze (D1).
 
-Unchanged and deliberate: the ordering itself ("any trade-off ... resolves in favour of capture"),
-the no-degradation rule, and the `expired_total` corollary. The 21-day budget is unchanged; it is
-conservative under either reading.
+3.0.0 (2026-08-24, MAJOR) — Principle IX: a retained already-public recording is never deleted or
+modified; erasure/objection reach the person↔recording link, not the artifact. Adds the public-field
+rule, the no-hiding/no-circumvention rule, and the carriage-vs-action split for unverified claims.
+Modified: IX.
 
-Modified principles:
-- I. Capture Outranks Analysis — retention figure removed in favour of a pointer to
-  `docs/data-sources.md`; budget-ratchet rule added.
-
-Added sections: none. Removed sections: none.
-
-Formatting: rewrapped principle IV's recomputability sentence, which sat on one ~135-char line.
-
-Follow-up TODOs — none deferred in this file. Two dependent artifacts named by the 4.0.0 report are
-still not in line, and this amendment does not touch them either (scope: constitution only):
-- `specs/001-steam-link-replay-ingestion/quickstart.md` scenario 2, still titled "Nothing happens
-  without consent" and still instructing the reader to decline consent. Under 4.0.0 there is nothing
-  to decline; the scenario inverts to an objection that stops capture.
-- `specs/003-player-search-match-analysis/spec.md`, which quotes principle IX as "we capture only
-  the consenting user's point of view" (~l.31) and reasons from "consenting users" at l.46, l.92 and
-  l.108. The point-of-view limit it relies on survives 4.0.0; the word "consenting" does not.
-
-Everything else on that list landed: 001 FR-034/FR-035, the register's activities 3 and 4 and its
-balancing test, and `discover.py`'s gate — now `archival_objected_at`, excluded rather than
-required. Neither remaining item is caused by this amendment, and both predate it.
-
-Prior report — 2026-08-25
-
-Version change: 3.0.1 -> 4.0.0
-
-4.0.0 (MAJOR: principle redefinition, backward incompatible) — principle IX's consent gate is
-retired. Opt-in consent (Art. 6-1-a) is replaced by legitimate interest (Art. 6-1-f) for both the
-ingestion of public match and rating metadata and the archival of a linked user's own recorded
-games. Archival is ON by default for a linked profile; a mandatory right to object (Art. 21)
-replaces the gate, reversing the default rather than renaming it.
-
-Two faults forced this. **The principle contradicted a rule the same constitution blesses**: IX
-said "Nothing is ingested ... as a side effect of someone browsing" while 003's FR-011 states that
-viewing a third party's history "is therefore an act that permanently records their matches" — with
-no consent from that person at all. **And the implementation over-applied the gate**: DiscoverStage's
-`_consenting_profile_ids()` is the only place that module decides whose profiles exist for a cycle,
-so a non-consenting user got no match discovery and no rating refresh, not merely no replay capture.
-001's FR-013 ("MUST discover the linked user's new matches automatically, without user action")
-carries no consent condition, and FR-034/FR-035 gate consent on "replay ingestion" and "no further
-replays of theirs are captured". The gate was never specified that broadly. The result was backwards:
-this service permanently recorded a stranger's matches because somebody browsed, and refused to
-record the signed-in user's own. Project owner's decision, 2026-08-25.
-
-What survives the edit, deliberately and verbatim: everything 3.0.0 and 3.0.1 established about
-retained recordings, the public-field treatment rule, the no-hiding / no-circumvention rule, and the
-carriage-versus-action split for unverified source claims. The **point-of-view limit** survives and
-is now this principle's real constraint: only the linked user's own recording is ever captured, never
-another participant's (001 FR-016, 003 FR-012, both unchanged).
-
-Modified principles:
-- IX. GDPR by Design — consent retired in favour of legitimate interest plus a right to object.
-- IV. Raw Is Sacred — its erasure exception was written against "the consenting user's own basis",
-  a basis that no longer exists. Rewritten to "the linked user's own basis"; the distinction it
-  draws against IX's public-recording basis is untouched.
-
-Dependent artifacts still to be brought in line — NOT edited by this amendment:
-- 001 spec FR-034, FR-035 and acceptance scenario 7 ("a user who has not consented ... nothing of
-  theirs is downloaded or stored"), plus the Assumptions and Edge cases wording on withdrawal
-- 003 spec's several "consenting user" phrasings
-- docs/privacy/processing-register.md activities 3 and 4, and its balancing test — activity 3 moves
-  from Art. 6-1-a to Art. 6-1-f with the objection route named; activity 4's necessity argument rests
-  on "capture is limited to matches the consenting user played in", which becomes "the linked user"
-- apps/ingester/src/aoe2stats_ingester/discover.py's `_consenting_profile_ids` gate, the code that
-  still enforces the retired rule
-
-Prior report — 2026-08-24
-
-Version change: 2.0.0 -> 3.0.0 -> 3.0.1
-
-3.0.0 (MAJOR: principle redefinition, backward incompatible) — principle IX, below.
-3.0.1 (PATCH: clarification, no behaviour change) — principle IV's deletion exception was written
-against the file ("the original replay zip ... except on a GDPR erasure request") and so covered a
-retained recording too, permitting exactly what 3.0.0's IX forbids. The constitution contradicted
-itself for the duration. The exception is now written against the *basis*: a capture held under the
-consenting user's own basis is deleted on erasure; a recording retained under IX's public-recording
-basis is not. Found by /speckit-analyze, 2026-08-24 (finding D1).
-
-Modified principles:
-- IX. GDPR by Design — retention of an already-public recording no longer carries a deletion
-  obligation. Erasure and the third-party objection route now reach the identifiers this service
-  holds about a person appearing in a recording, and leave the recording itself intact. Adds the
-  public-field treatment rule, the no-hiding / no-circumvention rule, and the carriage-versus-action
-  split for unverified source claims.
-
-Unchanged: principle IV. The amendment satisfies IV rather than overriding it — the recording
-survives, so every published analysis stays recomputable. IV's own erasure exception still governs
-001's consented captures.
-
-Added sections: none. Removed sections: none.
-
-Formatting: restored the missing blank line before "All compute and storage regions are EU.", which
-had been glued to the preceding paragraph.
-
-Follow-up TODOs — none deferred in this file. Dependent artifacts still to be brought in line, each
-already recorded in specs/003-player-search-match-analysis/spec.md session 2026-08-24:
-- 001 FR-045 carve-out (carriage is not action)
-- 003 FR-004b, FR-033, FR-046 (written, struck-pending; the struck text comes out now)
-- docs/privacy/processing-register.md balancing test and retention activity
-- docs/data-sources.md §3 "Trap" note on steamId
-- specs/003 quickstart scenario 2, which inverts
-- the provider-boundary strip and the tests asserting steamId absence
+Open follow-ups (dependent artifacts not yet in line):
+- specs/001-steam-link-replay-ingestion/quickstart.md scenario 2 — still titled "Nothing happens
+  without consent"; must invert to an objection that stops capture (4.0.0).
+- specs/003-player-search-match-analysis/spec.md — several "consenting user" phrasings; the
+  point-of-view limit survives, the word "consenting" does not (4.0.0).
+- design-system guidance / spec text prescribing "evoke the visual language without reusing it" now
+  describes a retired rule (5.0.0).
+- Older follow-ups from the 3.0.x amendments: see git history; this compaction did not re-verify their
+  status.
 -->
 
 # aoe2-stats Constitution
@@ -289,11 +199,13 @@ region, the object store under EU jurisdiction. A PR that moves a region outside
 
 ### X. Intellectual Property
 
-Strictly non-commercial. No game asset (icons, civilisation portraits, fonts, sounds, screenshots)
-is copied into the repository: the design system evokes the visual language without reusing it. The
-Microsoft "Game Content Usage Rules" disclaimer appears in the README and in the site footer.
-The hosting plan carries the same constraint: monetizing this project would breach both Microsoft's
-rules and Vercel's Hobby terms simultaneously.
+Strictly non-commercial — monetizing would breach both Microsoft's "Game Content Usage Rules" and
+Vercel's Hobby terms, so it is the condition under which the rest is lawful. The Microsoft "Game
+Content Usage Rules" disclaimer MUST appear in the README and the site footer. On those two anchors,
+game assets needed to display game content (map, civilisation, unit, building and resource icons,
+flags, player colours) MAY be copied into the repository and served, as non-Microsoft fan sites do;
+remove either anchor and the permission lapses. Every pack copied in MUST record its source and
+permitted usage (feature 002's discipline); a pack whose licence is not recorded MUST NOT be added.
 
 ### XI. Documentation Is in English
 
@@ -332,4 +244,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 4.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-28
+**Version**: 5.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-30
