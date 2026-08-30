@@ -44,6 +44,12 @@ export interface UploadControlProps {
   onUpload: (file: File) => Promise<void>
   /** Injected only by stories to pin a fixed state; the route never sets it. */
   initialState?: UploadUiState
+  /** Delay before the loading label switches from "Uploading…" to "Checking the file…"
+   * (`VALIDATING_LABEL_DELAY_MS` by default). Injected only by the `UploadingValidating` story,
+   * set to `0` there so the switched label renders deterministically instead of racing the
+   * visual harness's two-consecutive-frames screenshot trigger, which fires well inside the
+   * production 1200 ms window. Production never sets this. */
+  validatingLabelDelayMs?: number
   className?: string
 }
 
@@ -115,6 +121,7 @@ export function UploadControl({
   gameId,
   onUpload,
   initialState = 'idle',
+  validatingLabelDelayMs = VALIDATING_LABEL_DELAY_MS,
   className,
 }: UploadControlProps) {
   const [state, setState] = useState<UploadUiState>(initialState)
@@ -204,7 +211,7 @@ export function UploadControl({
     setValidating(false)
     validatingTimeoutRef.current = window.setTimeout(() => {
       if (generation === generationRef.current) setValidating(true)
-    }, VALIDATING_LABEL_DELAY_MS)
+    }, validatingLabelDelayMs)
 
     onUpload(file)
       .then(() => {
@@ -344,7 +351,14 @@ function FileChip({
   return (
     <div className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface p-3">
       <div className="min-w-0 flex-1 text-left">
-        <p title={file.name} className="truncate font-mono text-sm text-text-primary">
+        {/* manual-upload.md §8: a long name wraps or middle-truncates, never cut without
+         * recourse. `break-words` alone still overflows a name with no natural break point
+         * (a long run of digits/dots with no space), so `[overflow-wrap:anywhere]` forces a
+         * break inside such a run too — the name always stays within the chip's width. */}
+        <p
+          title={file.name}
+          className="whitespace-normal break-words font-mono text-sm text-text-primary [overflow-wrap:anywhere]"
+        >
           {file.name}
         </p>
         <p className="mt-2 font-sans text-sm text-text-secondary">{formatFileSize(file.size)}</p>

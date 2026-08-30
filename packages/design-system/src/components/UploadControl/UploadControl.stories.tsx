@@ -82,6 +82,12 @@ export const UploadingValidating: Story = {
     gameId: 42,
     onUpload: () => new Promise<void>(() => {}),
     initialState: 'idle',
+    // T083a: the production 1200 ms `VALIDATING_LABEL_DELAY_MS` races the visual harness, which
+    // screenshots as soon as two consecutive frames match — well inside that window — so the
+    // baseline captured "Uploading…", pixel-identical to the plain `Uploading` story, and never
+    // showed the label it is named for. Zeroed only here (`onUpload` never resolves, so the
+    // control stays in the validating phase) for a baseline that genuinely depicts the switch.
+    validatingLabelDelayMs: 0,
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
@@ -90,6 +96,19 @@ export const UploadingValidating: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Upload and archive' }))
     await canvas.findByRole('button', { name: 'Checking the file…' }, { timeout: 2_000 })
   },
+}
+
+// T083a defect 2: `FileChip` rendered the file name with Tailwind `truncate` (single-line
+// end-ellipsis), so at 375px a real name collapsed to ~5 characters ("MP Re…") against
+// manual-upload.md §8, which requires the name to wrap or middle-truncate and never be cut
+// without recourse. Tagged `visual-mobile` (scripts/visual/run.mjs) so the harness captures this
+// story at the 375px width where the regression showed — nothing screenshotted that width before
+// this story existed. `file-chosen`'s seeded file (index.tsx) already carries a realistic long
+// name, so no extra fixture is needed.
+export const FileChosenMobile: Story = {
+  name: '375px viewport — a long file name wraps instead of being cut to a stub',
+  tags: ['visual-mobile'],
+  args: { gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' },
 }
 
 export const RealSelectionThenSuccess: Story = {

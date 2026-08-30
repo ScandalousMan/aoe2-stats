@@ -76,6 +76,28 @@ describe('UploadControl — choosing a file (file-chosen)', () => {
     expect(screen.queryByRole('button', { name: 'Choose file' })).not.toBeInTheDocument()
   })
 
+  // T083a: `FileChip` used to render the name with Tailwind `truncate` (single-line
+  // end-ellipsis), collapsing a real name to ~5 characters at 375px against manual-upload.md §8,
+  // which requires the name to wrap or middle-truncate and never be cut without recourse.
+  it('wraps a long file name instead of cutting it to a stub (manual-upload.md §8)', async () => {
+    const longName = 'MP Replay v101.103 @2026.08.30 091542 (4).aoe2record'
+    render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
+    await chooseFile(replayFile(longName))
+
+    const name = screen.getByText(longName)
+    // Rendered class composition, not merely a substring check: wrapping must be the behaviour
+    // that actually applies, and the single-line `truncate` this regression came from must be
+    // absent, not merely coexisting with it (the T035c lesson: two conflicting classes present
+    // together leaves the winner to stylesheet emission order, not to this component).
+    expect(name.className).toMatch(/\bbreak-words\b/)
+    expect(name.className).toMatch(/\bwhitespace-normal\b/)
+    expect(name.className).not.toMatch(/\btruncate\b/)
+    // §8's "never cut without recourse": the full name stays in `title` and as real text content
+    // even if a future style change re-introduces clipping.
+    expect(name).toHaveAttribute('title', longName)
+    expect(name.textContent).toBe(longName)
+  })
+
   it('Remove returns the control to idle, clearing the file', async () => {
     const user = userEvent.setup()
     render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
@@ -134,6 +156,46 @@ describe('UploadControl — uploading', () => {
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_200)
+      })
+      expect(screen.getByRole('button', { name: 'Checking the file…' })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // T083a: the production 1200 ms delay is a module constant the visual harness cannot outrun —
+  // it screenshots as soon as two consecutive frames match, well inside the window, so the
+  // `UploadingValidating` baseline never showed the label it is named for. `validatingLabelDelayMs`
+  // is the seam that lets that story (and this test) reach the switched label deterministically,
+  // with no fake-timer bookkeeping needed.
+  it('with validatingLabelDelayMs=0 shows "Checking the file…" immediately, no fake timers needed', async () => {
+    render(
+      <UploadControl
+        gameId={42}
+        onUpload={() => new Promise<void>(() => {})}
+        validatingLabelDelayMs={0}
+      />,
+    )
+    await chooseFile()
+    fireEvent.submit(screen.getByRole('button', { name: 'Upload and archive' }).closest('form')!)
+
+    expect(await screen.findByRole('button', { name: 'Checking the file…' })).toBeInTheDocument()
+  })
+
+  it('defaults validatingLabelDelayMs to the 1200 ms production constant when the prop is omitted', async () => {
+    vi.useFakeTimers()
+    try {
+      render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
+      await chooseFile()
+      fireEvent.submit(screen.getByRole('button', { name: 'Upload and archive' }).closest('form')!)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_199)
+      })
+      expect(screen.getByRole('button', { name: 'Uploading…' })).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
       })
       expect(screen.getByRole('button', { name: 'Checking the file…' })).toBeInTheDocument()
     } finally {
