@@ -55,3 +55,10 @@ export * from './components/UploadControl'
 // Usage Rules disclaimer (constitution X); mounted once in `apps/web/src/routes/__root.tsx` by
 // T098a, so it renders on every route.
 export * from './components/Footer'
+
+// Visual parity (T429, packages/design-system/specs/{civilisation-icon,map-thumbnail,
+// player-colour-swatch}.md). Take an image URL as a prop; never import `packages/game-assets`.
+// Consumed by `MatchRow`/`MatchDetailPanel` in T430/T431.
+export * from './components/CivilisationIcon'
+export * from './components/MapThumbnail'
+export * from './components/PlayerColourSwatch'
