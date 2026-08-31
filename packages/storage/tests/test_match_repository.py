@@ -37,7 +37,6 @@ from __future__ import annotations
 import dataclasses
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
@@ -111,7 +110,6 @@ async def _seed_match_player(
     await session.flush()
 
 
-@pytest.mark.xfail(strict=True, reason="T423 not implemented yet")
 async def test_match_list_row_carries_rating_team_id_and_color_id(
     db_session: AsyncSession,
 ) -> None:
@@ -164,7 +162,6 @@ async def test_match_list_row_carries_rating_team_id_and_color_id(
     assert row.color_id == 4
 
 
-@pytest.mark.xfail(strict=True, reason="T423 not implemented yet")
 async def test_participants_projection_returns_every_participant_the_viewer_included(
     db_session: AsyncSession,
 ) -> None:
@@ -240,7 +237,6 @@ async def test_participants_projection_returns_every_participant_the_viewer_incl
     assert opponent_participant.rating_diff == -14
 
 
-@pytest.mark.xfail(strict=True, reason="T423 not implemented yet")
 async def test_opponents_keeps_its_shape_and_excludes_teammates_once_team_id_is_populated(
     db_session: AsyncSession,
 ) -> None:

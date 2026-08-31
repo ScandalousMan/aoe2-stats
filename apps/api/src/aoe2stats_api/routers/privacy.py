@@ -261,6 +261,26 @@ async def _build_export_bundle(
     )
     profile_ids = [link.profile_id for link in links]
 
+    # T426: `avatar_hash` sits beside `alias`/`country` on the account's own linked profiles —
+    # same public-source, legitimate-interest basis (constitution IX, research.md D6) — so it is
+    # exported alongside `profile_links` rather than left out of an archive that already names
+    # this profile at all. One query for every owned profile id, keyed for the dict-comprehension
+    # below rather than a per-link lookup.
+    avatar_hashes_by_profile: dict[int, str | None] = {}
+    if profile_ids:
+        owned_profiles = (
+            (
+                await db_session.execute(
+                    select(AoeProfile).where(AoeProfile.profile_id.in_(profile_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        avatar_hashes_by_profile = {
+            profile.profile_id: profile.avatar_hash for profile in owned_profiles
+        }
+
     matches: list[Match] = []
     match_players: list[MatchPlayer] = []
     replay_blobs: dict[str, bytes] = {}
@@ -346,6 +366,7 @@ async def _build_export_bundle(
                 "is_primary": link.is_primary,
                 "linked_at": _iso(link.linked_at),
                 "unlinked_at": _iso(link.unlinked_at),
+                "avatar_hash": avatar_hashes_by_profile.get(link.profile_id),
             }
             for link in links
         ],
@@ -540,13 +561,23 @@ async def _pseudonymise_profile_id(db_session: AsyncSession, profile_id: int) ->
     over the same `profile_id` finds it already there), retarget them, and mask the original row's
     own `alias`/`country` in place, since it usually survives this untouched otherwise (a
     `favourites` row someone else holds naming it, a `rating_snapshots` row) and leaving its
-    identifying columns as they were would leave exactly the trace this exists to close."""
+    identifying columns as they were would leave exactly the trace this exists to close.
+
+    **T426: `avatar_hash` needs no pseudonym.** Unlike `alias`/`country`, which must survive as
+    plausible values (`pseudonymise_profile`'s own plan computes a masked pair for exactly that
+    reason), a Steam avatar hash has no "plausible masked value" to compute — it identifies a
+    Steam account, not a display name, so the only closing move is to null it, on both the
+    placeholder row and the original one, directly here rather than growing
+    `packages/core`'s `PseudonymisationPlan` for a field that needs no computation at all."""
     plan = pseudonymise_profile(profile_id)
 
     if await db_session.get(AoeProfile, plan.pseudonymous_profile_id) is None:
         db_session.add(
             AoeProfile(
-                profile_id=plan.pseudonymous_profile_id, alias=plan.alias, country=plan.country
+                profile_id=plan.pseudonymous_profile_id,
+                alias=plan.alias,
+                country=plan.country,
+                avatar_hash=None,
             )
         )
         await db_session.flush()
@@ -561,6 +592,7 @@ async def _pseudonymise_profile_id(db_session: AsyncSession, profile_id: int) ->
     if original_profile is not None:
         original_profile.alias = plan.alias
         original_profile.country = plan.country
+        original_profile.avatar_hash = None
 
 
 @router.post("/privacy/erase")

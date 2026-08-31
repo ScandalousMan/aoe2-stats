@@ -614,10 +614,9 @@ async def test_any_players_profile_returns_rating_rank_wins_and_losses_per_ladde
     assert ratings_by_leaderboard[4]["rating"] == 1700
 
 
-# --- T424 (T426 not implemented yet): avatar_hash, contracts/http-api.md, FR-008a, FR-015 -------
+# --- T424/T426: avatar_hash, contracts/http-api.md, FR-008a, FR-015 -----------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T426 not implemented yet")
 async def test_any_players_profile_carries_avatar_hash_as_a_hash_never_a_url(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -646,7 +645,6 @@ async def test_any_players_profile_carries_avatar_hash_as_a_hash_never_a_url(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T426 not implemented yet")
 async def test_a_profile_never_seen_by_companion_answers_null_avatar_hash_not_an_error(
     client: TestClient, db_session: AsyncSession
 ) -> None:

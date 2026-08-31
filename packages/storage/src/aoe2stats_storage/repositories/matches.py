@@ -246,7 +246,18 @@ class MatchListRow:
     result: str | None
     #: The caller's own rating change.
     rating_diff: int | None
+    #: The caller's own absolute rating, *after* the match — FR-005's `922 (+16)` needs this
+    #: alongside `rating_diff`; only match detail carried it before T423 (research.md D7).
+    rating: int | None = None
+    #: The caller's own `team_id` for this match — FR-003/US1's "which side won".
+    team_id: int | None = None
+    #: The caller's own `color_id` for this match — FR-003.
+    color_id: int | None = None
     opponents: list[Opponent] = field(default_factory=list)
+    #: Every participant of this match, the caller's own row included — `opponents` deliberately
+    #: never lists it (`Opponent`'s own docstring). A sibling, not a replacement for `opponents`
+    #: (data-model.md §3, T423).
+    participants: list[MatchParticipant] = field(default_factory=list)
     #: `None` only for a match that has not yet acquired a `replay_captures` row (module
     #: docstring) — every raw `CaptureStatus` value otherwise, never collapsed.
     capture_status: CaptureStatus | None = None
@@ -266,10 +277,13 @@ class MatchesPage:
 @dataclass(frozen=True, slots=True)
 class MatchParticipant:
     """One participant of `GET /api/matches/{game_id}` — FR-011: team, civilisation, result,
-    rating change, for every player, not only the caller."""
+    rating change, for every player, not only the caller. Shared, unchanged, by `list_matches`'s
+    own `participants` sibling (T423, data-model.md §3): both routes name one participant shape,
+    not two."""
 
     profile_id: int
     alias: str | None
+    country: str | None
     team_id: int | None
     #: A bare Relic id (see `Opponent.civ_id`'s own note, T070c).
     civ_id: int | None
@@ -379,6 +393,9 @@ class MatchesRepository(Repository):
                 MatchPlayer.civ_id,
                 MatchPlayer.result,
                 MatchPlayer.rating_diff,
+                MatchPlayer.rating,
+                MatchPlayer.team_id,
+                MatchPlayer.color_id,
                 ReplayCapture.status,
                 ReplayCapture.capture_deadline_at,
             )
@@ -411,9 +428,11 @@ class MatchesRepository(Repository):
         has_more = len(rows) > limit
         page_rows = rows[:limit]
 
+        page_game_ids = [row.game_id for row in page_rows]
         opponents_by_game = await self._opponents_by_game(
-            [row.game_id for row in page_rows], exclude_profile_id=profile_id
+            page_game_ids, exclude_profile_id=profile_id
         )
+        participants_by_game = await self._participants_by_game(page_game_ids)
 
         matches = [
             MatchListRow(
@@ -426,7 +445,11 @@ class MatchesRepository(Repository):
                 civilisation=row.civ_id,
                 result=row.result,
                 rating_diff=row.rating_diff,
+                rating=row.rating,
+                team_id=row.team_id,
+                color_id=row.color_id,
                 opponents=opponents_by_game.get(row.game_id, []),
+                participants=participants_by_game.get(row.game_id, []),
                 capture_status=row.status,
                 capture_deadline_at=row.capture_deadline_at,
             )
@@ -496,6 +519,60 @@ class MatchesRepository(Repository):
             )
         return by_game
 
+    async def _participants_by_game(
+        self, game_ids: Sequence[int]
+    ) -> dict[int, list[MatchParticipant]]:
+        """Every `match_players` row for `game_ids`, the viewer's own included — `opponents`'s
+        sibling, not a filtered view of it (class docstring, data-model.md §3). One query for the
+        whole page, joined to `aoe_profiles` for `alias` and `country`, the same join
+        `get_match_detail` already does per match."""
+        if not game_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(
+                MatchPlayer.game_id,
+                MatchPlayer.profile_id,
+                AoeProfile.alias,
+                AoeProfile.country,
+                MatchPlayer.team_id,
+                MatchPlayer.civ_id,
+                MatchPlayer.color_id,
+                MatchPlayer.result,
+                MatchPlayer.rating,
+                MatchPlayer.rating_diff,
+            )
+            .join(AoeProfile, AoeProfile.profile_id == MatchPlayer.profile_id)
+            .where(MatchPlayer.game_id.in_(game_ids))
+        )
+        by_game: dict[int, list[MatchParticipant]] = {}
+        for (
+            game_id,
+            participant_profile_id,
+            alias,
+            country,
+            team_id,
+            civ_id,
+            color_id,
+            match_result,
+            rating,
+            rating_diff,
+        ) in result.all():
+            by_game.setdefault(game_id, []).append(
+                MatchParticipant(
+                    profile_id=participant_profile_id,
+                    alias=alias,
+                    country=country,
+                    team_id=team_id,
+                    civ_id=civ_id,
+                    color_id=color_id,
+                    result=match_result,
+                    rating=rating,
+                    rating_diff=rating_diff,
+                )
+            )
+        return by_game
+
     async def get_match_detail(
         self, *, game_id: int, owner_profile_ids: Sequence[int]
     ) -> MatchDetail | None:
@@ -535,6 +612,7 @@ class MatchesRepository(Repository):
             select(
                 MatchPlayer,
                 AoeProfile.alias,
+                AoeProfile.country,
                 ReplayCapture.status,
                 ReplayCapture.capture_deadline_at,
             )
@@ -555,6 +633,7 @@ class MatchesRepository(Repository):
             MatchParticipant(
                 profile_id=player.profile_id,
                 alias=alias,
+                country=country,
                 team_id=player.team_id,
                 civ_id=player.civ_id,
                 color_id=player.color_id,
@@ -562,11 +641,13 @@ class MatchesRepository(Repository):
                 rating=player.rating,
                 rating_diff=player.rating_diff,
             )
-            for player, alias, _status, _deadline in rows
+            for player, alias, country, _status, _deadline in rows
         ]
 
         capture_status, capture_deadline_at = _pick_capture_state(
-            (status, deadline) for _player, _alias, status, deadline in rows if status is not None
+            (status, deadline)
+            for _player, _alias, _country, status, deadline in rows
+            if status is not None
         )
 
         return MatchDetail(

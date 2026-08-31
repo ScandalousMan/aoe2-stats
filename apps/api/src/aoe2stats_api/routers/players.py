@@ -95,6 +95,7 @@ from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
 from aoe2stats_api.routers.matches import match_row_json
+from aoe2stats_api.search import persist_avatar_hashes
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
@@ -338,6 +339,15 @@ async def search_for_players(
         ttl_seconds=settings.player_search_cache_ttl_seconds,
     )
 
+    if not outcome.degraded:
+        # T426 (D6, research.md): this is the one call site in the codebase that ever holds a
+        # genuine, non-degraded companion page — `search.py`'s own module docstring names it as
+        # such. A degraded outcome's results are read from `aoe_profiles` itself (`search.py`'s
+        # `_local_fallback_results`) and never carry a hash, so `persist_avatar_hashes` would be a
+        # guaranteed no-op over them; skipping the call on that branch costs nothing and avoids an
+        # unnecessary write on every degraded search.
+        await persist_avatar_hashes(db_session, outcome.results)
+
     return {
         "results": [
             {
@@ -396,7 +406,12 @@ async def get_player_profile(
 ) -> dict[str, Any]:
     """FR-006, FR-008a property 1: any profile this service has observed, never only the
     caller's own. `200` with empty ladder data for a never-ranked player (US1 scenario 5); `404`
-    only for a `profile_id` this service has never itself observed (module docstring)."""
+    only for a `profile_id` this service has never itself observed (module docstring).
+
+    **T426, `contracts/http-api.md`: `avatar_hash` is read straight off `aoe_profiles`, never
+    fetched.** `null` is the ordinary case for a profile never seen in a companion response
+    (`search.py`'s `persist_avatar_hashes` is the only writer), not an error — this route makes no
+    provider call at all, and this field is why it can still answer the hash (D6, research.md)."""
     secret = settings.app_secret_key.get_secret_value()
     _require_session(await _current_session_row(request, db_session, secret))
 
@@ -410,6 +425,7 @@ async def get_player_profile(
         "profile_id": profile.profile_id,
         "alias": profile.alias,
         "country": profile.country,
+        "avatar_hash": profile.avatar_hash,
         "alias_observed_at": profile.alias_observed_at.isoformat()
         if profile.alias_observed_at is not None
         else None,

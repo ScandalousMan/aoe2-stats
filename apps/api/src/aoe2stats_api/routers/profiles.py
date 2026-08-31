@@ -221,6 +221,12 @@ async def list_profiles(
                     "profile_id": profile.profile_id,
                     "alias": profile.alias,
                     "country": profile.country,
+                    # T426, `contracts/http-api.md`: "`GET /api/profiles`... gains `avatar_hash`
+                    # identically" to `GET /api/players/{profile_id}` — the hash as aoe2companion
+                    # reports it, never a URL, read straight off `aoe_profiles`
+                    # (`routers/players.py`'s `get_player_profile` docstring; `search.py`'s
+                    # `persist_avatar_hashes` is the only writer).
+                    "avatar_hash": profile.avatar_hash,
                     "is_primary": link.is_primary,
                     "linked_at": link.linked_at.isoformat(),
                     "ratings": ratings_by_profile.get(profile.profile_id, []),
