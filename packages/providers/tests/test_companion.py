@@ -344,14 +344,23 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 # `enrich_matches` fixtures above (`fixtures/README.md`).
 SEARCH_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-# The six, and only six, contract fields `PlayerSearchResult` may carry
+# The contract fields `PlayerSearchResult` may carry
 # (`specs/003-player-search-match-analysis/contracts/providers.md`'s "The fields, and the one rule
 # on them"). `unverified_steam_id` joined this set on 2026-08-24 (constitution IX 3.0.0): it is no
 # longer one of the fields FR-004b's strip covered, and inverting this set from "five, none of
 # them the source's account-linking claims" to "six, one of them a carried-but-unverified claim"
-# is T397's own task.
+# was T397's own task. `avatar_hash` joined it under T418 (`data-model.md` §2): parsed from the
+# record's `avatarhash`, a hash and never a URL (FR-008a, FR-015).
 _SEARCH_CONTRACT_FIELDS = frozenset(
-    {"profile_id", "alias", "country", "games_played", "clan", "unverified_steam_id"}
+    {
+        "profile_id",
+        "alias",
+        "country",
+        "games_played",
+        "clan",
+        "unverified_steam_id",
+        "avatar_hash",
+    }
 )
 
 # The fields the source's search response carries that `PlayerSearchResult` must never carry, on
@@ -849,7 +858,6 @@ T417_XFAIL_REASON = "T418 not implemented yet"
 _ENRICHED_PARTICIPANT_FIELDS = frozenset({"color_id", "team_id", "won", "rating", "rating_diff"})
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enrich_matches_participants_keyed_by_profile_id() -> None:
     """`data-model.md` §2: `participants: dict[int, EnrichedParticipant] | None`, parsed from
     `teams[].players[]` and keyed by `profileId`. Checked against two real players from the first
@@ -889,7 +897,6 @@ async def test_enrich_matches_participants_keyed_by_profile_id() -> None:
     assert the_viper.rating_diff == 6
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enrich_matches_rating_and_rating_diff_are_two_distinct_wire_fields() -> None:
     """The wire's `rating` and `ratingDiff` are two distinct keys and must land as two distinct
     fields, never merged into one: `rating` (post-match value) and `rating_diff` (the signed
@@ -913,7 +920,6 @@ async def test_enrich_matches_rating_and_rating_diff_are_two_distinct_wire_field
     assert the_zero.rating != the_zero.rating_diff
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 def test_enriched_participant_never_carries_color_hex() -> None:
     """`data-model.md` §2: "`colorHex` is deliberately not carried." Introspecting
     `EnrichedParticipant.model_fields` on the class itself — never on one parsed instance — is
@@ -931,7 +937,6 @@ def test_enriched_participant_never_carries_color_hex() -> None:
     assert "color_hex" not in field_names
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enriched_participant_instance_never_carries_color_hex_either() -> None:
     """Belt and braces alongside the class-level introspection above: a genuine parsed instance,
     from the real fixture, has no `color_hex` attribute either — the class-level guarantee actually
@@ -947,7 +952,6 @@ async def test_enriched_participant_instance_never_carries_color_hex_either() ->
     assert not hasattr(the_zero, "colorHex")
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls() -> None:
     """A `game_id` companion has no match for is simply absent from the returned dict — never an
     entry whose `participants` is a dict of null placeholders for the ids the caller asked about.
@@ -973,7 +977,6 @@ async def test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls
             assert isinstance(participant, EnrichedParticipant)
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enrich_matches_with_participants_403_still_returns_nothing() -> None:
     """`docs/data-sources.md` §3 / Technology Constraints: "aoe2companion (enrichment only,
     degradable)" — its failure is not an error. Re-asserted here, on top of the participants
@@ -994,7 +997,6 @@ async def test_enrich_matches_with_participants_403_still_returns_nothing() -> N
     assert recorder.calls[0].status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enrich_matches_with_participants_full_outage_still_returns_nothing() -> None:
     """The 5xx twin of the 403 test above: the retry budget exhausts and `enrich_matches` still
     returns `{}` rather than raising, with the participants widening in place.
@@ -1011,7 +1013,6 @@ async def test_enrich_matches_with_participants_full_outage_still_returns_nothin
     assert all(call.status_code == 503 for call in recorder.calls)
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_enrich_matches_with_participants_malformed_body_still_returns_nothing() -> None:
     """A 200 whose body does not even parse as JSON — the `enrich_matches` twin of
     `test_search_players_malformed_body_yields_an_empty_page_and_does_not_raise` above, not
@@ -1031,7 +1032,6 @@ async def test_enrich_matches_with_participants_malformed_body_still_returns_not
     assert recorder.calls[0].status_code == 200
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 async def test_player_search_result_avatar_hash_parsed_from_avatarhash() -> None:
     """`data-model.md` §2: "Add `avatar_hash: str | None`, parsed from `avatarhash` in
     `_parse_search_result`". Every one of the fixture's 20 records carries `avatarhash` on the wire
@@ -1056,7 +1056,6 @@ async def test_player_search_result_avatar_hash_parsed_from_avatarhash() -> None
     assert first.avatar_hash == "eefa125e4e662af9600355746783166942b8a1ff"
 
 
-@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)
 def test_player_search_result_dataclass_has_an_avatar_hash_field() -> None:
     """The class-level twin of the test above, in `test_player_search_result_dataclass_has_exactly_
     the_six_contract_fields`'s own style: introspecting `dataclasses.fields` on the class itself,

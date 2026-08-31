@@ -64,7 +64,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
@@ -210,7 +209,6 @@ async def _seed_two_unfilled_participants(session: AsyncSession) -> None:
 # --- dry-run writes nothing ----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_dry_run_reports_a_count_and_writes_nothing(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -243,7 +241,6 @@ async def test_dry_run_reports_a_count_and_writes_nothing(
 # --- a real run fills the five columns from raw_payload -------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_a_real_run_fills_the_columns_from_raw_payload_via_the_projection(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -275,7 +272,6 @@ async def test_a_real_run_fills_the_columns_from_raw_payload_via_the_projection(
 # --- a second run is a no-op ----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_a_second_run_reports_zero_rows_changed(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -303,7 +299,6 @@ async def test_a_second_run_reports_zero_rows_changed(
 # --- an already-populated row is left alone unless --force ----------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_an_already_populated_row_is_left_alone_without_force(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -329,7 +324,6 @@ async def test_an_already_populated_row_is_left_alone_without_force(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_force_recomputes_an_already_populated_row(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -353,7 +347,6 @@ async def test_force_recomputes_an_already_populated_row(
     assert _five_columns(row) == _EXPECTED_LOSS
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_a_partially_populated_row_is_still_a_candidate_without_force(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -389,7 +382,6 @@ async def test_a_partially_populated_row_is_still_a_candidate_without_force(
 # `apps/api/tests/test_player_search.py` already applies to `search_players`.
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 async def test_the_run_issues_no_outbound_request_at_all(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -413,7 +405,6 @@ async def test_the_run_issues_no_outbound_request_at_all(
 # --- the CLI names the two flags quickstart scenario 2 exercises ----------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T415 not implemented yet")
 def test_build_arg_parser_exposes_dry_run_and_force_flags() -> None:
     from scripts.ops.backfill_match_players import build_arg_parser
 

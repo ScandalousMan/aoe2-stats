@@ -85,6 +85,7 @@ import httpx
 from aoe2stats_providers.base import (
     AsyncBaseProvider,
     AsyncProviderCallSink,
+    EnrichedParticipant,
     MatchEnrichment,
     PlayerSearchPage,
     PlayerSearchResult,
@@ -304,6 +305,13 @@ def _parse_matches(
     """Build `{game_id: MatchEnrichment}` from a genuine `matches` response, keeping only the
     entries the caller actually asked for (see the module docstring's note on the endpoint's
     filter being best-effort) and never reading `linkedProfiles` (FR-045).
+
+    `participants` (T418, `data-model.md` §2) is parsed from the same `teams[].players[]` walk
+    that already builds `civilizations`, keyed by `profileId`. Only `color_id` is ever written
+    downstream — `team_id`, `won`, `rating` and `rating_diff` are carried purely so a disagreement
+    with Relic's own columns is visible, never so companion can overwrite them. `colorHex` is not
+    read here and has nowhere to land: `EnrichedParticipant` carries no such field (constitution
+    VI/X, `base.py`).
     """
     requested = set(game_ids)
     result: dict[int, MatchEnrichment] = {}
@@ -318,6 +326,7 @@ def _parse_matches(
             continue
 
         civilizations: dict[int, str] = {}
+        participants: dict[int, EnrichedParticipant] = {}
         for team in match.get("teams") or []:
             if not isinstance(team, dict):
                 continue
@@ -328,6 +337,32 @@ def _parse_matches(
                 civ_name = player.get("civName")
                 if isinstance(profile_id, int) and isinstance(civ_name, str):
                     civilizations[profile_id] = civ_name
+                if not isinstance(profile_id, int):
+                    continue
+
+                color_id = player.get("color")
+                team_id = player.get("team")
+                won = player.get("won")
+                rating = player.get("rating")
+                rating_diff = player.get("ratingDiff")
+                participant_fields = {
+                    "color_id": color_id if isinstance(color_id, int) else None,
+                    "team_id": team_id if isinstance(team_id, int) else None,
+                    "won": won if isinstance(won, bool) else None,
+                    "rating": rating if isinstance(rating, int) else None,
+                    "rating_diff": rating_diff if isinstance(rating_diff, int) else None,
+                }
+                try:
+                    participants[profile_id] = parse_strict(
+                        EnrichedParticipant,
+                        participant_fields,
+                        provider=provider,
+                        endpoint="matches",
+                    )
+                except ProviderContractViolation:
+                    # One malformed participant does not throw away the rest of the match — the
+                    # same "degrade, don't raise" posture the enclosing entry already takes.
+                    continue
 
         fields = {
             "game_id": match_id,
@@ -335,6 +370,7 @@ def _parse_matches(
             "game_mode": match.get("gameModeName"),
             "game_speed": match.get("speedName"),
             "civilizations": civilizations or None,
+            "participants": participants or None,
         }
         try:
             enrichment = parse_strict(
@@ -423,9 +459,10 @@ def _parse_search_page(body: Any, *, limit: int) -> PlayerSearchPage:
 
 
 def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
-    """One `profiles[]` entry, reduced to `profileId`, `name`, `country`, `games`, `clan` and
+    """One `profiles[]` entry, reduced to `profileId`, `name`, `country`, `games`, `clan`,
     `steamId` (carried as `unverified_steam_id` — constitution IX 3.0.0, `base.py`'s
-    `PlayerSearchResult`) — and nothing else: `shared`, `sharedHistory` and `linkedProfiles` are
+    `PlayerSearchResult`) and `avatarhash` (carried as `avatar_hash` — T418, `data-model.md` §2, a
+    hash and never a URL) — and nothing else: `shared`, `sharedHistory` and `linkedProfiles` are
     never read, the same posture `_parse_matches` takes with `linkedProfiles` (module docstring).
     A malformed entry (missing or mistyped `profileId`/`name`) is dropped rather than failing the
     whole page — this provider degrades, it does not raise (module docstring).
@@ -447,6 +484,10 @@ def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
     if not isinstance(unverified_steam_id, str):
         unverified_steam_id = None
 
+    avatar_hash = profile.get("avatarhash")
+    if not isinstance(avatar_hash, str):
+        avatar_hash = None
+
     return PlayerSearchResult(
         profile_id=profile_id,
         alias=alias,
@@ -454,6 +495,7 @@ def _parse_search_result(profile: dict[str, Any]) -> PlayerSearchResult | None:
         games_played=_parse_games_played(profile.get("games")),
         clan=clan,
         unverified_steam_id=unverified_steam_id,
+        avatar_hash=avatar_hash,
     )
 
 

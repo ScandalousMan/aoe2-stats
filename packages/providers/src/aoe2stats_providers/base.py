@@ -212,6 +212,28 @@ class NotFound(StrictProviderModel):
     http_status: int = 404
 
 
+class EnrichedParticipant(StrictProviderModel):
+    """One `teams[].players[]` entry from `EnrichmentProvider.enrich_matches` (data-model.md §2),
+    keyed by `profile_id` on `MatchEnrichment.participants`. Only `color_id` is ever written to
+    `match_players` — Relic has no colour, so companion is this field's sole source. The other four
+    fields are carried so a disagreement with Relic's own `matchhistorymember[]`/
+    `matchhistoryreportresults[]` is *visible*, never so they can overwrite it: Relic stays
+    authoritative for `team_id`, `won` (`result`), `rating` and `rating_diff` wherever it serves
+    them.
+
+    `colorHex` is **deliberately not a field here**, and never will be: the hex belongs to the
+    design system as a token (constitution VI), and a provider that could set a product colour
+    would bypass the `-contrast` pairing those tokens exist to guarantee (constitution X's colour
+    coming from a single, licensed vocabulary, not a third party's string).
+    """
+
+    color_id: int | None = None
+    team_id: int | None = None
+    won: bool | None = None
+    rating: int | None = None
+    rating_diff: int | None = None
+
+
 class MatchEnrichment(StrictProviderModel):
     """`EnrichmentProvider.enrich_matches` — normalized display data only. Every field is
     optional: aoe2companion is the one provider whose failure is not an error, and a missing key
@@ -223,6 +245,10 @@ class MatchEnrichment(StrictProviderModel):
     game_mode: str | None = None
     game_speed: str | None = None
     civilizations: dict[int, str] | None = None
+    # keyed by `profile_id`, parsed from `teams[].players[]` (data-model.md §2). `None` when the
+    # response carries no `teams`/`players` shape this provider can read, distinct from an empty
+    # dict, which would claim "an empty match" rather than "nothing parsed".
+    participants: dict[int, EnrichedParticipant] | None = None
 
 
 @dataclass(frozen=True)
@@ -257,6 +283,9 @@ class PlayerSearchResult:
     # The source's own claim, carried unverified (constitution IX 3.0.0, see docstring above).
     # Never used to link or merge profiles.
     unverified_steam_id: str | None
+    # The Steam avatar hash the record carries under `avatarhash` (data-model.md §2). A hash, never
+    # a URL — nothing in `packages/providers` builds the Steam CDN URL from it (FR-008a, FR-015).
+    avatar_hash: str | None = None
 
 
 @dataclass(frozen=True)
