@@ -14,7 +14,8 @@ Measured contrast ratios and the gap-register closure live in
 This file is the source the token JSON is written from. The components that consume these tokens are
 specified separately, in [`civilisation-icon.md`](./civilisation-icon.md),
 [`map-thumbnail.md`](./map-thumbnail.md) and [`player-colour-swatch.md`](./player-colour-swatch.md)
-(T428); this file decides the values, those files decide the behaviour.
+(T428), and in [`country-flag.md`](./country-flag.md) and [`player-avatar.md`](./player-avatar.md)
+(T435); this file decides the values, those files decide the behaviour.
 
 ---
 
@@ -184,6 +185,14 @@ box padded out to `icon-xl`, never a 16px hit area.
 the row's own text-driven height, so a row with a thumbnail and a row without one stay the same
 height and the table's rhythm survives an uncovered map. Reasoning and the acceptance criterion that
 checks it: [`map-thumbnail.md`](./map-thumbnail.md) §3 and §7.
+
+**Amended by T435 — for `CountryFlag`, the token sets the box's _height_, not its width.** The pack
+is `flag-icons`' 4x3 set, so the width follows at 4:3 (`icon-sm` → 16px tall, `icon-md` → 24px
+tall). This is the one mark in the family that is not square, and squeezing a flag into a square is a
+different flag's proportion — aspect is part of how a flag is recognised. No new token and no new
+value; the four square marks are unaffected. Reasoning and the acceptance criterion that checks it:
+[`country-flag.md`](./country-flag.md) §3 and §10. `PlayerAvatar` is square and uses the two steps
+already tabled above, unchanged.
 
 ### What T410 does with this
 

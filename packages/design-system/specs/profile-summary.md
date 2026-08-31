@@ -4,15 +4,20 @@
 **Feature**: 001, US1 — consumed by `apps/web/src/routes/dashboard.tsx` and
 `apps/web/src/features/profile/` (T037). **Extended by 003, US1** (§11) — consumed by
 `apps/web/src/routes/players.$profileId.tsx` (003 T322), where it presents a profile that is not the
-signed-in user's own.
+signed-in user's own. **Extended by 004, US2** (§12) — the alias as the heading, the numeric id
+demoted, the country flag and the Steam avatar.
 **Requirements**: FR-008 (rating, rank, win/loss per leaderboard), FR-043 (one primary, others
 reachable), FR-045 (never reveal that two linked accounts are one person), FR-004 (unlink trigger),
-FR-007. SC-004. **§11 also carries 003's FR-006, FR-008, FR-008a, FR-009, FR-010, FR-013, FR-014** —
-prefixed `003` throughout this file to keep them apart from 001's own FR-008/FR-004/FR-007/FR-045
-above, which share numbers with different requirements in 003's own numbering.
+FR-007. SC-004. **§11 also carries 003's FR-006, FR-008, FR-008a, FR-009, FR-010, FR-013, FR-014**,
+and **§12 carries 004's FR-007, FR-008, FR-008a and FR-013, and SC-002** — each prefixed `003` or
+`004` throughout this file to keep them apart from 001's own FR-008/FR-004/FR-007/FR-045 above, and
+from each other: all three features number a requirement `FR-008`, and 003 and 004 both have an
+`FR-008a` about different things.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `StatValue`, `Menu`, `Badge`,
 `Button`, `Callout`, `Skeleton`. §11 also depends on
-[`player-search.md`](./player-search.md)'s `PlayerSearchResult` shape for `alias_observed_at`.
+[`player-search.md`](./player-search.md)'s `PlayerSearchResult` shape for `alias_observed_at`. §12
+depends on [`country-flag.md`](./country-flag.md), [`player-avatar.md`](./player-avatar.md) and
+[`game-asset-tokens.md`](./game-asset-tokens.md)'s `icon` size family (DS-7, closed).
 
 ## 1. Purpose
 
@@ -370,3 +375,295 @@ rule.
 - [ ] `subject="self"` and `subject="other"` stories are visually identical in `RatingBoard`, down to
       spacing and figure alignment, when given the same rating data — the only permitted differences
       are the four named in §11.1.
+
+---
+
+## 12. A profile says who the player is (004, US2 — extends §§1–11, does not replace them)
+
+**What changed underneath this component, and none of it is a redesign.** The pack this file's §2 IP
+note anticipated now exists and is licence-recorded — `packages/game-assets/flags/LICENCE.md`, the
+MIT `lipis/flag-icons` 4x3 set — so the flag "if used at all" is now specified rather than
+hypothetical. `aoe_profiles.avatar_hash` exists and is served (004 T421, T426;
+`contracts/http-api.md`), so the avatar has a fact to render. And the identity bar has, since 001,
+been printing `country` **as the API serves it**, which is a lowercase two-letter code: the same
+identifier-instead-of-a-person defect this feature exists to remove, in miniature, one line under the
+alias.
+
+Everything in §§1–11 applies unchanged. This section states only what the identity of a **person**
+introduces, and — where it changes an earlier rule — says so in §12.1 rather than quietly.
+
+**004's own requirement numbers collide with 001's and 003's** (all three have an `FR-008`; 003 and
+004 both have an `FR-008a`), so every reference below is prefixed `004`.
+
+### 12.1 What §12 supersedes, and what it leaves standing
+
+| Earlier text                                                                     | Status                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §2's `IdentityBar` anatomy                                                       | **Widened** by §12.6: `PlayerAvatar` leads it, and `CountryLabel` becomes [`country-flag.md`](./country-flag.md)'s flag-plus-name pair. Nothing is removed.                                                                                     |
+| §2's `CountryLabel` line, "country name in text"                                 | **Unchanged as written, corrected in practice.** It always said _name_; the component shipped the raw code. §12.4 fixes what renders, not what this file asked for.                                                                             |
+| §2's IP note on flags                                                            | **Satisfied, not superseded.** "A free-licensed set whose licence is recorded here before first use" is now `packages/game-assets/flags/` (MIT), and the flag is still decorative beside the country in text. The rest of the note stands.      |
+| §2's `ProfileSwitcher` trigger showing the alias                                 | **Widened** by §12.3: when there is no alias, the trigger and the `<h2>` show the fallback heading. It is still text plus a chevron, never an icon.                                                                                             |
+| §4's FR-045 rules                                                                | **Unchanged, and extended by §12.5**: "no shared avatar, no visual pairing" now has a picture to forbid, so no avatar appears in a switcher item.                                                                                               |
+| §5's empty case 1, "No leaderboard has a rating for this profile yet"            | **Unchanged, and load-bearing.** It is a real and correct outcome that profile `1807091` genuinely has (spec.md's own edge case). Every temptation in this work is to make it look like something went wrong; §12.7 states what may not change. |
+| §7's "Switcher trigger to country label `space-3`", §8's identity-bar stacking   | **Unchanged.** §12.8 adds two rows and changes none.                                                                                                                                                                                            |
+| §9's `<h2>` section heading, §11.1's four `subject="other"` differences, §5, §10 | **Unchanged, and load-bearing.** §12 adds an avatar, a flag and a fallback to them; it removes none of them, and the avatar and flag are **not** a fifth `subject` difference (§12.5).                                                          |
+
+### 12.2 The fallback ladder: three rules that look like one
+
+004 FR-007, FR-008 and FR-008a read as one sentence about missing data. They are three rules with
+three different answers, and collapsing them is how a profile ends up with a blank heading, a gap
+where a flag was, or a broken image — each a different defect with a different cause.
+
+| What is missing               | The rule                                                              | The failure it exists to prevent                                                                   |
+| ----------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **alias** (004 FR-007)        | The numeric id **becomes the heading**, never a blank one (§12.3)     | An empty `<h2>`, and a `<section aria-labelledby>` pointing at nothing                             |
+| **country** (004 FR-008)      | The flag **and its label are omitted cleanly** (§12.4)                | A reserved gap, an em dash or a globe glyph that reads as "something failed here"                  |
+| **avatar hash** (004 FR-008a) | The **same neutral placeholder** as a hash that fails to load (§12.5) | A broken-image glyph, and a viewer who can tell a stale hash from a missing one and act on neither |
+
+Read the differences, not the similarity: one **substitutes**, one **removes**, one **stands in**.
+Substituting for a missing country ("Unknown") or removing the avatar's space would each be the wrong
+rule applied to the wrong field.
+
+**All three fire at once on a real production profile** — one discovered from a match, never searched,
+never seen by the companion provider. That is a story T437 ships (§12.7), not a hypothetical.
+
+### 12.3 Rule 1 — no alias: the id becomes the heading, never a blank one (004 FR-007)
+
+**When it fires.** `alias` is absent, `null`, or **blank after trimming**. The blank case is the one
+that actually happens: the API types `alias` as a non-null `string`
+(`apps/web/src/features/players/api.ts` asserts `typeof body.alias === "string"`), so a profile with
+no persona name arrives as `""`, and a component that checks only for `undefined` renders an empty
+heading — precisely what 004 FR-007 forbids. The test is emptiness, not nullishness.
+
+**What renders.** The `<h2>` reads **"Player 1807091"** — the id, prefixed by what it is an id _of_.
+
+- **Not the bare number.** This whole feature exists because `1807091` stood in for a person; an
+  unlabelled numeral as the page's heading repeats that. The prefix follows the rule
+  [`match-history.md`](./match-history.md) §11.2 already fixed for an unnamed identifier: "a label
+  prefix that says what it is an id of, never the bare number".
+- **`font-mono`**, at the alias's own size (`xl`) and weight (`semibold`) — an id is data, a name is
+  prose, and DS-8 keeps the two out of one typeface.
+- **`text-primary`, and here §12 deliberately diverges from §11.2's `text-secondary`.** An unnamed
+  civilisation is a fact this service admits it could not resolve. This is not that: the profile
+  really is identified by this number, exactly and verifiably. The page's subject may not be typeset
+  one step down the hierarchy, or the page has no visible subject at all.
+- **Never** "Unknown player", "Anonymous", an em dash, a placeholder name, or an `<h2>` with a
+  `Skeleton` left in it after loading finished.
+
+**Three consequences an implementer would otherwise decide separately:**
+
+1. **`ProfileId` is omitted while this rule is in force.** The same number twice — once at `xl`, once
+   at `xs` beneath it — reads as a rendering fault, and there is nothing to demote it beneath. §2's
+   "the identifier support will ask for" is still on screen; it is the heading.
+2. **`AliasFreshnessNote` is absent** (§11.1.4). "Last seen as ⟨nothing⟩ on 12 Aug 2026" is a
+   sentence with a hole in it, and §5's "absent, not blank-filled" discipline decides it.
+3. **The switcher trigger shows the same fallback string**, and its accessible name becomes
+   "Player 1807091, switch profile" — §9's rule that the trigger's name contains the word "profile"
+   is unchanged, and is what keeps it from being announced as a bare numeral.
+
+### 12.4 Rule 2 — no country: the flag is omitted cleanly (004 FR-008)
+
+`CountryLabel` is [`CountryFlag`](./country-flag.md): the flag, then the country **name in words**.
+The behaviour is specified in that file; this section fixes only what the caller owes.
+
+- **The code never reaches the screen.** `apps/web` resolves `country` (ISO 3166-1 alpha-2) to an
+  English display name and to a pack URL before either reaches this component
+  (`country-flag.md` §2a, T438). `ViewedProfile` therefore carries `countryName` and `countryFlagUrl`
+  and **replaces** today's raw `country` field — carrying both the code and the name would leave two
+  fields that can disagree about the same fact.
+- **The pair sits outside the switcher trigger, immediately after it**, at §7's existing `space-3`.
+  Inside the trigger, the country would join the control's accessible name — "Hera France, switch
+  profile" — making a fact about a person part of a button's label. The flag is never inside a
+  control.
+- **No country at all: nothing renders**, and the line closes up. No reserved width, no em dash, no
+  "Unknown country", no globe. A profile without a country must look like a profile that never had
+  one, not one that lost it — which is the entire content of 004 FR-008's "omit it cleanly".
+- **A country whose flag the pack does not cover**: the name alone, no frame
+  (`country-flag.md` §4). The reader is told where the player is from; they were never owed a picture
+  of it.
+
+### 12.5 Rule 3 — no avatar, or one that fails: the same neutral placeholder (004 FR-008a)
+
+[`PlayerAvatar`](./player-avatar.md) leads `IdentityBar`, at `md` (`icon-2xl`, 64px) in `board` and
+`sm` (`icon-lg`, 32px) in `compact`. It takes `avatarHash` — a hash, never a URL — and builds the
+Steam CDN URL itself, which is that file's §2b and the one place in this system a URL is constructed.
+
+What this file owes on top of it:
+
+- **A missing hash and a hash that fails to load render identically, to the pixel**
+  (`player-avatar.md` §4). A viewer cannot act on either, so a difference between them would be an
+  invitation to try. This is the same identical-render discipline
+  [`civilisation-icon.md`](./civilisation-icon.md) §4 applies to an emblem that fails to load.
+- **Exactly one avatar per rendered `ProfileSummary`**, in `IdentityBar`. **Never in a switcher menu
+  item** — §4's FR-045 list forbids "shared avatar… visual pairing", and a column of identical
+  avatars beside a user's linked aliases is exactly that picture. The switcher stays a list of names.
+- **It is not a fifth `subject` difference.** §11.1 names four differences between `self` and `other`
+  and this is not among them: both subjects show the viewed profile's own avatar, at the same size,
+  in the same position, from the same prop. A third party's avatar is public data from a public
+  source, recorded in the processing register (004 T427).
+- **The hash is an unverified third-party claim** (constitution IX): shown as reported, never used to
+  infer that two profiles are one person, and never the basis of any affordance.
+
+### 12.6 The widened `IdentityBar`
+
+```
+IdentityBar (widened — §2's parts, rearranged around two new ones)
+├─ PlayerAvatar        md (64px) in `board`, sm (32px) in `compact`. Leads, at EVERY viewport
+└─ IdentityColumn
+   ├─ NameLine
+   │  ├─ ProfileSwitcher | AliasHeading    the <h2>: the alias, or §12.3's "Player <id>"
+   │  └─ CountryFlag                       flag + country name — outside the trigger, after it
+   ├─ ProfileId                            font-mono xs text-secondary — ABSENT under §12.3
+   ├─ AliasFreshnessNote                   subject="other" only; absent when there is no alias
+   └─ (ProfileActions | FavouriteToggle)   §2 / §11.1.3, unchanged, still right-aligned from md
+```
+
+**The order is the reading order and the importance order**: face, name, country, identifier. A
+screen reader and a sighted reader get the same four facts in the same sequence, and the one a
+support ticket needs is last because it is the one a person reads least.
+
+**What this bar must not become**, each because a peer site does it and it costs the numbers below:
+
+- **A centred hero card** — a large avatar above a centred name above the ratings. It reads as a
+  social profile and pushes the rating board a screen further down; README rule 1 settles that trade.
+- **A banner or cover image behind the identity bar.** No texture, no artwork, no parchment
+  photograph — and nothing at all behind a figure (README rule 1 again).
+- **A clan crest.** No pack covers one, `player-search.md` §2 forbids it, and a clan tag is text.
+- **An avatar that is a link, or a flag that filters by country.** Neither exists in 004; adding one
+  is a spec change, and it would need the 44px hit area `game-asset-tokens.md` fixes `icon-xl` for.
+
+### 12.7 States §5 and §11.2 did not need to name
+
+**default / hover / focus-visible / active / disabled** — unchanged. Neither new part is
+interactive, neither takes a `tabindex`, and neither has a hover: the identity bar's focus stops are
+still exactly the switcher trigger and the actions beside it.
+
+**loading** — §5's rule is unchanged and gains one part: the identity-bar skeleton now includes a
+`Skeleton/block` at the avatar's exact footprint (same square, same size token, same `radius-md`)
+beside the existing alias `Skeleton/text`, so nothing reflows when the profile resolves.
+**No skeleton is drawn for the flag**: whether a country exists is not known until the data arrives,
+so reserving space for it would leave a gap on every profile that has none (`country-flag.md` §4).
+
+**error** — two new failure modes, and both render as an _absence_, never as an error: a flag image
+that fails leaves the country name alone; an avatar that fails leaves the neutral placeholder.
+Neither produces a callout, a tone change or a retry — the profile is fully readable without either
+picture, and telling a user that an image did not load asks them to act on something they cannot.
+§5's two error cases are about **ratings** and are unchanged.
+
+**empty** — §5's three cases and §11.2's fourth are unchanged. Two things to hold:
+
+> **"No ratings yet" does not move.** Same `Callout/info`, same copy, same tone, same position
+> relative to the identity bar. It does not become a warning, does not gain a retry, does not gain an
+> illustration, and is not hidden behind a fold. It is the correct rendering of a real fact about
+> profile `1807091`, and the identity bar above it — now a face, a name and a country — is what makes
+> the page read as intentional rather than broken. Making the calm state look like a failure is the
+> one way this section can damage what §5 got right.
+
+§12 adds one empty state neither §5 nor §11.2 had to name, because it is the shape of a profile this
+service discovered from a match and never enriched:
+
+> **A profile with no alias, no country and no avatar hash renders in full.** Heading:
+> "Player 1807091" (§12.3). Avatar: the neutral placeholder (§12.5). Country: absent entirely
+> (§12.4). `ProfileId`: omitted, because the heading is already the id. The rating board renders
+> whatever it has, including "No ratings yet". **Nothing is blank, nothing is an error, and nothing
+> apologises.** This is a legitimate resting state, not a broken one.
+
+### 12.8 Tokens, spacing, responsive, accessibility — the delta only
+
+**Tokens.** No new token and no new gap. Via the two components: `border` (the flag's frame,
+decorative), `border-strong` (the avatar's frame, meaning-bearing, 3:1), `surface-sunken` (the
+avatar's placeholder fill), `icon-sm` / `icon-md` / `icon-lg` / `icon-2xl`, `radius-sm`, `radius-md`.
+§6's own list is otherwise unchanged. `mono` now also carries §12.3's fallback heading, which is why
+**DS-8** is in play for this section and not only for the rating board.
+
+**Contrast pairing.** This component's root is `bg-background`
+(`src/components/ProfileSummary/index.tsx`), so its pairs are README's `background` rows, per that
+file's own pairing convention (T034c: name the background the component actually paints).
+`border-strong` on `background` is measured and asserted in **both** themes, which is what the
+avatar's frame rides on. `text-secondary` on `background` — the country name and `ProfileId` — is
+measured in the light theme, the tight one; the dark table carries no `background` row for it, and
+dark `background` is darker than dark `surface`, so the pair is no tighter there than the `surface`
+row already measured. A row should be added the next time README's table is recomputed; nothing in
+§12 is blocked on it, because no token here is new.
+
+**Spacing** (added to §7; nothing there changes):
+
+| Between                                   | Step      |
+| ----------------------------------------- | --------- |
+| Avatar to the identity column             | `space-4` |
+| Flag to the country name beside it        | `space-2` |
+| Heading (or switcher trigger) to the flag | `space-3` |
+
+The third row is §7's existing "switcher trigger to country label" under its widened name, restated
+so the table is readable without cross-referencing, not changed.
+
+**Responsive.** §8's structure, breakpoints and one-DOM rule are unchanged.
+
+- **375** — the avatar stays **beside** the identity column, never stacked above it: a 64px block on
+  its own line pushes the ratings further below the fold, and the ratings are what the user came for.
+  The country pair may wrap **as a unit** onto the line below the heading; it never wraps between the
+  flag and its name.
+- **768 / 1280** — as §8, with the avatar at the same size. The identity bar's height is set by the
+  avatar at `board`, which is why nothing else in it grew.
+- **320px / 200% zoom** — both marks are rem-sized and grow with the text. §9's "figures never
+  ellipsise" extends to §12.3's fallback heading: a truncated identifier is a **wrong** identifier,
+  so it wraps rather than clipping.
+
+**Accessibility.** §9 is unchanged; the delta is small because both marks were specified to add
+nothing to it.
+
+- The `<h2>` §9's `aria-labelledby` points at now **always resolves to text** — an alias, or
+  "Player 1807091". Before §12.3 a blank alias left the section labelled by an empty element.
+- Both images are decorative: the flag is `alt=""` beside the country in text (this file's §2 IP note
+  already required exactly that), and the avatar is `alt=""` beside the heading. No fact is announced
+  twice, and the avatar's placeholder is `aria-hidden` — its absence has no meaning a screen-reader
+  user could act on.
+- The flag never enters the switcher trigger's accessible name (§12.4).
+- No new tab stop and no new touch target: nothing added here is interactive, so §9's ≥44px rule
+  applies only if a later feature makes the avatar a link.
+- The avatar's `<img>` carries `referrerpolicy="no-referrer"` (`player-avatar.md` §8): the Steam CDN
+  necessarily learns the viewer's IP, but it must not also learn which profile they were reading.
+
+### 12.9 Visual acceptance criteria (additional to §10 and §11.4)
+
+**The ladder — one story per rule, and they are what SC-002 reduces to**
+
+- [ ] The full-profile story shows, in one frame at 375, 768 and 1280: the avatar leading, the alias
+      as the largest text in the identity bar, a flag with a country **name** beside it, and the
+      numeric id demoted beneath — smaller and in `text-secondary`.
+- [ ] The alias-less story's heading reads **"Player <id>"** in the monospaced family at the alias's
+      own size, and the id appears **exactly once** in the frame — no demoted duplicate beneath it.
+- [ ] The alias-less story shows no blank heading, no "Unknown", no em dash and no leftover skeleton,
+      and no `AliasFreshnessNote` — in both themes.
+- [ ] The country-less story shows **no flag and no country label at all**: no gap, no em dash, no
+      globe. Overlaid on the full-profile story, the heading sits at the identical position.
+- [ ] **No two-letter country code appears anywhere in any story**, which is the identity-bar half of
+      SC-002.
+- [ ] The absent-avatar story and the failed-avatar story are **pixel-identical**, in both themes.
+- [ ] The three-absence story (no alias, no country, no avatar) shows a heading, a framed placeholder
+      and the rating board: nothing blank, no `danger` or `warning` tone anywhere in the frame.
+
+**The state that must not change**
+
+- [ ] The "No ratings yet" story still shows an **info** callout with §5's copy verbatim, no retry
+      button and no illustration; the identity bar above it renders in full.
+- [ ] Placed beside the pre-004 baseline, the only differences in that story are the identity bar's
+      new avatar and flag — the callout's copy, tone and internal spacing are untouched.
+
+**Composition, privacy and craft**
+
+- [ ] The open-switcher story shows **no avatar and no flag inside any menu item** (FR-045), in both
+      themes.
+- [ ] `subject="self"` and `subject="other"` stories with the same profile data show an identical
+      avatar, flag and heading treatment; the only differences are the four §11.1 names.
+- [ ] At 375 the avatar sits beside the heading, not above it, and the identity bar is not centred.
+- [ ] No banner, cover image, texture or artwork sits behind the identity bar or across any figure.
+- [ ] Focus ring visible and unclipped on the switcher trigger with the avatar beside it; **neither
+      the avatar nor the flag ever shows a focus ring** (tab through the story to confirm neither is
+      a stop).
+- [ ] Zero broken or missing images across every story in both themes, and the browser network panel
+      shows no request under `/game-assets/flags/` returning 404 (SC-005). A 404 there is a defect in
+      the resolver contract, not a missing file.
+- [ ] Converting any story to greyscale leaves the heading, the country name and the id fully
+      readable; only the flag and the avatar lose information, which is the point — nothing was
+      riding on either.
