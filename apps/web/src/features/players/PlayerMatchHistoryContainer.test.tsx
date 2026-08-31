@@ -71,8 +71,37 @@ function baseRow(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
     civilisation: 7,
     civilisation_name: 'Japanese',
     result: 'win',
+    rating: 934,
     rating_diff: 12,
+    team_id: 1,
+    color_id: 4,
     opponents: [{ profile_id: 99, alias: 'someone_else', civ_id: 3, civ_name: 'Celts' }],
+    participants: [
+      {
+        profile_id: 87654321,
+        alias: 'rival_ace',
+        country: 'de',
+        team_id: 1,
+        civ_id: 7,
+        civ_name: 'Japanese',
+        color_id: 4,
+        result: 'win',
+        rating: 934,
+        rating_diff: 12,
+      },
+      {
+        profile_id: 99,
+        alias: 'someone_else',
+        country: null,
+        team_id: 2,
+        civ_id: 3,
+        civ_name: 'Celts',
+        color_id: 2,
+        result: 'loss',
+        rating: 1500,
+        rating_diff: -12,
+      },
+    ],
     capture_status: 'stored',
     capture_deadline_at: null,
     ...overrides,
@@ -124,7 +153,10 @@ describe('PlayerMatchHistoryContainer', () => {
     installFakeApi({})
     renderHistory()
 
-    expect(await screen.findByText('rival_ace')).toBeInTheDocument()
+    // "rival_ace" appears twice once the row loads — the page header, and their own name among
+    // the match row's Participants (§12.3, both are the same person's alias, legitimately) — so
+    // this waits for at least one occurrence rather than asserting a single match.
+    expect((await screen.findAllByText('rival_ace')).length).toBeGreaterThan(0)
     expect(screen.getByText('someone_else')).toBeInTheDocument()
   })
 
@@ -134,7 +166,7 @@ describe('PlayerMatchHistoryContainer', () => {
     installFakeApi({})
     renderHistory()
 
-    await screen.findByText('rival_ace')
+    await screen.findAllByText('rival_ace')
     expect(screen.getByRole('list', { name: "rival_ace's recent matches" })).toBeInTheDocument()
     expect(screen.queryByText('Your recent matches')).not.toBeInTheDocument()
   })
@@ -153,7 +185,7 @@ describe('PlayerMatchHistoryContainer', () => {
     installFakeApi({ profileHandler: () => jsonResponse(baseProfile({ ratings: [] })) })
     renderHistory()
 
-    expect(await screen.findByText('rival_ace')).toBeInTheDocument()
+    expect((await screen.findAllByText('rival_ace')).length).toBeGreaterThan(0)
     expect(screen.getByText('No ratings yet')).toBeInTheDocument()
   })
 
@@ -173,7 +205,7 @@ describe('PlayerMatchHistoryContainer', () => {
     const user = userEvent.setup()
     renderHistory(87654321)
 
-    await screen.findByText('rival_ace')
+    await screen.findAllByText('rival_ace')
     await user.click(screen.getByRole('button', { name: 'Back to profile' }))
 
     expect(navigateMock).toHaveBeenCalledWith({

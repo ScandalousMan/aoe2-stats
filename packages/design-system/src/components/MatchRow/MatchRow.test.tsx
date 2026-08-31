@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchList, MatchRow } from './index'
-import type { MatchRowData } from './index'
+import type { MatchRowData, MatchRowParticipant } from './index'
 
 // jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here, so
 // the touch-target assertion below cannot render a real box and measure it. The next best thing —
@@ -48,17 +48,39 @@ function mockButtonHeightLayout() {
   })
 }
 
+const BRITONS_URL = '/game-assets/civilisations/britons.webp'
+const ARABIA_URL = '/game-assets/maps/arabia.webp'
+
+/** `RatingFigure` (§12.4) splits the absolute rating and the signed change across a text node and
+ * a nested `<span>` so each can carry its own tone — `getByText`'s default matching only looks at
+ * an element's own *direct* text nodes, never a descendant's, so the combined string is matched
+ * here against `element.textContent` (which does recurse) instead of the first, direct-text-only
+ * argument. */
+function fullText(expected: string) {
+  return (_content: string, element: Element | null) => element?.textContent === expected
+}
+
+// The opposing group's own result is left unrecorded here (`null`, "Result unknown") rather than
+// `'loss'` — several fixtures below share this array with `CaptureStateBadge`'s own "Lost" label,
+// and a `TeamResult` marker reading "Lost" would collide with it in the same row. The dedicated
+// "Won"/"Lost"/"Result unknown" test below builds its own participants instead.
+const participants: MatchRowParticipant[] = [
+  { profileId: 1807091, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+  { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: null },
+]
+
 const match: MatchRowData = {
   gameId: '1001',
   href: '/matches/1001',
   outcome: 'win',
-  opponent: { alias: 'aoe2villain' },
+  participants,
   map: 'Arabia',
   civilisation: 'Franks',
-  ratingChange: { value: 12 },
   durationLabel: '34 min',
   playedAtRelative: '3 hours ago',
   playedAtAbsolute: '2026-08-22T09:12:00Z',
+  rating: 922,
+  ratingChange: { value: 12 },
   captureStatus: 'stored',
   captureDeadlineAt: null,
 }
@@ -97,31 +119,34 @@ describe('MatchRow', () => {
     expect(label.className).toContain('text-secondary')
   })
 
-  it('names the first opposing participant and appends "and N others" for a team match', () => {
-    render(<MatchRow match={{ ...match, opponent: { alias: 'aoe2villain', othersCount: 3 } }} />)
-    expect(screen.getByText('aoe2villain and 3 others')).toBeInTheDocument()
-  })
-
-  it('never shows a bare count with no name for a team match', () => {
-    render(<MatchRow match={{ ...match, opponent: { alias: 'aoe2villain', othersCount: 3 } }} />)
-    expect(screen.queryByText(/^3 others$/)).not.toBeInTheDocument()
-  })
-
-  it('shows an explicit sign on the rating change', () => {
-    render(<MatchRow match={match} />)
-    expect(screen.getByText('+12')).toBeInTheDocument()
-  })
-
-  it('renders no rating change field when the match carries none', () => {
-    render(<MatchRow match={{ ...match, ratingChange: undefined }} />)
-    expect(screen.queryByText('Rating change')).not.toBeInTheDocument()
-  })
-
-  it('shows the map and civilisation as plain text, never an emblem image', () => {
+  it('shows the map and civilisation name text when no imagery is resolved (§12.1 rule 3)', () => {
     render(<MatchRow match={match} />)
     expect(screen.getByText('Arabia')).toBeInTheDocument()
     expect(screen.getByText('Franks')).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('composes CivilisationIcon and MapThumbnail, rendering their marks when a URL resolves', () => {
+    render(
+      <MatchRow
+        match={{
+          ...match,
+          civIconUrl: BRITONS_URL,
+          civilisation: 'Britons',
+          mapThumbnailUrl: ARABIA_URL,
+        }}
+      />,
+    )
+    const srcs = Array.from(document.querySelectorAll('img')).map((image) =>
+      image.getAttribute('src'),
+    )
+    expect(srcs).toContain(BRITONS_URL)
+    expect(srcs).toContain(ARABIA_URL)
+  })
+
+  it('shows the ladder name as a second line beneath the map name (FR-006)', () => {
+    render(<MatchRow match={{ ...match, leaderboardName: '1v1 Random Map' }} />)
+    expect(screen.getByText('1v1 Random Map')).toBeInTheDocument()
   })
 
   it('shows the duration pre-formatted, never raw seconds', () => {
@@ -173,6 +198,172 @@ describe('MatchRow', () => {
       expect(onNavigate).not.toHaveBeenCalled()
     })
   })
+
+  // --- §12.4: rating and its movement -------------------------------------------------------------
+
+  describe('rating (§12.4)', () => {
+    it('renders the absolute rating with the signed change in parentheses', () => {
+      render(<MatchRow match={{ ...match, rating: 922, ratingChange: { value: 16 } }} />)
+      expect(screen.getByText(fullText('922 (+16)'))).toBeInTheDocument()
+    })
+
+    it('uses U+2212 MINUS SIGN, not a hyphen, for a negative change', () => {
+      render(<MatchRow match={{ ...match, rating: 921, ratingChange: { value: -15 } }} />)
+      expect(screen.getByText(fullText('921 (−15)'))).toBeInTheDocument()
+      expect(screen.queryByText(fullText('921 (-15)'))).not.toBeInTheDocument()
+    })
+
+    it('renders a reported zero movement as "(0)" with no sign, in a neutral tone', () => {
+      render(<MatchRow match={{ ...match, rating: 922, ratingChange: { value: 0 } }} />)
+      const figure = screen.getByText(fullText('922 (0)'))
+      expect(figure.querySelector('span')?.className).toContain('text-secondary')
+      expect(figure.querySelector('span')?.className).not.toContain('text-success')
+      expect(figure.querySelector('span')?.className).not.toContain('text-danger')
+    })
+
+    it('renders the rating alone, no parenthesis, when rating_diff is not known', () => {
+      render(<MatchRow match={{ ...match, rating: 922, ratingChange: undefined }} />)
+      expect(screen.getByText('922')).toBeInTheDocument()
+      expect(screen.queryByText(/\(/)).not.toBeInTheDocument()
+    })
+
+    it('renders no rating field at all when both rating and rating_diff are absent', () => {
+      render(<MatchRow match={{ ...match, rating: undefined, ratingChange: undefined }} />)
+      expect(screen.queryByText(/922/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/\(/)).not.toBeInTheDocument()
+    })
+  })
+
+  // --- §12.3: Participants, grouped by side, each in their colour --------------------------------
+
+  describe('participants (§12.3)', () => {
+    it('renders a colour swatch immediately beside every participant’s alias', () => {
+      render(<MatchRow match={match} />)
+      const aoe2fan = screen.getByText('aoe2fan')
+      const swatch = aoe2fan.parentElement?.querySelector('[aria-hidden="true"]')
+      expect(swatch).toBeInTheDocument()
+      expect(
+        within(aoe2fan.parentElement as HTMLElement).getByText('Colour: Yellow'),
+      ).toBeInTheDocument()
+    })
+
+    it('separates two groups with the word "vs", never a glyph', () => {
+      render(<MatchRow match={match} />)
+      expect(screen.getByText('vs')).toBeInTheDocument()
+    })
+
+    it('caps a group at three participants and appends "and N others" — never a bare count', () => {
+      const many: MatchRowParticipant[] = [
+        { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+        { profileId: 2, alias: 'Teammate2', teamId: 1, colorId: 2, result: 'win' },
+        { profileId: 3, alias: 'Teammate3', teamId: 1, colorId: 3, result: 'win' },
+        { profileId: 4, alias: 'Teammate4', teamId: 1, colorId: 5, result: 'win' },
+        { profileId: 5, alias: 'aoe2villain', teamId: 2, colorId: 6, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: many }} />)
+      expect(screen.getByText('and 1 others')).toBeInTheDocument()
+      expect(screen.queryByText(/^1 others$/)).not.toBeInTheDocument()
+      expect(screen.queryByText('Teammate4')).not.toBeInTheDocument()
+    })
+
+    it('orders the viewed profile’s own group first, then the viewed profile within it', () => {
+      const reordered: MatchRowParticipant[] = [
+        { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'loss' },
+        { profileId: 999, alias: 'SomeoneElseOnMyTeam', teamId: 1, colorId: 3, result: 'win' },
+        {
+          profileId: 1807091,
+          alias: 'aoe2fan',
+          teamId: 1,
+          colorId: 4,
+          result: 'win',
+          isViewer: true,
+        },
+      ]
+      render(<MatchRow match={{ ...match, participants: reordered }} />)
+      const names = screen
+        .getAllByText(/aoe2fan|SomeoneElseOnMyTeam|aoe2villain/)
+        .map((node) => node.textContent)
+      expect(names).toEqual(['aoe2fan', 'SomeoneElseOnMyTeam', 'aoe2villain'])
+    })
+
+    it('renders "Won"/"Lost"/"Result unknown" per group, never colour alone', () => {
+      const wonAndLost: MatchRowParticipant[] = [
+        {
+          profileId: 1807091,
+          alias: 'aoe2fan',
+          teamId: 1,
+          colorId: 4,
+          result: 'win',
+          isViewer: true,
+        },
+        { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: wonAndLost, captureStatus: null }} />)
+      expect(screen.getByText('Won')).toHaveClass('text-success')
+      expect(screen.getByText('Lost')).toHaveClass('text-danger')
+    })
+
+    it('reads a group with no recorded result as "Result unknown", never as a loss', () => {
+      const unresolved: MatchRowParticipant[] = participants.map((participant) => ({
+        ...participant,
+        result: null,
+      }))
+      render(<MatchRow match={{ ...match, participants: unresolved }} />)
+      const markers = screen.getAllByText('Result unknown')
+      expect(markers).toHaveLength(2)
+      for (const marker of markers) {
+        expect(marker.className).not.toContain('text-danger')
+        expect(marker.className).not.toContain('text-success')
+        expect(marker.className).toContain('text-secondary')
+      }
+    })
+
+    it('renders no group marker at all for a mixed, should-not-occur result set', () => {
+      const mixed: MatchRowParticipant[] = [
+        { profileId: 1, alias: 'MixedA', teamId: 1, colorId: 1, result: 'win' },
+        { profileId: 2, alias: 'MixedB', teamId: 1, colorId: 2, result: null },
+        { profileId: 3, alias: 'Opponent', teamId: 2, colorId: 3, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: mixed }} />)
+      expect(screen.queryByText('Won')).not.toBeInTheDocument()
+      expect(screen.queryByText('Result unknown')).not.toBeInTheDocument()
+    })
+
+    it('collapses a free-for-all (more than two groups) to the viewer plus "and N others", no "vs"', () => {
+      const ffa: MatchRowParticipant[] = [
+        { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+        { profileId: 2, alias: 'Rival2', teamId: 2, colorId: 2, result: 'loss' },
+        { profileId: 3, alias: 'Rival3', teamId: 3, colorId: 3, result: 'loss' },
+        { profileId: 4, alias: 'Rival4', teamId: 4, colorId: 5, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: ffa }} />)
+      expect(screen.getByText('aoe2fan')).toBeInTheDocument()
+      expect(screen.getByText('and 3 others')).toBeInTheDocument()
+      expect(screen.queryByText('vs')).not.toBeInTheDocument()
+      expect(screen.queryByText('Rival2')).not.toBeInTheDocument()
+    })
+
+    it('resolves an out-of-range or missing colour to the same neutral chip, never an error tone', () => {
+      const neutral: MatchRowParticipant[] = [
+        { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: null, result: 'win', isViewer: true },
+        { profileId: 2, alias: 'aoe2villain', teamId: 2, colorId: 99, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: neutral }} />)
+      expect(screen.getAllByText('Colour: not recorded')).toHaveLength(2)
+    })
+
+    // §12.6: the un-projected row — every participant column NULL. The field is omitted
+    // entirely, never an empty "vs" with nothing on either side.
+    it('omits the Participants field entirely when participants is absent, no empty "vs"', () => {
+      render(<MatchRow match={{ ...match, participants: undefined, outcome: 'unknown' }} />)
+      expect(screen.queryByText('vs')).not.toBeInTheDocument()
+      expect(screen.queryByText('aoe2fan')).not.toBeInTheDocument()
+      expect(screen.getByText('Unknown')).toBeInTheDocument()
+      // The rest of the row still renders in full — a legitimate resting state, not an error.
+      expect(screen.getByText('Arabia')).toBeInTheDocument()
+      expect(screen.getByText('34 min')).toBeInTheDocument()
+    })
+  })
 })
 
 describe('MatchList', () => {
@@ -215,7 +406,6 @@ describe('MatchList', () => {
       ...match,
       gameId: '1002',
       href: '/matches/1002',
-      opponent: { alias: 'someoneElse' },
     }
     render(<MatchList matches={[match, second]} />)
     const links = screen.getAllByRole('link')
@@ -242,6 +432,8 @@ describe('MatchList', () => {
       ...match,
       gameId: `unknown-${index}`,
       outcome: 'unknown' as const,
+      participants: undefined,
+      rating: undefined,
       ratingChange: undefined,
     }))
     render(<MatchList matches={rows} />)
@@ -311,6 +503,33 @@ describe('MatchList', () => {
     const headerCell = container.querySelector('th')
     expect(headerCell?.className).toMatch(/\bpr-5\b/)
     expect(headerCell?.className).not.toMatch(/\bpr-6\b/)
+    restore()
+  })
+
+  // §12.7: the 1280 table renames "Opponent" to "Players" and "Change" to "Rating".
+  it('renders the renamed 1280 column headers "Players" and "Rating" (§12.7)', () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchList matches={[match]} />)
+    expect(screen.getByRole('columnheader', { name: 'Players' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Rating' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Opponent' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Change' })).not.toBeInTheDocument()
+    restore()
+  })
+
+  // §12.7: the Players column caps a side at two participants before its overflow text — the
+  // column's width is bounded by the table, not by the window.
+  it('caps the 1280 table Players column at two participants per side', () => {
+    const restore = mockMatchMediaAt(1280)
+    const many: MatchRowParticipant[] = [
+      { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+      { profileId: 2, alias: 'Teammate2', teamId: 1, colorId: 2, result: 'win' },
+      { profileId: 3, alias: 'Teammate3', teamId: 1, colorId: 3, result: 'win' },
+      { profileId: 4, alias: 'aoe2villain', teamId: 2, colorId: 6, result: 'loss' },
+    ]
+    render(<MatchList matches={[{ ...match, participants: many }]} />)
+    expect(screen.getByText('and 1 others')).toBeInTheDocument()
+    expect(screen.queryByText('Teammate3')).not.toBeInTheDocument()
     restore()
   })
 

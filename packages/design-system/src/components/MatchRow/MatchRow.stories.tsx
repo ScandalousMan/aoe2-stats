@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { MatchList, MatchRow } from './index'
-import type { MatchRowData } from './index'
+import type { MatchRowData, MatchRowParticipant } from './index'
 
 const meta: Meta<typeof MatchRow> = {
   title: 'Composite/MatchRow',
@@ -17,14 +17,33 @@ function inFromNow(ms: number): string {
   return new Date(Date.now() + ms).toISOString()
 }
 
+const BRITONS_URL = '/game-assets/civilisations/britons.webp'
+const ARABIA_URL = '/game-assets/maps/arabia.webp'
+
+// §12.3: a 1v1 is two groups of one — the viewed profile's group first (`isViewer`), "vs", then
+// the opponent's group.
+const participants1v1Win: MatchRowParticipant[] = [
+  { profileId: 1807091, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+  { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'loss' },
+]
+
+const participants1v1Loss: MatchRowParticipant[] = [
+  { profileId: 1807091, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'loss', isViewer: true },
+  { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'win' },
+]
+
 const base: MatchRowData = {
   gameId: '1001',
   href: '/matches/1001',
   outcome: 'win',
-  opponent: { alias: 'aoe2villain' },
+  participants: participants1v1Win,
   map: 'Arabia',
-  civilisation: 'Franks',
-  ratingChange: { value: 12 },
+  civilisation: 'Britons',
+  civIconUrl: BRITONS_URL,
+  mapThumbnailUrl: ARABIA_URL,
+  leaderboardName: '1v1 Random Map',
+  rating: 922,
+  ratingChange: { value: 16 },
   durationLabel: '34 min',
   playedAtRelative: '3 hours ago',
   playedAtAbsolute: '2026-08-22T09:12:00Z',
@@ -32,7 +51,9 @@ const base: MatchRowData = {
   captureDeadlineAt: null,
 }
 
+// §12.4: the FR-005 case exactly as the spec's own example — "922 (+16)".
 export const Win: Story = {
+  name: '1v1, a win (§12.3 two groups + §12.4 rating format)',
   args: { match: base },
 }
 
@@ -42,7 +63,9 @@ export const Loss: Story = {
       ...base,
       gameId: '1002',
       outcome: 'loss',
-      ratingChange: { value: -8 },
+      participants: participants1v1Loss,
+      rating: 906,
+      ratingChange: { value: -15 },
       captureStatus: 'pending',
       captureDeadlineAt: inFromNow(6 * DAY_MS),
     },
@@ -55,25 +78,20 @@ export const Loss: Story = {
 export const UnknownOutcome: Story = {
   name: 'Unknown outcome — never rendered as a loss (§2a)',
   args: {
-    match: { ...base, gameId: '1009', outcome: 'unknown', ratingChange: undefined },
-  },
-}
-
-// §4: a team match names the first opposing-team participant and appends "and N others", never a
-// bare count and never every alias crammed onto the row.
-export const TeamMatchWithOthers: Story = {
-  args: {
     match: {
       ...base,
-      gameId: '1003',
-      opponent: { alias: 'aoe2villain', othersCount: 3 },
+      gameId: '1009',
+      outcome: 'unknown',
+      rating: undefined,
+      ratingChange: undefined,
+      participants: participants1v1Win.map((participant) => ({ ...participant, result: null })),
     },
   },
 }
 
 export const NoRatingChangeRecorded: Story = {
   args: {
-    match: { ...base, gameId: '1004', ratingChange: undefined },
+    match: { ...base, gameId: '1004', rating: undefined, ratingChange: undefined },
   },
 }
 
@@ -107,6 +125,75 @@ export const CaptureNotDiscoveredYet: Story = {
   },
 }
 
+// --- §12: the four scenarios T430 exists to cover -----------------------------------------------
+
+// §12.3's "Two groups" cap-of-three row: a 4v4 (eight players), one side already Won, the other
+// side's results not yet recorded — demonstrating both the overflow ("and 1 other") and the
+// three-state `TeamResult` marker's neutral case in one frame.
+const eightPlayerParticipants: MatchRowParticipant[] = [
+  { profileId: 1807091, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+  { profileId: 2, alias: 'RedTeammate', teamId: 1, colorId: 2, result: 'win' },
+  { profileId: 3, alias: 'GreenTeammate', teamId: 1, colorId: 3, result: 'win' },
+  { profileId: 4, alias: 'TealTeammate', teamId: 1, colorId: 5, result: 'win' },
+  { profileId: 5, alias: 'aoe2villain', teamId: 2, colorId: 6, result: null },
+  { profileId: 6, alias: 'PurpleRival', teamId: 2, colorId: 7, result: null },
+  { profileId: 7, alias: 'GreyRival', teamId: 2, colorId: 8, result: null },
+  { profileId: 8, alias: 'OrangeRival', teamId: 2, colorId: 1, result: null },
+]
+
+export const EightPlayerMatch: Story = {
+  name: 'Eight-player match (4v4) — cap of three per side, "and 1 other" (§12.3, §12.8)',
+  args: {
+    match: {
+      ...base,
+      gameId: '2001',
+      participants: eightPlayerParticipants,
+    },
+  },
+}
+
+// §12.6: every participant column NULL (the un-projected row — "the state every production row
+// is in until the backfill runs"). Map, ladder, duration, when and the capture badge still
+// render; `Outcome` reads "Unknown"; `Participants` is **omitted entirely** — no empty "vs".
+export const NullResult: Story = {
+  name: 'A null result — the un-projected row, Participants omitted entirely (§12.6)',
+  args: {
+    match: {
+      ...base,
+      gameId: '3001',
+      outcome: 'unknown',
+      participants: undefined,
+      civIconUrl: undefined,
+      mapThumbnailUrl: undefined,
+      rating: undefined,
+      ratingChange: undefined,
+    },
+  },
+}
+
+// §12.1 rule 3: the absent-asset state is the prop being `undefined` — no box, no silhouette, no
+// "?" tile. Every mark this row can carry is uncovered at once: the civilisation icon, the map
+// thumbnail, and every participant's colour.
+const uncoveredParticipants: MatchRowParticipant[] = participants1v1Win.map((participant) => ({
+  ...participant,
+  colorId: null,
+}))
+
+export const NoAssetsCovered: Story = {
+  name: 'No assets covered — unknown civ, unknown map, no colour (§12.1 rule 3, §12.8)',
+  args: {
+    match: {
+      ...base,
+      gameId: '4001',
+      civilisation: 'Gurjaras',
+      civIconUrl: undefined,
+      map: 'A Custom Tournament Map',
+      mapThumbnailUrl: undefined,
+      participants: uncoveredParticipants,
+    },
+  },
+}
+
 // --- MatchList: the list-level states (§5) — loading, error, empty, and a populated list showing
 // all four capture states so the acceptance criterion ("every row shows one of exactly four
 // labels") is visible in one screenshot.
@@ -117,13 +204,26 @@ const populated: MatchRowData[] = [
     ...base,
     gameId: '2002',
     outcome: 'loss',
-    opponent: { alias: 'aoe2villain', othersCount: 3 },
-    ratingChange: { value: -8 },
+    participants: participants1v1Loss,
+    rating: 906,
+    ratingChange: { value: -15 },
     captureStatus: 'pending',
     captureDeadlineAt: inFromNow(6 * DAY_MS),
   },
-  { ...base, gameId: '2003', captureStatus: 'unavailable', ratingChange: { value: 6 } },
-  { ...base, gameId: '2004', captureStatus: 'quarantined', ratingChange: { value: -3 } },
+  {
+    ...base,
+    gameId: '2003',
+    captureStatus: 'unavailable',
+    rating: 928,
+    ratingChange: { value: 6 },
+  },
+  {
+    ...base,
+    gameId: '2004',
+    captureStatus: 'quarantined',
+    rating: 919,
+    ratingChange: { value: -3 },
+  },
 ]
 
 export const ListPopulated: Story = {
@@ -153,6 +253,7 @@ const allUnknown: MatchRowData[] = populated.map((match, index) => ({
   ...match,
   gameId: `3-${index}`,
   outcome: 'unknown',
+  rating: undefined,
   ratingChange: undefined,
 }))
 
