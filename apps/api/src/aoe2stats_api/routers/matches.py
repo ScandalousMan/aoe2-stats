@@ -194,6 +194,7 @@ from aoe2stats_storage.repositories.matches import (
     MatchDetail,
     MatchesRepository,
     MatchListRow,
+    MatchParticipant,
     Opponent,
 )
 
@@ -569,12 +570,42 @@ def _opponent_json(opponent: Opponent) -> dict[str, Any]:
     }
 
 
+def _participant_json(participant: MatchParticipant) -> dict[str, Any]:
+    """One entry of `participants[]` (T423/T425, `contracts/http-api.md`): shared by
+    `match_row_json`'s own `participants` and `_match_detail_json`'s, since both are built from the
+    identical `MatchParticipant` dataclass (`MatchesRepository`'s own module docstring, "a sibling,
+    not a replacement for `opponents`"). `civ_name` (FR-001) and `country` (feeds the opponent flag,
+    `contracts/http-api.md`'s field-semantics table) are computed here so a client reading either
+    route never derives them itself. `_match_detail_json` below still adds its own `replay` key per
+    participant afterwards — a per-point-of-view object `match_row_json`'s own rows never carry
+    (T338) — so this function stops one key short of that shape rather than growing an optional
+    parameter for it."""
+    return {
+        "profile_id": participant.profile_id,
+        "alias": participant.alias,
+        "country": participant.country,
+        "team_id": participant.team_id,
+        "civ_id": participant.civ_id,
+        "civ_name": civilisation_name(participant.civ_id),
+        "color_id": participant.color_id,
+        "result": participant.result,
+        "rating": participant.rating,
+        "rating_diff": participant.rating_diff,
+    }
+
+
 def match_row_json(row: MatchListRow) -> dict[str, Any]:
     """Public (no leading underscore): `routers/players.py`'s `GET /api/players/{profile_id}/
     matches` (T328) imports this directly rather than restating it, so the two routes can never
     drift apart on the one shape `contracts/http-api.md` promises is identical — see
     `test_players_history.py`'s own row-shape-comparison test, the reason this function is
-    exported at all."""
+    exported at all.
+
+    **Widened (T425, research.md D7).** `rating`, `team_id` and `color_id` are the caller's own —
+    `MatchListRow` already carries all three (T423) but nobody read them onto the wire until now.
+    `participants` is `opponents`'s sibling, not a replacement for it (`MatchesRepository`'s own
+    module docstring): every field already served is unchanged, so a client built against the
+    narrower shape keeps working."""
     return {
         "game_id": row.game_id,
         "started_at": row.started_at.isoformat() if row.started_at is not None else None,
@@ -587,7 +618,11 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
         "civilisation_name": civilisation_name(row.civilisation),
         "result": row.result,
         "rating_diff": row.rating_diff,
+        "rating": row.rating,
+        "team_id": row.team_id,
+        "color_id": row.color_id,
         "opponents": [_opponent_json(opponent) for opponent in row.opponents],
+        "participants": [_participant_json(participant) for participant in row.participants],
         # Every raw `CaptureStatus` value, unmodified — the badge's collapse is a front-end
         # concern (module docstring).
         "capture_status": row.capture_status.value if row.capture_status is not None else None,
@@ -622,15 +657,7 @@ def _match_detail_json(
         "patch": detail.patch,
         "participants": [
             {
-                "profile_id": participant.profile_id,
-                "alias": participant.alias,
-                "team_id": participant.team_id,
-                "civ_id": participant.civ_id,
-                "civ_name": civilisation_name(participant.civ_id),
-                "color_id": participant.color_id,
-                "result": participant.result,
-                "rating": participant.rating,
-                "rating_diff": participant.rating_diff,
+                **_participant_json(participant),
                 # FR-023 (T338, module docstring): one download offered per participant point of
                 # view, never more, never fewer.
                 "replay": _replay_json(

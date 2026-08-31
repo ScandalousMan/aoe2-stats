@@ -246,7 +246,6 @@ def _participant_by_profile_id(row: dict[str, Any], profile_id: int) -> dict[str
 # --- GET /api/matches — rating, team_id, color_id (contracts/http-api.md, T425) ------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T425 not implemented yet")
 async def test_match_row_carries_rating_team_id_and_color_id(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -275,7 +274,6 @@ async def test_match_row_carries_rating_team_id_and_color_id(
 # --- GET /api/matches — participants[] (contracts/http-api.md, FR-001, T425) ---------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T425 not implemented yet")
 async def test_match_row_participants_include_every_player_with_civ_name_whenever_civ_id_present(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -320,7 +318,6 @@ async def test_match_row_participants_include_every_player_with_civ_name_wheneve
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T425 not implemented yet")
 async def test_match_row_participant_country_feeds_the_opponent_flag(
     client: TestClient, db_session: AsyncSession
 ) -> None:
@@ -347,7 +344,6 @@ async def test_match_row_participant_country_feeds_the_opponent_flag(
     assert caller_participant["country"] == "fr"
 
 
-@pytest.mark.xfail(strict=True, reason="T425 not implemented yet")
 async def test_match_row_participant_null_result_is_not_a_loss(
     client: TestClient, db_session: AsyncSession
 ) -> None:
