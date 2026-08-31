@@ -11,6 +11,12 @@ const meta: Meta<typeof ProfileSummary> = {
 export default meta
 type Story = StoryObj<typeof ProfileSummary>
 
+// A fixture hash — the visual test runner stubs the CDN request this URL resolves to
+// (`player-avatar.md` §9's "the visual baseline must not depend on Steam"), never a real Steam
+// hash. Shared with `PlayerAvatar.stories.tsx`'s own `FIXTURE_HASH` so one stub in
+// `tests/visual/stories.spec.ts` covers both.
+const FIXTURE_AVATAR_HASH = '0123456789abcdef0123456789abcdef01234567'
+
 const entries: RatingEntryData[] = [
   {
     leaderboardId: '1v1-rm',
@@ -38,7 +44,9 @@ const entries: RatingEntryData[] = [
 const viewedProfile = {
   id: 'p1',
   alias: 'aoe2guy',
-  country: 'France',
+  countryName: 'France',
+  countryFlagUrl: '/game-assets/flags/fr.svg',
+  avatarHash: FIXTURE_AVATAR_HASH,
   profileId: '12345678',
   isPrimary: true,
 }
@@ -54,7 +62,9 @@ const linkedProfiles = [
 const thirdPartyProfile = {
   id: 'p9',
   alias: 'rival_ace',
-  country: 'Germany',
+  countryName: 'Germany',
+  countryFlagUrl: '/game-assets/flags/de.svg',
+  avatarHash: FIXTURE_AVATAR_HASH,
   profileId: '87654321',
   isPrimary: false,
 }
@@ -67,6 +77,8 @@ const favouriteToggleStub = (
   </Button>
 )
 
+// 004 spec §12.9 — the full-profile story: avatar leading, alias as the heading, a flag with the
+// country name beside it, and the numeric id demoted beneath in `text-secondary`.
 export const Board: Story = {
   args: {
     subject: 'self',
@@ -75,6 +87,58 @@ export const Board: Story = {
     linkedProfiles,
     entries,
     freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// 004 spec §12.3 (Rule 1) — no alias at all: the heading reads "Player <id>" in `font-mono` at the
+// alias's own size, `ProfileId` is omitted (the id already is the heading) and no
+// `AliasFreshnessNote` appears. The id appears exactly once in the frame.
+export const NoAlias: Story = {
+  name: 'No alias — heading falls back to "Player <id>" (004 FR-007)',
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: { ...viewedProfile, alias: '', profileId: '1807091' },
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// 004 spec §12.4 (Rule 2) — no country: the flag and its label are both absent, and the line
+// closes up. No reserved gap, no em dash, no "Unknown country".
+export const NoCountry: Story = {
+  name: 'No country — the flag and its label are both absent, cleanly (004 FR-008)',
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: { ...viewedProfile, countryName: undefined, countryFlagUrl: undefined },
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// 004 spec §12.7 — the shape of a profile this service discovered from a match and never
+// enriched: profile `1807091` (spec.md's own example), never searched, never seen by the
+// companion provider. All three fallback-ladder rules fire at once, and "No ratings yet" is
+// still the correct, calm rendering underneath — not a warning, not an error.
+export const DiscoveredNeverEnrichedNeverRanked: Story = {
+  name: 'No alias, no country, no avatar, no ratings — a real resting state, not a failure (004 spec §12.7)',
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: {
+      id: 'p1807091',
+      alias: '',
+      countryName: undefined,
+      countryFlagUrl: undefined,
+      avatarHash: undefined,
+      profileId: '1807091',
+      isPrimary: true,
+    },
+    linkedProfiles: [{ id: 'p1807091', alias: '1807091', isPrimary: true }],
+    entries: [],
   },
 }
 
