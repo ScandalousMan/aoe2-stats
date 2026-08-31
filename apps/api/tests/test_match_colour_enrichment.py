@@ -2,21 +2,18 @@
 `quickstart.md` scenario 3, `data-model.md` §1 ("`color_id` alone, on the display path") and §6
 (the one state transition), `research.md` **D2** are ground truth.
 
-**Not implemented yet.** Nothing in `routers/matches.py` calls `CompanionEnrichmentProvider.
-enrich_matches` today — colour enrichment is entirely T420's to wire in. Every test below is marked
-`xfail(strict=True, reason="T420 not implemented yet")`, and none imports a not-yet-existent symbol
-at module scope (there is nothing to import: this suite drives the enrichment entirely through the
-real `GET /api/matches` and `GET /api/players/{profile_id}` routes and the real `match_players`
-table, the same boundary `test_players_routes.py`'s own `_FailingCompanionUpstream` and
-`test_third_party_history.py`'s `_FakeRelicMatchHistoryUpstream` already use for their own
-provider).
+**Implemented by T420.** `routers/matches.py`'s `_enrich_colours` calls
+`CompanionEnrichmentProvider.enrich_matches` from both `GET /api/matches` and
+`GET /api/matches/{game_id}`, on the display path only. This suite drives it entirely through the
+real routes and the real `match_players` table, the same boundary `test_players_routes.py`'s own
+`_FailingCompanionUpstream` and `test_third_party_history.py`'s `_FakeRelicMatchHistoryUpstream`
+already use for their own provider.
 
 **Why "at most one companion call" alone would prove nothing.** Read literally, a ceiling of one
-call per page is trivially satisfied today by zero calls — nothing here reaches the transport at
-all yet. Every test below therefore also asserts a *positive*: that the call actually happened
-(`fake.request_count == 1`, not `<= 1`) wherever the design commits to one, and a `!=` failure
-today is the genuine "T420 not implemented" signal `xfail(strict=True)` needs — never a marker that
-would already pass by accident.
+call per page is trivially satisfied by zero calls too. Every test below therefore also asserts a
+*positive*: that the call actually happened (`fake.request_count == 1`, not `<= 1`) wherever the
+design commits to one, never a bound that would already pass by never reaching the transport at
+all.
 
 **The assertion this file exists for** is
 `test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colour` below: seed a colour,
@@ -216,7 +213,6 @@ def _intercept_companion(monkeypatch: pytest.MonkeyPatch, fake: _CompanionUpstre
 # --- T419 itself -----------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T420 not implemented yet")
 async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_writes_colour(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -280,7 +276,6 @@ async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_wr
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T420 not implemented yet")
 async def test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colour(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -337,7 +332,6 @@ async def test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colo
     )
 
 
-@pytest.mark.xfail(strict=True, reason="T420 not implemented yet")
 async def test_a_second_view_of_the_same_matches_makes_no_companion_call(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

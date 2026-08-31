@@ -44,6 +44,7 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from urllib.parse import quote
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -51,6 +52,7 @@ from tests.db import clean_database, database_url, db_session, engine, session_f
 
 from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_response_cache, get_session
+from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
@@ -63,6 +65,15 @@ __all__ = ["clean_database", "database_url", "db_session", "engine", "session_fa
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
+
+# `data.aoe2companion.com` — `COMPANION_BASE_URL`'s own host (`packages/providers/.../companion/
+# provider.py`). T420 wires `routers/matches.py::list_matches` to call
+# `CompanionEnrichmentProvider.enrich_matches` unconditionally whenever a page still carries a
+# `NULL` `color_id` — the ordinary case for every `match_players` row nothing else in this codebase
+# ever wrote one for before T420 — so `_default_companion_degraded` below exists to keep that call
+# harmless for every test in this suite that has no reason to know companion exists at all. See
+# that fixture's own docstring.
+_COMPANION_HOST = "data.aoe2companion.com"
 
 # Every entrypoint test that needs a full environment needs exactly this set of values — not
 # defaults `.env.example` could supply, since most of its values are deliberately blank (secrets)
@@ -132,10 +143,55 @@ def _reset_companion_breaker() -> Iterator[None]:
     order-dependent heisenbug in an unrelated file. Cleared both before and after, exactly like
     `environment` clears `get_settings()`'s cache, so a trip from an earlier session leftover (or
     a future one) never leaks in either direction.
+
+    T420 adds a second, independent breaker: `routers/matches.py`'s own `_companion_breaker`,
+    built through the identical `functools.lru_cache(maxsize=1)` device for the identical reason
+    (that module's own docstring) — cleared here too, rather than in a second fixture, since both
+    exist to answer exactly the same question about the same class of defect.
     """
     players_router._companion_breaker.cache_clear()
+    matches_router._companion_breaker.cache_clear()
     yield
     players_router._companion_breaker.cache_clear()
+    matches_router._companion_breaker.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _default_companion_degraded(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """T420 wires `routers/matches.py::list_matches` to call `CompanionEnrichmentProvider.
+    enrich_matches` whenever a page still carries a `match_players` row with `color_id IS NULL` —
+    which, before T420, is every row, since nothing else in this codebase ever wrote one. Left
+    unmocked, any test in this suite that merely calls `GET /api/matches` now reaches for a real
+    outbound connection: `PYTEST_DISABLE_NETWORK=1`'s `_guarded_connect` (`tests/conftest.py`)
+    blocks it with a deliberately loud, non-`httpx`-shaped `RuntimeError` — by design, so a
+    provider's own graceful degradation can never mask a forgotten mock — and without that flag
+    set the same call instead spends this provider's full retry-and-backoff budget against a host
+    that is never going to answer, several seconds per test.
+
+    This fixture answers every request to `data.aoe2companion.com` with a plain `403` instead —
+    the same "documented, expected bot-protection noise" `companion/provider.py`'s own module
+    docstring already treats as ordinary degradation — so `_enrich_colours` degrades exactly the
+    way FR-010 says it should, and no test outside this feature has to know companion exists at
+    all. Every other host still reaches the *real*, unpatched `httpx.AsyncClient.send` this
+    fixture captures before installing its own — `test_auth_flow.py`'s `fake_upstream` and every
+    other test file that patches `httpx.AsyncClient.send`/`httpx.Client.send` itself for its own
+    host still behaves identically, since a test's own `monkeypatch.setattr` call inside its body
+    runs after this fixture's setup and simply replaces this default for the rest of that test;
+    `monkeypatch` unwinds both in reverse order at teardown, so neither has to know about the
+    other. `test_match_colour_enrichment.py` is exactly that case: its own `_intercept_companion`
+    overrides this default to assert on the companion call itself.
+    """
+    real_send = httpx.AsyncClient.send
+
+    async def _default_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        return await real_send(self, request, **kwargs)  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", _default_send)
+    yield
 
 
 @pytest.fixture(autouse=True)
