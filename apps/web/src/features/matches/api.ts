@@ -17,6 +17,28 @@ export interface ApiOpponent {
   civ_name: string | null
 }
 
+/** One entry of `GET /api/matches`'s `participants[]` (`contracts/http-api.md`, T425) — match
+ * detail's participant shape **minus `replay`**, which is detail-only (FR-023). Never reuse
+ * `ApiMatchParticipant`/`assertMatchParticipant` below for this shape: that one calls
+ * `assertReplayAvailability` unconditionally and would reject every list row. */
+export interface ApiMatchRowParticipant {
+  profile_id: number
+  alias: string | null
+  /** New on this shape (004): feeds the opponent flag client-side, resolved through
+   * `packages/game-assets`. `null` when unknown. */
+  country: string | null
+  team_id: number | null
+  civ_id: number | null
+  /** Always present alongside a real `civ_id` (004's own contract rule) — this client never
+   * formats a bare id itself. */
+  civ_name: string | null
+  color_id: number | null
+  /** `"win"`, `"loss"`, or `null` — `null` is FR-004's neutral state, never a loss. */
+  result: string | null
+  rating: number | null
+  rating_diff: number | null
+}
+
 export interface ApiMatchListRow {
   game_id: number
   started_at: string | null
@@ -42,11 +64,26 @@ export interface ApiMatchListRow {
    * where it becomes `MatchRowData`'s `'win' | 'loss' | 'unknown'` union — `null`/unrecognised
    * read as `'unknown'`, never coerced to `'loss'`, per match-history.md §2a). */
   result: string | null
+  /** The caller's own absolute rating, post-match (004, `contracts/http-api.md`). `null` whenever
+   * `rating_diff` is also `null` — never a stand-in `0`. */
+  rating: number | null
   rating_diff: number | null
+  /** Which side the caller was on (004) — `null` until T413/T415 have projected this match. */
+  team_id: number | null
+  /** 1..8, or `null` whenever companion has not supplied one yet (004, FR-003/FR-010's degrade
+   * path — a permanent resting state, not a migration in progress). */
+  color_id: number | null
   /** Every other participant on a **different team** than the caller's own — `matches.py`'s
    * `_opponents_by_game` excludes the caller's own teammates at the query (T070d), so this never
-   * includes anyone from the caller's own side, in a 1v1 or a team match alike. */
+   * includes anyone from the caller's own side, in a 1v1 or a team match alike. Retained
+   * unmodified alongside `participants` below (004's contract: "a sibling, not a replacement") —
+   * no mapper reads it any longer now that `MatchRow` renders every side from `participants`
+   * (match-history.md §12.3 supersedes §4's single-opponent treatment). */
   opponents: ApiOpponent[]
+  /** All participants, the caller included (004, T425) — feeds `MatchRow`'s §12.3 `Participants`
+   * field. Always an array, never omitted, even for a row `discover.py` has not enriched yet
+   * (every participant then simply carries every optional field `null`). */
+  participants: ApiMatchRowParticipant[]
   /** `null` only for a match with no `replay_captures` row yet (module docstring) — every raw
    * `CaptureStatus` value otherwise, unmodified: the four-state collapse is `CaptureStateBadge`'s
    * job (capture-state-badge.md §3), never this client's. */
@@ -102,6 +139,48 @@ function assertOpponent(
   }
 }
 
+function assertMatchRowParticipant(
+  value: unknown,
+  index: number,
+  rowIndex: number,
+): asserts value is ApiMatchRowParticipant {
+  const path = `matches[${rowIndex}].participants[${index}]`
+  if (typeof value !== 'object' || value === null) {
+    throw new MatchesResponseShapeError(`${path} was not an object`)
+  }
+  const participant = value as Record<string, unknown>
+  if (typeof participant.profile_id !== 'number') {
+    throw new MatchesResponseShapeError(`${path}.profile_id was not a number`)
+  }
+  if (!isNullableString(participant.alias)) {
+    throw new MatchesResponseShapeError(`${path}.alias was not string|null`)
+  }
+  if (!isNullableString(participant.country)) {
+    throw new MatchesResponseShapeError(`${path}.country was not string|null`)
+  }
+  if (!isNullableNumber(participant.team_id)) {
+    throw new MatchesResponseShapeError(`${path}.team_id was not number|null`)
+  }
+  if (!isNullableNumber(participant.civ_id)) {
+    throw new MatchesResponseShapeError(`${path}.civ_id was not number|null`)
+  }
+  if (!isNullableString(participant.civ_name)) {
+    throw new MatchesResponseShapeError(`${path}.civ_name was not string|null`)
+  }
+  if (!isNullableNumber(participant.color_id)) {
+    throw new MatchesResponseShapeError(`${path}.color_id was not number|null`)
+  }
+  if (!isNullableString(participant.result)) {
+    throw new MatchesResponseShapeError(`${path}.result was not string|null`)
+  }
+  if (!isNullableNumber(participant.rating)) {
+    throw new MatchesResponseShapeError(`${path}.rating was not number|null`)
+  }
+  if (!isNullableNumber(participant.rating_diff)) {
+    throw new MatchesResponseShapeError(`${path}.rating_diff was not number|null`)
+  }
+}
+
 function assertMatchListRow(value: unknown, index: number): asserts value is ApiMatchListRow {
   const path = `matches[${index}]`
   if (typeof value !== 'object' || value === null) {
@@ -141,10 +220,25 @@ function assertMatchListRow(value: unknown, index: number): asserts value is Api
   if (!isNullableNumber(row.rating_diff)) {
     throw new MatchesResponseShapeError(`${path}.rating_diff was not number|null`)
   }
+  if (!isNullableNumber(row.rating)) {
+    throw new MatchesResponseShapeError(`${path}.rating was not number|null`)
+  }
+  if (!isNullableNumber(row.team_id)) {
+    throw new MatchesResponseShapeError(`${path}.team_id was not number|null`)
+  }
+  if (!isNullableNumber(row.color_id)) {
+    throw new MatchesResponseShapeError(`${path}.color_id was not number|null`)
+  }
   if (!Array.isArray(row.opponents)) {
     throw new MatchesResponseShapeError(`${path}.opponents was not an array`)
   }
   row.opponents.forEach((opponent, opponentIndex) => assertOpponent(opponent, opponentIndex, index))
+  if (!Array.isArray(row.participants)) {
+    throw new MatchesResponseShapeError(`${path}.participants was not an array`)
+  }
+  row.participants.forEach((participant, participantIndex) =>
+    assertMatchRowParticipant(participant, participantIndex, index),
+  )
   if (!isNullableString(row.capture_status)) {
     throw new MatchesResponseShapeError(`${path}.capture_status was not string|null`)
   }

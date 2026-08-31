@@ -120,7 +120,9 @@ export function MatchHistoryContainer() {
     matchListStatus = 'empty'
   }
 
-  const matchRows = matchesQuery.data ? toMatchRowDataList(matchesQuery.data.matches) : []
+  const matchRows = matchesQuery.data
+    ? toMatchRowDataList(matchesQuery.data.matches, profileIdForMatches)
+    : []
 
   return (
     <main className="min-h-svh bg-background">

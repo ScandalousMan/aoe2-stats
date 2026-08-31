@@ -4,14 +4,26 @@ import { useBreakpoint } from '../../lib/useMediaQuery'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
 import { CaptureStateBadge } from '../CaptureStateBadge'
-import type { MatchOutcome } from '../MatchRow'
+import { CivilisationIcon } from '../CivilisationIcon'
+import { MapThumbnail } from '../MapThumbnail'
+import {
+  computeTeamResult,
+  type MatchOutcome,
+  RatingFigure,
+  type TeamResultKind,
+  TeamResultMarker,
+} from '../MatchRow'
+import { PlayerColourSwatch } from '../PlayerColourSwatch'
 import { Skeleton } from '../Skeleton'
 import type { StatValueDelta } from '../StatValue'
 
 // packages/design-system/specs/match-history.md §§1-11. §11 (003, US2) widens both components to
 // any match this service holds (T327) and any player's history (T328) — see §11's own note on why
 // no prop here ever marks a participant as "you" and why `CaptureStateBadge`/`DownloadAction` keep
-// reading only the caller's own point of view.
+// reading only the caller's own point of view. §12 (004, US1, T431) widens both further: game
+// imagery and colour, composed from `CivilisationIcon`/`MapThumbnail`/`PlayerColourSwatch` (T429)
+// and never re-implemented here — two presentations of the same fact are how the list and the
+// detail view start disagreeing about a match.
 
 export interface ParticipantData {
   id: string
@@ -24,19 +36,36 @@ export interface ParticipantData {
    * only when this service's own reference data cannot name `civId` (FR-020, §11.2). Renders as
    * `UnresolvedIdentifier` rather than being filled in with `civId` as if it were a name. */
   civName: ReactNode | null
+  /** `packages/game-assets`' `civilisationIcon(civName)` result, resolved by the caller —
+   * `undefined` when the pack does not cover it (§12.1 rule 3, FR-010) or when `civName` itself is
+   * `null` (§11.2's unresolved treatment takes over instead; `CivilisationIcon` is never composed
+   * for that case). This component never imports the pack and never builds this URL itself. */
+  civIconUrl?: string
+  /** `match_players.color_id` after read-time enrichment (data-model.md §6). `undefined`/`null`/
+   * out-of-range all resolve to `PlayerColourSwatch`'s own neutral chip — passed straight through,
+   * never re-interpreted here (FR-003, FR-010). */
+  colorId?: number | null
   /** `"unknown"` whenever this system has not recorded a result for this participant yet
    * (`match_players.result` is `null` for every row today — `discover.py`'s own docstring) —
    * never coerced to `"loss"`; renders as its own state, never as a false defeat (match-history.md
    * §2a). Shared with `MatchRow.outcome`, imported from that module. */
   result: MatchOutcome
-  /** Absent when the match carries no rating change to report for this participant. */
+  /** The viewed match's absolute rating for this participant, post-match — `null`/absent together
+   * with no `ratingChange` renders no rating field at all (§12.4's table, reused verbatim via
+   * `RatingFigure`) — never a `–`, never a `0`. */
+  rating?: number | null
+  /** Absent when the match carries no rating change to report for this participant. `value: 0` is
+   * a real, reported movement (renders `(0)`, neutral tone) and is not the same fact as `undefined`
+   * ("not known" — no parenthetical at all, §12.4). */
   ratingChange?: StatValueDelta
 }
 
 export interface TeamGroupData {
   id: string
   /** e.g. "Team 1". Named once and reused as both the visible heading and the table's own
-   * visually hidden `<caption>` — never invented twice (§9). */
+   * visually hidden `<caption>` — never invented twice (§9). §12.3's `TeamResult` marker
+   * ("Won"/"Lost"/"Result unknown") is computed from `participants` below and joins both, as
+   * "Team 1 — Won" (§12.5); it is never a second field a caller must keep in sync by hand. */
   name: ReactNode
   participants: ParticipantData[]
 }
@@ -46,8 +75,16 @@ export interface MatchDetailData {
   /** `matches.map_name` verbatim (`routers/matches.py`) — `null` when the source gave none. Unlike
    * `civId`/`civName` this schema carries no separate numeric map identifier at all (`map_name`
    * *is* the raw value, per that router's own note), so a `null` map renders via
-   * `UnresolvedIdentifier` with no id to show, never a fabricated one (§11.2). */
-  map: ReactNode | null
+   * `UnresolvedIdentifier` with no id to show, never a fabricated one (§11.2). **Narrowed from
+   * `ReactNode | null` to `string | null` by T431**: `MapThumbnail` (composed here, §12.5) takes
+   * the map name as a plain string — the same type `matches.map_name` and every caller of this
+   * field has always actually supplied. */
+  map: string | null
+  /** `packages/game-assets`' `mapThumbnail(mapName)` result, resolved by the caller — `undefined`
+   * for any map the pack does not cover (§12.1 rule 3, FR-002, FR-010). Composed into
+   * `MapThumbnail` at `lg` (§12.5); a `null` `map` shows no thumbnail regardless of this value —
+   * nothing is ever guessed from a neighbouring match. */
+  mapThumbnailUrl?: string
   leaderboardName: ReactNode
   /** Pre-formatted — "34 min", never raw seconds. */
   durationLabel: ReactNode
@@ -78,9 +115,32 @@ export function UnresolvedIdentifier({ label, id }: { label: string; id?: number
   )
 }
 
-function ParticipantCivilisation({ civId, civName }: { civId: number | null; civName: ReactNode }) {
+/** §12.5: "Civilisation (CivilisationIcon lg, mark + name, or UnresolvedIdentifier)" — composes
+ * `CivilisationIcon` (T429) for the resolved case rather than re-implementing mark+name rendering;
+ * §11.2's unresolved treatment (a name this service's own reference data cannot give) is unchanged
+ * and untouched by that component, which is never handed a `null` name to render its own generic
+ * "Unknown civilisation" fallback for — the two absences are different facts (§11.2) and stay
+ * distinguishable. `text-text-primary` is applied here, at the call site, because `CivilisationIcon`
+ * itself inherits `currentColor` rather than setting one (civilisation-icon.md §5) — the same
+ * pattern `MatchRow`'s own 1280 table column already uses for this mark. */
+function ParticipantCivilisation({
+  civId,
+  civName,
+  civIconUrl,
+}: {
+  civId: number | null
+  civName: ReactNode
+  civIconUrl?: string
+}) {
   if (civName != null) {
-    return <span className="text-text-primary">{civName}</span>
+    return (
+      <CivilisationIcon
+        iconUrl={civIconUrl}
+        name={civName}
+        size="lg"
+        className="text-text-primary"
+      />
+    )
   }
   if (civId != null) {
     return <UnresolvedIdentifier label="Civilisation" id={civId} />
@@ -100,17 +160,6 @@ export interface MatchDetailPanelProps {
   /** Where "back to the match list" points. Defaults to `/matches` (T075's route). */
   matchListHref?: string
   className?: string
-}
-
-function TableRatingChange({ delta }: { delta: StatValueDelta }) {
-  const positive = delta.value >= 0
-  const magnitude = delta.formatted ?? String(Math.abs(delta.value))
-  return (
-    <span className={cx('font-mono font-semibold', positive ? 'text-success' : 'text-danger')}>
-      {positive ? '+' : '−'}
-      {magnitude}
-    </span>
-  )
 }
 
 // match-history.md §2a: the same three-state treatment `MatchRow.OutcomeLabel` gives `outcome` —
@@ -209,8 +258,12 @@ export function MatchDetailPanel({
             {/* `<h2>`, not `<h1>`: this panel is a section of a page that already carries its own
              * page-level heading (T076's route) — matching `Callout`'s own "keeps a sane outline"
              * reasoning for a component that is always nested. */}
+            {/* §12.5: `MapThumbnail` at `lg` (96px) beside the map name — composed, never
+             * re-implemented (T429). A `null` map keeps §11.2's `UnresolvedIdentifier` treatment
+             * and no thumbnail, which `MapThumbnail`'s own `mapName == null` branch already
+             * renders byte-identically to the previous bare `UnresolvedIdentifier` call. */}
             <h2 className="font-display text-xl font-semibold text-text-primary">
-              {match.map ?? <UnresolvedIdentifier label="Map" />}
+              <MapThumbnail thumbnailUrl={match.mapThumbnailUrl} mapName={match.map} size="lg" />
             </h2>
             <p className="mt-1 font-sans text-sm text-text-secondary">
               {match.leaderboardName}
@@ -266,6 +319,20 @@ function ParticipantsTable({ teams }: { teams: TeamGroupData[] }) {
   )
 }
 
+/** §12.3's `TeamResult` marker, per `TeamGroup` — computed here from `ParticipantData.result`
+ * (`MatchOutcome`, this component's own three-state read), mapped to `MatchParticipantResult`
+ * (`"unknown"` -> `null`) so the identical table `computeTeamResult` already implements in
+ * `MatchRow` (§12.3) decides it here too — one answer to "did this side win", never re-derived
+ * (§12.5's own "this panel composes the three marks; it never re-implements one" extended to this
+ * marker, T431). */
+function teamResultOf(participants: ParticipantData[]): TeamResultKind {
+  return computeTeamResult(
+    participants.map((participant) => ({
+      result: participant.result === 'unknown' ? null : participant.result,
+    })),
+  )
+}
+
 function TeamGroup({ team }: { team: TeamGroupData }) {
   // §8 names three tiers: 375 one card per participant, 768 two participants side by side, 1280 a
   // real table. `xl` is the named breakpoint for the table (`lg` is 1024, reserved by §8 for
@@ -273,15 +340,38 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
   const isTable = useBreakpoint('xl')
   const isTwoColumn = useBreakpoint('md')
   const headingId = `match-detail-team-${team.id}`
+  const resultKind = teamResultOf(team.participants)
 
   return (
     <section aria-labelledby={headingId}>
-      <h3 id={headingId} className="mb-2 font-sans text-sm font-semibold text-text-secondary">
-        {team.name}
+      {/* §12.5: "Team 1 — Won" — the same marker `MatchRow`'s own group heading carries (§12.3),
+       * joined here rather than a second, independently-worded signal. */}
+      <h3
+        id={headingId}
+        className="mb-2 flex items-center gap-2 font-sans text-sm font-semibold text-text-secondary"
+      >
+        <span>{team.name}</span>
+        {resultKind != null && (
+          <>
+            <span aria-hidden="true">—</span>
+            <TeamResultMarker kind={resultKind} />
+          </>
+        )}
       </h3>
       {isTable ? (
         <table className="w-full border-collapse text-left font-sans text-sm">
-          <caption className="sr-only">{team.name}</caption>
+          {/* The same words reach a screen reader (§9's existing caption rule, extended by §12.3):
+           * nesting `TeamResultMarker`'s own `<span>` inside the caption is enough, since a
+           * caption's accessible name is the concatenation of its descendants' text. */}
+          <caption className="sr-only">
+            {team.name}
+            {resultKind != null && (
+              <>
+                {' '}
+                — <TeamResultMarker kind={resultKind} />
+              </>
+            )}
+          </caption>
           <thead>
             <tr className="border-b border-border">
               <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
@@ -294,29 +384,41 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
                 Result
               </th>
               <th scope="col" className="py-3 text-right font-normal text-text-secondary">
-                Change
+                Rating
               </th>
             </tr>
           </thead>
           <tbody>
             {team.participants.map((participant) => (
               <tr key={participant.id} className="border-b border-border">
+                {/* §12.5: the swatch lives inside the Player cell, not a colour column of its own
+                 * (player-colour-swatch.md §2a) — composed, never re-implemented (T429). */}
                 <th scope="row" className="py-3 pr-4 font-normal text-text-primary">
-                  {participant.alias}
+                  <span className="inline-flex items-center gap-2">
+                    <PlayerColourSwatch
+                      colorId={participant.colorId}
+                      playerName={participant.alias}
+                      size="sm"
+                    />
+                    <span>{participant.alias}</span>
+                  </span>
                 </th>
                 <td className="py-3 pr-4">
                   <ParticipantCivilisation
                     civId={participant.civId}
                     civName={participant.civName}
+                    civIconUrl={participant.civIconUrl}
                   />
                 </td>
                 <td className="py-3 pr-4">
                   <ResultLabel result={participant.result} />
                 </td>
-                <td className="py-3 text-right font-mono text-sm">
-                  {participant.ratingChange && (
-                    <TableRatingChange delta={participant.ratingChange} />
-                  )}
+                <td className="py-3 text-right">
+                  <RatingFigure
+                    rating={participant.rating}
+                    ratingChange={participant.ratingChange}
+                    size="sm"
+                  />
                 </td>
               </tr>
             ))}
@@ -333,14 +435,29 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
               className="flex flex-col gap-1 rounded-lg border border-border p-3"
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="font-sans text-sm font-semibold text-text-primary">
-                  {participant.alias}
+                <span className="inline-flex items-center gap-2">
+                  <PlayerColourSwatch
+                    colorId={participant.colorId}
+                    playerName={participant.alias}
+                    size="sm"
+                  />
+                  <span className="font-sans text-sm font-semibold text-text-primary">
+                    {participant.alias}
+                  </span>
                 </span>
                 <ResultLabel result={participant.result} />
               </div>
               <div className="flex items-center justify-between gap-3 font-sans text-xs">
-                <ParticipantCivilisation civId={participant.civId} civName={participant.civName} />
-                {participant.ratingChange && <TableRatingChange delta={participant.ratingChange} />}
+                <ParticipantCivilisation
+                  civId={participant.civId}
+                  civName={participant.civName}
+                  civIconUrl={participant.civIconUrl}
+                />
+                <RatingFigure
+                  rating={participant.rating}
+                  ratingChange={participant.ratingChange}
+                  size="sm"
+                />
               </div>
             </li>
           ))}

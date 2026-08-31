@@ -9,6 +9,21 @@ import {
 // T037a's rule, applied here for `GET /api/matches`: a type that describes the wire is a comment
 // the compiler cannot verify — this is the one place that actually looks at the response body.
 
+function validRowParticipant() {
+  return {
+    profile_id: 1,
+    alias: 'Me',
+    country: 'fr',
+    team_id: 1,
+    civ_id: 7,
+    civ_name: 'Japanese',
+    color_id: 4,
+    result: 'win',
+    rating: 934,
+    rating_diff: 12,
+  }
+}
+
 function validRow() {
   return {
     game_id: 1,
@@ -21,8 +36,12 @@ function validRow() {
     civilisation: 7,
     civilisation_name: 'Japanese',
     result: 'win',
+    rating: 934,
     rating_diff: 12,
+    team_id: 1,
+    color_id: 4,
     opponents: [{ profile_id: 2, alias: 'Rival', civ_id: 3, civ_name: 'Celts' }],
+    participants: [validRowParticipant()],
     capture_status: 'stored',
     capture_deadline_at: null,
   }
@@ -59,6 +78,41 @@ describe('assertMatchesResponse', () => {
     const row = validRow()
     // @ts-expect-error deliberately malformed for the assertion under test
     row.opponents = [{ profile_id: 'not-a-number', alias: 'Rival', civ_id: 3 }]
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).toThrow(
+      MatchesResponseShapeError,
+    )
+  })
+
+  // 004, T425: `participants[]` — the shape both `MatchRow` and `assertMatchesResponse` share
+  // with `assertPlayersMatchesResponse` (contracts/http-api.md).
+  it('accepts a row with an empty participants array', () => {
+    const row = { ...validRow(), participants: [] }
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).not.toThrow()
+  })
+
+  it('rejects a row whose "participants" is not an array', () => {
+    const row = { ...validRow(), participants: {} }
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).toThrow(
+      MatchesResponseShapeError,
+    )
+  })
+
+  it('rejects a participant with the wrong shape', () => {
+    const row = validRow()
+    // @ts-expect-error deliberately malformed for the assertion under test
+    row.participants = [{ ...validRowParticipant(), profile_id: 'not-a-number' }]
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).toThrow(
+      MatchesResponseShapeError,
+    )
+  })
+
+  it('accepts a null rating, team_id and color_id (the un-projected row, §12.6)', () => {
+    const row = { ...validRow(), rating: null, team_id: null, color_id: null }
+    expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).not.toThrow()
+  })
+
+  it('rejects a non-number, non-null "rating"', () => {
+    const row = { ...validRow(), rating: 'not-a-number' }
     expect(() => assertMatchesResponse({ matches: [row], next_cursor: null })).toThrow(
       MatchesResponseShapeError,
     )

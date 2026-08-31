@@ -11,7 +11,10 @@ here are applied verbatim by T410's implementer, who invents nothing. Two decisi
 
 Measured contrast ratios and the gap-register closure live in
 [`README.md`](./README.md) — the project's ledger for both — and are referenced, not restated, here.
-This file is the source the token JSON is written from.
+This file is the source the token JSON is written from. The components that consume these tokens are
+specified separately, in [`civilisation-icon.md`](./civilisation-icon.md),
+[`map-thumbnail.md`](./map-thumbnail.md) and [`player-colour-swatch.md`](./player-colour-swatch.md)
+(T428); this file decides the values, those files decide the behaviour.
 
 ---
 
@@ -62,7 +65,9 @@ test already guards.
 `color_id` outside `1..8`, or `NULL` (companion degraded, FR-010), resolves to a **`surface-sunken`
 fill with the same `border-strong` frame** — an existing-token neutral chip — and the player's name
 carries the meaning, as it always does. No new token; recorded so the implementer does not reach for
-one.
+one. Why that neutral chip is not the "placeholder image" FR-010 forbids — nothing is fetched, and
+the absence is stated in words to assistive tech — is argued in
+[`player-colour-swatch.md`](./player-colour-swatch.md) §4.
 
 ### Tokens to add to `color.json`
 
@@ -173,6 +178,12 @@ box padded out to `icon-xl`, never a 16px hit area.
 | `CivilisationIcon`   | `icon-md` (24px)  | `icon-lg` (32px) in match detail         | non-interactive                                       |
 | `PlayerAvatar`       | `icon-2xl` (64px) | `icon-lg` (32px) compact                 | if it links to a profile, hit area ≥ `icon-xl` (44px) |
 | `MapThumbnail`       | `icon-2xl` (64px) | `icon-3xl` (96px) in match detail        | non-interactive                                       |
+
+**Amended by T428 — `MapThumbnail` gains a third, smaller step: `icon-lg` (32px)**, used only in
+`MatchRow`'s 1280 table row. No new token and no new value: 32px is the largest size that fits inside
+the row's own text-driven height, so a row with a thumbnail and a row without one stay the same
+height and the table's rhythm survives an uncovered map. Reasoning and the acceptance criterion that
+checks it: [`map-thumbnail.md`](./map-thumbnail.md) §3 and §7.
 
 ### What T410 does with this
 

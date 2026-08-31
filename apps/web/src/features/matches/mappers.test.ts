@@ -1,16 +1,38 @@
 import { describe, expect, it } from 'vitest'
-import type { ApiMatchDetail, ApiMatchListRow, ApiMatchParticipant, ApiOpponent } from './api'
+import type {
+  ApiMatchDetail,
+  ApiMatchListRow,
+  ApiMatchParticipant,
+  ApiMatchRowParticipant,
+  ApiOpponent,
+} from './api'
 import {
   toMatchDetailData,
   toMatchRowData,
   toMatchRowDataList,
-  toMatchRowOpponent,
+  toMatchRowParticipant,
   toParticipantData,
   toTeamGroups,
 } from './mappers'
 
 function opponent(overrides: Partial<ApiOpponent> = {}): ApiOpponent {
   return { profile_id: 2, alias: 'Rival', civ_id: 3, civ_name: 'Celts', ...overrides }
+}
+
+function rowParticipant(overrides: Partial<ApiMatchRowParticipant> = {}): ApiMatchRowParticipant {
+  return {
+    profile_id: 1,
+    alias: 'Me',
+    country: 'fr',
+    team_id: 1,
+    civ_id: 7,
+    civ_name: 'Japanese',
+    color_id: 4,
+    result: 'win',
+    rating: 934,
+    rating_diff: 12,
+    ...overrides,
+  }
 }
 
 function row(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
@@ -25,87 +47,100 @@ function row(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
     civilisation: 7,
     civilisation_name: 'Japanese',
     result: 'win',
+    rating: 934,
     rating_diff: 12,
+    team_id: 1,
+    color_id: 4,
     opponents: [opponent()],
+    participants: [
+      rowParticipant(),
+      rowParticipant({
+        profile_id: 2,
+        alias: 'Rival',
+        team_id: 2,
+        civ_id: 3,
+        civ_name: 'Celts',
+        color_id: 2,
+        result: 'loss',
+        rating: 1500,
+        rating_diff: -12,
+      }),
+    ],
     capture_status: 'stored',
     capture_deadline_at: null,
     ...overrides,
   }
 }
 
-describe('toMatchRowOpponent', () => {
-  it('names the first opponent by alias, with no othersCount for a 1v1', () => {
-    const result = toMatchRowOpponent([opponent({ alias: 'Rival' })])
-    expect(result).toEqual({ alias: 'Rival', othersCount: undefined })
+// The profile whose history this page is — `mappers.ts`'s own doc: computed once, upstream, never
+// guessed. `rowParticipant()`'s default `profile_id: 1` is this fixture's own viewer.
+const VIEWER_PROFILE_ID = 1
+
+describe('toMatchRowParticipant', () => {
+  it('flags the participant whose profile_id matches the viewer, and no other', () => {
+    const viewer = toMatchRowParticipant(rowParticipant({ profile_id: 1 }), 1)
+    const other = toMatchRowParticipant(rowParticipant({ profile_id: 2 }), 1)
+    expect(viewer.isViewer).toBe(true)
+    expect(other.isViewer).toBe(false)
   })
 
-  it('carries the remainder as othersCount for a team match', () => {
-    const result = toMatchRowOpponent([
-      opponent({ profile_id: 2, alias: 'First' }),
-      opponent({ profile_id: 3, alias: 'Second' }),
-      opponent({ profile_id: 4, alias: 'Third' }),
-    ])
-    expect(result).toEqual({ alias: 'First', othersCount: 2 })
+  it('falls back to a placeholder alias for a null alias, never the literal null', () => {
+    expect(toMatchRowParticipant(rowParticipant({ alias: null }), 1).alias).toBe('Unknown player')
   })
 
-  it('never invents a bare count with no name', () => {
-    const result = toMatchRowOpponent([])
-    expect(result.alias).toBe('Unknown opponent')
-    expect(result.othersCount).toBeUndefined()
-  })
-
-  it('falls back to a placeholder alias for a null opponent alias, never the literal null', () => {
-    const result = toMatchRowOpponent([opponent({ alias: null })])
-    expect(result.alias).toBe('Unknown opponent')
+  it('narrows an unrecognised result to null, never a guessed loss', () => {
+    expect(toMatchRowParticipant(rowParticipant({ result: 'draw' }), 1).result).toBeNull()
   })
 })
 
 describe('toMatchRowData', () => {
   it('maps game_id to a string gameId and builds the T076 detail href', () => {
-    const result = toMatchRowData(row({ game_id: 456 }))
+    const result = toMatchRowData(row({ game_id: 456 }), VIEWER_PROFILE_ID)
     expect(result.gameId).toBe('456')
     expect(result.href).toBe('/matches/456')
   })
 
   it('maps a win result to the "win" outcome', () => {
-    expect(toMatchRowData(row({ result: 'win' })).outcome).toBe('win')
+    expect(toMatchRowData(row({ result: 'win' }), VIEWER_PROFILE_ID).outcome).toBe('win')
   })
 
   it('maps a loss result to the "loss" outcome', () => {
-    expect(toMatchRowData(row({ result: 'loss' })).outcome).toBe('loss')
+    expect(toMatchRowData(row({ result: 'loss' }), VIEWER_PROFILE_ID).outcome).toBe('loss')
   })
 
   // match-history.md §2a: `match_players.result` is `null` for every row this system has written
   // so far — the outcome must read "unknown", never a guessed "loss" (the reported defect).
   it('maps a null result to the "unknown" outcome, never "loss"', () => {
-    expect(toMatchRowData(row({ result: null })).outcome).toBe('unknown')
+    expect(toMatchRowData(row({ result: null }), VIEWER_PROFILE_ID).outcome).toBe('unknown')
   })
 
   it('carries a positive rating_diff as a StatValueDelta', () => {
-    const result = toMatchRowData(row({ rating_diff: 18 }))
+    const result = toMatchRowData(row({ rating_diff: 18 }), VIEWER_PROFILE_ID)
     expect(result.ratingChange).toEqual({ value: 18, formatted: '18' })
   })
 
   it('carries a negative rating_diff with a positive formatted magnitude', () => {
-    const result = toMatchRowData(row({ rating_diff: -9 }))
+    const result = toMatchRowData(row({ rating_diff: -9 }), VIEWER_PROFILE_ID)
     expect(result.ratingChange).toEqual({ value: -9, formatted: '9' })
   })
 
   it('omits ratingChange entirely when there is nothing to report', () => {
-    const result = toMatchRowData(row({ rating_diff: null }))
+    const result = toMatchRowData(row({ rating_diff: null }), VIEWER_PROFILE_ID)
     expect(result.ratingChange).toBeUndefined()
   })
 
   it('falls back to "Unknown map" for a null map_name', () => {
-    expect(toMatchRowData(row({ map_name: null })).map).toBe('Unknown map')
+    expect(toMatchRowData(row({ map_name: null }), VIEWER_PROFILE_ID).map).toBe('Unknown map')
   })
 
   it('passes the server-named civilisation through (T070c), not the raw id', () => {
-    expect(toMatchRowData(row({ civilisation_name: 'Turks' })).civilisation).toBe('Turks')
+    expect(
+      toMatchRowData(row({ civilisation_name: 'Turks' }), VIEWER_PROFILE_ID).civilisation,
+    ).toBe('Turks')
   })
 
   it('falls back to "Unknown civilisation" for a null civilisation_name', () => {
-    expect(toMatchRowData(row({ civilisation_name: null })).civilisation).toBe(
+    expect(toMatchRowData(row({ civilisation_name: null }), VIEWER_PROFILE_ID).civilisation).toBe(
       'Unknown civilisation',
     )
   })
@@ -113,23 +148,69 @@ describe('toMatchRowData', () => {
   it("passes capture_status and capture_deadline_at through unmodified — the collapse is the badge's job", () => {
     const result = toMatchRowData(
       row({ capture_status: 'pending', capture_deadline_at: '2026-09-01T00:00:00Z' }),
+      VIEWER_PROFILE_ID,
     )
     expect(result.captureStatus).toBe('pending')
     expect(result.captureDeadlineAt).toBe('2026-09-01T00:00:00Z')
   })
 
   it('passes a null capture_status through as null, never a guessed default', () => {
-    expect(toMatchRowData(row({ capture_status: null })).captureStatus).toBeNull()
+    expect(
+      toMatchRowData(row({ capture_status: null }), VIEWER_PROFILE_ID).captureStatus,
+    ).toBeNull()
+  })
+
+  // match-history.md §12.3: every participant is carried through, the viewer flagged.
+  it('maps every participant, flagging the viewer among them', () => {
+    const result = toMatchRowData(row(), VIEWER_PROFILE_ID)
+    expect(result.participants).toHaveLength(2)
+    expect(result.participants?.find((p) => p.isViewer)?.alias).toBe('Me')
+  })
+
+  // T432: resolved through `packages/game-assets`, keyed on the server-named `civilisation_name`
+  // (never the raw `civilisation` id) — "Japanese" is a real pack entry.
+  it('resolves civIconUrl through packages/game-assets for a covered civilisation name', () => {
+    const result = toMatchRowData(row({ civilisation_name: 'Japanese' }), VIEWER_PROFILE_ID)
+    expect(result.civIconUrl).toBe('/game-assets/civilisations/japanese.webp')
+  })
+
+  it('leaves civIconUrl undefined for a civilisation name the pack does not cover', () => {
+    const result = toMatchRowData(
+      row({ civilisation_name: 'Not A Real Civilisation' }),
+      VIEWER_PROFILE_ID,
+    )
+    expect(result.civIconUrl).toBeUndefined()
+  })
+
+  it('leaves civIconUrl undefined for a null civilisation_name, never calling the resolver', () => {
+    const result = toMatchRowData(row({ civilisation_name: null }), VIEWER_PROFILE_ID)
+    expect(result.civIconUrl).toBeUndefined()
+  })
+
+  // "Arabia" is a real pack entry.
+  it('resolves mapThumbnailUrl through packages/game-assets for a covered map name', () => {
+    const result = toMatchRowData(row({ map_name: 'Arabia' }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBe('/game-assets/maps/arabia.webp')
+  })
+
+  it('leaves mapThumbnailUrl undefined for a map name the pack does not cover', () => {
+    const result = toMatchRowData(row({ map_name: 'Not A Real Map' }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBeUndefined()
+  })
+
+  it('leaves mapThumbnailUrl undefined for a null map_name, never calling the resolver', () => {
+    const result = toMatchRowData(row({ map_name: null }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBeUndefined()
   })
 })
 
 describe('toMatchRowDataList', () => {
   it('maps an empty list to an empty list', () => {
-    expect(toMatchRowDataList([])).toEqual([])
+    expect(toMatchRowDataList([], VIEWER_PROFILE_ID)).toEqual([])
   })
 
   it('maps every row in order', () => {
-    const result = toMatchRowDataList([row({ game_id: 1 }), row({ game_id: 2 })])
+    const result = toMatchRowDataList([row({ game_id: 1 }), row({ game_id: 2 })], VIEWER_PROFILE_ID)
     expect(result.map((r) => r.gameId)).toEqual(['1', '2'])
   })
 })
@@ -224,6 +305,41 @@ describe('toParticipantData', () => {
   it('omits ratingChange entirely when there is nothing to report', () => {
     expect(toParticipantData(participant({ rating_diff: null })).ratingChange).toBeUndefined()
   })
+
+  // T432: colorId and rating travel through unmodified — MatchDetailPanel's own props, not
+  // pre-formatted here.
+  it('passes color_id through as colorId, verbatim', () => {
+    expect(toParticipantData(participant({ color_id: 6 })).colorId).toBe(6)
+  })
+
+  it('passes a null color_id through as null', () => {
+    expect(toParticipantData(participant({ color_id: null })).colorId).toBeNull()
+  })
+
+  it('passes rating through unmodified', () => {
+    expect(toParticipantData(participant({ rating: 1842 })).rating).toBe(1842)
+  })
+
+  it('passes a null rating through as null', () => {
+    expect(toParticipantData(participant({ rating: null })).rating).toBeNull()
+  })
+
+  // Resolved through packages/game-assets, keyed on civ_name — same rule as toMatchRowData above.
+  it('resolves civIconUrl through packages/game-assets for a covered civ_name', () => {
+    expect(toParticipantData(participant({ civ_name: 'Japanese' })).civIconUrl).toBe(
+      '/game-assets/civilisations/japanese.webp',
+    )
+  })
+
+  it('leaves civIconUrl undefined for a civ_name the pack does not cover', () => {
+    expect(
+      toParticipantData(participant({ civ_name: 'Not A Real Civilisation' })).civIconUrl,
+    ).toBeUndefined()
+  })
+
+  it('leaves civIconUrl undefined for a null civ_name, never calling the resolver', () => {
+    expect(toParticipantData(participant({ civ_name: null })).civIconUrl).toBeUndefined()
+  })
 })
 
 describe('toTeamGroups', () => {
@@ -281,6 +397,23 @@ describe('toMatchDetailData', () => {
 
   it('§11.2: carries a null map_name through as null, never a fabricated "Unknown map"', () => {
     expect(toMatchDetailData(detail({ map_name: null })).map).toBeNull()
+  })
+
+  // T432: resolved through packages/game-assets — same rule as toMatchRowData.mapThumbnailUrl.
+  it('resolves mapThumbnailUrl through packages/game-assets for a covered map name', () => {
+    expect(toMatchDetailData(detail({ map_name: 'Arabia' })).mapThumbnailUrl).toBe(
+      '/game-assets/maps/arabia.webp',
+    )
+  })
+
+  it('leaves mapThumbnailUrl undefined for a map name the pack does not cover', () => {
+    expect(
+      toMatchDetailData(detail({ map_name: 'Not A Real Map' })).mapThumbnailUrl,
+    ).toBeUndefined()
+  })
+
+  it('leaves mapThumbnailUrl undefined for a null map_name, never calling the resolver', () => {
+    expect(toMatchDetailData(detail({ map_name: null })).mapThumbnailUrl).toBeUndefined()
   })
 
   it('passes patch through as gameVersion, verbatim (FR-018)', () => {

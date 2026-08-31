@@ -75,7 +75,9 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
     matchListStatus = 'empty'
   }
 
-  const matchRows = matchesQuery.data ? toMatchRowDataList(matchesQuery.data.matches) : []
+  const matchRows = matchesQuery.data
+    ? toMatchRowDataList(matchesQuery.data.matches, profileId)
+    : []
 
   return (
     <main className="min-h-svh bg-background">

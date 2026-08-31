@@ -1,11 +1,18 @@
 import type {
   MatchDetailData,
+  MatchParticipantResult,
   MatchRowData,
-  MatchRowOpponent,
+  MatchRowParticipant,
   ParticipantData,
   TeamGroupData,
 } from 'design-system'
-import type { ApiMatchDetail, ApiMatchListRow, ApiMatchParticipant, ApiOpponent } from './api'
+import { civilisationIcon, mapThumbnail } from 'game-assets'
+import type {
+  ApiMatchDetail,
+  ApiMatchListRow,
+  ApiMatchParticipant,
+  ApiMatchRowParticipant,
+} from './api'
 import {
   formatCivilisation,
   formatDuration,
@@ -14,37 +21,69 @@ import {
   formatPlayedAtRelative,
 } from './format'
 
+/** Resolves `civName` (never a bare id — `packages/game-assets`'s own contract) onto an icon URL,
+ * or `undefined` on a `null` name or a pack miss alike — both read as "no icon", `MatchRow`'s and
+ * `MatchDetailPanel`'s own designed degrade path (match-history.md §12.1 rule 3), never a
+ * client-built placeholder path (T432, `contracts/asset-pack.md`). */
+function resolveCivIconUrl(civName: string | null): string | undefined {
+  return civName != null ? civilisationIcon(civName) : undefined
+}
+
+/** Same rule as `resolveCivIconUrl`, for `packages/game-assets`'s `mapThumbnail`. */
+function resolveMapThumbnailUrl(mapName: string | null): string | undefined {
+  return mapName != null ? mapThumbnail(mapName) : undefined
+}
+
 // The one place `ApiMatchListRow` (snake_case, `api.ts`) becomes what `MatchRow`/`MatchList`
 // (packages/design-system) expect (camelCase, ids as strings, pre-formatted text) — mirrors
 // `features/profile/mappers.ts`'s own rule: nothing downstream of this file touches the raw API
 // shape again.
 
-/** match-history.md §4: "the first opposing-team participant's alias" plus `"and N others"` for
- * the remainder. `row.opponents` (`api.ts`) is already restricted to the opposing team(s) —
- * `matches.py`'s `_opponents_by_game` excludes the caller's own teammates at the query (T070d) —
- * so for both a 1v1 and a team match, every entry here is a genuine opponent and `rest.length`
- * is exactly the "and N others" count FR-010 asks for. */
-export function toMatchRowOpponent(opponents: readonly ApiOpponent[]): MatchRowOpponent {
-  const [first, ...rest] = opponents
-  if (!first) {
-    return { alias: 'Unknown opponent' }
-  }
+/** `ApiMatchRowParticipant.result` narrowed to `MatchParticipantResult` — mirrors
+ * `formatOutcome`'s own defensiveness (T037a: a wire payload is never trusted blindly), but keeps
+ * `null` as `null` rather than coercing it to `MatchRow`'s row-level `"unknown"` union: §12.3's
+ * `TeamResult` marker needs the real three-value fact per participant, not the row's own read. */
+function toParticipantResult(result: string | null): MatchParticipantResult {
+  return result === 'win' || result === 'loss' ? result : null
+}
+
+/** One `ApiMatchRowParticipant` as `MatchRow`'s own `MatchRowParticipant` (match-history.md
+ * §12.3) — `isViewer` is computed here, from the profile whose history this page is (never a
+ * client-side guess), so `MatchRow` itself never needs a `perspective` prop (§11.3's rule,
+ * extended to the ordering §12.3 introduces). */
+export function toMatchRowParticipant(
+  participant: ApiMatchRowParticipant,
+  viewerProfileId: number,
+): MatchRowParticipant {
   return {
-    alias: first.alias ?? 'Unknown opponent',
-    othersCount: rest.length > 0 ? rest.length : undefined,
+    profileId: participant.profile_id,
+    alias: participant.alias ?? 'Unknown player',
+    teamId: participant.team_id,
+    colorId: participant.color_id,
+    result: toParticipantResult(participant.result),
+    isViewer: participant.profile_id === viewerProfileId,
   }
 }
 
-export function toMatchRowData(row: ApiMatchListRow): MatchRowData {
+export function toMatchRowData(row: ApiMatchListRow, viewerProfileId: number): MatchRowData {
   const playedAt = row.completed_at
   return {
     gameId: String(row.game_id),
     // T076's `matches.$gameId.tsx` — `MatchRow` never invents this path (match-history.md §2).
     href: `/matches/${row.game_id}`,
     outcome: formatOutcome(row.result),
-    opponent: toMatchRowOpponent(row.opponents),
+    participants: row.participants.map((participant) =>
+      toMatchRowParticipant(participant, viewerProfileId),
+    ),
     map: row.map_name ?? 'Unknown map',
     civilisation: formatCivilisation(row.civilisation_name),
+    leaderboardName: row.leaderboard_name,
+    // Resolved through `packages/game-assets`, keyed on the server-named `civilisation_name` /
+    // `map_name` (never a bare id) — `undefined` on a `null` name or a pack miss alike, passed
+    // straight through to `MatchRow`'s own designed degrade path (match-history.md §12.1 rule 3).
+    civIconUrl: resolveCivIconUrl(row.civilisation_name),
+    mapThumbnailUrl: resolveMapThumbnailUrl(row.map_name),
+    rating: row.rating,
     ratingChange:
       row.rating_diff != null
         ? { value: row.rating_diff, formatted: String(Math.abs(row.rating_diff)) }
@@ -57,8 +96,11 @@ export function toMatchRowData(row: ApiMatchListRow): MatchRowData {
   }
 }
 
-export function toMatchRowDataList(rows: readonly ApiMatchListRow[]): MatchRowData[] {
-  return rows.map(toMatchRowData)
+export function toMatchRowDataList(
+  rows: readonly ApiMatchListRow[],
+  viewerProfileId: number,
+): MatchRowData[] {
+  return rows.map((row) => toMatchRowData(row, viewerProfileId))
 }
 
 // --- GET /api/matches/{game_id} -> MatchDetailPanel (T076) --------------------------------------
@@ -80,6 +122,11 @@ export function toParticipantData(participant: ApiMatchParticipant): Participant
     alias: participant.alias ?? 'Unknown player',
     civId: participant.civ_id,
     civName: participant.civ_name,
+    // Resolved through `packages/game-assets`, same rule as `toMatchRowData.civIconUrl` — keyed on
+    // `civ_name`, never `civ_id`, and `undefined` on a `null` name or a pack miss alike (T432).
+    civIconUrl: resolveCivIconUrl(participant.civ_name),
+    colorId: participant.color_id,
+    rating: participant.rating,
     result: formatOutcome(participant.result),
     ratingChange:
       participant.rating_diff != null
@@ -129,6 +176,9 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     // renders a `null` map via its own `UnresolvedIdentifier` (no id to show for a map, per that
     // component's own note) — this mapper must not paper over the gap with invented text.
     map: detail.map_name,
+    // Resolved through `packages/game-assets`, same rule as `toMatchRowData.mapThumbnailUrl` —
+    // `undefined` on a `null` map_name or a pack miss alike, never a placeholder (T432).
+    mapThumbnailUrl: resolveMapThumbnailUrl(detail.map_name),
     // T070f: `leaderboard_name` computed server-side (`matches.py`'s `_match_detail_json`), the
     // same `leaderboards.py` mapping `GET /api/profiles` already reads — passed straight through,
     // never re-derived here.

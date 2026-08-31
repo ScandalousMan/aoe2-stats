@@ -6,25 +6,28 @@ component carries a hard-coded style value.
 
 ## Index
 
-| Spec                                                     | Component directory                                                      | Feature            |
-| -------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------ |
-| [`shared-primitives.md`](./shared-primitives.md)         | `src/components/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`         | 001                |
-| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/components/SignInScreen/`                                           | 001, US1           |
-| [`archival-control.md`](./archival-control.md)           | `src/components/ArchivalControl/`                                        | 001, US1/US5       |
-| [`profile-summary.md`](./profile-summary.md)             | `src/components/ProfileSummary/`                                         | 001, US1; 003, US1 |
-| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants)      | 001, US3           |
-| [`match-history.md`](./match-history.md)                 | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`           | 001, US3; 003, US2 |
-| [`manual-upload.md`](./manual-upload.md)                 | `src/components/UploadControl/`                                          | 001, US4           |
-| [`privacy-notice.md`](./privacy-notice.md)               | `src/components/PrivacyNotice/`                                          | 001, US5           |
-| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/components/DataExportPanel/`, `src/components/AccountErasurePanel/` | 001, US5           |
-| [`third-party-objection.md`](./third-party-objection.md) | `src/components/ThirdPartyObjectionForm/`                                | 001, US5           |
-| [`footer.md`](./footer.md)                               | `src/components/Footer/`                                                 | 001, US5           |
-| [`player-search.md`](./player-search.md)                 | `src/components/SearchBox/`, `src/components/PlayerResultRow/`           | 003, US1           |
-| [`replay-availability.md`](./replay-availability.md)     | `src/components/ReplayAvailabilityList/`                                 | 003, US3           |
-| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/components/FavouriteToggle/`                                        | 003, US5           |
-| [`favourites-list.md`](./favourites-list.md)             | `src/components/FavouritesList/`                                         | 003, US5           |
-| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/components/AnalysisTimeline/`                                       | 003, US4           |
-| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)               | 004                |
+| Spec                                                     | Component directory                                                      | Feature                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------- |
+| [`shared-primitives.md`](./shared-primitives.md)         | `src/components/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`         | 001                          |
+| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/components/SignInScreen/`                                           | 001, US1                     |
+| [`archival-control.md`](./archival-control.md)           | `src/components/ArchivalControl/`                                        | 001, US1/US5                 |
+| [`profile-summary.md`](./profile-summary.md)             | `src/components/ProfileSummary/`                                         | 001, US1; 003, US1           |
+| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants)      | 001, US3                     |
+| [`match-history.md`](./match-history.md)                 | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`           | 001, US3; 003, US2; 004, US1 |
+| [`manual-upload.md`](./manual-upload.md)                 | `src/components/UploadControl/`                                          | 001, US4                     |
+| [`privacy-notice.md`](./privacy-notice.md)               | `src/components/PrivacyNotice/`                                          | 001, US5                     |
+| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/components/DataExportPanel/`, `src/components/AccountErasurePanel/` | 001, US5                     |
+| [`third-party-objection.md`](./third-party-objection.md) | `src/components/ThirdPartyObjectionForm/`                                | 001, US5                     |
+| [`footer.md`](./footer.md)                               | `src/components/Footer/`                                                 | 001, US5                     |
+| [`player-search.md`](./player-search.md)                 | `src/components/SearchBox/`, `src/components/PlayerResultRow/`           | 003, US1                     |
+| [`replay-availability.md`](./replay-availability.md)     | `src/components/ReplayAvailabilityList/`                                 | 003, US3                     |
+| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/components/FavouriteToggle/`                                        | 003, US5                     |
+| [`favourites-list.md`](./favourites-list.md)             | `src/components/FavouritesList/`                                         | 003, US5                     |
+| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/components/AnalysisTimeline/`                                       | 003, US4                     |
+| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)               | 004                          |
+| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/components/CivilisationIcon/`                                       | 004, US1                     |
+| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/components/MapThumbnail/`                                           | 004, US1                     |
+| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/components/PlayerColourSwatch/`                                     | 004, US1                     |
 
 ## Every spec has nine sections
 
@@ -170,7 +173,8 @@ stays a distinct chip against the light parchment without the canonical hex bein
 theme. That frame's boundary is the existing `border-strong` rows above (3.5 on `surface`, 3.4 on
 `surface-raised` in light), already asserted; the swatch adds no new frame assertion. An out-of-range
 or `NULL` `color_id` renders a `surface-sunken` fill inside the same frame, with the player's name
-carrying the meaning (rule 4).
+carrying the meaning (rule 4). The component that draws it, and the states it owes, are in
+[`player-colour-swatch.md`](./player-colour-swatch.md).
 
 ## Token gap register
 
