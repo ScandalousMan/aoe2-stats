@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchDetailPanel } from './index'
 import type { MatchDetailData } from './index'
@@ -426,9 +426,13 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
     expect(unresolved.className).toMatch(/\bfont-mono\b/)
     expect(unresolved.className).toContain('text-text-secondary')
 
+    // `CivilisationIcon` (T431, composed rather than re-implemented) inherits `currentColor`
+    // instead of setting it on the name's own bare `<span>` (civilisation-icon.md §5) — the class
+    // that carries the resolved-name colour therefore lives one level up, on the mark+name pair's
+    // own wrapper (`ParticipantCivilisation`'s call site).
     const resolved = screen.getByText('Britons')
     expect(resolved.className).not.toMatch(/\bfont-mono\b/)
-    expect(resolved.className).toContain('text-text-primary')
+    expect(resolved.parentElement?.className).toContain('text-text-primary')
     restore()
   })
 
@@ -481,5 +485,197 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
     const classNames = new Set(Array.from(rows).map((row) => row.className))
     // Every row shares the same structural className — none is singled out.
     expect(classNames.size).toBeLessThanOrEqual(1)
+  })
+})
+
+// T431 (004, §12.5): game imagery, colour and rating format, composed from `CivilisationIcon`,
+// `MapThumbnail` and `PlayerColourSwatch` (T429) — never re-implemented — and the same
+// `TeamResultMarker`/`RatingFigure` `MatchRow` (T430) already renders, imported from that module
+// so the list and the detail view cannot drift on either fact (match-history.md §12.5's own "this
+// panel composes the three marks; it never re-implements one").
+describe('MatchDetailPanel — §12.5: imagery, colour and rating (004, US1, T431)', () => {
+  function mockMatchMediaAt(widthPx: number): () => void {
+    const original = window.matchMedia
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: widthPx >= threshold,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      } as MediaQueryList
+    }
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  const BRITONS_URL = '/game-assets/civilisations/britons.webp'
+  const ARABIA_URL = '/game-assets/maps/arabia.webp'
+
+  /** `RatingFigure` (reused from `MatchRow`, §12.4) splits the absolute rating and the signed
+   * change across a text node and a nested `<span>`, so the combined string is matched against
+   * `element.textContent` (`MatchRow.test.tsx`'s own `fullText` precedent) rather than the
+   * default, direct-text-only matcher. */
+  function fullText(expected: string) {
+    return (_content: string, element: Element | null) => element?.textContent === expected
+  }
+
+  const imageryMatch: MatchDetailData = {
+    ...match,
+    gameId: '5001',
+    mapThumbnailUrl: ARABIA_URL,
+    teams: [
+      {
+        id: 'team-1',
+        name: 'Team 1',
+        participants: [
+          {
+            id: 'p1',
+            alias: 'aoe2guy',
+            civId: 10,
+            civName: 'Britons',
+            civIconUrl: BRITONS_URL,
+            colorId: 4,
+            result: 'win',
+            rating: 922,
+            ratingChange: { value: 16 },
+          },
+        ],
+      },
+      {
+        id: 'team-2',
+        name: 'Team 2',
+        participants: [
+          {
+            id: 'p2',
+            alias: 'aoe2villain',
+            civId: 20,
+            civName: 'Mongols',
+            colorId: 2,
+            result: 'loss',
+            rating: 906,
+            ratingChange: { value: -15 },
+          },
+        ],
+      },
+    ],
+  }
+
+  it('composes CivilisationIcon and MapThumbnail, rendering their marks when a URL resolves', () => {
+    render(<MatchDetailPanel match={imageryMatch} />)
+    const srcs = Array.from(document.querySelectorAll('img')).map((image) =>
+      image.getAttribute('src'),
+    )
+    expect(srcs).toContain(BRITONS_URL)
+    expect(srcs).toContain(ARABIA_URL)
+  })
+
+  it('renders a colour swatch immediately beside every participant’s alias', () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={imageryMatch} />)
+    const aoe2guy = screen.getByText('aoe2guy')
+    const swatch = aoe2guy.parentElement?.querySelector('[aria-hidden="true"]')
+    expect(swatch).toBeInTheDocument()
+    expect(
+      within(aoe2guy.parentElement as HTMLElement).getByText('Colour: Yellow'),
+    ).toBeInTheDocument()
+    restore()
+  })
+
+  it('resolves an out-of-range or missing colour to the same neutral chip, never an error tone', () => {
+    const neutral: MatchDetailData = {
+      ...imageryMatch,
+      gameId: '5002',
+      teams: [
+        {
+          ...imageryMatch.teams[0],
+          participants: [{ ...imageryMatch.teams[0].participants[0], colorId: null }],
+        },
+        {
+          ...imageryMatch.teams[1],
+          participants: [{ ...imageryMatch.teams[1].participants[0], colorId: 99 }],
+        },
+      ],
+    }
+    render(<MatchDetailPanel match={neutral} />)
+    expect(screen.getAllByText('Colour: not recorded')).toHaveLength(2)
+  })
+
+  it('renders the combined absolute rating and signed change, "922 (+16)", via the reused RatingFigure', () => {
+    render(<MatchDetailPanel match={imageryMatch} />)
+    expect(screen.getByText(fullText('922 (+16)'))).toBeInTheDocument()
+  })
+
+  it('uses U+2212 MINUS SIGN, not a hyphen, for a negative participant rating change', () => {
+    render(<MatchDetailPanel match={imageryMatch} />)
+    expect(screen.getByText(fullText('906 (−15)'))).toBeInTheDocument()
+    expect(screen.queryByText(fullText('906 (-15)'))).not.toBeInTheDocument()
+  })
+
+  it('renders "Won"/"Lost" per TeamGroup heading, never colour alone, and joins the same words into the caption', () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={imageryMatch} />)
+    const heading = screen.getByRole('heading', { level: 3, name: /Team 1/ })
+    expect(within(heading).getByText('Won')).toHaveClass('text-success')
+    const losingHeading = screen.getByRole('heading', { level: 3, name: /Team 2/ })
+    expect(within(losingHeading).getByText('Lost')).toHaveClass('text-danger')
+    expect(screen.getByRole('table', { name: 'Team 1 — Won' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Team 2 — Lost' })).toBeInTheDocument()
+    restore()
+  })
+
+  it('reads a TeamGroup with no recorded result as "Result unknown", never as a loss', () => {
+    const unresolved: MatchDetailData = {
+      ...imageryMatch,
+      gameId: '5003',
+      teams: imageryMatch.teams.map((team) => ({
+        ...team,
+        participants: team.participants.map((participant) => ({
+          ...participant,
+          result: 'unknown' as const,
+        })),
+      })),
+    }
+    render(<MatchDetailPanel match={unresolved} />)
+    const markers = screen.getAllByText('Result unknown')
+    expect(markers).toHaveLength(2)
+    for (const marker of markers) {
+      expect(marker.className).not.toContain('text-danger')
+      expect(marker.className).not.toContain('text-success')
+      expect(marker.className).toContain('text-secondary')
+    }
+    expect(screen.queryByText('Won')).not.toBeInTheDocument()
+    expect(screen.queryByText('Lost')).not.toBeInTheDocument()
+  })
+
+  // match-history.md §12.1 rule 3: the absent-asset state is the prop being `undefined` — no box,
+  // no silhouette, no "?" tile. Every mark this panel can carry is uncovered at once: the
+  // civilisation icon, the map thumbnail, and every participant's colour.
+  it('shows the civilisation and map names alone, with no image, when no asset URL resolves', () => {
+    const uncovered: MatchDetailData = {
+      ...imageryMatch,
+      gameId: '5004',
+      map: 'A Custom Tournament Map',
+      mapThumbnailUrl: undefined,
+      teams: imageryMatch.teams.map((team) => ({
+        ...team,
+        participants: team.participants.map((participant) => ({
+          ...participant,
+          civIconUrl: undefined,
+          colorId: null,
+        })),
+      })),
+    }
+    render(<MatchDetailPanel match={uncovered} />)
+    expect(screen.getByText('Britons')).toBeInTheDocument()
+    expect(screen.getByText('A Custom Tournament Map')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Colour: not recorded')).toHaveLength(2)
   })
 })

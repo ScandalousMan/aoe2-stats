@@ -171,12 +171,17 @@ function groupByTeam(participants: MatchRowParticipant[]): ParticipantGroup[] {
   }))
 }
 
-type TeamResultKind = 'won' | 'lost' | 'unknown-result' | null
+/** Exported for `MatchDetailPanel` (T431), which computes the identical marker for its own
+ * `TeamGroup` heading from the same three-state result — one answer to "did this side win", never
+ * two (match-history.md §12.5's own "never re-implements one"). */
+export type TeamResultKind = 'won' | 'lost' | 'unknown-result' | null
 
 /** §12.3's `TeamResult` marker table: every member's own `result` decides one of three words, or
  * — for the mixed case the table calls "should not occur; possible mid-backfill" — no marker at
- * all, never a guess. */
-function computeTeamResult(members: MatchRowParticipant[]): TeamResultKind {
+ * all, never a guess. Typed over the bare `result` field, not the full `MatchRowParticipant`, so
+ * `MatchDetailPanel`'s own `ParticipantData` (a different shape, sharing only this one field) can
+ * reuse it without re-deriving the table (T431). */
+export function computeTeamResult(members: { result: MatchParticipantResult }[]): TeamResultKind {
   if (members.every((member) => member.result === 'win')) return 'won'
   if (members.every((member) => member.result === 'loss')) return 'lost'
   if (members.every((member) => member.result === null)) return 'unknown-result'
@@ -195,7 +200,8 @@ const TEAM_RESULT_TONE: Record<Exclude<TeamResultKind, null>, string> = {
   'unknown-result': 'text-secondary',
 }
 
-function TeamResultMarker({ kind }: { kind: TeamResultKind }) {
+/** Exported alongside `computeTeamResult` for the same reason (T431). */
+export function TeamResultMarker({ kind }: { kind: TeamResultKind }) {
   if (kind == null) return null
   return (
     <span className={cx('font-sans text-sm font-semibold', TEAM_RESULT_TONE[kind])}>
@@ -289,8 +295,10 @@ function ratingMagnitude(delta: StatValueDelta): string {
 /** §12.4's format table: `922 (+16)`, `921 (−15)`, `922 (0)` (a reported zero movement, neutral
  * tone, no sign), `922` alone (`rating_diff` not known — never `(+0)`, never `(—)`), or nothing at
  * all (both absent). The sign is always a character in the text, never colour alone (§12.1 rule
- * 2), and never animates on entry (`StatValue`'s own rule, README rule 1). */
-function RatingFigure({
+ * 2), and never animates on entry (`StatValue`'s own rule, README rule 1). Exported: `§12.5`
+ * requires `MatchDetailPanel`'s own rating figure to follow "identical rules" — reused rather than
+ * re-derived (T431), so the list and the detail view cannot drift on this format. */
+export function RatingFigure({
   rating,
   ratingChange,
   size,
