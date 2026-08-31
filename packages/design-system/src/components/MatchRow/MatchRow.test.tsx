@@ -252,7 +252,7 @@ describe('MatchRow', () => {
       expect(screen.getByText('vs')).toBeInTheDocument()
     })
 
-    it('caps a group at three participants and appends "and N others" — never a bare count', () => {
+    it('caps a group at three participants and appends "and 1 other" (singular) for exactly one overflow', () => {
       const many: MatchRowParticipant[] = [
         { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
         { profileId: 2, alias: 'Teammate2', teamId: 1, colorId: 2, result: 'win' },
@@ -261,9 +261,23 @@ describe('MatchRow', () => {
         { profileId: 5, alias: 'aoe2villain', teamId: 2, colorId: 6, result: 'loss' },
       ]
       render(<MatchRow match={{ ...match, participants: many }} />)
-      expect(screen.getByText('and 1 others')).toBeInTheDocument()
-      expect(screen.queryByText(/^1 others$/)).not.toBeInTheDocument()
+      expect(screen.getByText('and 1 other')).toBeInTheDocument()
+      expect(screen.queryByText('and 1 others')).not.toBeInTheDocument()
       expect(screen.queryByText('Teammate4')).not.toBeInTheDocument()
+    })
+
+    it('caps a group at three participants and appends "and N others" (plural) for more than one overflow', () => {
+      const many: MatchRowParticipant[] = [
+        { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+        { profileId: 2, alias: 'Teammate2', teamId: 1, colorId: 2, result: 'win' },
+        { profileId: 3, alias: 'Teammate3', teamId: 1, colorId: 3, result: 'win' },
+        { profileId: 4, alias: 'Teammate4', teamId: 1, colorId: 5, result: 'win' },
+        { profileId: 5, alias: 'Teammate5', teamId: 1, colorId: 6, result: 'win' },
+        { profileId: 6, alias: 'aoe2villain', teamId: 2, colorId: 7, result: 'loss' },
+      ]
+      render(<MatchRow match={{ ...match, participants: many }} />)
+      expect(screen.getByText('and 2 others')).toBeInTheDocument()
+      expect(screen.queryByText('and 2 other')).not.toBeInTheDocument()
     })
 
     it('orders the viewed profile’s own group first, then the viewed profile within it', () => {
@@ -339,9 +353,15 @@ describe('MatchRow', () => {
       render(<MatchRow match={{ ...match, participants: ffa }} />)
       expect(screen.getByText('aoe2fan')).toBeInTheDocument()
       expect(screen.getByText('and 3 others')).toBeInTheDocument()
+      expect(screen.queryByText('and 3 other')).not.toBeInTheDocument()
       expect(screen.queryByText('vs')).not.toBeInTheDocument()
       expect(screen.queryByText('Rival2')).not.toBeInTheDocument()
     })
+
+    // A free-for-all requires >2 groups, so `othersCount` (every non-viewer participant) can never
+    // be exactly 1 here — the minimum is 2 (one viewer + at least one member in each of two other
+    // groups). The singular case for this shared `otherLabel` rule is exercised above, in
+    // `ParticipantGroupView`'s own cap-of-three test, which the same helper backs (T434 fix).
 
     it('resolves an out-of-range or missing colour to the same neutral chip, never an error tone', () => {
       const neutral: MatchRowParticipant[] = [
@@ -519,7 +539,7 @@ describe('MatchList', () => {
 
   // §12.7: the Players column caps a side at two participants before its overflow text — the
   // column's width is bounded by the table, not by the window.
-  it('caps the 1280 table Players column at two participants per side', () => {
+  it('caps the 1280 table Players column at two participants per side, "and 1 other" singular', () => {
     const restore = mockMatchMediaAt(1280)
     const many: MatchRowParticipant[] = [
       { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
@@ -528,8 +548,24 @@ describe('MatchList', () => {
       { profileId: 4, alias: 'aoe2villain', teamId: 2, colorId: 6, result: 'loss' },
     ]
     render(<MatchList matches={[{ ...match, participants: many }]} />)
-    expect(screen.getByText('and 1 others')).toBeInTheDocument()
+    expect(screen.getByText('and 1 other')).toBeInTheDocument()
+    expect(screen.queryByText('and 1 others')).not.toBeInTheDocument()
     expect(screen.queryByText('Teammate3')).not.toBeInTheDocument()
+    restore()
+  })
+
+  it('renders "and N others" (plural) in the 1280 table Players column for more than one overflow', () => {
+    const restore = mockMatchMediaAt(1280)
+    const many: MatchRowParticipant[] = [
+      { profileId: 1, alias: 'aoe2fan', teamId: 1, colorId: 4, result: 'win', isViewer: true },
+      { profileId: 2, alias: 'Teammate2', teamId: 1, colorId: 2, result: 'win' },
+      { profileId: 3, alias: 'Teammate3', teamId: 1, colorId: 3, result: 'win' },
+      { profileId: 4, alias: 'Teammate4', teamId: 1, colorId: 5, result: 'win' },
+      { profileId: 5, alias: 'aoe2villain', teamId: 2, colorId: 6, result: 'loss' },
+    ]
+    render(<MatchList matches={[{ ...match, participants: many }]} />)
+    expect(screen.getByText('and 2 others')).toBeInTheDocument()
+    expect(screen.queryByText('and 2 other')).not.toBeInTheDocument()
     restore()
   })
 

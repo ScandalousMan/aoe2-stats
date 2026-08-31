@@ -210,6 +210,13 @@ export function TeamResultMarker({ kind }: { kind: TeamResultKind }) {
   )
 }
 
+/** §12.3's overflow text, singularised for the one-remainder case — `"1 other"`, never `"1
+ * others"` — and `"N others"` otherwise. The one place either render site below turns a count into
+ * this word, so the two cannot drift apart on the same rule again. */
+function otherLabel(count: number): string {
+  return count === 1 ? '1 other' : `${count} others`
+}
+
 function ParticipantChip({ participant }: { participant: MatchRowParticipant }) {
   return (
     <span className="inline-flex items-center gap-2">
@@ -232,7 +239,7 @@ function ParticipantGroupView({ group, cap }: { group: ParticipantGroup; cap: nu
         <ParticipantChip key={participant.profileId} participant={participant} />
       ))}
       {overflow > 0 && (
-        <span className="font-sans text-sm text-text-secondary">and {overflow} others</span>
+        <span className="font-sans text-sm text-text-secondary">and {otherLabel(overflow)}</span>
       )}
     </span>
   )
@@ -252,7 +259,9 @@ function Participants({ participants, cap }: { participants: MatchRowParticipant
       <span className="inline-flex flex-wrap items-center gap-2">
         <ParticipantChip participant={viewer} />
         {othersCount > 0 && (
-          <span className="font-sans text-sm text-text-secondary">and {othersCount} others</span>
+          <span className="font-sans text-sm text-text-secondary">
+            and {otherLabel(othersCount)}
+          </span>
         )}
       </span>
     )
