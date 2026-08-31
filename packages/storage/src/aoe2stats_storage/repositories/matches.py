@@ -57,9 +57,10 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import and_, literal, or_, select, tuple_
 from sqlalchemy.orm import aliased
@@ -74,6 +75,140 @@ from .base import Repository
 DEFAULT_PAGE_SIZE = 20
 
 _CURSOR_SEPARATOR = "|"
+
+
+# --- projection: matches.raw_payload -> match_players (T413, research.md D1) ---------------------
+#
+# `upsert_match_player` (`apps/ingester/.../discover.py`) inserted only the `(game_id, profile_id)`
+# primary key: `civ_id`, `team_id`, `rating`, `rating_diff` and `result` were declared columns,
+# read by three routers and the privacy export, and written by nobody. Every one of them is
+# already sitting, unread, in `matches.raw_payload` — this section is the pure mapping T413 exists
+# to write once so both writers of `match_players` (`DiscoverStage.__call__` and
+# `apps/api/.../routers/players.py`'s `_refresh_third_party_history`) share it rather than each
+# growing its own copy.
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectedMatchPlayer:
+    """The five Relic-derived `match_players` columns, projected from one `matchHistoryStats[]`
+    entry for one participant. `color_id` is deliberately absent — Relic's match history response
+    carries no such field; T420's read-time companion enrichment is that column's only writer."""
+
+    civ_id: int | None
+    team_id: int | None
+    rating: int | None
+    rating_diff: int | None
+    result: str | None
+
+
+class MatchProjectionMismatch(ValueError):
+    """Raised when `matchhistorymember[]` disagrees with the same participant's own entry in
+    `matchhistoryreportresults[]` on `civilization_id`, `teamid` or the mapped result.
+    `matchhistoryreportresults[]` is a cross-check, not a second source (data-model.md's own
+    wording): a disagreement is not resolved by picking a side here, because a silent tie-break is
+    exactly how a wrong civilisation would ship looking confident. The caller decides what to do
+    with a payload that fails its own internal cross-check; this function only refuses to guess."""
+
+
+def _map_outcome(value: Any) -> str | None:
+    """`matchhistorymember[].outcome` / `matchhistoryreportresults[].resulttype` share this same
+    two-code vocabulary: `1` -> `"win"`, `0` -> `"loss"`, and — FR-004's neutral state — anything
+    else (a draw code, `None`, a value Relic has not documented) maps to `None` rather than being
+    coerced into a loss."""
+    if value == 1:
+        return "win"
+    if value == 0:
+        return "loss"
+    return None
+
+
+def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> ProjectedMatchPlayer:
+    """Project `profile_id`'s entry out of one `matchHistoryStats[]` item (`raw_match` — the exact
+    shape `Match.raw_payload`/`RawMatch.raw_payload` carry verbatim, constitution IV) into the five
+    Relic-derived `match_players` columns. Pure: no I/O, no session, safe to call as many times as
+    a match is rediscovered.
+
+    - `civ_id` <- `matchhistorymember[].civilization_id`, direct.
+    - `team_id` <- `matchhistorymember[].teamid`, direct.
+    - `rating` <- `matchhistorymember[].newrating`, the value *after* the match (FR-005) — never
+      `oldrating`.
+    - `rating_diff` <- `newrating - oldrating`, signed, and `NULL` (never `0`) the moment either
+      side is missing: a `0` is a real, symmetric rating outcome, and a stand-in that means
+      "unknown" would be a lie the interface cannot see through.
+    - `result` <- `_map_outcome(matchhistorymember[].outcome)`.
+
+    Every field above is cross-checked against `profile_id`'s own entry in
+    `matchhistoryreportresults[]`, when that array carries one: `civilization_id`, `teamid` and
+    the mapped result must agree, or this raises `MatchProjectionMismatch` rather than picking a
+    side (see that class's own docstring).
+
+    `raw_match` carrying no `matchhistorymember[]` entry for `profile_id` at all — a payload
+    shape from before this projection existed, or a caller assembling a synthetic `raw_payload`
+    (several `apps/ingester` tests do exactly this) — is not a fault to raise on: it projects to
+    every field `None`, the same "nothing written yet" state `upsert_match_player` produced before
+    T413, so a payload this function cannot yet interpret degrades rather than blocking the write
+    of the row it *does* know how to place (the primary key).
+    """
+    member = next(
+        (
+            entry
+            for entry in raw_match.get("matchhistorymember", [])
+            if entry.get("profile_id") == profile_id
+        ),
+        None,
+    )
+    if member is None:
+        return ProjectedMatchPlayer(
+            civ_id=None, team_id=None, rating=None, rating_diff=None, result=None
+        )
+
+    civ_id = member.get("civilization_id")
+    team_id = member.get("teamid")
+    old_rating = member.get("oldrating")
+    new_rating = member.get("newrating")
+    result = _map_outcome(member.get("outcome"))
+
+    report = next(
+        (
+            entry
+            for entry in raw_match.get("matchhistoryreportresults", [])
+            if entry.get("profile_id") == profile_id
+        ),
+        None,
+    )
+    if report is not None:
+        report_civ_id = report.get("civilization_id")
+        if report_civ_id != civ_id:
+            raise MatchProjectionMismatch(
+                f"profile {profile_id}: civilization_id disagreement between "
+                f"matchhistorymember ({civ_id!r}) and matchhistoryreportresults "
+                f"({report_civ_id!r})"
+            )
+        report_team_id = report.get("teamid")
+        if report_team_id != team_id:
+            raise MatchProjectionMismatch(
+                f"profile {profile_id}: teamid disagreement between matchhistorymember "
+                f"({team_id!r}) and matchhistoryreportresults ({report_team_id!r})"
+            )
+        report_result = _map_outcome(report.get("resulttype"))
+        if report_result != result:
+            raise MatchProjectionMismatch(
+                f"profile {profile_id}: result disagreement between matchhistorymember's "
+                f"outcome ({result!r}) and matchhistoryreportresults' resulttype "
+                f"({report_result!r})"
+            )
+
+    rating_diff = (
+        new_rating - old_rating if new_rating is not None and old_rating is not None else None
+    )
+
+    return ProjectedMatchPlayer(
+        civ_id=civ_id,
+        team_id=team_id,
+        rating=new_rating,
+        rating_diff=rating_diff,
+        result=result,
+    )
 
 
 @dataclass(frozen=True, slots=True)

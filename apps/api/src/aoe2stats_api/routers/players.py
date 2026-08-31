@@ -192,7 +192,7 @@ async def _refresh_third_party_history(db_session: AsyncSession, profile_id: int
         await discover.upsert_match(db_session, raw_match)
         for player_profile_id in raw_match.player_profile_ids:
             await discover.touch_aoe_profile(db_session, player_profile_id)
-            await discover.upsert_match_player(db_session, raw_match.game_id, player_profile_id)
+            await discover.upsert_match_player(db_session, raw_match, player_profile_id)
 
 
 # FR-005's own bucket name (`RateLimitCounter`'s docstring, `ratelimit.py`) and the fixed window

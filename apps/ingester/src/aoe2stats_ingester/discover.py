@@ -37,10 +37,13 @@ twice in one cycle — once through each of two consenting players who shared it
 py`) — long before the 25-day reconciliation sweep (T054) would otherwise notice a duplicate.
 `ON CONFLICT DO UPDATE` on `matches.game_id` keeps the row current (constitution IV: `raw_payload`
 is the provider's response, unmodified, replaced wholesale rather than merged field by field, since
-merging would silently keep a stale value the provider has since corrected); `ON CONFLICT DO
-NOTHING` on `match_players`' and `replay_captures`' composite keys makes a repeat discovery of the
-same participant, or the same `(game_id, profile_id)` capture, a no-op rather than an error — which
-is also what keeps `capture_deadline_at` "computed once on insert, never recomputed" true across
+merging would silently keep a stale value the provider has since corrected); since T413,
+`ON CONFLICT DO UPDATE` also refreshes `match_players`' own Relic-derived columns on a repeat
+sighting of the same participant, for the same reason (see `upsert_match_player`'s own docstring
+for the one column deliberately excluded from that refresh); `ON CONFLICT DO NOTHING` on
+`replay_captures`' composite key makes the same `(game_id, profile_id)` capture a no-op rather than
+an error on a repeat sighting — which is also what keeps `capture_deadline_at` "computed once on
+insert, never recomputed" true across
 however many times the same match is rediscovered.
 
 **`aoe_profiles.alias` on a third party this stage meets for the first time.** Every player in
@@ -82,6 +85,7 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.repositories.base import session_scope
+from aoe2stats_storage.repositories.matches import project_match_player
 from aoe2stats_storage.repositories.ratings import RatingsRepository
 
 #: `contracts/providers.md`: `MatchHistoryProvider.recent_matches` is "batched, up to 10 profiles
@@ -168,16 +172,45 @@ async def upsert_match(session: AsyncSession, raw_match: RawMatch) -> None:
     await session.execute(statement)
 
 
-async def upsert_match_player(session: AsyncSession, game_id: int, profile_id: int) -> None:
-    """`ON CONFLICT DO NOTHING` on the `(game_id, profile_id)` primary key: this stage does not yet
-    know a player's civ, team, colour or result (`MatchHistoryProvider.recent_matches` does not
-    carry them — see `contracts/providers.md`), so there is nothing to refresh on a repeat
-    sighting, only a row whose *existence* must be guaranteed.
+async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profile_id: int) -> None:
+    """`ON CONFLICT DO UPDATE` on the `(game_id, profile_id)` primary key (T413, research.md D1):
+    this stage now knows a player's civilisation, team, rating, rating movement and result — every
+    one of them was already sitting, unread, in `raw_match.raw_payload`, the exact `matches.
+    raw_payload` this same transaction just wrote via `upsert_match` — and refreshes them on every
+    repeat sighting rather than leaving them null after the row's first insert.
+    `aoe2stats_storage.repositories.matches.project_match_player` (T413) is the one place that
+    mapping is written; this function calls it rather than restating it.
+
+    **What this stage deliberately still does not know: a player's canonical colour (`color_id`).**
+    Relic's match history response carries no such field at all, so there is nothing here to
+    project it from — T420's read-time companion enrichment is `color_id`'s only writer, and it is
+    therefore **not in the `SET` clause below**. Including it here would mean a Relic-only refresh
+    overwriting an already-cached colour with `NULL` on every rediscovery of a match Relic itself
+    has no colour opinion about — a real loss of already-known data, and one no test downstream of
+    this statement would ever think to attribute to it.
     """
+    projected = project_match_player(raw_match.raw_payload, profile_id)
     statement = (
         pg_insert(MatchPlayer)
-        .values(game_id=game_id, profile_id=profile_id)
-        .on_conflict_do_nothing(index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id])
+        .values(
+            game_id=raw_match.game_id,
+            profile_id=profile_id,
+            civ_id=projected.civ_id,
+            team_id=projected.team_id,
+            rating=projected.rating,
+            rating_diff=projected.rating_diff,
+            result=projected.result,
+        )
+        .on_conflict_do_update(
+            index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id],
+            set_={
+                "civ_id": projected.civ_id,
+                "team_id": projected.team_id,
+                "rating": projected.rating,
+                "rating_diff": projected.rating_diff,
+                "result": projected.result,
+            },
+        )
     )
     await session.execute(statement)
 
@@ -238,7 +271,7 @@ class DiscoverStage:
                     matches_discovered += 1
                     for player_profile_id in raw_match.player_profile_ids:
                         await touch_aoe_profile(session, player_profile_id)
-                        await upsert_match_player(session, raw_match.game_id, player_profile_id)
+                        await upsert_match_player(session, raw_match, player_profile_id)
                         if player_profile_id in archiving_profile_ids:
                             enqueued = await self._enqueue_capture(
                                 session, raw_match, player_profile_id

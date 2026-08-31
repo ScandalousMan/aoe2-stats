@@ -175,6 +175,7 @@ async def _seed_profile(
     alias: str,
     country: str | None = "FR",
     alias_observed_at: datetime | None = None,
+    avatar_hash: str | None = None,
 ) -> None:
     db_session.add(
         AoeProfile(
@@ -184,6 +185,7 @@ async def _seed_profile(
             alias_observed_at=alias_observed_at
             if alias_observed_at is not None
             else datetime.now(UTC),
+            avatar_hash=avatar_hash,
         )
     )
     await db_session.commit()
@@ -610,6 +612,60 @@ async def test_any_players_profile_returns_rating_rank_wins_and_losses_per_ladde
     assert ratings_by_leaderboard[3]["wins"] == 300
     assert ratings_by_leaderboard[3]["losses"] == 250
     assert ratings_by_leaderboard[4]["rating"] == 1700
+
+
+# --- T424 (T426 not implemented yet): avatar_hash, contracts/http-api.md, FR-008a, FR-015 -------
+
+
+@pytest.mark.xfail(strict=True, reason="T426 not implemented yet")
+async def test_any_players_profile_carries_avatar_hash_as_a_hash_never_a_url(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a, FR-015, `contracts/http-api.md`: `avatar_hash` is the hash as aoe2companion
+    reports it, read from `aoe_profiles.avatar_hash` — **never a URL**. The client builds
+    `https://avatars.steamstatic.com/<hash>_full.jpg` itself; this route only ever hands over the
+    hash, and this route makes no provider call to get it (`contracts/http-api.md`: "this route
+    makes no provider call, and still makes none")."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+
+    profile_id = 900_900_700
+    await _seed_profile(
+        db_session, profile_id=profile_id, alias="AvatarAlias", avatar_hash="8f2a9c41deadbeef"
+    )
+
+    response = client.get(f"/api/players/{profile_id}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    _assert_no_index(response)
+
+    body = response.json()
+    assert body["avatar_hash"] == "8f2a9c41deadbeef"
+    assert not body["avatar_hash"].startswith("http"), (
+        "the hash as aoe2companion reports it, never a URL built server-side (FR-008a, FR-015). "
+        f"Got {body['avatar_hash']!r}"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="T426 not implemented yet")
+async def test_a_profile_never_seen_by_companion_answers_null_avatar_hash_not_an_error(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """FR-008a: `null` is the ordinary case for a profile never seen in a companion response, and
+    renders as the neutral placeholder client-side — never an error, never a blank field, and never
+    silently dropped from the response body."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+
+    profile_id = 900_900_800
+    await _seed_profile(db_session, profile_id=profile_id, alias="NoAvatarAlias")
+
+    response = client.get(f"/api/players/{profile_id}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    _assert_no_index(response)
+
+    body = response.json()
+    assert "avatar_hash" in body, "the key is always present, null or not (contracts/http-api.md)"
+    assert body["avatar_hash"] is None
 
 
 async def test_a_never_ranked_players_profile_answers_200_with_empty_ladder_data(
