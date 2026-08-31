@@ -344,14 +344,23 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 # `enrich_matches` fixtures above (`fixtures/README.md`).
 SEARCH_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-# The six, and only six, contract fields `PlayerSearchResult` may carry
+# The contract fields `PlayerSearchResult` may carry
 # (`specs/003-player-search-match-analysis/contracts/providers.md`'s "The fields, and the one rule
 # on them"). `unverified_steam_id` joined this set on 2026-08-24 (constitution IX 3.0.0): it is no
 # longer one of the fields FR-004b's strip covered, and inverting this set from "five, none of
 # them the source's account-linking claims" to "six, one of them a carried-but-unverified claim"
-# is T397's own task.
+# was T397's own task. `avatar_hash` joined it under T418 (`data-model.md` §2): parsed from the
+# record's `avatarhash`, a hash and never a URL (FR-008a, FR-015).
 _SEARCH_CONTRACT_FIELDS = frozenset(
-    {"profile_id", "alias", "country", "games_played", "clan", "unverified_steam_id"}
+    {
+        "profile_id",
+        "alias",
+        "country",
+        "games_played",
+        "clan",
+        "unverified_steam_id",
+        "avatar_hash",
+    }
 )
 
 # The fields the source's search response carries that `PlayerSearchResult` must never carry, on
@@ -800,3 +809,261 @@ async def test_last_call_failed_is_true_through_the_sub_threshold_window() -> No
 
 
 _FAILURE_THRESHOLD_FOR_TESTS = 3  # `companion/provider.py`'s own `_FAILURE_THRESHOLD`.
+
+
+# ==================================================================================================
+# T417 — the companion parse widening (implemented by T418): quickstart scenario 3, "colour arrives
+# from companion at read time". Ground truth is `data-model.md` §2 (`MatchEnrichment.participants`,
+# `EnrichedParticipant`, `PlayerSearchResult.avatar_hash`) and constitution VI/X (a provider MUST
+# NOT set a product colour — `colorHex` never reaches `EnrichedParticipant`, the pairing T410's
+# tokens exist to guarantee stays a design-system decision, never a third-party string).
+#
+# Every test below carries `@pytest.mark.xfail(strict=True, reason=T417_XFAIL_REASON)`, and every
+# not-yet-existent symbol (`EnrichedParticipant`, `MatchEnrichment.participants`,
+# `PlayerSearchResult.avatar_hash`) is read from *inside* the test body, for the same collection-
+# safety reason `_provider()` above imports `CompanionEnrichmentProvider` lazily: a module-scope
+# `ImportError`/`AttributeError` here would abort the whole workspace suite's collection, while one
+# raised inside a test body is exactly what `strict=True` xfail is built to expect. `base.py`
+# already defines `MatchEnrichment` and `PlayerSearchResult` today (T417 runs after T416, before
+# T418), so for those two the not-yet-existent *symbol* is the widened shape, not the class itself
+# — the tests below reach it by attribute (`.participants`, `.avatar_hash`), which raises
+# `AttributeError` on the unwidened class exactly as reliably as a missing import does.
+#
+# Six behaviours, matching this task's clauses:
+#
+# 1. `enrich_matches` returns `MatchEnrichment.participants` keyed by `profile_id`, parsed from
+#    `teams[].players[]`, carrying `color_id`, `team_id`, `won`, `rating` and `rating_diff` — the
+#    last two from the wire's distinct `rating` and `ratingDiff` keys, never merged into one field.
+# 2. `EnrichedParticipant` carries exactly those five fields and no more — `colorHex` is absent from
+#    the model *definition*, asserted by introspecting `model_fields` on the class itself rather
+#    than on one parsed instance, so a later refactor that adds it fails here the moment the field
+#    is declared.
+# 3. A match companion does not know about yields no key in the returned dict at all — never an
+#    entry whose `participants` is a dict of null placeholders for the ids the caller asked about.
+# 4. A 403, a full outage (5xx exhausting the retry budget) and a malformed (unparseable) body each
+#    leave `enrich_matches` returning `{}`, never raising — the same "failure is not an error"
+#    contract the baseline tests above already prove, re-asserted here because the widening touches
+#    the same parsing path a shape drift could break silently.
+# 5. `PlayerSearchResult.avatar_hash` is parsed from the search record's `avatarhash` — a field
+#    `_parse_search_result` (`companion/provider.py:425-457`) reads five of the record's fields
+#    today and drops.
+# ==================================================================================================
+
+T417_XFAIL_REASON = "T418 not implemented yet"
+
+# The five, and only five, fields `data-model.md` §2 gives `EnrichedParticipant` — `colorHex` is
+# deliberately absent (constitution VI/X): the hex belongs to the design system as a token, and
+# carrying a third-party colour string to the client would let a provider set a product colour and
+# bypass the contrast pairing T410 exists to guarantee.
+_ENRICHED_PARTICIPANT_FIELDS = frozenset({"color_id", "team_id", "won", "rating", "rating_diff"})
+
+
+async def test_enrich_matches_participants_keyed_by_profile_id() -> None:
+    """`data-model.md` §2: `participants: dict[int, EnrichedParticipant] | None`, parsed from
+    `teams[].players[]` and keyed by `profileId`. Checked against two real players from the first
+    fixture match (`matchId` 500615037) on opposite teams, so both a loss and a win are covered by
+    the same test: `TheZero` (`profileId` 9766616, team 1, lost) and `TheViper` (`profileId` 196240,
+    team 2, won) — their `color`/`team`/`won`/`rating`/`ratingDiff` values are read straight off
+    `fixtures/companion/matches.json`.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant
+
+    body = _load_matches_fixture()
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    enrichment = result[500615037]
+    assert enrichment.participants is not None
+    all_profile_ids = {
+        player["profileId"] for team in body["matches"][0]["teams"] for player in team["players"]
+    }
+    assert set(enrichment.participants) == all_profile_ids
+
+    the_zero = enrichment.participants[9766616]
+    assert isinstance(the_zero, EnrichedParticipant)
+    assert the_zero.color_id == 1
+    assert the_zero.team_id == 1
+    assert the_zero.won is False
+    assert the_zero.rating == 1371
+    assert the_zero.rating_diff == -9
+
+    the_viper = enrichment.participants[196240]
+    assert isinstance(the_viper, EnrichedParticipant)
+    assert the_viper.color_id == 4
+    assert the_viper.team_id == 2
+    assert the_viper.won is True
+    assert the_viper.rating == 1698
+    assert the_viper.rating_diff == 6
+
+
+async def test_enrich_matches_rating_and_rating_diff_are_two_distinct_wire_fields() -> None:
+    """The wire's `rating` and `ratingDiff` are two distinct keys and must land as two distinct
+    fields, never merged into one: `rating` (post-match value) and `rating_diff` (the signed
+    movement) are asserted as different numbers pulled from different wire keys on the same player,
+    proving neither was silently overwritten by the other during parsing.
+    """
+    body = _load_matches_fixture()
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    the_zero = result[500615037].participants[9766616]
+    source_player = next(
+        player
+        for team in body["matches"][0]["teams"]
+        for player in team["players"]
+        if player["profileId"] == 9766616
+    )
+    assert the_zero.rating == source_player["rating"]
+    assert the_zero.rating_diff == source_player["ratingDiff"]
+    assert the_zero.rating != the_zero.rating_diff
+
+
+def test_enriched_participant_never_carries_color_hex() -> None:
+    """`data-model.md` §2: "`colorHex` is deliberately not carried." Introspecting
+    `EnrichedParticipant.model_fields` on the class itself — never on one parsed instance — is
+    what makes a later refactor that adds `color_hex` (or `colorHex`) back fail here the moment
+    the field is *declared*, before any value could ever reach it. A provider that can set a
+    product colour bypasses both constitution VI (tokens only) and the `-contrast` pairing T410
+    exists to guarantee.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant
+
+    field_names = set(EnrichedParticipant.model_fields)
+
+    assert field_names == _ENRICHED_PARTICIPANT_FIELDS
+    assert "colorHex" not in field_names
+    assert "color_hex" not in field_names
+
+
+async def test_enriched_participant_instance_never_carries_color_hex_either() -> None:
+    """Belt and braces alongside the class-level introspection above: a genuine parsed instance,
+    from the real fixture, has no `color_hex` attribute either — the class-level guarantee actually
+    holding at the one boundary a caller could reach past it.
+    """
+    body = _load_matches_fixture()
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    the_zero = result[500615037].participants[9766616]
+    assert not hasattr(the_zero, "color_hex")
+    assert not hasattr(the_zero, "colorHex")
+
+
+async def test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls() -> None:
+    """A `game_id` companion has no match for is simply absent from the returned dict — never an
+    entry whose `participants` is a dict of null placeholders for the ids the caller asked about.
+    Requests the three fixture matches plus one companion has never heard of; the unknown id must be
+    absent from `result` entirely, and the three known ones must still carry real participants.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant
+
+    body = _load_matches_fixture()
+    unknown_game_id = 999999999
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    result = await provider.enrich_matches([*FIXTURE_GAME_IDS, unknown_game_id])
+
+    assert unknown_game_id not in result, (
+        "a match companion does not know must yield no entry at all, not an entry standing in "
+        "for one with null participants"
+    )
+    assert set(result) == set(FIXTURE_GAME_IDS)
+    for enrichment in result.values():
+        assert enrichment.participants
+        for participant in enrichment.participants.values():
+            assert isinstance(participant, EnrichedParticipant)
+
+
+async def test_enrich_matches_with_participants_403_still_returns_nothing() -> None:
+    """`docs/data-sources.md` §3 / Technology Constraints: "aoe2companion (enrichment only,
+    degradable)" — its failure is not an error. Re-asserted here, on top of the participants
+    widening, because a shape drift touching the same parsing path could break silently otherwise.
+    Importing `EnrichedParticipant` first is what makes this test genuinely fail today (T418 not
+    landed) rather than accidentally passing on the unwidened `enrich_matches`, which already
+    returns `{}` on a 403 for reasons unrelated to this task.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant  # noqa: F401
+
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(403), recorder=recorder)
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    assert result == {}
+    assert len(recorder.calls) >= 1
+    assert recorder.calls[0].status_code == 403
+
+
+async def test_enrich_matches_with_participants_full_outage_still_returns_nothing() -> None:
+    """The 5xx twin of the 403 test above: the retry budget exhausts and `enrich_matches` still
+    returns `{}` rather than raising, with the participants widening in place.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant  # noqa: F401
+
+    recorder = _Recorder()
+    provider, _ = _provider(lambda request: httpx.Response(503), recorder=recorder)
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    assert result == {}
+    assert len(recorder.calls) == FAST_RETRY.max_attempts
+    assert all(call.status_code == 503 for call in recorder.calls)
+
+
+async def test_enrich_matches_with_participants_malformed_body_still_returns_nothing() -> None:
+    """A 200 whose body does not even parse as JSON — the `enrich_matches` twin of
+    `test_search_players_malformed_body_yields_an_empty_page_and_does_not_raise` above, not
+    previously covered for `enrich_matches` at all: a response the source genuinely sent, just not
+    shaped as documented, and still not an exception.
+    """
+    from aoe2stats_providers.base import EnrichedParticipant  # noqa: F401
+
+    recorder = _Recorder()
+    provider, _ = _provider(
+        lambda request: httpx.Response(200, content=b"not json at all"), recorder=recorder
+    )
+
+    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+
+    assert result == {}
+    assert recorder.calls[0].status_code == 200
+
+
+async def test_player_search_result_avatar_hash_parsed_from_avatarhash() -> None:
+    """`data-model.md` §2: "Add `avatar_hash: str | None`, parsed from `avatarhash` in
+    `_parse_search_result`". Every one of the fixture's 20 records carries `avatarhash` on the wire
+    (`docs/data-sources.md:296`); each must reach `PlayerSearchResult.avatar_hash` unchanged, under
+    that name — a hash, never a URL, and nothing in `packages/providers` builds the Steam CDN URL
+    from it (FR-008a, FR-015).
+    """
+    body = _load_search_fixture()
+    source_avatar_hashes = {
+        profile["profileId"]: profile["avatarhash"] for profile in body["profiles"]
+    }
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    page = await provider.search_players("vipe", limit=20)
+
+    assert len(page.results) == 20
+    for result in page.results:
+        assert result.avatar_hash == source_avatar_hashes[result.profile_id]
+
+    first = page.results[0]
+    assert first.profile_id == 196240
+    assert first.avatar_hash == "eefa125e4e662af9600355746783166942b8a1ff"
+
+
+def test_player_search_result_dataclass_has_an_avatar_hash_field() -> None:
+    """The class-level twin of the test above, in `test_player_search_result_dataclass_has_exactly_
+    the_six_contract_fields`'s own style: introspecting `dataclasses.fields` on the class itself,
+    never an instance, so a later refactor that drops `avatar_hash` — or renames it away from the
+    name `data-model.md` §2 requires — fails here the moment the field is (mis)declared.
+    """
+    from aoe2stats_providers.base import PlayerSearchResult
+
+    field_names = {field.name for field in dataclasses.fields(PlayerSearchResult)}
+
+    assert "avatar_hash" in field_names

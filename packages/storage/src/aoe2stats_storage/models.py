@@ -245,6 +245,16 @@ class AoeProfile(Base):
     # (`docs/data-sources.md` §3), and FR-004c was retired. A nullable column nothing can ever set
     # is worse than no column — see data-model.md.
     alias_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 004 (T421): the Steam avatar hash, as aoe2companion's search endpoint reports it
+    # (`avatarhash`). Nullable is the ordinary case, not the error case — a profile never seen in
+    # a companion response has no hash, and FR-008a's neutral placeholder is the correct render
+    # for it, not a degraded one. The image URL is built client-side from this value
+    # (`https://avatars.steamstatic.com/<hash>_full.jpg`, FR-008a/FR-015); no URL and no image
+    # bytes are ever stored here. Public data from a public source, carried and never used to
+    # link or merge profiles (constitution IX's unverified-third-party-claim rule, the same
+    # standing `unverified_steam_id` holds beside it) — see data-model.md §1 and
+    # `docs/privacy/processing-register.md`.
+    avatar_hash: Mapped[str | None] = mapped_column(Text)
 
 
 class ProfileLink(Base):

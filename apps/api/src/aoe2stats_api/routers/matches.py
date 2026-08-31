@@ -123,17 +123,47 @@ and `unavailable`; every other `CaptureStatus` (`pending`, `downloading`, `faile
 `capture.profile_id in owned_profile_ids`, full stop, dropping the status check entirely — is not a
 behaviour change for those five and does not depend on remembering which two statuses currently
 matter if `derive_availability` ever learns to read a third.
+
+**Read-time colour enrichment (T420, FR-003).** `match_players.color_id` has no Relic source at
+all (`research.md` **D2**) — `MatchesRepository`/`upsert_match_player` never write it (T413's own
+docstring). `_enrich_colours` below is this column's only writer, called from `list_matches` alone
+— "batched over the page's game ids" is `list_matches`'s own vocabulary, not `get_match_detail`'s,
+and every one of T419's tests drives it through `GET /api/matches` — on **the display path only**,
+never from `apps/ingester` and never from the capture path: colour never changes once a match is
+over, so wiring this into discovery would make it part of what is captured for no benefit, and it
+is not on the FR-014 replay-quarantine surface at all. `get_match_detail` still serves whatever
+`color_id` `list_matches` has already cached (per `contracts/http-api.md`: "Unchanged. It already
+serves ... `color_id`") — it does not enrich on its own, so a match viewed only through its detail
+route and never listed keeps `color_id: null`, the same legitimate FR-010 resting state
+`data-model.md` §6 describes for a match companion does not know, rather than a second, uncontrolled
+companion call on a route nothing in this feature's own test suite exercises against it. It calls
+`CompanionEnrichmentProvider.enrich_matches` **once per page, batched over every game_id on it, not
+once per match** — but only when at least one participant among those game_ids is still missing a
+colour; once a page is fully coloured, a repeat view is a database read (`research.md` **D2**,
+`data-model.md` §6). A degraded companion (a 403, an outage, a malformed body — `enrich_matches`
+never raises, see `companion/provider.py`'s own module docstring) answers `{}` or a partial map: the
+`UPDATE` below only fires for a `(game_id, profile_id)` pair the response actually names a
+`color_id` for, and only ever replaces a `NULL` — never a colour already cached by an earlier,
+successful view (`data-model.md` §6: "a degraded companion writes nothing; it does not write
+`NULL`" — this is the one property `test_match_colour_enrichment.py` exists to prove, and the one
+an unconditional `SET` from an empty enrichment result would silently break). The wiring below
+(`_COMPANION_HTTP_CLIENT`, `_COMPANION_RATE_LIMITER`, `_companion_breaker`, `_companion_call_sink`)
+is `routers/players.py`'s own `_build_search_provider` wiring, duplicated rather than imported —
+this module's own convention of a self-contained file (see the docstrings above), and importing
+from `players.py` here would invert the existing `players.py -> matches.py` (`match_row_json`)
+dependency into a cycle.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import functools
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from importlib import metadata
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
@@ -142,10 +172,19 @@ from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
+from aoe2stats_providers.base import ProviderCallRecord
+from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+from aoe2stats_providers.wiring import (
+    CircuitBreaker,
+    build_async_client_resources,
+    build_companion_breaker,
+)
 from aoe2stats_storage.models import (
     MatchAnalysis,
     MatchAnalysisState,
+    MatchPlayer,
     ProfileLink,
+    ProviderCall,
     ReplayCapture,
     ReplayFetchMiss,
 )
@@ -155,10 +194,118 @@ from aoe2stats_storage.repositories.matches import (
     MatchDetail,
     MatchesRepository,
     MatchListRow,
+    MatchParticipant,
     Opponent,
 )
 
 router = APIRouter(tags=["matches"])
+
+
+# --- Colour enrichment (T420, module docstring's "Read-time colour enrichment" note) -------------
+#
+# Interactive, per-request enrichment traffic against aoe2companion — mirrors `routers/players.py`'s
+# own `_COMPANION_HTTP_CLIENT`/`_COMPANION_RATE_LIMITER`/`_companion_breaker`/`_companion_call_sink`
+# byte for byte, duplicated rather than imported (module docstring: importing from `players.py`
+# here would invert its existing `players.py -> matches.py` dependency on `match_row_json` into a
+# cycle, and this router's own convention is a self-contained file, per the docstrings above).
+
+_COMPANION_PROVIDER_TIMEOUT_SECONDS = 10.0
+_COMPANION_RATE_PER_SECOND = 5.0
+_COMPANION_HTTP_CLIENT, _COMPANION_RATE_LIMITER = build_async_client_resources(
+    _COMPANION_RATE_PER_SECOND
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _companion_breaker() -> CircuitBreaker:
+    """The one `CircuitBreaker` every request's own, otherwise disposable,
+    `CompanionEnrichmentProvider` is handed (`companion/provider.py`'s "Breaker lifetime is the
+    caller's decision" note) — `lru_cache`, not a bare module global, only so a test that
+    deliberately trips it can reset it with `.cache_clear()` afterwards, the same device
+    `routers/players.py`'s own `_companion_breaker` uses for the identical reason.
+    """
+    return build_companion_breaker()
+
+
+def _companion_call_sink(
+    db_session: AsyncSession,
+) -> Callable[[ProviderCallRecord], Awaitable[None]]:
+    """Writes a `provider_calls` row directly onto the request's own `db_session` — safe here for
+    the same reason `routers/players.py`'s own `_companion_call_sink` is:
+    `CompanionEnrichmentProvider` never raises (`companion/provider.py`'s own module docstring),
+    so there is no mid-request exception this call could cause that would roll the request's
+    transaction back and take the row with it."""
+
+    async def _sink(record: ProviderCallRecord) -> None:
+        db_session.add(
+            ProviderCall(
+                provider=record.provider,
+                endpoint=record.endpoint,
+                status_code=record.status_code,
+                duration_ms=record.duration_ms,
+                called_at=record.called_at,
+                rate_limited=record.rate_limited,
+            )
+        )
+
+    return _sink
+
+
+def _build_enrichment_provider(db_session: AsyncSession) -> CompanionEnrichmentProvider:
+    return CompanionEnrichmentProvider(
+        client=_COMPANION_HTTP_CLIENT,
+        timeout_seconds=_COMPANION_PROVIDER_TIMEOUT_SECONDS,
+        rate_limiter=_COMPANION_RATE_LIMITER,
+        call_sink=_companion_call_sink(db_session),
+        breaker=_companion_breaker(),
+    )
+
+
+async def _enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> None:
+    """T420: `match_players.color_id`'s only writer (module docstring). Calls
+    `CompanionEnrichmentProvider.enrich_matches` **at most once**, batched over every `game_id` in
+    `game_ids` together — never once per match — and only when at least one of them still carries a
+    `match_players` row with `color_id IS NULL`. Once every participant across `game_ids` already
+    has a colour cached, this returns without ever reaching the transport, which is what turns a
+    second view of the same matches into a database read (`research.md` **D2**).
+
+    A degraded companion (`enrich_matches` never raises — see `companion/provider.py`'s own module
+    docstring) answers `{}` or a partial map: the loop below only ever `UPDATE`s a `(game_id,
+    profile_id)` pair the response actually names a `color_id` for, and only ever replaces a row
+    still `NULL` (`MatchPlayer.color_id.is_(None)` in the `WHERE` clause) — a colour already cached
+    by an earlier, successful view is never overwritten, degraded response or not (`data-model.md`
+    §6, `test_match_colour_enrichment.py`'s own "does not write `NULL`" assertion).
+    """
+    if not game_ids:
+        return
+
+    still_missing = await db_session.execute(
+        select(MatchPlayer.game_id)
+        .where(MatchPlayer.game_id.in_(game_ids), MatchPlayer.color_id.is_(None))
+        .limit(1)
+    )
+    if still_missing.scalar_one_or_none() is None:
+        # Every participant across `game_ids` is already coloured — a repeat view, or a page
+        # nobody has ever needed companion for. No companion call at all (module docstring).
+        return
+
+    provider = _build_enrichment_provider(db_session)
+    enrichment = await provider.enrich_matches(game_ids)
+    for game_id, match_enrichment in enrichment.items():
+        if match_enrichment.participants is None:
+            continue
+        for profile_id, participant in match_enrichment.participants.items():
+            if participant.color_id is None:
+                continue
+            await db_session.execute(
+                update(MatchPlayer)
+                .where(
+                    MatchPlayer.game_id == game_id,
+                    MatchPlayer.profile_id == profile_id,
+                    MatchPlayer.color_id.is_(None),
+                )
+                .values(color_id=participant.color_id)
+            )
 
 
 # --- Session resolution, the same discipline `auth.py`, `privacy.py`, `profiles.py` and
@@ -423,12 +570,42 @@ def _opponent_json(opponent: Opponent) -> dict[str, Any]:
     }
 
 
+def _participant_json(participant: MatchParticipant) -> dict[str, Any]:
+    """One entry of `participants[]` (T423/T425, `contracts/http-api.md`): shared by
+    `match_row_json`'s own `participants` and `_match_detail_json`'s, since both are built from the
+    identical `MatchParticipant` dataclass (`MatchesRepository`'s own module docstring, "a sibling,
+    not a replacement for `opponents`"). `civ_name` (FR-001) and `country` (feeds the opponent flag,
+    `contracts/http-api.md`'s field-semantics table) are computed here so a client reading either
+    route never derives them itself. `_match_detail_json` below still adds its own `replay` key per
+    participant afterwards — a per-point-of-view object `match_row_json`'s own rows never carry
+    (T338) — so this function stops one key short of that shape rather than growing an optional
+    parameter for it."""
+    return {
+        "profile_id": participant.profile_id,
+        "alias": participant.alias,
+        "country": participant.country,
+        "team_id": participant.team_id,
+        "civ_id": participant.civ_id,
+        "civ_name": civilisation_name(participant.civ_id),
+        "color_id": participant.color_id,
+        "result": participant.result,
+        "rating": participant.rating,
+        "rating_diff": participant.rating_diff,
+    }
+
+
 def match_row_json(row: MatchListRow) -> dict[str, Any]:
     """Public (no leading underscore): `routers/players.py`'s `GET /api/players/{profile_id}/
     matches` (T328) imports this directly rather than restating it, so the two routes can never
     drift apart on the one shape `contracts/http-api.md` promises is identical — see
     `test_players_history.py`'s own row-shape-comparison test, the reason this function is
-    exported at all."""
+    exported at all.
+
+    **Widened (T425, research.md D7).** `rating`, `team_id` and `color_id` are the caller's own —
+    `MatchListRow` already carries all three (T423) but nobody read them onto the wire until now.
+    `participants` is `opponents`'s sibling, not a replacement for it (`MatchesRepository`'s own
+    module docstring): every field already served is unchanged, so a client built against the
+    narrower shape keeps working."""
     return {
         "game_id": row.game_id,
         "started_at": row.started_at.isoformat() if row.started_at is not None else None,
@@ -441,7 +618,11 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
         "civilisation_name": civilisation_name(row.civilisation),
         "result": row.result,
         "rating_diff": row.rating_diff,
+        "rating": row.rating,
+        "team_id": row.team_id,
+        "color_id": row.color_id,
         "opponents": [_opponent_json(opponent) for opponent in row.opponents],
+        "participants": [_participant_json(participant) for participant in row.participants],
         # Every raw `CaptureStatus` value, unmodified — the badge's collapse is a front-end
         # concern (module docstring).
         "capture_status": row.capture_status.value if row.capture_status is not None else None,
@@ -476,15 +657,7 @@ def _match_detail_json(
         "patch": detail.patch,
         "participants": [
             {
-                "profile_id": participant.profile_id,
-                "alias": participant.alias,
-                "team_id": participant.team_id,
-                "civ_id": participant.civ_id,
-                "civ_name": civilisation_name(participant.civ_id),
-                "color_id": participant.color_id,
-                "result": participant.result,
-                "rating": participant.rating,
-                "rating_diff": participant.rating_diff,
+                **_participant_json(participant),
                 # FR-023 (T338, module docstring): one download offered per participant point of
                 # view, never more, never fewer.
                 "replay": _replay_json(
@@ -559,6 +732,9 @@ async def list_matches(
 
     async def _fetch_page() -> dict[str, Any]:
         page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
+        # T420: batched over this page's own game_ids, never one call per match (module
+        # docstring's "Read-time colour enrichment" note) — a no-op once every row is coloured.
+        await _enrich_colours(db_session, [row.game_id for row in page.matches])
         return {
             "matches": [match_row_json(row) for row in page.matches],
             "next_cursor": page.next_cursor,

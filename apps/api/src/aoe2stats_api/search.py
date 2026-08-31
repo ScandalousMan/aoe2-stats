@@ -71,6 +71,13 @@ as `companion/provider.py`'s own `_FAILURE_THRESHOLD` — nothing about it shoul
 per-deployment, so it stays a literal here rather than growing an `.env.example` entry with no
 real use for one. `now` is explicit for the same reason it is in `ratelimit.py` — deterministic TTL
 boundaries under test, never a race against the real clock.
+
+**`persist_avatar_hashes` (T426, D6 in research.md) is a second, deliberately separate write.**
+It does not run inside `search_players` itself: `routers/players.py`'s `search_for_players` calls
+it directly, over `outcome.results`, only once `outcome.degraded` is known to be `False` — the one
+place in this codebase that ever holds a genuine companion page rather than a cache reconstruction
+or a local-fallback answer. See that function's own docstring for why `aoe_profiles` and not
+`profile_search_cache` is where the hash ends up living.
 """
 
 from __future__ import annotations
@@ -487,4 +494,56 @@ def _result_from_json(record: dict[str, Any]) -> PlayerSearchResult:
         # reads back as `None` — "not known here" — rather than failing to parse
         # (`contracts/providers.md`'s `profile_search_cache.source` note on forward compatibility).
         unverified_steam_id=record.get("unverified_steam_id"),
+        # `avatar_hash` is deliberately never round-tripped through `profile_search_cache` —
+        # `persist_avatar_hashes` below writes it straight to `aoe_profiles` on the one call that
+        # ever carries it (a genuine, live companion page), so a row reconstructed from the cache
+        # always answers `None` here regardless of the source it was cached from (T426, D6).
     )
+
+
+# --- T426 (D6, research.md): the avatar hash, written where it is opportunistically found --------
+
+
+async def persist_avatar_hashes(
+    session: AsyncSession, results: Sequence[PlayerSearchResult]
+) -> None:
+    """Opportunistically upsert `aoe_profiles.avatar_hash` for every `results` entry that carries
+    one — the hash as aoe2companion's search endpoint reports it (`avatarhash`, `companion/
+    provider.py`'s `_parse_search_result`), the only companion response anywhere in this codebase
+    that ever carries it (`enrich_matches`'s `EnrichedParticipant` does not — `base.py`). Called
+    from `routers/players.py`'s `search_for_players`, on a genuine, non-degraded page only: the
+    local fallback's own results (`_local_fallback_results` above) are read from `aoe_profiles`
+    itself and never carry a hash, so calling this over a degraded outcome's results is always a
+    no-op, never a fault to guard against here as well.
+
+    **This is what buys `GET /api/players/{profile_id}` its own "no provider call" property
+    (`contracts/http-api.md`, T419).** The hash is captured here, once, at search time, and simply
+    read back — never fetched — at render time.
+
+    Never overwrites `alias` or `country` on an existing row, the same discipline
+    `aoe2stats_ingester.discover.touch_aoe_profile` already keeps for `alias` (that function's own
+    docstring): only `avatar_hash` and `last_seen_at` are in the `DO UPDATE SET` clause. A profile
+    this service has never itself observed — found only through search, never through a match —
+    still gets a row, seeded with the search result's own `alias`/`country`, exactly as a first
+    sighting through `touch_aoe_profile` would seed one.
+    """
+    now = datetime.now(UTC)
+    for result in results:
+        if result.avatar_hash is None:
+            continue
+        statement = (
+            pg_insert(AoeProfile)
+            .values(
+                profile_id=result.profile_id,
+                alias=result.alias,
+                country=result.country,
+                avatar_hash=result.avatar_hash,
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            .on_conflict_do_update(
+                index_elements=[AoeProfile.profile_id],
+                set_={"avatar_hash": result.avatar_hash, "last_seen_at": now},
+            )
+        )
+        await session.execute(statement)

@@ -136,7 +136,7 @@ class ReconcileStage:
                     matches_discovered += 1
                     for player_profile_id in raw_match.player_profile_ids:
                         await touch_aoe_profile(session, player_profile_id)
-                        await upsert_match_player(session, raw_match.game_id, player_profile_id)
+                        await upsert_match_player(session, raw_match, player_profile_id)
                         if player_profile_id in archiving_profile_ids:
                             enqueued = await self._discover._enqueue_capture(
                                 session, raw_match, player_profile_id
