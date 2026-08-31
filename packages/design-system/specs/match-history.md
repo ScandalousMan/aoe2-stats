@@ -4,17 +4,24 @@
 **Feature**: 001, US3 — consumed by `apps/web/src/routes/matches.index.tsx` (T075) and
 `apps/web/src/routes/matches.$gameId.tsx` (T076). **Extended by 003, US2** (§11) — consumed by
 `apps/web/src/routes/players.$profileId.matches.tsx` (003 T331) for any player's history, and by the
-same `matches.$gameId.tsx` route, widened (003 T331) to any match this service holds.
+same `matches.$gameId.tsx` route, widened (003 T331) to any match this service holds. **Extended by
+004, US1** (§12) — game imagery, participant grouping and rating movement, across the same three
+routes.
 **Requirements**: FR-010, FR-011, FR-027, FR-028. SC-010. **§11 also carries 003's FR-007, FR-008,
 FR-008a, FR-018, FR-019, FR-020, FR-021, FR-022. SC-003** — prefixed `003` throughout §11 to keep
 them apart from 001's own numbers above, which share digits with different requirements in 003's own
-numbering.
+numbering. **§12 carries 004's FR-001 to FR-006, FR-010, FR-013 and FR-016. SC-001, SC-005** —
+prefixed `004` throughout §12, for the same reason.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`,
 `StatValue`. [`capture-state-badge.md`](./capture-state-badge.md) — `CaptureStateBadge`.
 [`profile-summary.md`](./profile-summary.md) — the page header above both routes is a `ProfileSummary`
 `compact` variant (§11's own `subject="other"` reading, [profile-summary.md](./profile-summary.md)
 §11, when the profile viewed is not the caller's own); neither component below repeats identity
-information it already shows.
+information it already shows. **§12 additionally depends on**
+[`civilisation-icon.md`](./civilisation-icon.md), [`map-thumbnail.md`](./map-thumbnail.md) and
+[`player-colour-swatch.md`](./player-colour-swatch.md) — the three marks are specified in full there
+and only _composed_ here — and on [`game-asset-tokens.md`](./game-asset-tokens.md) for the
+player-colour and `icon` token families.
 
 ## 1. Purpose
 
@@ -29,9 +36,13 @@ MatchRow                                                       one per match, th
 ├─ Outcome              "Win" / "Loss" / "Unknown" as text, success/danger/neutral — never colour
 │                       alone. "Unknown" whenever the result is not yet known (§2a)
 ├─ Opponent             1v1: the opponent's alias. Team game: primary opponent + "and N others"
+│                       — SUPERSEDED by §12.3's Participants: both sides, each in their colour
 ├─ Map                  factual name, text only — no map thumbnail (constitution X)
+│                       — SUPERSEDED by §12.2: 5.0.0 permits a licence-recorded thumbnail
 ├─ Civilisation         the caller's own civilisation, factual name, text only — no civ emblem
+│                       — SUPERSEDED by §12.2: CivilisationIcon, mark + name
 ├─ RatingChange         StatValue/inline, signed
+│                       — WIDENED by §12.4 to Rating: the absolute value and its signed change
 ├─ Duration             "34 min" — never raw seconds
 ├─ When                 relative time, absolute time on hover/focus (title attribute or tooltip)
 └─ CaptureStateBadge    context="compact" — see capture-state-badge.md
@@ -39,12 +50,15 @@ MatchRow                                                       one per match, th
 MatchDetailPanel
 ├─ Header
 │  ├─ Map, leaderboard name, duration, played-on date/time
+│  │                             — Map WIDENED by §12.5 to MapThumbnail (lg) + name
 │  ├─ GameVersion                 raw patch string (e.g. "101.101") — 003 FR-018, §11.1
 │  └─ CaptureStateBadge          context="detail"
 ├─ DownloadAction                Button/secondary — present only when capture_status = "stored"
 ├─ ParticipantsTable             FR-011: every participant, grouped by team
-│  └─ TeamGroup ×n
+│  └─ TeamGroup ×n               — gains a TeamResult marker in its heading (§12.3)
 │     └─ ParticipantRow ×n       alias, civilisation, result (§2a), rating change
+│                                — WIDENED by §12.5: colour swatch before the alias, civilisation
+│                                  as mark + name, rating as value + signed change
 └─ StatusRegion                  Callout ×0..1 — the detail failed to load, or nothing to show
 ```
 
@@ -57,6 +71,16 @@ describe the same region twice; T084 places it below `DownloadAction`'s position
 **IP note**: map names and civilisation names are factual names, set as text in our own typeface —
 the same rule `profile-summary.md` states for leaderboard names. No map thumbnail, no civilisation
 emblem, no in-game font, no portrait. Constitution X.
+
+**Superseded in part by §12, and the sentence is left standing so the next reader finds why.**
+Constitution X **5.0.0** now permits game assets needed to display game content — map, civilisation,
+unit, building and resource icons, flags and player colours — to be copied into the repository and
+served, on two anchors: strictly non-commercial, and the Microsoft "Game Content Usage Rules"
+disclaimer in both the README and the site footer. Every pack carries a licence record
+(`specs/004-visual-parity/contracts/asset-pack.md`), enforced by `scripts/checks/asset_packs.py`. So
+the map thumbnail and the civilisation emblem are now permitted and are specified in §12. **The rest
+of the note stands unchanged**: no in-game font, no portrait, no screenshot — nothing else has been
+ruled on, and names remain factual text in our own typeface.
 
 ### 2a. The unknown outcome, never rendered as a loss (Amended 2026-08-29)
 
@@ -95,8 +119,11 @@ combined message, matching §11.4's "a match with no consenting participant stil
 
 **This does not change when a result is unknown, only how it renders.** Filling the ingestion gap
 `discover.py`'s own docstring names — a stage that resolves `result` after the fact — is separate
-work, out of scope here. What this section fixes is that the *absence* of that data must read as
-absence, not as the specific, false fact "Loss."
+work, out of scope here. What this section fixes is that the _absence_ of that data must read as
+absence, not as the specific, false fact "Loss." **004 fills that gap** (research.md D1: the columns
+were declared and never written; T413/T415 project them from `matches.raw_payload`), so "Unknown"
+stops being every row's state — and §2a stops being hypothetical, because it is now the render for
+the matches that genuinely have no recorded result rather than for all of them.
 
 ## 3. Variants and sizes
 
@@ -112,6 +139,11 @@ not the caller's own — never a bare count with no name, and never every alias 
 (that is what `MatchDetailPanel`'s `ParticipantsTable` is for). `"and N others"` is a link to the
 same match detail, not a tooltip: FR-011's "every participant" must be one click away from the row
 that summarised them, never an information dead end.
+
+**Superseded by §12.3.** `MatchRow` now names both sides, each participant beside their colour, and
+`"and N others"` survives as the _overflow_ device rather than as the whole treatment of the opposing
+team. The requirement this section exists to satisfy — never a bare count with no name, never an
+information dead end — is carried forward verbatim in §12.3.
 
 ## 5. States
 
@@ -182,7 +214,8 @@ rule) — `RatingChange` never counts up, the outcome never fades in.
 
 Gaps in play: **DS-8** (tabular alignment for `RatingChange` rides on `font-mono`, same as
 `profile-summary.md`). No new gap is introduced by either component; `CaptureStateBadge`'s own gap
-register (none) is unaffected.
+register (none) is unaffected. **DS-7 is closed** by 004's `icon` family (`game-asset-tokens.md`),
+which is what §12's three marks size from.
 
 ## 7. Spacing
 
@@ -199,6 +232,8 @@ register (none) is unaffected.
 | `DownloadAction` to `ParticipantsTable`                                   | `space-6` |
 | Between `TeamGroup`s                                                      | `space-5` |
 | `ParticipantsTable` row padding-block                                     | `space-3` |
+
+§12.7 adds the steps the three new marks need; nothing above changes.
 
 ## 8. Responsive
 
@@ -217,6 +252,9 @@ register (none) is unaffected.
 
 **Do not render both layouts and hide one** — `profile-summary.md`'s own rule, restated here because
 it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
+
+**§12.7 renames two of the 1280 columns** (_Opponent_ → _Players_, _Change_ → _Rating_) and adds the
+imagery to the card layout; the structure, the breakpoints and the one-DOM rule are unchanged.
 
 ## 9. Accessibility
 
@@ -252,7 +290,9 @@ it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
 - [ ] Every row shows a `CaptureStateBadge` reading one of exactly four labels: "Archived", "Still
       catchable", "Lost", "Needs review" — never "Safe" (see `capture-state-badge.md` §3).
 - [ ] A team match's `Opponent` field never lists more than one alias plus "and N others" inline; the
-      remaining aliases appear only once the row is opened.
+      remaining aliases appear only once the row is opened. **Superseded by §12.8's first criterion**
+      — the row now names both sides under a cap, and the overflow rule ("and N others", never a bare
+      count) is what survives.
 - [ ] The empty-history screenshot shows the page header still present, above an info callout — never
       a blank page.
 - [ ] The loading screenshot's skeleton row count matches the loaded screenshot's row count at the
@@ -444,3 +484,335 @@ way sighted users do, from the same string.
 - [ ] Converting the unresolved-identifier story to greyscale still reads "Civilisation ID `<n>`" as
       distinct from a resolved name, because the distinguishing signal is the label and the typeface,
       never colour alone.
+
+---
+
+## 12. Game imagery, participant grouping and rating movement (004, US1 — extends §§1–11, does not replace them)
+
+**Two things changed underneath these components, and neither is a redesign.** Constitution X 5.0.0
+permits licence-recorded game assets in the repository, so the civilisation emblem and the minimap
+§2's IP note forbade are now specified (§2's amendment note). And five per-participant columns that
+were declared, read by three routers and **written by nobody** now carry values (research.md D1;
+T413/T415 project them from `matches.raw_payload`, T420 caches colour from companion) — so
+`civ_id`, `team_id`, `result`, `rating`, `rating_diff` and `color_id` are facts these components can
+render rather than nulls they have to explain.
+
+Everything in §§1–11 applies unchanged. This section states only what the imagery and the newly
+populated columns introduce, and — where it changes an earlier rule — says so in §12.2 rather than
+quietly.
+
+### 12.1 Three rules, stated once, because otherwise each component decides them differently
+
+These are the decisions `CivilisationIcon`, `MapThumbnail`, `PlayerColourSwatch`, `MatchRow` and
+`MatchDetailPanel` would each otherwise make on their own, and five answers to one question is how a
+list and a detail view start disagreeing about the same match.
+
+**1. Colour is never the only carrier of meaning** (004 FR-004; README rule 4). Two consequences bind
+every component in this file:
+
+- **A `PlayerColourSwatch` always sits beside a player's name**, in the same line or the same table
+  cell. The swatch renders nothing at all when it has no name to sit beside
+  ([`player-colour-swatch.md`](./player-colour-swatch.md) §2a), so the rule is structural rather than
+  a convention each call site has to remember.
+- **The winning side is distinguished by a word, not by a colour.** §12.3's `TeamResult` marker reads
+  "Won" / "Lost" / "Result unknown"; `success` and `danger` are reinforcement on top of the word,
+  never the signal itself. No trophy glyph on its own, no green row fill, no coloured left rule
+  standing alone. §2a's third neutral state is the same discipline applied per participant, and it
+  extends here: **a group whose result nobody recorded reads as unknown, never as a defeat.**
+
+**2. The direction of a rating change is legible without colour** (004 FR-005's explicit clause:
+"with direction conveyed by more than colour alone"). The sign is a **character in the text** —
+`+16`, `−15` — always rendered, never dropped, never replaced by a rotated arrow (the rule
+`profile-summary.md` already states for its own delta), and never left to `success`/`danger` to
+imply. §12.4 fixes the format down to which minus sign.
+
+**3. The absent-asset state is the prop being `undefined`, and it renders the readable label alone**
+(004 FR-010, SC-005). Not a placeholder image, not a silhouette, not a "?" tile, not an empty framed
+box — **a placeholder is a broken image with better manners**: it takes the same space, teaches the
+reader nothing, and defeats the only check FR-010 is testable by, which is that no request under
+`/game-assets/` ever 404s. `packages/game-assets`' resolvers return `undefined` rather than a URL
+precisely so that nothing is requested for an identifier no pack covers; the components pass that
+`undefined` through and draw nothing where the mark would have been.
+
+A corollary that belongs with them: **the design system never imports an image and never reaches into
+`packages/game-assets`** (plan.md's Structure Decision). `apps/web` resolves `civilisationIcon()` /
+`mapThumbnail()` and passes a URL — or `undefined` — as a prop. That is what keeps these components
+asset-agnostic, their unit tests free of binary fixtures, and the degrade path a single, testable
+value rather than a fetch that may or may not fail.
+
+### 12.2 What §12 supersedes, and what it leaves standing
+
+| Earlier text                                                                     | Status                                                                                                                                               |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §2's IP note, "No map thumbnail, no civilisation emblem"                         | **Superseded** for those two marks only, by constitution X 5.0.0 and the pack licence records. "No in-game font, no portrait, no screenshot" stands. |
+| §2's `Map` and `Civilisation` anatomy lines ("text only")                        | **Superseded** by §12.5 and §12.3: mark + name, the name never suppressed.                                                                           |
+| §4's `Opponent` treatment                                                        | **Superseded** by §12.3's `Participants`. Its requirement — never a bare count with no name, never an information dead end — is carried forward.     |
+| §2's `RatingChange` line                                                         | **Widened** by §12.4: the absolute rating joins the signed change. The no-motion and `mono` rules are unchanged.                                     |
+| §8's 1280 column list                                                            | Two columns **renamed** (§12.7): _Opponent_ → _Players_, _Change_ → _Rating_. Structure, breakpoints and the one-DOM rule unchanged.                 |
+| §10's "`Opponent` never lists more than one alias" criterion                     | **Superseded** by §12.8's first criterion.                                                                                                           |
+| §2a's three-state outcome, §11.1's "no row is marked as you", §11.2, §5's states | **Unchanged, and load-bearing.** §12 adds imagery to them; it removes none of them.                                                                  |
+
+### 12.3 Participants, grouped by side, each in their colour (004 FR-003, FR-004)
+
+`MatchRow` gains a **`Participants`** part, replacing §4's single-opponent treatment. It shows who
+played, on which side, and in which colour.
+
+**Composition.** Each participant renders as `PlayerColourSwatch` (`xs`) immediately followed by
+their alias, `space-2` apart, never wrapping apart (§12.7). Participants are grouped by `team_id`;
+groups are separated by the word **"vs"** in `text-secondary` — a word, not a glyph, so it survives
+greyscale and reads correctly aloud.
+
+**Ordering.** The viewed profile's team comes first, then the remaining groups ascending by
+`team_id`; inside a group, the viewed profile first, then the order the API returned. This is not a
+caller-relative perspective and must not become one: §11.3 already established that every field in a
+row is relative to _the profile whose history is being read_, not to whoever is signed in, so the
+same row renders identically for every caller. **No participant is marked as "you"** — §11.1's rule
+holds here too; position is the only distinction, and the row's own `Outcome` already speaks for the
+viewed player.
+
+**The cap, and the overflow.** A row is a summary; `MatchDetailPanel` is where every participant is
+guaranteed to appear (FR-011).
+
+| Shape                                           | What the row names                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Two groups (1v1, 2v2, 3v3, 4v4 …)               | Up to **three** participants per group, in order; a longer group appends `"and N others"`              |
+| More than two groups (a free-for-all)           | No grouping and no "vs": the viewed profile's swatch and alias, then `"and N others"` for all the rest |
+| One group (co-op, or a partially projected row) | The single group, same cap of three, no "vs"                                                           |
+
+`"and N others"` keeps §4's meaning exactly: never a bare count with no name, and never a dead end —
+**but it needs no link of its own**, because the whole row already is one link to the same match
+detail (§9). That preserves §9's "exactly one focus stop per row" while satisfying §4's requirement
+that the remaining aliases are one click away.
+
+**The `TeamResult` marker.** Every group carries a word derived from its participants' `result`s. It
+is the FR-004 winner signal, and it is text:
+
+| The group's participants                                         | Marker                 | Token            |
+| ---------------------------------------------------------------- | ---------------------- | ---------------- |
+| every `result` is `win`                                          | **"Won"**              | `success`        |
+| every `result` is `loss`                                         | **"Lost"**             | `danger`         |
+| no participant has a recorded `result`                           | **"Result unknown"**   | `text-secondary` |
+| mixed recorded results (should not occur; possible mid-backfill) | no group marker at all | —                |
+
+"Result unknown" reuses §2a's own vocabulary rather than inventing a second phrase for the same gap,
+and is never `success` or `danger` — a group nobody recorded a result for **must not read as the
+losing side**. The colour tokens reinforce the word; converting the screenshot to greyscale must
+leave all three states readable (§12.8).
+
+In `MatchRow` the marker precedes its group's names. In `MatchDetailPanel` it joins the `TeamGroup`
+heading — "Team 1 — Won" — and the group's visually hidden `<caption>`, so the same words reach a
+screen reader (§9's existing caption rule, extended, not replaced).
+
+**What the row deliberately does not show.** Per-participant civilisations, ratings and results are
+**detail only**. A row that showed eight aliases, eight colours, eight emblems and eight ratings
+would be a table pretending to be a row, and README rule 1 settles that trade: the numbers a user
+scans (rating, duration, when) must not be pushed off the line by imagery. The row's own
+`Civilisation` field remains the _viewed profile's_ civilisation (§11.3), now as mark + name.
+
+### 12.4 Rating and its movement (004 FR-005, FR-006)
+
+**Format.** The absolute rating, then the signed change in parentheses: `922 (+16)`, `921 (−15)`.
+`mono`, tracking `tight`, right-aligned in the 1280 table so signs and digits line up down the column
+(DS-8). `text-primary` for the absolute value; `success` / `danger` on the parenthetical only, as
+reinforcement for a sign that is already a character.
+
+**The minus is U+2212 MINUS SIGN (`−`), not a hyphen** — it is the glyph the existing
+`TableRatingChange` already renders, it aligns with digits in a monospaced face, and a screen reader
+says "minus" rather than swallowing it.
+
+**Four cases an implementer would otherwise decide separately:**
+
+| Data                                      | Renders                                          | Why                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `rating` and `rating_diff` both present   | `922 (+16)`                                      | the FR-005 case                                                                                                    |
+| `rating_diff` is exactly `0`              | `922 (0)`, `text-secondary` on the parenthetical | there is no direction to convey; `+0` asserts a gain that did not happen                                           |
+| `rating_diff` is `null`, `rating` present | `922`                                            | `null` means _not known_ — never `(+0)`, never `(—)`, never a `0` standing in (`contracts/http-api.md`'s own rule) |
+| both `null`                               | the field is **absent**                          | §5's existing "absent when the match carries no rating change to report"; never a `–`, never a `0`                 |
+
+(If a `rating_diff` ever arrives without a `rating` — the data model says it cannot, since the diff is
+`null` whenever either side is missing — render the change alone, `+16`, never an empty parenthesis.)
+
+**No motion, ever**: no count-up, no flash on change, nothing that delays reading a number
+(`StatValue`'s own rule and README rule 1).
+
+**FR-006's metadata** — ladder, duration, date — is already stored and already partly rendered.
+Duration and When are unchanged. The **ladder name** joins the `Map` field as a second, `xs`
+`text-secondary` line beneath the map name ("Arabia" / "1v1 Random Map") rather than becoming a ninth
+column: it qualifies the match's context, it is the field a reader consults after the map rather than
+alongside the numbers, and a ninth column at 1280 would narrow every figure column to buy a fact
+nobody scans. At 375/768 it joins the existing meta line.
+
+### 12.5 `MatchDetailPanel`, widened (004 FR-001, FR-002, FR-003, FR-004)
+
+- **Header**: `MapThumbnail` at `lg` (`icon-3xl`, 96px) beside the map name, leaderboard name,
+  duration, played-on date/time and `GameVersion` (§11.1). A `null` map name keeps §11.2's
+  `UnresolvedIdentifier` treatment and shows **no** thumbnail — nothing is guessed from the mode, the
+  ladder or a neighbouring match.
+- **`ParticipantsTable`**, per `TeamGroup`, columns at 1280: **Player** (`PlayerColourSwatch` `sm`
+  then the alias, together in the `<th scope="row">`), **Civilisation** (`CivilisationIcon` `lg`,
+  mark + name, or §11.2's `UnresolvedIdentifier`), **Result** (§2a's three states, unchanged),
+  **Rating** (§12.4's format, identical rules).
+- The swatch lives **inside the Player cell**, not in a colour column of its own: a column would put
+  the chip a column away from the name it describes and invite reading it as a standalone status
+  ([`player-colour-swatch.md`](./player-colour-swatch.md) §2a).
+- The `TeamGroup` heading carries §12.3's `TeamResult` marker, and its visually hidden `<caption>`
+  carries the same words.
+- Group ordering here is strictly ascending `team_id` — **not** viewer-relative, because §11.1's
+  point 1 requires the identical page whichever history it was reached from.
+- **This panel composes the three marks; it never re-implements one.** Two presentations of the same
+  fact are exactly how the list and the detail view start disagreeing about a match (T431's own
+  wording), and the components exist so there is one answer to "what does an uncovered civilisation
+  look like".
+
+### 12.6 States §5 and §11.4 did not need to name
+
+**default / hover / focus-visible / active / disabled** — unchanged from §5. None of the three marks
+is interactive, none takes a `tabindex`, and none has a hover of its own: the row still has **exactly
+one focus stop**, and the row's hover fill is still the only hover in play. A mark that grew, glowed
+or revealed a preview on hover would also be invisible to the static screenshots this project gates
+on, which is a second reason not to have one.
+
+**loading** — §5's counts are unchanged (5 skeleton rows in the list; 2 per team in the panel), but
+the **footprint now includes the imagery**: the skeleton row's height matches the loaded row's height
+at the same viewport, thumbnail included, so there is no reflow when the data arrives (§10's existing
+no-reflow criterion, which now has more to be true about). Each mark's own skeleton shape is in its
+spec; no mark renders a partial version of itself while waiting.
+
+**error** — three new failure modes, and all three render as an _absence_, never as an error:
+
+- a civilisation emblem fails to load → the name alone, identical to the uncovered case;
+- a minimap fails to load → the name alone, frame included in the removal, identical to the uncovered
+  case;
+- `color_id` outside `1..8` → the neutral chip, identical to `null`.
+
+None of them produces a callout, a tone change or a retry: the match is fully readable without the
+picture, and telling the user that an image did not load asks them to act on something they cannot.
+The list-level and panel-level error states of §5 are unchanged.
+
+**empty** — §5's two empty states (zero matches, match not found) are unchanged. §12 adds one state
+neither §5 nor §11.4 had to name, and it is the state **every production row is in until the backfill
+runs** (data-model.md §6's first transition — "row exists, all NULL"):
+
+> **A match whose participant columns are not yet projected still renders in full.** `Outcome` reads
+> "Unknown" (§2a), `Civilisation` and `Rating` are absent per their own rules, and the `Participants`
+> field is **omitted entirely** — never an empty "vs" with nothing on either side, never a row of
+> neutral chips with no names. Map, ladder, duration, when and `CaptureStateBadge` render from the
+> `matches` columns, which have always been populated. A row in this state is a legitimate resting
+> state, not a broken one.
+
+The three degrade cases quickstart scenario 5 walks — unknown civ id, unknown map name, `null`
+`color_id` — are **not** empty states of these components. The row is complete; a picture is simply
+absent, which is what §12.1's third rule is for.
+
+### 12.7 Tokens, spacing, responsive, accessibility — the delta only
+
+**Tokens.** No new token and no new gap. Via the three marks: `player-1` … `player-8` and their
+`-contrast` pairs, `surface-sunken` (the not-recorded chip), `border-strong` (the chip's frame,
+meaning-bearing, 3:1), `border` (the thumbnail's frame, decorative), `icon-xs` / `icon-sm` /
+`icon-md` / `icon-lg` / `icon-2xl` / `icon-3xl`, `radius-sm` and `radius-md`. §6's own list is
+otherwise unchanged; `success` / `danger` / `text-secondary` carry §12.3's marker and §12.4's sign
+exactly as they already carry `Outcome` and `RatingChange`. Every contrast pair in play is already in
+README's measured table and already asserted by `tokens/build-tokens.test.mjs`.
+
+**Spacing** (added to §7; nothing there changes):
+
+| Between                                              | Step      |
+| ---------------------------------------------------- | --------- |
+| Colour swatch to the alias it belongs to             | `space-2` |
+| Between two swatch+alias pairs within a group        | `space-3` |
+| `TeamResult` marker to its group                     | `space-2` |
+| Group to the "vs" divider, and divider to next group | `space-3` |
+| Civilisation mark to its name                        | `space-2` |
+| Map thumbnail to its name (`sm`)                     | `space-2` |
+| Map thumbnail to its name (`md` / `lg`)              | `space-3` |
+| Map name to the ladder line beneath it               | `space-1` |
+
+**Responsive.** §8's structure, breakpoints and one-DOM rule are unchanged.
+
+- **375** — `MapThumbnail` `md` (64px) leads the card, map name and ladder beside it;
+  `CivilisationIcon` `md`; the `Participants` line wraps between pairs (never between a chip and its
+  alias) and, if it still overflows, the cap of §12.3 has already bounded it. `Rating` stays
+  right-aligned on the first line.
+- **768** — as §8, with the imagery at the same sizes.
+- **1280** — columns become _Result · **Players** · Map · Civilisation · **Rating** · Duration · When ·
+  Capture_. `MapThumbnail` drops to `sm` (32px) here so a row with a thumbnail and a row without one
+  are the same height ([`map-thumbnail.md`](./map-thumbnail.md) §7); the Players column names at most
+  two participants per side before its overflow text, because the column's width is bounded by the
+  table rather than by the window — the same reasoning §8 already gives `CaptureStateBadge`'s
+  trailing column.
+- **320px / 200% zoom** — the desktop table is not in play (§8), the marks are rem-sized so they grow
+  with the text, and no cell truncates. The `Participants` line wraps rather than ellipsising —
+  `profile-summary.md`'s "figures never ellipsise" discipline, extended to a name that is beside a
+  colour nobody can read aloud.
+
+**Accessibility.** §9 is unchanged and the delta is small, because the marks were specified to add
+nothing to it:
+
+- Both images are `alt=""` (decorative): the visible name beside each one is the accessible name, so
+  no fact is announced twice.
+- The colour swatch carries its meaning as visually hidden text ("Colour: Blue" / "Colour: not
+  recorded"), in reading order immediately before the alias — never an `aria-label` standing in for
+  visible text (`capture-state-badge.md` §11's rule, honoured here).
+- The `TeamResult` marker is real text in the group heading and in the group's `<caption>`; a screen
+  reader reaches "Team 1 — Won" without needing the colour.
+- The rating's sign is a character in the text node, so it is announced and it survives greyscale;
+  the parenthetical never becomes an image, a canvas or an icon font.
+- Nothing new is interactive, so no new touch target exists; the row's single link is unchanged and
+  the 44px floor (`icon-xl`) applies only if a future call site makes a mark a control.
+
+### 12.8 Visual acceptance criteria (additional to §10 and §11.6)
+
+**Imagery and the three degrade stories** — these are what SC-005 reduces to.
+
+- [ ] The 1v1 story and the eight-player story each show **every named participant with a colour chip
+      immediately beside their alias**; no chip appears anywhere without a name in the same line or
+      cell, and the row names at most three participants per side (two per side at 1280) with the
+      remainder carried by "and N others" — never a bare count.
+- [ ] The uncovered-civilisation story shows the civilisation **name alone**: no box, no silhouette,
+      no "?" tile, no gap where the mark would be. Placed in one frame beside a covered row, the two
+      names sit on the same baseline.
+- [ ] The uncovered-map story shows the map **name alone, with no frame** — an empty bordered box is a
+      failure of this criterion, not a pass.
+- [ ] The `color_id: null` story shows the neutral chip beside every affected alias, with the aliases
+      still aligned with the rows above and below, and **no** `danger` or `warning` treatment
+      anywhere.
+- [ ] Across all three degrade stories, in both themes: **zero broken or missing images**, and the
+      browser network panel shows no request under `/game-assets/` returning 404 (SC-005). A 404 there
+      is a contract defect in the resolver, not a missing file (quickstart scenario 5).
+- [ ] The 1280 table story shows rows with and without a map thumbnail at the **same row height**.
+
+**Outcome, colour and the winning side**
+
+- [ ] Every `TeamGroup`, in both components, carries one of exactly three words — "Won", "Lost",
+      "Result unknown" — or no marker at all (the mixed case). A group with no recorded result reads
+      "Result unknown" and is **visibly not** the same treatment as "Lost", in the same frame.
+- [ ] Converting any match story to **greyscale** leaves: the winning side identifiable (the word),
+      the rating direction identifiable (the sign), the outcome identifiable (§2a's three words), and
+      every participant identifiable (their alias). Only the chips become indistinguishable — which is
+      the point: nothing was riding on colour alone.
+- [ ] No story renders a green fill, a red fill or a coloured left rule as the sole marker of the
+      winning side.
+
+**Rating**
+
+- [ ] A story seeded `rating: 922, rating_diff: 16` renders `922 (+16)`; one seeded `-15` renders
+      `921 (−15)` with the U+2212 minus; one seeded `0` renders `(0)` with no sign; one seeded
+      `rating_diff: null` renders `922` with no parenthesis; one seeded both null renders no rating
+      field at all — never a `–` and never a `0`.
+- [ ] At 1280, the Rating column's signs and digits align vertically down the column in a story with
+      mixed positive, negative and zero values.
+- [ ] No rating animates on entry in any story (compare the first and second frames of the loading →
+      loaded transition).
+
+**Composition and states**
+
+- [ ] The un-projected-row story (every participant column NULL) renders map, ladder, duration, when
+      and the capture badge, with `Outcome` reading "Unknown", **no** `Participants` field, and no
+      empty "vs" — and it is visibly not an error state.
+- [ ] `MatchRow` and `MatchDetailPanel` stories seeded from the same match render the same
+      civilisation mark, the same colours and the same winner — placed side by side in one frame, the
+      two views agree on every fact they both show.
+- [ ] The loading story and the loaded story at the same viewport overlay with no reflow, thumbnail
+      footprint included.
+- [ ] Every story exists in both light and dark theme, and no mark is tinted, filtered or otherwise
+      theme-adjusted between the two (the chips and the pack images are identical in both).
