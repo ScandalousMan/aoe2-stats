@@ -6,6 +6,7 @@ import type {
   ParticipantData,
   TeamGroupData,
 } from 'design-system'
+import { civilisationIcon, mapThumbnail } from 'game-assets'
 import type {
   ApiMatchDetail,
   ApiMatchListRow,
@@ -19,6 +20,19 @@ import {
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
 } from './format'
+
+/** Resolves `civName` (never a bare id — `packages/game-assets`'s own contract) onto an icon URL,
+ * or `undefined` on a `null` name or a pack miss alike — both read as "no icon", `MatchRow`'s and
+ * `MatchDetailPanel`'s own designed degrade path (match-history.md §12.1 rule 3), never a
+ * client-built placeholder path (T432, `contracts/asset-pack.md`). */
+function resolveCivIconUrl(civName: string | null): string | undefined {
+  return civName != null ? civilisationIcon(civName) : undefined
+}
+
+/** Same rule as `resolveCivIconUrl`, for `packages/game-assets`'s `mapThumbnail`. */
+function resolveMapThumbnailUrl(mapName: string | null): string | undefined {
+  return mapName != null ? mapThumbnail(mapName) : undefined
+}
 
 // The one place `ApiMatchListRow` (snake_case, `api.ts`) becomes what `MatchRow`/`MatchList`
 // (packages/design-system) expect (camelCase, ids as strings, pre-formatted text) — mirrors
@@ -64,9 +78,11 @@ export function toMatchRowData(row: ApiMatchListRow, viewerProfileId: number): M
     map: row.map_name ?? 'Unknown map',
     civilisation: formatCivilisation(row.civilisation_name),
     leaderboardName: row.leaderboard_name,
-    // Icon/thumbnail resolution through `packages/game-assets` is T432's own step, not yet wired
-    // here — `civIconUrl`/`mapThumbnailUrl` stay `undefined`, `MatchRow`'s own designed degrade
-    // path (match-history.md §12.1 rule 3), never a placeholder.
+    // Resolved through `packages/game-assets`, keyed on the server-named `civilisation_name` /
+    // `map_name` (never a bare id) — `undefined` on a `null` name or a pack miss alike, passed
+    // straight through to `MatchRow`'s own designed degrade path (match-history.md §12.1 rule 3).
+    civIconUrl: resolveCivIconUrl(row.civilisation_name),
+    mapThumbnailUrl: resolveMapThumbnailUrl(row.map_name),
     rating: row.rating,
     ratingChange:
       row.rating_diff != null
@@ -106,6 +122,11 @@ export function toParticipantData(participant: ApiMatchParticipant): Participant
     alias: participant.alias ?? 'Unknown player',
     civId: participant.civ_id,
     civName: participant.civ_name,
+    // Resolved through `packages/game-assets`, same rule as `toMatchRowData.civIconUrl` — keyed on
+    // `civ_name`, never `civ_id`, and `undefined` on a `null` name or a pack miss alike (T432).
+    civIconUrl: resolveCivIconUrl(participant.civ_name),
+    colorId: participant.color_id,
+    rating: participant.rating,
     result: formatOutcome(participant.result),
     ratingChange:
       participant.rating_diff != null
@@ -155,6 +176,9 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     // renders a `null` map via its own `UnresolvedIdentifier` (no id to show for a map, per that
     // component's own note) — this mapper must not paper over the gap with invented text.
     map: detail.map_name,
+    // Resolved through `packages/game-assets`, same rule as `toMatchRowData.mapThumbnailUrl` —
+    // `undefined` on a `null` map_name or a pack miss alike, never a placeholder (T432).
+    mapThumbnailUrl: resolveMapThumbnailUrl(detail.map_name),
     // T070f: `leaderboard_name` computed server-side (`matches.py`'s `_match_detail_json`), the
     // same `leaderboards.py` mapping `GET /api/profiles` already reads — passed straight through,
     // never re-derived here.

@@ -166,6 +166,42 @@ describe('toMatchRowData', () => {
     expect(result.participants).toHaveLength(2)
     expect(result.participants?.find((p) => p.isViewer)?.alias).toBe('Me')
   })
+
+  // T432: resolved through `packages/game-assets`, keyed on the server-named `civilisation_name`
+  // (never the raw `civilisation` id) — "Japanese" is a real pack entry.
+  it('resolves civIconUrl through packages/game-assets for a covered civilisation name', () => {
+    const result = toMatchRowData(row({ civilisation_name: 'Japanese' }), VIEWER_PROFILE_ID)
+    expect(result.civIconUrl).toBe('/game-assets/civilisations/japanese.webp')
+  })
+
+  it('leaves civIconUrl undefined for a civilisation name the pack does not cover', () => {
+    const result = toMatchRowData(
+      row({ civilisation_name: 'Not A Real Civilisation' }),
+      VIEWER_PROFILE_ID,
+    )
+    expect(result.civIconUrl).toBeUndefined()
+  })
+
+  it('leaves civIconUrl undefined for a null civilisation_name, never calling the resolver', () => {
+    const result = toMatchRowData(row({ civilisation_name: null }), VIEWER_PROFILE_ID)
+    expect(result.civIconUrl).toBeUndefined()
+  })
+
+  // "Arabia" is a real pack entry.
+  it('resolves mapThumbnailUrl through packages/game-assets for a covered map name', () => {
+    const result = toMatchRowData(row({ map_name: 'Arabia' }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBe('/game-assets/maps/arabia.webp')
+  })
+
+  it('leaves mapThumbnailUrl undefined for a map name the pack does not cover', () => {
+    const result = toMatchRowData(row({ map_name: 'Not A Real Map' }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBeUndefined()
+  })
+
+  it('leaves mapThumbnailUrl undefined for a null map_name, never calling the resolver', () => {
+    const result = toMatchRowData(row({ map_name: null }), VIEWER_PROFILE_ID)
+    expect(result.mapThumbnailUrl).toBeUndefined()
+  })
 })
 
 describe('toMatchRowDataList', () => {
@@ -269,6 +305,41 @@ describe('toParticipantData', () => {
   it('omits ratingChange entirely when there is nothing to report', () => {
     expect(toParticipantData(participant({ rating_diff: null })).ratingChange).toBeUndefined()
   })
+
+  // T432: colorId and rating travel through unmodified — MatchDetailPanel's own props, not
+  // pre-formatted here.
+  it('passes color_id through as colorId, verbatim', () => {
+    expect(toParticipantData(participant({ color_id: 6 })).colorId).toBe(6)
+  })
+
+  it('passes a null color_id through as null', () => {
+    expect(toParticipantData(participant({ color_id: null })).colorId).toBeNull()
+  })
+
+  it('passes rating through unmodified', () => {
+    expect(toParticipantData(participant({ rating: 1842 })).rating).toBe(1842)
+  })
+
+  it('passes a null rating through as null', () => {
+    expect(toParticipantData(participant({ rating: null })).rating).toBeNull()
+  })
+
+  // Resolved through packages/game-assets, keyed on civ_name — same rule as toMatchRowData above.
+  it('resolves civIconUrl through packages/game-assets for a covered civ_name', () => {
+    expect(toParticipantData(participant({ civ_name: 'Japanese' })).civIconUrl).toBe(
+      '/game-assets/civilisations/japanese.webp',
+    )
+  })
+
+  it('leaves civIconUrl undefined for a civ_name the pack does not cover', () => {
+    expect(
+      toParticipantData(participant({ civ_name: 'Not A Real Civilisation' })).civIconUrl,
+    ).toBeUndefined()
+  })
+
+  it('leaves civIconUrl undefined for a null civ_name, never calling the resolver', () => {
+    expect(toParticipantData(participant({ civ_name: null })).civIconUrl).toBeUndefined()
+  })
 })
 
 describe('toTeamGroups', () => {
@@ -326,6 +397,23 @@ describe('toMatchDetailData', () => {
 
   it('§11.2: carries a null map_name through as null, never a fabricated "Unknown map"', () => {
     expect(toMatchDetailData(detail({ map_name: null })).map).toBeNull()
+  })
+
+  // T432: resolved through packages/game-assets — same rule as toMatchRowData.mapThumbnailUrl.
+  it('resolves mapThumbnailUrl through packages/game-assets for a covered map name', () => {
+    expect(toMatchDetailData(detail({ map_name: 'Arabia' })).mapThumbnailUrl).toBe(
+      '/game-assets/maps/arabia.webp',
+    )
+  })
+
+  it('leaves mapThumbnailUrl undefined for a map name the pack does not cover', () => {
+    expect(
+      toMatchDetailData(detail({ map_name: 'Not A Real Map' })).mapThumbnailUrl,
+    ).toBeUndefined()
+  })
+
+  it('leaves mapThumbnailUrl undefined for a null map_name, never calling the resolver', () => {
+    expect(toMatchDetailData(detail({ map_name: null })).mapThumbnailUrl).toBeUndefined()
   })
 
   it('passes patch through as gameVersion, verbatim (FR-018)', () => {
