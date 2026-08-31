@@ -1,7 +1,9 @@
 import type { RatingEntryData, ViewedProfile } from 'design-system'
+import { countryFlag } from 'game-assets'
 import { formatRank, formatRating, formatStreak, formatWinRate } from '../profile/format'
 import { leaderboardSortKey } from '../profile/leaderboards'
 import type { ApiPlayerProfile, ApiPlayerRatingSnapshot } from './api'
+import { formatCountryName } from './format'
 
 // The one place `ApiPlayerProfile` (snake_case, `api.ts`) becomes what `ProfileSummary`
 // (packages/design-system) expects (camelCase, ids as strings) for a *third party's* profile —
@@ -10,11 +12,28 @@ import type { ApiPlayerProfile, ApiPlayerRatingSnapshot } from './api'
 // order (`leaderboardSortKey`) rather than a second copy: the two profiles are the same shapes,
 // FR-008 says so, and `ProfileSummary` is the one component that renders both.
 
+/** `country-flag.md` §2a's last paragraph: the flag URL is resolved the same way and in the same
+ * place as the name (`formatCountryName`, `./format.ts`), from the raw code — `undefined` on a
+ * `null` country or a pack miss alike (`packages/game-assets`'s `countryFlag`), passed straight
+ * through to `CountryFlag`'s own "no picture, name alone" render (`country-flag.md` §4). Same
+ * `undefined`-on-null-or-miss rule `features/matches/mappers.ts`'s `resolveCivIconUrl` already
+ * documents for the equivalent civilisation/map lookups (004 T432). */
+function resolveCountryFlagUrl(country: string | null): string | undefined {
+  return country != null ? countryFlag(country) : undefined
+}
+
 export function toViewedProfile(profile: ApiPlayerProfile): ViewedProfile {
   return {
     id: String(profile.profile_id),
     alias: profile.alias,
-    country: profile.country ?? undefined,
+    // 004 spec §12.4: the raw `country` code never reaches `ProfileSummary` — `countryName` (an
+    // English display name, or the value verbatim when it is not a two-letter code) and
+    // `countryFlagUrl` replace it, both resolved here and nowhere downstream.
+    countryName: formatCountryName(profile.country),
+    countryFlagUrl: resolveCountryFlagUrl(profile.country),
+    // 004 spec §12.5: a hash, never a URL — passed straight through, `null` and all;
+    // `PlayerAvatar` (packages/design-system) builds the CDN URL and owns the fallback.
+    avatarHash: profile.avatar_hash,
     profileId: String(profile.profile_id),
     // A third party's profile is never the caller's own, and `ProfileSummary` never reads
     // `isPrimary` for `subject="other"` in the first place (its own module docstring).

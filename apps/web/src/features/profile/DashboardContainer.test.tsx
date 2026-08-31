@@ -55,6 +55,7 @@ function baseProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
     profile_id: 1,
     alias: 'ArchonQueen',
     country: 'FR',
+    avatar_hash: null,
     is_primary: true,
     linked_at: '2026-08-01T00:00:00Z',
     ratings: [

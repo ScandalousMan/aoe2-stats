@@ -34,6 +34,11 @@ export interface ApiPlayerProfile {
   profile_id: number
   alias: string
   country: string | null
+  /** T421, T426; `contracts/http-api.md`: read straight off `aoe_profiles.avatar_hash`, never
+   * fetched — a hash, never a URL (`mappers.ts`'s `toViewedProfile` passes it straight through,
+   * `PlayerAvatar` builds the CDN URL). `null` is the ordinary case for a profile never seen in a
+   * companion response, not an error (`routers/players.py`'s own note). */
+  avatar_hash: string | null
   /** `null` only for a profile this service has observed through a match but never through its
    * own alias-refresh path (`routers/players.py`'s module docstring). `mappers.ts` renders this as
    * `ProfileSummary`'s `AliasFreshnessNote` when present (003 spec §11.1.4). */
@@ -116,6 +121,9 @@ export function assertPlayerProfileResponse(payload: unknown): asserts payload i
   }
   if (!isNullableString(body.country)) {
     throw new PlayerProfileResponseShapeError('"country" was not string|null')
+  }
+  if (!isNullableString(body.avatar_hash)) {
+    throw new PlayerProfileResponseShapeError('"avatar_hash" was not string|null')
   }
   if (!isNullableString(body.alias_observed_at)) {
     throw new PlayerProfileResponseShapeError('"alias_observed_at" was not string|null')

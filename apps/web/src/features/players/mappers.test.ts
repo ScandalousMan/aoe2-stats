@@ -21,7 +21,8 @@ function profile(overrides: Partial<ApiPlayerProfile> = {}): ApiPlayerProfile {
   return {
     profile_id: 87654321,
     alias: 'rival_ace',
-    country: 'Germany',
+    country: 'de',
+    avatar_hash: '8f2a1b3c4d5e6f7890abcdef12345678',
     alias_observed_at: '2026-08-12T00:00:00Z',
     ratings: [snapshot()],
     ...overrides,
@@ -35,14 +36,39 @@ describe('toViewedProfile', () => {
     expect(result.profileId).toBe('42')
   })
 
-  it('carries alias and country through', () => {
-    const result = toViewedProfile(profile({ alias: 'Hera', country: 'Israel' }))
+  it('carries alias through', () => {
+    const result = toViewedProfile(profile({ alias: 'Hera' }))
     expect(result.alias).toBe('Hera')
-    expect(result.country).toBe('Israel')
   })
 
-  it('maps a null country to undefined, never the literal null', () => {
-    expect(toViewedProfile(profile({ country: null })).country).toBeUndefined()
+  // 004 spec §12.4: the raw code never reaches `ViewedProfile` — `countryName` is an English
+  // display name resolved from the ISO alpha-2 code, and `countryFlagUrl` is resolved alongside
+  // it (`packages/game-assets`'s `countryFlag`).
+  it('resolves a two-letter country code to its English display name and flag URL', () => {
+    const result = toViewedProfile(profile({ country: 'fr' }))
+    expect(result.countryName).toBe('France')
+    expect(result.countryFlagUrl).toBe('/game-assets/flags/fr.svg')
+  })
+
+  it('shows a non-two-letter country value verbatim (country-flag.md §2a, T438)', () => {
+    const result = toViewedProfile(profile({ country: 'Germany' }))
+    expect(result.countryName).toBe('Germany')
+  })
+
+  it('leaves countryFlagUrl undefined for a value the flag pack does not cover', () => {
+    const result = toViewedProfile(profile({ country: 'Germany' }))
+    expect(result.countryFlagUrl).toBeUndefined()
+  })
+
+  it('maps a null country to countryName and countryFlagUrl both undefined, never a literal null', () => {
+    const result = toViewedProfile(profile({ country: null }))
+    expect(result.countryName).toBeUndefined()
+    expect(result.countryFlagUrl).toBeUndefined()
+  })
+
+  it('carries avatar_hash straight through, null and all (004 spec §12.5)', () => {
+    expect(toViewedProfile(profile({ avatar_hash: 'abc123' })).avatarHash).toBe('abc123')
+    expect(toViewedProfile(profile({ avatar_hash: null })).avatarHash).toBeNull()
   })
 
   it("is never primary — a third party is never the caller's own profile", () => {
