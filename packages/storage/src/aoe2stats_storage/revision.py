@@ -36,6 +36,9 @@ from __future__ import annotations
 #: `b7cc0beaab35` (T337) adds `replay_fetch_misses` — see that migration's own docstring and
 #: `ReplayFetchMiss` in `models.py` for why FR-025's boundary race needed a table of its own
 #: rather than a `replay_captures` row.
-EXPECTED_SCHEMA_REVISION = "b7cc0beaab35"
+#:
+#: `4e9cc77b853e` (004-visual-parity, T421) adds `aoe_profiles.avatar_hash` — additive, nullable,
+#: no backfill. See that migration's own docstring and `AoeProfile.avatar_hash` in `models.py`.
+EXPECTED_SCHEMA_REVISION = "4e9cc77b853e"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]
