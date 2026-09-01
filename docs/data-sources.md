@@ -216,13 +216,13 @@ sample as well as any rolling window does, and has very different consequences: 
 purged wholesale at any time, whereas a rolling window is predictable.
 
 **What would settle it**, and what nobody should skip on the strength of one profile: re-measure the
-boundary on a *different* profile, and again a week later. If the boundary stays pinned to
+boundary on a _different_ profile, and again a week later. If the boundary stays pinned to
 2026-02-22 it is an epoch; if it advances by a week it is a rolling window whose length changed at
 the migration.
 
 Until then the 21-day capture budget stands unchanged. It is conservative under either reading, and
 constitution I resolves the ambiguity the same way it resolves every other: capture early. What must
-*not* happen is the opposite inference — that replays are now safe for six months and capture can
+_not_ happen is the opposite inference — that replays are now safe for six months and capture can
 relax. This sample cannot support that, and 56 recordings were permanently lost while it was being
 taken.
 
@@ -286,6 +286,23 @@ GET https://data.aoe2companion.com/api/profiles?search={name}
 
 Normalized map and civilisation names, game mode, speed, CDN images, `linkedProfiles`. Freshness
 measured at ~30 s: a match ending at 15:46:08Z reported `updated` 15:46:37Z.
+
+### Match colour: `teams[].players[].color`
+
+Measured **2026-09-01**. 004 started reading this field on the matches response already documented
+above (`GET /api/matches?profile_ids=a,b`) — no new endpoint, a field on one already in use. It is a
+small integer, present on every participant of every match in
+`packages/providers/fixtures/companion/matches.json`, including every one of those participants
+whose own `replay` is `false`: companion assigns a colour to a participant no replay was ever
+captured for, the same "enrichment survives where the replay does not" shape the rest of this
+section already relies on. `_parse_matches` in
+`packages/providers/src/aoe2stats_providers/companion/provider.py` reads it into
+`EnrichedParticipant.color_id`; the sibling `colorHex` field is deliberately not read — the hex
+belongs to the design system as a token (constitution VI, X), not to a third-party string.
+
+004 also started _reading_ `avatarhash` on the search endpoint below — already measured and recorded
+in "Profile search behaviour"'s Record row (2026-08-23). Nothing new to measure there; named here
+only so this section lists every companion field this feature depends on.
 
 ### Profile search behaviour
 
