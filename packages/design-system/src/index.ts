@@ -56,6 +56,10 @@ export * from './components/UploadControl'
 // T098a, so it renders on every route.
 export * from './components/Footer'
 
+// Site chrome (T441, packages/design-system/specs/site-header.md). Primary navigation, present on
+// every route; mounted beside `Footer` in `apps/web/src/routes/__root.tsx` by T442.
+export * from './components/SiteHeader'
+
 // Visual parity (T429, packages/design-system/specs/{civilisation-icon,map-thumbnail,
 // player-colour-swatch}.md). Take an image URL as a prop; never import `packages/game-assets`.
 // Consumed by `MatchRow`/`MatchDetailPanel` in T430/T431.
