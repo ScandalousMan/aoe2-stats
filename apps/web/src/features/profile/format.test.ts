@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatCountryName,
   formatFreshness,
   formatObjectedAt,
   formatRank,
@@ -116,5 +117,35 @@ describe('formatObjectedAt', () => {
     // across CI timezones.
     expect(result).toMatch(/^on /)
     expect(result).toContain('2026')
+  })
+})
+
+// `country-flag.md` §2a: `Intl.DisplayNames(['en'], { type: 'region' })`, locale fixed to `en`
+// regardless of the runner's own locale (constitution XI, machine-independent baselines). Mirrors
+// `features/players/format.test.ts`'s identical suite for its own, deliberately duplicated,
+// `formatCountryName` (`format.ts`'s own note on why it is not shared).
+describe('formatCountryName', () => {
+  it('resolves a lowercase ISO alpha-2 code to its English display name', () => {
+    expect(formatCountryName('fr')).toBe('France')
+  })
+
+  it('resolves an uppercase ISO alpha-2 code the same way', () => {
+    expect(formatCountryName('FR')).toBe('France')
+  })
+
+  it('shows a value that is not a two-letter code verbatim, never a mangled lookup', () => {
+    expect(formatCountryName('Germany')).toBe('Germany')
+  })
+
+  it('returns undefined for null', () => {
+    expect(formatCountryName(null)).toBeUndefined()
+  })
+
+  it('returns undefined for undefined', () => {
+    expect(formatCountryName(undefined)).toBeUndefined()
+  })
+
+  it('returns undefined for a blank string after trimming', () => {
+    expect(formatCountryName('   ')).toBeUndefined()
   })
 })

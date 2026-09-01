@@ -4,8 +4,10 @@ import { useBreakpoint } from '../../lib/useMediaQuery'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { Callout } from '../Callout'
+import { CountryFlag } from '../CountryFlag'
 import { Menu } from '../Menu'
 import type { MenuItem } from '../Menu'
+import { PlayerAvatar } from '../PlayerAvatar'
 import { Skeleton } from '../Skeleton'
 import { StatValue } from '../StatValue'
 
@@ -35,8 +37,22 @@ export interface RatingEntryData {
 
 export interface ViewedProfile {
   id: string
+  /** The API's non-null `string` type — a profile with no persona name arrives as `""`, not
+   * `undefined` (004 spec §12.3). Blank after trimming triggers the id-as-heading fallback; it is
+   * never rendered as a blank `<h2>`. */
   alias: string
-  country?: string
+  /** Resolved upstream, never here (004 spec §12.4, `country-flag.md` §2a): the API's ISO
+   * alpha-2 `country` code turned into an English display name. Absent, `null` or blank after
+   * trimming renders no flag and no label at all — replaces the raw `country` code this field used
+   * to carry. */
+  countryName?: string | null
+  /** `packages/game-assets`'s `countryFlag(code)` result, resolved upstream — `undefined` for a
+   * country the pack does not cover, in which case `CountryFlag` shows the name alone. */
+  countryFlagUrl?: string
+  /** The profile's Steam avatar hash, passed straight through to `PlayerAvatar` (004 spec §12.5) —
+   * this component adds no logic of its own around it. Absent, `null` or blank is the profile's
+   * legitimate resting state, not an error. */
+  avatarHash?: string | null
   profileId: string
   isPrimary: boolean
 }
@@ -81,6 +97,27 @@ export interface ProfileSummaryProps {
   onBackToPrimary?: () => void
   onRetry?: () => void
   className?: string
+}
+
+/** The API types `alias` as a non-null `string` (004 spec §12.3): a profile with no persona name
+ * arrives as `""`, so the test is emptiness after trimming, never nullishness alone. */
+function hasAlias(alias: string): boolean {
+  return alias.trim() !== ''
+}
+
+/** "Player <id>" — the numeric id prefixed by what it is an id of, never the bare number (004 spec
+ * §12.3, `match-history.md` §11.2's identical rule for an unresolved identifier). */
+function fallbackHeading(profileId: string): string {
+  return `Player ${profileId}`
+}
+
+// `PlayerAvatar`'s size tokens (`icon-2xl` / `icon-lg`) have no Tailwind namespace
+// (`game-asset-tokens.md`), so the loading skeleton reserves the identical footprint via the same
+// arbitrary-value-referencing-the-token-variable technique `Skeleton`'s own pulse animation already
+// uses, rather than a hard-coded pixel figure.
+const AVATAR_SKELETON_SIZE: Record<'board' | 'compact', string> = {
+  board: 'h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]',
+  compact: 'h-[var(--ds-icon-lg)] w-[var(--ds-icon-lg)]',
 }
 
 /** Leaderboards the profile has never played are absent, not present-and-empty (FR-008). One DOM
@@ -163,63 +200,114 @@ export function ProfileSummary({
         ]
       : []
 
+  // §12.3's fallback: no alias at all fires when `alias` is `""` (the API's non-null type, not
+  // `undefined`) as much as when the field is genuinely absent — the test is emptiness, not
+  // nullishness. The heading always resolves to text, never a blank `<h2>`.
+  const headingAlias = viewedProfile
+    ? hasAlias(viewedProfile.alias)
+      ? viewedProfile.alias
+      : fallbackHeading(viewedProfile.profileId)
+    : undefined
+  const usingFallbackHeading = viewedProfile != null && !hasAlias(viewedProfile.alias)
+  const avatarSize = compact ? 'sm' : 'md'
+  const flagSize = compact ? 'sm' : 'md'
+
   return (
     <section
       aria-labelledby="profile-summary-alias"
       className={cx('bg-background p-4 md:p-6', className)}
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-3">
-            {/* `subject="other"` never shows the switcher — a third party's own linked profiles
-             * are never this component's business (003 spec §11.1.1, FR-009). */}
-            {isSelf && authenticated && viewedProfile && (
-              <Menu
-                variant="selection"
-                triggerLabel={
-                  <>
-                    <span id="profile-summary-alias" className="font-sans text-xl font-semibold">
-                      {viewedProfile.alias}
-                    </span>
-                    <span aria-hidden="true">▾</span>
-                  </>
-                }
-                triggerAriaLabel={`${viewedProfile.alias}, switch profile`}
-                items={switcherItems}
-                footerItem={{
-                  id: 'link',
-                  label: 'Link another Steam account',
-                  onSelect: onLinkAnotherAccount,
-                }}
-              />
-            )}
-            {(!isSelf || !authenticated) && viewedProfile && (
-              <span
-                id="profile-summary-alias"
-                className="font-sans text-xl font-semibold text-text-primary"
-              >
-                {viewedProfile.alias}
+        {/* IdentityBar (004 spec §12.6): the avatar leads, at every viewport — it never stacks
+         * above the identity column, even at 375, so the ratings below stay as close to the fold
+         * as they were before the avatar existed. */}
+        <div className="flex items-center gap-4">
+          {viewedProfile ? (
+            <PlayerAvatar avatarHash={viewedProfile.avatarHash} size={avatarSize} />
+          ) : (
+            <Skeleton
+              variant="block"
+              className={cx(
+                'shrink-0 rounded-md',
+                AVATAR_SKELETON_SIZE[compact ? 'compact' : 'board'],
+              )}
+            />
+          )}
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* `subject="other"` never shows the switcher — a third party's own linked profiles
+               * are never this component's business (003 spec §11.1.1, FR-009). */}
+              {isSelf && authenticated && viewedProfile && (
+                <Menu
+                  variant="selection"
+                  triggerLabel={
+                    <>
+                      <span
+                        id="profile-summary-alias"
+                        className={cx(
+                          'text-xl font-semibold text-text-primary',
+                          usingFallbackHeading ? 'font-mono' : 'font-sans',
+                        )}
+                      >
+                        {headingAlias}
+                      </span>
+                      <span aria-hidden="true">▾</span>
+                    </>
+                  }
+                  triggerAriaLabel={`${headingAlias}, switch profile`}
+                  items={switcherItems}
+                  footerItem={{
+                    id: 'link',
+                    label: 'Link another Steam account',
+                    onSelect: onLinkAnotherAccount,
+                  }}
+                />
+              )}
+              {(!isSelf || !authenticated) && viewedProfile && (
+                <span
+                  id="profile-summary-alias"
+                  className={cx(
+                    'text-xl font-semibold text-text-primary',
+                    usingFallbackHeading ? 'font-mono' : 'font-sans',
+                  )}
+                >
+                  {headingAlias}
+                </span>
+              )}
+              {!viewedProfile && (
+                <span id="profile-summary-alias">
+                  <Skeleton variant="text" lines={1} className="w-32" />
+                </span>
+              )}
+              {/* CountryFlag (004 spec §12.4) renders `null` on a blank `countryName`, so nothing
+               * reserves a gap for a profile that never had a country. */}
+              {viewedProfile && (
+                <CountryFlag
+                  flagUrl={viewedProfile.countryFlagUrl}
+                  countryName={viewedProfile.countryName}
+                  size={flagSize}
+                  className={cx('text-text-secondary', compact ? 'text-xs' : 'text-sm')}
+                />
+              )}
+            </div>
+            {/* ProfileId is omitted while the fallback heading is in force (004 spec §12.3): the
+             * same number twice — once as the heading, once demoted beneath it — reads as a
+             * rendering fault, and there is nothing left to demote it beneath. */}
+            {viewedProfile && hasAlias(viewedProfile.alias) && (
+              <span className="font-mono text-xs text-text-secondary">
+                {viewedProfile.profileId}
               </span>
             )}
-            {!viewedProfile && (
-              <span id="profile-summary-alias">
-                <Skeleton variant="text" lines={1} className="w-32" />
-              </span>
-            )}
-            {viewedProfile?.country && (
-              <span className="font-sans text-sm text-text-secondary">{viewedProfile.country}</span>
+            {/* AliasFreshnessNote (003 spec §11.1.4) — a third party's alias can go stale between
+             * when this service last observed it and today; the signed-in user's own never can.
+             * Absent with no alias to begin with (004 spec §12.3): "Last seen as ⟨nothing⟩" is a
+             * sentence with a hole in it. */}
+            {!isSelf && viewedProfile && hasAlias(viewedProfile.alias) && aliasObservedAtLabel && (
+              <p className="font-sans text-xs text-text-secondary">
+                Last seen as {viewedProfile.alias} on {aliasObservedAtLabel}.
+              </p>
             )}
           </div>
-          {viewedProfile && (
-            <span className="font-mono text-xs text-text-secondary">{viewedProfile.profileId}</span>
-          )}
-          {/* AliasFreshnessNote (003 spec §11.1.4) — a third party's alias can go stale between
-           * when this service last observed it and today; the signed-in user's own never can. */}
-          {!isSelf && viewedProfile && aliasObservedAtLabel && (
-            <p className="font-sans text-xs text-text-secondary">
-              Last seen as {viewedProfile.alias} on {aliasObservedAtLabel}.
-            </p>
-          )}
         </div>
 
         {!compact && viewedProfile && isSelf && (

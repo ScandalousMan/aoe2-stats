@@ -17,10 +17,14 @@ const entries: RatingEntryData[] = [
   },
 ]
 
+const FIXTURE_AVATAR_HASH = '0123456789abcdef0123456789abcdef01234567'
+
 const viewedProfile = {
   id: 'p1',
   alias: 'aoe2guy',
-  country: 'France',
+  countryName: 'France',
+  countryFlagUrl: '/game-assets/flags/fr.svg',
+  avatarHash: FIXTURE_AVATAR_HASH,
   profileId: '12345678',
   isPrimary: true,
 }
@@ -224,7 +228,9 @@ describe('ProfileSummary', () => {
     const thirdPartyProfile = {
       id: 'p9',
       alias: 'rival_ace',
-      country: 'Germany',
+      countryName: 'Germany',
+      countryFlagUrl: '/game-assets/flags/de.svg',
+      avatarHash: FIXTURE_AVATAR_HASH,
       profileId: '87654321',
       isPrimary: false,
     }
@@ -340,6 +346,193 @@ describe('ProfileSummary', () => {
         'href',
         '/search',
       )
+    })
+  })
+
+  describe('the widened identity bar (004 spec §12)', () => {
+    it('leads with the avatar, built from avatarHash', () => {
+      const { container } = render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={entries}
+        />,
+      )
+      const avatarImg = container.querySelector(
+        `img[src="https://avatars.steamstatic.com/${FIXTURE_AVATAR_HASH}_full.jpg"]`,
+      )
+      expect(avatarImg).toBeInTheDocument()
+    })
+
+    it('renders the neutral placeholder, and no <img>, when avatarHash is absent', () => {
+      const { container } = render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={{ ...viewedProfile, avatarHash: undefined }}
+          linkedProfiles={linkedProfiles}
+          entries={entries}
+        />,
+      )
+      expect(container.querySelector('img[src*="steamstatic"]')).not.toBeInTheDocument()
+      expect(container.querySelector('.border-border-strong')).toBeInTheDocument()
+    })
+
+    describe('Rule 1 — no alias: the id becomes the heading, never a blank one (004 FR-007)', () => {
+      it('the heading reads "Player <id>" and the id appears exactly once in the frame', () => {
+        render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: '', profileId: '1807091' }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText('Player 1807091')).toBeInTheDocument()
+        expect(screen.queryByText('1807091')).not.toBeInTheDocument()
+      })
+
+      it('a blank-after-trim alias triggers the same fallback as a missing one', () => {
+        render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: '   ', profileId: '1807091' }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText('Player 1807091')).toBeInTheDocument()
+      })
+
+      it('the fallback heading is font-mono, unlike a real alias', () => {
+        const { container: fallback } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: '', profileId: '1807091' }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText('Player 1807091')).toHaveClass('font-mono')
+
+        const { container: named } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getAllByText('aoe2guy')[0]).toHaveClass('font-sans')
+        expect(fallback).toBeTruthy()
+        expect(named).toBeTruthy()
+      })
+
+      it('the switcher trigger accessible name uses the fallback heading', () => {
+        render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: '', profileId: '1807091' }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(
+          screen.getByRole('button', { name: 'Player 1807091, switch profile' }),
+        ).toBeInTheDocument()
+      })
+
+      it('never shows AliasFreshnessNote when there is no alias to have been observed', () => {
+        render(
+          <ProfileSummary
+            subject="other"
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: '', profileId: '1807091' }}
+            entries={entries}
+            aliasObservedAtLabel="12 Aug 2026"
+          />,
+        )
+        expect(screen.queryByText(/Last seen as/)).not.toBeInTheDocument()
+      })
+    })
+
+    describe('Rule 2 — no country: the flag and its label are omitted cleanly (004 FR-008)', () => {
+      it('renders no country name and no flag image when countryName is absent', () => {
+        const { container } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, countryName: undefined, countryFlagUrl: undefined }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.queryByText('France')).not.toBeInTheDocument()
+        expect(container.querySelector('img[src*="/game-assets/flags/"]')).not.toBeInTheDocument()
+      })
+
+      it('still renders the country name when the pack does not cover it, with no flag image', () => {
+        const { container } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, countryName: 'Kiribati', countryFlagUrl: undefined }}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText('Kiribati')).toBeInTheDocument()
+        expect(container.querySelector('img[src*="/game-assets/flags/"]')).not.toBeInTheDocument()
+      })
+    })
+
+    it('omits ProfileId while the fallback heading is in force, and shows it otherwise', () => {
+      const { unmount } = render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={{ ...viewedProfile, alias: '', profileId: '1807091' }}
+          linkedProfiles={linkedProfiles}
+          entries={entries}
+        />,
+      )
+      expect(screen.queryByText('1807091')).not.toBeInTheDocument()
+      unmount()
+
+      render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={entries}
+        />,
+      )
+      expect(screen.getByText('12345678')).toBeInTheDocument()
+    })
+
+    it('a profile with no alias, no country and no avatar renders in full, and "No ratings yet" is unchanged', () => {
+      const { container } = render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={{
+            id: 'p1807091',
+            alias: '',
+            countryName: undefined,
+            countryFlagUrl: undefined,
+            avatarHash: undefined,
+            profileId: '1807091',
+            isPrimary: true,
+          }}
+          linkedProfiles={[{ id: 'p1807091', alias: '1807091', isPrimary: true }]}
+          entries={[]}
+        />,
+      )
+      expect(screen.getByText('Player 1807091')).toBeInTheDocument()
+      expect(container.querySelector('img[src*="steamstatic"]')).not.toBeInTheDocument()
+      expect(container.querySelector('img[src*="/game-assets/flags/"]')).not.toBeInTheDocument()
+      // "No ratings yet" is a real and correct outcome, not a failure — the same info tone and
+      // copy §5 already shipped, never a warning or danger callout.
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /Ratings appear after your first ranked match/,
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 })

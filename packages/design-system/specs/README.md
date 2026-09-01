@@ -11,7 +11,7 @@ component carries a hard-coded style value.
 | [`shared-primitives.md`](./shared-primitives.md)         | `src/components/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`         | 001                          |
 | [`sign-in-screen.md`](./sign-in-screen.md)               | `src/components/SignInScreen/`                                           | 001, US1                     |
 | [`archival-control.md`](./archival-control.md)           | `src/components/ArchivalControl/`                                        | 001, US1/US5                 |
-| [`profile-summary.md`](./profile-summary.md)             | `src/components/ProfileSummary/`                                         | 001, US1; 003, US1           |
+| [`profile-summary.md`](./profile-summary.md)             | `src/components/ProfileSummary/`                                         | 001, US1; 003, US1; 004, US2 |
 | [`capture-state-badge.md`](./capture-state-badge.md)     | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants)      | 001, US3                     |
 | [`match-history.md`](./match-history.md)                 | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`           | 001, US3; 003, US2; 004, US1 |
 | [`manual-upload.md`](./manual-upload.md)                 | `src/components/UploadControl/`                                          | 001, US4                     |
@@ -28,6 +28,8 @@ component carries a hard-coded style value.
 | [`civilisation-icon.md`](./civilisation-icon.md)         | `src/components/CivilisationIcon/`                                       | 004, US1                     |
 | [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/components/MapThumbnail/`                                           | 004, US1                     |
 | [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/components/PlayerColourSwatch/`                                     | 004, US1                     |
+| [`country-flag.md`](./country-flag.md)                   | `src/components/CountryFlag/`                                            | 004, US2                     |
+| [`player-avatar.md`](./player-avatar.md)                 | `src/components/PlayerAvatar/`                                           | 004, US2                     |
 
 ## Every spec has nine sections
 
@@ -148,6 +150,14 @@ table is derived from usage, not from which background is conventionally "the" o
 The asymmetry is the thing to remember: **the dark theme is comfortable and the light theme is
 tight.** Every light-theme pair above now clears the normal-text floor it owes — see the rule below
 the gap register for `warning`'s history. Judge light first.
+
+**One pair a component draws and this table does not yet carry**: `text-secondary` on `background`
+in the **dark** theme. `ProfileSummary`'s root is `bg-background`, so its country label, profile id
+and freshness line render that pair in both themes; the light row is above, the dark one is not.
+Dark `background` is darker than dark `surface`, so the pair is no tighter than the measured 7.8
+`surface` row and nothing is blocked on it — but per the pairing convention above, an unmeasured
+pair is not an asserted one. Add the row the next time this table is recomputed
+(`profile-summary.md` §12.8).
 
 ### Player colour swatches (feature 004, T410)
 

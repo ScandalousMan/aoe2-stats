@@ -24,6 +24,7 @@ function validProfile() {
     profile_id: 87654321,
     alias: 'rival_ace',
     country: 'Germany',
+    avatar_hash: '8f2a1b3c4d5e6f7890abcdef12345678',
     alias_observed_at: '2026-08-12T00:00:00Z',
     ratings: [validSnapshot()],
   }
@@ -42,6 +43,25 @@ describe('assertPlayerProfileResponse', () => {
     expect(() =>
       assertPlayerProfileResponse({ ...validProfile(), alias_observed_at: null }),
     ).not.toThrow()
+  })
+
+  it('accepts a null avatar_hash — the ordinary case for a profile a companion has never seen (T421, T426)', () => {
+    expect(() =>
+      assertPlayerProfileResponse({ ...validProfile(), avatar_hash: null }),
+    ).not.toThrow()
+  })
+
+  it('rejects a body with the wrong type for avatar_hash', () => {
+    expect(() => assertPlayerProfileResponse({ ...validProfile(), avatar_hash: 42 })).toThrow(
+      PlayerProfileResponseShapeError,
+    )
+  })
+
+  it('rejects a body missing "avatar_hash"', () => {
+    const body = validProfile()
+    // @ts-expect-error deliberately malformed for the assertion under test
+    delete body.avatar_hash
+    expect(() => assertPlayerProfileResponse(body)).toThrow(PlayerProfileResponseShapeError)
   })
 
   it('rejects a body that is not an object', () => {

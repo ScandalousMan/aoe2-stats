@@ -12,6 +12,7 @@ function profile(overrides: Partial<ApiProfile> = {}): ApiProfile {
     profile_id: 1,
     alias: 'ArchonQueen',
     country: 'FR',
+    avatar_hash: 'abc123',
     is_primary: true,
     linked_at: '2026-08-01T00:00:00Z',
     ratings: [],
@@ -39,14 +40,26 @@ describe('toViewedProfile', () => {
     expect(result.profileId).toBe('42')
   })
 
-  it('turns a null country into undefined, never the literal string "null"', () => {
+  it('turns a null country into an undefined countryName and countryFlagUrl, never the literal string "null"', () => {
     const result = toViewedProfile(profile({ country: null }))
-    expect(result.country).toBeUndefined()
+    expect(result.countryName).toBeUndefined()
+    expect(result.countryFlagUrl).toBeUndefined()
   })
 
-  it('passes a real country code through unchanged', () => {
+  it('resolves a real country code to its English display name and a flag URL', () => {
     const result = toViewedProfile(profile({ country: 'DE' }))
-    expect(result.country).toBe('DE')
+    expect(result.countryName).toBe('Germany')
+    expect(result.countryFlagUrl).toBeDefined()
+  })
+
+  it('passes avatar_hash through as avatarHash, unmodified', () => {
+    const result = toViewedProfile(profile({ avatar_hash: 'deadbeef' }))
+    expect(result.avatarHash).toBe('deadbeef')
+  })
+
+  it('passes a null avatar_hash through as null, never a fabricated string', () => {
+    const result = toViewedProfile(profile({ avatar_hash: null }))
+    expect(result.avatarHash).toBeNull()
   })
 })
 

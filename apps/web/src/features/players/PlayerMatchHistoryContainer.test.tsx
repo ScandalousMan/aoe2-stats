@@ -41,6 +41,7 @@ function baseProfile(overrides: Partial<ApiPlayerProfile> = {}): ApiPlayerProfil
     profile_id: 87654321,
     alias: 'rival_ace',
     country: 'Germany',
+    avatar_hash: null,
     alias_observed_at: '2026-08-12T00:00:00Z',
     ratings: [
       {

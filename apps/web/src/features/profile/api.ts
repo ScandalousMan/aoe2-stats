@@ -33,6 +33,14 @@ export interface ApiProfile {
   profile_id: number
   alias: string
   country: string | null
+  /** T426, `contracts/http-api.md`: read straight off `aoe_profiles.avatar_hash`, never fetched —
+   * a hash, never a URL (`mappers.ts`'s `toViewedProfile` passes it straight through, `PlayerAvatar`
+   * builds the CDN URL). `null` is the profile's ordinary resting state, not an error
+   * (`routers/profiles.py`'s own "gains `avatar_hash`" comment on `list_profiles`) — the same field,
+   * same nullability, `features/players/api.ts`'s `ApiPlayerProfile.avatar_hash` already documents
+   * for a third party's profile.
+   */
+  avatar_hash: string | null
   is_primary: boolean
   linked_at: string
   ratings: ApiRatingSnapshot[]
