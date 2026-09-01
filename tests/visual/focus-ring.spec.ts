@@ -12,8 +12,9 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 
 interface Control {
-  /** Named explicitly per the remediation brief: Button, Input, checkbox, link — one each. */
-  level: 'Button' | 'Input' | 'checkbox' | 'link'
+  /** Named explicitly per the remediation brief: Button, Input, checkbox, link — one each. T441
+   * (site-header.md §11) adds `NavItem` as a fifth entry, reached the same way. */
+  level: 'Button' | 'Input' | 'checkbox' | 'link' | 'NavItem'
   storyId: string
   locate: (page: Page) => Locator
 }
@@ -38,6 +39,11 @@ const controls: readonly Control[] = [
     level: 'link',
     storyId: 'screens-privacynotice--default',
     locate: (page) => page.getByRole('link', { name: 'Object to archival' }),
+  },
+  {
+    level: 'NavItem',
+    storyId: 'chrome-siteheader--signed-in',
+    locate: (page) => page.getByRole('link', { name: 'Matches' }),
   },
 ]
 

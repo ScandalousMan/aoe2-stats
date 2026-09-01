@@ -30,6 +30,7 @@ component carries a hard-coded style value.
 | [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/components/PlayerColourSwatch/`                                     | 004, US1                     |
 | [`country-flag.md`](./country-flag.md)                   | `src/components/CountryFlag/`                                            | 004, US2                     |
 | [`player-avatar.md`](./player-avatar.md)                 | `src/components/PlayerAvatar/`                                           | 004, US2                     |
+| [`site-header.md`](./site-header.md)                   | `src/components/SiteHeader/`                                             | 004, US3                     |
 
 ## Every spec has nine sections
 
