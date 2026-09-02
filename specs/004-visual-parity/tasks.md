@@ -289,3 +289,31 @@ Stopping after step 3 is a legitimate release.
 - This feature adds **no configuration key and no secret**. If that changes, `.env.example` moves in
   the same commit — `apps/api/tests/conftest.py` asserts the key set at import time and fails the
   whole API suite otherwise.
+
+---
+
+## Phase 7: Convergence
+
+Appended by `/speckit-converge` after the T447 hand-walk of quickstart scenario 6 against healthy
+production found two gaps between the merged feature and its own spec on real data. **Both are
+code-vs-spec gaps** — the code does not yet satisfy an existing `MUST` requirement once the data is
+not the clean fixture shape. Test-first against the green-tree gate, same discipline as every phase
+above: the test lands with `xfail(strict=True, reason="<impl task> not implemented yet")` (Python) or
+failing (TypeScript), and the implementing half removes the marker.
+
+Four further items the walk surfaced are **deliberately not appended here**, because the code already
+matches an explicit decision in this feature's own artifacts — appending them as convergence tasks
+would misrepresent a scope change as a defect. They are recorded on PR #47 and need a **spec
+amendment** (`/speckit-specify` or `/speckit-clarify`) before they can become tasks: (a) fetching a
+viewed third-party profile's real `alias` — spec **Assumptions** says `1807091` showing no alias
+means "the fallback rules apply rather than new ingestion"; (b) showing `rating_snapshots` for a
+viewed profile — **T437** records "No ratings yet … is a real and correct outcome that profile
+1807091 genuinely has"; (c) fetching the `avatar_hash` on view — spec **Assumptions** says "a missing
+avatar never blocks the view" and the placeholder is FR-008a-compliant; (d) rendering `country` as a
+hover tooltip on the flag rather than adjacent text — **FR-008** requires only the flag, so the
+tooltip is new design intent, not an unmet requirement. All four are "new ingestion" or new design
+the spec explicitly scoped out; the maintainer has asked to reverse those decisions, which is a
+specify/clarify change, not a converge gap.
+
+- [ ] T449 [P] Derive a clean map **display name and pack slug from the raw `map_name`** so FR-002's "thumbnail and name derived from `map_name`" and FR-016's per-map thumbnail hold on production data, where `Match.map_name` is Relic's raw internal name (`Yucatan.rms`, `CoastalForest.rms`) rather than the clean fixture form. Today `packages/game-assets/src/index.ts`'s `mapThumbnail` lowercases and hyphenates the string as-is: `"Yucatan.rms"` → key `yucatan.rms`, which misses the pack, so a **standard** map (not a custom/tournament one) shows no thumbnail, and `apps/web/src/features/matches/mappers.ts` prints the raw `Yucatan.rms` as the label. This is the map analogue of the `civ_id → name` mapping feature 002 owns (FR-001, spec Assumption) — an internal-name → display-name(+slug) mapping, sourced the way feature 002's reference data was and recorded under the same discipline, **the placement and source of which is a plan decision to settle before implementing** (a lookup table vs a camelCase/`.rms`-strip heuristic; `CoastalForest` → `Coastal Forest` → `coastal-forest` does not fall out of a pure string transform). A name the mapping does not cover still degrades per FR-010 — a cleaned readable label with the `.rms` suffix stripped, no thumbnail, **no broken image**. This is `partial` against FR-002/FR-016/FR-010. Test-first in `packages/game-assets/src/index.test.ts` and `apps/web/src/features/matches/mappers.test.ts`: `"Yucatan.rms"` resolves to display `Yucatan` and a thumbnail URL under `/game-assets/maps/`; `"CoastalForest.rms"` resolves to `Coastal Forest` and its thumbnail; an uncovered `"SomeCustomMap.rms"` yields a cleaned label and `undefined` (no thumbnail, asserted on the return type as T408 does); the existing clean-name path (`"Arabia"`) still resolves unchanged (FR-002, FR-016, FR-010 — `partial`)
+- [ ] T450 [P] Run the read-time companion **colour enrichment on the profile match-history route** so FR-003's "each participant in the canonical player colour for their `color_id`" holds on `GET /api/players/{profile_id}/matches`, not only on `GET /api/matches`. `get_player_match_history` (`apps/api/src/aoe2stats_api/routers/players.py:474`) serves rows through `MatchesRepository.list_matches` + `match_row_json` but **never calls `_enrich_colours`** (`apps/api/src/aoe2stats_api/routers/matches.py`), so `color_id` stays `NULL` for a freshly-viewed profile and every swatch renders the neutral token — the identical-colour symptom the T447 walk saw on `1807091`. This route already reads the source live (`_refresh_third_party_history` on every call), so batched companion enrichment here crosses no boundary T419 protects — that assertion is about `GET /api/players/{profile_id}` (the profile summary), a different route. Reuse the existing `_enrich_colours`/`enrich_matches` path rather than a second copy (the search-storm/enrichment-storm sharing the router already documents), batched **at most once** over the page's `game_ids`, degraded companion writing **nothing and never `NULL`** (data-model §6). This is `partial` against FR-003. Test-first, extending `apps/api/tests/test_match_colour_enrichment.py` (or `test_players_history.py`) with the players-route mirror of the existing assertions: viewing a page makes at most one batched companion call; a returned colour is written to `match_players.color_id`; a degraded companion writes nothing and specifically not `NULL`; a second view makes no companion call (FR-003 — `partial`)
