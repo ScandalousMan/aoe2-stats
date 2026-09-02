@@ -238,17 +238,26 @@ def _intercept_companion(monkeypatch: pytest.MonkeyPatch, fake: _CompanionUpstre
 
 
 class _RelicIdentityUpstream:
-    """T453: stands in for Relic's `getRecentMatchHistory` identity block
-    (`test_third_party_history.py`'s own `_FakeRelicMatchHistoryUpstream`, duplicated here rather
-    than imported) — the one seam `_refresh_profile_identity` reaches on `GET /api/players/
-    {profile_id}` now that it runs there too (module docstring's "T453 reverses" note)."""
+    """T453/T454: stands in for both Relic endpoints `_refresh_profile_identity` reaches on `GET
+    /api/players/{profile_id}` now that it runs there (module docstring's "T453 reverses" note) —
+    `getRecentMatchHistory`'s identity block (`test_third_party_history.py`'s own
+    `_FakeRelicMatchHistoryUpstream`, duplicated here rather than imported) and, since T454,
+    `getPersonalStat`'s ladder standing, a second, independent call to the same host.
+    `identity_request_count` isolates the one this test's own claim is about; the ratings step
+    T454 added answers from the identical `body` — which carries no `leaderboardStats`/
+    `statGroups`, so it parses to zero snapshots and never disturbs this test's own claim (T454's
+    own suite, `test_third_party_history.py`, is where fetching real standing is exercised)."""
 
     def __init__(self, body: dict[str, Any]) -> None:
         self._body = body
-        self.request_count = 0
+        self.identity_request_count = 0
+        self.personal_stat_request_count = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
-        self.request_count += 1
+        if "getPersonalStat" in request.url.path:
+            self.personal_stat_request_count += 1
+        else:
+            self.identity_request_count += 1
         return httpx.Response(200, json=self._body)
 
 
@@ -342,9 +351,13 @@ async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_wr
     assert profile_response.status_code == 200, (
         f"Got {profile_response.status_code}: {profile_response.text}"
     )
-    assert relic_fake.request_count == 1, (
+    assert relic_fake.identity_request_count == 1, (
         "the on-view identity refresh (T453, FR-017) must reach Relic once for the subject's own "
-        f"identity. Got {relic_fake.request_count}"
+        f"identity. Got {relic_fake.identity_request_count}"
+    )
+    assert relic_fake.personal_stat_request_count == 1, (
+        "the on-view identity refresh (T454, FR-018) must also reach Relic once for the subject's "
+        f"own ladder standing. Got {relic_fake.personal_stat_request_count}"
     )
     assert fake.request_count == 2, (
         "GET /api/players/{profile_id} now makes a provider call: the identity refresh's own "

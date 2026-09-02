@@ -101,6 +101,7 @@ from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
 from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
+from aoe2stats_providers.relic.profile import RelicProfileProvider
 from aoe2stats_providers.wiring import (
     CircuitBreaker,
     build_async_client_resources,
@@ -160,6 +161,20 @@ def _build_match_history_provider(db_session: AsyncSession) -> RelicMatchHistory
     )
 
 
+def _build_profile_provider(db_session: AsyncSession) -> RelicProfileProvider:
+    """T454: ladder standing against Relic's `getPersonalStat`, the same host and endpoint
+    `_build_match_history_provider` above already budgets for (module docstring's own note that
+    the shared `_RELIC_HTTP_CLIENT`/`_RELIC_RATE_LIMITER` mirror what `routers/auth.py`'s
+    `_build_relic_provider` wires for this identical provider) — one Relic budget for this router,
+    not a second rate limiter or connection pool for a call against the same upstream."""
+    return RelicProfileProvider(
+        client=_RELIC_HTTP_CLIENT,
+        timeout_seconds=_PROVIDER_TIMEOUT_SECONDS,
+        rate_limiter=_RELIC_RATE_LIMITER,
+        call_sink=_relic_call_sink(db_session),
+    )
+
+
 async def _refresh_third_party_history(db_session: AsyncSession, profile_id: int) -> None:
     """FR-007/FR-011, "read from the source on demand" (`spec.md`'s own Assumptions): fetch
     `profile_id`'s recent matches live from Relic and persist them through the exact upsert path
@@ -196,19 +211,72 @@ async def _refresh_third_party_history(db_session: AsyncSession, profile_id: int
             await discover.upsert_match_player(db_session, raw_match, player_profile_id)
 
 
-async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -> None:
-    """T453, FR-017: the shared on-view identity refresh both `GET /api/players/{profile_id}`
-    (the summary route, which makes no other provider call) and `GET /api/players/{profile_id}/
-    matches` now trigger, alongside `_refresh_third_party_history` above.
+async def _refresh_profile_ratings(db_session: AsyncSession, profile_id: int) -> None:
+    """T454, FR-018/SC-007: `profile_id`'s ladder standing, fetched from Relic's `getPersonalStat`
+    (`RelicProfileProvider.personal_stats`) — the identical call `routers/auth.py`'s sign-in flow
+    and the ingester's `DiscoverStage._refresh_ratings` (`apps/ingester/.../discover.py`) already
+    make for a consenting user's own profile — and persisted through the exact same
+    `RatingsRepository.record_snapshot` path those two call sites use. No new persistence shape:
+    `_profile_ratings` below already serves whatever this appends, with no serialiser change.
 
-    Two independent, separately-degrading steps:
+    **Independent of the alias/avatar steps in `_refresh_profile_identity` below, and never
+    gated on their outcome.** `personal_stats` is keyed on `profile_id` itself, a different Relic
+    endpoint from `getRecentMatchHistory`'s identity block, so it needs no alias to have been
+    established — a profile whose identity step yielded nothing this call (a degraded Relic
+    identity fetch, or a subject the source simply names no alias for) must still get its standing
+    fetched. `_refresh_profile_identity` calls this before its own alias early-return specifically
+    so this can never end up behind it (T454's ordering constraint).
+
+    Degrades silently, guarded exactly like the identity steps around it (a broad `except
+    Exception`, `_refresh_third_party_history`'s own docstring states why): a source failure
+    persists nothing and never fails the view. An empty result — the source has no standing for
+    `profile_id` — is a real, correct outcome too (SC-007's "No ratings yet") and is handled
+    identically: nothing is appended either way, and `record_snapshot` only ever appends, so
+    neither outcome can erase a snapshot already stored from an earlier, successful view.
+    """
+    profile_provider = _build_profile_provider(db_session)
+    try:
+        snapshots = await profile_provider.personal_stats([profile_id])
+    except Exception:
+        # See the docstring above: broader than `ProviderError` on purpose, for the same reason
+        # `_refresh_third_party_history`'s own catch is — this fetch is optional, and a failure of
+        # it, however shaped, must never turn into a failed view.
+        return
+
+    ratings_repo = RatingsRepository(db_session)
+    for snapshot in snapshots:
+        await ratings_repo.record_snapshot(
+            profile_id=snapshot.profile_id,
+            leaderboard_id=snapshot.leaderboard_id,
+            rating=snapshot.rating,
+            rank=snapshot.rank,
+            wins=snapshot.wins,
+            losses=snapshot.losses,
+            streak=snapshot.streak,
+            highest_rating=snapshot.highest_rating,
+            # `captured_at` left to `record_snapshot`'s own default ("the moment observed") —
+            # never `snapshot.last_match_at` — exactly as `routers/auth.py`'s sign-in flow and
+            # `discover.py`'s `_refresh_ratings` both already choose, for the identical reason.
+        )
+
+
+async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -> None:
+    """T453/T454, FR-017/FR-018: the shared on-view identity refresh both `GET /api/players/
+    {profile_id}` (the summary route, which makes no other provider call) and `GET /api/players/
+    {profile_id}/matches` now trigger, alongside `_refresh_third_party_history` above.
+
+    Three independent, separately-degrading steps:
 
     1. **Alias/country**, from Relic's `getRecentMatchHistory` identity block (T451's own
        `RelicMatchHistoryProvider.recent_profiles`). Persisted through T452's widened
        `discover.touch_aoe_profile` — every profile the block covers, not only `profile_id` —
        since an opponent's real name rides the same response for free, without a call of its own
        (T453's task text).
-    2. **The avatar hash**, which rides aoe2companion's *search* endpoint — the only place any
+    2. **Ladder standing** (T454), via `_refresh_profile_ratings` above — called unconditionally,
+       before the `subject_alias is None` early return below, precisely so it never ends up
+       behind it: see that function's own docstring for why it must not be gated on step 1's
+       outcome.
+    3. **The avatar hash**, which rides aoe2companion's *search* endpoint — the only place any
        provider in this codebase ever carries it (`search.py`'s own module docstring) — keyed on a
        display name, not a profile id, so there is no by-id lookup to prefer over it. Resolved
        here via the real alias step 1 *just established* for `profile_id`, in this same call: one
@@ -223,8 +291,8 @@ async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -
     in a `try`/`except Exception`, deliberately as broad as `_refresh_third_party_history`'s own
     catch above (see that function's docstring for why) — a caller of either route this function
     is triggered from must always be able to answer from storage, whatever either source did.
-    Reads public identity only: no `replay_captures` row, no capture enqueue, for any profile the
-    Relic response covers (FR-012 unchanged).
+    Reads public identity and standing only: no `replay_captures` row, no capture enqueue, for any
+    profile either source covers (FR-012 unchanged).
     """
     relic_provider = _build_match_history_provider(db_session)
     try:
@@ -244,6 +312,10 @@ async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -
             alias=raw_profile.alias,
             country=raw_profile.country,
         )
+
+    # T454: always runs, whatever step 1 found — see `_refresh_profile_ratings`'s own docstring
+    # for why this must never sit behind the `subject_alias is None` early return just below.
+    await _refresh_profile_ratings(db_session, profile_id)
 
     if subject_alias is None:
         return
@@ -490,7 +562,16 @@ async def get_player_profile(
     persists there, this route never returns a fetched value directly — and `null` is still the
     ordinary case for a hash the source has never carried for this profile, not an error. A
     degraded source (Relic or companion) leaves this route answering from whatever was already
-    stored, never a failure (FR-017)."""
+    stored, never a failure (FR-017).
+
+    **T454, FR-018/SC-007.** That same refresh now also fetches the viewed profile's ladder
+    standing (`_refresh_profile_ratings`, called from within `_refresh_profile_identity`) and
+    persists it as `rating_snapshots`, so `ratings` below — already fetched the same way for the
+    caller's own profiles — carries a freshly-viewed third party's rating, rank, record, streak
+    and best the first time this route is ever called for them, with no serialiser change. "No
+    ratings yet" (an empty list) stays the correct render when the source has none, exactly as it
+    already was before this task; a degraded source leaves `ratings` exactly as `aoe_profiles` and
+    `rating_snapshots` already held it."""
     secret = settings.app_secret_key.get_secret_value()
     _require_session(await _current_session_row(request, db_session, secret))
 

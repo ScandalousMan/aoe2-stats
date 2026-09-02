@@ -45,8 +45,10 @@ by name.
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -57,7 +59,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
-from aoe2stats_storage.models import AoeProfile, Match, User
+from aoe2stats_storage.models import AoeProfile, Match, RatingSnapshot, User
 from aoe2stats_storage.models import Session as UserSession
 
 pytestmark = [pytest.mark.usefixtures("environment")]
@@ -72,6 +74,24 @@ SESSION_COOKIE_NAME = "session_id"
 # breaker test already intercept for Relic and for companion respectively.
 _RELIC_HOST = "aoe-api.worldsedgelink.com"
 _RECENT_MATCH_HISTORY_PATH = "getRecentMatchHistory"
+
+# T454: Relic's ladder-standing endpoint (`RelicProfileProvider.personal_stats`,
+# `packages/providers/src/aoe2stats_providers/relic/profile.py`), on the same `_RELIC_HOST` as
+# `getRecentMatchHistory` above but a distinct path — this file's own fake upstreams route on it
+# to answer the two calls `_refresh_profile_identity` now makes differently.
+_PERSONAL_STAT_PATH = "getPersonalStat"
+
+# The exact fixtures `test_auth_flow.py`'s own sign-in flow already exercises `personal_stats`
+# through — reused here rather than invented, per T454's own task text. `get_personal_stat.json`'s
+# one `statGroups` member is hardcoded to `profile_id` 196240 (`_RATED_SUBJECT_PROFILE_ID` below);
+# `get_personal_stat_unregistered.json` carries no `leaderboardStats`/`statGroups` at all, so it
+# parses to zero snapshots for any subject regardless of which profile_id asked.
+_FIXTURES = Path(__file__).resolve().parents[3] / "packages" / "providers" / "fixtures"
+_RELIC_PERSONAL_STAT = json.loads((_FIXTURES / "relic" / "get_personal_stat.json").read_text())
+_RELIC_PERSONAL_STAT_UNREGISTERED = json.loads(
+    (_FIXTURES / "relic" / "get_personal_stat_unregistered.json").read_text()
+)
+_RATED_SUBJECT_PROFILE_ID = 196240
 
 # T450: `GET /api/players/{profile_id}/matches` now also calls `enrich_colours`
 # (`routers/matches.py`) for the page it just persisted, batched over its own `game_ids` — the
@@ -316,6 +336,38 @@ async def _seed_profile(
             alias=alias,
             country=country,
             alias_observed_at=datetime.now(UTC),
+        )
+    )
+    await db_session.commit()
+
+
+async def _seed_rating_snapshot(
+    db_session: AsyncSession,
+    *,
+    profile_id: int,
+    leaderboard_id: int,
+    rating: int,
+    rank: int | None,
+    wins: int | None,
+    losses: int | None,
+    streak: int | None = None,
+    highest_rating: int | None = None,
+    captured_at: datetime,
+) -> None:
+    """Mirrors `test_players_routes.py`'s own helper of the same name byte for byte where it
+    overlaps (module docstring's "Seeding helpers" convention) — a pre-existing `rating_snapshots`
+    row this file's own degrade tests below assert is never erased by a failed refresh."""
+    db_session.add(
+        RatingSnapshot(
+            profile_id=profile_id,
+            leaderboard_id=leaderboard_id,
+            captured_at=captured_at,
+            rating=rating,
+            rank=rank,
+            wins=wins,
+            losses=losses,
+            streak=streak,
+            highest_rating=highest_rating,
         )
     )
     await db_session.commit()
@@ -841,4 +893,308 @@ async def test_no_real_alias_established_this_call_skips_the_companion_search_en
     assert body["alias"] == "AlreadyRealFromEarlierView", (
         "an empty identity response must never clobber a real alias already stored (T452's own "
         f"'never clobber' direction). Got {body['alias']!r}"
+    )
+
+
+# --- T454: ladder standing, FR-018/SC-007 --------------------------------------------------------
+#
+# `_refresh_profile_ratings` (`routers/players.py`) is the third, independent step
+# `_refresh_profile_identity` now runs on every view: Relic's `getPersonalStat`
+# (`RelicProfileProvider.personal_stats`), keyed on `profile_id` itself rather than on any alias
+# the identity step above may or may not have just established, persisted through the identical
+# `RatingsRepository.record_snapshot` path `routers/auth.py`'s sign-in flow and the ingester's own
+# `_refresh_ratings` already use. The tests below exercise: a real standing persisting and
+# rendering the full card; the real "no standing" outcome (SC-007's own "No ratings yet", not an
+# error); a degraded source leaving whatever was already stored untouched; and the ordering
+# contrast T454's own task text calls out explicitly — ratings must never sit behind the
+# `subject_alias is None` early return that already guards the avatar step.
+
+
+class _FakeRelicIdentityAndRatingsUpstream:
+    """Routes a `_RELIC_HOST` request to one of two fixed bodies by path — `getRecentMatchHistory`'s
+    identity block (T453) or `getPersonalStat`'s ladder standing (T454), the two calls
+    `_refresh_profile_identity` now makes on every view — unlike `_FakeRelicMatchHistoryUpstream`
+    above, which answers one fixed body regardless of path and predates this second call existing.
+    """
+
+    def __init__(
+        self, *, identity_body: dict[str, Any], personal_stat_body: dict[str, Any]
+    ) -> None:
+        self._identity_body = identity_body
+        self._personal_stat_body = personal_stat_body
+        self.identity_request_count = 0
+        self.personal_stat_request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if _PERSONAL_STAT_PATH in request.url.path:
+            self.personal_stat_request_count += 1
+            return httpx.Response(200, json=self._personal_stat_body, request=request)
+        if _RECENT_MATCH_HISTORY_PATH in request.url.path:
+            self.identity_request_count += 1
+            return httpx.Response(200, json=self._identity_body, request=request)
+        raise AssertionError(f"unexpected Relic path {request.url}")
+
+
+_UNRANKED_THIRD_PARTY_PROFILE_ID = 901_302_100
+_DEGRADED_RATINGS_SUBJECT_PROFILE_ID = 901_302_200
+
+
+async def test_viewing_a_profile_with_standing_persists_rating_snapshots_and_serves_the_full_card(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T454, FR-018/SC-007: viewing a profile the source has real ladder standing for persists it
+    as `rating_snapshots` — through the identical `RatingsRepository.record_snapshot` path
+    `routers/auth.py`'s sign-in flow and the ingester's own `_refresh_ratings` already use — and
+    the route's existing `_profile_ratings` (no serialiser change) then serves the full card:
+    rating, rank, record (wins/losses), streak and best (highest_rating), the first time this
+    profile is ever viewed here.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session, profile_id=_RATED_SUBJECT_PROFILE_ID, alias=str(_RATED_SUBJECT_PROFILE_ID)
+    )
+
+    identity_body = {
+        "matchHistoryStats": [],
+        "profiles": [
+            _identity_entry(
+                profile_id=_RATED_SUBJECT_PROFILE_ID, alias="Oni.TheViper", country="de"
+            )
+        ],
+    }
+    fake = _FakeRelicIdentityAndRatingsUpstream(
+        identity_body=identity_body, personal_stat_body=_RELIC_PERSONAL_STAT
+    )
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_RATED_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    body = response.json()
+    ratings_by_leaderboard = {entry["leaderboard_id"]: entry for entry in body["ratings"]}
+    fixture_leaderboard_ids = {
+        entry["leaderboard_id"] for entry in _RELIC_PERSONAL_STAT["leaderboardStats"]
+    }
+    assert set(ratings_by_leaderboard) == fixture_leaderboard_ids, (
+        "the full card must carry every ladder the source reports, not a subset"
+    )
+    # leaderboard_id 3, the same happy-path fixture entry `test_auth_flow.py` names
+    # `_HAPPY_LEADERBOARD_RATING` for: rating, rank, record (wins/losses), streak and best
+    # (highest_rating) — the whole card, not a spot-checked field.
+    top = ratings_by_leaderboard[3]
+    assert top["rating"] == 2704
+    assert top["rank"] == 27
+    assert top["wins"] == 1757
+    assert top["losses"] == 965
+    assert top["streak"] == 4
+    assert top["highest_rating"] == 2911
+
+    stored = (
+        await db_session.execute(
+            select(RatingSnapshot).where(
+                RatingSnapshot.profile_id == _RATED_SUBJECT_PROFILE_ID,
+                RatingSnapshot.leaderboard_id == 3,
+            )
+        )
+    ).scalar_one_or_none()
+    assert stored is not None, (
+        "the standing must land in `rating_snapshots` itself, not only the response body"
+    )
+    assert stored.rating == 2704
+
+
+async def test_a_profile_the_source_has_no_standing_for_answers_200_with_empty_ratings(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T454, SC-007: "No ratings yet" is a real, correct outcome, not an error. A profile the
+    source reports no standing for (Relic's `UNREGISTERED_PROFILE_NAME` shape, carrying neither
+    `leaderboardStats` nor `statGroups`) still answers `200`, with an empty `ratings` list rather
+    than a failure.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_UNRANKED_THIRD_PARTY_PROFILE_ID,
+        alias=str(_UNRANKED_THIRD_PARTY_PROFILE_ID),
+    )
+
+    identity_body: dict[str, Any] = {"matchHistoryStats": [], "profiles": []}
+    fake = _FakeRelicIdentityAndRatingsUpstream(
+        identity_body=identity_body, personal_stat_body=_RELIC_PERSONAL_STAT_UNREGISTERED
+    )
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_UNRANKED_THIRD_PARTY_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert response.json()["ratings"] == [], (
+        "no standing from the source must render as the calm empty-ratings state, never an error"
+    )
+
+    stored = (
+        (
+            await db_session.execute(
+                select(RatingSnapshot).where(
+                    RatingSnapshot.profile_id == _UNRANKED_THIRD_PARTY_PROFILE_ID
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert stored == [], "no standing must persist nothing, not a zeroed-out snapshot"
+
+
+async def test_a_failing_ratings_source_leaves_the_view_answering_from_storage(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T454, FR-018's degrade discipline: a failing `getPersonalStat` call must never fail the
+    view, and — SC-007's own clause — must never erase a `rating_snapshots` row an earlier,
+    successful view already stored. The route answers `200` from exactly that stored row, unmoved.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session, profile_id=_DEGRADED_RATINGS_SUBJECT_PROFILE_ID, alias="AlreadyStoredSubject"
+    )
+    await _seed_rating_snapshot(
+        db_session,
+        profile_id=_DEGRADED_RATINGS_SUBJECT_PROFILE_ID,
+        leaderboard_id=3,
+        rating=1500,
+        rank=200,
+        wins=40,
+        losses=35,
+        streak=2,
+        highest_rating=1550,
+        captured_at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        if _PERSONAL_STAT_PATH in request.url.path:
+            return httpx.Response(503, request=request)
+        if _RECENT_MATCH_HISTORY_PATH in request.url.path:
+            return httpx.Response(
+                200, json={"matchHistoryStats": [], "profiles": []}, request=request
+            )
+        raise AssertionError(f"unexpected Relic path {request.url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_DEGRADED_RATINGS_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, (
+        f"a failing ratings source must never fail the view (FR-018). Got {response.status_code}: "
+        f"{response.text}"
+    )
+    body = response.json()
+    assert len(body["ratings"]) == 1, (
+        "a degrade must neither erase the stored snapshot nor add a new one. Got "
+        f"{body['ratings']!r}"
+    )
+    assert body["ratings"][0]["rating"] == 1500
+
+    stored = (
+        (
+            await db_session.execute(
+                select(RatingSnapshot).where(
+                    RatingSnapshot.profile_id == _DEGRADED_RATINGS_SUBJECT_PROFILE_ID
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(stored) == 1, "a degraded source must never erase what was already stored"
+
+
+async def test_ratings_persist_even_when_no_alias_is_established_this_call(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T454's ordering constraint, pinned directly. Before this task, `_refresh_profile_identity`
+    `return`ed before ever reaching the avatar step once `subject_alias is None` — the same early
+    return ratings must never sit behind. This call's own Relic identity fetch names nothing for
+    the subject (an empty `profiles[]`, so a real alias already stored from an earlier view is
+    left untouched, T452's own "never clobber" direction, and companion is never reached — the
+    refusing fake below fails the test outright if it is), yet `personal_stats` — keyed on
+    `profile_id` directly, never on an alias — still runs and still persists.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_RATED_SUBJECT_PROFILE_ID,
+        alias="AlreadyRealFromEarlierView",
+        country="PT",
+    )
+
+    identity_body: dict[str, Any] = {"matchHistoryStats": [], "profiles": []}
+    fake = _FakeRelicIdentityAndRatingsUpstream(
+        identity_body=identity_body, personal_stat_body=_RELIC_PERSONAL_STAT
+    )
+    refusing_companion = _RefusingCompanionUpstream()
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return refusing_companion(request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_RATED_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    body = response.json()
+
+    assert body["alias"] == "AlreadyRealFromEarlierView", (
+        "no alias established this call must leave the previously stored one untouched"
+    )
+
+    ratings_by_leaderboard = {entry["leaderboard_id"]: entry for entry in body["ratings"]}
+    assert 3 in ratings_by_leaderboard, (
+        "ladder standing must be fetched and persisted even when this call's own identity step "
+        "established no real alias for the subject — it must never sit behind the "
+        "`subject_alias is None` early return that already guards the avatar step"
+    )
+    assert ratings_by_leaderboard[3]["rating"] == 2704
+
+    stored = (
+        await db_session.execute(
+            select(RatingSnapshot).where(
+                RatingSnapshot.profile_id == _RATED_SUBJECT_PROFILE_ID,
+                RatingSnapshot.leaderboard_id == 3,
+            )
+        )
+    ).scalar_one_or_none()
+    assert stored is not None, (
+        "ratings must persist independent of the alias/avatar steps' own outcome this call"
     )
