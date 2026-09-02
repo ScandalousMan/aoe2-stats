@@ -16,6 +16,20 @@ the bottom of this file, "the identical enrichment, mirrored onto the profile ma
 replays this same suite's own three properties — batched-once, degrade-writes-nothing, second-view
 is a database read — against that route instead.
 
+**T453 reverses this file's own closing property.** `test_viewing_a_page_of_matches_makes_one_
+batched_companion_call_and_writes_colour` below used to end on `GET /api/players/{profile_id}`
+(the summary route) making no provider call whatsoever (T419/T426). `_refresh_profile_identity`
+(FR-017, `routers/players.py`) now runs on that route too, so viewing a profile there reaches Relic
+for its identity and, once that establishes a real alias, companion's own search endpoint for the
+avatar hash — this test's own closing assertion is rewritten to expect exactly that new call,
+rather than its absence (`test_players_routes.py`'s docstring near its `avatar_hash` tests carries
+the identical reversal for that file). The three T450 tests further down, against the *matches*
+route, are unaffected: none of them fakes Relic, so `_refresh_profile_identity`'s own Relic call
+there fails against this file's `_intercept_companion` fake (any non-companion host raises), is
+swallowed by that function's own broad `except Exception`, and never reaches companion at all —
+the same "no real alias established this call, so no search" contrast `test_third_party_history.
+py`'s own dedicated T453 test proves directly.
+
 **Why "at most one companion call" alone would prove nothing.** Read literally, a ceiling of one
 call per page is trivially satisfied by zero calls too. Every test below therefore also asserts a
 *positive*: that the call actually happened (`fake.request_count == 1`, not `<= 1`) wherever the
@@ -68,6 +82,12 @@ SESSION_COOKIE_NAME = "session_id"
 #: request against. Any other host reaching `httpx.AsyncClient.send` below is a bug this test must
 #: catch, not silently pass through.
 _COMPANION_HOST = "data.aoe2companion.com"
+
+#: T453: `_refresh_profile_identity`'s own Relic host (`RelicMatchHistoryProvider`,
+#: `test_third_party_history.py`'s own `_RELIC_HOST`, duplicated here rather than imported — this
+#: suite's own self-contained-file convention, `routers/players.py`'s module docstring). Only the
+#: reversed closing property below ever needs it.
+_RELIC_HOST = "aoe-api.worldsedgelink.com"
 
 _CALLER_PROFILE_ID = 941_400_100
 _OPPONENT_PROFILE_ID = 941_400_200
@@ -217,6 +237,31 @@ def _intercept_companion(monkeypatch: pytest.MonkeyPatch, fake: _CompanionUpstre
     monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
 
 
+class _RelicIdentityUpstream:
+    """T453: stands in for Relic's `getRecentMatchHistory` identity block
+    (`test_third_party_history.py`'s own `_FakeRelicMatchHistoryUpstream`, duplicated here rather
+    than imported) — the one seam `_refresh_profile_identity` reaches on `GET /api/players/
+    {profile_id}` now that it runs there too (module docstring's "T453 reverses" note)."""
+
+    def __init__(self, body: dict[str, Any]) -> None:
+        self._body = body
+        self.request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        return httpx.Response(200, json=self._body)
+
+
+def _relic_identity_body(*, profile_id: int, alias: str, country: str | None) -> dict[str, Any]:
+    """One `getRecentMatchHistory` response carrying only the `profiles[]` identity block
+    (`RelicMatchHistoryProvider.recent_profiles`) — no `matchHistoryStats`, since this reversed
+    test's own claim is about the identity refresh, not match discovery."""
+    return {
+        "matchHistoryStats": [],
+        "profiles": [{"profile_id": profile_id, "alias": alias, "country": country}],
+    }
+
+
 # --- T419 itself -----------------------------------------------------------------------------
 
 
@@ -225,10 +270,14 @@ async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_wr
 ) -> None:
     """Scenario 3: a page carrying two matches must enrich colour in exactly one companion call,
     batched over the page's game ids, never one per match — and the colour that call returns must
-    land in `match_players.color_id`, keyed `(game_id, profile_id)` (`data-model.md` §1). Ending
-    with the property T419's task text closes on: `GET /api/players/{profile_id}` must still make
-    no provider call whatsoever, so the companion call count must not move a second time when this
-    same caller's own profile is opened right after — the property T426 must not quietly cost.
+    land in `match_players.color_id`, keyed `(game_id, profile_id)` (`data-model.md` §1).
+
+    **T453 reverses this test's own closing property** (module docstring). `GET /api/players/
+    {profile_id}` used to make no provider call whatsoever after this (T419/T426); it now runs the
+    shared on-view identity refresh (FR-017) before answering, so opening this same caller's own
+    profile right after reaches Relic once for the subject's identity and, once that establishes a
+    real alias, companion's own search endpoint once for the avatar hash — the companion call count
+    must move by exactly one beyond the matches page's own batched call, not stay put.
     """
     caller = await _seed_linked_profile(db_session)
     await _sign_in(client, db_session, caller)
@@ -270,16 +319,38 @@ async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_wr
                 f"response. Got {row.color_id!r}, expected {expected_colour!r}"
             )
 
-    # T419's closing property: viewing a page of matches must never make the profile route reach
-    # a provider either — the companion call count must stay exactly where the matches page left
-    # it.
+    # T453's reversed closing property (module docstring, test docstring above): `GET
+    # /api/players/{profile_id}` now runs the on-view identity refresh, which reaches Relic for
+    # identity and, once that names a real alias for the subject, companion's own search endpoint
+    # for the avatar hash.
+    relic_fake = _RelicIdentityUpstream(
+        _relic_identity_body(profile_id=_CALLER_PROFILE_ID, alias="CallerRealAlias", country="FR")
+    )
+
+    async def fake_send_for_profile_view(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _RELIC_HOST:
+            return relic_fake(request)
+        if request.url.host == _COMPANION_HOST:
+            return fake(request)
+        raise AssertionError(f"unexpected outbound request to {request.url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send_for_profile_view)
+
     profile_response = client.get(f"/api/players/{_CALLER_PROFILE_ID}")
     assert profile_response.status_code == 200, (
         f"Got {profile_response.status_code}: {profile_response.text}"
     )
-    assert fake.request_count == 1, (
-        "GET /api/players/{profile_id} must make no provider call whatsoever — the companion "
-        f"call count must stay at 1 (the matches page's own batched call). Got {fake.request_count}"
+    assert relic_fake.request_count == 1, (
+        "the on-view identity refresh (T453, FR-017) must reach Relic once for the subject's own "
+        f"identity. Got {relic_fake.request_count}"
+    )
+    assert fake.request_count == 2, (
+        "GET /api/players/{profile_id} now makes a provider call: the identity refresh's own "
+        "companion search, fired once it establishes a real alias for the subject (T453) — the "
+        "call count must move by exactly one beyond the matches page's own batched call (1), not "
+        f"stay put. Got {fake.request_count}"
     )
 
 

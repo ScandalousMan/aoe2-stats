@@ -307,9 +307,16 @@ async def _seed_user(db_session: AsyncSession) -> User:
     return user
 
 
-async def _seed_profile(db_session: AsyncSession, *, profile_id: int, alias: str) -> None:
+async def _seed_profile(
+    db_session: AsyncSession, *, profile_id: int, alias: str, country: str | None = None
+) -> None:
     db_session.add(
-        AoeProfile(profile_id=profile_id, alias=alias, alias_observed_at=datetime.now(UTC))
+        AoeProfile(
+            profile_id=profile_id,
+            alias=alias,
+            country=country,
+            alias_observed_at=datetime.now(UTC),
+        )
     )
     await db_session.commit()
 
@@ -398,3 +405,440 @@ async def test_reading_a_third_partys_history_persists_the_matched_entry_verbati
     )
 
     _assert_structurally_equal(stored.raw_payload, target_entry)
+
+
+# --- T453: the shared on-view identity refresh, FR-007/FR-008a/FR-017 ---------------------------
+#
+# `_refresh_profile_identity` (`routers/players.py`) is the helper both this route and `GET
+# /api/players/{profile_id}` now trigger on every view: it persists the real alias/country Relic's
+# `getRecentMatchHistory` identity block (`profiles[]`, T451's `recent_profiles`) carries — for
+# every profile the block names, not only the one being viewed — through T452's widened
+# `discover.touch_aoe_profile`, and then resolves the avatar hash via exactly one companion search
+# keyed on the alias it just established. Two independent, separately-degrading steps (that
+# function's own docstring); the tests below exercise each in turn, plus the contrast T453's task
+# text calls out explicitly: no *stale*, previously-stored alias may ever stand in for one this
+# call did not itself establish.
+
+
+def _identity_entry(*, profile_id: int, alias: str | None, country: str | None) -> dict[str, Any]:
+    """One `profiles[]` entry — Relic's identity block, the shape `RelicMatchHistoryProvider.
+    recent_profiles` reads off the same `getRecentMatchHistory` response `matchHistoryStats` rides
+    alongside (`packages/providers/src/aoe2stats_providers/relic/matches.py`)."""
+    return {"profile_id": profile_id, "alias": alias, "country": country}
+
+
+#: aoe2companion's search endpoint (`CompanionEnrichmentProvider.search_players`,
+#: `companion/provider.py`) — distinct from `enrich_matches`'s own `/api/matches`
+#: (`test_match_colour_enrichment.py`'s `_CompanionUpstream`), which no test in this file exercises.
+_COMPANION_SEARCH_PATH_SUFFIX = "/profiles"
+
+
+def _companion_search_body(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"profiles": entries}
+
+
+def _companion_search_entry(
+    *, profile_id: int, alias: str, avatar_hash: str | None, country: str | None = None
+) -> dict[str, Any]:
+    """One `/profiles?search=` entry (`companion/provider.py`'s `_parse_search_result`):
+    `profileId`, `name`, `country`, `avatarhash` — the wire names, not `PlayerSearchResult`'s own.
+    """
+    return {"profileId": profile_id, "name": alias, "country": country, "avatarhash": avatar_hash}
+
+
+class _FakeCompanionSearchUpstream:
+    """Stands in for aoe2companion's `/profiles` search endpoint — the one `_refresh_profile_
+    identity` reaches for the avatar hash, keyed on a `search=` query rather than a batch of game
+    ids. `last_query` records the parameter the route actually sent, so a test can prove the search
+    was keyed on the *real* alias the identity refresh just established, not a stale or placeholder
+    one."""
+
+    def __init__(self, body: dict[str, Any]) -> None:
+        self._body = body
+        self.request_count = 0
+        self.last_query: str | None = None
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        self.last_query = request.url.params.get("search")
+        return httpx.Response(200, json=self._body)
+
+
+class _RefusingCompanionUpstream:
+    """Answers nothing: any request reaching it fails the test outright. Used for the "no real
+    alias established this call" contrast below, where `_refresh_profile_identity` must skip the
+    companion search entirely — a request count of zero is not, on its own, distinguishable from
+    "the test forgot to check"; this makes the skip a hard failure instead of a silent pass."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        raise AssertionError(
+            f"companion must never be reached when this call established no real alias for the "
+            f"subject — got a request to {request.url}"
+        )
+
+
+_IDENTITY_SUMMARY_SUBJECT_PROFILE_ID = 901_301_200
+_IDENTITY_SUMMARY_OPPONENT_PROFILE_ID = 901_301_300
+_IDENTITY_MATCHES_SUBJECT_PROFILE_ID = 901_301_400
+_IDENTITY_MATCHES_OPPONENT_PROFILE_ID = 901_301_500
+_AVATAR_SUBJECT_PROFILE_ID = 901_301_600
+_AVATAR_NAMESAKE_PROFILE_ID = 901_301_601
+_DEGRADED_RELIC_SUBJECT_PROFILE_ID = 901_301_700
+_DEGRADED_COMPANION_SUBJECT_PROFILE_ID = 901_301_800
+_NO_FRESH_ALIAS_SUBJECT_PROFILE_ID = 901_301_900
+
+
+async def test_viewing_a_third_partys_summary_persists_real_alias_for_every_profile_named(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T453, FR-007/FR-017: `GET /api/players/{profile_id}` — the summary route, which used to make
+    no provider call at all (T419/T426, reversed by T453) — now runs `_refresh_profile_identity`
+    before answering. A subject still carrying the numeric-id placeholder (`touch_aoe_profile`'s
+    own "on insert" case) gets its real alias/country from Relic's identity block, and an opponent
+    the same response names for free gets its own `aoe_profiles` row too — the widened
+    `touch_aoe_profile` call this task's text asks for, not only a coincidental update of the one
+    row already seeded.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_IDENTITY_SUMMARY_SUBJECT_PROFILE_ID,
+        alias=str(_IDENTITY_SUMMARY_SUBJECT_PROFILE_ID),
+    )
+
+    identity_body = {
+        "matchHistoryStats": [],
+        "profiles": [
+            _identity_entry(
+                profile_id=_IDENTITY_SUMMARY_SUBJECT_PROFILE_ID,
+                alias="RealSubjectAlias",
+                country="FR",
+            ),
+            _identity_entry(
+                profile_id=_IDENTITY_SUMMARY_OPPONENT_PROFILE_ID,
+                alias="RealOpponentAlias",
+                country="DE",
+            ),
+        ],
+    }
+    fake = _FakeRelicMatchHistoryUpstream(identity_body)
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            # The avatar-hash half of `_refresh_profile_identity` is this file's own separate
+            # test below — degraded here so this test's own claim stands independent of it.
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_IDENTITY_SUMMARY_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    body = response.json()
+    assert body["alias"] == "RealSubjectAlias", (
+        "the on-view identity refresh must replace the numeric-id placeholder with the real alias "
+        f"Relic's identity block just carried. Got {body['alias']!r}"
+    )
+    assert body["country"] == "FR"
+
+    opponent = await db_session.get(AoeProfile, _IDENTITY_SUMMARY_OPPONENT_PROFILE_ID)
+    assert opponent is not None, (
+        "an opponent named in the same identity block must get its own `aoe_profiles` row, "
+        "without a call of its own (T453's task text)"
+    )
+    assert opponent.alias == "RealOpponentAlias"
+    assert opponent.country == "DE"
+
+
+async def test_viewing_a_third_partys_match_history_also_persists_real_alias_and_country(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T453's twin of the summary-route test above, through `GET /api/players/{profile_id}/
+    matches` — the route that already reads `matchHistoryStats` live
+    (`test_reading_a_third_partys_history_persists_the_matched_entry_verbatim` above); this test's
+    own claim is the `profiles[]` half of the identical response, which `_refresh_profile_identity`
+    reads alongside it."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_IDENTITY_MATCHES_SUBJECT_PROFILE_ID,
+        alias=str(_IDENTITY_MATCHES_SUBJECT_PROFILE_ID),
+    )
+
+    upstream_body = {
+        "matchHistoryStats": [],
+        "profiles": [
+            _identity_entry(
+                profile_id=_IDENTITY_MATCHES_SUBJECT_PROFILE_ID,
+                alias="RealMatchesSubjectAlias",
+                country="BE",
+            ),
+            _identity_entry(
+                profile_id=_IDENTITY_MATCHES_OPPONENT_PROFILE_ID,
+                alias="RealMatchesOpponentAlias",
+                country="NL",
+            ),
+        ],
+    }
+    fake = _FakeRelicMatchHistoryUpstream(upstream_body)
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_IDENTITY_MATCHES_SUBJECT_PROFILE_ID}/matches")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    subject = await db_session.get(AoeProfile, _IDENTITY_MATCHES_SUBJECT_PROFILE_ID)
+    assert subject is not None
+    assert subject.alias == "RealMatchesSubjectAlias", (
+        f"Got {subject.alias!r}, expected the real alias from Relic's identity block"
+    )
+    assert subject.country == "BE"
+
+    opponent = await db_session.get(AoeProfile, _IDENTITY_MATCHES_OPPONENT_PROFILE_ID)
+    assert opponent is not None, (
+        "an opponent named in the same identity block must get its own `aoe_profiles` row too, "
+        "on the matches route exactly as on the summary route"
+    )
+    assert opponent.alias == "RealMatchesOpponentAlias"
+    assert opponent.country == "NL"
+
+
+async def test_a_freshly_established_alias_resolves_the_avatar_hash_via_one_companion_search(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T453, FR-008a/FR-017: once the identity refresh has just established a real alias for the
+    viewed profile — this same call, never a previously stored one (the contrast test below) — it
+    resolves the avatar hash with exactly one companion search keyed on that alias, keeping only
+    the `PlayerSearchResult` whose own `profile_id` matches the subject: a name search can answer
+    more than one player, and the fixture below deliberately includes a same-name namesake with a
+    different `profile_id` to prove the filter, not merely that *a* hash landed somewhere. The
+    route then serves that hash straight from `aoe_profiles`.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session, profile_id=_AVATAR_SUBJECT_PROFILE_ID, alias=str(_AVATAR_SUBJECT_PROFILE_ID)
+    )
+
+    identity_body = {
+        "matchHistoryStats": [],
+        "profiles": [
+            _identity_entry(
+                profile_id=_AVATAR_SUBJECT_PROFILE_ID, alias="AvatarRealAlias", country="FR"
+            )
+        ],
+    }
+    relic_fake = _FakeRelicMatchHistoryUpstream(identity_body)
+    companion_fake = _FakeCompanionSearchUpstream(
+        _companion_search_body(
+            [
+                _companion_search_entry(
+                    profile_id=_AVATAR_SUBJECT_PROFILE_ID,
+                    alias="AvatarRealAlias",
+                    avatar_hash="subjecthash",
+                ),
+                _companion_search_entry(
+                    profile_id=_AVATAR_NAMESAKE_PROFILE_ID,
+                    alias="AvatarRealAlias",
+                    avatar_hash="namesakehash",
+                ),
+            ]
+        )
+    )
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _RELIC_HOST:
+            return relic_fake(request)
+        if request.url.host == _COMPANION_HOST:
+            assert request.url.path.endswith(_COMPANION_SEARCH_PATH_SUFFIX), (
+                f"expected the search endpoint, got {request.url}"
+            )
+            return companion_fake(request)
+        raise AssertionError(f"unexpected outbound request to {request.url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_AVATAR_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert companion_fake.request_count == 1, (
+        "the avatar hash must be resolved with exactly one companion search call, keyed on the "
+        f"alias the identity refresh just established. Got {companion_fake.request_count}"
+    )
+    assert companion_fake.last_query == "AvatarRealAlias", (
+        "the search must be keyed on the real alias just established this call, not the "
+        f"placeholder it replaced. Got {companion_fake.last_query!r}"
+    )
+
+    body = response.json()
+    assert body["avatar_hash"] == "subjecthash", (
+        "the route must serve the hash from the matched `PlayerSearchResult`, read back from "
+        f"`aoe_profiles`. Got {body['avatar_hash']!r}"
+    )
+
+    namesake = await db_session.get(AoeProfile, _AVATAR_NAMESAKE_PROFILE_ID)
+    assert namesake is None or namesake.avatar_hash != "namesakehash", (
+        "only the search result whose own profile_id matches the subject may be persisted — a "
+        "same-name namesake's hash must never land on an unrelated profile"
+    )
+
+
+async def test_a_failing_relic_identity_source_leaves_the_view_answering_from_storage(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-017's degrade discipline, the Relic half: "a source that is unavailable degrades to
+    whatever the service already holds; it MUST NOT fail the view." A Relic call that fails
+    outright (never a `200`) is `_refresh_profile_identity`'s own deliberately broad catch (that
+    function's docstring) — the view must still answer `200` from whatever `aoe_profiles` already
+    carries, unmoved.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_DEGRADED_RELIC_SUBJECT_PROFILE_ID,
+        alias="AlreadyStoredRealAlias",
+        country="ES",
+    )
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return httpx.Response(503, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_DEGRADED_RELIC_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, (
+        f"a failing Relic source must never fail the view (FR-017). Got {response.status_code}: "
+        f"{response.text}"
+    )
+    body = response.json()
+    assert body["alias"] == "AlreadyStoredRealAlias", (
+        f"a failed identity fetch must leave whatever this service already held untouched. Got "
+        f"{body['alias']!r}"
+    )
+    assert body["country"] == "ES"
+
+
+async def test_a_failing_companion_search_leaves_the_view_answering_from_storage_without_a_hash(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-017's degrade discipline, the companion half: Relic succeeds and establishes a real alias
+    this same call, but companion's own search fails — the view must still answer `200`, with the
+    freshly-established alias persisted (the two steps degrade independently — `_refresh_profile_
+    identity`'s own docstring), and `avatar_hash` stays `None` rather than the view failing.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_DEGRADED_COMPANION_SUBJECT_PROFILE_ID,
+        alias=str(_DEGRADED_COMPANION_SUBJECT_PROFILE_ID),
+    )
+
+    identity_body = {
+        "matchHistoryStats": [],
+        "profiles": [
+            _identity_entry(
+                profile_id=_DEGRADED_COMPANION_SUBJECT_PROFILE_ID,
+                alias="CompanionDegradedAlias",
+                country="IT",
+            )
+        ],
+    }
+    relic_fake = _FakeRelicMatchHistoryUpstream(identity_body)
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _RELIC_HOST:
+            return relic_fake(request)
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        raise AssertionError(f"unexpected outbound request to {request.url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_DEGRADED_COMPANION_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, (
+        f"a failing companion source must never fail the view (FR-017). Got "
+        f"{response.status_code}: {response.text}"
+    )
+    body = response.json()
+    assert body["alias"] == "CompanionDegradedAlias", (
+        "Relic's own half of the refresh degrades independently of companion's — the real alias "
+        f"it just established must still land. Got {body['alias']!r}"
+    )
+    assert body["avatar_hash"] is None
+
+
+async def test_no_real_alias_established_this_call_skips_the_companion_search_entirely(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contrast case T453's task text calls out explicitly: "reaching for a stale, previously-
+    stored alias instead would search on a name this call never itself verified." A profile that
+    already carries a real alias from an earlier view, but whose *this-call* Relic identity fetch
+    names nothing for it (an empty `profiles[]`), must not have companion searched at all — the
+    fake below raises if it is ever reached, proving the skip rather than merely leaving its call
+    count unchecked.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_NO_FRESH_ALIAS_SUBJECT_PROFILE_ID,
+        alias="AlreadyRealFromEarlierView",
+        country="PT",
+    )
+
+    identity_body: dict[str, Any] = {"matchHistoryStats": [], "profiles": []}
+    relic_fake = _FakeRelicMatchHistoryUpstream(identity_body)
+    refusing_companion = _RefusingCompanionUpstream()
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _RELIC_HOST:
+            return relic_fake(request)
+        if request.url.host == _COMPANION_HOST:
+            return refusing_companion(request)
+        raise AssertionError(f"unexpected outbound request to {request.url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+    response = client.get(f"/api/players/{_NO_FRESH_ALIAS_SUBJECT_PROFILE_ID}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["alias"] == "AlreadyRealFromEarlierView", (
+        "an empty identity response must never clobber a real alias already stored (T452's own "
+        f"'never clobber' direction). Got {body['alias']!r}"
+    )
