@@ -5,19 +5,21 @@
 `apps/web/src/features/profile/` (T037). **Extended by 003, US1** (§11) — consumed by
 `apps/web/src/routes/players.$profileId.tsx` (003 T322), where it presents a profile that is not the
 signed-in user's own. **Extended by 004, US2** (§12) — the alias as the heading, the numeric id
-demoted, the country flag and the Steam avatar.
+demoted, the country flag and the Steam avatar. **Amended by 004, Phase 8** (§13) — the country name
+moves off the line and into a `Tooltip` on the flag.
 **Requirements**: FR-008 (rating, rank, win/loss per leaderboard), FR-043 (one primary, others
 reachable), FR-045 (never reveal that two linked accounts are one person), FR-004 (unlink trigger),
 FR-007. SC-004. **§11 also carries 003's FR-006, FR-008, FR-008a, FR-009, FR-010, FR-013, FR-014**,
 and **§12 carries 004's FR-007, FR-008, FR-008a and FR-013, and SC-002** — each prefixed `003` or
 `004` throughout this file to keep them apart from 001's own FR-008/FR-004/FR-007/FR-045 above, and
 from each other: all three features number a requirement `FR-008`, and 003 and 004 both have an
-`FR-008a` about different things.
+`FR-008a` about different things. **§13 carries 004's amended FR-008 and FR-013.**
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `StatValue`, `Menu`, `Badge`,
 `Button`, `Callout`, `Skeleton`. §11 also depends on
 [`player-search.md`](./player-search.md)'s `PlayerSearchResult` shape for `alias_observed_at`. §12
 depends on [`country-flag.md`](./country-flag.md), [`player-avatar.md`](./player-avatar.md) and
-[`game-asset-tokens.md`](./game-asset-tokens.md)'s `icon` size family (DS-7, closed).
+[`game-asset-tokens.md`](./game-asset-tokens.md)'s `icon` size family (DS-7, closed). §13 adds
+[`tooltip.md`](./tooltip.md).
 
 ## 1. Purpose
 
@@ -395,6 +397,11 @@ introduces, and — where it changes an earlier rule — says so in §12.1 rathe
 **004's own requirement numbers collide with 001's and 003's** (all three have an `FR-008`; 003 and
 004 both have an `FR-008a`), so every reference below is prefixed `004`.
 
+> **Superseded in part by §13.** §12 was written when the country rendered as a flag **and** its name
+> in text. FR-008 was amended on 2026-09-02: the name is now the flag's `Tooltip` content and no
+> country text sits beside the flag. §12.4, §12.6, §12.7, §12.8 and §12.9 are amended by §13.1's
+> table; everything else in §12 stands.
+
 ### 12.1 What §12 supersedes, and what it leaves standing
 
 | Earlier text                                                                     | Status                                                                                                                                                                                                                                          |
@@ -482,6 +489,12 @@ The behaviour is specified in that file; this section fixes only what the caller
   (`country-flag.md` §4). The reader is told where the player is from; they were never owed a picture
   of it.
 
+> **Amended by §13.** "The flag, then the country name in words" is now "the flag, with the country
+> name as its `Tooltip` content" (§13.2). The four bullets above all still hold, with one wording
+> change: the flag is now itself a control (a tooltip trigger), so "the flag is never inside a
+> control" becomes "the flag is never inside **another** control, and the country never joins the
+> switcher trigger's accessible name" (§13.4).
+
 ### 12.5 Rule 3 — no avatar, or one that fails: the same neutral placeholder (004 FR-008a)
 
 [`PlayerAvatar`](./player-avatar.md) leads `IdentityBar`, at `md` (`icon-2xl`, 64px) in `board` and
@@ -532,6 +545,11 @@ support ticket needs is last because it is the one a person reads least.
 - **An avatar that is a link, or a flag that filters by country.** Neither exists in 004; adding one
   is a spec change, and it would need the 44px hit area `game-asset-tokens.md` fixes `icon-xl` for.
 
+> **Amended by §13.** The `CountryFlag` line reads "flag alone; the country name is its tooltip
+> content" (§13.3). The last bullet still stands as written: the flag is a **tooltip trigger**, which
+> reveals a fact — it is not a link, it does not navigate and it does not filter. It does now take
+> the 44px hit area that bullet names, which is what makes the distinction worth keeping.
+
 ### 12.7 States §5 and §11.2 did not need to name
 
 **default / hover / focus-visible / active / disabled** — unchanged. Neither new part is
@@ -567,6 +585,11 @@ service discovered from a match and never enriched:
 > (§12.4). `ProfileId`: omitted, because the heading is already the id. The rating board renders
 > whatever it has, including "No ratings yet". **Nothing is blank, nothing is an error, and nothing
 > apologises.** This is a legitimate resting state, not a broken one.
+
+> **Amended by §13.** "Neither new part is interactive, neither takes a `tabindex`, and neither has a
+> hover" is **superseded for the flag**: it is now a tab stop with a focus ring and a hover
+> (§13.5). The avatar is unchanged and stays non-interactive. The loading, error and empty rules
+> above are unchanged.
 
 ### 12.8 Tokens, spacing, responsive, accessibility — the delta only
 
@@ -624,6 +647,13 @@ nothing to it.
 - The avatar's `<img>` carries `referrerpolicy="no-referrer"` (`player-avatar.md` §8): the Steam CDN
   necessarily learns the viewer's IP, but it must not also learn which profile they were reading.
 
+> **Amended by §13.** The "Flag to the country name beside it `space-2`" spacing row is **retired**
+> (§13.6). The flag's `alt=""` stays but its reason changes (§13.7). "No new tab stop and no new
+> touch target" is **superseded**: the flag is a tab stop and owes 44px (§13.7). The `text-secondary`
+> on `background` contrast note now covers `ProfileId` and the freshness line only — the country
+> name has moved to `text-primary` on `surface-raised`, which README's table already measures in both
+> themes.
+
 ### 12.9 Visual acceptance criteria (additional to §10 and §11.4)
 
 **The ladder — one story per rule, and they are what SC-002 reduces to**
@@ -667,3 +697,232 @@ nothing to it.
 - [ ] Converting any story to greyscale leaves the heading, the country name and the id fully
       readable; only the flag and the avatar lose information, which is the point — nothing was
       riding on either.
+
+> **Amended by §13.9**: the first criterion's "a flag with a country **name** beside it", and the
+> focus-ring criterion's "neither the avatar nor the flag ever shows a focus ring", are both
+> **superseded** — the first inverted, the second split so it still holds for the avatar and is
+> reversed for the flag. Every other criterion above stands.
+
+---
+
+## 13. The country is the flag's tooltip (004, Phase 8 — T455, amended FR-008)
+
+The T447 hand-walk of `1807091` against production found the identity bar rendering the country as a
+flag **and** its name as text on the same line — "🇫🇷 France". FR-008 was amended by Clarifications
+2026-09-02: the country name "MUST be conveyed through a design-system Tooltip on the flag —
+revealed on hover and on keyboard focus, with an accessible name for assistive technology — and MUST
+NOT be rendered as an adjacent text element."
+
+This is a small change with one consequence that is not small: **the identity bar gains a focus
+stop.** §12.7 and §12.9 both say in as many words that neither of §12's new parts is interactive and
+that neither ever shows a focus ring. That is now false of the flag and still true of the avatar, and
+§13.5 and §13.7 say so twice because it is the assertion a later reviewer is likeliest to carry over
+from the file's earlier half.
+
+The behaviour itself lives in [`country-flag.md`](./country-flag.md) §11 and
+[`tooltip.md`](./tooltip.md). This section states only what the caller owes.
+
+### 13.1 What §13 supersedes, and what it leaves standing
+
+| Earlier text                                                                                      | Status                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §2's `CountryLabel` line, "country name in text; a flag glyph may accompany it, never replace it" | **Superseded** (§13.2). The name is the flag's tooltip content. It is not replaced by the flag — it is reached through it, three ways.                                                    |
+| §2's IP note, "decorative (`aria-hidden`) beside the country name in text"                        | **Standing on the licence half, amended on the placement half** (§13.7). The flag is still a free-licensed, licence-recorded, non-game asset, and its `<img>` is still `alt=""`.          |
+| §12.4's "the flag, then the country **name in words**"                                            | **Superseded** (§13.2), with its four bullets otherwise intact.                                                                                                                           |
+| §12.4's "the flag is never inside a control"                                                      | **Narrowed** (§13.4): never inside **another** control, and the country never enters the switcher trigger's accessible name. The flag is itself a trigger now.                            |
+| §12.6's `CountryFlag` anatomy line, "flag + country name"                                         | **Superseded** (§13.3): flag alone, the name in its tooltip.                                                                                                                              |
+| §12.7's "neither new part is interactive, neither takes a `tabindex`, and neither has a hover"    | **Superseded for the flag, standing for the avatar** (§13.5).                                                                                                                             |
+| §12.7's loading rule ("no skeleton is drawn for the flag") and its error and empty rules          | **Unchanged.** A flag image that fails still leaves the country readable (§13.5), and "No ratings yet" still does not move.                                                               |
+| §12.8's spacing row "Flag to the country name beside it `space-2`"                                | **Retired** (§13.6). There is no name beside the flag to space. "Heading (or switcher trigger) to the flag `space-3`" is unchanged.                                                       |
+| §12.8's "no new tab stop and no new touch target"                                                 | **Superseded** (§13.7): one new tab stop, one new 44px target, both on the flag.                                                                                                          |
+| §12.8's `text-secondary`-on-`background` contrast note                                            | **Narrowed** (§13.6): it now covers `ProfileId` and the freshness line. The country name has left that pair for `text-primary` on `surface-raised`, which README measures in both themes. |
+| §12.8's 375 rule, "the country pair may wrap as a unit… never between the flag and its name"      | **Retired** (§13.8). There is no pair; there is one 44px mark.                                                                                                                            |
+| §12.9's "a flag with a country **name** beside it" and "neither… ever shows a focus ring"         | **Superseded** by §13.9.                                                                                                                                                                  |
+| §§4, 5, 9, 10, 11 and everything in §12 not named above                                           | **Unchanged, and load-bearing** — the switcher, FR-045, the rating board, the fallback ladder's other two rules, and the calm "No ratings yet" state above all.                           |
+
+### 13.2 What the caller owes
+
+`CountryFlag` renders the flag as a `Tooltip` trigger whose content is the country name
+(`country-flag.md` §11.2). `ProfileSummary` passes exactly the props it already passed:
+`countryName` and `countryFlagUrl` on `ViewedProfile`, resolved in `apps/web` per
+`country-flag.md` §2a. **No prop, no field and no wire format changes for this** — SC-002's
+"no two-letter code reaches the screen" is unaffected, and the code must not reach the tooltip
+either.
+
+§12.4's four bullets stand, one of them reworded:
+
+- **The code never reaches the screen** — unchanged, and now also: never inside a tooltip.
+- **The flag sits outside the switcher trigger, immediately after it, at `space-3`** — unchanged, and
+  now load-bearing for a second reason: a control inside a control is invalid HTML and would make the
+  country part of the switcher's accessible name, which §13.4 forbids on its own terms.
+- **No country at all: nothing renders** — unchanged. `CountryFlag` returns `null` and `Tooltip`'s
+  empty state renders no button, so no empty tab stop is left behind (`tooltip.md` §4 empty).
+- **A country whose flag the pack does not cover, or whose image fails**: the name renders as plain
+  visible text, with no flag, no trigger and no tooltip (`country-flag.md` §11.4). This is not the
+  adjacent text FR-008 forbids — there is no flag for it to be adjacent to, and the alternative is a
+  reader who is never told the country.
+
+### 13.3 The `IdentityBar` line that changes
+
+```
+IdentityBar (§12.6, with one line amended)
+├─ PlayerAvatar        unchanged — md (64px) in `board`, sm (32px) in `compact`, non-interactive
+└─ IdentityColumn
+   ├─ NameLine
+   │  ├─ ProfileSwitcher | AliasHeading    unchanged
+   │  └─ CountryFlag                       FLAG ALONE — a 44px tooltip trigger; the country
+   │                                       name is its tooltip content, not a sibling element
+   ├─ ProfileId                            unchanged
+   ├─ AliasFreshnessNote                   unchanged
+   └─ (ProfileActions | FavouriteToggle)   unchanged
+```
+
+**The reading order is unchanged**: face, name, country, identifier. The country is still announced
+third — through the flag trigger's accessible name ("Country: France"), which resolves whether the
+tooltip has been opened or not (`tooltip.md` §8). A screen reader user's sequence is byte-for-byte
+what §12.6 promised; what changed is only what a sighted reader sees at rest.
+
+**What the bar buys for it**: the name's width back. On a 375 viewport "France" — or "Bosnia and
+Herzegovina" — was competing with the alias for the one line above the ratings, and the country is
+the least-read of the four facts in this bar. Number legibility and density outrank decoration, and
+this is that trade taken in the one place it is available.
+
+### 13.4 The country still never enters a control's accessible name — except its own
+
+§12.4's rule was that the country must not join the switcher trigger's accessible name ("Hera France,
+switch profile"), which would make a fact about a person part of a button's label. That rule is
+unchanged and is now doubly enforced: the flag is a `<button>`, and a button inside a button is
+invalid HTML, so the flag **must** sit outside the switcher trigger rather than merely ought to.
+
+The flag trigger's own accessible name **is** the country ("Country: France") — that is the point of
+`relation="label"` (`tooltip.md` §8) — and this is not the failure §12.4 named. That failure was a
+person's country contaminating a control that does something else; this is a control whose entire
+purpose is to reveal the country, named after what it reveals.
+
+### 13.5 States — the delta to §12.7
+
+**hover** — the identity bar gains one: the pointer over the flag opens the tooltip after
+`motion.duration.normal`. Nothing else in the bar gains a hover, and the `RatingEntry` rule (§5) is
+untouched.
+
+**focus-visible** — **the identity bar's focus stops are now the flag, the switcher trigger and the
+actions beside it.** Reaching the flag by Tab opens its tooltip immediately and shows the standard
+ring (`outline-2 outline-offset-2` in `focus-ring`, gap DS-4) around the flag's 44px button box,
+unclipped, in both themes. The ring is **not** replaced by the tooltip appearing.
+
+**Tab order** is DOM order and is the reading order §12.6 fixed: avatar (not a stop) → switcher
+trigger or heading → **flag** → actions. The flag comes after the name and before the actions,
+because that is where it is read.
+
+**active** — pressing the flag pins its tooltip open; Escape dismisses it without moving focus. On
+touch this is the only route to the country (`country-flag.md` §11.3), which is why it is specified
+rather than left to the implementation.
+
+**disabled** — nothing here is ever disabled, and the flag specifically must never carry the
+`disabled` attribute: it would make the country unreachable rather than dim (`tooltip.md` §4).
+
+**loading, error, empty** — §12.7's rules, unchanged. No skeleton is drawn for the flag; a flag image
+that fails leaves the country as plain visible text; a profile with no country renders no flag, no
+trigger and no tab stop, and the line closes up.
+
+**The avatar is unchanged in every one of these.** It is not a tab stop, has no hover, and shows no
+focus ring. §12.9's focus-ring criterion still holds for it in full.
+
+### 13.6 Tokens and spacing — the delta to §12.8
+
+**Tokens.** One new component (`Tooltip`), no new token, no new gap. Via it: `surface-raised` (the
+tooltip's opaque fill), `border` (its decorative hairline), `text-primary` (its content),
+`focus-ring` (the flag trigger's ring), radius `md`, elevation `overlay`, motion `duration.fast` +
+`easing.decelerate`. Every one is already in §6's list.
+
+**Contrast.** The country name moves from `text-secondary` on `background` — §12.8's one unmeasured
+dark-theme pair — to **`text-primary` on `surface-raised`**, which README's table measures in both
+themes (14.5 light / 12.0 dark) and which `Callout` body text already rides on. §12.8's note about the
+missing dark `text-secondary`-on-`background` row still stands for `ProfileId` and the freshness line;
+this change removes the country from the list of things waiting on it.
+
+**Spacing** (amending §12.8's table; §7 is still unchanged):
+
+| Between                                   | Step                                                |
+| ----------------------------------------- | --------------------------------------------------- |
+| Avatar to the identity column             | `space-4` — unchanged                               |
+| ~~Flag to the country name beside it~~    | **retired** — there is no name beside the flag      |
+| Heading (or switcher trigger) to the flag | `space-3` — unchanged                               |
+| Flag trigger hit area                     | `icon-xl` (44px) minimum, by padding on the trigger |
+
+The 44px box costs the `board` bar nothing (the 64px avatar sets its height) and the `compact` bar at
+most 4px on a pointer viewport, nothing on touch, because the switcher trigger beside it is already
+40/48px (`country-flag.md` §11.5).
+
+### 13.7 Accessibility — the delta to §12.8
+
+- **One new tab stop and one new 44px touch target, both on the flag**, superseding §12.8's "no new
+  tab stop and no new touch target". The avatar is still neither.
+- The flag's `<img>` stays `alt=""`, but for a new reason: it is decorative **inside a button whose
+  accessible name is the country**, rather than decorative beside visible country text. Never
+  `alt="France"` — the country would then be announced twice inside one control.
+- **The accessible name resolves with the tooltip closed.** `Tooltip`'s content element is in the DOM
+  with the `hidden` attribute at all times (`tooltip.md` §8), so a screen reader reaches "Country:
+  France" without a hover event — which it cannot generate. This is FR-008's "with an accessible name
+  for assistive technology", and it is invisible to a screenshot: T456's unit test asserts it, not a
+  baseline.
+- Keyboard: Tab in (tooltip opens, ring visible), Tab out (closes), Enter/Space pin and unpin, Escape
+  dismisses without moving focus. No arrow keys. The switcher's own keyboard contract (§9) is
+  untouched.
+- The tooltip opens **above** the flag (`tooltip.md` §3a), so it never covers the rating board
+  beneath the identity bar. That is README rule 1 applied to placement: nothing passes over a figure,
+  not even for 200 ms.
+- §9's remaining rules — the `<h2>`, the `<section aria-labelledby>`, the `<dl>`/`<table>` semantics,
+  the switcher, the callouts — are all unchanged.
+
+### 13.8 Responsive — the delta to §12.8
+
+- **375** — the country pair no longer exists, so §12.8's "may wrap as a unit… never between the flag
+  and its name" is retired: the flag is one 44px mark on the name line. The tooltip's placement,
+  flipping and viewport margin are `tooltip.md` §3a and §7; at this viewport the press-to-pin route is
+  the only one, since touch produces no hover.
+- **768 / 1280** — unchanged, minus the width the country name used to take.
+- **320px / 200% zoom** — unchanged; the flag, its 44px box and the tooltip text are all rem-sized.
+  The tooltip wraps rather than truncating, at every viewport (`tooltip.md` §7).
+
+### 13.9 Visual acceptance criteria — replacing two of §12.9's, adding to the rest
+
+§12.9 stands except for the two criteria named below. Several of these are pointer- or keyboard-only
+and are judged against stories that force the state, not against a default capture — a suite of
+resting screenshots verifies none of the reveal and passes anyway.
+
+**Replacing §12.9's first criterion**
+
+- [ ] The full-profile story shows, in one frame at 375, 768 and 1280: the avatar leading, the alias
+      as the largest text in the identity bar, **the country flag alone with no country word anywhere
+      in the frame**, and the numeric id demoted beneath in `text-secondary`.
+
+**Replacing §12.9's focus-ring criterion**
+
+- [ ] Tabbing through the story stops on the switcher trigger, **the flag**, and the actions — in
+      that order — and the **avatar is never a stop**. The focus ring is visible and unclipped on
+      each stop, in both themes.
+
+**Added**
+
+- [ ] The **flag-hover story** shows the country name in a tooltip above the flag; no figure in the
+      frame is covered by it, and it is opaque in both themes.
+- [ ] The **flag-focus story** shows the tooltip open **and** the focus ring on the flag's button box
+      in the same frame, in both themes. One without the other fails.
+- [ ] The **flag-pinned story** (pressed, no pointer, no focus ring) shows the tooltip open — the
+      touch route.
+- [ ] The **after-Escape story** shows no tooltip and the flag still visibly focused.
+- [ ] Overlaying the tooltip-closed and tooltip-open full-profile stories, **every element is in the
+      identical position** — the rating board does not move, and nothing reflows.
+- [ ] The flag's button box measures at least 44×44px at 375; the `board` identity bar's height is
+      still set by the avatar, and the `compact` row has not grown by more than 4px against its
+      pre-amendment baseline.
+- [ ] The country-less story is unchanged from §12.9: no flag, no label, no gap, no tab stop where
+      the flag would be.
+- [ ] The pack-uncovered and failed-flag-image stories show the country as plain visible text with no
+      flag, no frame and no focus ring, and are pixel-identical to each other.
+- [ ] **No two-letter country code appears in any story, including inside any tooltip** (SC-002).
+- [ ] The open-switcher story still shows no avatar, no flag and no tooltip inside any menu item
+      (FR-045), in both themes.
+- [ ] The "No ratings yet" story is untouched: info tone, §5's copy verbatim, no retry, no
+      illustration, identity bar rendering in full above it.

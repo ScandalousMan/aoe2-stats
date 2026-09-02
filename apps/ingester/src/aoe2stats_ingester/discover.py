@@ -51,11 +51,15 @@ however many times the same match is rediscovered.
 — but neither `RawMatch` nor `LeaderboardSnapshot` (`packages/providers/src/aoe2stats_providers/
 base.py`) carries a display name for anyone but the profile a caller already resolved at sign-in
 time (`ProfileRef`, sign-in only, T027). A profile this stage inserts for the first time therefore
-gets a placeholder alias (`str(profile_id)`) rather than inventing one — and, since `alias` is "the
-last one observed, not a history" (`models.py`), an *existing* row's alias is left exactly as it
-was: this stage has no newer observation to prefer over whatever sign-in last recorded, and writing
-over a real alias with a placeholder would be a regression, not a refresh. The one field this stage
-does update on every sighting, new row or old, is `last_seen_at`.
+gets a placeholder alias (`str(profile_id)`) rather than inventing one — this stage itself never
+calls `touch_aoe_profile` (below) with a real one, so every sighting it drives still writes and
+re-touches only that placeholder, exactly as before T452. `touch_aoe_profile` itself now accepts an
+optional real `alias`/`country` for the caller that does have one (T453's on-view identity refresh)
+— and, since `alias` is "the last one observed, not a history" (`models.py`), a real alias a prior
+sighting established is never clobbered back down to the placeholder by a later sighting that has
+none: writing over a real alias with a placeholder would be a regression, not a refresh, and that
+holds however many times this stage's own placeholder-only calls run afterwards. The one field
+every sighting updates regardless — new row, old row, real alias or none — is `last_seen_at`.
 
 Not wired into `run.py`'s `DEFAULT_STAGES` here: that tuple is assembled by whichever task first
 holds a real `session_factory`, `MatchHistoryProvider` and `ProfileProvider` to construct this
@@ -122,23 +126,55 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # `CLAUDE.md`'s "reuse what exists" and this task's own instruction not to invent a second one.
 
 
-async def touch_aoe_profile(session: AsyncSession, profile_id: int) -> None:
+async def touch_aoe_profile(
+    session: AsyncSession,
+    profile_id: int,
+    *,
+    alias: str | None = None,
+    country: str | None = None,
+) -> None:
     """Ensure an `aoe_profiles` row exists for `profile_id` and record that it was seen just now.
-    See the module docstring for why `alias` is only ever set on first insert here, never
-    overwritten on an existing row.
+
+    `alias`/`country` are optional (T452, FR-007 partial): every caller that predates this task
+    — `DiscoverStage.__call__`, `apps/api/src/aoe2stats_api/routers/players.py`'s
+    `_refresh_third_party_history` — still calls this with neither, and that call is unchanged by
+    the widened signature below (see the module docstring's own paragraph on the placeholder).
+
+    **On insert**, a real `alias` is stored when given; when it is not, `alias` falls back to the
+    `str(profile_id)` placeholder exactly as before, and `country` is whatever was given (`None`
+    when it was not, matching the placeholder's own "nothing real known yet" case).
+
+    **On conflict** (an existing row), the direction matters more than the write: a real `alias` —
+    given, and not itself equal to the `str(profile_id)` placeholder — overwrites whatever the row
+    already held (the numeric-id placeholder, or an out-of-date real name) and `country` is set
+    alongside it. But when `alias` is absent, or is itself the placeholder, **nothing about the
+    stored alias or country changes** — a plain discovery cycle re-touching a profile it has no
+    newer name for must never clobber a real alias a prior sighting (T453's on-view refresh, once
+    it lands) already established back down to the numeric id. `last_seen_at` moves on every
+    sighting regardless, insert or conflict, real alias or none.
     """
     now = datetime.now(UTC)
+    placeholder = str(profile_id)
+    has_real_alias = alias is not None and alias != placeholder
+    insert_alias = alias if alias is not None else placeholder
+
+    set_: dict[str, Any] = {"last_seen_at": now}
+    if has_real_alias:
+        set_["alias"] = insert_alias
+        set_["country"] = country
+
     statement = (
         pg_insert(AoeProfile)
         .values(
             profile_id=profile_id,
-            alias=str(profile_id),
+            alias=insert_alias,
+            country=country,
             first_seen_at=now,
             last_seen_at=now,
         )
         .on_conflict_do_update(
             index_elements=[AoeProfile.profile_id],
-            set_={"last_seen_at": now},
+            set_=set_,
         )
     )
     await session.execute(statement)

@@ -192,6 +192,27 @@ class RawMatch(StrictProviderModel):
     raw_payload: dict[str, Any]
 
 
+class RawProfile(StrictProviderModel):
+    """`MatchHistoryProvider.recent_profiles` (T451) — one entry of `getRecentMatchHistory`'s
+    `profiles[]`, the identity block (`alias`, `country`) that rides alongside `matchHistoryStats`
+    and that `RawMatch`/`recent_matches` above never reads. FR-007/FR-017's on-view identity refresh
+    persists it so a viewed third-party profile's real alias/country replace the numeric-id
+    placeholder, without waiting on a sign-in.
+
+    Unlike `ProfileRef` (`RelicProfileProvider.resolve_profile`), whose `alias` the sign-in flow it
+    serves guarantees is present, this block is looked up for arbitrary third-party profiles the
+    application has never authenticated, so both fields are optional rather than assumed — the
+    same "the source itself may simply have none" reading `RawMatch.map_name`/`patch` already
+    apply. Re-queryable at any time from Relic (unlike a match, which leaves the "recent" window
+    for good), so, per constitution III, this DTO carries no `raw_payload`: nothing here is
+    irrecoverable.
+    """
+
+    profile_id: int
+    alias: str | None = None
+    country: str | None = None
+
+
 class ReplayBlob(StrictProviderModel):
     """`ReplayProvider.fetch_replay` on 200 — bytes, filename and content type, and nothing
     interpreted. `content` is stored and checksummed by the caller before validation ever runs

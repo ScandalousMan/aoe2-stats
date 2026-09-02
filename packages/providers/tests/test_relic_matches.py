@@ -297,3 +297,53 @@ async def test_recent_matches_skips_a_malformed_entry_and_keeps_the_rest_of_the_
     assert skip_record.status_code is None
     assert "skipped" in skip_record.endpoint
     assert "malformed" in skip_record.endpoint
+
+
+# --- recent_profiles: the profiles[] identity block, keyed by profile_id (T451) ------------------
+#
+# `getRecentMatchHistory` carries a `profiles[]` array alongside `matchHistoryStats` —
+# `alias`/`country` per `profile_id` — that `recent_matches` above never reads. FR-007/FR-017 need
+# that block to populate a viewed profile's real alias/country on the on-view identity refresh, so
+# `recent_profiles` parses the same endpoint's response for it, leaving `recent_matches`'s existing
+# callers (`apps/ingester/src/aoe2stats_ingester/discover.py`,
+# `apps/ingester/src/aoe2stats_ingester/reconcile.py`,
+# `apps/api/src/aoe2stats_api/routers/players.py`) and its `list[RawMatch]` return untouched — an
+# additive sibling method rather than a widened `recent_matches` return, per T451.
+
+
+async def test_recent_profiles_returns_raw_profiles_with_alias_and_country() -> None:
+    """The parsed identity result carries `profiles[].alias`/`country` keyed by `profile_id`, from
+    the same fixture `recent_matches`'s own tests already use.
+    """
+    from aoe2stats_providers.base import RawProfile
+
+    body = _load("get_recent_match_history.json")
+
+    provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
+
+    profiles = await provider.recent_profiles([196240])
+
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 200
+    assert all(isinstance(profile, RawProfile) for profile in profiles)
+
+    by_profile_id = {profile.profile_id: profile for profile in profiles}
+    assert by_profile_id[288714].alias == "TAG_Mihai06"
+    assert by_profile_id[288714].country == "ro"
+
+
+async def test_recent_profiles_returns_empty_set_when_profiles_key_is_absent() -> None:
+    """A response with no `profiles[]` key yields an empty identity set and never raises — the
+    same "absent is ordinary, not malformed" discipline applied to a wire shape this module does
+    not yet control (a degraded or older endpoint response), distinct from the entry-level skips
+    `recent_matches`/T050a apply once a `profiles[]` entry actually fails to parse.
+    """
+    provider, recorder = _provider(
+        lambda request: httpx.Response(200, json={"matchHistoryStats": [], "result": {}})
+    )
+
+    profiles = await provider.recent_profiles([196240])
+
+    assert profiles == []
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 200
