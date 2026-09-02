@@ -126,7 +126,7 @@ matter if `derive_availability` ever learns to read a third.
 
 **Read-time colour enrichment (T420, FR-003).** `match_players.color_id` has no Relic source at
 all (`research.md` **D2**) — `MatchesRepository`/`upsert_match_player` never write it (T413's own
-docstring). `_enrich_colours` below is this column's only writer, called from `list_matches` alone
+docstring). `enrich_colours` below is this column's only writer, called from `list_matches` alone
 — "batched over the page's game ids" is `list_matches`'s own vocabulary, not `get_match_detail`'s,
 and every one of T419's tests drives it through `GET /api/matches` — on **the display path only**,
 never from `apps/ingester` and never from the capture path: colour never changes once a match is
@@ -152,6 +152,20 @@ is `routers/players.py`'s own `_build_search_provider` wiring, duplicated rather
 this module's own convention of a self-contained file (see the docstrings above), and importing
 from `players.py` here would invert the existing `players.py -> matches.py` (`match_row_json`)
 dependency into a cycle.
+
+**`enrich_colours` is also `routers/players.py`'s own writer (T450, FR-003).** `GET /api/players/
+{profile_id}/matches` (`get_player_match_history`) serves the identical row shape through the
+identical `match_row_json` (this module's own export, see that function's docstring) but, before
+T450, never called this function at all, so `color_id` stayed `NULL` for a freshly-viewed profile
+even though `GET /api/matches` had already coloured the same match. Public (no leading underscore)
+for exactly the reason `match_row_json` already is: so the two routes can never drift onto two
+different colour-enrichment implementations. `players.py` imports it directly rather than
+duplicating its body — unlike the companion wiring above (`_COMPANION_HTTP_CLIENT` and friends),
+which `players.py` already carries its own, independent copy of for `search.py`'s traffic, this
+function's *behaviour*, not merely its transport, is the thing FR-003 requires to be identical
+across both routes, which a second, separately-maintained copy could not guarantee. The one-way
+dependency this creates (`players.py -> matches.py`) is the same direction `match_row_json` already
+established; nothing here reverses it.
 """
 
 from __future__ import annotations
@@ -261,8 +275,10 @@ def _build_enrichment_provider(db_session: AsyncSession) -> CompanionEnrichmentP
     )
 
 
-async def _enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> None:
-    """T420: `match_players.color_id`'s only writer (module docstring). Calls
+async def enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> None:
+    """T420: `match_players.color_id`'s only writer (module docstring). Public — `routers/
+    players.py::get_player_match_history` imports this directly (T450), the same "one writer, not
+    two" reasoning `match_row_json` already carries for the row shape itself. Calls
     `CompanionEnrichmentProvider.enrich_matches` **at most once**, batched over every `game_id` in
     `game_ids` together — never once per match — and only when at least one of them still carries a
     `match_players` row with `color_id IS NULL`. Once every participant across `game_ids` already
@@ -734,7 +750,7 @@ async def list_matches(
         page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
         # T420: batched over this page's own game_ids, never one call per match (module
         # docstring's "Read-time colour enrichment" note) — a no-op once every row is coloured.
-        await _enrich_colours(db_session, [row.game_id for row in page.matches])
+        await enrich_colours(db_session, [row.game_id for row in page.matches])
         return {
             "matches": [match_row_json(row) for row in page.matches],
             "next_cursor": page.next_cursor,

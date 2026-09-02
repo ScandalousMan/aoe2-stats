@@ -94,7 +94,7 @@ from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
-from aoe2stats_api.routers.matches import match_row_json
+from aoe2stats_api.routers.matches import enrich_colours, match_row_json
 from aoe2stats_api.search import persist_avatar_hashes
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_ingester import discover
@@ -490,7 +490,18 @@ async def get_player_match_history(
     than a permanently empty one. A player with no matches at all — after that refresh — gets an
     empty list under `200`, never an error (`test_players_history.py`'s own "not an error" case);
     `404` is reserved for a `profile_id` this service has never itself observed at all
-    (`_profile_not_found`, the one remaining `404` module-wide)."""
+    (`_profile_not_found`, the one remaining `404` module-wide).
+
+    **Colour enrichment (T450, FR-003).** `enrich_colours` (`routers/matches.py`, imported above)
+    is called here batched over this page's own `game_ids`, exactly as `GET /api/matches::
+    list_matches` already calls it for the owner-scoped route — this route already reads the
+    source live on every call (the paragraph above), so a batched companion call here crosses no
+    boundary that route does not already cross. Before T450 this route never called it at all, so
+    `color_id` stayed `NULL` for a profile viewed only through this route and every swatch
+    rendered the neutral token even though `GET /api/matches` had already coloured the identical
+    match — `enrich_colours`'s own degrade discipline (never writes `NULL`, at most one call per
+    page, a no-op once every row is coloured) applies here unchanged, since both routes share the
+    one implementation."""
     secret = settings.app_secret_key.get_secret_value()
     _require_session(await _current_session_row(request, db_session, secret))
 
@@ -510,6 +521,11 @@ async def get_player_match_history(
             message="The request could not be validated.",
             detail={"errors": [str(exc)]},
         ) from exc
+
+    # T450: batched over this page's own game_ids, never one call per match — the same discipline
+    # `routers/matches.py::list_matches` already applies, reused rather than duplicated (module
+    # docstring's "Colour enrichment" note).
+    await enrich_colours(db_session, [row.game_id for row in page.matches])
 
     return {
         "matches": [match_row_json(row) for row in page.matches],

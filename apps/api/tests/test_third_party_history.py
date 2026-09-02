@@ -73,6 +73,16 @@ SESSION_COOKIE_NAME = "session_id"
 _RELIC_HOST = "aoe-api.worldsedgelink.com"
 _RECENT_MATCH_HISTORY_PATH = "getRecentMatchHistory"
 
+# T450: `GET /api/players/{profile_id}/matches` now also calls `enrich_colours`
+# (`routers/matches.py`) for the page it just persisted, batched over its own `game_ids` — the
+# freshly-upserted `match_players` rows below carry no `color_id` yet, so that call is genuinely
+# attempted, not skipped. This file's own `fake_send` therefore has to answer this host too, the
+# same "documented, expected bot-protection noise" `companion/provider.py`'s module docstring and
+# `apps/api/tests/conftest.py`'s own `_default_companion_degraded` autouse fixture already treat as
+# ordinary degradation — this test's own `monkeypatch.setattr` on `httpx.AsyncClient.send` replaces
+# that fixture's default outright rather than composing with it, so the substitute has to repeat it.
+_COMPANION_HOST = "data.aoe2companion.com"
+
 _THIRD_PARTY_PROFILE_ID = 901_300_100
 _OPPONENT_PROFILE_ID = 901_300_200
 _TARGET_GAME_ID = 850_300_111
@@ -347,6 +357,12 @@ async def test_reading_a_third_partys_history_persists_the_matched_entry_verbati
     async def fake_send(
         self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
     ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            # T450's own colour-enrichment call, not this test's own claim (module docstring's
+            # new note above) — degraded here exactly as `conftest.py`'s autouse fixture already
+            # degrades it everywhere else in this suite, so `matches.raw_payload`'s verbatim
+            # persistence is proven independent of whatever the companion answers.
+            return httpx.Response(403, request=request)
         if request.url.host != _RELIC_HOST:
             raise AssertionError(f"unexpected outbound request to {request.url}")
         assert _RECENT_MATCH_HISTORY_PATH in request.url.path, (

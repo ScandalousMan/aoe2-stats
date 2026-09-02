@@ -2,12 +2,19 @@
 `quickstart.md` scenario 3, `data-model.md` §1 ("`color_id` alone, on the display path") and §6
 (the one state transition), `research.md` **D2** are ground truth.
 
-**Implemented by T420.** `routers/matches.py`'s `_enrich_colours` calls
+**Implemented by T420.** `routers/matches.py`'s `enrich_colours` calls
 `CompanionEnrichmentProvider.enrich_matches` from both `GET /api/matches` and
 `GET /api/matches/{game_id}`, on the display path only. This suite drives it entirely through the
 real routes and the real `match_players` table, the same boundary `test_players_routes.py`'s own
 `_FailingCompanionUpstream` and `test_third_party_history.py`'s `_FakeRelicMatchHistoryUpstream`
 already use for their own provider.
+
+**Widened by T450.** `enrich_colours` is public (T450's own remediation, matches.py's module
+docstring) and is now also called from `routers/players.py::get_player_match_history` (`GET
+/api/players/{profile_id}/matches`), which previously never enriched colour at all. The block near
+the bottom of this file, "the identical enrichment, mirrored onto the profile match-history route",
+replays this same suite's own three properties — batched-once, degrade-writes-nothing, second-view
+is a database read — against that route instead.
 
 **Why "at most one companion call" alone would prove nothing.** Read literally, a ceiling of one
 call per page is trivially satisfied by zero calls too. Every test below therefore also asserts a
@@ -363,6 +370,156 @@ async def test_a_second_view_of_the_same_matches_makes_no_companion_call(
     )
 
     second = client.get("/api/matches", params={"profile_id": _CALLER_PROFILE_ID})
+    assert second.status_code == 200, f"Got {second.status_code}: {second.text}"
+    assert fake.request_count == 1, (
+        "a second view of the same, now fully-coloured matches must be a database read — no "
+        f"further companion call. Got {fake.request_count} total calls after the second view"
+    )
+
+
+# --- T450: the identical enrichment, mirrored onto the profile match-history route ---------------
+#
+# `GET /api/players/{profile_id}/matches` (`routers/players.py::get_player_match_history`) serves
+# the identical row shape via the identical `match_row_json` (`test_players_history.py`'s own
+# row-shape-comparison test) but, before T450, never called colour enrichment at all — so
+# `color_id` stayed `NULL` for a freshly-viewed profile on this route even though `GET /api/matches`
+# already coloured it. These four tests are this file's own assertions, T419's above, replayed
+# against the players route instead — reusing every seeding and companion-double helper already
+# defined above rather than a second copy of them.
+
+
+async def test_viewing_a_players_history_page_makes_one_batched_companion_call_and_writes_colour(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T450's mirror of
+    `test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_writes_colour` above, but
+    through `GET /api/players/{profile_id}/matches`: a page carrying two matches must enrich
+    colour in exactly one companion call, batched over the page's game ids, and that call's
+    colour must land in `match_players.color_id`, keyed `(game_id, profile_id)` — FR-003 on this
+    route too, not only on `GET /api/matches`."""
+    caller = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_opponent_profile(db_session)
+
+    completed_at = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
+    await _seed_match(db_session, game_id=_GAME_ID_ONE, completed_at=completed_at)
+    await _seed_match(
+        db_session, game_id=_GAME_ID_TWO, completed_at=completed_at - timedelta(hours=1)
+    )
+    await _seed_match_player(db_session, game_id=_GAME_ID_ONE, profile_id=_CALLER_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=_GAME_ID_ONE, profile_id=_OPPONENT_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=_GAME_ID_TWO, profile_id=_CALLER_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=_GAME_ID_TWO, profile_id=_OPPONENT_PROFILE_ID)
+    await db_session.commit()
+
+    expected = {
+        _GAME_ID_ONE: {_CALLER_PROFILE_ID: 3, _OPPONENT_PROFILE_ID: 6},
+        _GAME_ID_TWO: {_CALLER_PROFILE_ID: 5, _OPPONENT_PROFILE_ID: 1},
+    }
+    fake = _CompanionUpstream(_companion_matches_body(expected))
+    _intercept_companion(monkeypatch, fake)
+
+    response = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert fake.request_count == 1, (
+        "a page carrying two matches must enrich colour in exactly one companion call, batched "
+        f"over the page's game ids — never zero (colour would never arrive) and never one per "
+        f"match (two, here). Got {fake.request_count} calls"
+    )
+
+    for game_id, colours in expected.items():
+        for profile_id, expected_colour in colours.items():
+            row = await db_session.get(MatchPlayer, (game_id, profile_id))
+            assert row is not None
+            assert row.color_id == expected_colour, (
+                f"({game_id}, {profile_id})'s colour must be written from the batched companion "
+                f"response on the players route too. Got {row.color_id!r}, expected "
+                f"{expected_colour!r}"
+            )
+
+
+async def test_a_degraded_companion_on_the_players_route_writes_nothing_and_never_nulls(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T450's mirror of `test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colour`
+    above, this file's own reason to exist, replayed against the players route: seed a colour, view
+    it through `GET /api/players/{profile_id}/matches` while the companion is degraded, and confirm
+    the seeded value survived untouched rather than being overwritten with `NULL`."""
+    caller = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_opponent_profile(db_session)
+
+    completed_at = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
+    await _seed_match(db_session, game_id=_GAME_ID_ONE, completed_at=completed_at)
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_ONE, profile_id=_CALLER_PROFILE_ID, color_id=4
+    )
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_ONE, profile_id=_OPPONENT_PROFILE_ID, color_id=None
+    )
+    await db_session.commit()
+
+    fake = _CompanionUpstream(degraded=True)
+    _intercept_companion(monkeypatch, fake)
+
+    response = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+    assert response.status_code == 200, (
+        f"a degraded companion must not itself fail the request. Got {response.status_code}: "
+        f"{response.text}"
+    )
+
+    assert fake.request_count == 1, (
+        "the page is not yet fully coloured (the opponent's colour is still missing), so the read "
+        f"path must still have attempted the batched companion call. Got {fake.request_count}"
+    )
+
+    caller_row = await db_session.get(MatchPlayer, (_GAME_ID_ONE, _CALLER_PROFILE_ID))
+    assert caller_row is not None
+    assert caller_row.color_id == 4, (
+        "a degraded companion writes nothing — it does not write `NULL` over a colour cached by an "
+        f"earlier, successful view, on the players route either. Got {caller_row.color_id!r}, "
+        f"expected the seeded 4 untouched"
+    )
+
+    opponent_row = await db_session.get(MatchPlayer, (_GAME_ID_ONE, _OPPONENT_PROFILE_ID))
+    assert opponent_row is not None
+    assert opponent_row.color_id is None, (
+        "a degraded companion supplies nothing for a participant whose colour was already "
+        f"missing either — it must stay missing, not be set to any value. Got "
+        f"{opponent_row.color_id!r}"
+    )
+
+
+async def test_a_second_view_of_a_players_history_page_makes_no_companion_call(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T450's mirror of `test_a_second_view_of_the_same_matches_makes_no_companion_call` above:
+    once a page's matches are fully coloured by one successful view through the players route, a
+    second view of the exact same matches through that same route is a database read — zero further
+    companion calls."""
+    caller = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_opponent_profile(db_session)
+
+    completed_at = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
+    await _seed_match(db_session, game_id=_GAME_ID_ONE, completed_at=completed_at)
+    await _seed_match_player(db_session, game_id=_GAME_ID_ONE, profile_id=_CALLER_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=_GAME_ID_ONE, profile_id=_OPPONENT_PROFILE_ID)
+    await db_session.commit()
+
+    expected = {_GAME_ID_ONE: {_CALLER_PROFILE_ID: 2, _OPPONENT_PROFILE_ID: 7}}
+    fake = _CompanionUpstream(_companion_matches_body(expected))
+    _intercept_companion(monkeypatch, fake)
+
+    first = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+    assert first.status_code == 200, f"Got {first.status_code}: {first.text}"
+    assert fake.request_count == 1, (
+        f"the first view of an uncoloured page must make exactly one companion call. Got "
+        f"{fake.request_count}"
+    )
+
+    second = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
     assert second.status_code == 200, f"Got {second.status_code}: {second.text}"
     assert fake.request_count == 1, (
         "a second view of the same, now fully-coloured matches must be a database read — no "

@@ -202,6 +202,21 @@ describe('toMatchRowData', () => {
     const result = toMatchRowData(row({ map_name: null }), VIEWER_PROFILE_ID)
     expect(result.mapThumbnailUrl).toBeUndefined()
   })
+
+  // T449: production `map_name` carries Relic's raw internal name ("Yucatan.rms"), not the clean
+  // fixture form the tests above use — the row's `map` label and thumbnail must both derive from
+  // the normalised name, never the raw `.rms` string.
+  it('cleans a raw internal map_name into the display label and resolves its thumbnail', () => {
+    const result = toMatchRowData(row({ map_name: 'Yucatan.rms' }), VIEWER_PROFILE_ID)
+    expect(result.map).toBe('Yucatan')
+    expect(result.mapThumbnailUrl).toBe('/game-assets/maps/yucatan.webp')
+  })
+
+  it('still falls back to "Unknown map" and undefined thumbnail for a null map_name', () => {
+    const result = toMatchRowData(row({ map_name: null }), VIEWER_PROFILE_ID)
+    expect(result.map).toBe('Unknown map')
+    expect(result.mapThumbnailUrl).toBeUndefined()
+  })
 })
 
 describe('toMatchRowDataList', () => {
@@ -414,6 +429,12 @@ describe('toMatchDetailData', () => {
 
   it('leaves mapThumbnailUrl undefined for a null map_name, never calling the resolver', () => {
     expect(toMatchDetailData(detail({ map_name: null })).mapThumbnailUrl).toBeUndefined()
+  })
+
+  // T449: the detail path's map label must clean a raw internal map_name too, never printing the
+  // raw ".rms" string.
+  it('cleans a raw internal map_name into the display label', () => {
+    expect(toMatchDetailData(detail({ map_name: 'CoastalForest.rms' })).map).toBe('Coastal Forest')
   })
 
   it('passes patch through as gameVersion, verbatim (FR-018)', () => {
