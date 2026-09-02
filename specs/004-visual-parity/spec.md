@@ -39,6 +39,35 @@ assets; it changes nothing about what is ingested.
   licence surface, and it is in scope; the packs are chosen and licence-recorded at planning under the
   FR-011 gate.
 
+### Session 2026-09-02
+
+Reversing four decisions this spec originally made after the T447 hand-walk of `1807091` proved the
+profile still reads as a bare id, not a person. The earlier "fallback rather than new ingestion"
+stance (Assumptions) is superseded for a _viewed_ profile: viewing now refreshes identity and
+standing from the source. This is a read of public identity and standing, never replay capture —
+FR-012's capture ban for a third party is untouched.
+
+- Q: A viewed third-party profile shows its numeric id, not its alias — where should the real alias
+  and country come from, given Relic's match-history response (already fetched on the matches route)
+  carries them in a `profiles[]` block the code currently discards? → A: A **shared on-view identity
+  refresh** triggered by both the profile-summary route and the matches route, extracting
+  `profiles[].alias`/`country` from that already-fetched Relic response and persisting them; the
+  summary route gains that one refresh it did not previously make. Fallback to the numeric id applies
+  only when the source itself has no alias.
+- Q: How should a viewed profile's ladder ratings be shown, given the spec treated "No ratings yet"
+  as correct? → A: **Fetch the current standing on view** via Relic's personal-stats endpoint
+  (`RelicProfileProvider.personal_stats`, the same mechanism the ingester uses for the signed-in
+  user), for the viewed profile id, persisted as `rating_snapshots`. The profile shows the full card
+  — rating, rank, record, streak, best — for any player, not only the signed-in user. A batchable,
+  degradable read of public standing; not replay capture (FR-012 unchanged).
+- Q: The avatar hash comes only from companion's search endpoint, so a viewed-but-never-searched
+  profile has a blank placeholder — should it be fetched on view? → A: **Yes, fetch the avatar hash
+  on view** from the companion provider, persisted; degrade silently to the neutral placeholder when
+  companion is unavailable (FR-008a's no-broken-image rule unchanged).
+- Q: The country name renders as text beside the flag; how should it read instead? → A: Via a
+  **design-system Tooltip component** on the flag — the full country name on hover and on keyboard
+  focus, with an accessible name for screen readers — not as an adjacent text element.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - A match is legible at a glance (Priority: P1)
@@ -150,13 +179,21 @@ the footer disclaimer is still rendered.
 - **FR-006**: The match view SHOULD show match metadata already stored — ladder (`leaderboard_id`),
   duration (`started_at`→`completed_at`), and date — where it aids legibility.
 - **FR-007**: The profile view MUST show `alias` as the primary name and demote the numeric id to a
-  secondary reference; when `alias` is absent it MUST fall back to the numeric id.
+  secondary reference; when `alias` is absent it MUST fall back to the numeric id. For a viewed
+  third-party profile whose stored `alias` is still the numeric-id placeholder, the on-view identity
+  refresh (FR-017) MUST populate the real `alias` from the source before the fallback is reached, so
+  the fallback applies only when the source itself has no alias (Clarifications 2026-09-02).
 - **FR-008**: The profile view MUST show a country flag derived from `country` when present, and omit
-  it cleanly when absent.
+  it cleanly when absent. The country name MUST be conveyed through a design-system Tooltip on the
+  flag — revealed on hover and on keyboard focus, with an accessible name for assistive technology —
+  and MUST NOT be rendered as an adjacent text element (Clarifications 2026-09-02).
 - **FR-008a**: The profile view MUST show the player's avatar, referenced from the Steam avatars CDN
   at `https://avatars.steamstatic.com/<avatarhash>_full.jpg` built from the avatar hash supplied by
   the companion provider; when the hash is unavailable it MUST show a neutral placeholder, never a
-  broken image. The avatar hash is not a game asset and is not copied into the repository.
+  broken image. The avatar hash is not a game asset and is not copied into the repository. When a
+  viewed profile has no stored hash, the on-view identity refresh (FR-017) MUST attempt to fetch it
+  from the companion provider and persist it; a companion that is unavailable degrades to the neutral
+  placeholder (Clarifications 2026-09-02).
 - **FR-009**: The application MUST present a header with primary navigation on every page, and MUST
   keep the existing footer and its Game Content Usage Rules disclaimer.
 - **FR-010**: Any identifier not covered by an asset pack or mapping (`civ_id`, `map_name`,
@@ -181,6 +218,19 @@ the footer disclaimer is still rendered.
 - **FR-016**: The map is represented as a minimap thumbnail per map (not a compact glyph). The
   thumbnails are a game-asset pack subject to the FR-011 licence gate; an unknown `map_name` degrades
   per FR-010.
+- **FR-017**: Viewing any profile MUST trigger a shared on-view identity refresh that populates the
+  profile's `alias`, `country`, avatar hash and current ladder standing from the source and persists
+  them, so a repeat view need not re-derive from scratch. Both the profile-summary route and the
+  match-history route MUST trigger it. It reads public identity and standing only — it MUST NOT begin
+  replay capture for a third party (FR-012 unchanged) — and its provider calls are bounded by the
+  same per-user rate limits the match-history and search routes already apply. A source that is
+  unavailable degrades to whatever the service already holds; it MUST NOT fail the view
+  (Clarifications 2026-09-02).
+- **FR-018**: The profile view MUST show the viewed player's current ladder standing per leaderboard
+  — rating, rank, record, streak and best — fetched on view via the Relic personal-stats endpoint
+  (the mechanism the signed-in user's own standing already uses) and persisted as rating snapshots,
+  for any profile and not only the signed-in user. When the source has no standing for a profile, the
+  calm "no ratings yet" state remains the correct render (Clarifications 2026-09-02).
 
 ### Key Entities _(include if feature involves data)_
 
@@ -203,8 +253,13 @@ the footer disclaimer is still rendered.
 
 - **SC-001**: A user can identify a match's civilisations, map, and outcome without reading any
   numeric identifier, for 100% of matches whose ids are covered by the shipped packs and mapping.
-- **SC-002**: A profile shows the player's name and (when stored) country instead of a numeric id for
-  100% of profiles that have `alias` stored.
+- **SC-002**: A profile shows the player's name and country instead of a numeric id for 100% of
+  profiles for which the source has an alias — including a viewed third-party profile, whose identity
+  is refreshed on view (FR-017); the numeric-id fallback shows only when the source itself has none.
+- **SC-007**: Viewing any profile — the signed-in user's own, one seen before, or one never seen —
+  shows that player's current ladder standing (rating, rank, record, streak, best) whenever the
+  source has a standing for them, fetched on view (FR-018); the calm "no ratings yet" state shows
+  only when the source has none.
 - **SC-003**: 100% of game-asset packs present in the repository have a recorded source and permitted
   usage; a pack without that record is absent.
 - **SC-004**: For the same profile, the profile and match views present the same categories of
@@ -218,10 +273,13 @@ the footer disclaimer is still rendered.
 
 ## Assumptions
 
-- The data enumerated in Context is present and current in feature 001's stored model; this feature
-  reads it and does not re-derive or re-ingest it. Where a specific profile lacks a value (e.g.
-  `1807091` showing no alias in the current UI), the fallback rules (FR-007, FR-010) apply rather
-  than new ingestion.
+- The data enumerated in Context is present and current in feature 001's stored model for a profile
+  the service has ingested through a consenting user. **Superseded for a viewed profile by
+  Clarifications 2026-09-02**: where a viewed profile lacks alias, country, avatar hash or ladder
+  standing, viewing it now triggers an on-view refresh from the source (FR-017, FR-018) rather than
+  resting on the fallback. The fallback rules (FR-007, FR-010) apply only when the source itself has
+  no value. This on-view refresh reads public identity and standing; it is not replay capture and
+  does not begin capture for a third party (FR-012).
 - **Unit, building, and resource icons are out of scope.** They require per-match parsed replay data,
   which is a V2 capability (parsing, constitution I ordering); no such data exists in the phase-1
   model, so there is nothing to key those icons to. They re-enter scope when parsing does.
