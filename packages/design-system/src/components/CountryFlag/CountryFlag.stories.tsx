@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { CountryFlag } from './index'
 
 const meta: Meta<typeof CountryFlag> = {
@@ -13,7 +14,41 @@ const FRANCE_URL = '/game-assets/flags/fr.svg'
 const JAPAN_URL = '/game-assets/flags/jp.svg'
 const POLAND_URL = '/game-assets/flags/pl.svg'
 
+// country-flag.md §11.9 — the reveal is pointer- or keyboard-only, so the default capture shows the
+// flag alone with no country word anywhere in the frame. Every "open" story below forces the state
+// with a play function (Tooltip's own stories use the same technique, for the same reason).
+async function hoverOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  await userEvent.hover(canvas.getByRole('button'))
+  await canvas.findByRole('tooltip')
+}
+
+async function focusOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  await userEvent.tab()
+  await within(canvasElement).findByRole('tooltip')
+}
+
+async function pinOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button')
+  await userEvent.click(trigger)
+  await canvas.findByRole('tooltip')
+  await userEvent.unhover(trigger)
+  trigger.blur()
+  await waitFor(() => expect(trigger).not.toHaveFocus())
+}
+
+async function dismissAfterEscape({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  await userEvent.tab()
+  await canvas.findByRole('tooltip')
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(canvas.queryByRole('tooltip')).not.toBeInTheDocument())
+}
+
+// §11.9 — default: the flag stands alone, no country word anywhere in the frame.
 export const Default: Story = {
+  tags: ['visual-full-page'],
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
@@ -37,6 +72,38 @@ export const BothSizes: Story = {
   ),
 }
 
+// §11.9 — the hover story: the country name in a tooltip above the flag.
+export const FlagHoverRevealed: Story = {
+  name: 'Hover — the country name opens in a tooltip above the flag',
+  tags: ['visual-full-page'],
+  play: hoverOpen,
+  args: { flagUrl: FRANCE_URL, countryName: 'France' },
+}
+
+// §11.9 — the keyboard-focus story: the tooltip open AND the focus ring visible, in the same frame.
+export const FlagKeyboardFocusRevealed: Story = {
+  name: 'Keyboard focus — tooltip open and focus ring visible together',
+  tags: ['visual-full-page'],
+  play: focusOpen,
+  args: { flagUrl: FRANCE_URL, countryName: 'France' },
+}
+
+// §11.9 — the pinned (pressed) story: the touch route, no pointer, no focus ring.
+export const FlagPinned: Story = {
+  name: 'Pinned (pressed) — the touch route, no pointer, no focus ring',
+  tags: ['visual-full-page'],
+  play: pinOpen,
+  args: { flagUrl: FRANCE_URL, countryName: 'France' },
+}
+
+// §11.9 — after Escape: no tooltip, the flag still visibly focused.
+export const FlagDismissedAfterEscape: Story = {
+  name: 'After Escape — no tooltip, flag still visibly focused',
+  tags: ['visual-full-page'],
+  play: dismissAfterEscape,
+  args: { flagUrl: FRANCE_URL, countryName: 'France' },
+}
+
 // §10 acceptance — a mostly-white flag needs a visible boundary against the light theme's
 // parchment. Japan and Poland are the two named stories.
 export const MostlyWhiteFlagJapan: Story = {
@@ -49,15 +116,16 @@ export const MostlyWhiteFlagPoland: Story = {
   args: { flagUrl: POLAND_URL, countryName: 'Poland' },
 }
 
-// §4 "empty" (first case) — a country the pack does not cover, or a value that is not a code at
-// all. The designed degrade path (FR-008, FR-010), not a defect — no frame, no globe, no "?" tile.
+// §11.4 — a country the pack does not cover. The designed degrade path (FR-008, FR-010), not a
+// defect — no frame, no button, no tab stop, no tooltip, the name alone as plain text.
 export const UncoveredCountry: Story = {
   name: 'Empty — uncovered country (flagUrl undefined, not a defect)',
   args: { countryName: 'Kiribati' },
 }
 
-// §4 "error" — `flagUrl` resolved but the image fails to load/decode. Must be pixel-identical to
-// UncoveredCountry above: the onError handler removes the image and its frame together.
+// §11.4 — `flagUrl` resolved but the image fails to load/decode. Must be pixel-identical to
+// UncoveredCountry above: the onError handler removes the image, its frame and its tooltip
+// together.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',
   args: { flagUrl: '/game-assets/flags/does-not-exist.svg', countryName: 'Kiribati' },

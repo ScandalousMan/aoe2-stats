@@ -34,6 +34,19 @@ const linkedProfiles = [
   { id: 'p2', alias: 'aoe2alt', isPrimary: false },
 ]
 
+// T457 remediation (004 spec §13.3/§13.8) — a third party's profile (no switcher, the plain
+// `<span>` heading branch) with a 19-character alias, the same contrast case `aoe2guy` cannot
+// exercise.
+const thirdPartyLongAliasProfile = {
+  id: 'p9',
+  alias: 'TheUndefeatedAoE2GM',
+  countryName: 'Germany',
+  countryFlagUrl: '/game-assets/flags/de.svg',
+  avatarHash: FIXTURE_AVATAR_HASH,
+  profileId: '87654321',
+  isPrimary: false,
+}
+
 describe('ProfileSummary', () => {
   it('renders no leaderboard the profile has not played', () => {
     render(
@@ -481,6 +494,132 @@ describe('ProfileSummary', () => {
         )
         expect(screen.getByText('Kiribati')).toBeInTheDocument()
         expect(container.querySelector('img[src*="/game-assets/flags/"]')).not.toBeInTheDocument()
+      })
+    })
+
+    // 004 spec §13 (amended FR-008, T457) — the country moved off the line and into the flag's
+    // own tooltip; nothing beside the flag reads "France" any more.
+    describe('§13 — the country is the flag tooltip, not adjacent text', () => {
+      it("does not render the country name as visible text beside the flag; it is reachable through the flag's own tooltip", () => {
+        render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        // The old adjacent text element is gone: no free-standing "France" node outside the flag
+        // trigger's own (closed) tooltip content.
+        expect(
+          screen.queryByText('France', { selector: 'span:not([role="tooltip"])' }),
+        ).not.toBeInTheDocument()
+        // The name is still reachable — as the flag's accessible name — with the tooltip closed.
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Country: France' })).toBeInTheDocument()
+      })
+    })
+
+    // T457 remediation (004 spec §13.3/§13.8) — the visual defect this closes is not visible in
+    // jsdom (no layout), so what a unit test can prove is the CSS contract that layout depends on:
+    // the name line never wraps, the alias is the element that gives up width first, and the flag
+    // never does. A pixel proof of the outcome is the visual suite's job (§13.9), not this one's.
+    describe('§13.3/§13.8 — the flag stays on the name line, at any alias length (T457)', () => {
+      it('the name line does not wrap — the flag never gets pushed onto its own line beneath the switcher', () => {
+        const { container } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        const nameLine = container.querySelector('.flex-nowrap')
+        expect(nameLine).toBeInTheDocument()
+        expect(nameLine).not.toHaveClass('flex-wrap')
+      })
+
+      it('the switcher trigger alias truncates instead of forcing the flag to wrap, for a short or a long alias', () => {
+        const { unmount } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText('aoe2guy')).toHaveClass('min-w-0', 'truncate')
+        unmount()
+
+        const longAlias = 'TheUndefeatedAoE2GM'
+        render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={{ ...viewedProfile, alias: longAlias }}
+            linkedProfiles={[{ id: 'p1', alias: longAlias, isPrimary: true }]}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText(longAlias)).toHaveClass('min-w-0', 'truncate')
+      })
+
+      it('the fallback heading (no switcher) also truncates rather than wrapping the flag beneath it', () => {
+        render(
+          <ProfileSummary
+            subject="other"
+            authenticated
+            viewedProfile={thirdPartyLongAliasProfile}
+            entries={entries}
+          />,
+        )
+        expect(screen.getByText(thirdPartyLongAliasProfile.alias)).toHaveClass(
+          'min-w-0',
+          'truncate',
+        )
+      })
+
+      it('the flag never shrinks to make room for the alias beside it', () => {
+        const { container } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        const flagWrapper = container.querySelector('.shrink-0.text-text-secondary')
+        expect(flagWrapper).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Country: France' })).toBeInTheDocument()
+      })
+
+      // Real-Chromium measurement (not jsdom, which has no layout) found that truncation on the
+      // alias span alone is not sufficient: `Menu`'s own trigger wrapper is `inline-block`, which
+      // blockifies as a flex item instead of becoming a flex context, so its child `<button>` is
+      // never itself flex-shrunk and renders at full width regardless of the alias's own classes.
+      // `Menu`'s exposed `className` prop is the only seam available without editing `Menu/
+      // index.tsx` — this locks in that all five overrides it carries survive a refactor: the
+      // original three (shrink-to-fit fix), plus the §13.6/§13.10 trigger padding-inline density
+      // step (`px-3` below `md`, reverting to the `Button` default `px-4` from `md` up).
+      it("carries the five overrides the switcher trigger's own inline-block wrapper needs to shrink and reflow", () => {
+        const { container } = render(
+          <ProfileSummary
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={entries}
+          />,
+        )
+        const triggerWrapper = screen
+          .getByRole('button', { name: 'aoe2guy, switch profile' })
+          .closest('div')
+        expect(triggerWrapper).toHaveClass(
+          '!flex',
+          'min-w-0',
+          '[&>button]:min-w-0',
+          '[&>button]:px-3',
+          'md:[&>button]:px-4',
+        )
+        expect(container.querySelector('.flex-nowrap')).toContainElement(triggerWrapper)
       })
     })
 

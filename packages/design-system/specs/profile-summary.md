@@ -785,7 +785,8 @@ what §12.6 promised; what changed is only what a sighted reader sees at rest.
 **What the bar buys for it**: the name's width back. On a 375 viewport "France" — or "Bosnia and
 Herzegovina" — was competing with the alias for the one line above the ratings, and the country is
 the least-read of the four facts in this bar. Number legibility and density outrank decoration, and
-this is that trade taken in the one place it is available.
+this is that trade taken in the one place it is available. §13.10 spends part of that reclaimed width
+back on the alias itself, so a short self-alias renders in full at 375.
 
 ### 13.4 The country still never enters a control's accessible name — except its own
 
@@ -843,16 +844,25 @@ this change removes the country from the list of things waiting on it.
 
 **Spacing** (amending §12.8's table; §7 is still unchanged):
 
-| Between                                   | Step                                                |
-| ----------------------------------------- | --------------------------------------------------- |
-| Avatar to the identity column             | `space-4` — unchanged                               |
-| ~~Flag to the country name beside it~~    | **retired** — there is no name beside the flag      |
-| Heading (or switcher trigger) to the flag | `space-3` — unchanged                               |
-| Flag trigger hit area                     | `icon-xl` (44px) minimum, by padding on the trigger |
+| Between                                     | Step                                                                                                                                           |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Avatar to the identity column               | `space-4` — unchanged                                                                                                                          |
+| ~~Flag to the country name beside it~~      | **retired** — there is no name beside the flag                                                                                                 |
+| Heading (or switcher trigger) to the flag   | `space-3` — unchanged                                                                                                                          |
+| Flag trigger hit area                       | `icon-xl` (44px) minimum, by padding on the trigger                                                                                            |
+| Switcher trigger padding-inline, below `md` | `space-3` — one density step down from the `Button` `md` default `space-4`, to give a short alias its full width on the 375 name line (§13.10) |
 
 The 44px box costs the `board` bar nothing (the 64px avatar sets its height) and the `compact` bar at
 most 4px on a pointer viewport, nothing on touch, because the switcher trigger beside it is already
 40/48px (`country-flag.md` §11.5).
+
+The last row is the one relaxation §13.10 makes, and it is deliberately **not** to either
+ProfileSummary gap above it: the avatar→column `space-4` and the switcher-trigger→flag `space-3` both
+stand exactly as §12.8 and §13 fixed them. The reclaimed width comes entirely from the switcher
+trigger's **own** inline padding — a density property of the `Button`/`Menu` primitive
+(`shared-primitives.md`), which §13.6 never froze — dropped one step for this component's switcher at
+the mobile breakpoint only. From `md` up the trigger returns to the `Button` `md` default `space-4`,
+where the row has room and no name competes for it.
 
 ### 13.7 Accessibility — the delta to §12.8
 
@@ -869,6 +879,11 @@ most 4px on a pointer viewport, nothing on touch, because the switcher trigger b
 - Keyboard: Tab in (tooltip opens, ring visible), Tab out (closes), Enter/Space pin and unpin, Escape
   dismisses without moving focus. No arrow keys. The switcher's own keyboard contract (§9) is
   untouched.
+- **The reduced switcher-trigger padding at the mobile breakpoint (§13.6, §13.10) is horizontal
+  only** and does not touch the ≥44px target: the trigger's height is set by the `Button` touch rule
+  (`shared-primitives.md`, ≥44px on touch) and is unchanged, and its width — alias plus chevron plus
+  the reduced padding — stays far above 44px, so WCAG 2.5.8 holds. This is a ProfileSummary-scoped
+  density on the switcher trigger, not a change to the `Button` primitive's default.
 - The tooltip opens **above** the flag (`tooltip.md` §3a), so it never covers the rating board
   beneath the identity bar. That is README rule 1 applied to placement: nothing passes over a figure,
   not even for 200 ms.
@@ -880,10 +895,17 @@ most 4px on a pointer viewport, nothing on touch, because the switcher trigger b
 - **375** — the country pair no longer exists, so §12.8's "may wrap as a unit… never between the flag
   and its name" is retired: the flag is one 44px mark on the name line. The tooltip's placement,
   flipping and viewport margin are `tooltip.md` §3a and §7; at this viewport the press-to-pin route is
-  the only one, since touch produces no hover.
-- **768 / 1280** — unchanged, minus the width the country name used to take.
+  the only one, since touch produces no hover. **The switcher trigger's padding-inline drops one
+  density step to `space-3` here (§13.6, §13.10)**, reclaiming ~8px on the name line: a short alias
+  (`aoe2guy`) renders in full, while a long alias (`TheUndefeatedAoE2GM`) still truncates cleanly to
+  one line with a single trailing ellipsis — no horizontal scroll, and the truncation never collides
+  with the flag or its tooltip. The alias stays `xl` `semibold`, the largest text in the identity bar.
+- **768 / 1280** — unchanged, minus the width the country name used to take; the switcher trigger's
+  padding returns to the `Button` `md` default `space-4` from `md` up (§13.6).
 - **320px / 200% zoom** — unchanged; the flag, its 44px box and the tooltip text are all rem-sized.
-  The tooltip wraps rather than truncating, at every viewport (`tooltip.md` §7).
+  The tooltip wraps rather than truncating, at every viewport (`tooltip.md` §7). §12.8's rule stands:
+  the fallback heading `Player <id>` wraps rather than clipping — the reclaimed width buys a short
+  **alias** its full render, it does not license clipping an identifier.
 
 ### 13.9 Visual acceptance criteria — replacing two of §12.9's, adding to the rest
 
@@ -917,6 +939,11 @@ resting screenshots verifies none of the reveal and passes anyway.
 - [ ] The flag's button box measures at least 44×44px at 375; the `board` identity bar's height is
       still set by the avatar, and the `compact` row has not grown by more than 4px against its
       pre-amendment baseline.
+- [ ] At 375 on the self-view `board`, a **short alias (`aoe2guy`, 7 chars) renders in full** — no
+      ellipsis, no clipping — while a **long alias (`TheUndefeatedAoE2GM`) truncates cleanly** to a
+      single line with one trailing ellipsis. Neither story shows horizontal scroll, and in neither
+      does the alias (or its ellipsis) collide with the flag's 44px box or its tooltip. The alias is
+      `xl` and the largest text in the identity bar in both.
 - [ ] The country-less story is unchanged from §12.9: no flag, no label, no gap, no tab stop where
       the flag would be.
 - [ ] The pack-uncovered and failed-flag-image stories show the country as plain visible text with no
@@ -926,3 +953,55 @@ resting screenshots verifies none of the reveal and passes anyway.
       (FR-045), in both themes.
 - [ ] The "No ratings yet" story is untouched: info tone, §5's copy verbatim, no retry, no
       illustration, identity bar rendering in full above it.
+
+### 13.10 The 375 name-line width fix — a short alias renders in full (Phase 8 follow-up, after T455/T457)
+
+**The measured constraint.** On the signed-in **self-view** `board` bar at **375px**, in real
+Chromium in both themes, the name line's width is consumed by: the avatar (64px) + `space-4` + the
+switcher trigger + `space-3` + the flag's 44px tooltip box — leaving **~78px** for the alias, while a
+7-character alias such as `aoe2guy` at `xl` `semibold` needs **~80px**. A genuine ~2px shortfall with
+no slack: the identity column already claims the row's full width via `flex-1`, and every gap around
+it is spec-locked. The alias absorbed the deficit by truncating — `aoe2guy` rendered as `aoe2g…`.
+
+**Why that is a defect, not an acceptable degradation.** This is a data tool whose whole reason for
+adding the identity bar in 004 (§12) is that a person is not an identifier; a name it could render in
+full but clips is halfway back to one, and README rule 1 puts legibility above decoration. A short
+self-alias must render in full at 375. (A genuinely long alias truncating is fine — see below.)
+
+**The lever, and why this one.** Reclaim the width from the switcher trigger's **own** inline
+padding, at the mobile breakpoint only: below `md` the trigger's padding-inline drops one density
+step, from the `Button` `md` default `space-4` to `space-3`, reclaiming `2 × (space-4 − space-3)` ≈
+8px on the name line — four times the ~2px shortfall, enough for `aoe2guy` in full with headroom and
+for most 8-character aliases. Chosen over the alternatives because:
+
+- It **touches no §13.6-frozen ProfileSummary gap.** The avatar→column `space-4` and the
+  switcher-trigger→flag `space-3` both stand. The reclaim is entirely inside the trigger's own chrome,
+  a `Button`/`Menu` density property (`shared-primitives.md`) that §13.6 never froze — so it is a
+  relaxation of the trigger's density, not of either identity-bar gap. This is stated explicitly here
+  because §13.6 does freeze those two gaps and a reader must not infer this touched them.
+- It **keeps every hard constraint**: the flag's 44px hit target (§13.7), the tooltip and its
+  `block-start` placement, and the flag single-line on the name line (§13.8) are all untouched.
+- It **keeps the alias at `xl` `semibold`** — the page's subject is not downgraded at one breakpoint,
+  so it stays unconditionally the largest text in the identity bar (§13.9). The size-step lever
+  (dropping the alias to `lg` at 375) was rejected for that cost: shrinking the heading to buy width
+  is a more visible hierarchy change than tightening one control's padding, and would have left the
+  reader wondering why the name is smaller on their phone.
+- It is **one rule, at one breakpoint, on one control**, and verifiable from a screenshot.
+
+**The touch target holds.** The reduction is horizontal only; the trigger's height (≥44px on touch,
+`shared-primitives.md`) does not move, and its width stays far above 44px, so WCAG 2.5.8 is met
+(§13.7).
+
+**What still truncates.** A genuinely long alias (e.g. `TheUndefeatedAoE2GM`) still exceeds the
+reclaimed line and truncates with a single trailing ellipsis, on one line, no horizontal scroll, no
+collision with the flag or its tooltip. The reclaim buys the _short_ name its full render; it does not
+promise every name fits. The fallback heading `Player <id>` still **wraps** rather than clipping
+(§12.8, §13.8) — an identifier truncated is a wrong identifier, and that rule is unchanged.
+
+**Feature-spec note.** This is a component-spec presentation detail: no wire format, prop, requirement
+or success criterion changes, and SC-002 ("no two-letter code reaches the screen") is untouched. It
+implements an existing principle (density and number/name legibility over decoration) and needs no
+`specs/004-visual-parity/spec.md` clarification. If the maintainer nonetheless wants "a short
+self-alias must render in full at 375" tracked as a feature-level acceptance criterion, a one-line
+clarification under FR-007 would carry it; it is optional, and the criterion added to §13.9 above is
+what a reviewer verifies against.
