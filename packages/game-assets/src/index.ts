@@ -35,12 +35,54 @@ export function civilisationIcon(civName: string): string | undefined {
   return civilisationKeys.has(key) ? `/game-assets/civilisations/${key}.webp` : undefined
 }
 
+// T449: `Match.map_name` in production carries Relic's raw internal map name
+// (`Yucatan.rms`, `CoastalForest.rms`), not the clean fixture form ("Yucatan", "Coastal Forest")
+// used above. A trailing map-file extension (`.rms`, `.rms2`, any `.rmsN`) is stripped
+// case-insensitively; the remainder is a deterministic string transform, not a lookup table
+// sourced externally (that decision — plan.md, T449 — settled against a hand-maintained mapping,
+// the way feature 002's civ-name mapping is owned elsewhere and this is not that).
+const MAP_FILE_EXTENSION = /\.rms\d*$/i
+
+function stripMapFileExtension(rawMapName: string): string {
+  return rawMapName.replace(MAP_FILE_EXTENSION, '')
+}
+
+/** Splits a name on camelCase boundaries and underscores into words — `"CoastalForest"` ->
+ * `["Coastal", "Forest"]`, `"golden_pit"` -> `["golden", "pit"]`, `"Yucatan"` -> `["Yucatan"]`
+ * (no boundary, passes through as one word). */
+function splitIntoWords(name: string): string[] {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+}
+
+function titleCaseWord(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+}
+
+/**
+ * Derives a clean, readable map display name from a raw `map_name` — production's Relic-supplied
+ * raw internal name (`"Yucatan.rms"`, `"CoastalForest.rms"`) or the already-clean fixture form
+ * (`"Arabia"`, which passes through unchanged). This is FR-010's degrade label too: a name the
+ * pack does not cover still renders this cleaned text, never the raw `.rms` string.
+ */
+export function mapDisplayName(rawMapName: string): string {
+  return splitIntoWords(stripMapFileExtension(rawMapName)).map(titleCaseWord).join(' ')
+}
+
+function mapSlug(rawMapName: string): string {
+  return mapDisplayName(rawMapName).toLowerCase().replace(/ /g, '-')
+}
+
 /**
  * Resolves a map name onto a URL under `/game-assets/maps/`, or `undefined` when the pack does
- * not cover it.
+ * not cover it. Keyed on the same normalised slug `mapDisplayName` derives its words from, so a
+ * raw internal name (`"Yucatan.rms"`) resolves exactly like its clean form (`"Yucatan"`).
  */
 export function mapThumbnail(mapName: string): string | undefined {
-  const key = mapName.toLowerCase().replace(/ /g, '-')
+  const key = mapSlug(mapName)
   return mapKeys.has(key) ? `/game-assets/maps/${key}.webp` : undefined
 }
 

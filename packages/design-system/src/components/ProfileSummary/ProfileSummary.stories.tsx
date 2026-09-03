@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { Button } from '../Button'
 import { ProfileSummary } from './index'
 import type { RatingEntryData } from './index'
@@ -56,6 +57,22 @@ const linkedProfiles = [
   { id: 'p2', alias: 'aoe2alt', isPrimary: false },
 ]
 
+// T457 remediation (004 spec §13.3/§13.8) — the contrast case a short alias cannot exercise: a
+// 19-character alias, long enough that the switcher trigger's own preferred width can exceed what
+// is left of the name line once the flag's 44px box and its `space-3` are accounted for at 375.
+// The fix (NameLine `nowrap` + a truncating alias) must hold here exactly as it does for
+// `aoe2guy` — the flag stays "one 44px mark on the name line" (§13.8), never wrapped beneath the
+// switcher where its `block-start` tooltip would collide with it.
+const longAliasProfile = {
+  ...viewedProfile,
+  alias: 'TheUndefeatedAoE2GM',
+}
+
+const longAliasLinkedProfiles = [
+  { id: 'p1', alias: 'TheUndefeatedAoE2GM', isPrimary: true },
+  { id: 'p2', alias: 'aoe2alt', isPrimary: false },
+]
+
 // 003 spec §11 — a third party's profile, reached from search rather than `/api/me`. Same
 // `RatingEntryData` shape and the same `entries` fixture as `Board`, so the two stories are
 // comparable digit-for-digit in `RatingBoard` (spec §11.4's last bullet).
@@ -77,14 +94,142 @@ const favouriteToggleStub = (
   </Button>
 )
 
-// 004 spec §12.9 — the full-profile story: avatar leading, alias as the heading, a flag with the
-// country name beside it, and the numeric id demoted beneath in `text-secondary`.
+// 004 spec §13.9 — the full-profile story: avatar leading, alias as the heading, the country flag
+// alone (no country word anywhere in the frame — the name lives in the flag's tooltip, T457), and
+// the numeric id demoted beneath in `text-secondary`.
 export const Board: Story = {
   args: {
     subject: 'self',
     authenticated: true,
     viewedProfile,
     linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// T457 remediation (004 spec §13.3/§13.8) — the resting (tooltip-closed) `Board` frame at 375,
+// where the defect actually lived: the flag must stay on the name line beside the switcher
+// trigger, not wrap beneath it, and the identity bar must not force the page wider than the
+// viewport. `visual-mobile` is the tag that captures this width at all — see the comment on
+// `BoardFlagHoverRevealed` below.
+export const BoardMobile: Story = {
+  name: 'Board at 375 — the flag stays on the name line, resting (004 §13.8, T457)',
+  tags: ['visual-mobile'],
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// T457 remediation, contrast case — the same 375 frame with a 19-character alias instead of
+// `aoe2guy`. The switcher trigger's alias truncates before the flag ever gives up its line: no
+// horizontal overflow, and the flag still lands beside the trigger, not beneath it.
+export const BoardLongAliasMobile: Story = {
+  name: 'Board at 375, long alias — the alias truncates, the flag does not wrap (004 §13.8, T457)',
+  tags: ['visual-mobile'],
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: longAliasProfile,
+    linkedProfiles: longAliasLinkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// 004 spec §13.9 — the flag-hover story: the country name in a tooltip above the flag, not
+// covering the rating board beneath the identity bar.
+async function hoverFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const flag = canvas.getByRole('button', { name: /^Country: / })
+  await userEvent.hover(flag)
+  await canvas.findByRole('tooltip')
+}
+
+// 004 spec §13.9 — the flag-focus story: Tab order is switcher trigger → flag → actions; the
+// tooltip opens immediately and the flag's own focus ring stays in the same frame.
+async function focusFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  await userEvent.tab() // switcher trigger (or the fallback heading has no stop to land on)
+  await userEvent.tab() // the flag
+  await canvas.findByRole('tooltip')
+}
+
+// 004 spec §13.9 — the flag-pinned story: the touch route, no pointer over the flag, no focus ring.
+async function pinFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const flag = canvas.getByRole('button', { name: /^Country: / })
+  await userEvent.click(flag)
+  await canvas.findByRole('tooltip')
+  await userEvent.unhover(flag)
+  flag.blur()
+  await waitFor(() => expect(flag).not.toHaveFocus())
+}
+
+// `visual-mobile`: this is the one viewport where the flag can be pushed onto the switcher
+// trigger's line (T457) — the defect was invisible at the suite's default desktop width, exactly
+// the PrivacyNotice T096 lesson `scripts/visual/run.mjs` documents for this tag.
+export const BoardFlagHoverRevealed: Story = {
+  name: 'Flag hover — country name in a tooltip above the flag (004 §13.9)',
+  tags: ['visual-full-page', 'visual-mobile'],
+  play: hoverFlagOpen,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+export const BoardFlagKeyboardFocusRevealed: Story = {
+  name: 'Flag keyboard focus — tooltip open and focus ring together (004 §13.9)',
+  tags: ['visual-full-page', 'visual-mobile'],
+  play: focusFlagOpen,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+export const BoardFlagPinned: Story = {
+  name: 'Flag pinned — the touch route, no pointer, no focus ring (004 §13.9)',
+  tags: ['visual-full-page', 'visual-mobile'],
+  play: pinFlagOpen,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// T457 remediation, contrast case (004 spec §13.3/§13.8) — the same hover-revealed tooltip as
+// `BoardFlagHoverRevealed`, with a 19-character alias instead of `aoe2guy`. Proves the fix's shape,
+// not just its instance: the switcher trigger's alias truncates rather than pushing the flag onto
+// its own line, so the flag stays on the name line and its upward tooltip still lands clear of the
+// switcher trigger and the alias, exactly as it does for a short alias.
+export const BoardLongAliasFlagHoverRevealed: Story = {
+  name: 'Flag hover, long alias — the fix holds when the alias is 19 characters, not 7 (004 §13.8, T457)',
+  tags: ['visual-full-page', 'visual-mobile'],
+  play: hoverFlagOpen,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: longAliasProfile,
+    linkedProfiles: longAliasLinkedProfiles,
     entries,
     freshnessLine: 'Measured 3 minutes ago',
   },

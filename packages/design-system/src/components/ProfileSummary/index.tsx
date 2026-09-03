@@ -233,19 +233,82 @@ export function ProfileSummary({
               )}
             />
           )}
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-3">
+          {/* T457 remediation, round 2: `flex-1` — this column must claim the avatar row's full
+           * remaining width, not shrink-to-fit its own content. Without it, a *short* alias (e.g.
+           * `aoe2guy`) still truncated at 375 in a stacked layout with ~40px of visibly unused
+           * space to its right: the outer bar's mobile stack (`flex flex-col`, default
+           * `align-items: stretch`) stretches this avatar row's own container to the section's
+           * full width, but this column — a plain `flex flex-col` with no grow — hugged its own
+           * content inside that stretched row and left the leftover space unclaimed instead of
+           * handing it to the truncating name line. `flex-1` (grow to fill, `flex-basis: 0%`)
+           * paired with the existing `min-w-0` (still allowed to shrink below content) is the
+           * idiomatic "fill remaining space" pair; the alias now truncates only on genuine
+           * overflow. This does not change the md+ row: there, the avatar row is one
+           * `justify-between` item of the outer `md:flex-row` bar with no `flex-grow` of its own,
+           * so it still sizes to its *hugged* (max-content) width — and hugging a flex container
+           * to its max-content leaves no leftover space in the first place for an inner
+           * `flex-1` child to grow into, so this column's own width, and the avatar row's, are
+           * unchanged at `md` and up. */}
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            {/* NameLine (004 spec §13.3/§13.8): `nowrap`, not `wrap` — the flag is "one 44px mark
+             * on the name line" at every viewport, never a line of its own beneath the switcher.
+             * A wrapped flag sits directly under the switcher trigger with only `space-3`
+             * clearance, and its `block-start` (upward) tooltip — deliberate, `tooltip.md` §3a,
+             * so it never covers the rating board — then opens straight over the trigger it just
+             * wrapped under (the T457 defect). Keeping the line single forecloses that position
+             * outright, at any alias length: the switcher trigger's alias (`min-w-0 truncate`
+             * below) absorbs the width deficit instead, and the flag (`shrink-0` on its own
+             * wrapper) never gives up its 44px box to make room. */}
+            <div className="flex min-w-0 flex-nowrap items-center gap-3">
               {/* `subject="other"` never shows the switcher — a third party's own linked profiles
                * are never this component's business (003 spec §11.1.1, FR-009). */}
               {isSelf && authenticated && viewedProfile && (
                 <Menu
                   variant="selection"
+                  // Three overrides, all on `Menu`'s own exposed `className` seam (its trigger's
+                  // wrapper `<div>`) — no change to `Menu/index.tsx` — because a real 375
+                  // measurement (Chromium, not jsdom) showed each one is load-bearing on its own:
+                  // `Menu`'s wrapper is `inline-block`, and an `inline-block`/`inline-flex` box's
+                  // `width: auto` computation ("shrink-to-fit") does not reduce below the *content*
+                  // width of a truncating descendant unless that box is itself a genuine flex item
+                  // being flex-shrunk with a definite available size — an `inline-block` wrapper
+                  // that is a flex item of `NameLine` gets *blockified* (`display: block`, per the
+                  // CSS Display spec's flex-item rule) rather than becoming a flex context itself,
+                  // so its own child (the trigger `<button>`) is never a flex item of anything and
+                  // never gets flex-shrunk. `!flex` (Tailwind's `!important`) is required, not
+                  // optional, because Tailwind's generated stylesheet orders the static
+                  // `inline-block` utility after `flex`, so a plain `flex` override loses that
+                  // cascade regardless of class order in this string. `[&>button]:min-w-0` reaches
+                  // the trigger `<button>` itself (the wrapper's only non-absolutely-positioned
+                  // child — the popover and its sheet overlay are both `absolute`/`fixed`, inert to
+                  // this) because a flex item's own default `min-width: auto` still blocks it from
+                  // shrinking below its *own* min-content, and that min-content is computed without
+                  // crediting the alias span's `truncate` override two levels down. Removing any one
+                  // of the three reproduces the defect: measured in Chromium at 375 with a
+                  // 19-character alias, the trigger returned to its full ~271px width and the page
+                  // gained a 32px horizontal scrollbar.
+                  //
+                  // `[&>button]:px-3 md:[&>button]:px-4` (spec §13.6/§13.10, Phase 8 follow-up):
+                  // the trigger's own inline padding, one density step down from the `Button` `md`
+                  // default (`px-4` = `space-4`) to `px-3` (`space-3`) below `md` only. This
+                  // reclaims `2 × (space-4 − space-3)` ≈ 8px on the 375 name line — four times the
+                  // ~2px shortfall a 7-character self-alias (`aoe2guy`) was clipping by — without
+                  // touching either of the two ProfileSummary gaps §13.6 froze (avatar→column
+                  // `space-4`, trigger→flag `space-3`): it is a density property of the trigger's
+                  // own chrome, a `Button`/`Menu` concern `shared-primitives.md` owns, never
+                  // either identity-bar gap. `[&>button]:` is a compound selector (one class plus
+                  // one type selector) and already outranks Menu's own single-class `px-4` on
+                  // specificity — the same reason `[&>button]:min-w-0` above needs no
+                  // `!important` — so `md:[&>button]:px-4` reverts cleanly to the `Button` default
+                  // from `md` up, where the row has room and no name competes for it. Horizontal
+                  // only: the trigger's height (≥44px on touch) is untouched.
+                  className="!flex min-w-0 [&>button]:min-w-0 [&>button]:px-3 md:[&>button]:px-4"
                   triggerLabel={
                     <>
                       <span
                         id="profile-summary-alias"
                         className={cx(
-                          'text-xl font-semibold text-text-primary',
+                          'min-w-0 truncate text-xl font-semibold text-text-primary',
                           usingFallbackHeading ? 'font-mono' : 'font-sans',
                         )}
                       >
@@ -267,7 +330,7 @@ export function ProfileSummary({
                 <span
                   id="profile-summary-alias"
                   className={cx(
-                    'text-xl font-semibold text-text-primary',
+                    'min-w-0 truncate text-xl font-semibold text-text-primary',
                     usingFallbackHeading ? 'font-mono' : 'font-sans',
                   )}
                 >
@@ -280,13 +343,14 @@ export function ProfileSummary({
                 </span>
               )}
               {/* CountryFlag (004 spec §12.4) renders `null` on a blank `countryName`, so nothing
-               * reserves a gap for a profile that never had a country. */}
+               * reserves a gap for a profile that never had a country. `shrink-0`: the flag never
+               * gives up width to the alias beside it — the alias truncates first (§13.8). */}
               {viewedProfile && (
                 <CountryFlag
                   flagUrl={viewedProfile.countryFlagUrl}
                   countryName={viewedProfile.countryName}
                   size={flagSize}
-                  className={cx('text-text-secondary', compact ? 'text-xs' : 'text-sm')}
+                  className={cx('shrink-0 text-text-secondary', compact ? 'text-xs' : 'text-sm')}
                 />
               )}
             </div>

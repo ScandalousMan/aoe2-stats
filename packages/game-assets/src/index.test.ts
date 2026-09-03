@@ -31,7 +31,7 @@
 // happens to contain a matching file.
 import { describe, expect, expectTypeOf, test } from 'vitest'
 
-import { civilisationIcon, countryFlag, mapThumbnail } from './index.js'
+import { civilisationIcon, countryFlag, mapDisplayName, mapThumbnail } from './index.js'
 
 describe('civilisationIcon', () => {
   test('a known civilisation name resolves to a URL under /game-assets/', () => {
@@ -96,6 +96,64 @@ describe('mapThumbnail', () => {
     expectTypeOf(mapThumbnail).toBeFunction()
     expectTypeOf(mapThumbnail).parameter(0).toEqualTypeOf<string>()
     expectTypeOf(mapThumbnail).returns.toEqualTypeOf<string | undefined>()
+  })
+
+  // T449: `Match.map_name` in production carries Relic's raw internal name (`Yucatan.rms`,
+  // `CoastalForest.rms`), not the clean fixture form the tests above use — the resolver must
+  // normalise (strip the `.rms`/`.rmsN` extension, split camelCase/underscore boundaries, then
+  // Title-Case) before keying the pack, exactly the way `mapDisplayName` below does, so the two
+  // stay in lockstep.
+  test('a raw internal name with the .rms extension resolves through the normalised slug', () => {
+    const result = mapThumbnail('Yucatan.rms')
+
+    expect(result).toBe('/game-assets/maps/yucatan.webp')
+  })
+
+  test('a camelCase raw internal name resolves through the normalised slug', () => {
+    const result = mapThumbnail('CoastalForest.rms')
+
+    expect(result).toBe('/game-assets/maps/coastal-forest.webp')
+  })
+
+  test('an uncovered raw internal name misses cleanly, never a broken image', () => {
+    const result = mapThumbnail('SomeCustomMap.rms')
+
+    expect(result).toBeUndefined()
+    expectTypeOf(result).toEqualTypeOf<string | undefined>()
+  })
+})
+
+// T449: `mapDisplayName` is the FR-010 degrade path's own label — a raw internal `map_name` not
+// covered by the pack still shows this cleaned, readable name, never the raw `.rms` string.
+describe('mapDisplayName', () => {
+  test('strips the raw internal .rms extension', () => {
+    expect(mapDisplayName('Yucatan.rms')).toBe('Yucatan')
+  })
+
+  test('strips a numbered .rmsN extension case-insensitively', () => {
+    expect(mapDisplayName('Yucatan.RMS2')).toBe('Yucatan')
+  })
+
+  test('splits a camelCase raw internal name into title-cased words', () => {
+    expect(mapDisplayName('CoastalForest.rms')).toBe('Coastal Forest')
+  })
+
+  test('splits underscores into title-cased words', () => {
+    expect(mapDisplayName('golden_pit')).toBe('Golden Pit')
+  })
+
+  test('an uncovered raw internal name still yields a cleaned, readable label', () => {
+    expect(mapDisplayName('SomeCustomMap.rms')).toBe('Some Custom Map')
+  })
+
+  test('leaves the existing clean fixture form unchanged', () => {
+    expect(mapDisplayName('Arabia')).toBe('Arabia')
+  })
+
+  test('the exported function signature matches the contract', () => {
+    expectTypeOf(mapDisplayName).toBeFunction()
+    expectTypeOf(mapDisplayName).parameter(0).toEqualTypeOf<string>()
+    expectTypeOf(mapDisplayName).returns.toEqualTypeOf<string>()
   })
 })
 

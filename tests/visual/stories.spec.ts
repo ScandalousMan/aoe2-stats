@@ -61,6 +61,41 @@ for (const { id, fullPage, mobile } of stories) {
     // would otherwise make the very first screenshot after a baseline change flaky.
     const root = page.locator('#storybook-root')
     await root.waitFor({ state: 'visible' })
+    // `waitFor({ state: 'visible' })` only proves the root element exists — it says nothing about
+    // whether the story is still mutating the DOM. Playwright's own screenshot stability polling
+    // (retinting until two consecutive frames match) only kicks in once a baseline already exists;
+    // the very first capture of a story — which is exactly the state a new baseline is taken from —
+    // fires immediately with no such polling. A story with a `play()` (Tooltip's hover/focus-reveal
+    // stories among them) is still running its interaction, and possibly a CSS transition it
+    // triggered, well after the root is visible, so that first screenshot can bake in a pre-play or
+    // mid-transition frame.
+    //
+    // Storybook 10.5.9 exposes the render driving this story as an entry in
+    // `window.__STORYBOOK_PREVIEW__.storyRenders` (confirmed by reading the installed
+    // `storybook/dist/preview/runtime.js`'s `StoryRender` class, not assumed from an API guess).
+    // Its `.phase` advances `preparing -> loading -> rendering -> playing -> played -> completing
+    // -> completed -> afterEach -> finished` for a story that renders cleanly, and short-circuits
+    // to `errored` (still followed by `finished`) if the story or its `play()` throws. `completing`
+    // is where Storybook itself awaits any CSS transition or Web Animation the story's own render
+    // started (its `waitForAnimations`) — the exact class of thing `duration-120` fade-ins like
+    // Tooltip's reveal are — so `played` alone is not enough: it fires *before* that wait. Waiting
+    // past it, for `completed` (or `finished`/`errored`, reached by a story with no `play()` at all
+    // or one whose `play()` failed), is therefore what a story with a play function AND a story
+    // without one both eventually reach — no per-story branching, no knowledge here of which
+    // stories carry a `play()`, matching this file's "stays dumb" rule above.
+    await page.waitForFunction(
+      (storyId: string) => {
+        const preview = (
+          window as unknown as {
+            __STORYBOOK_PREVIEW__?: { storyRenders?: { id: string; phase?: string }[] }
+          }
+        ).__STORYBOOK_PREVIEW__
+        const render = preview?.storyRenders?.find((r) => r.id === storyId)
+        return !!render && ['completed', 'finished', 'errored'].includes(render.phase ?? '')
+      },
+      id,
+      { timeout: 5_000 },
+    )
     if (fullPage) {
       // The story's own subject (a fixed dialog, an open popover) paints outside the root
       // element's layout box, so a screenshot clipped to that element never shows it — this

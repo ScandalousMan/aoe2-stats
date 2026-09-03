@@ -68,6 +68,7 @@ from aoe2stats_providers.base import (
     AsyncProviderCallSink,
     ProviderContractViolation,
     RawMatch,
+    RawProfile,
     RetryPolicy,
     TokenBucket,
     parse_strict,
@@ -210,6 +211,46 @@ class RelicMatchHistoryProvider(AsyncBaseProvider):
                     )
                     continue
         return matches
+
+    async def recent_profiles(self, profile_ids: Sequence[int]) -> list[RawProfile]:
+        """T451: the `profiles[]` identity block riding alongside `getRecentMatchHistory`'s
+        `matchHistoryStats`, which `recent_matches` never reads. An additive sibling method rather
+        than a widened `recent_matches` return — `recent_matches` already has callers outside this
+        module's reach (`discover.py`, `reconcile.py`, `players.py`), so its `list[RawMatch]`
+        return stays exactly as it is; a caller after both this profile's matches and its identity
+        makes the two calls it now takes.
+
+        Splits more than `MATCH_HISTORY_BATCH_SIZE` profiles across multiple calls, matching
+        `recent_matches`. A response with no `profiles[]` key — an older or degraded shape, not a
+        malformed one — reads the same way `.get(..., [])` already reads a `matchHistoryStats`-less
+        response: an empty identity set, never a raised error. An entry that fails `RawProfile`'s
+        strict validation is skipped rather than aborting the batch, the same T050a discipline
+        `recent_matches` applies to a malformed `matchHistoryStats` entry.
+        """
+        profiles: list[RawProfile] = []
+        for batch in _chunk(profile_ids, MATCH_HISTORY_BATCH_SIZE):
+            body = await self._get_recent_match_history({"profile_ids": json.dumps(list(batch))})
+
+            for entry in body.get("profiles", []):
+                fields = {
+                    "profile_id": entry.get("profile_id"),
+                    "alias": entry.get("alias"),
+                    "country": entry.get("country"),
+                }
+                try:
+                    profiles.append(
+                        parse_strict(
+                            RawProfile,
+                            fields,
+                            provider=self._provider,
+                            endpoint="getRecentMatchHistory",
+                        )
+                    )
+                except ProviderContractViolation:
+                    # Same shape as `recent_matches`'s malformed-entry skip (T050a): one
+                    # unreadable identity entry does not cost the rest of the batch.
+                    continue
+        return profiles
 
     async def _get_recent_match_history(self, extra_params: Mapping[str, Any]) -> dict[str, Any]:
         response = await self._request(

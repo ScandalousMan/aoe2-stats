@@ -5,10 +5,15 @@
 ([`profile-summary.md`](./profile-summary.md) §12), itself consumed by
 `apps/web/src/routes/dashboard.tsx`, `players.$profileId.tsx` and `players.$profileId.matches.tsx`.
 **Requirements**: FR-008, FR-010, FR-013. SC-002, SC-005.
+**Amended by §11 (004, Phase 8, T455)**: FR-008 now requires the country name to be conveyed through
+a [`Tooltip`](./tooltip.md) on the flag — on hover, on keyboard focus, and with an accessible name —
+and **not** as an adjacent text element. **Read §11 before implementing anything below**: it
+supersedes §2's always-visible name, §4's "never a tab stop", §7's wrap rule, §8's "not focusable, no
+tooltip" and §10's first criterion. §11.1 lists exactly what changes and what stands.
 **Depends on**: [`game-asset-tokens.md`](./game-asset-tokens.md) — the `icon` size family (DS-7,
 closed). [`profile-summary.md`](./profile-summary.md) §2 — `CountryLabel`'s existing convention
 (country in text; a flag accompanies it, never replaces it), which this component implements rather
-than replaces.
+than replaces. [`tooltip.md`](./tooltip.md) — from §11 onward.
 **Asset origin** (README rule 3): the flag is a file in `packages/game-assets/flags/`, whose
 `LICENCE.md` records source (`lipis/flag-icons`, the 4x3 set), licence (MIT), permitted usage, ruling
 and check date (`specs/004-visual-parity/contracts/asset-pack.md`, enforced by
@@ -240,3 +245,202 @@ before anyone notices there was never a decision.
       (§2a), which is SC-002 in miniature.
 - [ ] Converting any story to greyscale leaves the country identifiable, because the name is doing
       the work (README rule 4).
+
+---
+
+## 11. The name is the flag's tooltip, not the text beside it (004, Phase 8 — T455)
+
+FR-008 was amended by Clarifications 2026-09-02 after the T447 walk: the country name "MUST be
+conveyed through a design-system Tooltip on the flag — revealed on hover and on keyboard focus, with
+an accessible name for assistive technology — and MUST NOT be rendered as an adjacent text element."
+
+This section supersedes parts of §§2–10 rather than sitting beside them, and it changes the two
+things this component was most emphatic about: that the name is always visible, and that the flag is
+never a tab stop. Both changes are stated in full below, because a reader of §2 alone would implement
+the opposite of what now holds.
+
+### 11.1 What §11 supersedes, and what it leaves standing
+
+| Earlier text                                                                                | Status                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §2 anatomy's `Name` part, "always rendered, always selectable text"                         | **Superseded when a flag renders** (§11.2). The name becomes the `Tooltip`'s content. It returns to being visible text, unchanged, in exactly the two cases where no flag renders (§11.4).                          |
+| §2 rule 1, "imagery is never the only carrier of meaning… there is no `flagOnly` prop"      | **Standing, and satisfied differently** (§11.3). The carrier is still text; it is in the accessibility tree at all times and revealed three ways. What is gone is the requirement that it be _permanently painted_. |
+| §2 rule 2 (absent asset is the prop `undefined`) and rule 3 (the name is resolved upstream) | **Unchanged.** §2a, the props (`countryName`, `flagUrl`) and `ViewedProfile`'s fields are untouched — this is a presentation change and needs no new data.                                                          |
+| §3 sizes (`icon-sm` / `icon-md`, 4:3, no responsive shrink)                                 | **Unchanged for the flag itself.** §11.5 adds an interactive box around it; the flag's own size token does not change.                                                                                              |
+| §4 hover, "none of its own… no tooltip revealing the code"                                  | **Superseded** (§11.6). Note what that sentence forbade: a tooltip revealing the **code**. The code still never reaches the screen (§2a), which is SC-002, and is untouched.                                        |
+| §4 focus-visible and active, "none. Never a tab stop, no `tabindex`"                        | **Superseded** (§11.6). The flag is now a tab stop with a visible focus ring. This is the change a later reviewer is most likely to assume was handled, so §11.6, §11.8 and §11.9 each state it.                    |
+| §4 disabled, loading, error, empty                                                          | **Unchanged**, with §11.4 saying what the two absent-asset cases render now that no permanent label sits beside the flag.                                                                                           |
+| §7 "the pair never wraps between the flag and its name"                                     | **Retired.** There is no pair to wrap. §11.7 replaces it.                                                                                                                                                           |
+| §8 "not focusable, no `title`, no tooltip… the 44px target does not apply"                  | **Superseded** (§11.8). It is focusable, it has a tooltip (never a `title`), and the 44px target now applies.                                                                                                       |
+| §9 "`ProfileSummary`'s `IdentityBar` only", and the two places that may not take a flag     | **Unchanged.** `PlayerResultRow` and `MatchRow` are untouched by this amendment, and neither gains a flag or a tooltip.                                                                                             |
+| §10's first criterion, "no story shows a flag without its name beside it"                   | **Superseded** by §11.9, which inverts it: no story shows a name beside a flag.                                                                                                                                     |
+
+### 11.2 What renders
+
+`CountryFlag` renders a [`Tooltip`](./tooltip.md) whose trigger is the framed flag and whose content
+is the country name.
+
+```
+CountryFlag (superseding §2's anatomy wherever a flag actually renders)
+└─ Tooltip                     relation="label", placement block-start (tooltip.md §3)
+   ├─ Trigger  <button type="button">, hit area icon-xl (44px), containing:
+   │  └─ Frame     §2's 4:3 box, `border` hairline, `radius-sm` — unchanged
+   │     └─ Image  <img alt="">, object-fit contain — unchanged
+   └─ Content  role="tooltip", ALWAYS in the DOM, `hidden` while closed:
+      ├─ "Country: "   visually hidden qualifier
+      └─ "France"      the visible tooltip text — §2a's already-resolved `countryName`
+```
+
+The visually hidden qualifier is `tooltip.md` §8's rule: without it the trigger announces "France,
+button", which names a country but not what the country is _of_. With it the accessible name is
+"Country: France", the visible text is still the bare name, and WCAG 2.5.3 (label in name) holds
+because the visible text is contained in the accessible name.
+
+**The props do not change.** `countryName` and `flagUrl` mean what they meant; only where
+`countryName` is drawn has changed. `apps/web` resolves both exactly as §2a specifies, and
+`ViewedProfile` is untouched — nothing on the wire moves for this.
+
+### 11.3 Why this does not break README rule 4, and what would
+
+§2 rule 1 argued, correctly, that several flags are indistinguishable at 16px, so a flag without its
+name is not a compressed fact but a wrong one. That argument is about the fact being **unreachable**,
+not about it being permanently painted. It survives here on three conditions, and this component
+fails rule 4 the moment any one of them is dropped:
+
+1. **The name is in the accessibility tree whether the tooltip has ever opened or not** —
+   `tooltip.md` §8's always-in-the-DOM content element. A screen reader cannot produce a hover event;
+   an implementation that mounts the content on open turns the country into a sighted-pointer-only
+   fact, screenshots identically to a correct one, and is the single likeliest defect in T456.
+2. **Three independent routes reveal it** — hover, keyboard focus and press/tap (`tooltip.md` §4).
+   Drop the third and a touch user, who has no hover and generally no `:focus-visible`, cannot reach
+   the country at all on the viewport where the flag is smallest.
+3. **The trigger is a real 44px control with a visible focus ring**, so the fact is reachable by
+   keyboard at all, and visibly so.
+
+What this section does **not** license: a civilisation icon, a map thumbnail or a player colour
+swatch losing its adjacent name to a tooltip. Those sit in a match row where the name is already the
+primary carrier and the mark is the accompaniment (`match-history.md` §12.3), and `tooltip.md` §9
+forbids it by name. The country is the one fact in this system whose permanently visible label cost
+more line than the fact was worth.
+
+### 11.4 The two absences where the name is still visible text
+
+Nothing hangs a tooltip on a flag that is not there. §4's first two empty cases therefore render
+**exactly as §4 already specified — the country name alone, as plain, selectable text, with no
+frame, no button, no tab stop and no tooltip**:
+
+- **A country the pack does not cover** (`flagUrl === undefined`).
+- **The image failed to load or decode** (§4 error) — still byte-identical to the case above.
+
+This does not violate FR-008's "MUST NOT be rendered as an adjacent text element". _Adjacent_ is the
+operative word: FR-008 forbids the name sitting **beside a flag**, which is the "🇫🇷 France" the T447
+walk found. Where there is no flag, the name is adjacent to nothing — it is the entire render, and
+the alternative is a reader who is never told the country at all.
+
+**No country at all** (`countryName` absent or blank after trimming) is unchanged: the component
+renders `null`. `tooltip.md` §4's empty state agrees from the other side — a `Tooltip` with blank
+content renders no button and no surface — so the two components cannot disagree about which of them
+suppresses the render.
+
+### 11.5 Sizes and the interactive box
+
+The flag's own size is unchanged: `icon-sm` in `compact`, `icon-md` in `board`, 4:3, height set by
+the token (§3).
+
+**The trigger's hit area is `icon-xl` (44px) in both axes at both sizes**, reached by padding on the
+button itself, never by a transparent overlay (`tooltip.md` §6). The flag is centred inside it, and
+the visible boundary remains the 4:3 frame, not the button's box — the flag does not grow, and no
+new border appears around the padding.
+
+What that costs, stated so nobody re-derives it: in `board` the identity bar's height is set by the
+64px avatar, so the 44px box costs nothing. In `compact` the row already contains the
+`ProfileSwitcher` trigger — a `Button` at 40px pointer / 48px touch — so the box adds **at most 4px**
+to the row on a pointer viewport and nothing at all on a touch one. That is the whole price of the
+country being reachable rather than decorative.
+
+### 11.6 States — superseding §4's hover, focus-visible and active
+
+The eight states are `tooltip.md` §4's, applied here. The three §4 declared absent:
+
+- **hover** — the pointer over the flag opens the tooltip after `motion.duration.normal`; it closes
+  `motion.duration.fast` after the pointer has left **both** the flag and the surface. The flag
+  itself does not brighten, scale, lift or tint: the tooltip appearing is the entire hover
+  affordance, and a national flag is not re-rendered to acknowledge a cursor.
+- **focus-visible** — **the flag is a tab stop.** Reaching it by Tab opens the tooltip **immediately,
+  with no delay**, and the trigger shows the one uniform focus ring (`outline-2 outline-offset-2` in
+  `focus-ring`, gap DS-4) around the button's box, unclipped, in both themes. **The tooltip appearing
+  is not a substitute for the ring** — both are in the same frame. Opening on `:focus-visible` and
+  not `:focus` is what stops a mouse click from stranding a tooltip open after the pointer has gone.
+- **active** — pressing (click, Enter, Space or tap) pins the tooltip open until an explicit dismiss;
+  Escape dismisses it and leaves focus on the flag. On touch this is the only route (§11.3), which is
+  why it is specified rather than left to the implementation.
+
+**disabled** — never, and now for a second reason on top of §4's: a `disabled` button is neither
+focusable nor hoverable, so disabling this one would make the country unreachable rather than merely
+dim (`tooltip.md` §4).
+
+**loading**, **error** and **empty** are §4's, with §11.4 above.
+
+### 11.7 Responsive — superseding §7's wrap rule
+
+- **375 / 768 / 1280** — the flag's size is still the caller's variant, never the viewport (§3).
+- **There is no pair, so there is nothing to wrap between.** §7's rule against orphaning the flag from
+  its name is retired: the flag is a single 44px mark that moves as one unit, and the name travels
+  with it in the tooltip by construction rather than by a layout rule.
+- The tooltip's placement, flipping, inline shifting and minimum viewport margin are `tooltip.md`
+  §3a and §7; nothing here overrides them.
+- At 200% zoom the flag, the button box and the tooltip text all scale with the token (rem-based).
+
+### 11.8 Accessibility — superseding §8
+
+- The `<img>` stays `alt=""`. It is decorative **inside a button whose accessible name is the
+  country** — `aria-labelledby` pointing at the tooltip content (`tooltip.md` §8,
+  `relation="label"`). Never `alt="France"`, which would name the country twice inside one control,
+  and never `alt="flag"`.
+- **The accessible name resolves with the tooltip closed**, because the content element is in the DOM
+  with the `hidden` attribute at all times. This is FR-008's "with an accessible name for assistive
+  technology", verbatim, and it is not something a screenshot can show — it is asserted in T456's
+  unit test, not in a baseline.
+- **The flag is now focusable and now owes the 44px target** (§11.5), reversing §8's two claims.
+  Anything that reads "not focusable" above this section is superseded.
+- Keyboard, in full: Tab in (opens), Tab out (closes), Enter and Space pin and unpin, Escape
+  dismisses without moving focus and it stays dismissed until focus leaves and returns. No arrow
+  keys — this is one control (`tooltip.md` §8).
+- Contrast: the tooltip's `text-primary` on `surface-raised` is README's measured pair in both
+  themes. The flag's `border` hairline stays decorative and exempt (§5). The focus ring is
+  `focus-ring` on whatever the caller paints — `background`, for `ProfileSummary` (5.9 light).
+- Colour is never the only carrier: the country is a word, reachable three ways, and greyscaling the
+  flag loses nothing that was not already text.
+- **The country name in the tooltip is not selectable** — nothing in a tooltip is. That is a real
+  loss against §8's "selectable text, never baked into the image", accepted because a country is not
+  a value anyone copies, and refused for anything that is: `tooltip.md` §2 rule 2 keeps every figure
+  off that surface precisely so this trade never has to be made about a number.
+
+### 11.9 Visual acceptance criteria — replacing §10's first criterion, adding to the rest
+
+§10's criteria stand except its first, which is inverted below. Half of these are pointer- or
+keyboard-only and are judged against stories that force the state open (`tooltip.md` §10) — a suite
+of default captures verifies none of them and passes anyway.
+
+- [ ] **No story shows a country name as text beside a flag.** In the default story the flag stands
+      alone and the frame contains no country word anywhere.
+- [ ] The **hover story** shows the country name in a tooltip above the flag, in both themes.
+- [ ] The **keyboard-focus story** shows the tooltip open **and** the focus ring visible and
+      unclipped around the flag's button box, in the same frame, in both themes. A frame with one and
+      not the other fails this criterion.
+- [ ] The **pinned (pressed) story** shows the tooltip open with no pointer over the flag and no
+      focus ring — the touch route.
+- [ ] The **after-Escape story** shows no tooltip and a still-visibly-focused flag.
+- [ ] The open tooltip sits **above** the flag, is opaque, and covers no figure in the frame.
+- [ ] Overlaying the closed and open default stories, every element sits in the identical position —
+      opening the tooltip reflows nothing.
+- [ ] The flag's button box measures at least 44×44px at 375, while the flag drawn inside it is still
+      `icon-sm` / `icon-md`, still wider than it is tall, and still framed by the same hairline.
+- [ ] The **uncovered-country** and **failed-image** stories show the country name as plain visible
+      text with **no flag, no frame and no focus ring**, are pixel-identical to each other, and
+      tabbing through them stops on nothing.
+- [ ] The **blank-`countryName`** story renders nothing at all, and tabbing through it does not stop
+      where the flag would be.
+- [ ] No story shows a two-letter country code anywhere — **including inside a tooltip** (§2a,
+      SC-002).
+- [ ] No caret, arrow, dotted underline or "?" affix appears on or near the flag in any story.

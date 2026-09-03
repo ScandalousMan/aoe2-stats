@@ -6,7 +6,7 @@ import type {
   ParticipantData,
   TeamGroupData,
 } from 'design-system'
-import { civilisationIcon, mapThumbnail } from 'game-assets'
+import { civilisationIcon, mapDisplayName, mapThumbnail } from 'game-assets'
 import type {
   ApiMatchDetail,
   ApiMatchListRow,
@@ -32,6 +32,15 @@ function resolveCivIconUrl(civName: string | null): string | undefined {
 /** Same rule as `resolveCivIconUrl`, for `packages/game-assets`'s `mapThumbnail`. */
 function resolveMapThumbnailUrl(mapName: string | null): string | undefined {
   return mapName != null ? mapThumbnail(mapName) : undefined
+}
+
+/** T449: `map_name` off the wire is Relic's raw internal name in production (`"Yucatan.rms"`,
+ * `"CoastalForest.rms"`), not the clean fixture form — every label shown to a user goes through
+ * `mapDisplayName` first, never the raw string, so the `.rms` suffix (and camelCase) never leaks
+ * into the UI. `null` is left to each call site's own fallback (`toMatchRowData`'s "Unknown map"
+ * vs `toMatchDetailData`'s `null`, per §11.2). */
+function resolveMapDisplayName(mapName: string): string {
+  return mapDisplayName(mapName)
 }
 
 // The one place `ApiMatchListRow` (snake_case, `api.ts`) becomes what `MatchRow`/`MatchList`
@@ -75,7 +84,7 @@ export function toMatchRowData(row: ApiMatchListRow, viewerProfileId: number): M
     participants: row.participants.map((participant) =>
       toMatchRowParticipant(participant, viewerProfileId),
     ),
-    map: row.map_name ?? 'Unknown map',
+    map: row.map_name != null ? resolveMapDisplayName(row.map_name) : 'Unknown map',
     civilisation: formatCivilisation(row.civilisation_name),
     leaderboardName: row.leaderboard_name,
     // Resolved through `packages/game-assets`, keyed on the server-named `civilisation_name` /
@@ -174,8 +183,10 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     gameId: String(detail.game_id),
     // §11.2: unlike `MatchRowData.map`'s "Unknown map" fallback, `MatchDetailPanel`'s header
     // renders a `null` map via its own `UnresolvedIdentifier` (no id to show for a map, per that
-    // component's own note) — this mapper must not paper over the gap with invented text.
-    map: detail.map_name,
+    // component's own note) — this mapper must not paper over the gap with invented text. A
+    // non-null map_name is still cleaned through `mapDisplayName` (T449) before it reaches the
+    // header, never the raw internal `.rms` string.
+    map: detail.map_name != null ? resolveMapDisplayName(detail.map_name) : null,
     // Resolved through `packages/game-assets`, same rule as `toMatchRowData.mapThumbnailUrl` —
     // `undefined` on a `null` map_name or a pack miss alike, never a placeholder (T432).
     mapThumbnailUrl: resolveMapThumbnailUrl(detail.map_name),

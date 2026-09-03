@@ -28,9 +28,10 @@ component carries a hard-coded style value.
 | [`civilisation-icon.md`](./civilisation-icon.md)         | `src/components/CivilisationIcon/`                                       | 004, US1                     |
 | [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/components/MapThumbnail/`                                           | 004, US1                     |
 | [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/components/PlayerColourSwatch/`                                     | 004, US1                     |
-| [`country-flag.md`](./country-flag.md)                   | `src/components/CountryFlag/`                                            | 004, US2                     |
+| [`country-flag.md`](./country-flag.md)                   | `src/components/CountryFlag/`                                            | 004, US2; 004, Phase 8       |
 | [`player-avatar.md`](./player-avatar.md)                 | `src/components/PlayerAvatar/`                                           | 004, US2                     |
-| [`site-header.md`](./site-header.md)                   | `src/components/SiteHeader/`                                             | 004, US3                     |
+| [`site-header.md`](./site-header.md)                     | `src/components/SiteHeader/`                                             | 004, US3                     |
+| [`tooltip.md`](./tooltip.md)                             | `src/components/Tooltip/`                                                | 004, Phase 8                 |
 
 ## Every spec has nine sections
 
@@ -60,7 +61,11 @@ disabling it would be wrong, and here is what happens instead".
    a component uses records its origin in the component's spec.
 4. **Colour is never the only carrier of meaning.** Win/loss, success/failure, primary/non-primary,
    and a player's colour all carry a text or shape signal alongside the colour — a `PlayerColourSwatch`
-   always sits beside the player's name.
+   always sits beside the player's name. **Imagery is not either**: a mark whose fact is not
+   permanently painted beside it must reach that fact three ways — hover, keyboard focus and press —
+   and must carry it in the accessibility tree at all times, whether the reveal has ever fired or not
+   ([`tooltip.md`](./tooltip.md) §2, [`country-flag.md`](./country-flag.md) §11.3). That is the only
+   sanctioned exception, and it is one component wide.
 5. **Reduced motion is a real state.** Under `prefers-reduced-motion: reduce`, every transition uses
    `motion.duration.instant` and every looping animation (skeleton pulse above all) stops on its
    resting frame.
@@ -153,12 +158,13 @@ tight.** Every light-theme pair above now clears the normal-text floor it owes �
 the gap register for `warning`'s history. Judge light first.
 
 **One pair a component draws and this table does not yet carry**: `text-secondary` on `background`
-in the **dark** theme. `ProfileSummary`'s root is `bg-background`, so its country label, profile id
-and freshness line render that pair in both themes; the light row is above, the dark one is not.
-Dark `background` is darker than dark `surface`, so the pair is no tighter than the measured 7.8
-`surface` row and nothing is blocked on it — but per the pairing convention above, an unmeasured
-pair is not an asserted one. Add the row the next time this table is recomputed
-(`profile-summary.md` §12.8).
+in the **dark** theme. `ProfileSummary`'s root is `bg-background`, so its profile id and freshness
+line render that pair in both themes; the light row is above, the dark one is not. Dark `background`
+is darker than dark `surface`, so the pair is no tighter than the measured 7.8 `surface` row and
+nothing is blocked on it — but per the pairing convention above, an unmeasured pair is not an
+asserted one. Add the row the next time this table is recomputed (`profile-summary.md` §12.8). The
+country label used to be on that list and no longer is: it moved to `text-primary` on
+`surface-raised` when it became a `Tooltip`'s content (`profile-summary.md` §13.6).
 
 ### Player colour swatches (feature 004, T410)
 
@@ -202,6 +208,14 @@ An implementer who finds themselves needing a value not covered here stops and a
 | **DS-8** | No numeric-typography role. Tabular alignment currently rides on `font.family.mono` being monospaced. | A future change of mono family silently breaks column alignment on every rating table. | Numeric cells use `font-mono`.                                                                                                                                                                                                                 | Add a `font.role.numeric` alias, or a `font-variant-numeric: tabular-nums` utility, so the intent is recorded rather than inferred. Number legibility is this product's functional priority; it should not depend on a coincidence.                                                                                         |
 | **DS-9** | No link colour role, and `accent` on `surface-raised` is not in the measured contrast table.          | Long-form prose with inline links has no sanctioned link colour on every background.   | Inline links use `accent` with a permanent underline, **on `surface` only** — the one pair measured (4.9 light / 7.7 dark). A link that would sit on `surface-raised` renders `text-primary` with an underline instead. Never colour alone.    | Add a `link` / `link-hover` / `link-visited` role, **or** measure `accent` on `surface-raised` and `surface-sunken` and add the rows. Raised by `privacy-notice.md`, the first component whose body copy is mostly prose with links in it. Owner: design-system. Until then no component paints a link on a raised surface. |
 
+**Not a gap: stacking.** There is no `z-index` family and, as of `tooltip.md`, none is needed. The
+one floating surface outside `Menu` and `Dialog` is the tooltip, which is absolutely positioned and
+therefore paints above the non-positioned content that follows it, with no `z-index` value at all
+(`tooltip.md` §3a). What that costs the caller is two constraints rather than a token: no ancestor
+between the trigger and the page root may clip overflow, and no **later** positioned sibling may sit
+over the surface. If a call site ever cannot satisfy both, that is when this register gains a
+stacking row — not before, and never by way of an arbitrary number in a component.
+
 `tokens/build-tokens.test.mjs` now asserts the pairs in the measured contrast table above that
 carry an accessibility floor, so a colour edit that breaks AA fails a test rather than depending on
 this table being re-read (T034a, corrected by T038a and T034c below).
@@ -228,7 +242,9 @@ multiples so icon size and layout gaps share one rhythm, and `icon-xl` is fixed 
 2.5.8 touch-target floor an interactive icon must fill. Values, per-component mapping, and the
 generator wiring T410 owes (it is hand-wired like `radius`, not auto-discovered) are in
 [`game-asset-tokens.md`](./game-asset-tokens.md). The id is kept rather than renumbered so this
-register and the commit history line up with the gap it describes.
+register and the commit history line up with the gap it describes. `icon-xl`'s reason for existing
+became load-bearing in Phase 8: the country flag is now a tooltip trigger and fills it
+(`country-flag.md` §11.5).
 
 **Closed — light `warning` (T038a).** `warning` colours only the stripe and the heading of a
 callout, never its body: callout body text is always `text-primary`. That structural rule is

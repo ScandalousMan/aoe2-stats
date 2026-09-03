@@ -622,9 +622,17 @@ async def test_any_players_profile_carries_avatar_hash_as_a_hash_never_a_url(
 ) -> None:
     """FR-008a, FR-015, `contracts/http-api.md`: `avatar_hash` is the hash as aoe2companion
     reports it, read from `aoe_profiles.avatar_hash` — **never a URL**. The client builds
-    `https://avatars.steamstatic.com/<hash>_full.jpg` itself; this route only ever hands over the
-    hash, and this route makes no provider call to get it (`contracts/http-api.md`: "this route
-    makes no provider call, and still makes none")."""
+    `https://avatars.steamstatic.com/<hash>_full.jpg` itself.
+
+    **T453 reverses this route's old "no provider call at all" property** (FR-017): `GET
+    /api/players/{profile_id}` now runs the shared on-view identity refresh before answering, so a
+    viewed profile's alias/country/avatar hash can be populated from the source for the first
+    time — see `test_third_party_history.py` for that refresh's own provider-call contract,
+    test-first. This test seeds a hash directly rather than faking a provider response, so its own
+    claim stands regardless of how that refresh resolves here (companion answers `403` by default
+    in this suite, `conftest.py`'s autouse fixture): `avatar_hash` below is still read straight off
+    `aoe_profiles` — this route never hands back a value fetched fresh inside the same response —
+    and is still never a URL."""
     caller = await _seed_user(db_session)
     await _sign_in(client, db_session, caller)
 
