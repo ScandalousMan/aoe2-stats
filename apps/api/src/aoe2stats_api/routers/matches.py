@@ -166,6 +166,41 @@ function's *behaviour*, not merely its transport, is the thing FR-003 requires t
 across both routes, which a second, separately-maintained copy could not guarantee. The one-way
 dependency this creates (`players.py -> matches.py`) is the same direction `match_row_json` already
 established; nothing here reverses it.
+
+**Colour enrichment is now also on `get_match_detail`'s own path (defect fix, quickstart scenario
+5).** T333's manual walk against production found `match_players.color_id` NULL forever on a match
+this service only ever met as a third party's opponent: `enrich_colours` above was wired into
+`list_matches` and `players.py::get_player_match_history` but never into `get_match_detail` itself,
+so a match viewed only through its detail route stayed uncoloured no matter how many times it was
+opened. `_fetch_detail_response` below now calls it too, batched over `[game_id]` alone — the same
+"at most one call, only when something is still missing" discipline described above, unchanged.
+
+**The on-view identity refresh, narrowed to this route's own need (defect fix, quickstart scenario
+5).** The same manual walk found a participant this service met only as a third party still
+carrying its `str(profile_id)` numeric placeholder as `alias` on the detail page, forever — nothing
+on this route ever refreshed it. `routers/players.py::_refresh_profile_identity` already solves
+this for its own two routes, but pulls in two further steps (ladder standing, the avatar hash) this
+page has no use for; `_refresh_match_identity` below takes only its first step — Relic's
+`getRecentMatchHistory` identity block (`RelicMatchHistoryProvider.recent_profiles`), persisted
+through `discover.touch_aoe_profile` exactly as `players.py` already does — batched over every
+participant of `game_id` still carrying a missing or placeholder alias, in one call, never one per
+participant, and never called at all when every participant already has a real one (constitution I:
+"capture outranks analysis" reads equally as "a view that needs nothing new must ask for nothing").
+The Relic wiring below (`_RELIC_HTTP_CLIENT`, `_RELIC_RATE_LIMITER`, `_relic_call_sink`,
+`_build_match_history_provider`) is `players.py`'s own wiring, duplicated rather than imported —
+the identical reason the companion wiring above already gives: `players.py` imports `enrich_colours`
+and `match_row_json` from this module, so importing back from `players.py` here would invert that
+one-way dependency into a cycle.
+
+**The re-read, and why the first response must not skip it.** `enrich_colours` and
+`_refresh_match_identity` both write straight to the database — never to the already-materialised,
+frozen `MatchDetail` this function already holds — so without reading it back, the very first
+(uncached) response after either write would still serialise the stale placeholder alias or `NULL`
+colour it just replaced, and a caller would only see the fix on a *second* view. `_fetch_detail_
+response` below re-reads `detail` once, but only when one of the two enrichments could plausibly
+have changed something — `colour_missing` (some participant still had `color_id is None` before
+`enrich_colours` ran) or a non-empty `placeholder_profile_ids` — so a match where every participant
+already carries a real alias and a real colour costs no second query at all.
 """
 
 from __future__ import annotations
@@ -178,7 +213,8 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.availability import Availability, AvailabilityView, derive_availability
@@ -186,8 +222,10 @@ from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
+from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
+from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
 from aoe2stats_providers.wiring import (
     CircuitBreaker,
     build_async_client_resources,
@@ -322,6 +360,90 @@ async def enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> N
                 )
                 .values(color_id=participant.color_id)
             )
+
+
+# --- On-view identity refresh, alias/country only (defect fix, module docstring) -----------------
+#
+# Relic traffic against `getRecentMatchHistory`'s own identity block — mirrors `routers/
+# players.py`'s own `_RELIC_HTTP_CLIENT`/`_RELIC_RATE_LIMITER`/`_relic_call_sink`/
+# `_build_match_history_provider`
+# byte for byte, duplicated rather than imported for the identical reason the companion wiring
+# above already is (module docstring's "The on-view identity refresh" note: importing from
+# `players.py` here would invert its existing `players.py -> matches.py` dependency into a cycle).
+
+_RELIC_RATE_PER_SECOND = 5.0
+_RELIC_HTTP_CLIENT, _RELIC_RATE_LIMITER = build_async_client_resources(_RELIC_RATE_PER_SECOND)
+
+
+def _relic_call_sink(db_session: AsyncSession) -> Callable[[ProviderCallRecord], Awaitable[None]]:
+    """Writes a `provider_calls` row on its **own**, short-lived session — never queued onto
+    `db_session` itself. Mirrors `routers/players.py`'s own `_relic_call_sink` byte for byte:
+    `RelicMatchHistoryProvider.recent_profiles`, unlike `CompanionEnrichmentProvider`, can fail
+    mid-request, and `session_scope` (`deps.py`) rolls the whole request transaction back on any
+    unhandled exception — a row added to `db_session` for the very call that raised would be rolled
+    back with it, losing exactly the call an operator most needs recorded (constitution III)."""
+
+    async def _sink(record: ProviderCallRecord) -> None:
+        bind = db_session.get_bind()
+        assert isinstance(bind, Engine), f"expected an Engine bind, got {type(bind)}"
+        audit_engine = AsyncEngine(bind)
+        async with AsyncSession(bind=audit_engine) as audit_session:
+            audit_session.add(
+                ProviderCall(
+                    provider=record.provider,
+                    endpoint=record.endpoint,
+                    status_code=record.status_code,
+                    duration_ms=record.duration_ms,
+                    called_at=record.called_at,
+                    rate_limited=record.rate_limited,
+                )
+            )
+            await audit_session.commit()
+
+    return _sink
+
+
+def _build_match_history_provider(db_session: AsyncSession) -> RelicMatchHistoryProvider:
+    return RelicMatchHistoryProvider(
+        client=_RELIC_HTTP_CLIENT,
+        timeout_seconds=_COMPANION_PROVIDER_TIMEOUT_SECONDS,
+        rate_limiter=_RELIC_RATE_LIMITER,
+        call_sink=_relic_call_sink(db_session),
+    )
+
+
+async def _refresh_match_identity(db_session: AsyncSession, profile_ids: Sequence[int]) -> None:
+    """T333 remediation, FR-017: the alias/country half of `routers/players.py::_refresh_profile_
+    identity` alone (module docstring) — never the ladder-standing or avatar-hash steps, which
+    `get_match_detail` has no use for. One `RelicMatchHistoryProvider.recent_profiles` call, batched
+    over every id in `profile_ids` together, persisted through `discover.touch_aoe_profile` for
+    every profile the response names (not only the ones asked for, exactly like `players.py`'s own
+    step 1) — a real alias overwrites the numeric-id placeholder, a missing or still-placeholder one
+    never clobbers a real alias already stored (`touch_aoe_profile`'s own "on conflict" docstring).
+
+    Degrades silently, exactly like every other optional provider call in this codebase
+    (`_refresh_third_party_history`'s own docstring in `players.py`): any exception from Relic is
+    swallowed, and the caller of this function is left with whatever `aoe_profiles` already held —
+    never a failed view over an identity refresh that was only ever a nice-to-have.
+    """
+    if not profile_ids:
+        return
+
+    relic_provider = _build_match_history_provider(db_session)
+    try:
+        raw_profiles = await relic_provider.recent_profiles(profile_ids)
+    except Exception:
+        # See the docstring above: this fetch is optional, and its failure — however it is
+        # shaped — must never turn into a failed view.
+        return
+
+    for raw_profile in raw_profiles:
+        await discover.touch_aoe_profile(
+            db_session,
+            raw_profile.profile_id,
+            alias=raw_profile.alias,
+            country=raw_profile.country,
+        )
 
 
 # --- Session resolution, the same discipline `auth.py`, `privacy.py`, `profiles.py` and
@@ -820,6 +942,32 @@ async def get_match_detail(
         )
         if detail is None:
             raise _match_not_found()
+
+        # Defect fix (T333, quickstart scenario 5): colour, then identity, both on this route's
+        # own cache-miss path — module docstring's "Colour enrichment is now also on
+        # `get_match_detail`'s own path" and "The on-view identity refresh" notes. `colour_missing`
+        # is read off `detail` *before* `enrich_colours` runs, so it reflects what was true walking
+        # in, which is exactly what decides whether the re-read below is worth its own query.
+        colour_missing = any(participant.color_id is None for participant in detail.participants)
+        await enrich_colours(db_session, [game_id])
+
+        placeholder_profile_ids = [
+            participant.profile_id
+            for participant in detail.participants
+            if participant.alias is None or participant.alias == str(participant.profile_id)
+        ]
+        if placeholder_profile_ids:
+            await _refresh_match_identity(db_session, placeholder_profile_ids)
+
+        if colour_missing or placeholder_profile_ids:
+            # Neither write above lands on this already-materialised `detail` — re-read so the
+            # first (uncached) response already carries the fresh alias/colour rather than only a
+            # second view (module docstring's "The re-read" note).
+            detail = await repository.get_match_detail(
+                game_id=game_id, owner_profile_ids=owner_profile_ids
+            )
+            if detail is None:
+                raise _match_not_found()
 
         # T338: one `replay` object per participant point of view (FR-023), derived for the whole
         # match in two queries rather than one per participant (`_replay_by_profile`'s own
