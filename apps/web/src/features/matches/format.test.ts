@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatCivilisation,
   formatDuration,
+  formatDurationPrecise,
   formatOutcome,
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
@@ -46,6 +47,28 @@ describe('formatDuration', () => {
 
   it('never shows raw seconds for a null duration', () => {
     expect(formatDuration(null)).toBe('Unknown duration')
+  })
+})
+
+// T333 (match-detail defect): the list stays rounded (`formatDuration` above, untouched), but the
+// match-detail page reads second precision — `formatDurationPrecise` is a second, separate
+// function rather than a change to `formatDuration` itself, since the rendered list text is part
+// of the CI-authoritative Playwright full-page baselines (never regenerated locally).
+describe('formatDurationPrecise', () => {
+  it('reads exact whole minutes with no " 0 s" tail', () => {
+    expect(formatDurationPrecise(2040)).toBe('34 min')
+  })
+
+  it('reads minutes and seconds together', () => {
+    expect(formatDurationPrecise(932)).toBe('15 min 32 s')
+  })
+
+  it('reads under a minute as seconds only, no "0 min" prefix', () => {
+    expect(formatDurationPrecise(45)).toBe('45 s')
+  })
+
+  it('never shows raw seconds text for a null duration', () => {
+    expect(formatDurationPrecise(null)).toBe('Unknown duration')
   })
 })
 

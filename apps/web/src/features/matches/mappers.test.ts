@@ -217,6 +217,14 @@ describe('toMatchRowData', () => {
     expect(result.map).toBe('Unknown map')
     expect(result.mapThumbnailUrl).toBeUndefined()
   })
+
+  // T333: the list stays rounded to the minute — only the detail page (toMatchDetailData, below)
+  // reads second precision, proving the two surfaces intentionally differ.
+  it('rounds durationLabel to the nearest minute, unlike the detail page', () => {
+    expect(toMatchRowData(row({ duration_seconds: 932 }), VIEWER_PROFILE_ID).durationLabel).toBe(
+      '16 min',
+    )
+  })
 })
 
 describe('toMatchRowDataList', () => {
@@ -451,8 +459,15 @@ describe('toMatchDetailData', () => {
     )
   })
 
-  it('formats duration in minutes', () => {
+  it('formats an exact-minute duration with no seconds tail', () => {
     expect(toMatchDetailData(detail({ duration_seconds: 2040 })).durationLabel).toBe('34 min')
+  })
+
+  // T333: the reported defect — the detail page rounded a match with seconds of precision (e.g.
+  // 15:32) down to "15 min", losing the seconds. Unlike toMatchRowData's list durationLabel above
+  // (still rounded, T333's own scope), the detail page now reads second precision.
+  it('formats a non-whole-minute duration with second precision', () => {
+    expect(toMatchDetailData(detail({ duration_seconds: 932 })).durationLabel).toBe('15 min 32 s')
   })
 
   it('prefers started_at for playedAtLabel when present', () => {
