@@ -5,36 +5,56 @@
 # T002); nothing here should duplicate a version constraint one of them already states.
 #
 # `dependencies` below is a different thing: T014d's fix, after the first real deployment proved
-# it necessary. Vercel's Python runtime resolves the two platform entrypoints (`api/index.py`,
-# `api/cron/ingest.py`) the same way `uv sync` does at the root of the tree (`docs/adr/
-# 0002-hosting.md`) — and a bare `uv sync` only ever installs a workspace member that something
-# reachable from the *root* project depends on, transitively. `package = false` stops uv from
-# building `aoe2-stats` itself as a wheel; it does not stop the root `[project]` from declaring
-# dependencies, and declaring them is exactly what turns "workspace member" into "installed by the
-# platform's standard resolution path" for the two packages the deployed functions actually
-# import: `aoe2stats-api` (`api/index.py`) and `aoe2stats-ingester` (`api/cron/ingest.py`'s
-# module-scope `from aoe2stats_ingester.run import run_once`). Both are `workspace = true` sources
-# below, not published versions, so this is still every dependency's version stated exactly once —
-# apps/api/pyproject.toml and apps/ingester/pyproject.toml's own `dependencies` still carry their
-# transitive requirements (fastapi, aoe2stats-storage, ...) and this list is not a second copy of
-# them. `uv sync --all-packages --dev` (`.github/workflows/pr.yml`) is unaffected: `--all-packages`
-# already installed every member regardless of whether anything depended on it.
+# it necessary. Vercel's Python runtime resolves the platform entrypoints (`api/index.py`,
+# `api/cron/ingest.py`, `api/analyze.py`) the same way `uv sync` does at the root of the tree
+# (`docs/adr/0002-hosting.md`) — and a bare `uv sync` only ever installs a workspace member that
+# something reachable from the *root* project depends on, transitively. `package = false` stops uv
+# from building `aoe2-stats` itself as a wheel; it does not stop the root `[project]` from
+# declaring dependencies, and declaring them is exactly what turns "workspace member" into
+# "installed by the platform's standard resolution path" for the packages the deployed functions
+# actually import: `aoe2stats-api` (`api/index.py`) and `aoe2stats-ingester` (`api/cron/ingest.py`'s
+# module-scope `from aoe2stats_ingester.run import run_once`).
+#
+# `api/analyze.py` (T366) is the production fault this comment now also names (2026-09-04): its own
+# module-scope `from aoe2stats_analyzer.admission import check_admission` (and `.run import
+# run_once`) 500'd on Vercel with `ModuleNotFoundError: No module named 'aoe2stats_analyzer'`
+# because `aoe2stats-analyzer` was a workspace member but never a root dependency — the exact gap
+# this list exists to close. The same file also imports `aoe2stats_storage.repositories.base.
+# session_scope` directly at module scope, its own transaction boundary around the session and
+# admission checks rather than routing that one call through `aoe2stats_api` the way the rest of the
+# file's collaborators are composed (`build_analyze_dependencies`) — so `aoe2stats-storage` is
+# listed below for the same reason `aoe2stats-analyzer` now is: something reachable only through
+# root's own dependency list, not merely workspace membership, is what Vercel actually installs.
+# `scripts/checks/api_entrypoint_deps.py` (T014d's own fault made into a check) asserts this for
+# every file under `api/`, not only this one, so the next entrypoint that imports a workspace
+# member directly fails CI instead of production.
+#
+# All four are `workspace = true` sources below, not published versions, so this is still every
+# dependency's version stated exactly once — apps/api/pyproject.toml, apps/ingester/pyproject.toml
+# and apps/analyzer/pyproject.toml's own `dependencies` still carry their transitive requirements
+# (fastapi, aoe2stats-providers, ...) and this list is not a second copy of them. `uv sync
+# --all-packages --dev` (`.github/workflows/pr.yml`) is unaffected: `--all-packages` already
+# installed every member regardless of whether anything depended on it.
 [project]
 name = "aoe2-stats"
 version = "0.1.0"
 description = "Workspace root for aoe2-stats. Not published."
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "aoe2stats-analyzer",
   "aoe2stats-api",
   "aoe2stats-ingester",
+  "aoe2stats-storage",
 ]
 
 [tool.uv]
 package = false
 
 [tool.uv.sources]
+aoe2stats-analyzer = { workspace = true }
 aoe2stats-api = { workspace = true }
 aoe2stats-ingester = { workspace = true }
+aoe2stats-storage = { workspace = true }
 
 [tool.uv.workspace]
 members = [

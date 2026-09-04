@@ -63,8 +63,10 @@ name = "aoe2-stats"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aoe2stats-analyzer" },
     { name = "aoe2stats-api" },
     { name = "aoe2stats-ingester" },
+    { name = "aoe2stats-storage" },
 ]
 
 [package.dev-dependencies]
@@ -80,8 +82,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aoe2stats-analyzer", editable = "apps/analyzer" },
     { name = "aoe2stats-api", editable = "apps/api" },
     { name = "aoe2stats-ingester", editable = "apps/ingester" },
+    { name = "aoe2stats-storage", editable = "packages/storage" },
 ]
 
 [package.metadata.requires-dev]
@@ -132,13 +136,17 @@ version = "0.1.0"
 source = { editable = "apps/analyzer" }
 dependencies = [
     { name = "aoe2stats-core" },
+    { name = "aoe2stats-providers" },
     { name = "aoe2stats-replay-engine" },
+    { name = "aoe2stats-storage" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
+    { name = "aoe2stats-storage", editable = "packages/storage" },
 ]
 
 [[package]]
