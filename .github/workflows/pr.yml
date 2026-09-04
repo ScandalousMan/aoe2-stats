@@ -165,6 +165,13 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy
+      # T014d's own fault, made into a check (2026-09-04): `api/analyze.py`'s module-scope
+      # `aoe2stats_analyzer` import 500'd on Vercel because it was a workspace member but never a
+      # root `pyproject.toml` dependency — the thing the platform's Python runtime actually
+      # installs from. This asserts every `aoe2stats_*` import any file under `api/` makes at
+      # module scope is declared in the root manifest, on every pull request, rather than only on
+      # the deploy that would suffer the gap.
+      - run: uv run scripts/checks/api_entrypoint_deps.py
       # Unit tests must never touch the network: providers are exercised through fixtures.
       # Contract tests against real APIs live in nightly.yml. A reachable-but-empty database is
       # now guaranteed here, so tests/db.py hard-fails rather than skips if it cannot find one —

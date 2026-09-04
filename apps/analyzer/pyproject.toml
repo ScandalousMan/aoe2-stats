@@ -13,11 +13,30 @@ requires-python = ">=3.13,<3.14"
 # capture-time validator import via `apps/ingester`) — that declaration is not duplicated by this
 # one and neither replaces the other; `apps/analyzer` is the only application that *extracts*
 # with the engine, `apps/api` never does.
-dependencies = ["aoe2stats-core", "aoe2stats-replay-engine"]
+#
+# `aoe2stats-storage` and `aoe2stats-providers` (2026-09-04): later phases landed `retain.py`,
+# `admission.py`, `claim.py` and `run.py`, each importing `aoe2stats_storage` at module scope, and
+# `run.py` also imports `aoe2stats_providers.base` directly for its `ReplayProvider`/`NotFound`
+# Protocol. Neither was ever added here — this package's own manifest kept stating only the two
+# dependencies T302 declared, while its actual code grew two more — which is exactly the fault the
+# root `pyproject.toml`'s T014d comment (and `scripts/checks/api_entrypoint_deps.py`, born from the
+# production 500 this caused) exists to catch: `apps/api` happened to also depend on both, so every
+# local `uv sync --all-packages --dev` installed them anyway and nothing here noticed the gap until
+# Vercel installed `aoe2stats-analyzer` on its own and neither was reachable from it. Declared here
+# now for the same reason as the two above: a dependency this package's own code imports belongs on
+# this package's own manifest, not borrowed from a sibling that happens to also need it.
+dependencies = [
+  "aoe2stats-core",
+  "aoe2stats-providers",
+  "aoe2stats-replay-engine",
+  "aoe2stats-storage",
+]
 
 [tool.uv.sources]
 aoe2stats-core = { workspace = true }
+aoe2stats-providers = { workspace = true }
 aoe2stats-replay-engine = { workspace = true }
+aoe2stats-storage = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
