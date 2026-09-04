@@ -55,6 +55,21 @@ def replay_object_key(game_id: int, profile_id: int) -> str:
     return f"replays/{game_id}/{profile_id}.zip"
 
 
+def retained_recording_object_key(game_id: int, profile_id: int) -> str:
+    """The key scheme for a recording retained for analysis (T363, FR-048, R9).
+
+    A separate prefix from `replay_object_key`'s, on purpose: `retained_recordings` is a
+    separate table from `replay_captures` for the exact same reason (data-model.md), so the two
+    kinds of object must never resolve to the same key for the same `(game_id, profile_id)`
+    pair — the free-tier watch and any bulk copy operate by prefix with no database to join
+    against, and a shared prefix would make the two indistinguishable to either of them. One
+    object per `(game_id, profile_id)`, mirroring `retained_recordings`' own unique constraint,
+    for the same idempotence reason `replay_object_key` gives: a recompute or a retry resolves
+    to the same key rather than accumulating an orphan per attempt.
+    """
+    return f"retained-recordings/{game_id}/{profile_id}.zip"
+
+
 @dataclass(frozen=True, slots=True)
 class ObjectStoreConfig:
     """The four variables `.env.example` says are the only ones that differ by provider."""
