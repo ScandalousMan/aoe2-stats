@@ -38,6 +38,20 @@ export function formatDuration(durationSeconds: number | null): string {
   return `${minutes} min`
 }
 
+/** `MatchDetailData.durationLabel` only (match-detail page, T333) — never `MatchRowData`'s, which
+ * stays on `formatDuration` above's rounded minute: the list's rendered text is part of the
+ * CI-authoritative Playwright full-page baselines, never to be changed for a reason this small.
+ * Reads minutes and whole seconds ("15 min 32 s"), dropping whichever half is zero rather than
+ * printing a "0 min" prefix or a "0 s" tail — "34 min" for an exact minute, "45 s" under one. */
+export function formatDurationPrecise(durationSeconds: number | null): string {
+  if (durationSeconds == null) return 'Unknown duration'
+  const minutes = Math.floor(durationSeconds / 60)
+  const seconds = durationSeconds % 60
+  if (minutes === 0) return `${seconds} s`
+  if (seconds === 0) return `${minutes} min`
+  return `${minutes} min ${seconds} s`
+}
+
 /** `MatchRowData.outcome` / `ParticipantData.result` — `match_players.result` is `null` for every
  * row this system has written so far (no enrichment stage yet fills it in — `discover.py`'s own
  * `upsert_match_player` docstring), and a wire payload is never trusted blindly either (T037a), so

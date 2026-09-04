@@ -16,6 +16,7 @@ import type {
 import {
   formatCivilisation,
   formatDuration,
+  formatDurationPrecise,
   formatOutcome,
   formatPlayedAtAbsolute,
   formatPlayedAtRelative,
@@ -194,7 +195,10 @@ export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {
     // same `leaderboards.py` mapping `GET /api/profiles` already reads — passed straight through,
     // never re-derived here.
     leaderboardName: detail.leaderboard_name,
-    durationLabel: formatDuration(detail.duration_seconds),
+    // T333: the detail page reads second precision (`formatDurationPrecise`), unlike the list's
+    // `toMatchRowData.durationLabel` below, which stays on the rounded `formatDuration` — the
+    // list's rendered text is part of the CI-authoritative Playwright full-page baselines.
+    durationLabel: formatDurationPrecise(detail.duration_seconds),
     // "Played-on date/time" (match-history.md §2) reads most naturally as when the match started;
     // `started_at` can be `null` (module docstring on `ApiMatchDetail`), so this falls back to
     // `completed_at` — always present — rather than showing nothing.
