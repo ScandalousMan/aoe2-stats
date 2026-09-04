@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -95,26 +94,6 @@ _TERMINAL_STATES = (
     MatchAnalysisState.UNAVAILABLE,
     MatchAnalysisState.REFUSED,
 )
-
-
-class VersionedExtractor(ReplayExtractor, Protocol):
-    """What `run_once` needs from an extractor beyond `ReplayExtractor.extract` itself (T352):
-    "the engine currently running", known *without* calling `.extract()` — the property a
-    non-stale `published` row's own recompute check depends on for its zero-parse guarantee
-    (SC-006's third call). `test_run_once.py`'s own `_FakeExtractor` already carries these two
-    attributes, matching this module's own assumed interface (see that file's module docstring).
-
-    Declared locally rather than widening `aoe2stats_core.replay.analysis.ReplayExtractor` itself,
-    which is outside this task's file scope — **hand-back note**: `packages/replay-engine`'s
-    `Aoe2RecExtractor` (T355) does not currently expose `engine_name`/`engine_version` as
-    attributes, only embedded in the `MatchTimeline` a call to `.extract()` returns, so it does not
-    yet satisfy this Protocol; closing that gap (on `ReplayExtractor` itself, or as a documented
-    narrowing here) is needed before `api/analyze.py` (T366) can pass the real extractor to this
-    function unmodified.
-    """
-
-    engine_name: str
-    engine_version: str
 
 
 def _result_key(game_id: int) -> str:
@@ -268,7 +247,7 @@ async def _extract_and_publish(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     object_store: ObjectStore,
-    extractor: VersionedExtractor,
+    extractor: ReplayExtractor,
     game_id: int,
     zip_bytes: bytes,
     object_key: str,
@@ -310,7 +289,7 @@ async def _recompute(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     object_store: ObjectStore,
-    extractor: VersionedExtractor,
+    extractor: ReplayExtractor,
     game_id: int,
     profile_id: int,
     requested_by_user_id: UUID,
@@ -367,7 +346,7 @@ async def run_once(
     *,
     session_factory: async_sessionmaker[AsyncSession],
     replay_provider: ReplayProvider,
-    extractor: VersionedExtractor,
+    extractor: ReplayExtractor,
     object_store: ObjectStore,
     capture_budget_days: int = _DEFAULT_CAPTURE_BUDGET_DAYS,
 ) -> None:

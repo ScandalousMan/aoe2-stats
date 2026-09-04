@@ -25,6 +25,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..',
 const distDir = path.join(rootDir, 'apps', 'web', 'dist')
 const assetsDir = path.join(distDir, 'assets')
 const routesDir = path.join(rootDir, 'apps', 'web', 'src', 'routes')
+const apiDir = path.join(rootDir, 'api')
 const vercelJsonPath = path.join(rootDir, 'vercel.json')
 
 function log(message) {
@@ -83,6 +84,28 @@ function resolve(urlPath, rewrites) {
   return { via: 'none', target: null }
 }
 
+// A dedicated Vercel function (`api/analyze.py`, `api/cron/ingest.py`) is itself a filesystem
+// match — Vercel builds one from every `api/**/*.py` file and resolves a request against it
+// before `vercel.json`'s own `rewrites` ever run, the same "filesystem first" ordering `resolve`
+// above reproduces for the static build output. `distDir` is the wrong tree to check this
+// against: these files live under `api/` at the repository root, never in the built SPA bundle,
+// so this is a second, dedicated resolver rather than a second branch bolted onto `resolve`.
+function resolveApiFunction(urlPath, rewrites) {
+  const relativePyPath = `${urlPath.replace(/^\/api\//, '')}.py`
+  const onDisk = path.join(apiDir, relativePyPath)
+  if (existsSync(onDisk) && statSync(onDisk).isFile()) {
+    return { via: 'filesystem', target: path.join('api', relativePyPath) }
+  }
+
+  for (const rewrite of rewrites) {
+    if (sourceToRegex(rewrite.source).test(urlPath)) {
+      return { via: 'rewrite', target: rewrite.destination.replace(/^\//, '') }
+    }
+  }
+
+  return { via: 'none', target: null }
+}
+
 function main() {
   if (!existsSync(distDir)) {
     log(`no build found at ${path.relative(rootDir, distDir)} — run \`pnpm --filter web build\` first.`)
@@ -121,6 +144,25 @@ function main() {
     failures.push(`/api/me resolved via ${apiResult.via} instead of the /api/(.*) rewrite.`)
   }
 
+  // T366: `api/analyze.py` must resolve by the filesystem before `/api/(.*)` — the same ordering
+  // `api/cron/ingest.py` already relies on — so `POST /api/analyze` reaches its own 300 s
+  // `maxDuration`, not `api/index.py`'s 10 s one (this module's own docstring, R6).
+  const apiFunctionCases = [
+    ['/api/analyze', path.join('api', 'analyze.py')],
+    ['/api/cron/ingest', path.join('api', 'cron', 'ingest.py')],
+  ]
+  for (const [urlPath, expectedFile] of apiFunctionCases) {
+    const result = resolveApiFunction(urlPath, rewrites)
+    if (result.via !== 'filesystem' || result.target !== expectedFile) {
+      failures.push(
+        `${urlPath} resolved via ${result.via} to ${result.target ?? '(nothing)'} instead of the ` +
+          `filesystem match at ${expectedFile} — its own dedicated Vercel function would be ` +
+          `shadowed by the /api/(.*) rewrite, most likely because the file is missing or was ` +
+          `moved.`,
+      )
+    }
+  }
+
   if (!existsSync(assetsDir)) {
     log(`no built assets found in ${path.relative(rootDir, assetsDir)} — run \`pnpm --filter web build\` first.`)
     process.exit(1)
@@ -145,8 +187,9 @@ function main() {
   }
 
   log(
-    `${routes.length} route(s) reach the shell, /api/me reaches the function, and ` +
-      `/assets/${sampleAsset} is served from disk.`,
+    `${routes.length} route(s) reach the shell, /api/me reaches the function, ` +
+      `${apiFunctionCases.length} dedicated function(s) resolve by the filesystem before the ` +
+      `rewrite, and /assets/${sampleAsset} is served from disk.`,
   )
 }
 
