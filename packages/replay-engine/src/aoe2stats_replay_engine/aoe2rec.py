@@ -350,10 +350,20 @@ class Aoe2RecExtractor:
     resident ceiling once every operation is materialised). `max_raw_bytes` is the additional,
     tighter check that exists only on this path, refusing what R3 measured as certainly too large
     to parse in memory, before a single byte reaches the engine.
+
+    `engine_name`/`engine_version` (T366) satisfy `aoe2stats_core.replay.analysis.ReplayExtractor`'s
+    two attributes, read from the identical `ENGINE_NAME`/`metadata.version(ENGINE_NAME)` pair
+    `_build_timeline` already embeds in every `MatchTimeline` it returns and `Aoe2RecValidator.
+    validate` already reads for `ReplayValidationResult` — a third read of the same two values,
+    never a fourth constant to keep in sync with them.
     """
+
+    engine_name: str = ENGINE_NAME
+    engine_version: str
 
     def __init__(self, *, max_raw_bytes: int) -> None:
         self._max_raw_bytes = max_raw_bytes
+        self.engine_version = metadata.version(ENGINE_NAME)
 
     def extract(self, zip_bytes: bytes) -> MatchTimeline:
         # The declared, uncompressed member size — read from the archive's own central directory,

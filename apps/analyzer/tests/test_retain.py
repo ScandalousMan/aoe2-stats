@@ -256,7 +256,6 @@ async def _seed_published_analysis(
 # --- Byte-for-byte storage and checksum verification (FR-033) ------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_the_recording_is_stored_byte_for_byte_with_a_sha256_verified_on_retrieval(
     db_session: AsyncSession,
 ) -> None:
@@ -286,7 +285,6 @@ async def test_the_recording_is_stored_byte_for_byte_with_a_sha256_verified_on_r
     assert fetched == zip_bytes
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_a_corrupted_object_fails_the_sha256_check_on_retrieval(
     db_session: AsyncSession,
 ) -> None:
@@ -320,7 +318,6 @@ async def test_a_corrupted_object_fails_the_sha256_check_on_retrieval(
 # --- Distinct key prefix, never resolving to replay_object_key's value (FR-048, R9) --------------
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_the_object_key_uses_its_own_prefix_and_never_resolves_to_replay_object_keys_value(
     db_session: AsyncSession,
 ) -> None:
@@ -357,7 +354,6 @@ async def test_the_object_key_uses_its_own_prefix_and_never_resolves_to_replay_o
 # --- Never deleted: a recompute, a parser change, or the cap being reached -----------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_a_recompute_never_deletes_or_re_uploads_the_retained_object(
     db_session: AsyncSession,
 ) -> None:
@@ -396,7 +392,6 @@ async def test_a_recompute_never_deletes_or_re_uploads_the_retained_object(
     assert first_client.delete_calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_a_parser_version_change_never_deletes_or_modifies_the_retained_object(
     db_session: AsyncSession,
 ) -> None:
@@ -444,7 +439,6 @@ async def test_a_parser_version_change_never_deletes_or_modifies_the_retained_ob
     assert fake_client.delete_calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_the_retention_cap_being_reached_never_deletes_an_existing_retained_recording(
     db_session: AsyncSession,
 ) -> None:
@@ -491,7 +485,6 @@ async def test_the_retention_cap_being_reached_never_deletes_an_existing_retaine
 # --- Never deleted: an erasure, or a third-party objection (constitution IX 3.0.0) ----------------
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_erasure_of_the_requesting_user_clears_the_link_but_leaves_object_and_row_untouched(
     db_session: AsyncSession,
 ) -> None:
@@ -542,7 +535,6 @@ async def test_erasure_of_the_requesting_user_clears_the_link_but_leaves_object_
     assert fake_client.delete_calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_a_third_party_objection_pseudonymises_the_profile_but_leaves_recording_untouched(
     db_session: AsyncSession,
 ) -> None:
@@ -575,7 +567,11 @@ async def test_a_third_party_objection_pseudonymises_the_profile_but_leaves_reco
     # pseudonymises every identifier this service holds about them "the same instrument 001's
     # erasure applies to matches and match_players" — never the recording. Simulated directly
     # against `match_players`, the exact table the amendment names, since 001's own route
-    # (T090-T092) is not built yet.
+    # (T090-T092) is not built yet. `match_players.profile_id` carries a foreign key to
+    # `aoe_profiles.profile_id` (`packages/core/src/aoe2stats_core/privacy/erasure.py`'s own
+    # docstring: "retargeting a foreign key means the row it now points at has to exist first"),
+    # so the placeholder row 001's erasure route would itself insert is seeded here too.
+    await _seed_profile(db_session, profile_id=_PSEUDONYM_PROFILE_ID, alias="Erased player")
     match_player = await db_session.get(MatchPlayer, (_GAME_ID, _PROFILE_ID))
     assert match_player is not None
     match_player.profile_id = _PSEUDONYM_PROFILE_ID
@@ -605,7 +601,6 @@ async def test_a_third_party_objection_pseudonymises_the_profile_but_leaves_reco
 # --- The own-match contrast case (data-model.md's retained_recordings section) -------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T363 not implemented yet")
 async def test_an_own_match_still_gets_a_second_row_and_object_under_the_retention_prefix(
     db_session: AsyncSession,
 ) -> None:
@@ -617,6 +612,7 @@ async def test_an_own_match_still_gets_a_second_row_and_object_under_the_retenti
     from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
 
     await _seed_match(db_session, game_id=_OWN_MATCH_GAME_ID)
+    await _seed_profile(db_session, profile_id=_OWNER_PROFILE_ID, alias="owner")
     owner = await _seed_user(db_session)
     match_bytes = b"the one recording of this match and point of view, held under two bases"
 

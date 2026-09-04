@@ -13,6 +13,9 @@
     "api/cron/ingest.py": {
       "maxDuration": 300
     },
+    "api/analyze.py": {
+      "maxDuration": 300
+    },
     "api/index.py": {
       "maxDuration": 10
     }

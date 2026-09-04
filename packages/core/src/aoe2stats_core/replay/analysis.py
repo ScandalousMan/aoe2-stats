@@ -118,7 +118,17 @@ class ReplayExtractor(Protocol):
 
     `extract` does not retry on `EngineParseError` — a parse is deterministic, so a caller that
     retries only pays for a second identical failure (FR-036, constitution V).
+
+    `engine_name`/`engine_version` (T366) are the same two values a call to `extract` would embed
+    in the `MatchTimeline` it returns, declared here as plain attributes so a caller can read "the
+    engine currently running" — `run_once`'s own staleness comparison (FR-041) — **without** first
+    parsing a recording. `Aoe2RecExtractor` sources both from the same `ENGINE_NAME`/
+    `metadata.version(ENGINE_NAME)` its `extract` method already uses, so the two can never
+    disagree with what a fresh parse would have produced.
     """
+
+    engine_name: str
+    engine_version: str
 
     def extract(self, zip_bytes: bytes) -> MatchTimeline:
         """Extract a `MatchTimeline` from a downloaded replay archive.
