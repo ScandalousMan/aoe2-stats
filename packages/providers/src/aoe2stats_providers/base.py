@@ -236,7 +236,8 @@ class NotFound(StrictProviderModel):
 class EnrichedParticipant(StrictProviderModel):
     """One `teams[].players[]` entry from `EnrichmentProvider.enrich_matches` (data-model.md §2),
     keyed by `profile_id` on `MatchEnrichment.participants`. Only `color_id` is ever written to
-    `match_players` — Relic has no colour, so companion is this field's sole source. The other four
+    `match_players`, and since T411 only as a fallback: Relic's own `slotinfo` carries the colour
+    (`docs/data-sources.md` §1) and the ingester projects it first. The other four
     fields are carried so a disagreement with Relic's own `matchhistorymember[]`/
     `matchhistoryreportresults[]` is *visible*, never so they can overwrite it: Relic stays
     authoritative for `team_id`, `won` (`result`), `rating` and `rating_diff` wherever it serves

@@ -57,6 +57,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
+import struct
+import zlib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -90,15 +93,17 @@ _CURSOR_SEPARATOR = "|"
 
 @dataclass(frozen=True, slots=True)
 class ProjectedMatchPlayer:
-    """The five Relic-derived `match_players` columns, projected from one `matchHistoryStats[]`
-    entry for one participant. `color_id` is deliberately absent — Relic's match history response
-    carries no such field; T420's read-time companion enrichment is that column's only writer."""
+    """The six Relic-derived `match_players` columns, projected from one `matchHistoryStats[]`
+    entry for one participant. `color_id` joined the other five on 2026-09-04 (T411): it was
+    always in the same entry, inside `slotinfo` — see `_slot_colour_id` below and
+    `docs/data-sources.md` §1 for the decode chain and its verification."""
 
     civ_id: int | None
     team_id: int | None
     rating: int | None
     rating_diff: int | None
     result: str | None
+    color_id: int | None
 
 
 class MatchProjectionMismatch(ValueError):
@@ -122,11 +127,89 @@ def _map_outcome(value: Any) -> str | None:
     return None
 
 
+def _decode_slot_metadata(meta_data: str) -> dict[str, str]:
+    """`slotinfo[].metaData` -> its key/value record. Two base64 layers: the outer one wraps a
+    JSON string literal (quotes included), the inner one a binary record — one count byte, then
+    that many `(u32 LE length, bytes)` key / `(u32 LE length, bytes)` value pairs. Raises
+    `ValueError` (which `binascii.Error` and `UnicodeDecodeError` already are) or `struct.error`
+    on any layer that does not parse; the caller turns every one of those into "unknown".
+    """
+    literal = base64.b64decode(meta_data, validate=True).decode("utf-8")
+    inner = json.loads(literal)
+    if not isinstance(inner, str):
+        raise ValueError("metaData's outer layer is not a JSON string literal")
+    blob = base64.b64decode(inner, validate=True)
+    if not blob:
+        raise ValueError("metaData's inner layer is empty")
+    record: dict[str, str] = {}
+    offset = 1
+    for _ in range(blob[0]):
+        (key_length,) = struct.unpack_from("<I", blob, offset)
+        offset += 4
+        key = blob[offset : offset + key_length].decode("utf-8")
+        offset += key_length
+        (value_length,) = struct.unpack_from("<I", blob, offset)
+        offset += 4
+        record[key] = blob[offset : offset + value_length].decode("utf-8")
+        offset += value_length
+    return record
+
+
+def _slot_colour_id(raw_match: Mapping[str, Any], profile_id: int) -> int | None:
+    """`profile_id`'s canonical colour (`1`..`8`, the scheme `PlayerColourSwatch` renders) out of
+    the entry's `slotinfo`, or `None` — never a guess — when any layer is missing, malformed, or
+    names an index outside `0`..`7`.
+
+    `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON
+    array of lobby slots (`profileInfo.id`, `teamID`, `raceID`, `metaData`, ...) and a trailing
+    NUL — hence `raw_decode`, which stops at the array's end. Each occupied slot's `metaData`
+    (`_decode_slot_metadata`) carries `ScenarioPlayerIndex`, the player's 0-based number in the
+    game, and in Age of Empires II: DE that number *is* the colour: index `0` plays blue, `1`
+    red, ... `7` orange. `+1` gives the 1..8 scheme the rest of this service uses (companion's
+    `color`, the replay header's `color_id + 1`, the design system's tokens). Measured 2026-09-04
+    and checked participant by participant against companion's own colour on every match the two
+    fixtures share — `docs/data-sources.md` §1 keeps that record; nothing here restates it.
+
+    004's D2 (2026-08-30) decoded exactly this record, saw the field, and read it as a seat
+    number. It cost a read-time companion call that could never colour a match older than
+    companion's first page. Every match this service ever discovered has this blob in its
+    `matches.raw_payload` — the reason constitution IV keeps the response verbatim.
+    """
+    slotinfo = raw_match.get("slotinfo")
+    if not isinstance(slotinfo, str):
+        return None
+    try:
+        text = zlib.decompress(base64.b64decode(slotinfo, validate=True)).decode("utf-8")
+        _, _, body = text.partition(",")
+        slots, _ = json.JSONDecoder().raw_decode(body)
+    except (ValueError, zlib.error):
+        return None
+    if not isinstance(slots, list):
+        return None
+    slot = next(
+        (
+            entry
+            for entry in slots
+            if isinstance(entry, Mapping) and entry.get("profileInfo.id") == profile_id
+        ),
+        None,
+    )
+    if slot is None or not isinstance(slot.get("metaData"), str):
+        return None
+    try:
+        index = int(_decode_slot_metadata(slot["metaData"])["ScenarioPlayerIndex"])
+    except (ValueError, KeyError, TypeError, struct.error):
+        return None
+    if 0 <= index <= 7:
+        return index + 1
+    return None
+
+
 def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> ProjectedMatchPlayer:
     """Project `profile_id`'s entry out of one `matchHistoryStats[]` item (`raw_match` — the exact
     shape `Match.raw_payload`/`RawMatch.raw_payload` carry verbatim, constitution IV) into the five
-    Relic-derived `match_players` columns. Pure: no I/O, no session, safe to call as many times as
-    a match is rediscovered.
+    Relic-derived `match_players` columns (six since T411). Pure: no I/O, no session, safe to call
+    as many times as a match is rediscovered.
 
     - `civ_id` <- `matchhistorymember[].civilization_id`, direct.
     - `team_id` <- `matchhistorymember[].teamid`, direct.
@@ -136,6 +219,9 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
       side is missing: a `0` is a real, symmetric rating outcome, and a stand-in that means
       "unknown" would be a lie the interface cannot see through.
     - `result` <- `_map_outcome(matchhistorymember[].outcome)`.
+    - `color_id` <- `slotinfo[<this profile>].metaData.ScenarioPlayerIndex + 1` (`_slot_colour_id`),
+      `None` on any layer this function cannot read — a `None` colour is "unknown", and every
+      writer treats it so: it never overwrites a stored value.
 
     Every field above is cross-checked against `profile_id`'s own entry in
     `matchhistoryreportresults[]`, when that array carries one: `civilization_id`, `teamid` and
@@ -159,7 +245,7 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
     )
     if member is None:
         return ProjectedMatchPlayer(
-            civ_id=None, team_id=None, rating=None, rating_diff=None, result=None
+            civ_id=None, team_id=None, rating=None, rating_diff=None, result=None, color_id=None
         )
 
     civ_id = member.get("civilization_id")
@@ -208,6 +294,7 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
         rating=new_rating,
         rating_diff=rating_diff,
         result=result,
+        color_id=_slot_colour_id(raw_match, profile_id),
     )
 
 

@@ -72,7 +72,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -217,36 +217,37 @@ async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profil
     `aoe2stats_storage.repositories.matches.project_match_player` (T413) is the one place that
     mapping is written; this function calls it rather than restating it.
 
-    **What this stage deliberately still does not know: a player's canonical colour (`color_id`).**
-    Relic's match history response carries no such field at all, so there is nothing here to
-    project it from — T420's read-time companion enrichment is `color_id`'s only writer, and it is
-    therefore **not in the `SET` clause below**. Including it here would mean a Relic-only refresh
-    overwriting an already-cached colour with `NULL` on every rediscovery of a match Relic itself
-    has no colour opinion about — a real loss of already-known data, and one no test downstream of
-    this statement would ever think to attribute to it.
+    **`color_id` is the sixth column, since T411 (2026-09-04), and it is written differently.**
+    The colour was in Relic's response all along — `slotinfo[].metaData.ScenarioPlayerIndex`,
+    decoded by `project_match_player`'s `_slot_colour_id` — so this stage writes it from the same
+    payload as the other five. Unlike them it is set with `COALESCE(excluded.color_id,
+    match_players.color_id)`: a projection that could not read the blob yields `None`, and `None`
+    here means "unknown", never "no colour" — it must not erase a colour an earlier sighting (or
+    the companion fallback, `routers/matches.py::enrich_colours`) already stored. A non-`None`
+    projection wins outright: Relic is the primary source, and the colour of a finished match
+    never changes.
     """
     projected = project_match_player(raw_match.raw_payload, profile_id)
-    statement = (
-        pg_insert(MatchPlayer)
-        .values(
-            game_id=raw_match.game_id,
-            profile_id=profile_id,
-            civ_id=projected.civ_id,
-            team_id=projected.team_id,
-            rating=projected.rating,
-            rating_diff=projected.rating_diff,
-            result=projected.result,
-        )
-        .on_conflict_do_update(
-            index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id],
-            set_={
-                "civ_id": projected.civ_id,
-                "team_id": projected.team_id,
-                "rating": projected.rating,
-                "rating_diff": projected.rating_diff,
-                "result": projected.result,
-            },
-        )
+    insert = pg_insert(MatchPlayer).values(
+        game_id=raw_match.game_id,
+        profile_id=profile_id,
+        civ_id=projected.civ_id,
+        team_id=projected.team_id,
+        rating=projected.rating,
+        rating_diff=projected.rating_diff,
+        result=projected.result,
+        color_id=projected.color_id,
+    )
+    statement = insert.on_conflict_do_update(
+        index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id],
+        set_={
+            "civ_id": projected.civ_id,
+            "team_id": projected.team_id,
+            "rating": projected.rating,
+            "rating_diff": projected.rating_diff,
+            "result": projected.result,
+            "color_id": func.coalesce(insert.excluded.color_id, MatchPlayer.color_id),
+        },
     )
     await session.execute(statement)
 

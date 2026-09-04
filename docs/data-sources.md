@@ -110,6 +110,27 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   never copied into this repository, and nothing fetches it at build or test time. The table
   itself, not this file, is the one place those pairs are recorded — see the module docstring for
   the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
+- **Player colour: `slotinfo[].metaData.ScenarioPlayerIndex`.** Measured **2026-09-04**, correcting
+  004's D2 (2026-08-30), which decoded this very record and read the field as a seat number.
+  `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON array
+  of lobby slots (`profileInfo.id`, `stationID`, `teamID`, `raceID`, `metaData`, ...) and a
+  trailing NUL. Each occupied slot's `metaData` is two more base64 layers — the outer one wraps a
+  JSON string literal, the inner one a binary record: one count byte, then `(u32 LE length,
+  bytes)` key/value pairs — holding `ScenarioPlayerIndex` and `Team` (and a duplicate under the
+  key `0`). `ScenarioPlayerIndex` is the player's 0-based number in the game, and in DE that
+  number is the colour: `0` blue, `1` red, `2` green, `3` yellow, `4` teal, `5` purple, `6` grey,
+  `7` orange — `+1` is the 1..8 scheme aoe2companion's `color` and the design system use.
+  Verified by joining the two fixtures on `(match id, profile id)`: every one of the 24
+  participants the Relic and companion fixtures share projects to companion's colour, and on 200
+  live matches across two profiles every participant had a distinct index in `0`..`7`. Spot check
+  on match `474746656`: ScandalousMan index `1` (red), BladeY index `0` (blue), as aoe2insights
+  shows. Empty lobby slots carry an empty `metaData` and no profile; they are not participants.
+  `packages/storage/.../repositories/matches.py::_slot_colour_id` is the one decoder;
+  `packages/storage/tests/test_match_projection.py` re-runs the fixture join on every suite, and
+  `contract_sources.py`'s recent-matches check asserts the newest live match still projects a
+  colour for every participant. Because the whole entry is archived verbatim in
+  `matches.raw_payload`, every match ever discovered can be coloured from disk with no provider
+  call (`scripts/ops/backfill_match_players.py`).
 - Both accept an array of profiles. Two profiles in one call returned 236 matches in 813 KB.
 - Undocumented. The contract may change without notice; nightly contract tests exist for that reason.
 
@@ -294,6 +315,12 @@ Normalized map and civilisation names, game mode, speed, CDN images, `linkedProf
 measured at ~30 s: a match ending at 15:46:08Z reported `updated` 15:46:37Z.
 
 ### Match colour: `teams[].players[].color`
+
+> **Superseded as the source, 2026-09-04.** Relic carries the colour after all (§1, "Player
+> colour"), and the ingester projects it from the archived payload. This field is now the
+> **fallback**, read only for a `match_players` row the projection left `NULL` — and the endpoint's
+> profile-paginated shape (it returns the queried profiles' *recent* matches, so an old match is
+> simply absent) is why it could never have coloured the back catalogue on its own.
 
 Measured **2026-09-01**. 004 started reading this field on the matches response already documented
 above (`GET /api/matches?profile_ids=a,b`) — no new endpoint, a field on one already in use. It is a

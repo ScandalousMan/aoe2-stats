@@ -266,3 +266,217 @@ def test_an_unmodified_fixture_entry_never_raises_the_cross_check() -> None:
 
     for profile_id in profile_ids:
         project_match_player(raw_match, profile_id)  # must not raise
+
+
+# --- color_id: slotinfo[].metaData.ScenarioPlayerIndex + 1 (T411) ---------------------------------
+#
+# 004's D2 decoded this exact record on 2026-08-30, read `ScenarioPlayerIndex` as a seat number
+# and concluded Relic carries no colour. It is the colour: the player's 0-based number in the
+# game, which in Age of Empires II: DE *is* the colour (0 blue, 1 red, ... 7 orange), so `+1` is
+# the 1..8 scheme `PlayerColourSwatch` renders and companion's own `color` uses. The first test
+# below is the proof, re-run on every suite: every participant of every match the Relic and
+# companion fixtures share, joined on `(match id, profile id)`, projects to exactly companion's
+# colour. `docs/data-sources.md` §1 records the measurement; this test is what keeps it true.
+
+COMPANION_FIXTURE = FIXTURES.parent / "companion" / "matches.json"
+
+
+def _companion_colours() -> dict[tuple[int, int], int]:
+    body = json.loads(COMPANION_FIXTURE.read_text(encoding="utf-8"))
+    return {
+        (match["matchId"], player["profileId"]): player["color"]
+        for match in body["matches"]
+        for team in match["teams"]
+        for player in team["players"]
+    }
+
+
+def _relic_entries() -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for name in ("get_recent_match_history.json", "get_recent_match_history_batch.json"):
+        body = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        entries.extend(body["matchHistoryStats"])
+    return entries
+
+
+def _slots(raw_match: dict[str, Any]) -> list[dict[str, Any]]:
+    """Inflate `slotinfo` the way the projection does, for a test that needs to *mutate* one
+    slot's `metaData` and re-pack the blob. Mirrors the decode chain in
+    `aoe2stats_storage.repositories.matches._slot_colour_id` deliberately: a test that re-packs
+    with a different layout would only prove the two disagree."""
+    import base64
+    import zlib
+
+    text = zlib.decompress(base64.b64decode(raw_match["slotinfo"])).decode("utf-8")
+    prefix, _, body = text.partition(",")
+    slots, end = json.JSONDecoder().raw_decode(body)
+    raw_match["__slotinfo_prefix__"] = prefix
+    raw_match["__slotinfo_suffix__"] = body[end:]
+    return list(slots)
+
+
+def _repack_slots(raw_match: dict[str, Any], slots: list[dict[str, Any]]) -> None:
+    import base64
+    import zlib
+
+    text = (
+        raw_match.pop("__slotinfo_prefix__")
+        + ","
+        + json.dumps(slots, separators=(",", ":"))
+        + raw_match.pop("__slotinfo_suffix__")
+    )
+    raw_match["slotinfo"] = base64.b64encode(zlib.compress(text.encode("utf-8"))).decode("ascii")
+
+
+def _encode_slot_metadata(record: dict[str, str]) -> str:
+    """The inverse of `_decode_slot_metadata`: count byte, then `(u32 LE length, bytes)` pairs,
+    base64, wrapped as a JSON string literal, base64 again."""
+    import base64
+    import struct
+
+    blob = bytes([len(record)])
+    for key, value in record.items():
+        key_bytes = key.encode("utf-8")
+        value_bytes = value.encode("utf-8")
+        blob += struct.pack("<I", len(key_bytes)) + key_bytes
+        blob += struct.pack("<I", len(value_bytes)) + value_bytes
+    inner = base64.b64encode(blob).decode("ascii")
+    return base64.b64encode(json.dumps(inner).encode("utf-8")).decode("ascii")
+
+
+def _with_slot_metadata(profile_id: int, record: dict[str, str]) -> dict[str, Any]:
+    raw_match = _load_raw_match()
+    slots = _slots(raw_match)
+    slot = next(entry for entry in slots if entry["profileInfo.id"] == profile_id)
+    slot["metaData"] = _encode_slot_metadata(record)
+    _repack_slots(raw_match, slots)
+    return raw_match
+
+
+def test_color_id_equals_companions_colour_for_every_shared_participant() -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    companion = _companion_colours()
+    joined = 0
+    for raw_match in _relic_entries():
+        for member in raw_match["matchhistorymember"]:
+            key = (raw_match["id"], member["profile_id"])
+            projected = project_match_player(raw_match, member["profile_id"])
+            assert projected.color_id is not None, f"no colour projected for {key}"
+            assert 1 <= projected.color_id <= 8, key
+            if key in companion:
+                assert projected.color_id == companion[key], (
+                    f"{key}: Relic's slotinfo says {projected.color_id}, companion says "
+                    f"{companion[key]} — the decode chain no longer names the colour"
+                )
+                joined += 1
+    # Three matches, eight players each, in both fixtures — a join that finds fewer pairs is
+    # comparing nothing and would pass vacuously.
+    assert joined >= 24, f"only {joined} participants joined across the two fixtures"
+
+
+def test_color_id_for_the_documented_participants() -> None:
+    """The two profiles every other test in this file names, pinned: 264353 (Somero) is index 6,
+    orange-adjacent grey (7); 196240 (TheViper) is index 3, yellow (4) — companion's own values
+    for match 500615037."""
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id == 7
+    assert project_match_player(raw_match, _WINNING_PROFILE_ID).color_id == 4
+
+
+def test_a_participant_the_repack_helper_leaves_untouched_still_projects() -> None:
+    """Guards the test helpers themselves: inflating and re-packing `slotinfo` without changing a
+    slot must round-trip to the same colour, or every mutation test below proves nothing."""
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    _repack_slots(raw_match, _slots(raw_match))
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id == 7
+
+
+def test_color_id_is_null_when_slotinfo_is_absent() -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    del raw_match["slotinfo"]
+
+    projected = project_match_player(raw_match, _LOSING_PROFILE_ID)
+
+    assert projected.color_id is None
+    # The other five columns do not depend on the blob and are still projected.
+    assert projected.civ_id == 28
+
+
+@pytest.mark.parametrize(
+    "slotinfo",
+    [
+        "not base64!",
+        "AAAA",  # valid base64, not a zlib stream
+        "eJzLSM3JyVcozy/KSQEAGgsEXQ==",  # zlib of "hello world": no comma, no JSON array
+        "eJwzNNKJNgQAAy0BHA==",  # zlib of "12,[1" — truncated array
+    ],
+)
+def test_color_id_is_null_never_an_exception_on_a_malformed_slotinfo(slotinfo: str) -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    raw_match["slotinfo"] = slotinfo
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id is None
+
+
+def test_color_id_is_null_when_the_profile_has_no_slot() -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    slots = [entry for entry in _slots(raw_match) if entry["profileInfo.id"] != _LOSING_PROFILE_ID]
+    _repack_slots(raw_match, slots)
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id is None
+
+
+def test_color_id_is_null_when_metadata_lacks_scenario_player_index() -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _with_slot_metadata(_LOSING_PROFILE_ID, {"Team": "2"})
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id is None
+
+
+@pytest.mark.parametrize("index", ["-1", "8", "12", "blue", ""])
+def test_color_id_is_null_never_a_wrong_swatch_for_an_index_outside_zero_to_seven(
+    index: str,
+) -> None:
+    """An index no game colour is defined for is not mapped to *some* colour: `None` renders the
+    neutral chip (`PlayerColourSwatch`, "empty" and "error" are byte-identical), a wrong integer
+    renders someone else's colour looking confident."""
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _with_slot_metadata(_LOSING_PROFILE_ID, {"ScenarioPlayerIndex": index})
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id is None
+
+
+@pytest.mark.parametrize(("index", "expected"), [("0", 1), ("7", 8)])
+def test_color_id_maps_both_ends_of_the_index_range(index: str, expected: int) -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _with_slot_metadata(_LOSING_PROFILE_ID, {"ScenarioPlayerIndex": index, "Team": "2"})
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id == expected
+
+
+def test_color_id_is_null_when_metadata_is_not_decodable() -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    slots = _slots(raw_match)
+    slot = next(entry for entry in slots if entry["profileInfo.id"] == _LOSING_PROFILE_ID)
+    slot["metaData"] = "IkFBQUEi"  # base64 of '"AAAA"': inner layer is three NUL bytes, no record
+    _repack_slots(raw_match, slots)
+
+    assert project_match_player(raw_match, _LOSING_PROFILE_ID).color_id is None

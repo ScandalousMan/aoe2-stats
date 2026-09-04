@@ -131,9 +131,12 @@ and `unavailable`; every other `CaptureStatus` (`pending`, `downloading`, `faile
 behaviour change for those five and does not depend on remembering which two statuses currently
 matter if `derive_availability` ever learns to read a third.
 
-**Read-time colour enrichment (T420, FR-003).** `match_players.color_id` has no Relic source at
-all (`research.md` **D2**) — `MatchesRepository`/`upsert_match_player` never write it (T413's own
-docstring). `enrich_colours` below is this column's only writer, called from `list_matches` alone
+**Read-time colour enrichment (T420, FR-003) — a fallback since T411.** `research.md` **D2**
+held that `match_players.color_id` has no Relic source; it does — `slotinfo[].metaData.
+ScenarioPlayerIndex`, which `project_match_player` now reads and `upsert_match_player` writes at
+discovery (`docs/data-sources.md` §1). `enrich_colours` below therefore only ever fires for a row
+the projection left `NULL`, and its `color_id IS NULL` gate makes it a no-op for every match the
+ingester or the T415 backfill has already coloured. It is called from `list_matches` alone
 — "batched over the page's game ids" is `list_matches`'s own vocabulary, not `get_match_detail`'s,
 and every one of T419's tests drives it through `GET /api/matches` — on **the display path only**,
 never from `apps/ingester` and never from the capture path: colour never changes once a match is
@@ -323,7 +326,9 @@ def _build_enrichment_provider(db_session: AsyncSession) -> CompanionEnrichmentP
 async def enrich_colours(
     db_session: AsyncSession, profile_ids: Sequence[int], game_ids: Sequence[int]
 ) -> None:
-    """T420: `match_players.color_id`'s only writer (module docstring). Public — `routers/
+    """T420: the companion **fallback** writer of `match_players.color_id` — since T411 the
+    ingester's `upsert_match_player` writes it first, from Relic's own `slotinfo` (module
+    docstring), and this only reaches rows that projection left `NULL`. Public — `routers/
     players.py::get_player_match_history` imports this directly (T450), the same "one writer, not
     two" reasoning `match_row_json` already carries for the row shape itself. Calls
     `CompanionEnrichmentProvider.enrich_matches` **at most once**, batched over every `game_id` in

@@ -81,6 +81,15 @@ projection does not; this decision is inside FR-014 as written, and so is D2 —
 
 ## D2 — Player colour: Relic has none, aoe2companion serves it without a replay
 
+> **Superseded 2026-09-04 (003's T411).** The "Relic has no colour" finding below was wrong: the
+> `slotinfo[].metaData` record this section decoded carries `ScenarioPlayerIndex`, and that index
+> *is* the colour (`+1` = the 1..8 scheme) — the second bullet below read it as a seat number.
+> `docs/data-sources.md` §1 "Player colour" holds the corrected measurement and its verification.
+> Colour is now projected by `project_match_player` from `matches.raw_payload` and written by the
+> ingester; the companion enrichment this decision built stays only as a fallback for a row the
+> projection leaves `NULL`. Everything else in this section is kept as the record of what was
+> decided and why.
+
 **Decision**: `color_id` is the one display fact the primary provider does not carry. It is sourced
 from **aoe2companion's match endpoint as read-time enrichment** — companion's designated
 "enrichment, degradable" role — merged into the API response and cached opportunistically into

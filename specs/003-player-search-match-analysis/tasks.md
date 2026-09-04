@@ -616,7 +616,7 @@ data fault, not a nitpick.
 
 ## Phase 14: colour durability and the match-detail header (found 2026-09-04)
 
-- [ ] T411 Project `color_id` from Relic's own `slotinfo`, at write time, from the payload already
+- [x] T411 Project `color_id` from Relic's own `slotinfo`, at write time, from the payload already
   archived. 004's D2 decoded `slotinfo[].metaData` on 2026-08-30, read `ScenarioPlayerIndex` and
   `Team` out of it, and concluded "no colour". `ScenarioPlayerIndex` **is** the colour: `+1` is the
   canonical 1..8 scheme `PlayerColourSwatch` renders. Verified 2026-09-04 on every participant of
