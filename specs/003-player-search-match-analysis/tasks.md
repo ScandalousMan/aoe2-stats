@@ -578,3 +578,38 @@ exactly that.
   cycle's captures while its matches and ratings keep arriving; and no third party's recording is
   captured at any point (FR-016, FR-012). This is the phase's independent test and the only one that
   proves the default actually inverted in production rather than only in the suite. The procedure is written down rather than re-derived: walk scenario 2 of `specs/001-steam-link-replay-ingestion/quickstart.md`, which was rewritten for this inversion on 2026-08-29 and carries all six steps including the resume
+
+## Phase 13: T333/T381 walk remediations (found 2026-09-04)
+
+Defects the manual match-page walk surfaced against production once US4 had merged (PR #54), fixed
+here on top of the alias/colour-wiring and precise-duration work of the same walk. Each is a real
+data fault, not a nitpick.
+
+- [x] T409 Colour enrichment never wrote a single `color_id`. `CompanionEnrichmentProvider.
+  enrich_matches` queries the source with `?matchIds=`, which it rejects outright
+  (`{"error":"profile_ids must be specified"}`), so every call returns `{}` and every colour swatch
+  renders the neutral chip (FR-003). The colour rides `teams[].players[].color` in the source's
+  **profile-keyed** response — verified on match 474746656 (ScandalousMan colour 2, BladeY colour
+  1). Change `enrich_matches` to query by `profile_ids` (the source's own required parameter) and
+  keep filtering the response to the requested game ids exactly as `_parse_matches` already does;
+  thread the participants' profile ids through `enrich_colours` and its three callers
+  (`routers/matches.py::list_matches`, `routers/players.py::get_player_match_history`,
+  `routers/matches.py::get_match_detail`). Test-first: a provider test asserting the outbound
+  request carries `profile_ids` and no `matchIds`, and that a real profile-shaped fixture yields the
+  colour; **the contrast case** — a match absent from the returned pages leaves its `color_id`
+  untouched, never coerced to 0 (the honest degrade, an old match companion no longer pages). Amend
+  `specs/003-player-search-match-analysis/contracts/providers.md` and the companion fixture in the same change.
+
+- [ ] T410 The match page names the wrong id space. `packages/providers/src/aoe2stats_providers/relic/matches.py` stores Relic's `matchtype_id`
+  as `leaderboard_id`, then `match_row_json`/`_match_detail_json` name it through
+  `leaderboards.py::leaderboard_name` — the `getPersonalStat` `leaderboard_id` table, a different id
+  space. `matchtype_id 6` is `1v1 Random Map` (companion `internalLeaderboardId 6`), not the
+  `Leaderboard 6` fallback it renders today, whereas `leaderboard_id 3` is what names `1v1 Random
+  Map` in the profile route's own space. Add a `matchtype_id`-keyed namer, derived from companion's
+  `internalLeaderboardId` to `leaderboardName` join with the same derivation discipline
+  `civilizations.py` documents (and an executable fixture re-run mirroring `test_civilizations.py`),
+  seeded with the pairs confirmed against real matches — 0 Unranked, 6 1v1 Random Map, 7 and 9 Team
+  Random Map — and falling back to the raw id for every id it cannot yet name, never a guess
+  (FR-020). Use it in the two match-route serialisers; leave `apps/api/src/aoe2stats_api/routers/profiles.py`'s
+  `getPersonalStat` naming on `leaderboard_name` unchanged, since that route reads the other id
+  space. Test-first.

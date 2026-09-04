@@ -378,9 +378,17 @@ class ReplayProvider(Protocol):
 class EnrichmentProvider(Protocol):
     """aoe2companion, behind a circuit breaker. The only provider whose failure is not an error;
     `linkedProfiles` is not to be consumed at all (FR-045) and does not appear on `MatchEnrichment`.
+
+    `enrich_matches` is queried by `profile_ids` — the source's own required query parameter
+    (`docs/data-sources.md` §3, `GET /api/matches?profile_ids=a,b`); the live endpoint rejects a
+    request built from `game_ids` alone. `game_ids` still does what it always did: narrowing the
+    _response_ down to the entries a caller actually asked about, never widening the request
+    (`contracts/providers.md`'s `EnrichmentProvider` section, T409).
     """
 
-    async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]: ...
+    async def enrich_matches(
+        self, profile_ids: Sequence[int], game_ids: Sequence[int]
+    ) -> dict[int, MatchEnrichment]: ...
 
 
 @runtime_checkable

@@ -218,9 +218,14 @@ class _CompanionUpstream:
         self._body = body if body is not None else {"matches": []}
         self._degraded = degraded
         self.request_count = 0
+        #: T409: the most recent request this fake answered — lets a caller assert the wiring
+        #: reaches `enrich_matches` with the source's own required `profile_ids` parameter, never
+        #: the `matchIds` it used to send.
+        self.last_request: httpx.Request | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.request_count += 1
+        self.last_request = request
         if self._degraded:
             return httpx.Response(403, request=request)
         return httpx.Response(200, json=self._body)
@@ -317,6 +322,15 @@ async def test_viewing_a_page_of_matches_makes_one_batched_companion_call_and_wr
         "a page carrying two matches must enrich colour in exactly one companion call, batched "
         f"over the page's game ids — never zero (colour would never arrive) and never one per "
         f"match (two, here). Got {fake.request_count} calls"
+    )
+    assert fake.last_request is not None
+    assert "matchIds" not in fake.last_request.url.params, (
+        "T409: the live endpoint rejects a `matchIds`-only request outright — this route must "
+        "never send it again"
+    )
+    assert fake.last_request.url.params.get("profile_ids") == str(_CALLER_PROFILE_ID), (
+        "T409: the request must carry the route's own `profile_id`, companion's own required "
+        f"parameter. Got {fake.last_request.url.params.get('profile_ids')!r}"
     )
 
     for game_id, colours in expected.items():
@@ -420,6 +434,72 @@ async def test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colo
         "a degraded companion supplies nothing for a participant whose colour was already "
         f"missing either — it must stay missing, not be set to any value. Got "
         f"{opponent_row.color_id!r}"
+    )
+
+
+async def test_a_match_absent_from_the_companion_response_leaves_its_colour_untouched(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T409's own contrast case, at the API level: two matches on the same page, and a *genuine*
+    200 companion response that names only one of them — the "old match companion no longer pages"
+    degrade (`companion/provider.py`'s "The endpoint" note: this provider never chases a second
+    page, so a match too old for the profiles' default page is simply absent from the response),
+    never a 403 or a malformed body. `_GAME_ID_TWO`, absent from the response, must keep whatever
+    colour it already had — never a `0` or any other placeholder — exactly the same "does not write
+    NULL" discipline `test_a_degraded_companion_writes_nothing_and_never_nulls_a_cached_colour`
+    proves for an outright failure, proven here against a *successful*, merely incomplete response
+    instead.
+    """
+    caller = await _seed_linked_profile(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_opponent_profile(db_session)
+
+    completed_at = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
+    await _seed_match(db_session, game_id=_GAME_ID_ONE, completed_at=completed_at)
+    await _seed_match(
+        db_session, game_id=_GAME_ID_TWO, completed_at=completed_at - timedelta(hours=1)
+    )
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_ONE, profile_id=_CALLER_PROFILE_ID, color_id=None
+    )
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_ONE, profile_id=_OPPONENT_PROFILE_ID, color_id=None
+    )
+    # Already cached by an earlier, successful view — the value this test proves survives.
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_TWO, profile_id=_CALLER_PROFILE_ID, color_id=5
+    )
+    await _seed_match_player(
+        db_session, game_id=_GAME_ID_TWO, profile_id=_OPPONENT_PROFILE_ID, color_id=None
+    )
+    await db_session.commit()
+
+    # The response carries only `_GAME_ID_ONE` — `_GAME_ID_TWO` is simply absent, the same shape a
+    # real profile-keyed response gives for a match too old to still be on the default page.
+    fake = _CompanionUpstream(
+        _companion_matches_body({_GAME_ID_ONE: {_CALLER_PROFILE_ID: 3, _OPPONENT_PROFILE_ID: 6}})
+    )
+    _intercept_companion(monkeypatch, fake)
+
+    response = client.get("/api/matches", params={"profile_id": _CALLER_PROFILE_ID})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    named_row = await db_session.get(MatchPlayer, (_GAME_ID_ONE, _CALLER_PROFILE_ID))
+    assert named_row is not None
+    assert named_row.color_id == 3, "the match the response did name must still get its colour"
+
+    untouched_caller_row = await db_session.get(MatchPlayer, (_GAME_ID_TWO, _CALLER_PROFILE_ID))
+    assert untouched_caller_row is not None
+    assert untouched_caller_row.color_id == 5, (
+        "a match absent from the response must be left exactly as it was — never overwritten with "
+        f"0 or any other placeholder. Got {untouched_caller_row.color_id!r}, expected the seeded 5"
+    )
+
+    untouched_opponent_row = await db_session.get(MatchPlayer, (_GAME_ID_TWO, _OPPONENT_PROFILE_ID))
+    assert untouched_opponent_row is not None
+    assert untouched_opponent_row.color_id is None, (
+        "still missing, and never coerced to 0 or any other placeholder just because the match was "
+        f"absent from the response. Got {untouched_opponent_row.color_id!r}"
     )
 
 

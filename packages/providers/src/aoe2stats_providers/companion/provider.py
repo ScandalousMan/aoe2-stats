@@ -34,12 +34,20 @@ looks up `matchId`, `mapName`, `gameModeName`, `speedName`, `teams`, `players`, 
 `civName` — the fields `MatchEnrichment` actually carries. `linkedProfiles` does not appear on
 `MatchEnrichment` either (`base.py`), so there is nowhere for it to leak to even by accident.
 
-**The endpoint.** `docs/data-sources.md` §3 only documents `GET /api/matches?profile_ids=a,b`
-(filtered by *profile*, not by match) — this provider's `game_ids` filter on the request itself is
-therefore best-effort and unverified against the live API (nightly contract tests, not this unit
-suite, are what would catch a drift here). Filtering the *response* down to the requested
-`game_ids` happens unconditionally in this module regardless of what the server actually honoured,
-so a server that ignores the filter and returns unrelated matches never leaks them to the caller.
+**The endpoint (T409 fix).** `docs/data-sources.md` §3 documents exactly one query shape,
+`GET /api/matches?profile_ids=a,b` — filtered by *profile*, never by match, and the live API
+rejects the other form outright (`{"error":"profile_ids must be specified"}` for `?matchIds=`,
+verified against production 2026-09-04). `enrich_matches` therefore takes `profile_ids` as its own
+required argument and builds the request from it alone; there is no `game_ids` parameter on the
+wire at all, and never was one honoured — the earlier `?matchIds=` request this provider issued
+before T409 always came back non-200, so `enrich_matches` had, in production, always returned `{}`.
+`game_ids` still narrows the *response*: `_parse_matches` below keeps only the entries whose
+`matchId` is in the requested set, unconditionally, regardless of how many of the profiles' other
+recent matches the endpoint's default page also carries — a caller that asks for one old match
+among a profile's hundred most recent never sees the other ninety-nine leak through. A game id too
+old to appear on that default page (the source pages by recency and this provider never chases a
+second page — module docstring's own "single-maintainer project" note) is a genuine, silent miss:
+absent from the returned dict, never a zero or placeholder colour standing in for it.
 
 **`search_players` (T313, `PlayerSearchProvider`).** `GET /api/profiles?search={name}`
 (`docs/data-sources.md` §3's "Profile search behaviour"), against the exact same `_breaker` and
@@ -219,8 +227,16 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
         """
         return self._breaker.last_call_failed()
 
-    async def enrich_matches(self, game_ids: Sequence[int]) -> dict[int, MatchEnrichment]:
-        if not game_ids:
+    async def enrich_matches(
+        self, profile_ids: Sequence[int], game_ids: Sequence[int]
+    ) -> dict[int, MatchEnrichment]:
+        """T409 fix: `profile_ids` is the source's own required query parameter (module docstring's
+        "The endpoint" note) — the live API rejects a request that carries `game_ids` alone. Both
+        arguments are required: `profile_ids` is what the request needs to reach the transport at
+        all, `game_ids` is what `_parse_matches` still narrows the response down to, so a caller
+        with no game ids to enrich never spends a call either.
+        """
+        if not profile_ids or not game_ids:
             return {}
         if not self._breaker.allow():
             return {}
@@ -230,7 +246,7 @@ class CompanionEnrichmentProvider(AsyncBaseProvider):
                 "GET",
                 f"{self._base_url}/matches",
                 endpoint="matches",
-                params={"matchIds": ",".join(str(game_id) for game_id in game_ids)},
+                params={"profile_ids": ",".join(str(profile_id) for profile_id in profile_ids)},
                 # A 403 here is documented, expected bot-protection noise (module docstring), not
                 # throttling — `_request`'s default would otherwise raise `ProviderRateLimited`.
                 treat_403_as_rate_limited=False,

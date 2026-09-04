@@ -694,8 +694,9 @@ async def get_player_match_history(
 
     # T450: batched over this page's own game_ids, never one call per match — the same discipline
     # `routers/matches.py::list_matches` already applies, reused rather than duplicated (module
-    # docstring's "Colour enrichment" note).
-    await enrich_colours(db_session, [row.game_id for row in page.matches])
+    # docstring's "Colour enrichment" note). T409: this route's own `profile_id` is companion's
+    # required query parameter.
+    await enrich_colours(db_session, [profile_id], [row.game_id for row in page.matches])
 
     return {
         "matches": [match_row_json(row) for row in page.matches],

@@ -3,7 +3,44 @@
 One new Protocol, and what this feature asks of two providers that already exist.
 [001's providers.md](../../001-steam-link-replay-ingestion/contracts/providers.md) holds unchanged,
 including its shared obligations — timeout, `User-Agent`, token bucket, `provider_calls` row, typed
-errors, strict Pydantic validation — which are not restated here.
+errors, strict Pydantic validation — which are not restated here, **except one signature it no
+longer states correctly**: see `EnrichmentProvider` (T409) below.
+
+## `EnrichmentProvider` (existing, 001) — T409 corrects its own signature
+
+001's own `EnrichmentProvider` section documents `async def enrich_matches(self, game_ids:
+Sequence[int]) -> dict[int, MatchEnrichment]`. That signature was never callable against the real
+source: `docs/data-sources.md` §3 documents exactly one query shape,
+`GET /api/matches?profile_ids=a,b` — filtered by _profile_, never by match — and the live endpoint
+rejects a request built from `game_ids` alone outright
+(`{"error":"profile_ids must be specified"}`, verified against production match 474746656 on
+2026-09-04). `CompanionEnrichmentProvider.enrich_matches` had, in production, therefore always
+returned `{}`: every call went out as `?matchIds=...`, always came back non-200, and
+`match_players.color_id` — the one field this endpoint's `teams[].players[].color` supplies, since
+Relic has no colour of its own (`research.md` **D2**) — was never once written. Found walking
+quickstart scenario 5 by hand against production.
+
+The corrected signature is called from `routers/matches.py::enrich_colours` alone — the one caller
+`enrich_matches` has in this feature — threaded from its own three call sites
+(`routers/matches.py::list_matches`, `routers/matches.py::get_match_detail`,
+`routers/players.py::get_player_match_history`), each of which already knows the relevant profiles:
+
+```python
+async def enrich_matches(
+    self, profile_ids: Sequence[int], game_ids: Sequence[int]
+) -> dict[int, MatchEnrichment]: ...
+```
+
+`profile_ids` is what the request needs to reach the transport at all — a caller passes the
+profiles it already knows are relevant (`list_matches`/`get_player_match_history` pass the route's
+own `profile_id`; `get_match_detail` passes every participant of the match, batching both sides
+into the one call `enrich_colours` already promised). `game_ids` keeps doing exactly what it always
+did: narrowing the _response_, unconditionally, to the entries the caller actually asked about —
+`_parse_matches` (`companion/provider.py`) is unchanged in that respect. A `game_id` too old to
+still be on the profiles' default page (this provider never chases a second page) is a silent miss
+— absent from the returned dict — never a zero or placeholder colour standing in for it; `routers/
+matches.py::enrich_colours` reads that absence the same way it already reads a degraded companion's
+empty map, and never writes over a `match_players.color_id` it did not hear about.
 
 ## `PlayerSearchProvider` (new)
 
