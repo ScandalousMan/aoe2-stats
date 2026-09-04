@@ -47,6 +47,31 @@ const thirdPartyLongAliasProfile = {
   isPrimary: false,
 }
 
+const twoLeaderboardEntries: RatingEntryData[] = [
+  {
+    leaderboardId: '1v1-rm',
+    leaderboardName: '1v1 Random Map',
+    rating: '1842',
+    ratingDelta: { value: 12 },
+    rank: '#214',
+    wins: 142,
+    losses: 118,
+    winRate: '55%',
+    streak: 'W3',
+    highestRating: '1901',
+  },
+  {
+    leaderboardId: 'tg-rm',
+    leaderboardName: 'Team Random Map',
+    rating: '1690',
+    ratingDelta: { value: -8 },
+    rank: '#500',
+    wins: 60,
+    losses: 55,
+    winRate: '52%',
+  },
+]
+
 describe('ProfileSummary', () => {
   it('renders no leaderboard the profile has not played', () => {
     render(
@@ -672,6 +697,103 @@ describe('ProfileSummary', () => {
         /Ratings appear after your first ranked match/,
       )
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+  })
+
+  describe("compact variant renders the primary leaderboard's rating and rank only, on one row (spec §3)", () => {
+    it("renders the primary (first) leaderboard's rating", () => {
+      render(
+        <ProfileSummary
+          variant="compact"
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={twoLeaderboardEntries}
+        />,
+      )
+      expect(screen.getByText('1842')).toBeInTheDocument()
+    })
+
+    it('does not render the second leaderboard at all', () => {
+      render(
+        <ProfileSummary
+          variant="compact"
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={twoLeaderboardEntries}
+        />,
+      )
+      expect(screen.queryByText('Team Random Map')).not.toBeInTheDocument()
+      expect(screen.queryByText('1690')).not.toBeInTheDocument()
+    })
+
+    it("renders the primary leaderboard's rank", () => {
+      render(
+        <ProfileSummary
+          variant="compact"
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={twoLeaderboardEntries}
+        />,
+      )
+      expect(screen.getByText('#214')).toBeInTheDocument()
+    })
+
+    it('does not render record, win rate, streak or best', () => {
+      render(
+        <ProfileSummary
+          variant="compact"
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={twoLeaderboardEntries}
+        />,
+      )
+      expect(screen.queryByText('142 W · 118 L')).not.toBeInTheDocument()
+      expect(screen.queryByText('Record')).not.toBeInTheDocument()
+      expect(screen.queryByText('55%')).not.toBeInTheDocument()
+      expect(screen.queryByText('Win rate')).not.toBeInTheDocument()
+      expect(screen.queryByText('W3')).not.toBeInTheDocument()
+      expect(screen.queryByText('Streak')).not.toBeInTheDocument()
+      expect(screen.queryByText('1901')).not.toBeInTheDocument()
+      expect(screen.queryByText('Best')).not.toBeInTheDocument()
+    })
+
+    // Contrast case (same fixture data, `board` variant): pins the difference between the two
+    // variants rather than only asserting the compact side in isolation.
+    it('the same two entries in the default (board) variant render the second leaderboard and the full columns', () => {
+      render(
+        <ProfileSummary
+          authenticated
+          viewedProfile={viewedProfile}
+          linkedProfiles={linkedProfiles}
+          entries={twoLeaderboardEntries}
+        />,
+      )
+      expect(screen.getByText('Team Random Map')).toBeInTheDocument()
+      expect(screen.getByText('1690')).toBeInTheDocument()
+      expect(screen.getByText('142 W · 118 L')).toBeInTheDocument()
+      expect(screen.getAllByText('55%').length).toBeGreaterThan(0)
+      expect(screen.getByText('W3')).toBeInTheDocument()
+      expect(screen.getByText('1901')).toBeInTheDocument()
+    })
+
+    it('a compact board with no rank yet renders the existing "Not ranked yet" treatment without throwing', () => {
+      expect(() =>
+        render(
+          <ProfileSummary
+            variant="compact"
+            authenticated
+            viewedProfile={viewedProfile}
+            linkedProfiles={linkedProfiles}
+            entries={[{ ...twoLeaderboardEntries[0], rank: undefined }, twoLeaderboardEntries[1]]}
+          />,
+        ),
+      ).not.toThrow()
+      expect(screen.getByText('Not ranked yet')).toBeInTheDocument()
+      expect(screen.getByText('1842')).toBeInTheDocument()
     })
   })
 })
