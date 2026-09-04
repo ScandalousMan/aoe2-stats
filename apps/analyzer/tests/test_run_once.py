@@ -57,7 +57,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -295,7 +294,6 @@ async def _run_ingester_once(session_factory: async_sessionmaker[AsyncSession]) 
 # --- Scenario 7.5 / SC-006 --------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_a_match_is_fetched_and_parsed_at_most_once_however_many_users_ask(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -351,7 +349,6 @@ async def test_a_match_is_fetched_and_parsed_at_most_once_however_many_users_ask
 # --- Scenario 7.6 / FR-032 ----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_the_stored_row_records_the_point_of_view_and_the_parser_version(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -401,7 +398,6 @@ async def test_the_stored_row_records_the_point_of_view_and_the_parser_version(
 # --- Scenario 8.6 / SC-013 -----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_a_parse_failure_leaves_the_api_and_the_ingester_untouched(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -453,7 +449,6 @@ async def test_a_parse_failure_leaves_the_api_and_the_ingester_untouched(
 # --- Scenario 8.2 / FR-037 -----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_an_interrupted_run_leaves_no_unclaimable_row_and_the_next_request_resumes_it(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -515,7 +510,6 @@ async def test_an_interrupted_run_leaves_no_unclaimable_row_and_the_next_request
 # --- Scenario 8.3 / FR-036 -----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_an_unparsable_recording_fails_on_the_first_attempt_and_is_never_retried(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -587,7 +581,6 @@ async def test_an_unparsable_recording_fails_on_the_first_attempt_and_is_never_r
 # --- Scenario 8.5 / FR-034 -----------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_a_never_analysed_match_past_the_window_is_unavailable_not_an_action(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -631,7 +624,6 @@ async def test_a_never_analysed_match_past_the_window_is_unavailable_not_an_acti
 # --- Scenario 10 / FR-041, SC-009a, FR-044, SC-006 -----------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_recompute_after_an_engine_change_reaches_the_source_zero_times_and_only_on_request(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -746,7 +738,6 @@ async def test_recompute_after_an_engine_change_reaches_the_source_zero_times_an
 # --- FR-029 ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="T365 not implemented yet")
 async def test_every_read_of_a_retained_recording_is_logged_on_first_analysis_and_on_recompute(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
