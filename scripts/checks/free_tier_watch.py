@@ -40,6 +40,19 @@ an environment variable, falling back to the ADR's own figure exactly the way `c
 can override (a provider raising or lowering a free tier is exactly the kind of fact that changes
 without this repository changing), never an independently invented number.
 
+**A fourth allowance, added by 003's T378: recordings retained for analysis
+(`retained_recordings.zip_bytes`, `data-model.md`), watched against `ANALYSIS_RETENTION_CAP_BYTES`
+(FR-047, already a settings key elsewhere — `apps/api/src/aoe2stats_api/settings.py`,
+`.env.example`).** `retained_recordings` is a separate table under its own object-store prefix
+(`retained_recording_object_key`, `packages/storage/src/aoe2stats_storage/objects.py`) precisely so
+it is never counted together with `replay_captures` — 001's capture archive and 003's retained
+analysis copies are the same kind of bytes under two different legal bases and two different
+lifetimes (data-model.md's `retained_recordings` section), and folding one sum into the other would
+misstate both ceilings at once, which is the failure FR-048 exists to prevent, arriving through this
+monitor rather than through a query. `retained_recording_bytes` below sums only that table, the same
+way `r2_stored_bytes` sums only `replay_captures` — neither function's `SELECT` mentions the other's
+table, so the separation is enforced by the query shape, not merely by convention.
+
 Usage:  uv run scripts/checks/free_tier_watch.py
 Exit:   0 if every measured allowance is under 70% of its ceiling (Vercel invocations never counts,
         being unmeasured); 1 if any measured allowance is at or over 70% — a `free_tier` alert is
@@ -60,7 +73,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.alerting import AlertRecord, raise_alert
 from aoe2stats_storage.models import Alert as AlertRow
-from aoe2stats_storage.models import AlertKind, ReplayCapture
+from aoe2stats_storage.models import AlertKind, ReplayCapture, RetainedRecording
 from aoe2stats_storage.repositories.base import build_engine, build_session_factory
 
 _DATABASE_URL_ENV = "DATABASE_URL"
@@ -93,6 +106,15 @@ _VERCEL_FREE_TIER_INVOCATIONS_ENV = "VERCEL_FREE_TIER_INVOCATIONS"
 #: need the moment a Vercel-API-backed measurement becomes possible is already named in one place
 #: rather than invented again at that point.
 _DEFAULT_VERCEL_FREE_TIER_INVOCATIONS = 1_000_000
+
+_ANALYSIS_RETENTION_CAP_BYTES_ENV = "ANALYSIS_RETENTION_CAP_BYTES"
+#: FR-047's own total retention cap for `retained_recordings`, already a settings key elsewhere
+#: (`apps/api/src/aoe2stats_api/settings.py`'s `analysis_retention_cap_bytes`) — not a new one
+#: invented here. The default mirrors `.env.example`'s own product choice (2 GiB, set below R2's
+#: 10 GB free tier so capture always has headroom): a ceiling this script falls back to only when
+#: the environment does not set one, the same convention `_DEFAULT_R2_FREE_TIER_BYTES` and
+#: `_DEFAULT_NEON_FREE_TIER_BYTES` follow above.
+_DEFAULT_ANALYSIS_RETENTION_CAP_BYTES = 2 * 1024**3
 
 
 def usage_fraction(used_bytes: int, ceiling_bytes: int) -> float:
@@ -138,6 +160,22 @@ async def neon_storage_bytes(session: AsyncSession) -> int:
     """
     result = await session.execute(select(func.pg_database_size(func.current_database())))
     return int(result.scalar_one())
+
+
+async def retained_recording_bytes(session: AsyncSession) -> int:
+    """The sum of `retained_recordings.zip_bytes` (003, FR-033/FR-047) — a table `r2_stored_bytes`
+    above never touches, and this `SELECT` never touches `replay_captures` in turn: the two totals
+    are computed by two disjoint queries, not filtered apart from one shared one, so a row seeded
+    into either table can never contribute to the other's sum. `data-model.md`'s own
+    `retained_recordings` section: "`ANALYSIS_RETENTION_CAP_BYTES` counts the retained copy only —
+    the capture is 001's and is already counted under 001's prefix (FR-048), which is the whole
+    reason T378 counts the two prefixes separately." `zip_bytes` is `NOT NULL` on this table
+    (unlike `ReplayCapture.zip_bytes`, set only once an upload completes), so no `IS NOT NULL`
+    filter is needed here; `COALESCE` still guards the empty-table case the same way
+    `r2_stored_bytes` does.
+    """
+    result = await session.execute(select(func.coalesce(func.sum(RetainedRecording.zip_bytes), 0)))
+    return int(result.scalar_one() or 0)
 
 
 def check_vercel_invocations() -> None:
@@ -254,6 +292,17 @@ async def _run() -> int:
                 used_bytes=await neon_storage_bytes(session),
                 ceiling_bytes=_read_int_env(
                     _NEON_FREE_TIER_BYTES_ENV, _DEFAULT_NEON_FREE_TIER_BYTES
+                ),
+            ),
+            # 003's T378: `retained_recordings` is a table `r2_stored_bytes` above never touches,
+            # thresholded against its own cap (FR-047) rather than folded into R2's — counting the
+            # two together is exactly the double-count FR-048 forbids, arriving through this
+            # monitor rather than through a query (module docstring).
+            _Allowance(
+                name="Analysis retention (retained recordings)",
+                used_bytes=await retained_recording_bytes(session),
+                ceiling_bytes=_read_int_env(
+                    _ANALYSIS_RETENTION_CAP_BYTES_ENV, _DEFAULT_ANALYSIS_RETENTION_CAP_BYTES
                 ),
             ),
         ]
