@@ -14,10 +14,14 @@ numbering. **§12 carries 004's FR-001 to FR-006, FR-010, FR-013 and FR-016. SC-
 prefixed `004` throughout §12, for the same reason.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`,
 `StatValue`. [`capture-state-badge.md`](./capture-state-badge.md) — `CaptureStateBadge`.
-[`profile-summary.md`](./profile-summary.md) — the page header above both routes is a `ProfileSummary`
-`compact` variant (§11's own `subject="other"` reading, [profile-summary.md](./profile-summary.md)
-§11, when the profile viewed is not the caller's own); neither component below repeats identity
-information it already shows. **§12 additionally depends on**
+[`profile-summary.md`](./profile-summary.md) — every list route (`matches.index.tsx` and, per §11.3,
+`players.$profileId.matches.tsx`) carries a `ProfileSummary` `compact` variant page header (§11's own
+`subject="other"` reading, [profile-summary.md](./profile-summary.md) §11, when the profile viewed is
+not the caller's own). **The detail route (`matches.$gameId.tsx`) carries no such header** (003
+T412): a game detail's subject is the match, not any one participant, so there is no profile for a
+`ProfileSummary` to summarise — removed after shipping as the compact header's empty avatar square on
+a page with no player to show one for. Neither component below repeats identity information a list
+route's header already shows. **§12 additionally depends on**
 [`civilisation-icon.md`](./civilisation-icon.md), [`map-thumbnail.md`](./map-thumbnail.md) and
 [`player-colour-swatch.md`](./player-colour-swatch.md) — the three marks are specified in full there
 and only _composed_ here — and on [`game-asset-tokens.md`](./game-asset-tokens.md) for the

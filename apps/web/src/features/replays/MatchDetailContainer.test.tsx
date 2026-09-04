@@ -172,6 +172,51 @@ describe('MatchDetailContainer', () => {
     expect(screen.getAllByText('rival_ace').length).toBeGreaterThan(0)
   })
 
+  // T412: this route used to render a `ProfileSummary/compact` player-focus header above
+  // `MatchDetailPanel` — a focus on one player on a page whose whole subject is one game. It is
+  // removed entirely; the match itself renders in full regardless of whether the caller has a
+  // linked profile with ratings to show.
+  it('renders no player-focus header even when the caller has a linked profile with ratings', async () => {
+    installFakeApi({
+      profiles: [
+        {
+          profile_id: 99,
+          alias: 'my_own_account',
+          country: 'FR',
+          avatar_hash: null,
+          is_primary: true,
+          linked_at: '2026-08-01T00:00:00Z',
+          ratings: [
+            {
+              leaderboard_id: 3,
+              leaderboard_name: '1v1 Random Map',
+              rating: 1800,
+              rank: 120,
+              wins: 10,
+              losses: 5,
+              streak: 2,
+              highest_rating: 1850,
+              captured_at: '2026-08-22T09:00:00Z',
+            },
+          ],
+        },
+      ],
+      detail: () => jsonResponse(baseDetail()),
+    })
+    renderMatch()
+
+    // `MatchDetailPanel` still renders in full — removing the header must not disturb it.
+    expect(await screen.findByText('Arabia')).toBeInTheDocument()
+    expect(screen.getAllByText('aoe2villain').length).toBeGreaterThan(0)
+
+    // No trace of the removed `ProfileSummary` header: no linked profile's alias, no "Manage"
+    // menu (the self-subject profile switcher/make-primary control), no "Link a Steam account"
+    // callout (the caller already has one).
+    expect(screen.queryByText('my_own_account')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No Steam account is linked yet')).not.toBeInTheDocument()
+  })
+
   it('still offers to link a Steam account, non-blocking, above the match content', async () => {
     installFakeApi({ profiles: [], detail: () => jsonResponse(baseDetail()) })
     renderMatch()

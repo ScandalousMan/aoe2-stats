@@ -5,45 +5,26 @@ import {
   Button,
   Callout,
   MatchDetailPanel,
-  ProfileSummary,
   ReplayAvailabilityList,
   UploadControl,
 } from 'design-system'
-import type {
-  DownloadActionState,
-  MatchDetailStatus,
-  ProfileSummaryStatus,
-  ReplayDownloadState,
-} from 'design-system'
+import type { DownloadActionState, MatchDetailStatus, ReplayDownloadState } from 'design-system'
 import { ApiRequestError, isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { matchDetailQueryOptions } from '../matches/api'
 import { toMatchDetailData } from '../matches/mappers'
-import { profilesQueryOptions, setPrimaryProfile } from '../profile/api'
-import { formatFreshness } from '../profile/format'
-import {
-  latestCapturedAt,
-  toLinkedProfileOptions,
-  toRatingEntries,
-  toViewedProfile,
-} from '../profile/mappers'
+import { profilesQueryOptions } from '../profile/api'
 import { triggerReplayDownload, triggerReplayPointOfViewDownload, uploadReplay } from './api'
 import { toReplayAvailabilityRows } from './availability'
 import { parseReplayDownloadFailure, searchWithoutReplayDownloadFailure } from './downloadFailure'
 import { parseGameId } from './gameId'
 import { isUploadEligible } from './uploadEligibility'
 
-// Wires `MatchDetailPanel` and `ProfileSummary/compact` (packages/design-system) to this
-// feature's real effects, the same discipline `MatchHistoryContainer.tsx` (T075) established for
-// the match list — deliberately its own, near-identical header wiring rather than a shared hook:
-// `DashboardContainer.tsx` and `MatchHistoryContainer.tsx` already each own their copy of this
-// same composition instead of extracting one, and a third copy here follows that precedent rather
-// than inventing a new shared module for it.
-//
-// match-history.md §1's dependency note: "the page header above both routes is a `ProfileSummary`
-// `compact` variant" — this route's data does not depend on *which* profile is viewed (`GET
-// /api/matches/{game_id}` is reachable through any of the caller's own linked profiles at once,
-// FR-043), only the header's own ratings display does, exactly as it does not on the list route
-// either.
+// Wires `MatchDetailPanel` (packages/design-system) to this feature's real effects. Unlike
+// `MatchHistoryContainer.tsx` and `DashboardContainer.tsx`, this route renders no player-focus
+// header: a game detail's subject is the match, not any one participant, so there is nothing here
+// for a `ProfileSummary` to summarise (match-history.md §1). `GET /api/matches/{game_id}` carries
+// no ownership scope (FR-043) — it is reachable through any of the caller's own linked profiles, or
+// none at all — which is exactly why the page never needed a "viewed profile" selection of its own.
 
 export interface MatchDetailContainerProps {
   gameId: string
@@ -65,60 +46,8 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
     }
   }, [session, navigate])
 
-  function redirectIfSessionExpired(error: unknown): boolean {
-    if (isApiErrorCode(error, 'not_authenticated')) {
-      void navigate({ to: '/sign-in' })
-      return true
-    }
-    return false
-  }
-
-  const authenticated = session?.authenticated ?? false
   const profiles = profilesQuery.data?.profiles ?? []
-
-  // FR-043: "viewing" is a session-level selection that writes nothing — same rule
-  // `MatchHistoryContainer.tsx` follows. It only changes the header's own ratings, never which
-  // match this route shows.
-  const [viewedProfileId, setViewedProfileId] = useState<number | null>(null)
-  const primaryProfile = profiles.find((profile) => profile.is_primary)
-  const viewedProfile =
-    profiles.find((profile) => profile.profile_id === viewedProfileId) ?? primaryProfile
-
-  const [primaryChangeInFlight, setPrimaryChangeInFlight] = useState(false)
-  const [makePrimaryError, setMakePrimaryError] = useState<string | null>(null)
-
-  async function handleMakePrimary(id: string) {
-    const profileId = Number(id)
-    setPrimaryChangeInFlight(true)
-    setMakePrimaryError(null)
-    try {
-      await setPrimaryProfile(profileId)
-      setViewedProfileId(profileId)
-      await queryClient.invalidateQueries({ queryKey: profilesQueryOptions.queryKey })
-      void queryClient.invalidateQueries({ queryKey: meQueryOptions.queryKey })
-    } catch (error) {
-      if (!redirectIfSessionExpired(error)) {
-        setMakePrimaryError('We could not change your primary profile. Try again.')
-      }
-    } finally {
-      setPrimaryChangeInFlight(false)
-    }
-  }
-
-  // --- ProfileSummary status (profile-summary.md §5), identical derivation to
-  // `MatchHistoryContainer.tsx` / `DashboardContainer.tsx` -----------------------------------------
-
   const profilesLoading = profilesQuery.isPending
-  const profilesHaveData = profilesQuery.data !== undefined
-  let profileSummaryStatus: ProfileSummaryStatus = 'default'
-  if (profilesLoading) {
-    profileSummaryStatus = 'loading'
-  } else if (profilesQuery.isError) {
-    profileSummaryStatus = profilesHaveData ? 'stale' : 'error'
-  } else if (viewedProfile && viewedProfile.ratings.length === 0) {
-    profileSummaryStatus = 'empty'
-  }
-
   const showEmptyAccount = !profilesLoading && !profilesQuery.isError && profiles.length === 0
 
   // --- Match detail (FR-011) -----------------------------------------------------------------
@@ -326,7 +255,7 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
        * this banner is informational only and never replaces `MatchDetailPanel` below it, unlike
        * `MatchHistoryContainer.tsx`'s identical-looking gate for the caller's *own* history, which
        * has nothing to show without a linked profile. */}
-      {showEmptyAccount ? (
+      {showEmptyAccount && (
         <div className="px-4 py-6 md:px-6">
           <Callout
             tone="info"
@@ -343,44 +272,12 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
             Link a Steam account to see your own replay archive on the matches you play.
           </Callout>
         </div>
-      ) : (
-        <>
-          <ProfileSummary
-            variant="compact"
-            authenticated={authenticated}
-            viewedProfile={viewedProfile ? toViewedProfile(viewedProfile) : undefined}
-            linkedProfiles={toLinkedProfileOptions(profiles)}
-            entries={viewedProfile ? toRatingEntries(viewedProfile) : []}
-            status={profileSummaryStatus}
-            freshnessLine={
-              viewedProfile ? formatFreshness(latestCapturedAt(viewedProfile)) : undefined
-            }
-            primaryChangeInFlight={primaryChangeInFlight}
-            onSelectProfile={(id) => setViewedProfileId(Number(id))}
-            onMakePrimary={(id) => void handleMakePrimary(id)}
-            onLinkAnotherAccount={() => void navigate({ to: '/sign-in', search: { link: true } })}
-            onBackToPrimary={() => setViewedProfileId(primaryProfile?.profile_id ?? null)}
-            onRetry={() => void profilesQuery.refetch()}
-          />
-
-          {makePrimaryError && (
-            <div className="px-4 md:px-6">
-              <Callout
-                tone="danger"
-                heading="We could not change your primary profile"
-                headingLevel={3}
-              >
-                {makePrimaryError}
-              </Callout>
-            </div>
-          )}
-        </>
       )}
 
-      {/* match-history.md §7: page header to the panel below it shares the list route's own
-       * `space-6`; no dedicated figure exists for the detail route. Rendered unconditionally
-       * (T331): the match itself never depends on the caller having a linked profile, only the
-       * header above it does. */}
+      {/* match-history.md §1/§7: this route renders no player-focus header above the panel
+       * (T412) — a game detail's subject is the match, not any one participant. Rendered
+       * unconditionally (T331): the match itself never depends on the caller having a linked
+       * profile, only the "Link a Steam account" callout above does. */}
       <div className="mt-6 px-4 pb-8 md:px-6">
         <MatchDetailPanel
           status={matchStatus}

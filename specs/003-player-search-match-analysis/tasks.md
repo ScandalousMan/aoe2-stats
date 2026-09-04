@@ -613,3 +613,39 @@ data fault, not a nitpick.
   (FR-020). Use it in the two match-route serialisers; leave `apps/api/src/aoe2stats_api/routers/profiles.py`'s
   `getPersonalStat` naming on `leaderboard_name` unchanged, since that route reads the other id
   space. Test-first.
+
+## Phase 14: colour durability and the match-detail header (found 2026-09-04)
+
+- [ ] T411 Project `color_id` from Relic's own `slotinfo`, at write time, from the payload already
+  archived. 004's D2 decoded `slotinfo[].metaData` on 2026-08-30, read `ScenarioPlayerIndex` and
+  `Team` out of it, and concluded "no colour". `ScenarioPlayerIndex` **is** the colour: `+1` is the
+  canonical 1..8 scheme `PlayerColourSwatch` renders. Verified 2026-09-04 on every participant of
+  the three matches the Relic and companion fixtures share (24 of 24 equal) and live on match
+  474746656 (ScandalousMan index 1 = red, BladeY index 0 = blue — what aoe2insights shows). It sits
+  in `matches.raw_payload` for every match ever discovered, so the read-time companion call (T409)
+  was never the right source and its "old match no longer on companion's first page" gap was
+  self-inflicted. `docs/data-sources.md` §1 carries the decode chain; nothing else restates it. Do:
+  (1) `project_match_player` gains `color_id` from that chain — `None`, never a guess, on any
+  missing or malformed layer or an index outside 0..7; (2) `upsert_match_player` writes it with
+  `COALESCE(excluded, existing)` so a `NULL` projection never erases a stored colour — both
+  `match_players` writers already share that function; (3) `scripts/ops/backfill_match_players.py`
+  treats a `NULL` `color_id` as a candidate and fills it from `raw_payload`, no provider call, so
+  one run colours every match already on disk; (4) companion's `enrich_colours` stays as the
+  fallback for a row still `NULL` after projection — its `color_id IS NULL` gate already makes it a
+  no-op once the column is stored; (5) the nightly contract check asserts the field is still there,
+  and `docs/data-sources.md`, the `aoe2-data-sources` skill, 004's `research.md` D2 and
+  `data-model.md` record the correction. Test-first: the projection joined against the companion
+  fixture on every shared participant; the upsert never nulling a stored colour; the backfill
+  colouring a row whose five other columns are already filled.
+
+- [x] T412 Remove the compact player-focus header from the match-detail page. `apps/web/src/features/
+  replays/MatchDetailContainer.tsx` renders a `ProfileSummary variant="compact"` (and its
+  empty-account / make-primary scaffolding) above `MatchDetailPanel` — a focus on one player on a
+  page whose whole subject is one game, which makes no UX sense (a game detail is not a profile).
+  Remove that header and the state and handlers that existed only for it (`viewedProfileId`
+  selection, make-primary, `profileSummaryStatus`, the freshness line), keeping `MatchDetailPanel`
+  and the full replay-download behaviour (per point of view) intact — the downloads read the
+  caller's owned profiles, not the removed header's selected profile. Amend the design-system note in
+  `packages/design-system/specs/match-history.md` §1, which currently says the detail route carries a
+  `ProfileSummary` header, to record that it does not. Update the container/route tests and any
+  affected Playwright full-page baseline (captured from CI, never locally).
