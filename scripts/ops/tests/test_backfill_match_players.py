@@ -28,11 +28,10 @@ environment, no dotenv — `acknowledge_alerts.py`'s own convention):
 
     @dataclass(frozen=True, slots=True)
     class BackfillReport:
-        A `match_players` row is a *candidate* this run when at least one of its five
-        Relic-derived columns (`civ_id`, `team_id`, `result`, `rating`, `rating_diff` — never
-        `color_id`, T413's own note: only the read-time enrichment T420 writes that column) is
-        still `NULL`, unless `force=True` widens that to every row with a matching `matches.
-        raw_payload`, populated or not.
+        A `match_players` row is a *candidate* this run when at least one of its six
+        Relic-derived columns (`civ_id`, `team_id`, `result`, `rating`, `rating_diff` and, since
+        T411, `color_id`) is still `NULL`, unless `force=True` widens that to every row with a
+        matching `matches.raw_payload`, populated or not.
 
         candidates: int  # rows this run selected as needing a write
         updated: int     # rows actually written this run; always 0 when dry_run is True
@@ -45,7 +44,7 @@ environment, no dotenv — `acknowledge_alerts.py`'s own convention):
     ) -> BackfillReport:
         Selects `match_players` rows (scoped by `force` as above), applies T413's projection
         function to the parent `matches.raw_payload` — not a second copy of it — and, when
-        `dry_run` is `False`, writes the five columns. Issues no provider call: every byte it
+        `dry_run` is `False`, writes the six columns. Issues no provider call: every byte it
         needs is already in `matches.raw_payload` (constitution IV). `dry_run=True` computes and
         reports the identical `candidates` count without executing a single `UPDATE`.
 
@@ -100,6 +99,7 @@ _EXPECTED_LOSS = {
     "result": "loss",
     "rating": 1498,
     "rating_diff": -14,
+    "color_id": 7,  # slotinfo ScenarioPlayerIndex 6 + 1 (T411) — companion's own value too
 }
 _EXPECTED_WIN = {
     "civ_id": 42,
@@ -107,6 +107,7 @@ _EXPECTED_WIN = {
     "result": "win",
     "rating": 1704,
     "rating_diff": 6,
+    "color_id": 4,  # ScenarioPlayerIndex 3 + 1
 }
 
 # Deliberately not what the fixture would project — distinguishable from both `_EXPECTED_LOSS` and
@@ -118,6 +119,7 @@ _WRONG_CACHED_VALUES = {
     "result": "win",
     "rating": 1,
     "rating_diff": 1,
+    "color_id": 1,
 }
 
 
@@ -157,6 +159,7 @@ async def _seed_match_player(
     result: str | None = None,
     rating: int | None = None,
     rating_diff: int | None = None,
+    color_id: int | None = None,
 ) -> None:
     session.add(
         MatchPlayer(
@@ -167,6 +170,7 @@ async def _seed_match_player(
             result=result,
             rating=rating,
             rating_diff=rating_diff,
+            color_id=color_id,
         )
     )
     await session.flush()
@@ -181,13 +185,14 @@ async def _fetch_match_player(session: AsyncSession, *, profile_id: int) -> Matc
     return result.scalars().one()
 
 
-def _five_columns(row: MatchPlayer) -> dict[str, Any]:
+def _projected_columns(row: MatchPlayer) -> dict[str, Any]:
     return {
         "civ_id": row.civ_id,
         "team_id": row.team_id,
         "result": row.result,
         "rating": row.rating,
         "rating_diff": row.rating_diff,
+        "color_id": row.color_id,
     }
 
 
@@ -220,8 +225,10 @@ async def test_dry_run_reports_a_count_and_writes_nothing(
         await session.commit()
 
     async with session_factory() as session:
-        before_loss = _five_columns(await _fetch_match_player(session, profile_id=_PROFILE_LOSS))
-        before_win = _five_columns(await _fetch_match_player(session, profile_id=_PROFILE_WIN))
+        before_loss = _projected_columns(
+            await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
+        )
+        before_win = _projected_columns(await _fetch_match_player(session, profile_id=_PROFILE_WIN))
 
     report = await backfill_match_players(session_factory, dry_run=True)
 
@@ -230,15 +237,17 @@ async def test_dry_run_reports_a_count_and_writes_nothing(
 
     # The assertion this test exists for: compare the table before and after, not the report.
     async with session_factory() as session:
-        after_loss = _five_columns(await _fetch_match_player(session, profile_id=_PROFILE_LOSS))
-        after_win = _five_columns(await _fetch_match_player(session, profile_id=_PROFILE_WIN))
+        after_loss = _projected_columns(
+            await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
+        )
+        after_win = _projected_columns(await _fetch_match_player(session, profile_id=_PROFILE_WIN))
     assert after_loss == before_loss
     assert after_win == before_win
     assert all(value is None for value in after_loss.values())
     assert all(value is None for value in after_win.values())
 
 
-# --- a real run fills the five columns from raw_payload -------------------------------------------
+# --- a real run fills the six columns from raw_payload --------------------------------------------
 
 
 async def test_a_real_run_fills_the_columns_from_raw_payload_via_the_projection(
@@ -260,13 +269,8 @@ async def test_a_real_run_fills_the_columns_from_raw_payload_via_the_projection(
         loss_row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
         win_row = await _fetch_match_player(session, profile_id=_PROFILE_WIN)
 
-    assert _five_columns(loss_row) == _EXPECTED_LOSS
-    assert _five_columns(win_row) == _EXPECTED_WIN
-    # `color_id` is never in this script's SET clause (T413's own note) — only the read-time
-    # enrichment (T420) ever writes it, and a Relic-only backfill must not null out a colour
-    # cached earlier by writing over a column it has no business touching.
-    assert loss_row.color_id is None
-    assert win_row.color_id is None
+    assert _projected_columns(loss_row) == _EXPECTED_LOSS
+    assert _projected_columns(win_row) == _EXPECTED_WIN
 
 
 # --- a second run is a no-op ----------------------------------------------------------------------
@@ -292,8 +296,8 @@ async def test_a_second_run_reports_zero_rows_changed(
     async with session_factory() as session:
         loss_row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
         win_row = await _fetch_match_player(session, profile_id=_PROFILE_WIN)
-    assert _five_columns(loss_row) == _EXPECTED_LOSS
-    assert _five_columns(win_row) == _EXPECTED_WIN
+    assert _projected_columns(loss_row) == _EXPECTED_LOSS
+    assert _projected_columns(win_row) == _EXPECTED_WIN
 
 
 # --- an already-populated row is left alone unless --force ----------------------------------------
@@ -319,7 +323,7 @@ async def test_an_already_populated_row_is_left_alone_without_force(
 
     async with session_factory() as session:
         row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
-    assert _five_columns(row) == _WRONG_CACHED_VALUES, (
+    assert _projected_columns(row) == _WRONG_CACHED_VALUES, (
         "a fully-populated row must never be recomputed without --force"
     )
 
@@ -344,7 +348,7 @@ async def test_force_recomputes_an_already_populated_row(
 
     async with session_factory() as session:
         row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
-    assert _five_columns(row) == _EXPECTED_LOSS
+    assert _projected_columns(row) == _EXPECTED_LOSS
 
 
 async def test_a_partially_populated_row_is_still_a_candidate_without_force(
@@ -369,7 +373,63 @@ async def test_a_partially_populated_row_is_still_a_candidate_without_force(
 
     async with session_factory() as session:
         row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
-    assert _five_columns(row) == _EXPECTED_LOSS
+    assert _projected_columns(row) == _EXPECTED_LOSS
+
+
+# --- color_id: the T411 backfill, and the one column a NULL projection never writes ---------------
+
+
+async def test_a_row_missing_only_its_colour_is_a_candidate_and_gets_it_from_raw_payload(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """The production shape T411 exists for: every row T415's first run filled has its five
+    columns and a `NULL` `color_id`, because the colour was in `raw_payload` all along and nothing
+    read it. One run, no provider call, and the row is coloured."""
+    from scripts.ops.backfill_match_players import backfill_match_players
+
+    entry = _load_fixture_entry()
+    five_filled = {key: value for key, value in _EXPECTED_LOSS.items() if key != "color_id"}
+    async with session_factory() as session:
+        await _seed_match(session, entry=entry)
+        await _seed_profile(session, profile_id=_PROFILE_LOSS)
+        await _seed_match_player(session, profile_id=_PROFILE_LOSS, **five_filled)
+        await session.commit()
+
+    report = await backfill_match_players(session_factory, dry_run=False, force=False)
+
+    assert report.candidates == 1
+    assert report.updated == 1
+
+    async with session_factory() as session:
+        row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
+    assert _projected_columns(row) == _EXPECTED_LOSS
+    assert await _provider_call_count(session_factory) == 0
+
+
+async def test_a_payload_without_slotinfo_never_nulls_a_stored_colour_even_with_force(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """A `NULL` projection is "unknown", not "no colour": a colour already stored (by an earlier
+    run, or by the companion fallback) outranks it, `--force` or not. The five other columns are
+    still recomputed — only the colour holds."""
+    from scripts.ops.backfill_match_players import backfill_match_players
+
+    entry = _load_fixture_entry()
+    del entry["slotinfo"]
+    async with session_factory() as session:
+        await _seed_match(session, entry=entry)
+        await _seed_profile(session, profile_id=_PROFILE_LOSS)
+        await _seed_match_player(session, profile_id=_PROFILE_LOSS, color_id=3)
+        await session.commit()
+
+    report = await backfill_match_players(session_factory, dry_run=False, force=True)
+
+    assert report.updated == 1
+    async with session_factory() as session:
+        row = await _fetch_match_player(session, profile_id=_PROFILE_LOSS)
+    assert _projected_columns(row) == {**_EXPECTED_LOSS, "color_id": 3}
 
 
 # --- the run issues no outbound request at all --------------------------------------------------

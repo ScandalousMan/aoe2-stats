@@ -69,8 +69,9 @@ _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
 # `data.aoe2companion.com` — `COMPANION_BASE_URL`'s own host (`packages/providers/.../companion/
 # provider.py`). T420 wires `routers/matches.py::list_matches` to call
 # `CompanionEnrichmentProvider.enrich_matches` unconditionally whenever a page still carries a
-# `NULL` `color_id` — the ordinary case for every `match_players` row nothing else in this codebase
-# ever wrote one for before T420 — so `_default_companion_degraded` below exists to keep that call
+# `NULL` `color_id` — the shape every test row seeded without a colour has, and, since T411, only
+# a row whose Relic payload the projection could not read — so `_default_companion_degraded`
+# below exists to keep that call
 # harmless for every test in this suite that has no reason to know companion exists at all. See
 # that fixture's own docstring.
 _COMPANION_HOST = "data.aoe2companion.com"

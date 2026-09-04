@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill `match_players`' five Relic-derived columns from `matches.raw_payload` (T415).
+"""Backfill `match_players`' six Relic-derived columns from `matches.raw_payload` (T415, T411).
 
 **The gap this closes.** `upsert_match_player` (`apps/ingester/.../discover.py`) wrote only the
 `(game_id, profile_id)` primary key until T413 gave it `civ_id`, `team_id`, `rating`,
@@ -27,10 +27,15 @@ was kept. `packages/storage/src/aoe2stats_storage/repositories/matches.py`'s `pr
 (T413) is applied directly here, never re-implemented: two copies of the same mapping is how the
 two drift.
 
-**`color_id` is never in this script's `SET` clause.** T413's own note: Relic's match history
-response carries no such field, and T420's read-time enrichment is that column's only writer. A
-Relic-only backfill that wrote `color_id` would overwrite a value that enrichment cached earlier
-with `NULL`, on every re-run.
+**`color_id` is the sixth column (T411, 2026-09-04) and the reason this script is run again.**
+The colour was in `raw_payload` all along — `slotinfo[].metaData.ScenarioPlayerIndex`, which
+`project_match_player` now decodes — so a `NULL` `color_id` makes a row a candidate exactly like
+a `NULL` `civ_id` does, and one run colours every match already on disk without a single
+provider call. The one asymmetry: a projection that could not read the blob yields `None`, and
+`None` is written **never** — not without `--force`, not with it. A `NULL` projection means
+"unknown", and a colour already stored (an earlier run, or the companion fallback) is worth more
+than that. Such a row stays a candidate on every run, counted and rewritten with what it already
+holds; that is the honest cost of not inventing a value.
 
 Usage (quickstart scenario 2):
     DATABASE_URL=postgresql+psycopg://... uv run python scripts/ops/backfill_match_players.py \\
@@ -39,8 +44,8 @@ Usage (quickstart scenario 2):
 
 `--force` widens the candidate set to every `match_players` row with a parent `matches` row —
 populated or not — and recomputes it from `raw_payload` regardless of what is already cached.
-Without it, a row where all five columns are already non-`NULL` is left alone: a
-partially-populated row (at least one of the five still `NULL`) is still filled in either way,
+Without it, a row where all six columns are already non-`NULL` is left alone: a
+partially-populated row (at least one of the six still `NULL`) is still filled in either way,
 since it does not yet hold a complete, deliberately-cached answer to leave alone.
 
 Exit: 0 whether or not anything needed writing; 1 if `DATABASE_URL` is not set.
@@ -68,8 +73,8 @@ _DATABASE_URL_ENV = "DATABASE_URL"
 class BackfillReport:
     """What one run found and, if not a dry run, changed.
 
-    A `match_players` row is a *candidate* this run when at least one of its five Relic-derived
-    columns (`civ_id`, `team_id`, `result`, `rating`, `rating_diff` — never `color_id`, module
+    A `match_players` row is a *candidate* this run when at least one of its six Relic-derived
+    columns (`civ_id`, `team_id`, `result`, `rating`, `rating_diff`, `color_id` — module
     docstring) is still `NULL`, unless `force=True` widens that to every row with a matching
     `matches.raw_payload`, populated or not.
     """
@@ -89,6 +94,7 @@ def _candidate_statement(*, force: bool) -> Select[tuple[MatchPlayer, dict[str, 
             MatchPlayer.result.is_(None),
             MatchPlayer.rating.is_(None),
             MatchPlayer.rating_diff.is_(None),
+            MatchPlayer.color_id.is_(None),
         )
     )
 
@@ -101,7 +107,8 @@ async def backfill_match_players(
 ) -> BackfillReport:
     """Select `match_players` rows (scoped by `force`, class docstring), apply T413's projection
     function to the parent `matches.raw_payload` — not a second copy of it — and, when `dry_run` is
-    `False`, write the five columns. Issues no provider call: every byte it needs is already in
+    `False`, write the six columns — `color_id` only when the projection read one (module
+    docstring). Issues no provider call: every byte it needs is already in
     `matches.raw_payload` (constitution IV). `dry_run=True` computes and reports the identical
     `candidates` count without executing a single `UPDATE`.
     """
@@ -120,6 +127,8 @@ async def backfill_match_players(
             player.rating = projected.rating
             player.rating_diff = projected.rating_diff
             player.result = projected.result
+            if projected.color_id is not None:
+                player.color_id = projected.color_id
             updated += 1
 
         if updated:
@@ -131,7 +140,7 @@ async def backfill_match_players(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Backfill match_players' five Relic-derived columns from matches.raw_payload. "
+            "Backfill match_players' six Relic-derived columns from matches.raw_payload. "
             "See scripts/ops/backfill_match_players.py's own module docstring."
         )
     )

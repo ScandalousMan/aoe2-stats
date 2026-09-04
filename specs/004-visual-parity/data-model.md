@@ -42,7 +42,7 @@ have never been written (research.md **D1**). This feature makes them true.
 | `rating`      | `matchhistorymember[].newrating`                           | the rating **after** the match, which is what FR-005 shows                                       |
 | `rating_diff` | `newrating - oldrating`                                    | signed; `NULL` if either side is missing, never `0` as a stand-in                                |
 | `result`      | `matchhistorymember[].outcome`                             | `1` → `win`, `0` → `loss`, anything else → `NULL`, which FR-004 renders as its own neutral state |
-| `color_id`    | **not in Relic** — aoe2companion `teams[].players[].color` | `NULL` whenever companion is degraded or the match is unknown to it (FR-010)                     |
+| `color_id`    | `slotinfo[].metaData.ScenarioPlayerIndex + 1` (since 2026-09-04, 003's T411; `docs/data-sources.md` §1) — aoe2companion `teams[].players[].color` as the fallback | `NULL` only when the projection cannot read the blob and companion does not know the match (FR-010); a `NULL` projection never overwrites a stored colour |
 
 `matchhistoryreportresults[]` carries `civilization_id`, `teamid` and `resulttype` for the same
 participants. It is the **cross-check, not a second source**: a projection that disagrees with it is
@@ -53,9 +53,10 @@ a bug to raise, never a tie to break silently.
 1. **The five Relic-derived columns**, on the ingester's capture path. `upsert_match_player` widens
    from `ON CONFLICT DO NOTHING` to `ON CONFLICT DO UPDATE`, setting them from the response the same
    transaction already holds. Re-seeing a match refreshes them from the freshest response, matching
-   `upsert_match`'s existing posture. **`color_id` is not in this statement's `SET` clause** — a
-   Relic-only refresh must never null out a colour the enrichment supplied earlier.
-2. **`color_id` alone**, on the display path, not the ingester (D2). When a match is shown, the
+   `upsert_match`'s existing posture. _Amended 2026-09-04 (T411):_ `color_id` is now the sixth
+   column of this statement, set as `COALESCE(excluded.color_id, match_players.color_id)` — a
+   `NULL` projection never nulls out a colour stored earlier, a non-`NULL` one wins.
+2. **`color_id` as a fallback** (_since T411; originally "alone"_), on the display path, not the ingester (D2). When a match is shown, the
    companion enrichment (`GET /api/matches`, batched over the page) supplies colour, which is written
    back to `match_players.color_id` keyed `(game_id, profile_id)` as a cache — only when companion
    returned a value. A degraded companion writes nothing; it does not write `NULL`. Colour never

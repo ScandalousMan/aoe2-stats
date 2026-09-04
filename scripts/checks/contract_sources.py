@@ -293,6 +293,21 @@ def _recent_matches() -> None:
     for field in ("profile_id", "resulttype", "teamid", "civilization_id"):
         assert field in results[0], f"report result is missing {field!r}"
 
+    # T411: the player colour is `slotinfo[].metaData.ScenarioPlayerIndex` (docs/data-sources.md
+    # §1), and `match_players.color_id` is projected from it — through the one decoder the
+    # application uses, never a copy of it here. Every participant of the newest match must still
+    # project a colour, or the field has moved and every new match will render a neutral swatch.
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    uncoloured = [
+        member["profile_id"]
+        for member in m["matchhistorymember"]
+        if project_match_player(m, member["profile_id"]).color_id is None
+    ]
+    assert not uncoloured, (
+        f"slotinfo no longer yields a colour for participant(s) {uncoloured} of match {m['id']}"
+    )
+
     # MatchHistoryProvider.recent_matches, single profile. Capped to 8 matches (real, untouched
     # entries — see `_trim_match_history`) so a ~400 KB live response does not become a ~400 KB
     # fixture committed to the repository for no gain in shape coverage.

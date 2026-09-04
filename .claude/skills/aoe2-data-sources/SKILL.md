@@ -34,6 +34,15 @@ contract tests in `scripts/checks/contract_sources.py`; a copy is true only unti
   that matters.
 - **Archive the zip, never the extracted record.** The ratio is about eight to one.
 - **`aoestats.io/api/db_dumps/` needs the trailing slash**, or you get a 301 with an empty body.
+- **Relic's `slotinfo` and `options` are base64 + zlib, and `slotinfo[].metaData` is two more
+  base64 layers on top.** Decode all of them before declaring a field absent. The player colour
+  lives at the bottom of that chain (`ScenarioPlayerIndex`), and was declared "not in Relic" once
+  after a decode that stopped one interpretation short — which bought a read-time companion call
+  that could not colour anything older than companion's first page. `docs/data-sources.md` §1 has
+  the chain and the verification; `repositories/matches.py::_slot_colour_id` is the one decoder.
+- **aoe2companion's `/api/matches` is paginated by profile recency, not queryable by match.** A
+  `?profile_ids=` call returns those profiles' recent matches; an old match is silently absent, and
+  `?matchIds=` alone is rejected. It cannot backfill anything.
 - **aoe2companion returns 403 at random.** Bot protection that trips intermittently, and it fails
   from CI more often than from a laptop. This is normal operating noise, not an incident. Its contract
   check is deliberately non-blocking.
