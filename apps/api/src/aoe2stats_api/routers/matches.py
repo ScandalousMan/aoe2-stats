@@ -19,11 +19,18 @@ three-homes rule, so it is computed here and served, never re-derived by the cli
 why this lookup lives at the router layer exactly like `leaderboard_name` did, rather than on the
 repository's own dataclasses.
 
-**Leaderboard names (T070f).** The same reasoning applies to `leaderboard_id`, and the same table
-already exists — `aoe2stats_api.leaderboards.leaderboard_name`, the one `profiles.py` already reads
-for `GET /api/profiles`. Both routes below carry a `leaderboard_name` alongside `leaderboard_id`
-computed with that same helper, so the client reads the identical vocabulary from every route
-rather than deriving a third copy of the mapping client-side.
+**Leaderboard names (T070f, corrected T410).** The same reasoning applies to `leaderboard_id`, but
+the table is not `aoe2stats_api.leaderboards.leaderboard_name` — that table names
+`getPersonalStat`'s own `leaderboard_id`, the id space `profiles.py` reads for
+`GET /api/profiles`. The `leaderboard_id` column both routes below carry is
+`RelicMatchHistoryProvider`'s `matchtype_id`
+(`packages/providers/.../relic/matches.py`), a *different* id space Relic's `getRecentMatchHistory`
+returns — until T410, both routes named it through the wrong table anyway, so a real `matchtype_id
+6` ("1v1 Random Map") rendered as the "Leaderboard 6" fallback. Both routes below now carry a
+`leaderboard_name` alongside `leaderboard_id` computed with `aoe2stats_api.match_types.
+match_type_name` instead — see that module's own docstring for how the two id spaces were told
+apart and how this one is named — so the client still reads one vocabulary from every route, just
+the correct one for the id this column actually holds.
 
 **FR-045 / FR-038 — one error for `list_matches`, indistinguishable causes**, the same discipline
 `replays.py`'s and `profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already
@@ -221,7 +228,7 @@ from aoe2stats_api.availability import Availability, AvailabilityView, derive_av
 from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
-from aoe2stats_api.leaderboards import leaderboard_name
+from aoe2stats_api.match_types import match_type_name
 from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
@@ -762,7 +769,7 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
         "completed_at": row.completed_at.isoformat(),
         "map_name": row.map_name,
         "leaderboard_id": row.leaderboard_id,
-        "leaderboard_name": leaderboard_name(row.leaderboard_id),
+        "leaderboard_name": match_type_name(row.leaderboard_id),
         "duration_seconds": row.duration_seconds,
         "civilisation": row.civilisation,
         "civilisation_name": civilisation_name(row.civilisation),
@@ -799,7 +806,7 @@ def _match_detail_json(
         "completed_at": detail.completed_at.isoformat(),
         "map_name": detail.map_name,
         "leaderboard_id": detail.leaderboard_id,
-        "leaderboard_name": leaderboard_name(detail.leaderboard_id),
+        "leaderboard_name": match_type_name(detail.leaderboard_id),
         "duration_seconds": detail.duration_seconds,
         # FR-018's "game version" (T327) — `matches.patch` verbatim, never resolved to a name:
         # unlike `civ_id`/`leaderboard_id` there is no id-to-name table for it, so there is nothing

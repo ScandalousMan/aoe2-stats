@@ -88,6 +88,12 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   0-44. The eight civilisations added since sit outside every pair these two fixtures can check,
   so this module does not guess an order for them; they fall back to a bare id, matching
   `leaderboard_name`'s own fallback shape. Payload ~400 KB per profile.
+- **`matchtype_id` is a distinct id space from `getPersonalStat`'s own `leaderboard_id` above** —
+  despite `RelicMatchHistoryProvider` storing it into a `matches.leaderboard_id` column of the same
+  name (T410 defect fix). Confirmed on a real match: Relic's own `matchtype_id 6` and
+  aoe2companion's `internalLeaderboardId 6` name the identical match, and companion carries
+  `leaderboardName: "1v1 Random Map"` for it. `apps/api/src/aoe2stats_api/match_types.py` names
+  this id space, by that same companion join, separately from `leaderboards.py`.
 - **Ids 45-60 (T070i).** Not derived — no fixture here reaches them and the ordering rule above
   stops at 44 by construction. They were instead cross-checked against
   SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a community-maintained dataset that

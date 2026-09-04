@@ -600,7 +600,7 @@ data fault, not a nitpick.
   untouched, never coerced to 0 (the honest degrade, an old match companion no longer pages). Amend
   `specs/003-player-search-match-analysis/contracts/providers.md` and the companion fixture in the same change.
 
-- [ ] T410 The match page names the wrong id space. `packages/providers/src/aoe2stats_providers/relic/matches.py` stores Relic's `matchtype_id`
+- [x] T410 The match page names the wrong id space. `packages/providers/src/aoe2stats_providers/relic/matches.py` stores Relic's `matchtype_id`
   as `leaderboard_id`, then `match_row_json`/`_match_detail_json` name it through
   `leaderboards.py::leaderboard_name` — the `getPersonalStat` `leaderboard_id` table, a different id
   space. `matchtype_id 6` is `1v1 Random Map` (companion `internalLeaderboardId 6`), not the
