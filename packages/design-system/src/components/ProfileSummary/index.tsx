@@ -498,15 +498,45 @@ function RatingBoard({
         />
       )}
 
-      {isTable ? (
+      {compact ? (
+        // `compact` overrides `isTable`: the header on match history / match detail is always the
+        // primary leaderboard's rating and rank on one row, never the full `RatingTable`, at any
+        // viewport (spec §3's `compact` row). `entries[0]` is the primary leaderboard — the
+        // consumer sorts `entries` into display order before this component ever sees them
+        // (`apps/web/src/features/players/mappers.ts`'s `leaderboardSortKey`); this component adds
+        // no sort of its own.
+        <CompactRatingSummary entry={entries[0]} />
+      ) : isTable ? (
         <RatingTable entries={entries} />
       ) : (
-        <div className={cx('flex flex-col gap-4', compact && 'md:flex-row md:gap-6')}>
+        <div className="flex flex-col gap-4">
           {entries.map((entry) => (
             <RatingCard key={entry.leaderboardId} entry={entry} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** `compact` variant (spec §3): the primary leaderboard's rating and rank only, on one row — never
+ * the full `RatingCard` (record, win rate, streak, best) and never `RatingTable`. This is what
+ * keeps the header's footprint identical between the `board` and `compact` routes, so navigating
+ * between the profile page and match history/detail does not resize the header ("blink"). */
+function CompactRatingSummary({ entry }: { entry: RatingEntryData }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+      <span className="font-sans text-sm font-normal tracking-wide text-text-secondary">
+        {entry.leaderboardName}
+      </span>
+      <StatValue variant="hero" label="Rating" value={entry.rating} />
+      <StatValue
+        variant="compact"
+        label="Rank"
+        status={entry.rank ? 'default' : 'empty'}
+        value={entry.rank}
+        secondaryLine={entry.rank ? undefined : 'Not ranked yet'}
+      />
     </div>
   )
 }

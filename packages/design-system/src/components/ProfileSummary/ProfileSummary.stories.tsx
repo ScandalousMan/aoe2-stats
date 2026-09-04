@@ -392,12 +392,16 @@ export const ProvisionalRank: Story = {
   },
 }
 
+// spec §3: `compact` shows the primary (first) leaderboard's rating and rank only, on one row —
+// the switcher stays. Both leaderboards are passed here (not pre-sliced to `entries[0]`) so the
+// visual baseline actually exercises the "second leaderboard is not shown" rule instead of hiding
+// it by construction.
 export const CompactVariant: Story = {
   args: {
     variant: 'compact',
     authenticated: true,
     viewedProfile,
     linkedProfiles,
-    entries: [entries[0]],
+    entries,
   },
 }
