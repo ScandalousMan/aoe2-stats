@@ -71,6 +71,12 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "companion"
 # "capped to 3 real matches" — fewer entries than the live response, not different ones).
 FIXTURE_GAME_IDS = (500615037, 500572650, 500564671)
 
+# T409: `enrich_matches` now requires `profile_ids` (the source's own required query parameter,
+# `companion/provider.py`'s "The endpoint" note) — TheViper (196240) and Somero (264353) are two
+# real profiles the fixture's own three matches all carry, the pair whose recent matches a real
+# `?profile_ids=196240,264353` request would have returned.
+FIXTURE_PROFILE_IDS = (196240, 264353)
+
 # Fast enough that the retry-exhaustion test does not spend real seconds asleep, while still
 # exercising the same backoff machinery every other provider's tests use (test_provider_base.py).
 FAST_RETRY = RetryPolicy(
@@ -166,7 +172,7 @@ async def test_enrich_matches_parses_a_genuine_response_keyed_by_game_id() -> No
     body = _load_matches_fixture()
     provider, recorder = _provider(lambda request: httpx.Response(200, json=body))
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert set(result) == set(FIXTURE_GAME_IDS)
     for game_id, enrichment in result.items():
@@ -174,6 +180,43 @@ async def test_enrich_matches_parses_a_genuine_response_keyed_by_game_id() -> No
         assert enrichment.game_id == game_id
     assert len(recorder.calls) >= 1
     assert all(not call.rate_limited for call in recorder.calls)
+
+
+# --- T409: the outbound request carries the source's own required parameter, `profile_ids`,
+# never the `matchIds` this provider used to send (a request the live API rejects outright with
+# `{"error":"profile_ids must be specified"}`, verified against production match 474746656 on
+# 2026-09-04) -----------------------------------------------------------------------------------
+
+
+async def test_enrich_matches_requests_profile_ids_never_match_ids() -> None:
+    """The defect itself (T409): `enrich_matches` used to build its request from `?matchIds=`, a
+    parameter the live endpoint rejects — every production call therefore always came back
+    non-200, and `match_players.color_id` was never once written. The fix queries
+    `?profile_ids=a,b` instead, the one shape `docs/data-sources.md` §3 documents.
+    """
+    body = _load_matches_fixture()
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=body)
+
+    provider, _ = _provider(handler)
+
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
+
+    assert set(result) == set(FIXTURE_GAME_IDS)
+    assert len(captured) >= 1
+    request = captured[0]
+    assert "matchIds" not in request.url.params, (
+        "the live endpoint rejects a `matchIds`-only request outright — this parameter must never "
+        "be sent again"
+    )
+    sent_profile_ids = request.url.params.get("profile_ids")
+    assert sent_profile_ids is not None, (
+        "the source's own required query parameter (`docs/data-sources.md` §3) must be present"
+    )
+    assert set(sent_profile_ids.split(",")) == {str(pid) for pid in FIXTURE_PROFILE_IDS}
 
 
 # --- A 403 is expected noise: never raised, never classified as rate limiting --------------------
@@ -190,7 +233,7 @@ async def test_a_403_is_expected_noise_and_does_not_raise() -> None:
 
     # No `pytest.raises` here on purpose: an exception of any kind fails this test outright,
     # which is the point — a 403 must never propagate past `enrich_matches`.
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert result == {}
     assert len(recorder.calls) >= 1
@@ -215,7 +258,10 @@ async def test_repeated_failures_open_the_circuit_breaker() -> None:
     provider, _ = _provider(handler)
 
     call_count = 12
-    results = [await provider.enrich_matches([FIXTURE_GAME_IDS[0]]) for _ in range(call_count)]
+    results = [
+        await provider.enrich_matches(FIXTURE_PROFILE_IDS, [FIXTURE_GAME_IDS[0]])
+        for _ in range(call_count)
+    ]
 
     assert all(result == {} for result in results), (
         "every call must return nothing rather than raise — this is the one provider whose "
@@ -231,7 +277,7 @@ async def test_repeated_failures_open_the_circuit_breaker() -> None:
     # every single call has not observably opened, whatever internal state it claims to hold.
     plateaued_at = request_count
     for _ in range(3):
-        await provider.enrich_matches([FIXTURE_GAME_IDS[0]])
+        await provider.enrich_matches(FIXTURE_PROFILE_IDS, [FIXTURE_GAME_IDS[0]])
     assert request_count == plateaued_at, (
         "once open, the circuit breaker must not issue a fresh request on every subsequent call"
     )
@@ -250,7 +296,7 @@ async def test_a_full_outage_also_returns_nothing_so_the_application_still_rende
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(503), recorder=recorder)
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert result == {}
     assert list(result.items()) == []
@@ -291,7 +337,7 @@ async def test_linked_profiles_is_never_read(monkeypatch: pytest.MonkeyPatch) ->
 
     # If the provider ever reads `linkedProfiles`, `_NoLinkedProfilesGuard` raises `AssertionError`
     # from inside `enrich_matches` — this call is where that would surface.
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert set(result) == set(FIXTURE_GAME_IDS)
     # `MatchEnrichment` has no `linkedProfiles` field at all (`base.py`), so nothing leaked into
@@ -642,7 +688,7 @@ async def test_search_players_shares_the_circuit_breaker_with_enrich_matches() -
     # `test_repeated_failures_open_the_circuit_breaker` above.
     call_count = 12
     for _ in range(call_count):
-        result = await provider.enrich_matches([FIXTURE_GAME_IDS[0]])
+        result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, [FIXTURE_GAME_IDS[0]])
         assert result == {}
     assert request_count < call_count, "the breaker must have opened during the loop above"
 
@@ -871,7 +917,7 @@ async def test_enrich_matches_participants_keyed_by_profile_id() -> None:
     body = _load_matches_fixture()
     provider, _ = _provider(lambda request: httpx.Response(200, json=body))
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     enrichment = result[500615037]
     assert enrichment.participants is not None
@@ -906,7 +952,7 @@ async def test_enrich_matches_rating_and_rating_diff_are_two_distinct_wire_field
     body = _load_matches_fixture()
     provider, _ = _provider(lambda request: httpx.Response(200, json=body))
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     the_zero = result[500615037].participants[9766616]
     source_player = next(
@@ -945,7 +991,7 @@ async def test_enriched_participant_instance_never_carries_color_hex_either() ->
     body = _load_matches_fixture()
     provider, _ = _provider(lambda request: httpx.Response(200, json=body))
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     the_zero = result[500615037].participants[9766616]
     assert not hasattr(the_zero, "color_hex")
@@ -964,7 +1010,9 @@ async def test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls
     unknown_game_id = 999999999
     provider, _ = _provider(lambda request: httpx.Response(200, json=body))
 
-    result = await provider.enrich_matches([*FIXTURE_GAME_IDS, unknown_game_id])
+    result = await provider.enrich_matches(
+        FIXTURE_PROFILE_IDS, [*FIXTURE_GAME_IDS, unknown_game_id]
+    )
 
     assert unknown_game_id not in result, (
         "a match companion does not know must yield no entry at all, not an entry standing in "
@@ -975,6 +1023,36 @@ async def test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls
         assert enrichment.participants
         for participant in enrichment.participants.values():
             assert isinstance(participant, EnrichedParticipant)
+
+
+# --- T409's own contrast case: a match absent from the profiles' returned pages is a silent miss,
+# never a coerced 0/placeholder colour (`companion/provider.py`'s "The endpoint" note: this
+# provider never chases a second page, so an old match a profile's default page no longer carries
+# — "an old match companion no longer pages" — is an honest degrade, not something to invent a
+# value for) ---------------------------------------------------------------------------------------
+
+
+async def test_contrast_case_old_match_no_longer_paged_yields_no_entry() -> None:
+    """The contrast case named in the task: `game_ids` may ask about a match older than the one
+    default page `enrich_matches` ever requests for `profile_ids` — companion's own recency-ordered
+    paging, not a match id filter — and that match must come back absent from the dict, exactly
+    like `test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls` above (the
+    provider has no way to tell "too old to be on this page" apart from "companion has never heard
+    of it" — both are simply not in the response). `enrich_colours` (`routers/matches.py`) reads
+    this same absence to leave `match_players.color_id` exactly as it was — see
+    `apps/api/tests/test_match_colour_enrichment.py`'s own DB-level assertion of that.
+    """
+    body = _load_matches_fixture()
+    old_game_id = 400000001  # older than anything on the profiles' default page fixture carries
+    provider, _ = _provider(lambda request: httpx.Response(200, json=body))
+
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, [old_game_id])
+
+    assert result == {}, (
+        "a match too old for the profiles' default page must yield no entry at all, never a "
+        "placeholder — this is the honest degrade, not a failure this provider can distinguish "
+        "from 'companion has never heard of this match'"
+    )
 
 
 async def test_enrich_matches_with_participants_403_still_returns_nothing() -> None:
@@ -990,7 +1068,7 @@ async def test_enrich_matches_with_participants_403_still_returns_nothing() -> N
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(403), recorder=recorder)
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert result == {}
     assert len(recorder.calls) >= 1
@@ -1006,7 +1084,7 @@ async def test_enrich_matches_with_participants_full_outage_still_returns_nothin
     recorder = _Recorder()
     provider, _ = _provider(lambda request: httpx.Response(503), recorder=recorder)
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert result == {}
     assert len(recorder.calls) == FAST_RETRY.max_attempts
@@ -1026,7 +1104,7 @@ async def test_enrich_matches_with_participants_malformed_body_still_returns_not
         lambda request: httpx.Response(200, content=b"not json at all"), recorder=recorder
     )
 
-    result = await provider.enrich_matches(list(FIXTURE_GAME_IDS))
+    result = await provider.enrich_matches(FIXTURE_PROFILE_IDS, list(FIXTURE_GAME_IDS))
 
     assert result == {}
     assert recorder.calls[0].status_code == 200

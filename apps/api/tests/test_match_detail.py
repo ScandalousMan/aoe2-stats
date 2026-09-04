@@ -405,7 +405,10 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
     await _seed_profile(db_session, profile_id=_ALLY_PROFILE_ID, alias="AllyAlias")
     await _seed_profile(db_session, profile_id=_OPPONENT_PROFILE_ID, alias="OpponentAlias")
     await _seed_profile(db_session, profile_id=_OTHER_OPPONENT_PROFILE_ID, alias="OtherOpponent")
-    await _seed_match(db_session, map_name="Arena", duration_seconds=1800)
+    # T410: 6 is the confirmed "1v1 Random Map" pair in the `matchtype_id` space (`match_types.py`)
+    # — this column stores Relic's `matchtype_id`, not `getPersonalStat`'s `leaderboard_id`, unlike
+    # the file's other, unnamed default of 3.
+    await _seed_match(db_session, map_name="Arena", duration_seconds=1800, leaderboard_id=6)
 
     await _seed_match_player(
         db_session,
@@ -454,9 +457,10 @@ async def test_match_detail_lists_every_participant_with_team_civ_result_and_rat
     assert response.status_code == 200
     body = response.json()
     assert body["game_id"] == _GAME_ID
-    # T070f: `leaderboard_name` alongside `leaderboard_id`, the same `leaderboards.py` mapping
-    # `GET /api/profiles` already reads — never re-derived by the client.
-    assert body["leaderboard_id"] == 3
+    # T070f/T410: `leaderboard_name` alongside `leaderboard_id`, resolved via
+    # `aoe2stats_api.match_types` — the column holds Relic's `matchtype_id`, a different id space
+    # from `GET /api/profiles`'s own `leaderboard_name` (`getPersonalStat`'s `leaderboard_id`).
+    assert body["leaderboard_id"] == 6
     assert body["leaderboard_name"] == "1v1 Random Map"
 
     by_profile = _participants_by_profile_id(body)
@@ -699,7 +703,10 @@ async def test_match_detail_widened_to_any_match_the_service_holds(
     await _seed_match(
         db_session,
         game_id=_STRANGER_MATCH_GAME_ID,
-        leaderboard_id=3,
+        # T410: 6 is the confirmed "1v1 Random Map" pair in the `matchtype_id` space
+        # (`match_types.py`) — this column stores Relic's `matchtype_id`, not `getPersonalStat`'s
+        # `leaderboard_id`, unlike the file's other, unnamed default of 3.
+        leaderboard_id=6,
         map_name="Arena",
         duration_seconds=1500,
         completed_at=completed_at,
@@ -739,7 +746,7 @@ async def test_match_detail_widened_to_any_match_the_service_holds(
     body = response.json()
     assert body["game_id"] == _STRANGER_MATCH_GAME_ID
     assert body["map_name"] == "Arena"
-    assert body["leaderboard_id"] == 3
+    assert body["leaderboard_id"] == 6
     assert body["leaderboard_name"] == "1v1 Random Map"
     assert body["duration_seconds"] == 1500
     assert body["completed_at"] == completed_at.isoformat()

@@ -20,7 +20,8 @@ expected to need adjusting once T070 actually lands:
 - `{"matches": [...], "next_cursor": <opaque string> | null}` — a `matches` array plus an opaque
   cursor for the next page, `null` once there is no more.
 - Each row: `game_id`, `started_at`, `completed_at` (ISO 8601), `map_name`, `leaderboard_id`,
-  `leaderboard_name` (T070f, resolved server-side via `aoe2stats_api.leaderboards`),
+  `leaderboard_name` (T070f, resolved server-side; T410: via `aoe2stats_api.match_types`, since
+  this column carries Relic's `matchtype_id`, not `getPersonalStat`'s `leaderboard_id`),
   `duration_seconds`, `civilisation` (the caller's own `civ_id`), `result` (the caller's own),
   `rating_diff` (the caller's own rating change), `opponents` (every participant on a different
   team than the caller's own — T070d: never a teammate — with their `profile_id`, `alias`,
@@ -377,6 +378,10 @@ async def test_matches_list_newest_first_with_fr010_fields(
         db_session,
         game_id=newest_game_id,
         completed_at=now - timedelta(days=1),
+        # T410: the column stores Relic's `matchtype_id`, not `getPersonalStat`'s `leaderboard_id`
+        # — 6 is the confirmed "1v1 Random Map" pair in that id space (`match_types.py`), unlike
+        # the file's other, unnamed default of 3.
+        leaderboard_id=6,
         caller_civ_id=12,
         caller_result="win",
         caller_rating_diff=16,
@@ -399,9 +404,10 @@ async def test_matches_list_newest_first_with_fr010_fields(
     # T070c: a name alongside the raw id, resolved server-side rather than left for the client to
     # hand-map (the precedent `leaderboard_name`, T033a, already established for leaderboards).
     assert newest_row["civilisation_name"] == "Cumans"
-    # T070f: `leaderboard_name` alongside `leaderboard_id`, the same `leaderboards.py` mapping
-    # `GET /api/profiles` already reads — never re-derived by the client.
-    assert newest_row["leaderboard_id"] == 3
+    # T070f/T410: `leaderboard_name` alongside `leaderboard_id`, resolved via
+    # `aoe2stats_api.match_types` — the column holds Relic's `matchtype_id`, a different id space
+    # from `GET /api/profiles`'s own `leaderboard_name` (`getPersonalStat`'s `leaderboard_id`).
+    assert newest_row["leaderboard_id"] == 6
     assert newest_row["leaderboard_name"] == "1v1 Random Map"
     assert newest_row["result"] == "win"
     assert newest_row["rating_diff"] == 16

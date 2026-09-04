@@ -19,11 +19,18 @@ three-homes rule, so it is computed here and served, never re-derived by the cli
 why this lookup lives at the router layer exactly like `leaderboard_name` did, rather than on the
 repository's own dataclasses.
 
-**Leaderboard names (T070f).** The same reasoning applies to `leaderboard_id`, and the same table
-already exists — `aoe2stats_api.leaderboards.leaderboard_name`, the one `profiles.py` already reads
-for `GET /api/profiles`. Both routes below carry a `leaderboard_name` alongside `leaderboard_id`
-computed with that same helper, so the client reads the identical vocabulary from every route
-rather than deriving a third copy of the mapping client-side.
+**Leaderboard names (T070f, corrected T410).** The same reasoning applies to `leaderboard_id`, but
+the table is not `aoe2stats_api.leaderboards.leaderboard_name` — that table names
+`getPersonalStat`'s own `leaderboard_id`, the id space `profiles.py` reads for
+`GET /api/profiles`. The `leaderboard_id` column both routes below carry is
+`RelicMatchHistoryProvider`'s `matchtype_id`
+(`packages/providers/.../relic/matches.py`), a *different* id space Relic's `getRecentMatchHistory`
+returns — until T410, both routes named it through the wrong table anyway, so a real `matchtype_id
+6` ("1v1 Random Map") rendered as the "Leaderboard 6" fallback. Both routes below now carry a
+`leaderboard_name` alongside `leaderboard_id` computed with `aoe2stats_api.match_types.
+match_type_name` instead — see that module's own docstring for how the two id spaces were told
+apart and how this one is named — so the client still reads one vocabulary from every route, just
+the correct one for the id this column actually holds.
 
 **FR-045 / FR-038 — one error for `list_matches`, indistinguishable causes**, the same discipline
 `replays.py`'s and `profiles.py`'s own `_owned_active_link`/`_profile_not_found` pair already
@@ -221,7 +228,7 @@ from aoe2stats_api.availability import Availability, AvailabilityView, derive_av
 from aoe2stats_api.civilizations import civilisation_name
 from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_get_or_set
 from aoe2stats_api.errors import APIError
-from aoe2stats_api.leaderboards import leaderboard_name
+from aoe2stats_api.match_types import match_type_name
 from aoe2stats_ingester import discover
 from aoe2stats_providers.base import ProviderCallRecord
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
@@ -313,7 +320,9 @@ def _build_enrichment_provider(db_session: AsyncSession) -> CompanionEnrichmentP
     )
 
 
-async def enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> None:
+async def enrich_colours(
+    db_session: AsyncSession, profile_ids: Sequence[int], game_ids: Sequence[int]
+) -> None:
     """T420: `match_players.color_id`'s only writer (module docstring). Public — `routers/
     players.py::get_player_match_history` imports this directly (T450), the same "one writer, not
     two" reasoning `match_row_json` already carries for the row shape itself. Calls
@@ -323,14 +332,24 @@ async def enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> N
     has a colour cached, this returns without ever reaching the transport, which is what turns a
     second view of the same matches into a database read (`research.md` **D2**).
 
+    `profile_ids` (T409 fix) is threaded straight through to `enrich_matches`: the companion
+    endpoint is queried *by profile*, never by match (`companion/provider.py`'s "The endpoint"
+    note) — a caller passes the profiles it already knows are relevant to `game_ids` (a route's own
+    `profile_id`, or a match's participants), never a value derived here, since this function has
+    no other way to know which profiles' recent matches to ask the source for.
+
     A degraded companion (`enrich_matches` never raises — see `companion/provider.py`'s own module
     docstring) answers `{}` or a partial map: the loop below only ever `UPDATE`s a `(game_id,
     profile_id)` pair the response actually names a `color_id` for, and only ever replaces a row
     still `NULL` (`MatchPlayer.color_id.is_(None)` in the `WHERE` clause) — a colour already cached
     by an earlier, successful view is never overwritten, degraded response or not (`data-model.md`
-    §6, `test_match_colour_enrichment.py`'s own "does not write `NULL`" assertion).
+    §6, `test_match_colour_enrichment.py`'s own "does not write `NULL`" assertion). The identical
+    discipline covers a `game_id` companion's default page no longer carries at all (an old match
+    it stopped paging, T409's own "honest degrade"): absent from `enrichment`, so the loop below
+    never reaches its row — `color_id` stays exactly whatever it already was, never coerced to `0`
+    or any other placeholder.
     """
-    if not game_ids:
+    if not profile_ids or not game_ids:
         return
 
     still_missing = await db_session.execute(
@@ -344,7 +363,7 @@ async def enrich_colours(db_session: AsyncSession, game_ids: Sequence[int]) -> N
         return
 
     provider = _build_enrichment_provider(db_session)
-    enrichment = await provider.enrich_matches(game_ids)
+    enrichment = await provider.enrich_matches(profile_ids, game_ids)
     for game_id, match_enrichment in enrichment.items():
         if match_enrichment.participants is None:
             continue
@@ -750,7 +769,7 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
         "completed_at": row.completed_at.isoformat(),
         "map_name": row.map_name,
         "leaderboard_id": row.leaderboard_id,
-        "leaderboard_name": leaderboard_name(row.leaderboard_id),
+        "leaderboard_name": match_type_name(row.leaderboard_id),
         "duration_seconds": row.duration_seconds,
         "civilisation": row.civilisation,
         "civilisation_name": civilisation_name(row.civilisation),
@@ -787,7 +806,7 @@ def _match_detail_json(
         "completed_at": detail.completed_at.isoformat(),
         "map_name": detail.map_name,
         "leaderboard_id": detail.leaderboard_id,
-        "leaderboard_name": leaderboard_name(detail.leaderboard_id),
+        "leaderboard_name": match_type_name(detail.leaderboard_id),
         "duration_seconds": detail.duration_seconds,
         # FR-018's "game version" (T327) — `matches.patch` verbatim, never resolved to a name:
         # unlike `civ_id`/`leaderboard_id` there is no id-to-name table for it, so there is nothing
@@ -872,7 +891,8 @@ async def list_matches(
         page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
         # T420: batched over this page's own game_ids, never one call per match (module
         # docstring's "Read-time colour enrichment" note) — a no-op once every row is coloured.
-        await enrich_colours(db_session, [row.game_id for row in page.matches])
+        # T409: the route's own `profile_id` is companion's required query parameter.
+        await enrich_colours(db_session, [profile_id], [row.game_id for row in page.matches])
         return {
             "matches": [match_row_json(row) for row in page.matches],
             "next_cursor": page.next_cursor,
@@ -949,7 +969,14 @@ async def get_match_detail(
         # is read off `detail` *before* `enrich_colours` runs, so it reflects what was true walking
         # in, which is exactly what decides whether the re-read below is worth its own query.
         colour_missing = any(participant.color_id is None for participant in detail.participants)
-        await enrich_colours(db_session, [game_id])
+        # T409: companion is queried by profile, never by match — batching over both sides of the
+        # match (`detail.participants`) covers the whole match in the one call `enrich_colours`
+        # already promises, rather than one call per participant.
+        await enrich_colours(
+            db_session,
+            [participant.profile_id for participant in detail.participants],
+            [game_id],
+        )
 
         placeholder_profile_ids = [
             participant.profile_id

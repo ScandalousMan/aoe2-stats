@@ -235,9 +235,13 @@ class _CompanionMatchesUpstream:
     def __init__(self, body: dict[str, Any]) -> None:
         self._body = body
         self.request_count = 0
+        #: T409: lets a caller assert the wiring reaches `enrich_matches` with `profile_ids`,
+        #: never the `matchIds` it used to send.
+        self.last_request: httpx.Request | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.request_count += 1
+        self.last_request = request
         return httpx.Response(200, json=self._body)
 
 
@@ -362,6 +366,21 @@ async def test_match_detail_writes_and_serves_the_missing_colour_on_the_first_re
     row = await db_session.get(MatchPlayer, (_GAME_ID, _CALLER_PROFILE_ID))
     assert row is not None
     assert row.color_id == 3, "the refresh must also persist the colour, not merely render it once"
+
+    assert companion_fake.last_request is not None
+    assert "matchIds" not in companion_fake.last_request.url.params, (
+        "T409: the live endpoint rejects a `matchIds`-only request outright — this route must "
+        "never send it again"
+    )
+    sent_profile_ids = companion_fake.last_request.url.params.get("profile_ids")
+    assert sent_profile_ids is not None
+    assert set(sent_profile_ids.split(",")) == {
+        str(_CALLER_PROFILE_ID),
+        str(_OPPONENT_PROFILE_ID),
+    }, (
+        "the detail route must batch both sides of the match into companion's own required "
+        f"`profile_ids` parameter, not the caller alone. Got {sent_profile_ids!r}"
+    )
 
 
 # --- Contrast / gate: alias, the budget boundary --------------------------------------------
