@@ -239,7 +239,20 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0, not the default depth-1 shallow clone every other job here uses: `pnpm
+      # test:visual --changed` below (scripts/visual/run.mjs) diffs against `origin/main` (or
+      # VISUAL_BASE_REF) to select stories, and a depth-1 checkout never has that ref locally at
+      # all. That used to fail silently — `git diff` errored, the runner swallowed it as "nothing
+      # changed", and this job passed having selected zero stories on every pull request (the
+      # `runGitOrFail` in run.mjs now makes that failure fatal instead, so a regression here shows
+      # up as a red job rather than a vacuous green one). Full history is the same trade-off the
+      # `secrets` job below already makes for gitleaks, for the same reason: this job needs commits
+      # a shallow clone doesn't carry, and per actions/checkout's own docs `fetch-depth: 0` is what
+      # fetches "all history for all branches and tags" — including `origin/main` — regardless of
+      # which event (`pull_request` or `push`) triggered the run.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

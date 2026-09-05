@@ -16,6 +16,14 @@
 // Two things short-circuit before Playwright, and neither is an error: no Storybook build yet
 // (packages/design-system doesn't exist until T003/T016), and --changed finding no touched story.
 // Both print a message and exit 0, mirroring how pytest tolerates a missing testpaths entry.
+//
+// A third thing looks similar and is NOT one of these two: `--changed` unable to resolve its diff
+// base at all (VISUAL_BASE_REF, default `origin/main` — see changedFiles() below). That is not
+// "nothing changed", it is "the changed set is unknown", and reporting it as the former is exactly
+// how this runner passed vacuously on every pull request for a stretch (CI's shallow, depth-1
+// checkout left `origin/main` unresolvable, `runGit()` swallowed the failed `git diff` and returned
+// `[]`, and an empty diff and an unreadable one printed the identical "nothing to test" — see
+// `runGitOrFail()`, which exists to keep those two outcomes from ever looking the same again).
 import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -63,12 +71,39 @@ function runGit(args) {
     .filter(Boolean)
 }
 
+// Same shape as runGit(), except a failed invocation is fatal rather than swallowed into `[]`.
+// Reserved for the one diff whose base is a name that might not resolve in this checkout at all
+// (`${base}...HEAD` below) — as opposed to a diff against `HEAD` or a listing of untracked files,
+// neither of which names anything that can fail to exist. Conflating "the command failed" with
+// "the command found nothing" is the defect this exists to end: a shallow CI checkout with no
+// `origin/main` locally available used to make every pull-request run silently select zero
+// stories and exit 0, looking identical to a docs-only change that genuinely touches none.
+function runGitOrFail(args, baseDescription) {
+  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? '').trim()
+    log(
+      `--changed could not resolve its diff base, ${baseDescription} (\`git ${args.join(' ')}\`)` +
+        (stderr ? ` — ${stderr}` : '') +
+        '. This is not "nothing changed" — it is "the changed set is unknown" — so refusing to ' +
+        'report zero affected stories. Set VISUAL_BASE_REF to a ref this checkout can resolve ' +
+        '(a commit SHA already fetched, or a branch after `git fetch` has brought it in), or run ' +
+        'the full, unscoped `pnpm test:visual` instead.',
+    )
+    process.exit(1)
+  }
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
 // Every file that differs from the diff base, plus anything uncommitted or untracked, so a run
 // before *and* after `git add` behaves the same way for a developer working locally.
 function changedFiles() {
   const base = process.env.VISUAL_BASE_REF ?? 'origin/main'
   const files = new Set()
-  for (const f of runGit(['diff', '--name-only', `${base}...HEAD`])) files.add(f)
+  for (const f of runGitOrFail(['diff', '--name-only', `${base}...HEAD`], `"${base}"`)) files.add(f)
   for (const f of runGit(['diff', '--name-only', 'HEAD'])) files.add(f)
   for (const f of runGit(['ls-files', '--others', '--exclude-standard'])) files.add(f)
   return [...files]
