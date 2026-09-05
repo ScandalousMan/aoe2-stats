@@ -61,13 +61,11 @@ export const WithProcessingRegisterLink: Story = {
 
 // T096 defect 1 (visual review): §4.4's ProcessorList and OutwardCallList are `<table>`s that
 // overflowed the 375 viewport because no story ever captured that width — every other story here
-// renders at the suite's default desktop viewport, where the bug is invisible. Tagged
-// `visual-mobile` (scripts/visual/run.mjs / tests/visual/stories.spec.ts) so the visual harness
-// captures this story's baseline at 375px, alongside — never instead of — `Default`'s desktop
-// capture. §10's acceptance criterion is "at 375 no horizontal scrollbar… in any section,
-// including both tables"; this is the story that can actually catch a regression of it.
+// renders at the suite's default desktop viewport, where the bug is invisible. Every story is now
+// captured at 375px as a matter of course (T504), so this story needs no tag to reach that width.
+// §10's acceptance criterion is "at 375 no horizontal scrollbar… in any section, including both
+// tables"; this is the story that can actually catch a regression of it.
 export const MobileViewport: Story = {
   name: '375px viewport — §4.4 storage tables stack, no horizontal overflow',
-  tags: ['visual-mobile'],
   args: { lastUpdated: '2026-08-30', hrefs },
 }

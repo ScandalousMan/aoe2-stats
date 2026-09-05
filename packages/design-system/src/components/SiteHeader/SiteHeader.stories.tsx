@@ -41,7 +41,6 @@ export const SignedOut: Story = {
 
 export const SmallViewport: Story = {
   name: '375px — Brand alone on the first row, items wrap beneath it (§8)',
-  tags: ['visual-mobile'],
   args: { items, currentPath: '/dashboard' },
 }
 
@@ -57,6 +56,5 @@ const longLabelItems: SiteHeaderNavItem[] = [
 
 export const LongLabels: Story = {
   name: '375px — the longest plausible item set, wrapping onto further rows, nothing truncated',
-  tags: ['visual-mobile'],
   args: { items: longLabelItems, currentPath: '/dashboard' },
 }

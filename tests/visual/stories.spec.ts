@@ -1,10 +1,10 @@
 // Generated per run by `scripts/visual/run.mjs`, which decides *which* stories to test (all of
-// them, or only the diff-touched ones) and passes them through VISUAL_STORIES, each entry naming
-// its id and whether its subject escapes the story root (a `position: fixed` element, or a
-// popover that overflows its trigger's layout box — see run.mjs for why that happens), and
-// whether it is a `visual-mobile` capture (375px viewport, for a layout bug that is invisible at
-// the suite's default desktop width). This file stays dumb on purpose: it never re-derives scope
-// or which stories need a full-page or mobile capture, it only renders what it is told to.
+// them, or only the diff-affected ones) and expands each into one capture unit per {theme, width}
+// pair — {light, dark} x {375, 768, 1280}, T504, FR-060/FR-061/SC-006 — passed through
+// VISUAL_STORIES. Each unit names its story id, its theme, its width and whether its subject
+// escapes the story root (a `position: fixed` element, or a popover that overflows its trigger's
+// layout box — see run.mjs for why that happens). This file stays dumb on purpose: it never
+// re-derives scope or which axes apply to which story, it only renders what it is told to.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { test, expect, type Route } from '@playwright/test'
@@ -33,16 +33,19 @@ const STEAM_AVATAR_FIXTURE = readFileSync(
 // indistinguishable from `Loaded` and quietly retire the assertion it stands for.
 const STEAM_AVATAR_FIXTURE_PATH = '/0123456789abcdef0123456789abcdef01234567_full.jpg'
 
+type Theme = 'light' | 'dark'
+
 interface VisualStory {
   id: string
+  theme: Theme
+  width: number
   fullPage: boolean
-  mobile: boolean
 }
 
 const stories: VisualStory[] = JSON.parse(process.env.VISUAL_STORIES ?? '[]')
 
-for (const { id, fullPage, mobile } of stories) {
-  test(`${id} matches its visual baseline`, async ({ page }) => {
+for (const { id, theme, width, fullPage } of stories) {
+  test(`${id} matches its visual baseline (${theme}, ${width})`, async ({ page }) => {
     await page.route('https://avatars.steamstatic.com/**', (route: Route) => {
       const requestUrl = new URL(route.request().url())
       if (requestUrl.pathname === STEAM_AVATAR_FIXTURE_PATH) {
@@ -50,13 +53,13 @@ for (const { id, fullPage, mobile } of stories) {
       }
       return route.fulfill({ status: 404 })
     })
-    if (mobile) {
-      // Width is what collapses a table to a stacked layout at the `md` breakpoint; height does
-      // not affect that, and the locator/page screenshot below captures the full element or page
-      // regardless of viewport height.
-      await page.setViewportSize({ width: 375, height: 900 })
-    }
-    await page.goto(`/iframe.html?id=${id}&viewMode=story`)
+    // Width is what collapses a table to a stacked layout at the `md` breakpoint; height does
+    // not affect that, and the locator/page screenshot below captures the full element or page
+    // regardless of viewport height. Every story is now captured at all three review widths, not
+    // only the ones a `visual-mobile` tag used to name (T504) — that tag has nothing left to say.
+    await page.setViewportSize({ width, height: 900 })
+    // Mirrors `tests/visual/focus-ring.spec.ts`'s exact URL pattern for driving the theme global.
+    await page.goto(`/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`)
     // Storybook mounts every story under this id; waiting for it removes the render race that
     // would otherwise make the very first screenshot after a baseline change flaky.
     const root = page.locator('#storybook-root')
@@ -96,13 +99,14 @@ for (const { id, fullPage, mobile } of stories) {
       id,
       { timeout: 5_000 },
     )
+    const baselineName = `${id}-${theme}-${width}.png`
     if (fullPage) {
       // The story's own subject (a fixed dialog, an open popover) paints outside the root
       // element's layout box, so a screenshot clipped to that element never shows it — this
       // captures the whole page instead.
-      await expect(page).toHaveScreenshot(`${id}.png`)
+      await expect(page).toHaveScreenshot(baselineName)
     } else {
-      await expect(root).toHaveScreenshot(`${id}.png`)
+      await expect(root).toHaveScreenshot(baselineName)
     }
   })
 }
