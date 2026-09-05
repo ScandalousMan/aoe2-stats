@@ -68,10 +68,22 @@ jobs:
       # would. `stories.spec.ts` reads `VISUAL_STORIES` as one entry per {id, theme, width} unit,
       # not one per story, so this step has to emit the same shape or every test in the matrix
       # renders with `width: undefined` (the failure this comment fixes: run 33957950328).
+      #
+      # The full matrix's JSON is ~1800 units, ~165 KB as one string — scoping it to a single
+      # command (rather than `$GITHUB_ENV`) is not enough on its own: Linux caps any *single*
+      # argv/environment string at `MAX_ARG_STRLEN` (32 pages, 128 KiB), independent of and far
+      # tighter than the combined `ARG_MAX` the whole process's argv+environ share. pnpm itself
+      # failed to exec with "Argument list too long" the instant `VISUAL_STORIES` carried the
+      # whole matrix (run 33959623359), and that is a kernel limit any Linux machine hits at this
+      # size, not something the CI runner specifically does wrong. So this step also chunks the
+      # units into batches small enough that no single batch's JSON approaches the cap, and each
+      # batch is written to its own file for the next step to feed to a separate Playwright
+      # invocation.
       - name: Compute the full story list (every story x theme x width, not diff-scoped)
         run: |
           cat <<'JS' > "$RUNNER_TEMP/visual-stories.mjs"
-          import { readFileSync, writeFileSync } from 'node:fs'
+          import { writeFileSync, readFileSync } from 'node:fs'
+          import path from 'node:path'
 
           // Mirrors scripts/visual/run.mjs's THEMES/WIDTHS and unscoped expansion exactly — this
           // step is that script's unscoped branch reproduced for the runner, not a second
@@ -94,27 +106,44 @@ jobs:
               })),
             ),
           )
-          writeFileSync(process.env.STORIES_OUT, JSON.stringify(units))
-          JS
-          STORIES_OUT="$RUNNER_TEMP/visual-stories.json" node "$RUNNER_TEMP/visual-stories.mjs"
 
-      # The whole suite under tests/visual/, not the pull-request job's `--changed` slice: every
-      # story (via VISUAL_STORIES below) and tests/visual/app-routes.spec.ts, both rewritten from
-      # this run's renderer. `--update-snapshots=all` — not `changed` or `missing` — is what makes
-      # every selected capture provenanced by this run rather than inherited from whichever
-      # machine happened to write it before.
-      #
-      # `VISUAL_STORIES` is set here, on this one command, rather than through `$GITHUB_ENV` —
-      # the T504 axis expansion pushed the JSON payload to ~1800 units (~165 KB), and writing a
-      # value that size into `$GITHUB_ENV` puts it into the environment of *every* later step in
-      # this job, not just this one. The runner's own subsequent steps (the `setup-node` and
-      # `checkout` post-actions) inherit that environment to spawn their own processes, and the
-      # combined size overflowed the runner's argument/environment limit outright — every step
-      # after this one failed to start with `Argument list too long` (run 33958343112). Scoping
-      # the variable to this single `run:` command, the way `scripts/visual/run.mjs` itself passes
-      # it only to the one `spawnSync` that needs it, keeps the payload out of every other
-      # process's environment.
-      - run: VISUAL_STORIES="$(cat "$RUNNER_TEMP/visual-stories.json")" pnpm exec playwright test --config=playwright.config.ts --update-snapshots=all
+          // 200 units at this shape is on the order of 20 KB — an order of magnitude under
+          // MAX_ARG_STRLEN even before accounting for the rest of the invocation's own
+          // environment, which shares the same per-string budget with nothing else.
+          const BATCH_SIZE = 200
+          const outDir = process.env.STORIES_DIR
+          let batchCount = 0
+          for (let i = 0; i < units.length; i += BATCH_SIZE) {
+            writeFileSync(
+              path.join(outDir, `visual-stories-${batchCount}.json`),
+              JSON.stringify(units.slice(i, i + BATCH_SIZE)),
+            )
+            batchCount += 1
+          }
+          writeFileSync(path.join(outDir, 'visual-stories-batch-count.txt'), String(batchCount))
+          console.log(`${units.length} units across ${stories.length} stories, in ${batchCount} batches.`)
+          JS
+          STORIES_DIR="$RUNNER_TEMP" node "$RUNNER_TEMP/visual-stories.mjs"
+
+      # The whole suite under tests/visual/: every story, batched (see the step above), and
+      # tests/visual/app-routes.spec.ts (which needs no batching — it takes no VISUAL_STORIES and
+      # captures only its own two routes) — the pull-request job's `--changed` slice plays no part
+      # here. `--update-snapshots=all` — not `changed` or `missing` — is what makes every selected
+      # capture provenanced by this run rather than inherited from whichever machine happened to
+      # write it before. Each batch is its own Playwright invocation against the same
+      # `tests/visual/stories.spec.ts` file and the same `__screenshots__` output directory, so the
+      # combined effect across all of them is identical to one invocation that could see the whole
+      # matrix at once.
+      - name: Run the full matrix, batched to stay under Linux's per-string argument limit
+        run: |
+          batch_count="$(cat "$RUNNER_TEMP/visual-stories-batch-count.txt")"
+          echo "Running $batch_count batch(es) of story x theme x width units."
+          for ((i = 0; i < batch_count; i++)); do
+            echo "== batch $i of $((batch_count - 1)) =="
+            VISUAL_STORIES="$(cat "$RUNNER_TEMP/visual-stories-$i.json")" \
+              pnpm exec playwright test tests/visual/stories.spec.ts --config=playwright.config.ts --update-snapshots=all
+          done
+          pnpm exec playwright test tests/visual/app-routes.spec.ts --config=playwright.config.ts --update-snapshots=all
 
       # Committing with the runner's own built-in token — actions/checkout's default
       # `persist-credentials: true` already wired `origin` to authenticate as `GITHUB_TOKEN`, and
