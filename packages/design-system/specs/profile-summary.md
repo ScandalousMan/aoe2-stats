@@ -148,7 +148,7 @@ Do not paint before 200 ms. After 10 s, fall through to the error state.
    profile yet. Ratings appear after your first ranked match." The identity bar still renders: the
    user is real even if their record is not.
 2. _A played leaderboard with a rating but no rank yet_ (provisional): the `Rank` `StatValue` shows
-   its empty state — a secondary-colour em dash — with the secondary line "Not ranked yet". The
+   its empty state — "Not ranked yet" in words, `text-secondary` (T532; never an em dash). The
    rating still renders; a missing rank never suppresses a known rating.
 3. _One linked profile only_: not an empty state of the board but of the switcher — see §4. The
    trigger renders normally.
@@ -244,6 +244,14 @@ breakpoint.
   `text-primary`, and `accent` stays reserved for the badge label.
 - 200% zoom and 320px logical width without horizontal scrolling; at 320px the desktop table is not
   in play, so no figure is ever truncated or ellipsised. Figures never ellipsise at any viewport.
+- **Loading (T532, FR-054)**: two independent regions, because the two load independently — the
+  identity row (avatar and alias `Skeleton`s) carries `aria-busy` on its own wrapper while
+  `viewedProfile` is absent, and `RatingBoard`'s own loading wrapper carries `aria-busy="true"` while
+  `status="loading"`. Neither announces per `Skeleton` (each stays `aria-hidden`, its own contract),
+  and a `StatValue` composed here never declares its own `aria-busy` (`announceLoading={false}` is
+  implied by `RatingBoard` never actually rendering a `status="loading"` `StatValue` — it draws its
+  own matching `Skeleton`s directly instead, precisely so the region and the placeholder shape stay
+  one wrapper's decision). See `shared-primitives.md`'s `StatValue` section for the general rule.
 
 ## 10. Visual acceptance criteria
 
@@ -278,8 +286,8 @@ breakpoint.
 - [ ] Never-loaded error: a danger callout with a retry, no pulsing skeleton, no zeros.
 - [ ] Empty (no rated leaderboard): the identity bar still renders, and an info callout explains
       when ratings will appear; the frame is not blank.
-- [ ] Provisional rank: a secondary-colour em dash with "Not ranked yet", while the rating beside it
-      still shows its real value.
+- [ ] Provisional rank: "Not ranked yet" in words, `text-secondary` (never an em dash), while the
+      rating beside it still shows its real value.
 
 **Layout and craft**
 

@@ -122,6 +122,11 @@ const AVATAR_SKELETON_SIZE: Record<'board' | 'compact', string> = {
   compact: 'icon-lg',
 }
 
+// T532 (US4 scenario 3, SC-010): the one reason this component ever states for an empty value,
+// shared by `CompactRatingSummary`, `RatingCard` (both via `StatValue`'s own `emptyReason`/
+// `secondaryLine` promotion) and `RatingTable` below, so the same fact is never worded twice.
+const NOT_RANKED_YET = 'Not ranked yet'
+
 /** Leaderboards the profile has never played are absent, not present-and-empty (FR-008). One DOM
  * layout only: a real `<table>` from `lg` up, stacked cards below it — never both, per the
  * "duplicated content breaks screen-reader output" rule (spec §8). */
@@ -222,8 +227,11 @@ export function ProfileSummary({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         {/* IdentityBar (004 spec §12.6): the avatar leads, at every viewport — it never stacks
          * above the identity column, even at 375, so the ratings below stay as close to the fold
-         * as they were before the avatar existed. */}
-        <div className="flex items-center gap-4">
+         * as they were before the avatar existed. T532 (FR-054): the avatar and alias skeletons
+         * inside this one div are announced once, by this div's own `aria-busy`, never per
+         * `Skeleton` — this is the region for that specific loading concern, distinct from
+         * `RatingBoard`'s own loading region below, because the two load independently. */}
+        <div className="flex items-center gap-4" aria-busy={!viewedProfile || undefined}>
           {viewedProfile ? (
             <PlayerAvatar avatarHash={viewedProfile.avatarHash} size={avatarSize} />
           ) : (
@@ -462,8 +470,10 @@ function RatingBoard({
   onRetry?: () => void
 }) {
   if (status === 'loading') {
+    // T532 (FR-054): one region for the whole board, not once per stat block — every `Skeleton`
+    // below stays `aria-hidden` (its own contract) and this single wrapper owns `aria-busy`.
     return (
-      <div className={cx('flex flex-col gap-4', compact && 'flex-row gap-6')}>
+      <div className={cx('flex flex-col gap-4', compact && 'flex-row gap-6')} aria-busy="true">
         {(entries.length > 0 ? entries : [0, 1, 2]).map((entry, index) => (
           <div
             key={typeof entry === 'object' ? entry.leaderboardId : index}
@@ -551,7 +561,7 @@ function CompactRatingSummary({ entry }: { entry: RatingEntryData }) {
         label="Rank"
         status={entry.rank ? 'default' : 'empty'}
         value={entry.rank}
-        secondaryLine={entry.rank ? undefined : 'Not ranked yet'}
+        secondaryLine={entry.rank ? undefined : NOT_RANKED_YET}
       />
     </div>
   )
@@ -576,7 +586,7 @@ function RatingCard({ entry }: { entry: RatingEntryData }) {
           label="Rank"
           status={entry.rank ? 'default' : 'empty'}
           value={entry.rank}
-          secondaryLine={entry.rank ? undefined : 'Not ranked yet'}
+          secondaryLine={entry.rank ? undefined : NOT_RANKED_YET}
         />
         <StatValue variant="compact" label="Record" value={`${entry.wins} W · ${entry.losses} L`} />
         <StatValue variant="compact" label="Win rate" value={entry.winRate} />
@@ -657,7 +667,9 @@ function RatingTable({ entries }: { entries: RatingEntryData[] }) {
               )}
             </td>
             <td className="py-3 pr-6 text-right type-numeric text-text-primary">
-              {entry.rank ?? <span className="text-text-secondary">— Not ranked yet</span>}
+              {entry.rank ?? (
+                <span className="type-supporting text-text-secondary">{NOT_RANKED_YET}</span>
+              )}
             </td>
             <td className="py-3 pr-6 text-right type-numeric text-text-primary">
               {entry.wins} W · {entry.losses} L

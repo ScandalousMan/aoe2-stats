@@ -114,7 +114,8 @@ export function ArchivalControl({
 
       <div className="mt-8">
         {loading ? (
-          <div className="flex flex-col gap-2">
+          // T532 (FR-054): one region for both skeletons below, never one announcement per block.
+          <div className="flex flex-col gap-2" aria-busy="true">
             <Skeleton variant="text" lines={1} className="w-1/2" />
             <Skeleton variant="block" className="h-10 w-48" />
           </div>

@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileSummary } from './index'
 import type { RatingEntryData } from './index'
 
@@ -795,5 +795,32 @@ describe('ProfileSummary', () => {
       expect(screen.getByText('Not ranked yet')).toBeInTheDocument()
       expect(screen.getByText('1842')).toBeInTheDocument()
     })
+  })
+})
+
+describe('ProfileSummary — loading regions (T532, FR-054)', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('announces the identity skeletons (avatar, alias) as one busy region, distinct from the rating board', () => {
+    const { container } = render(
+      <ProfileSummary authenticated entries={entries} status="loading" />,
+    )
+    act(() => vi.advanceTimersByTime(200))
+
+    // Two independent loading concerns, each its own region — never one skeleton announced alone.
+    expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(2)
+    const hiddenBlocks = container.querySelectorAll('[aria-hidden="true"]')
+    expect(hiddenBlocks.length).toBeGreaterThan(1)
+    for (const block of hiddenBlocks) {
+      expect(block).not.toHaveAttribute('aria-busy')
+    }
+  })
+
+  it('does not mark the identity region busy once the profile has resolved', () => {
+    const { container } = render(
+      <ProfileSummary authenticated viewedProfile={viewedProfile} entries={entries} />,
+    )
+    expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(0)
   })
 })

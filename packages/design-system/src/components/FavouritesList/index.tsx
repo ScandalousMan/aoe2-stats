@@ -167,10 +167,12 @@ function SignedOutState({
 }
 
 // §5 "loading" — footprint matches `FavouriteRow`'s own, so loading-to-loaded shows no reflow.
+// T532 (FR-054): `aria-busy` sits once on this list, not once per row's `Skeleton` — each
+// `Skeleton` stays `aria-hidden` (its own contract), and this `<ul>` is the region.
 function LoadingState({ count }: { count: number }) {
   const rowCount = Math.max(count, 0)
   return (
-    <ul className="flex flex-col gap-3 md:gap-4">
+    <ul className="flex flex-col gap-3 md:gap-4" aria-busy="true">
       {Array.from({ length: rowCount }, (_, index) => (
         <li key={index}>
           <Skeleton variant="block" className="h-20 w-full rounded-panel md:h-14" />

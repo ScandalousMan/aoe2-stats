@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { FavouriteEntryData } from './index'
@@ -66,12 +66,13 @@ describe('FavouritesList', () => {
       expect(screen.getByText('Israel')).toBeInTheDocument()
     })
 
-    it("shows a never-ranked favourite's standing as a secondary-coloured em dash, never 0", () => {
+    it("shows a never-ranked favourite's standing in secondary-coloured words, never an em dash or 0", () => {
       render(<FavouritesList entries={entries} />)
       const rows = screen.getAllByRole('listitem')
       const heraRow = within(rows[1])
-      expect(heraRow.getByText('—')).toBeInTheDocument()
-      expect(heraRow.getByText('Not ranked yet')).toBeInTheDocument()
+      expect(heraRow.queryByText('—')).not.toBeInTheDocument()
+      const reason = heraRow.getByText('Not ranked yet')
+      expect(reason.className).toMatch(/text-text-secondary/)
       expect(heraRow.queryByText('0')).not.toBeInTheDocument()
     })
 
@@ -112,6 +113,22 @@ describe('FavouritesList', () => {
       expect(screen.getByRole('heading', { name: 'Favourites' })).toBeInTheDocument()
       expect(screen.queryByText('GL.TheViper')).not.toBeInTheDocument()
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
+
+    it('announces loading once for the whole list, not once per skeleton row (FR-054)', () => {
+      vi.useFakeTimers()
+      const { container } = render(<FavouritesList loading entries={entries} loadingRowCount={3} />)
+      act(() => vi.advanceTimersByTime(200))
+      vi.useRealTimers()
+
+      expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true')
+      // Three skeleton rows, none carrying its own `aria-busy` — the list above is the one region.
+      const hiddenBlocks = container.querySelectorAll('[aria-hidden="true"]')
+      expect(hiddenBlocks).toHaveLength(3)
+      for (const block of hiddenBlocks) {
+        expect(block).not.toHaveAttribute('aria-busy')
+      }
+      expect(container.querySelectorAll('[aria-busy]')).toHaveLength(1)
     })
   })
 

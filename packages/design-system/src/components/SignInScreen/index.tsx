@@ -193,9 +193,11 @@ export function SignInScreen({
   )
 }
 
+// T532 (FR-054): one region for both skeletons below, announced once via this div's own
+// `aria-busy` rather than per `Skeleton` (each stays `aria-hidden`, its own contract).
 function ReturningState() {
   return (
-    <div className="mt-6 flex flex-col gap-3">
+    <div className="mt-6 flex flex-col gap-3" aria-busy="true">
       <Skeleton variant="text" lines={3} />
       <Skeleton variant="block" className="h-12 w-full" />
       <p className="font-sans text-sm text-text-secondary">Checking that with Steam…</p>
