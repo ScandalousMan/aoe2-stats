@@ -188,31 +188,92 @@ function assertRealPair(theme, foreground, background, floor, label) {
   )
 }
 
-test('border-strong clears the 3:1 non-text floor against every background it is rendered on — DS-2, T034c', () => {
+test('border-strong clears the 3:1 non-text floor against every background it is rendered on — DS-2, T034c, T526', () => {
   // `border-strong` boundaries `Button`'s `secondary`/`ghost`/`destructive` variants and `Menu`'s
-  // trigger (`src/components/Button/index.tsx`, `src/components/Menu/index.tsx`). Those controls
-  // are placed, across the product, directly on all three surfaces a page ever paints behind one:
+  // trigger (`src/components/Button/index.tsx`, `src/components/Menu/index.tsx`), and the
+  // `PlayerAvatar`/`PlayerColourSwatch` frame around an out-of-range swatch's fill
+  // (`packages/design-system/specs/README.md`, "Measured contrast pairs"). Those are placed,
+  // across the product, directly on all four surfaces a page ever paints behind one:
   //  - `background` — `ConsentStep`'s onboarding decline control ("Not now") on
   //    `DashboardContainer`'s `<main className="bg-background">`. This is FR-034's genuinely-
   //    declinable control, and the pair that measured 2.99:1 and moved light `border-strong`.
   //  - `surface` — `SignInScreen`'s card (`bg-surface`) and the `Menu` trigger's own fill.
   //  - `surface-raised` — every secondary `Button` rendered inside a `Callout`
   //    (`SignInScreen`'s outcome actions, `ProfileSummary`'s "Back to primary").
+  //  - `surface-sunken` — the frame drawn around a swatch's own `surface-sunken` fallback fill
+  //    (T526: the README's four-surface declaration for this role had never gained the row).
   for (const theme of ['light', 'dark']) {
     const {
       background,
       surface,
       'surface-raised': surfaceRaised,
+      'surface-sunken': surfaceSunken,
       'border-strong': borderStrong,
     } = color[theme]
     for (const [bgName, bg] of [
       ['background', background],
       ['surface', surface],
       ['surface-raised', surfaceRaised],
+      ['surface-sunken', surfaceSunken],
     ]) {
       assertRealPair(theme, borderStrong, bg, 3, `border-strong on ${bgName}`)
     }
   }
+})
+
+test('text-disabled clears the 3:1 floor it is self-held to against every page surface, in both themes — T526', () => {
+  // WCAG 1.4.3 exempts inactive text from AA outright, but color-tokens.md §3.2 holds
+  // `text-disabled` to 3:1 anyway — this product frequently puts the explanation for why a control
+  // is disabled inside that control's own label (`ArchivalControl`, `AccountErasurePanel`), so it
+  // must still be legible even though it is deliberately the weakest ink in the system.
+  for (const theme of ['light', 'dark']) {
+    const {
+      background,
+      surface,
+      'surface-raised': surfaceRaised,
+      'surface-sunken': surfaceSunken,
+      'text-disabled': textDisabled,
+    } = color[theme]
+    for (const [bgName, bg] of [
+      ['background', background],
+      ['surface', surface],
+      ['surface-raised', surfaceRaised],
+      ['surface-sunken', surfaceSunken],
+    ]) {
+      assertRealPair(theme, textDisabled, bg, 3, `text-disabled on ${bgName}`)
+    }
+  }
+})
+
+test('accent clears the 4.5:1 floor on every surface it is actually painted on, in both themes — T526', () => {
+  // `accent` lost two of its three pre-T522 call sites when link roles took over `PrivacyNotice`,
+  // `Footer`, `ThirdPartyObjectionForm` and `AccountErasurePanel`'s inline links
+  // (color-tokens.md §11.6): `accent` on `background` and `accent-hover` as an ink have no call
+  // site left in the package (`accent-hover` now only ever fills, under the accent-contrast test
+  // above). What remains, read from source: `SiteHeader`'s current-tab underline
+  // (`bg-accent` on the header's own `bg-surface`, in both themes) and `Badge`'s accent tone, which
+  // resolves to `text-accent` on `surface-raised` in dark and `text-accent-active` on
+  // `surface-raised` in light (`src/components/Badge/index.tsx`) — never the other role in the
+  // other theme. A row for a pair no longer drawn is the defect this file has caught three times
+  // now; this test asserts only what is real today.
+  for (const theme of ['light', 'dark']) {
+    const { surface, 'surface-raised': surfaceRaised, accent } = color[theme]
+    assertRealPair(theme, accent, surface, 4.5, 'accent on surface')
+  }
+  assertRealPair(
+    'dark',
+    color.dark.accent,
+    color.dark['surface-raised'],
+    4.5,
+    'accent on surface-raised',
+  )
+  assertRealPair(
+    'light',
+    color.light['accent-active'],
+    color.light['surface-raised'],
+    4.5,
+    'accent-active on surface-raised',
+  )
 })
 
 test('warning clears the 4.5:1 normal-text floor against the surface its Callout heading actually renders on — T038a, corrected by T034c, re-derived by T521', () => {
@@ -403,7 +464,7 @@ test('every role in font.role maps to one of the three real families in font.fam
     assert.ok(
       familyKeys.has(def.family),
       `font.role.${role}.family ("${def.family}") is not a key in font.family — the same ` +
-        "silent-failure class T523 closed for face/family, reopened for role/family",
+        'silent-failure class T523 closed for face/family, reopened for role/family',
     )
   }
 })

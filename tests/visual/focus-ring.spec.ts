@@ -27,21 +27,18 @@
 // `relativeLuminance`/`contrastRatio` pair below for the formula and why it is a second, small
 // implementation rather than a shared import.
 //
-// That assertion finds a real defect on two of the sixteen controls: `Button` `primary` and
-// `DataExportPanel`'s download link both fill with `accent` and ring with `focus-ring` — the same
-// pair in both themes, since `focus-ring` was derived only against page surfaces
-// (`surface`/`background`, 5.78-6.82:1 there) and never against the accent-filled controls it also
-// paints on. Measured: light `focus-ring` `#2f5f73` on `accent` `#916626` = 1.38:1; dark
-// `focus-ring` `#6fa8c0` on `accent` `#d9a94b` = 1.21:1 — both under the 3:1 floor. Fixing it here
-// (changing `focus-ring`) would repaint every visual baseline while T505's phase-1 byte-identity
-// proof is running, and the token-derivation work belongs to phase 2 regardless: T521 re-derives
-// `color.json` so every semantic role declares the surfaces it may be painted on, and T526
-// re-measures the contrast table so every pair a component actually paints gets a row (see
-// `packages/design-system/specs/README.md`, gap DS-10). Until then these four cases (the two
-// accent-filled controls x two themes) are `test.fail()` — a strict expected failure, never a
-// `test.skip()` — driven off `knownContrastFailure` on the `Control` entry below: every assertion
-// in the test body still runs, and the moment T521/T526 land, the pair passing turns this an
-// "unexpected pass" that fails the suite rather than a silently stale marker.
+// That assertion found a real defect on two of the sixteen controls (gap DS-10): `Button`
+// `primary` and `DataExportPanel`'s download link both filled with `accent` and rang with
+// `focus-ring` — the same pair in both themes, measuring 1.38:1 light and 1.21:1 dark, both under
+// the 3:1 floor, because `focus-ring` had been derived only against page surfaces and never
+// against the accent-filled controls it also painted on. T521 proved no single ring colour can
+// bridge a near-white page surface and a near-ink `accent` fill (`color-tokens.md` §5) and closed
+// the gap the other way FR-005 allows: `focus-ring` now declares only the four page surfaces, and
+// an `accent`-filled control rings *inward* in `accent-contrast` instead — the ink it already
+// carries, which clears 6.07:1 light / 8.07:1 dark on its own fill
+// (`packages/design-system/specs/README.md`, "Measured contrast pairs"). Both call sites below were
+// updated accordingly and DS-10 is closed, so the two cases that used to carry a `test.fail()`
+// escape hatch (`knownContrastFailure`) now assert like every other control in this file.
 import { test, expect, type Locator, type Page } from '@playwright/test'
 
 interface Control {
@@ -56,12 +53,6 @@ interface Control {
    * still a genuine keyboard interaction, never a programmatic `.focus()` call. Must leave the
    * target focused and ready for `:focus-visible`/style assertions when it resolves. */
   reach?: (page: Page, target: Locator) => Promise<void>
-  /** Present only on the two controls known to fail the WCAG 1.4.11 non-text contrast floor (gap
-   * DS-10, `packages/design-system/specs/README.md`): `focus-ring` measured against `accent`,
-   * the fill both controls actually paint on focus, one ratio per theme. Drives `test.fail()`
-   * below so the marker lives on the data, not on a hand-branch keyed off `level`/`theme` in the
-   * test body. T521 re-derives the token; T526 owns removing this field once the pair clears 3:1. */
-  knownContrastFailure?: Readonly<{ light: number; dark: number }>
 }
 
 // Genuine keyboard focus, not a programmatic `.focus()` call — Chromium's `:focus-visible`
@@ -103,12 +94,12 @@ async function openMenuViaKeyboard(page: Page, triggerName: string): Promise<voi
 const controls: readonly Control[] = [
   // --- The original five (T096 defect 2) ---
   {
-    // `bg-accent` at rest (Button/index.tsx's `primary` variant) — gap DS-10, see the header
-    // comment: the ring fails the 3:1 floor against its own fill in both themes.
+    // `bg-accent` at rest (Button/index.tsx's `primary` variant) — DS-10 closed
+    // (`color-tokens.md` §5): this variant rings inward in `accent-contrast` rather than
+    // `focus-ring`, so it clears the 3:1 floor like every other control here.
     level: 'Button',
     storyId: 'primitives-button--primary',
     locate: (page) => page.getByRole('button', { name: 'Continue with Steam' }),
-    knownContrastFailure: { light: 1.38, dark: 1.21 },
   },
   {
     level: 'Input',
@@ -222,11 +213,11 @@ const controls: readonly Control[] = [
     // DataExportPanel/index.tsx:156 — a download `<a>` styled as a filled button (`bg-accent` on
     // itself, inside a success `Callout`'s own surface): its ring's contrast resolves against its
     // own background rather than an ancestor's, the other end of the walk-up-the-tree logic below.
-    // Also gap DS-10, the same `focus-ring`-on-`accent` pair as `Button` `primary` above.
+    // DS-10 closed (`color-tokens.md` §5): rings inward in `accent-contrast`, same as `Button`
+    // `primary` above.
     level: 'DataExportPanel download link',
     storyId: 'screens-dataexportpanel--ready',
     locate: (page) => page.getByRole('link', { name: 'Download the archive' }),
-    knownContrastFailure: { light: 1.38, dark: 1.21 },
   },
 ]
 
@@ -267,24 +258,9 @@ function parseRgb(color: string): { r: number; g: number; b: number } {
   return { r, g, b }
 }
 
-for (const { level, storyId, locate, reach, knownContrastFailure } of controls) {
+for (const { level, storyId, locate, reach } of controls) {
   for (const theme of themes) {
     test(`${level} paints the focus-visible ring in the ${theme} theme`, async ({ page }) => {
-      // Gap DS-10 (`packages/design-system/specs/README.md`): a strict expected failure, not a
-      // skip — every assertion below still runs, including the contrast one it is here for. If
-      // T521/T526 land and the pair clears 3:1, this reports "unexpected pass" and fails the run,
-      // which is the point: the marker cannot outlive the defect unnoticed.
-      test.fail(
-        knownContrastFailure !== undefined,
-        knownContrastFailure &&
-          `gap DS-10: focus-ring on accent measures ${knownContrastFailure[theme]}:1 in the ` +
-            `${theme} theme (light 1.38:1, dark 1.21:1), below the 3:1 WCAG 1.4.11 floor — ` +
-            `focus-ring was derived only against page surfaces, never against the accent-filled ` +
-            `controls it also paints on. T521 re-derives color.json's role coverage; T526 adds ` +
-            `the contrast-table row for the pairs a component actually paints and owns removing ` +
-            `this expected failure.`,
-      )
-
       await page.goto(`/iframe.html?id=${storyId}&viewMode=story&globals=theme:${theme}`)
       const root = page.locator('#storybook-root')
       await root.waitFor({ state: 'visible' })
