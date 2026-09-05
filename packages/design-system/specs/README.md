@@ -316,6 +316,66 @@ naming shapes above precisely because each pairs the icon with a text route to t
 fourth shape — an icon standing alone with no label, no tooltip and no adjacent text — has no
 shipping precedent and is not sanctioned by this contract.
 
+## Surface density: `dense` and `prose`
+
+FR-012 requires density to be a stated property of a surface class rather than a per-component
+choice, and two classes cover every surface the system draws: `dense`, a surface holding many short
+rows of data close together — a table, a compact list — and `prose`, a surface holding continuous
+reading text — a legal notice, an explanatory paragraph. Each class fixes its row height and
+padding, its line rhythm and which of the six typography roles it draws in, named as steps from
+`packages/design-system/tokens/space.json`'s `scale` and `rhythm` groups rather than invented per
+component. `data-model.md`'s surface-class table names the shape of each column; the values below
+are what fills it, grounded in what `MatchRow`, `AnalysisTimeline` and `PrivacyNotice` already ship.
+
+| Class   | Row height and padding                                | Line rhythm                                                                                     | Typography roles                               |
+| ------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `dense` | `space-3` vertical padding per row                    | `space-1` between stacked rows; `space-2` for a within-row pairing (icon + text, label + value) | `type-numeric`, `type-machine`, `type-body`    |
+| `prose` | `space-6` surface padding narrow, `space-8` from `md` | `space-4` between paragraphs in one subsection; `space-8` between sections                      | `type-display`, `type-body`, `type-supporting` |
+
+**`dense`.** Row padding is `space-3` (`py-3`), the value every `<th>` and `<td>` in `MatchRow`'s
+table already carries (`packages/design-system/src/components/MatchRow/index.tsx`). A pairing inside
+one row — a duration icon beside its label, a badge beside a value — uses `space-2` (`gap-2`), the
+same step `space.json`'s `rhythm` group names `within-component`, evidenced by the same file's
+inline clusters. The line rhythm between one dense row and the next is tighter still: `space-1`
+(`gap-1`), evidenced by `AnalysisTimeline`'s event list
+(`packages/design-system/src/components/AnalysisTimeline/index.tsx`), which is exactly the "tight"
+rhythm `data-model.md` names for this class. `space-3` and `space-1` are raw `scale` steps rather
+than named `rhythm` values — a dense surface's rows sit closer together than the rhythm group's own
+`within-component` step, which is why the group does not already name them.
+
+**`prose`.** A prose surface has no tabular rows; its unit is the paragraph, and its "row height and
+padding" is the padding around the whole reading block: `space-6` (`px-6 py-6`) narrow, opening to
+`space-8` (`md:px-0 md:py-8`) from `md`, exactly as `PrivacyNotice`'s outer wrapper already renders
+(`packages/design-system/src/components/PrivacyNotice/index.tsx`). Within one subsection,
+consecutive paragraphs sit `space-4` (`gap-4`) apart, the step `PrivacyNotice`'s repeated body blocks
+already use. Between one section and the next, the rhythm opens further to `space-8` (`gap-8`,
+`mt-8`) — the same step `space.json`'s `rhythm` group names `between-sections`, evidenced by
+`PrivacyNotice`'s own section transitions. `space-4` and the surface padding are raw `scale` steps;
+the section-to-section step is the one place `prose` and the system's own named rhythm coincide,
+which is what "open" means against `dense`'s "tight".
+
+**Typography roles by class**
+
+| Surface class | Role              | Used for                                                                                |
+| ------------- | ----------------- | --------------------------------------------------------------------------------------- |
+| `dense`       | `type-numeric`    | measured values a reader compares — ratings, durations, deltas                          |
+| `dense`       | `type-machine`    | non-human-authored strings a dense surface shows as-is — raw identifiers, error classes |
+| `dense`       | `type-body`       | everything else in a cell — names, labels, map and civilisation text                    |
+| `prose`       | `type-display`    | the heading, if any, inside the surface                                                 |
+| `prose`       | `type-body`       | paragraph copy, at full size with the generous line-height the role carries             |
+| `prose`       | `type-supporting` | secondary text within the surface — captions, footnotes, metadata                       |
+
+**Density is a property of a surface, assigned per component, never a reader-facing setting.**
+FR-012 states the requirement; spec.md's Assumptions section states the boundary precisely and it is
+quoted rather than paraphrased: _"Density is a property of a surface class in this feature, not a
+reader-facing setting. A reader-controlled density toggle is out of scope."_ A component picks
+exactly one of the two classes when its spec is written — never both, and never at the reader's
+discretion.
+
+**For phase 4**: `Panel` and `Table` (`packages/design-system/src/primitives/`) take a `density`
+prop reading these two classes; this section is where the classes acquire the values that prop
+reads.
+
 ## Token gap register
 
 Open items. Each names what is missing, what a component does until it exists, and who has to act.
