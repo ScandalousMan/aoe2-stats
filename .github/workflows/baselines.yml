@@ -1,0 +1,126 @@
+name: Regenerate visual baselines
+
+# T501 (research.md D3): baselines are never captured on a developer machine — a full-page
+# baseline taken there differs from CI's Linux renderer by around 2% of pixels, which is what
+# `tests/visual/app-routes.spec.ts` widens its own tolerance for. This workflow is the only place
+# a baseline is allowed to come from: `workflow_dispatch` only, run on the same `ubuntu-latest`
+# renderer every other visual job uses, and `--update-snapshots=all` so every selected capture is
+# rewritten rather than merged with whatever a prior run left behind. That makes T505's proof a
+# `git` fact — the commit this workflow makes either lists only the files a phase deliberately
+# repainted, or it doesn't — instead of a Playwright tolerance.
+#
+# `cause` is free text, not a closed set: phases 2, 4 and 5 (T530, T550, T562) dispatch this
+# workflow with exactly one of `palette-and-typefaces`, `structural-rhythm` or `retrofit`
+# verbatim, but phase 1 itself dispatches it twice for reasons that are neither — T502
+# reconciling the story/baseline set at the existing axes, and T505 proving the new theme/width
+# axes moved no pre-existing value — so the input has to accept whatever accurately describes
+# the dispatch rather than being limited to those three.
+on:
+  workflow_dispatch:
+    inputs:
+      cause:
+        description: "Why these baselines are being regenerated (goes verbatim into the commit body). Phases 2/4/5 use one of palette-and-typefaces, structural-rhythm or retrofit; any other accurate description is valid too (e.g. phase 1's own reconciliation or axis-verification dispatches)."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Two dispatches racing to push regenerated baselines from the same branch would fight the same
+# `git push`; queuing them rather than cancelling one preserves a full, reviewable commit for each.
+concurrency:
+  group: baselines-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    name: Rewrite every baseline from the CI renderer
+    runs-on: ubuntu-latest
+    # Scoped to this one job (constitution VIII): the only privilege this workflow needs beyond
+    # the default `contents: read` is pushing the regenerated baselines back to the dispatching
+    # branch, and it does that with the runner's own built-in `GITHUB_TOKEN` — no repository
+    # secret is added.
+    permissions:
+      contents: write
+    steps:
+      # Checking out with no `ref:` already resolves to the branch the dispatch was run against —
+      # `workflow_dispatch` sets `GITHUB_REF` to the operator's chosen branch before this runs.
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm --filter design-system build-storybook
+      # tests/visual/app-routes.spec.ts screenshots this build, not the Storybook one — see that
+      # spec's own header comment for why both are needed.
+      - run: pnpm --filter web build
+
+      # `scripts/visual/run.mjs` decides which stories to select and never forwards an update flag
+      # to Playwright, so it cannot be reused here as-is (this task touches no file but this one).
+      # This step reproduces only its unscoped branch — every story in the built index, tagged the
+      # same way — because a full regeneration selects everything, the same set `pnpm test:visual`
+      # (with no `--changed`) would.
+      - name: Compute the full story list (every story, not diff-scoped)
+        run: |
+          cat <<'JS' > "$RUNNER_TEMP/visual-stories.mjs"
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const indexPath = 'packages/design-system/storybook-static/index.json'
+          const index = JSON.parse(readFileSync(indexPath, 'utf8'))
+          const entries = Object.values(index.entries ?? index.stories ?? {})
+          const stories = entries
+            .filter((entry) => entry.type === undefined || entry.type === 'story')
+            .map((entry) => ({
+              id: entry.id,
+              fullPage: (entry.tags ?? []).includes('visual-full-page'),
+              mobile: (entry.tags ?? []).includes('visual-mobile'),
+            }))
+          writeFileSync(process.env.STORIES_OUT, JSON.stringify(stories))
+          JS
+          STORIES_OUT="$RUNNER_TEMP/visual-stories.json" node "$RUNNER_TEMP/visual-stories.mjs"
+          {
+            echo "VISUAL_STORIES<<VISUAL_STORIES_EOF"
+            cat "$RUNNER_TEMP/visual-stories.json"
+            echo ""
+            echo "VISUAL_STORIES_EOF"
+          } >> "$GITHUB_ENV"
+
+      # The whole suite under tests/visual/, not the pull-request job's `--changed` slice: every
+      # story (via VISUAL_STORIES above) and tests/visual/app-routes.spec.ts, both rewritten from
+      # this run's renderer. `--update-snapshots=all` — not `changed` or `missing` — is what makes
+      # every selected capture provenanced by this run rather than inherited from whichever
+      # machine happened to write it before.
+      - run: pnpm exec playwright test --config=playwright.config.ts --update-snapshots=all
+
+      # Committing with the runner's own built-in token — actions/checkout's default
+      # `persist-credentials: true` already wired `origin` to authenticate as `GITHUB_TOKEN`, and
+      # this job's own `permissions.contents: write` (above) is what makes the push it performs
+      # succeed. No repository secret is added or read (constitution VIII).
+      - name: Commit and push the regenerated baselines
+        env:
+          CAUSE: ${{ inputs.cause }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/design-system/__screenshots__
+          if git diff --cached --quiet; then
+            echo "No baseline differs from the CI renderer; nothing to commit."
+            exit 0
+          fi
+          git commit -m "$(cat <<EOF
+          chore(visual): regenerate baselines from CI
+
+          Cause: ${CAUSE}
+
+          Every selected story and application route was rewritten from this run's CI renderer
+          (research.md D3), never merged with a prior capture, so this commit's diff is the whole
+          proof T505 owes: a baseline's provenance follows from the commit itself, and the cause
+          named above is the one sentence a reviewer checks against the diff's shape.
+          EOF
+          )"
+          git push
