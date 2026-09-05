@@ -53,11 +53,23 @@ for (const { id, theme, width, fullPage } of stories) {
       }
       return route.fulfill({ status: 404 })
     })
-    // Width is what collapses a table to a stacked layout at the `md` breakpoint; height does
-    // not affect that, and the locator/page screenshot below captures the full element or page
-    // regardless of viewport height. Every story is now captured at all three review widths, not
-    // only the ones a `visual-mobile` tag used to name (T504) — that tag has nothing left to say.
-    await page.setViewportSize({ width, height: 900 })
+    // Width is what collapses a table to a stacked layout at the `md` breakpoint; height's only
+    // job here is to stay identical to what every pre-existing baseline was already captured at,
+    // because a `fullPage: false` (element-clipped) screenshot is height-independent but a
+    // `fullPage: true` one (a fixed dialog, a popover) is not: a fixed-position dialog centers
+    // against the viewport, so a taller viewport measurably shifts its content (confirmed: T505's
+    // first attempt used height 900 unconditionally and moved 44 pre-existing baselines, four of
+    // them `AccountErasePanel` dialogs, by a real 15-20% pixel diff, not a tolerance artifact).
+    // Before T504, only the ten `visual-mobile`-tagged stories called `setViewportSize` at all, at
+    // {375, 900}; every other capture had no explicit call and rendered at Playwright's
+    // `devices['Desktop Chrome']` preset default, {1280, 720}. T504 made every width call this
+    // unconditionally (correctly — the loop needs one shape for every unit, matching this file's
+    // "stays dumb" rule above) but collapsed the height to one constant, which broke that
+    // inherited identity for every 1280-wide capture. So: 375 keeps its pre-existing 900, and
+    // every other width — including the new 768, which has no pre-existing baseline to match —
+    // uses the desktop default of 720, so 768 and 1280 share one convention instead of inventing a
+    // third with no history behind it. Do not simplify this back to one constant.
+    await page.setViewportSize({ width, height: width === 375 ? 900 : 720 })
     // Mirrors `tests/visual/focus-ring.spec.ts`'s exact URL pattern for driving the theme global.
     await page.goto(`/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`)
     // Storybook mounts every story under this id; waiting for it removes the render race that
