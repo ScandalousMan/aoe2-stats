@@ -329,9 +329,10 @@ component the whole product is judged on.
 
 **States**
 
-- **default** — label `text-secondary` at `sm`; value `text-primary`, `font-mono`, `semibold`,
-  `tracking-tight`; delta `success` or `danger` **with an explicit sign character**, never colour
-  alone; secondary line `text-secondary` at `xs`.
+- **default** — label `text-secondary` at `sm`; value `text-primary`, `type-numeric` (T531/research
+  D7 — the mono family plus `tabular-nums`, so alignment survives a change of the mono family),
+  `semibold`, `tracking-tight`; delta `success` or `danger` **with an explicit sign character**,
+  never colour alone; secondary line `text-secondary` at `xs`.
 - **hover** — none on the value. If the surrounding row is interactive, the row owns hover.
 - **focus-visible** — none unless the value is a link, in which case the standard ring applies to
   the link and the ring never crops the digits.

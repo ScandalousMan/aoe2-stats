@@ -117,8 +117,10 @@ function formatTime(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+// A measured elapsed-time value (§2.1's own m:ss format), compared down the list — `numeric`
+// (research D7, FR-007), never `machine`: the digits are a duration, not a raw string.
 function TimeValue({ ms }: { ms: number }) {
-  return <span className="font-mono">{formatTime(ms)}</span>
+  return <span className="type-numeric">{formatTime(ms)}</span>
 }
 
 function ResolvedOrUnresolved({
@@ -171,7 +173,8 @@ function TrainingOrderList({ items }: { items: TrainingEventData[] }) {
     <ListSection labelId={labelId} label="Training order">
       {items.map((item) => (
         <li key={item.id}>
-          <span className="font-mono">{item.amount}×</span>{' '}
+          {/* A measured count — `numeric` (research D7), not `machine`. */}
+          <span className="type-numeric">{item.amount}×</span>{' '}
           <ResolvedOrUnresolved label="Unit" id={item.unitId} name={item.unitName} /> —{' '}
           <TimeValue ms={item.timeMs} />
         </li>
@@ -410,8 +413,10 @@ function AnalysisFailureNotice({
       }
     >
       <p>{copy.body}</p>
+      {/* A raw error class — `machine` (research D7, FR-007): character-level legibility, no
+       * `tabular-nums`, because a digit run inside an error class carries no comparable value. */}
       {state === 'failed' && errorClass && (
-        <p className="font-mono text-xs text-text-secondary">Error: {errorClass}</p>
+        <p className="type-machine text-xs text-text-secondary">Error: {errorClass}</p>
       )}
     </Callout>
   )

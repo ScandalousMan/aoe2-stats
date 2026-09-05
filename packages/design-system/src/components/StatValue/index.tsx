@@ -79,7 +79,7 @@ export function StatValue({
         {status === 'empty' && (
           <span
             className={cx(
-              'font-mono font-semibold tracking-tight text-text-secondary',
+              'type-numeric font-semibold tracking-tight text-text-secondary',
               valueSize[variant],
             )}
           >
@@ -90,7 +90,7 @@ export function StatValue({
           <>
             <span
               className={cx(
-                'font-mono font-semibold tracking-tight text-text-primary',
+                'type-numeric font-semibold tracking-tight text-text-primary',
                 valueSize[variant],
               )}
             >
@@ -114,7 +114,10 @@ function Delta({ delta }: { delta: StatValueDelta }) {
   const sign = positive ? '+' : '−'
   return (
     <span
-      className={cx('font-mono text-sm font-semibold', positive ? 'text-success' : 'text-danger')}
+      className={cx(
+        'type-numeric text-sm font-semibold',
+        positive ? 'text-success' : 'text-danger',
+      )}
     >
       {sign}
       {magnitude}

@@ -442,7 +442,7 @@ describe('ProfileSummary', () => {
         expect(screen.getByText('Player 1807091')).toBeInTheDocument()
       })
 
-      it('the fallback heading is font-mono, unlike a real alias', () => {
+      it('the fallback heading is type-identifier, unlike a real alias (T531, research D7)', () => {
         const { container: fallback } = render(
           <ProfileSummary
             authenticated
@@ -451,7 +451,7 @@ describe('ProfileSummary', () => {
             entries={entries}
           />,
         )
-        expect(screen.getByText('Player 1807091')).toHaveClass('font-mono')
+        expect(screen.getByText('Player 1807091')).toHaveClass('type-identifier')
 
         const { container: named } = render(
           <ProfileSummary

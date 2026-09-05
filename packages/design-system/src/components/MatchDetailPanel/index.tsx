@@ -100,16 +100,17 @@ export interface MatchDetailData {
 }
 
 /** §11.2: an identifier this service's reference data cannot name, shown as itself rather than
- * filled in with a guess. Three signals, never colour alone: a label prefix that says "id," not a
- * name; `text-secondary` (one step down from a resolved name's `text-primary`); and `font-mono`,
- * the same treatment `ProfileSummary`'s `ProfileId` already gives every other bare identifier in
- * this system (DS-8). `id` is omitted only for `Map` (§11.1's own note: this schema carries no
- * separate numeric map identifier — `map_name` already *is* the raw value, and `null` means the
- * source sent none at all, not that a known id could not be named) — the wording still says so
- * rather than presenting an empty gap silently. */
+ * filled in with a guess. Two signals, never colour alone: a label prefix that says "id," not a
+ * name; and `type-identifier` (research D7, FR-007) — a value the product could not resolve to a
+ * name, carrying the mono family for character-level legibility and `text-secondary` by contract
+ * (one step down from a resolved name's `text-primary`), the same treatment `ProfileSummary`'s
+ * `ProfileId` already gives every other bare identifier in this system. `id` is omitted only for
+ * `Map` (§11.1's own note: this schema carries no separate numeric map identifier — `map_name`
+ * already *is* the raw value, and `null` means the source sent none at all, not that a known id
+ * could not be named) — the wording still says so rather than presenting an empty gap silently. */
 export function UnresolvedIdentifier({ label, id }: { label: string; id?: number | string }) {
   return (
-    <span className="font-mono text-sm text-text-secondary">
+    <span className="text-sm type-identifier">
       {id === undefined ? `${label} — unresolved` : `${label} ID ${id}`}
     </span>
   )

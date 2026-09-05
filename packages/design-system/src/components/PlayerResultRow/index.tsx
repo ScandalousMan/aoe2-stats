@@ -72,8 +72,12 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
           {result.country && (
             <span className="font-sans text-xs text-text-secondary">{result.country}</span>
           )}
+          {/* A measured count, compared down the results list — `numeric` (research D7, FR-007),
+           * not `machine`: `games_played` is a value, not a raw string. */}
           {result.gamesPlayed != null && (
-            <span className="font-mono text-xs text-text-primary">{result.gamesPlayed} games</span>
+            <span className="type-numeric text-xs text-text-primary">
+              {result.gamesPlayed} games
+            </span>
           )}
         </span>
       </span>
@@ -82,7 +86,10 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       {result.unverifiedSteamId != null && (
         <span className="block font-sans text-xs text-text-secondary">
           Unverified Steam ID:{' '}
-          <span className="font-mono text-text-secondary">{result.unverifiedSteamId}</span>
+          {/* An id the product carries but never resolves to a name — `type-identifier` (research
+           * D7, FR-007). The surrounding span already sets `text-text-secondary`; the role's own
+           * contract makes that class redundant here, so it is not repeated. */}
+          <span className="type-identifier">{result.unverifiedSteamId}</span>
         </span>
       )}
     </a>

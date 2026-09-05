@@ -165,8 +165,8 @@ identically. Motion `duration.fast` + `easing.standard` on `ProfileLink` hover; 
 standing figure** — no count-up, no entrance fade (`StatValue`'s own rule, README rule 1). Under
 `prefers-reduced-motion`, `duration.instant`.
 
-Gaps in play: **DS-4** (focus ring), **DS-8** (`Standing`'s tabular alignment rides on `font-mono`
-being monospaced). No new gap.
+Gaps in play: **DS-4** (focus ring). **DS-8 closed** (T531) — `Standing`'s tabular alignment now
+comes from `type-numeric`'s `tabular-nums`.
 
 ## 7. Spacing
 
@@ -228,7 +228,7 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
 - [ ] Each row shows the player's alias as a link **and** a separate "Remove from favourites" control —
       counting focusable elements in a row story finds exactly two, in the order link-then-remove, never
       a nested button inside the link.
-- [ ] A row seeded with a real standing shows the rating and rank in `font-mono`, aligning
+- [ ] A row seeded with a real standing shows the rating and rank in `type-numeric`, aligning
       digit-for-digit down the column against other rows in the same frame.
 - [ ] A row seeded with a never-ranked player shows a `text-secondary` em dash with "Not ranked yet" in
       the standing position — never `0`, never a `text-primary` numeral — placed beside a rated row to

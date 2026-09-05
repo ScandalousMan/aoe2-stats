@@ -74,20 +74,22 @@ export interface FavouritesListProps {
 
 const EMPTY_ENTRIES: FavouriteEntryData[] = []
 
-// §10 bullet 2, §6: "shows the rating and rank in font-mono, aligning digit-for-digit down the
-// column." Composing the rank inside `StatValue`'s own `value` slot — instead of its `unit` slot
-// — lets it inherit that slot's `font-mono font-semibold tracking-tight`
-// (`shared-primitives.md#StatValue`) from its ancestor span; `font-mono` is repeated explicitly on
-// the rank's own span too, so the treatment holds even if `StatValue`'s value markup changes
+// §10 bullet 2, §6: "shows the rating and rank in `type-numeric`, aligning digit-for-digit down
+// the column." Composing the rank inside `StatValue`'s own `value` slot — instead of its `unit`
+// slot — lets it inherit that slot's `type-numeric font-semibold tracking-tight`
+// (`shared-primitives.md#StatValue`) from its ancestor span; `type-numeric` is repeated explicitly
+// on the rank's own span too, so the treatment holds even if `StatValue`'s value markup changes
 // later, and so it is a directly assertable class rather than an inherited one. Only colour is
 // overridden (`text-secondary`), the same distinction `unit` used to carry, now without giving up
-// the mono alignment `StatValue`'s own figures depend on.
+// the `tabular-nums` alignment `StatValue`'s own figures depend on (research D7, FR-007): the rank
+// is a measured figure compared down the column, not a unit label, so it takes `numeric`, never
+// `machine` or `identifier`.
 function renderStandingValue(standing: FavouriteStandingData): ReactNode {
   if (!standing.unit) return standing.value
   return (
     <>
       {standing.value}
-      <span className="ml-2 font-mono text-text-secondary">{standing.unit}</span>
+      <span className="ml-2 type-numeric text-text-secondary">{standing.unit}</span>
     </>
   )
 }

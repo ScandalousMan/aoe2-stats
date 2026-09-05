@@ -35,9 +35,11 @@ const GAP_CLASS: Record<MapThumbnailSize, string> = {
 
 /** §11.2's treatment for an identifier this service never recorded at all — reproduced here rather
  * than imported from `MatchDetailPanel` (which will itself come to consume `MapThumbnail` in
- * T431; importing the other way would be a circular dependency between the two). */
+ * T431; importing the other way would be a circular dependency between the two). `type-identifier`
+ * (research D7, FR-007) carries the mono family and `text-secondary` by contract, so the standing
+ * `text-text-secondary` class would be redundant and is dropped. */
 function UnresolvedMapName() {
-  return <span className="font-mono text-sm text-text-secondary">Map — unresolved</span>
+  return <span className="text-sm type-identifier">Map — unresolved</span>
 }
 
 /** Frame and thumbnail and name as one unit (§2) — never the thumbnail alone (design-system rule

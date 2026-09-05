@@ -326,7 +326,7 @@ export function RatingFigure({
     return (
       <span
         className={cx(
-          'font-mono font-semibold tracking-tight',
+          'type-numeric font-semibold tracking-tight',
           textSize,
           ratingTone(ratingChange.value),
         )}
@@ -338,7 +338,7 @@ export function RatingFigure({
   }
 
   return (
-    <span className={cx('font-mono font-semibold tracking-tight text-text-primary', textSize)}>
+    <span className={cx('type-numeric font-semibold tracking-tight text-text-primary', textSize)}>
       {rating}
       {ratingChange && (
         <>
@@ -624,7 +624,7 @@ function MatchTableRow({
       <td className="py-3 pr-5 text-right">
         <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
       </td>
-      <td className="py-3 pr-5 text-right font-mono text-text-primary">{match.durationLabel}</td>
+      <td className="py-3 pr-5 text-right type-numeric text-text-primary">{match.durationLabel}</td>
       <td className="py-3 pr-5 text-text-secondary" title={match.playedAtAbsolute}>
         {match.playedAtRelative}
       </td>

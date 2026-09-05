@@ -669,8 +669,10 @@ that split the one meaning the mono family used to carry into three — a measur
 string and an unresolved identifier. `tabular-nums` sits only on `numeric`, never on the shared mono
 role, because declaring it there would also apply it to `machine`'s filenames and error classes,
 where it means nothing (research D7). T531 puts the three split roles — `type-numeric`,
-`type-machine` and `type-identifier` — onto the eight components that shared the old monospace
-treatment; digit alignment now survives a change of the monospace family because it is declared
+`type-machine` and `type-identifier` — onto the nine components that shared the old monospace
+treatment (a grep at implementation time found two — `MatchDetailPanel`'s `UnresolvedIdentifier`
+and `PlayerResultRow`'s games-played/unverified-Steam-id pair — that this register's own text had
+not named); digit alignment now survives a change of the monospace family because it is declared
 rather than inherited.
 
 **Closed — DS-9 (T522, the `link` / `link-hover` / `link-visited` roles).** The register named two

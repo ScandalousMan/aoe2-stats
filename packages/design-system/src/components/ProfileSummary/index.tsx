@@ -307,11 +307,21 @@ export function ProfileSummary({
                   className="!flex min-w-0 [&>button]:min-w-0 [&>button]:px-3 md:[&>button]:px-4"
                   triggerLabel={
                     <>
+                      {/* T531 (research D7, FR-007, SC-010): the fallback heading is a value the
+                       * product could not resolve to a name — `type-identifier`, not a bare
+                       * `font-mono`. Its `text-secondary` (by the role's own contract) replaces
+                       * profile-summary.md §12.3's old `text-primary` deliberately: that rule
+                       * predates the split roles and reasoned the id "really is identified...
+                       * exactly and verifiably" so should not read as one step down. SC-010 now
+                       * requires the opposite for any value that was never observed — an alias
+                       * was never recorded here — so this is a recorded, intended visual change,
+                       * not a regression; §12.3 is amended to match. `text-text-primary` is kept
+                       * only for the resolved-alias branch, where the role does not apply. */}
                       <span
                         id="profile-summary-alias"
                         className={cx(
-                          'min-w-0 truncate text-xl font-semibold text-text-primary',
-                          usingFallbackHeading ? 'font-mono' : 'font-sans',
+                          'min-w-0 truncate text-xl font-semibold',
+                          usingFallbackHeading ? 'type-identifier' : 'font-sans text-text-primary',
                         )}
                       >
                         {headingAlias}
@@ -329,11 +339,12 @@ export function ProfileSummary({
                 />
               )}
               {(!isSelf || !authenticated) && viewedProfile && (
+                // T531: same `type-identifier` reasoning as the switcher-trigger heading above.
                 <span
                   id="profile-summary-alias"
                   className={cx(
-                    'min-w-0 truncate text-xl font-semibold text-text-primary',
-                    usingFallbackHeading ? 'font-mono' : 'font-sans',
+                    'min-w-0 truncate text-xl font-semibold',
+                    usingFallbackHeading ? 'type-identifier' : 'font-sans text-text-primary',
                   )}
                 >
                   {headingAlias}
@@ -359,10 +370,13 @@ export function ProfileSummary({
             {/* ProfileId is omitted while the fallback heading is in force (004 spec §12.3): the
              * same number twice — once as the heading, once demoted beneath it — reads as a
              * rendering fault, and there is nothing left to demote it beneath. */}
+            {/* T531: a bare platform id, never itself resolved to a name — `type-identifier`
+             * (research D7, FR-007), the same role `MatchDetailPanel`'s `UnresolvedIdentifier`
+             * and `MapThumbnail`'s unresolved-map treatment use. Its `text-secondary` is by the
+             * role's own contract, so the standing `text-text-secondary` class is redundant and
+             * dropped here. */}
             {viewedProfile && hasAlias(viewedProfile.alias) && (
-              <span className="font-mono text-xs text-text-secondary">
-                {viewedProfile.profileId}
-              </span>
+              <span className="type-identifier text-xs">{viewedProfile.profileId}</span>
             )}
             {/* AliasFreshnessNote (003 spec §11.1.4) — a third party's alias can go stale between
              * when this service last observed it and today; the signed-in user's own never can.
@@ -590,6 +604,9 @@ function RecordBar({ wins, losses }: { wins: number; losses: number }) {
   )
 }
 
+// Every figure below is a measured number a reader compares down the column — `type-numeric`
+// (research D7, FR-007), never `machine` or `identifier`: rating, delta, rank, record, win rate,
+// streak and highest rating are all read as values, not as raw strings.
 function RatingTable({ entries }: { entries: RatingEntryData[] }) {
   return (
     <table className="w-full border-collapse text-left font-sans text-sm">
@@ -628,10 +645,10 @@ function RatingTable({ entries }: { entries: RatingEntryData[] }) {
             <th scope="row" className="py-3 pr-6 font-normal text-text-primary">
               {entry.leaderboardName}
             </th>
-            <td className="py-3 pr-6 text-right font-mono font-semibold tracking-tight text-text-primary">
+            <td className="py-3 pr-6 text-right type-numeric font-semibold tracking-tight text-text-primary">
               {entry.rating}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-sm">
+            <td className="py-3 pr-6 text-right type-numeric text-sm">
               {entry.ratingDelta && (
                 <span className={entry.ratingDelta.value >= 0 ? 'text-success' : 'text-danger'}>
                   {entry.ratingDelta.value >= 0 ? '+' : '−'}
@@ -639,15 +656,17 @@ function RatingTable({ entries }: { entries: RatingEntryData[] }) {
                 </span>
               )}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
               {entry.rank ?? <span className="text-text-secondary">— Not ranked yet</span>}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
               {entry.wins} W · {entry.losses} L
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">{entry.winRate}</td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">{entry.streak}</td>
-            <td className="py-3 text-right font-mono text-text-secondary">{entry.highestRating}</td>
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.winRate}</td>
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.streak}</td>
+            <td className="py-3 text-right type-numeric text-text-secondary">
+              {entry.highestRating}
+            </td>
           </tr>
         ))}
       </tbody>

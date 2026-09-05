@@ -55,17 +55,18 @@ describe('UploadControl — idle (the empty state, §5)', () => {
 })
 
 describe('UploadControl — choosing a file (file-chosen)', () => {
-  it('shows the file name in font-mono, its size in text-secondary, a Remove control and an enabled submit button', async () => {
+  it('shows the file name in type-machine, its size in text-secondary, a Remove control and an enabled submit button', async () => {
     render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
     await chooseFile(replayFile('MP Replay v101.103 @2026.08.30.aoe2record'))
 
     const name = screen.getByText('MP Replay v101.103 @2026.08.30.aoe2record')
-    // Rendered class composition, not merely presence: the mono class must actually be the one
-    // that won (T035c/T038b) — checked together with the sans body text elsewhere never carrying
-    // it, so this is not a house-wide default that would pass regardless of this component.
-    expect(name.className).toMatch(/\bfont-mono\b/)
+    // Rendered class composition, not merely presence: the machine role must actually be the one
+    // that won (T035c/T038b, T531) — checked together with the sans body text elsewhere never
+    // carrying it, so this is not a house-wide default that would pass regardless of this
+    // component.
+    expect(name.className).toMatch(/\btype-machine\b/)
     expect(screen.getByText(/marked as one you supplied by hand/).className).not.toMatch(
-      /\bfont-mono\b/,
+      /\btype-machine\b/,
     )
 
     const size = screen.getByText(/^\d/, { selector: 'p.text-text-secondary' })

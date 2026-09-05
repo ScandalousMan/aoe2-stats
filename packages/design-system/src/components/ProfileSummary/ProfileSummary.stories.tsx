@@ -233,7 +233,8 @@ export const BoardLongAliasFlagHoverRevealed: Story = {
   },
 }
 
-// 004 spec §12.3 (Rule 1) — no alias at all: the heading reads "Player <id>" in `font-mono` at the
+// 004 spec §12.3 (Rule 1) — no alias at all: the heading reads "Player <id>" in `type-identifier`
+// (T531, research D7 — amended from the pre-typography-role `font-mono`/`text-primary`) at the
 // alias's own size, `ProfileId` is omitted (the id already is the heading) and no
 // `AliasFreshnessNote` appears. The id appears exactly once in the frame.
 export const NoAlias: Story = {

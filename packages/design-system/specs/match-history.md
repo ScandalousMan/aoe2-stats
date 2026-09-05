@@ -216,10 +216,9 @@ Radius: `lg` (row card at 375, panel), `full` (`CaptureStateBadge` pill, via tha
 `duration.fast` + `easing.standard` on row hover; **no motion on any figure** (`StatValue`'s own
 rule) — `RatingChange` never counts up, the outcome never fades in.
 
-Gaps in play: **DS-8** (tabular alignment for `RatingChange` rides on `font-mono`, same as
-`profile-summary.md`). No new gap is introduced by either component; `CaptureStateBadge`'s own gap
-register (none) is unaffected. **DS-7 is closed** by 004's `icon` family (`game-asset-tokens.md`),
-which is what §12's three marks size from.
+Gaps in play: none. **DS-8 closed** (T531) — `RatingChange`'s tabular alignment now comes from
+`type-numeric`'s `tabular-nums`, same as `profile-summary.md`. **DS-7 is closed** by 004's `icon`
+family (`game-asset-tokens.md`), which is what §12's three marks size from.
 
 ## 7. Spacing
 
@@ -371,14 +370,17 @@ signals a resolved name never uses, none of them colour alone:
 
 - **A label prefix that says "id," not a name** — `"Civilisation ID 87"` / `"Map ID 204"`, never the
   bare number and never the field's own label with nothing marking it unresolved.
-- **`text-secondary`, never `text-primary`.** A resolved name is `text-primary` (§2's "factual name,
+- **`type-identifier`** (T531, research D7, FR-007) carries both remaining signals by contract:
+  `text-secondary`, never `text-primary` — a resolved name is `text-primary` (§2's "factual name,
   text only"); an unresolved one is deliberately one step down the same hierarchy a stale or
   unmeasured figure already sits at elsewhere in this system (`profile-summary.md`'s `FreshnessLine`,
-  this file's own `text-secondary` labels) — a fact this service is confident in is never typeset
-  identically to one it is not.
-- **`font-mono`**, matching every other bare identifier in this system (DS-8: `ProfileId` in
-  `profile-summary.md`, the games-played figure in `player-search.md`) — a name is prose, an id is
-  data, and the two must not share a typeface here for the same reason a rating and a label do not.
+  this file's own `text-secondary` labels), a fact this service is confident in never typeset
+  identically to one it is not — and the mono family, matching every other bare identifier in this
+  system (`ProfileId` in `profile-summary.md`): a name is prose, an id is data, and the two must not
+  share a typeface here for the same reason a rating and a label do not. The games-played figure in
+  `player-search.md` is a measured count, not an identifier, and carries `type-numeric` instead
+  (T531) — the two were never the same signal, only the same shared `font-mono` before the roles
+  split.
 
 No icon and no additional colour token: three signals (wording, colour step, typeface) already clear
 constitution VI's "never colour alone" rule without adding a fourth channel to justify.
@@ -456,8 +458,8 @@ state as any other match, and needed no new work to already be correct.
 
 ### 11.5 Tokens, spacing, accessibility — the delta only
 
-No new colour, spacing or radius token. `UnresolvedIdentifier` (§11.2) reuses `text-secondary` and
-`font-mono`, both already tabled in §6; `GameVersion` (§11.1) reuses `text-secondary` at the header's
+No new colour, spacing or radius token. `UnresolvedIdentifier` (§11.2) reuses `type-identifier`
+(T531), whose `text-secondary` is already tabled in §6; `GameVersion` (§11.1) reuses `text-secondary` at the header's
 existing label size. The third-party list's caption and empty-state copy (§11.3) carry no new token —
 they are `sans`/`text-secondary`, matching every other instance of `<caption>` and `Callout/info` body
 text already specified in §§6 and 9.
@@ -472,7 +474,7 @@ way sighted users do, from the same string.
 ### 11.6 Visual acceptance criteria (additional to §10)
 
 - [ ] A story seeded with `civ_name: null` (or `map_name: null`) renders "Civilisation ID `<n>`" (or
-      "Map ID `<n>`") in `text-secondary`/`font-mono`, visibly distinct from a resolved name in the
+      "Map ID `<n>`") in `type-identifier`, visibly distinct from a resolved name in the
       same story's other rows — confirmed by placing both in one frame.
 - [ ] The eight-player story renders eight distinguishable `TeamGroup`s with no participant dropped or
       duplicated, and the 1v1 story renders two — both from the identical component, no layout branch
