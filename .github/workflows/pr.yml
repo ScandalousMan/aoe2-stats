@@ -214,6 +214,11 @@ jobs:
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
       # 404 before a line of JavaScript ran, because there was no fallback to `index.html`.
       - run: node scripts/checks/spa-routing.mjs
+      # T509: fails on an allowlist entry missing a field or past its fix-by date — both decidable
+      # from the file alone, which is why this lives here rather than in `visual`. The third
+      # failure mode (a stale suppression the scan no longer reports) needs Playwright's results
+      # and belongs to T507's scan in the `visual` job instead.
+      - run: node scripts/checks/a11y-allowlist.mjs
 
   visual:
     name: Visual regression — affected stories and the built application
