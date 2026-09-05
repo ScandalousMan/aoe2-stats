@@ -12,6 +12,19 @@ type Story = StoryObj<typeof CaptureStateBadge>
 // Deadlines are computed relative to render time, not a fixed date, so the countdown text stays
 // the same ("6 days left", "18 hours left", ...) no matter which day this story is captured —
 // see countdown.ts's own note on why the pure function takes `now` rather than reading the clock.
+//
+// "Render time" alone is not deterministic, though: the badge's own clock (`useTickingNow` in
+// index.tsx) reads `Date.now()` independently of the read below, typically a handful of
+// milliseconds later. `describeCaptureCountdown` floors to whole units, so those two reads
+// landing on either side of an exact-unit boundary flips the rendered text — "5 days left" versus
+// "6 days left" for the identical `6 * DAY_MS` input — depending on scheduling alone. T505's
+// identity proof caught exactly this: two CI captures of the same commit rendered different text
+// for the same story. `Date.now` is frozen for the whole iframe, once, at module load, so this
+// module's read and the component's own both return the identical fixed instant and the
+// arithmetic that follows is no longer a race.
+const FROZEN_NOW_MS = Date.parse('2026-01-01T00:00:00.000Z')
+Date.now = () => FROZEN_NOW_MS
+
 const HOUR_MS = 60 * 60_000
 const DAY_MS = 24 * HOUR_MS
 

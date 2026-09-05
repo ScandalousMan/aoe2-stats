@@ -157,6 +157,18 @@ have (see D2) and adds a checkout dependency to a repository that has none. *A t
 force local capture to fail*: rejected — it makes the suite flaky rather than making regeneration
 correct.
 
+**Addendum (T505).** The rationale above compares a developer machine against CI; it does not say
+two CI runs of identical code are byte-identical, and T505's identity proof found they are not.
+Two independent `ubuntu-latest` runs of the same commit differed on roughly 3 of the 301 selected
+files, each by 9-20 pixels at a max channel delta of 1-2 — antialiasing jitter, not a rendering
+change, and confirmed as such because the noisy files were not the same three files between the
+two runs. A later phase that reuses this dispatch (T530, T550, T562) and finds a small, low-delta,
+non-repeating set of pre-existing files listed as modified is looking at this same jitter, not a
+regression. The achievable standard for a regeneration is therefore an *explained* diff, never a
+byte-identical one — Playwright's own `maxDiffPixelRatio: 0.01` is what already absorbs jitter of
+this size in ordinary (non-identity-proof) runs; the identity proof holds the harness itself to the
+stricter, git-level standard because that is the one property `maxDiffPixelRatio` cannot vouch for.
+
 ## D4 — Breakpoints: one definition, two generated consumers
 
 **Decision.** A new `tokens/breakpoint.json` family with `sm`, `md`, `lg`, `xl`. The generator emits

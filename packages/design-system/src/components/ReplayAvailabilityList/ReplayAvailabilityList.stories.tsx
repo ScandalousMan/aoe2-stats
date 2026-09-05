@@ -13,6 +13,16 @@ type Story = StoryObj<typeof ReplayAvailabilityList>
 // Dates are computed relative to render time, not a fixed date, so the countdown text stays the
 // same ("6 days left", "3 hours left", ...) no matter which day this story is captured — the same
 // technique `CaptureStateBadge.stories.tsx` uses for its own deadlines.
+//
+// "Render time" alone is not deterministic, though: `ReplayAvailabilityList`'s own clock
+// (`useTickingNow` in index.tsx) reads `Date.now()` independently of the read below, and
+// `describeCaptureCountdown` floors to whole units — so those two reads landing on either side of
+// an exact-unit boundary flips the rendered text between runs (T505's identity proof caught this
+// in `CaptureStateBadge`'s own stories). `Date.now` is frozen for the whole iframe, once, at
+// module load, so both reads return the identical fixed instant.
+const FROZEN_NOW_MS = Date.parse('2026-01-01T00:00:00.000Z')
+Date.now = () => FROZEN_NOW_MS
+
 const HOUR_MS = 60 * 60_000
 const DAY_MS = 24 * HOUR_MS
 
