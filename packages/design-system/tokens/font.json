@@ -1,5 +1,5 @@
 {
-  "$comment": "Typography tokens (T016). All three families are self-hosted under packages/design-system/tokens/fonts/, one licence-recorded pack each — the decision, the licence records and the @font-face delivery are in packages/design-system/specs/typography-tokens.md (feature 005 T523); read that file before editing `family` or `face`. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Typography tokens (T016). All three families are self-hosted under packages/design-system/tokens/fonts/, one licence-recorded pack each — the decision, the licence records and the @font-face delivery are in packages/design-system/specs/typography-tokens.md (feature 005 T523); read that file before editing `family` or `face`. The `role` group (T524, FR-007, contracts/token-families.md §4, research D7) is the utility vocabulary a component actually writes: `type-display`, `type-body`, `type-supporting`, `type-numeric`, `type-machine`, `type-identifier`, one meaning per role rather than one shared monospace treatment for three. `numeric` alone carries `font-variant-numeric: tabular-nums` — declaring it on a role shared with `machine` would apply it to filenames and error classes, where it means nothing. `identifier` alone carries a `color` of `text-secondary`, the one role whose utility sets a property outside typography: a deliberate widening (research D7) so that an unobserved value stays visibly distinct from a measured one even for a caller who reaches for the role without reading contracts/token-families.md §4. `supporting` is one size step down from `body` by the same table; the size is not baked into its utility because sizing is already the `text-*` vocabulary's job and a role must not duplicate it — a caller pairs `type-supporting` with the next size step down. Every `role.<name>.family` names a key in `family` above and is asserted so in build-tokens.test.mjs, the same silent-failure class §4.3 step 6 closed for `face`/`family`. `size`'s `lineHeight` values are re-derived (T524, typography-tokens.md §11 point 5) so every step lands on a real `space.json` `scale` step — a line-height expressible as a whole multiple of `space.unit` (0.25rem) that is also a named rhythm step, not an arbitrary decimal; `lg`, `xl` and `3xl` moved for exactly that reason (1.75rem and 2.25rem are not `space.scale` members). `size.value`s are unchanged: measured against the shipped faces (typography-tokens.md §11 points 1-2 — x-height/cap-height ÷ em for Fraunces against Inter, the real body face, and against Georgia, the fallback it replaces) the display steps in use (`lg` through `3xl`) clear or tie Inter's apparent size at every step actually used for a heading, so no step needed bumping for hierarchy to hold; the full measurement is recorded in the T524 hand-back rather than restated here, because it is a one-time proof, not a living fact this file must keep true. Edit here, then run `pnpm --filter design-system tokens:build`.",
   "family": {
     "sans": "'Inter', system-ui, sans-serif",
     "display": "'Fraunces', Georgia, serif",
@@ -28,14 +28,22 @@
       "display": "swap"
     }
   },
+  "role": {
+    "display": { "family": "display" },
+    "body": { "family": "sans" },
+    "supporting": { "family": "sans" },
+    "numeric": { "family": "mono", "variantNumeric": "tabular-nums" },
+    "machine": { "family": "mono" },
+    "identifier": { "family": "mono", "color": "text-secondary" }
+  },
   "size": {
     "xs": { "value": "0.75rem", "lineHeight": "1rem" },
     "sm": { "value": "0.875rem", "lineHeight": "1.25rem" },
     "md": { "value": "1rem", "lineHeight": "1.5rem" },
-    "lg": { "value": "1.125rem", "lineHeight": "1.75rem" },
-    "xl": { "value": "1.25rem", "lineHeight": "1.75rem" },
+    "lg": { "value": "1.125rem", "lineHeight": "1.5rem" },
+    "xl": { "value": "1.25rem", "lineHeight": "1.5rem" },
     "2xl": { "value": "1.5rem", "lineHeight": "2rem" },
-    "3xl": { "value": "1.875rem", "lineHeight": "2.25rem" },
+    "3xl": { "value": "1.875rem", "lineHeight": "2rem" },
     "4xl": { "value": "2.25rem", "lineHeight": "2.5rem" }
   },
   "weight": {

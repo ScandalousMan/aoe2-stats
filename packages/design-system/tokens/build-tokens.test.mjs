@@ -393,6 +393,44 @@ test('every player colour has a paired -contrast token that clears 4.5:1, in bot
   }
 })
 
+// --- T524 additions (contracts/token-families.md §4, research D7) -------------------------------
+// One meaning per typographic role, and the two properties a shared mono role could never carry
+// safely: `numeric`'s alignment guarantee and `identifier`'s bundled colour.
+
+test('every role in font.role maps to one of the three real families in font.family', () => {
+  const familyKeys = new Set(Object.keys(font.family))
+  for (const [role, def] of Object.entries(font.role)) {
+    assert.ok(
+      familyKeys.has(def.family),
+      `font.role.${role}.family ("${def.family}") is not a key in font.family — the same ` +
+        "silent-failure class T523 closed for face/family, reopened for role/family",
+    )
+  }
+})
+
+test('type-numeric carries tabular-nums; machine and the other roles do not', () => {
+  const preset = readFileSync(path.join(generatedDir, 'preset.css'), 'utf8')
+  const numericBlock = preset.match(/@utility type-numeric \{([^}]*)\}/s)?.[1]
+  assert.ok(numericBlock, 'preset.css has no @utility type-numeric block')
+  assert.match(numericBlock, /font-variant-numeric:\s*tabular-nums;/)
+
+  const machineBlock = preset.match(/@utility type-machine \{([^}]*)\}/s)?.[1]
+  assert.ok(machineBlock, 'preset.css has no @utility type-machine block')
+  assert.doesNotMatch(
+    machineBlock,
+    /font-variant-numeric/,
+    'type-machine must not carry tabular-nums — declaring it on a role shared with numeric ' +
+      'would apply it to filenames and error classes, where it means nothing',
+  )
+})
+
+test('type-identifier carries the text-secondary colour var by contract (research D7)', () => {
+  const preset = readFileSync(path.join(generatedDir, 'preset.css'), 'utf8')
+  const identifierBlock = preset.match(/@utility type-identifier \{([^}]*)\}/s)?.[1]
+  assert.ok(identifierBlock, 'preset.css has no @utility type-identifier block')
+  assert.match(identifierBlock, /color:\s*var\(--ds-color-text-secondary\);/)
+})
+
 // --- T523 addition (typography-tokens.md §4.3 step 6, §10) --------------------------------------
 // A family-name mismatch between `font.face`'s `@font-face` declaration and `font.family`'s stack
 // is invisible: the browser silently falls back to the next name in the stack, with no error and

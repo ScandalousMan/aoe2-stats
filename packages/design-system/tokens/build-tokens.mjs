@@ -377,6 +377,29 @@ function borderUtilityBlocks() {
     })
 }
 
+// `font.role` (T524, FR-007, contracts/token-families.md §4, research D7): one `@utility
+// type-<role>` block per typographic role, keyed by function rather than by size. Every block sets
+// its family; `numeric` alone adds `font-variant-numeric: tabular-nums` (declaring it on a role
+// shared with `machine` would apply it to filenames and error classes, where it means nothing) and
+// `identifier` alone adds a `color` — the one utility in this vocabulary that sets a property
+// outside typography, a deliberate widening so an unobserved value stays visibly distinct from a
+// measured one even for a caller who never reads its spec. Same shape as `iconUtilityBlocks` and
+// `borderUtilityBlocks` above: a family with no Tailwind theme namespace to extend, so each entry
+// becomes its own fixed-value utility instead.
+function typeRoleUtilityBlocks() {
+  if (!font.role) return []
+  return Object.entries(font.role).map(([key, role]) => {
+    const declarations = [`  font-family: var(${cssVar(`font-family-${cssKey(role.family)}`)});`]
+    if (role.variantNumeric) {
+      declarations.push(`  font-variant-numeric: ${role.variantNumeric};`)
+    }
+    if (role.color) {
+      declarations.push(`  color: var(${cssVar(`color-${cssKey(role.color)}`)});`)
+    }
+    return `@utility type-${cssKey(key)} {\n${declarations.join('\n')}\n}`
+  })
+}
+
 // The `@keyframes` a looping `--animate-*` mapping names. Declarations here are literal CSS
 // values (a transform, an opacity), not design tokens, so — unlike every var() mapping above —
 // there is nothing to reference back to tokens.css.
@@ -413,6 +436,7 @@ const presetSections = [
   ...animationKeyframeBlocks(),
   ...iconUtilityBlocks(),
   ...borderUtilityBlocks(),
+  ...typeRoleUtilityBlocks(),
 ].filter(Boolean)
 
 const presetCss = `${CSS_BANNER}

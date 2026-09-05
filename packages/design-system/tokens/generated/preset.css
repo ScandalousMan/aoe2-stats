@@ -192,3 +192,29 @@
 @utility outline-offset-ring {
   outline-offset: var(--ds-border-ring-offset);
 }
+
+@utility type-display {
+  font-family: var(--ds-font-family-display);
+}
+
+@utility type-body {
+  font-family: var(--ds-font-family-sans);
+}
+
+@utility type-supporting {
+  font-family: var(--ds-font-family-sans);
+}
+
+@utility type-numeric {
+  font-family: var(--ds-font-family-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-machine {
+  font-family: var(--ds-font-family-mono);
+}
+
+@utility type-identifier {
+  font-family: var(--ds-font-family-mono);
+  color: var(--ds-color-text-secondary);
+}

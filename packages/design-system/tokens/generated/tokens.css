@@ -67,13 +67,13 @@
   --ds-font-size-md: 1rem;
   --ds-font-size-md-line-height: 1.5rem;
   --ds-font-size-lg: 1.125rem;
-  --ds-font-size-lg-line-height: 1.75rem;
+  --ds-font-size-lg-line-height: 1.5rem;
   --ds-font-size-xl: 1.25rem;
-  --ds-font-size-xl-line-height: 1.75rem;
+  --ds-font-size-xl-line-height: 1.5rem;
   --ds-font-size-2xl: 1.5rem;
   --ds-font-size-2xl-line-height: 2rem;
   --ds-font-size-3xl: 1.875rem;
-  --ds-font-size-3xl-line-height: 2.25rem;
+  --ds-font-size-3xl-line-height: 2rem;
   --ds-font-size-4xl: 2.25rem;
   --ds-font-size-4xl-line-height: 2.5rem;
   --ds-font-weight-normal: 400;
