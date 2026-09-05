@@ -210,6 +210,18 @@ function main() {
     },
   )
 
+  // spawnSync() reports a spawn-level failure (the executable never ran at all — not "ran and
+  // exited non-zero") through `result.error`, not `result.status`, which stays `null` in that
+  // case. `result.status ?? 1` below turns that into a plain exit code with nothing printed —
+  // the same shape of silence `runGitOrFail()` exists to end for `git`, and worth naming here
+  // too: `stdio: 'inherit'` means Playwright's own output would normally explain a real test
+  // failure, so an exit with none is spawnSync itself refusing the call, most plausibly because
+  // `VISUAL_STORIES` above exceeds a platform limit on a single argv/envp string (Linux caps this
+  // at 128 KiB per string; a full, unscoped run's JSON payload can exceed it).
+  if (result.error) {
+    log(`could not start \`pnpm exec playwright test\`: ${result.error.message}`)
+  }
+
   // T507's staleness check: an `a11y-allowlist.json` entry naming a component-and-rule pair this
   // run scanned and did not report is a stale suppression hiding a fix that already happened.
   // Checked here, after Playwright exits, because the scan's own results — written across however
