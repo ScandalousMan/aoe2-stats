@@ -807,3 +807,278 @@ Phrased so `visual-reviewer` can decide each from a screenshot plus this file. E
    DS-10 in the gap register.
 6. Baselines: this repaints every story in both themes. Regenerate in CI only, per research D3 — never
    locally.
+
+---
+
+## 11. Link roles (T522)
+
+Three roles arrive: `link`, `link-hover`, `link-visited`. **This section adds a seventh member to the
+chromatic band; it revises nothing already shipped.** The six existing chromatic values, the surface
+ramp, the ink ramp and every measured pair in §7 stand exactly as written. Same method, same band,
+same declaration rule.
+
+> Add the `link`, `link-hover` and `link-visited` roles to `packages/design-system/tokens/color.json`,
+> each declaring the surfaces it may be painted on and measured against `background`, `surface`,
+> `surface-raised` and `surface-sunken` in both themes (closes DS-9, FR-006, research D10). The
+> permanent underline stays: a link is never distinguished by colour alone.
+
+### 11.1 Why this is a role and not three more measurements of `accent`
+
+DS-9 offers two closures and they are not equivalent. Measuring `accent` on `surface-raised` and
+`surface-sunken` and adding the rows would close the **contrast** half — and leave the **semantic**
+half exactly where it is.
+
+**`accent` means "the product's own emphasis"; `link` means "this text navigates". The two must be
+able to move without dragging each other.** Today they cannot: the `SiteHeader` current-tab rule, the
+`Badge` accent tone and every inline link in `PrivacyNotice` are one value, so a decision about how
+loud the product's emphasis should be is silently also a decision about how a link looks in a legal
+document. That is the same defect §3.4 removed between `info` and `focus-ring` — one value under two
+names — and the fix is the same one: give the second meaning its own name before something needs them
+to differ.
+
+**The boundary, stated so it is checkable.** Two neighbouring cases stay with `accent` and are not
+migrated:
+
+- **A link styled as a control paints `accent`, not `link`.** `DataExportPanel`'s download anchor is a
+  filled button that happens to be an `<a>`; it reads as a control, carries `accent-contrast` and its
+  inward ring (§5), and nothing about it is prose. `link` is an ink, never a fill.
+- **Navigation chrome paints `accent`, not `link`.** `SiteHeader`'s current-tab rule marks _where you
+  are_ in a persistent control surface. In-document navigation is the other side of that line:
+  `PrivacyNotice`'s `Contents` is a list of prose links to prose, and it paints `link`.
+
+### 11.2 The hue, and why 258° / 260°
+
+The band's seven hues, in order, so the choice is visibly deliberate rather than picked:
+
+| Role         | Light | Dark | Nearest neighbour       |
+| ------------ | ----- | ---- | ----------------------- |
+| `danger`     | 7°    | 11°  | `warning`, 21° / 15°    |
+| `warning`    | 28°   | 26°  | `accent`, 10° / 13°     |
+| `accent`     | 38°   | 39°  | `warning`, 10° / 13°    |
+| `success`    | 118°  | 105° | `info`, 69° / 86°       |
+| `info`       | 187°  | 191° | `focus-ring`, 27° / 22° |
+| `focus-ring` | 214°  | 213° | `info`, 27° / 22°       |
+| **`link`**   | 258°  | 260° | `focus-ring`, 44° / 47° |
+
+`214° → 7°` is the palette's one empty arc, 153° wide, and `link` takes a position inside it. Not its
+centre — the centre (~290°) is a magenta-violet that reads as _visited_ before it reads as _link_,
+which would undermine the rest/visited distinction §11.3 makes. **258° is the indigo a reader already
+knows means "this navigates"**, and it is the one place in this palette where a web convention, not
+the art direction, sets the hue: the functional constraint that outranks atmosphere applies to
+recognition as much as to legibility, and a link a reader has to learn is a link they will not click.
+It sits 44° from `focus-ring`, four times the `warning`/`accent` adjacency §3.3 already accepts, with
+a chroma difference in the opposite direction (`focus-ring` is the system's most saturated value;
+`link` is mid-chroma), and the two never occupy the same shape — one is a stroke around a box, the
+other is glyph fill. §11.7 turns that into a checkable criterion rather than leaving it asserted.
+
+**It is muted on purpose.** `#603fb0` is not `#0000EE`; its HSL saturation is 0.47 light and 0.55
+dark, the same order as `accent` (0.63 dark). An electric blue-violet on parchment would be the one
+value in the system that looks pasted in from another product.
+
+**The sentence in §2 this amends.** §2 says the palette's only cool notes are `info` and `focus-ring`.
+There are now three. That is the cost of the role and it is paid knowingly: a link's colour is a
+convention rather than a mood, and the only warm alternative is `accent`, which is the thing this
+section exists to stop reusing.
+
+**Rejected: a blue `link` and a violet `link-visited`,** the browser default pair. It adds two hues to
+the band instead of one, and the blue would land near 230° — 16° from `focus-ring`, tighter than the
+`warning`/`accent` adjacency, in the exact case (a focused link) where the two are drawn touching.
+One new hue, three roles, is the answer §3.3's method points at.
+
+### 11.3 The three steps, and why `link-visited` is not an interaction step
+
+`link-hover` is derived **exactly as `accent-hover` was** (§3.5): one interaction step away from the
+page, in the theme's own direction — light −6.2 L\*, dark +7.5 L\*, against `accent-hover`'s −6.2 /
++7.4. Same rule, same magnitude, no new reasoning needed.
+
+`link-visited` is **not** an interaction step, and this is the one place a link's states differ from
+`accent`'s in kind rather than in value. `accent-hover` and `accent-active` both mean _more emphasis,
+right now_; visited means the opposite — **already read, no longer the thing to click.** Expressing
+that as a lightness step would say "less emphasis" in the light theme and "more" in the dark one,
+because a step in the theme's own direction reverses. So:
+
+> **`link-visited` keeps the hue and cuts the chroma by ~40%, with a small drop toward the band's
+> floor (−2.6 L\* light, −3.1 L\* dark).** A chroma cut means the same thing in both themes: the
+> colour is spending itself out, rather than moving toward or away from the reader.
+
+It stays **inside the band** (33.7 light, 65.5 dark) because a visited link is a rest state that must
+still be read — unlike `accent-active`, which is a transient press and is allowed below the band. It
+is now the system's least saturated chromatic member, marginally below light `success` (0.28 vs 0.30).
+
+**There is deliberately no `link-active`.** FR-004 rejects a token whose only justification is one call
+site and requires naming the token that serves: **`link-hover` serves.** `accent-active` exists because
+a button can be held pressed without committing; an anchor's press is the ~120ms before navigation,
+under a pointer that is already showing hover. Call sites that carry `active:text-accent-active` on a
+link point it at `link-hover` (§11.6) — which is not redundant with the hover rule, because a touch
+activation never passes through hover.
+
+| Step           | Light L\* | Dark L\* | Rule                                                      |
+| -------------- | --------- | -------- | --------------------------------------------------------- |
+| `link`         | 36.3      | 68.6     | rest — mid-band, between `success`/`warning` and `danger` |
+| `link-hover`   | 30.1      | 76.1     | one interaction step away from the page (§3.5's rule)     |
+| `link-visited` | 33.7      | 65.5     | rest, chroma −40%, small drop toward the band floor       |
+
+**Why `link` sits mid-band and not at the top.** `accent` is the band's ceiling (40.8 light) and that
+is precisely why it cannot declare `surface-sunken` — 4.27:1, §6. 4.5:1 against light `surface-sunken`
+requires L\* ≤ 39.4, and 5.0:1 requires L\* ≤ 36.6. `link` is placed at 36.3 so it clears **5.0:1 on
+every light surface**, which is what lets it declare all four and is the whole content of DS-9's
+closure. The system's tightest pair therefore remains light `accent` on `background` at 5.0.
+
+### 11.4 The values
+
+Six keys per theme. Insert **after `focus-ring` and before `overlay`**, so the chromatic band stays
+contiguous. No generator change: `build-tokens.mjs` emits `--ds-color-link*` like any other key, and
+`text-link`, `hover:text-link-hover` and `visited:text-link-visited` are then ordinary utilities.
+
+Merge into `light`:
+
+```json
+    "link": "#603fb0",
+    "link-hover": "#503396",
+    "link-visited": "#56467d",
+```
+
+Merge into `dark`:
+
+```json
+    "link": "#b39ce2",
+    "link-hover": "#c6b2ee",
+    "link-visited": "#a897c9",
+```
+
+`$rationale` gains the matching three lines in each theme block, in the same position:
+
+```json
+      "link": "derived: chromatic band L* 36.3, hue 258 — muted indigo. A distinct role from accent: accent is the product's emphasis, link means this text navigates. Placed mid-band rather than at accent's ceiling so it clears 5.0:1 on all four surfaces and can declare them (closes DS-9).",
+      "link-hover": "derived: one interaction step (-6.2 L*) away from the page, the same rule and magnitude as accent-hover.",
+      "link-visited": "derived: link's hue with chroma cut ~40% and -2.6 L*. Visited means spent, not emphasised, so it is a chroma cut and not a lightness step — a step would reverse direction between the themes.",
+```
+
+```json
+      "link": "derived: chromatic band L* 68.6, hue 260 — muted amethyst; same role and same reasoning as light link.",
+      "link-hover": "derived: one interaction step (+7.5 L*) away from the page, matching accent-hover's +7.4.",
+      "link-visited": "derived: link's hue with chroma cut ~40% and -3.1 L*; stays inside the band because a visited link is a rest state that must still be read.",
+```
+
+### 11.5 Declared surfaces and the measured pairs
+
+**All three roles declare all four page surfaces, in both themes.** A state role must declare at least
+everything its rest role declares — a component that may paint `link` on `background` will hover that
+link on `background` — so a shorter list for `link-hover` or `link-visited` would make hovering a
+declared link an undeclared pair. None of the three declares a fill: a link is an ink, and there is no
+`link-contrast` (FR-004; `accent-contrast` serves the one anchor that is a filled control, §11.1).
+
+These rows extend §6's table:
+
+| Role           | Means                       | Declared surfaces  | Floor | Real call sites that fix the list                                                                                                                        |
+| -------------- | --------------------------- | ------------------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `link`         | this text navigates         | `BG` `S` `SR` `SS` | 4.5   | `PrivacyNotice` inline links and `Contents` on `S`, `ContactBlock`'s contact route on `SR`; `Footer` on `BG`; a link inside a hovered `MatchRow` on `SS` |
+| `link-hover`   | that link, hovered          | `BG` `S` `SR` `SS` | 4.5   | every call site above, hovered                                                                                                                           |
+| `link-visited` | that link, already followed | `BG` `S` `SR` `SS` | 4.5   | `PrivacyNotice` `Contents` and inline links; every future prose surface                                                                                  |
+
+Computed with the same WCAG 2.2 relative-luminance formula as §7, from the hexes in §11.4. **T526
+transcribes these 24 rows into `README.md`, and `build-tokens.test.mjs` asserts all 24 at 4.5.**
+
+**Light** (`link` L\* 36.3 · `link-hover` 30.1 · `link-visited` 33.7)
+
+| Foreground     | `surface-raised` | `surface` | `background` | `surface-sunken` |
+| -------------- | ---------------- | --------- | ------------ | ---------------- |
+| `link`         | **7.17**         | **6.70**  | **5.97**     | **5.05**         |
+| `link-hover`   | 9.02             | **8.43**  | 7.51         | 6.35             |
+| `link-visited` | 7.92             | **7.40**  | 6.59         | 5.57             |
+
+**Dark** (`link` L\* 68.6 · `link-hover` 76.1 · `link-visited` 65.5)
+
+| Foreground     | `surface-raised` | `surface` | `background` | `surface-sunken` |
+| -------------- | ---------------- | --------- | ------------ | ---------------- |
+| `link`         | **6.05**         | **6.88**  | **7.51**     | **8.03**         |
+| `link-hover`   | 7.59             | **8.63**  | 9.42         | 10.08            |
+| `link-visited` | 5.47             | **6.23**  | 6.80         | 7.27             |
+
+The four bold `link` cells are the pairs the task set; the bold `surface` cells are the spot checks
+the two state roles owe. Every one of the 24 clears 4.5, the tightest being dark `link-visited` on
+`surface-raised` at 5.47 — still above the system's tightest pair, light `accent` on `background` at
+5.0, which keeps its title.
+
+**One adjacency this table does not measure and a reader would otherwise assume.** A link sits
+_inside_ a paragraph of `text-primary`, and ink against ink is **2.31:1 light and 1.95:1 dark**. That
+is not a WCAG pair — both are legible against the surface, which is what 1.4.3 asks — but it is the
+number that makes the permanent underline structural rather than a formality, and it is _lower in
+dark_, where the underline carries almost all of the distinction. FR-006 and rule 4 are not satisfied
+by these hues at any value; the 5.97–7.17 column is not permission to drop it.
+
+### 11.6 What this changes for `privacy-notice.md`, the caller that paid for DS-9
+
+The interim being retired is quoted in the register: _"Until then no component paints a link on a
+raised surface."_ `privacy-notice.md` §6 records what that cost, and
+`packages/design-system/src/components/PrivacyNotice/index.tsx:709` is where it was paid — inside
+`ContactBlock`, which is `bg-surface-raised`, the contact route renders `text-text-primary underline`
+instead of a link colour. **A link the same colour as the sentence around it is a link found by
+mousing over the paragraph.** In a legal notice that anchor is the one route a reader has to a human
+being, and it is the last line of the document.
+
+The concrete consequence, in order:
+
+| Where                                 | Was                                                           | Becomes                                                |
+| ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------ |
+| `PrivacyNotice` `ContactBlock` (:709) | `text-text-primary underline` on `surface-raised`             | `text-link underline` — **7.17** light / **6.05** dark |
+| `PrivacyNotice` inline links (:204)   | `text-accent` / `hover:accent-hover` / `active:accent-active` | `text-link` / `hover:link-hover` / `active:link-hover` |
+| `PrivacyNotice` `Contents` (:454)     | the same accent triple                                        | the same link triple                                   |
+| `ThirdPartyObjectionForm` (:30)       | the same accent triple                                        | the same link triple                                   |
+| `AccountErasurePanel` (:272)          | the same accent triple                                        | the same link triple                                   |
+| `Footer` (:38, :46)                   | `text-text-secondary underline hover:text-accent-hover`       | rests at `link`; see the note below                    |
+
+And in `privacy-notice.md` itself: §6's colour list drops `accent` / `accent-hover` / `accent-active`
+for `link` / `link-hover` / `link-visited` **and the parenthetical restriction "on `surface` only —
+see the DS-9 note below"**; §6's "Gaps in play" paragraph drops DS-9 together with the whole sentence
+beginning "Until DS-9 closes, this component paints no link on `surface-raised`"; §5's hover and
+active lines name the link roles; §9's contrast bullet replaces "links `accent` on `surface` (4.9
+light / 7.7 dark — …which is why DS-9 permits `accent` here and only on this background)" with `link`
+on `surface` **6.70 light / 6.88 dark** and on `surface-raised` **7.17 / 6.05**. That component keeps
+a `visited:` declaration on its inline links and on `Contents`: a nine-section document a reader
+returns to is the clearest case in the product for "which of these have I already read".
+
+**`Footer` is the one call site where this changes an existing deliberate choice**, so it is named
+rather than swept in: its links rest at `text-secondary` and only reach for accent on hover. With a
+`link` role in existence that is a link withholding the one signal that says it is a link. The default
+is that it rests at `link` (5.97 light / 7.51 dark on `background`) and expresses its quietness with
+size, which it already does at `text-sm`; the footer's own spec applies it, and if it declines it must
+record why — "a link that looks like text" is exactly the finding DS-9 was opened about.
+
+### 11.7 Acceptance, and the one state a screenshot cannot reach
+
+§9 gains three criteria, numbered 10 to 12, checked in both themes at every declared review width:
+
+10. **A link is visibly a link before it is hovered.** In `PrivacyNotice` at 1280, an inline link
+    inside a paragraph is distinguishable from the sentence around it by colour _and_ carries an
+    underline. The two halves fail independently: no underline fails, and an indigo that reads as body
+    ink fails.
+11. **The contact route in `ContactBlock` is a link.** In the `PrivacyNotice` story with
+    `controllerContact` supplied, the anchor in the raised contact block is the same colour as the
+    inline links in the body above it. A `text-primary` anchor there is the interim this task retired,
+    and fails.
+12. **A focused link's ring is not its own colour.** With an inline link focused by keyboard, the
+    azure `focus-ring` outside the glyphs and the indigo `link` inside them read as two colours. If
+    the ring looks like a thicker link, this fails.
+
+**`link-visited` cannot be verified from a story of real anchors, and that must not be discovered
+during review.** Browsers restrict `:visited` styling and `getComputedStyle` deliberately reports the
+unvisited colour, so neither Playwright nor Storybook can force or measure the state — the same
+blindness the suite already has for focus, one step worse. Its criterion is therefore satisfied by a
+**token story that paints `text-link-visited` directly**, beside `link` and `link-hover`, on all four
+surfaces: three swatches that are three colours, the last one visibly spent rather than merely darker.
+Its contrast is guaranteed by the asserted token pairs above, which is why all four surfaces are
+declared and asserted for it even though no automated check will ever catch it in situ.
+
+### 11.8 What the implementer does with this
+
+1. Merge §11.4's two value fragments into `light` and `dark` after `focus-ring`, and the two
+   `$rationale` fragments into the matching theme blocks in the same position. Nothing else in
+   `color.json` changes — §4's values are shipped and are not reopened.
+2. Run `pnpm --filter design-system tokens:build`.
+3. Add §11.5's 24 assertions to `build-tokens.test.mjs` at 4.5: three roles × four surfaces × two
+   themes.
+4. Apply §11.6's six call-site rows and the `privacy-notice.md` edits. **Without them DS-9's cost
+   survives its closure** — the token existing is not what refunds `ContactBlock`.
+5. Close DS-9 in `README.md`'s gap register naming this section, and hand §11.5's tables to T526.
+6. Baselines: this repaints every story containing a link, in both themes. CI only, per research D3.

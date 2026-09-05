@@ -31,6 +31,9 @@
   --color-info: var(--ds-color-info);
   --color-info-contrast: var(--ds-color-info-contrast);
   --color-focus-ring: var(--ds-color-focus-ring);
+  --color-link: var(--ds-color-link);
+  --color-link-hover: var(--ds-color-link-hover);
+  --color-link-visited: var(--ds-color-link-visited);
   --color-overlay: var(--ds-color-overlay);
   --color-player-1: var(--ds-color-player-1);
   --color-player-1-contrast: var(--ds-color-player-1-contrast);

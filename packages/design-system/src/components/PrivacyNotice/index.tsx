@@ -201,8 +201,8 @@ const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
 const inlineLinkClasses = cx(
-  'text-accent underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-accent-hover active:text-accent-active',
+  'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
   focusRing,
 )
 
@@ -451,9 +451,9 @@ export function PrivacyNotice({
                 href={`#${section.id}`}
                 onClick={scrollAndFocus(section.id)}
                 className={cx(
-                  'flex min-h-11 items-center py-3 font-sans text-md text-accent underline',
+                  'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
                   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                  'hover:text-accent-hover active:text-accent-active',
+                  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
                   focusRing,
                 )}
               >
@@ -706,7 +706,7 @@ export function PrivacyNotice({
               The controller for everything described here is {controllerContact.name}.{' '}
               {controllerContact.postalAddress && `${controllerContact.postalAddress}. `}To reach us
               about anything this notice does not have a button for, use{' '}
-              <a href={controllerContact.contactRoute} className="text-text-primary underline">
+              <a href={controllerContact.contactRoute} className="text-link underline">
                 this contact route
               </a>
               .

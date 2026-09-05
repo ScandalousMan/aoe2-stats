@@ -98,6 +98,9 @@
   --ds-color-info: #245c63;
   --ds-color-info-contrast: #fffbf2;
   --ds-color-focus-ring: #1f4e8c;
+  --ds-color-link: #603fb0;
+  --ds-color-link-hover: #503396;
+  --ds-color-link-visited: #56467d;
   --ds-color-overlay: rgb(36 26 14 / 55%);
   --ds-color-player-1: #405BFF;
   --ds-color-player-1-contrast: #fffaf0;
@@ -147,6 +150,9 @@
   --ds-color-info: #74aebe;
   --ds-color-info-contrast: #1b160e;
   --ds-color-focus-ring: #6fa0e0;
+  --ds-color-link: #b39ce2;
+  --ds-color-link-hover: #c6b2ee;
+  --ds-color-link-visited: #a897c9;
   --ds-color-overlay: rgb(0 0 0 / 65%);
   --ds-color-player-1: #405BFF;
   --ds-color-player-1-contrast: #fffaf0;

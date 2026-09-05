@@ -27,8 +27,8 @@ const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
 const inlineLinkClasses = cx(
-  'text-accent underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-accent-hover active:text-accent-active',
+  'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:text-link-hover active:text-link-hover',
   focusRing,
 )
 

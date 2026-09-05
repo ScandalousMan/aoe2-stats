@@ -335,6 +335,39 @@ test('dark text-secondary clears the 4.5:1 floor on background — the ProfileSu
   assertRealPair('dark', textSecondary, background, 4.5, 'text-secondary on background')
 })
 
+// --- T522 additions (color-tokens.md §11.5) -----------------------------------------------------
+// `link`, `link-hover` and `link-visited` declare all four page surfaces in both themes (closes
+// DS-9): a state role must declare at least everything its rest role declares, so a shorter list
+// for the hover or visited step would make hovering or revisiting a declared link an undeclared
+// pair. 3 roles x 4 surfaces x 2 themes = 24 assertions, all at the normal-text 4.5:1 floor.
+test('link, link-hover and link-visited clear the 4.5:1 floor on all four page surfaces, in both themes — DS-9, color-tokens.md §11.5', () => {
+  for (const theme of ['light', 'dark']) {
+    const {
+      background,
+      surface,
+      'surface-raised': surfaceRaised,
+      'surface-sunken': surfaceSunken,
+      link,
+      'link-hover': linkHover,
+      'link-visited': linkVisited,
+    } = color[theme]
+    for (const [roleName, hex] of [
+      ['link', link],
+      ['link-hover', linkHover],
+      ['link-visited', linkVisited],
+    ]) {
+      for (const [bgName, bg] of [
+        ['background', background],
+        ['surface', surface],
+        ['surface-raised', surfaceRaised],
+        ['surface-sunken', surfaceSunken],
+      ]) {
+        assertRealPair(theme, hex, bg, 4.5, `${roleName} on ${bgName}`)
+      }
+    }
+  }
+})
+
 // --- Player colour swatches (T410, FR-003) ------------------------------------------------------
 // The eight canonical player colours are theme-invariant (a player's colour is their identity, not
 // a per-theme choice — packages/design-system/specs/game-asset-tokens.md, Decision 1), so every

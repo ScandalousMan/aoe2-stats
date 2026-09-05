@@ -269,8 +269,8 @@ export function ErasedScreen({ homeHref }: { homeHref: string }) {
         <a
           href={homeHref}
           className={cx(
-            'text-accent underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-            'hover:text-accent-hover active:text-accent-active',
+            'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
+            'hover:text-link-hover active:text-link-hover',
             focusRing,
           )}
         >
