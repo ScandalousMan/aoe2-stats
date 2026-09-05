@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resetResultsDir, checkStaleness } from './a11y-scan.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -151,6 +152,12 @@ function main() {
       ` across ${THEMES.length} themes x ${WIDTHS.length} widths = ${units.length} capture units.`,
   )
 
+  // T507: cleared here, once per invocation, rather than by a test — `stories.spec.ts`'s axe scan
+  // (once per story-theme pair, at its designated width) appends to these files from whichever
+  // worker ran it, and a leftover file from an earlier, differently-scoped invocation would make a
+  // component this run never reselected look "covered", corrupting the staleness check below.
+  resetResultsDir()
+
   const result = spawnSync(
     'pnpm',
     ['exec', 'playwright', 'test', '--config=playwright.config.ts'],
@@ -163,7 +170,28 @@ function main() {
       },
     },
   )
-  process.exit(result.status ?? 1)
+
+  // T507's staleness check: an `a11y-allowlist.json` entry naming a component-and-rule pair this
+  // run scanned and did not report is a stale suppression hiding a fix that already happened.
+  // Checked here, after Playwright exits, because the scan's own results — written across however
+  // many workers ran it — only exist once the whole run has finished; a per-test check would see
+  // only its own worker's slice. This runs regardless of Playwright's own exit status, so a stale
+  // entry is reported even on an otherwise-green run.
+  const stale = checkStaleness()
+  if (stale.length > 0) {
+    log(
+      `${stale.length} stale scripts/visual/a11y-allowlist.json entr${stale.length === 1 ? 'y' : 'ies'}:`,
+    )
+    for (const entry of stale) {
+      log(
+        `  - ${entry.component} / ${entry.rule} — scanned this run, not reported; fix owed: ` +
+          `${entry.fixOwed ?? '(undated)'}, fix by ${entry.fixBy ?? '(undated)'}`,
+      )
+    }
+  }
+
+  const exitCode = result.status ?? 1
+  process.exit(stale.length > 0 ? 1 : exitCode)
 }
 
 main()

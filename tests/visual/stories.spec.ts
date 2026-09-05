@@ -5,13 +5,46 @@
 // escapes the story root (a `position: fixed` element, or a popover that overflows its trigger's
 // layout box — see run.mjs for why that happens). This file stays dumb on purpose: it never
 // re-derives scope or which axes apply to which story, it only renders what it is told to.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { test, expect, type Route } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import {
+  componentFromTitle,
+  isAllowed,
+  recordScanned,
+  recordViolation,
+} from '../../scripts/visual/a11y-scan.mjs'
 
 // Playwright loads this file as CommonJS unless the nearest package.json sets `"type": "module"`
 // (playwright.config.ts's own comment) — `__dirname` is what stays valid either way.
 const rootDir = path.resolve(__dirname, '..', '..')
+
+// T507 (FR-057, FR-058, SC-007): `VISUAL_STORIES` (below) carries only each unit's story id, not
+// its Storybook `title`, and the axe allowlist keys its entries by a human-readable component name
+// derived from that title (see `componentFromTitle`) rather than by the raw id — so this reads the
+// same built Storybook index `scripts/visual/run.mjs` already reads, purely to recover `title` for
+// each id. This is a one-time lookup at module load, not part of the render loop below.
+const storybookIndexPath = path.join(rootDir, 'packages/design-system/storybook-static/index.json')
+const titleById = new Map<string, string>()
+if (existsSync(storybookIndexPath)) {
+  const index = JSON.parse(readFileSync(storybookIndexPath, 'utf8')) as {
+    entries?: Record<string, { id: string; title: string }>
+    stories?: Record<string, { id: string; title: string }>
+  }
+  for (const entry of Object.values(index.entries ?? index.stories ?? {})) {
+    titleById.set(entry.id, entry.title)
+  }
+}
+
+// The axe scan is a DOM/semantics question, not a rendering one: the same story in the same theme
+// answers it identically at 375, 768 and 1280, so it runs once per story-theme pair rather than
+// once per capture unit. 1280 is the designated width — fixed and named here, not "whichever unit
+// happens to run first" (units run in parallel across workers with no defined order) — because it
+// is the width every pre-existing baseline was captured at before T504 added the width axis, so it
+// renders every story's full, uncollapsed structure rather than whatever a narrower breakpoint's
+// structural swap (FR-019) produces.
+const AXE_SCAN_WIDTH = 1280
 
 // `player-avatar.md` §9 "the visual baseline must not depend on Steam": `PlayerAvatar` builds
 // `https://avatars.steamstatic.com/<hash>_full.jpg` itself (that spec §2b), so any story that
@@ -111,6 +144,59 @@ for (const { id, theme, width, fullPage } of stories) {
       id,
       { timeout: 5_000 },
     )
+    // T507 (FR-057, FR-058, SC-007): runs here, on the same settled DOM the screenshot below is
+    // about to capture — "at the point the screenshot is taken" — but *before* that assertion
+    // rather than after: `toHaveScreenshot` throws on the first pixel mismatch, and a real (or
+    // locally-rendered, research D3) diff must never silently skip the accessibility check for a
+    // story that would otherwise have been scanned this run. Only once per story-theme pair, at
+    // the designated width (see `AXE_SCAN_WIDTH` above), not once per capture unit, and reusing
+    // this loop's scoping and theme mechanism rather than a second harness (research D12).
+    if (width === AXE_SCAN_WIDTH) {
+      const component = componentFromTitle(titleById.get(id) ?? id)
+      // Scoped to `#storybook-root` — the story's own wrapper — rather than the whole page.
+      // Confirmed empirically (not assumed): scanning the whole `iframe.html` document reports
+      // `landmark-one-main` and `page-has-heading-one` on *every single story*, because axe's
+      // page-level rules run against `document` the moment the include selector is not scoped —
+      // and a component preview correctly has neither; only a full application page owns a main
+      // landmark and a heading. Those are Storybook's chrome, not the design system's, exactly the
+      // failure mode this comment is here to explain. Scoping to the root removes them entirely and
+      // still catches every element-level rule (color-contrast, aria-*, button-name, and so on).
+      // A `visual-full-page` story's subject (a fixed dialog, an open popover) still gets scanned
+      // even though its *screenshot* goes full-page: none of these components use a portal
+      // (`ReactDOM.createPortal`, confirmed absent from `packages/design-system/src`), so a
+      // `position: fixed` element stays a DOM descendant of `#storybook-root` — only its painted
+      // position escapes the root's layout box, which is a screenshot-clipping concern, not a DOM
+      // membership one, and axe's `include` scopes by the latter.
+      const axeResults = await new AxeBuilder({ page }).include('#storybook-root').analyze()
+
+      // Recorded whether or not the rule below turns out to be allowlisted, and even when this
+      // story has no violation at all — `checkStaleness` (in `run.mjs`, after the whole suite
+      // finishes) needs every component this run actually scanned, not only the ones that failed,
+      // to tell "the fix already happened" (stale) apart from "this run never looked" (silent).
+      recordScanned(component, theme)
+      for (const violation of axeResults.violations) {
+        recordViolation(component, theme, violation.id)
+      }
+
+      const unallowed = axeResults.violations.filter(
+        (violation) => !isAllowed(component, violation.id),
+      )
+      if (unallowed.length > 0) {
+        const details = unallowed
+          .map((violation) => {
+            const nodes = violation.nodes
+              .map((node) => `      ${node.target.join(' ')}\n      ${node.html}`)
+              .join('\n')
+            return `  [${violation.impact ?? 'unknown'}] ${violation.id} — ${violation.help}\n${nodes}`
+          })
+          .join('\n')
+        throw new Error(
+          `axe-core found ${unallowed.length} accessibility violation(s) in "${component}" ` +
+            `(${theme} theme, story ${id}) not covered by scripts/visual/a11y-allowlist.json:\n${details}`,
+        )
+      }
+    }
+
     const baselineName = `${id}-${theme}-${width}.png`
     if (fullPage) {
       // The story's own subject (a fixed dialog, an open popover) paints outside the root
