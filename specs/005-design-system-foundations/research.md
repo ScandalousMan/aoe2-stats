@@ -13,7 +13,7 @@ of them hold, and three are sharper than the spec states.
 
 | Spec claim                                                    | Verified                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 32 components, 24 specs, 279 baselines, 7 token families      | Exact. 32 component directories, 32 story files, 24 specs beside `README.md`, 279 PNGs, 7 JSON families.                                                                                                                                                        |
+| 32 components, 24 specs, 279 baselines, 7 token families      | Exact. 32 component directories, 32 story files, 24 files beside `README.md` (23 component specs; `game-asset-tokens.md` is a token record), 279 PNGs, 7 JSON families.                                                                                                                                                        |
 | Six open gap-register entries                                 | Exact: DS-3, DS-4, DS-5, DS-6, DS-8, DS-9.                                                                                                                                                                                                                     |
 | Arbitrary values inside the design system                     | Nine, in six files: `w-[1em]`/`h-[1em]` and `animate-[spin_…]` in the spinner, `h-[1.2em]` in `StatValue`, `animate-[pulse_…]` in `Skeleton`, `w-[1em]`/`h-[1em]` and `transition-[fill,opacity]` in `FavouriteToggle`, `max-h-[80vh]` in `Menu`, and four `w-`/`h-[var(--ds-icon-*)]` in `ProfileSummary`. |
 | Breakpoints duplicated                                        | Exact. `useMediaQuery.ts` hard-codes `{md:768, lg:1024, xl:1280}`; Tailwind's own defaults carry the same three numbers; the two never consult each other.                                                                                                      |
@@ -100,7 +100,7 @@ where nothing else moves. Run the machinery after the palette and that proof is 
 Phase 3 sits between the palette and the structure deliberately: it is small, application-only, and
 it is what makes the dark half of phase 2's work observable by a person rather than only by a test.
 
-**Alternatives considered.** *Machinery last, to capture the ~1,674-baseline matrix only once*:
+**Alternatives considered.** *Machinery last, to capture the ~1,794-baseline matrix only once*:
 rejected — it saves CI minutes and spends the palette re-derivation's safety net, and dark is
 precisely where a re-derived palette is most likely to be wrong. *One phase, one PR*: rejected — the
 result is unreviewable, and Risk 1 in the spec asks for the opposite. *Retrofit before the

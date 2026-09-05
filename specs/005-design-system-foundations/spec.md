@@ -10,9 +10,10 @@
 
 ## Context
 
-A design system already exists and much of it is good. Thirty-two components, twenty-four component
-specs each carrying the nine mandated sections, seven token families, a measured contrast table
-asserted by a test rather than by re-reading, and a diff-scoped visual regression suite. The
+A design system already exists and much of it is good. Thirty-two components, twenty-three component
+specs each carrying the nine mandated sections (and one token decision record beside them), seven
+token families, a measured contrast table asserted by a test rather than by re-reading, and a
+diff-scoped visual regression suite. The
 application consumes it cleanly: a grep of `apps/web/src` for hard-coded colour, arbitrary bracket
 values or default-palette class names returns nothing.
 

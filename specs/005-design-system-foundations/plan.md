@@ -72,11 +72,11 @@ every pair a component actually paints measured and asserted; every route exactl
 no component left on the pre-existing foundations.
 
 **Scale/Scope**: 7 user stories, 71 functional requirements, 18 success criteria. 32 components
-retrofitted and re-tiered, 9 application routes, 24 component specs amended, 9 new structural
-primitives, 6 gap-register entries closed, 3 unexported components published, 2 new token families
-and 3 new token groups. **279 baselines become 1,794** — 299 stories x 2 themes x 3 review widths —
-and are regenerated three times across the feature. Six phases, each independently green and separately
-mergeable.
+retrofitted and re-tiered, 9 application routes, 23 component specs amended, 9 new structural
+primitives, 6 gap-register entries resolved (five closed, DS-3 refused), 3 unexported components
+published, 3 new token families (`breakpoint`, `border`, `size`) and 3 new token groups.
+**279 baselines become 1,794** — 299 stories x 2 themes x 3 review widths — and are regenerated
+three times across the feature. Six phases, each independently green and separately mergeable.
 
 ## Constitution Check
 
@@ -158,7 +158,7 @@ packages/design-system/
 │   ├── lib/                       # cx, rowLink, useDelayedVisible, useBreakpoint (now generated)
 │   └── index.ts                   # the deliberate public surface (FR-027)
 ├── .storybook/                    # foundation documentation pages; a11y addon kept
-└── __screenshots__/               # 279 -> ~1,674 baselines, regenerated in CI only
+└── __screenshots__/               # 279 -> 1,794 baselines, regenerated in CI only
 
 apps/web/
 ├── index.html                     # the inline, blocking theme-resolution script (FR-015)

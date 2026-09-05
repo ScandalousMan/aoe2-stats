@@ -187,7 +187,7 @@ Linux and commits the result.
 
 **Before dispatching**, know which of the three global repaints you are in — the palette and
 typefaces, the structural rhythm, or the retrofit — and say so in the commit body. A regeneration
-with no stated cause is 1,674 files nobody can review. A regeneration whose cause is named is one
+with no stated cause is 1,794 files nobody can review. A regeneration whose cause is named is one
 sentence a reviewer can check against the diff's shape.
 
 **After it lands**, spot-check by hand rather than by count: open three stories in both themes at
