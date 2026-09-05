@@ -53,6 +53,16 @@ single URL parameter. It was simply never made an axis of the suite.
 This feature closes those three gaps. It does not redesign the product, change any behaviour, or add
 a domain component.
 
+## Clarifications
+
+### Session 2026-09-05
+
+- Q: Are the existing colour and typography tokens the fixed starting point, or is a palette and typography redesign in scope for this feature? → A: The redesign is in scope. The palette and the typographic families are re-derived here, and the measured contrast table and the visual baselines are re-established against the new values.
+- Q: Does this feature retrofit every existing component and route onto the new foundations, or establish the foundations and migrate existing surfaces as they are next touched? → A: Full retrofit. All thirty-two components and all nine application routes move onto the new foundations within this feature; the system is never left in two states.
+- Q: What theme and width coverage must run on a pull request versus nightly? → A: A pull request runs the full matrix — both themes at every declared review width — over the stories its diff affects. The nightly run applies the same matrix to every story. Scoping is by story, never by axis.
+- Q: Where do the measured contrast table and the gap register belong — the documentation directory, or beside the design system's specs where they are today? → A: They stay beside the design system's specs. The filing rule is amended to say why: their subject is the package itself, not the outside world, and a test already holds them true.
+- Q: Should the system admit an opacity token family, or record a dated refusal? → A: A dated refusal. Every attenuated state — disabled, de-emphasised, dialog scrim — is expressed as a named colour role whose contrast is measured like any other, and no opacity family is admitted.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Every design decision has a token (Priority: P1)
@@ -84,6 +94,9 @@ decision not to close it. No component comment says a token is missing.
    breakpoint.
 4. **Given** a reviewer inspects a component, **When** they search it for a raw value, **Then** they
    find none, and no comment explains why one was unavoidable.
+5. **Given** any colour or typography token in the shipped system, **When** its value is questioned,
+   **Then** a recorded decision says why that value was chosen against the art direction, and a
+   value retained from before this feature is recorded as retained rather than merely unchanged.
 
 ---
 
@@ -283,6 +296,11 @@ six standing rules are likewise existing constraints. Requirements below add wha
 - **FR-001**: The token system MUST cover every design decision the existing components make. Every
   arbitrary value and every hand-written variable reference currently present in the design system
   source MUST be replaceable by a named token, and the source MUST end with none of either.
+- **FR-001a**: The palette and the typographic families MUST be re-derived in this feature rather
+  than inherited. Every semantic colour role's value and every typographic role's family and scale
+  MUST be chosen deliberately against the established art direction, and a value carried over
+  unchanged MUST be a recorded decision rather than an omission. The measured contrast table and
+  every visual baseline MUST be re-established against the values that ship.
 - **FR-002**: Every open entry in the token gap register MUST be resolved, either by admitting the
   token family or by recording a dated decision not to, naming what components use instead. An entry
   may not remain open with only an interim workaround.
@@ -295,6 +313,10 @@ six standing rules are likewise existing constraints. Requirements below add wha
   defect, whether or not the resulting pair happens to pass contrast.
 - **FR-006**: The system MUST define a link role, or record that inline links use an existing role
   under a stated restriction. A link MUST never be distinguished by colour alone.
+- **FR-006a**: The system MUST NOT admit an opacity token family. Every attenuated appearance —
+  a disabled control, de-emphasised text, a dialog scrim — MUST be expressed as a named colour role
+  whose pairs are measured and asserted like any other. The gap register entry MUST be closed with a
+  dated refusal naming the colour route as what components use instead.
 - **FR-007**: Typography MUST define named roles by function — at minimum display, body, supporting,
   numeric, and machine text — rather than by size alone. A role MUST NOT be inferred from a font
   family being coincidentally suitable.
@@ -339,6 +361,11 @@ six standing rules are likewise existing constraints. Requirements below add wha
 - **FR-021**: The page primitive MUST own the single main landmark, the content width and the page
   padding. An application route MUST NOT declare any of the three.
 - **FR-022**: Every route MUST render exactly one main landmark.
+- **FR-022a**: Every component and every application route that exists when this feature starts
+  MUST be moved onto the new foundations within this feature. No component and no route may ship
+  still reading a retired token, still declaring its own content width or page padding, or still
+  assembling structure the system now provides. A surface left unmigrated is a defect, not a
+  backlog item.
 - **FR-023**: The empty presentation MUST state why a region is empty and, where an action would fill
   it, offer that action. A blank region is a defect.
 - **FR-024**: The error presentation MUST state what failed in the reader's terms and MUST offer a
@@ -442,9 +469,11 @@ define what the specification and the tooling MUST make objectively decidable fo
   either MUST be rewritten or moved to the general reviewer's scope.
 - **FR-060**: The suite MUST capture the axes the review protocol claims: every affected story, in
   both themes, at every declared review width, for every state the spec declares.
-- **FR-061**: Where the full matrix is not captured on every change, the specification MUST state
-  which subset runs when, so that "verified" has one meaning and the gate never claims coverage it
-  does not have.
+- **FR-061**: The suite MUST be scoped by story and never by axis. A pull-request run MUST capture
+  the full matrix — both themes at every declared review width, for every state the spec declares —
+  over the stories its diff affects, and the nightly run MUST apply that same matrix to every story.
+  A narrower pull-request run MUST NOT be introduced without amending this requirement, so that
+  "verified" has one meaning and the gate never claims coverage it does not have.
 - **FR-062**: A spacing, colour, radius or motion value that is not on the scale MUST fail a
   mechanical check rather than depend on being noticed in review.
 - **FR-063**: Conformance to tokens MUST NOT be treated as sufficient for visual quality. The spec
@@ -456,6 +485,11 @@ define what the specification and the tooling MUST make objectively decidable fo
 - **FR-064**: Admitting a token, a component or a variant MUST follow one written test whose steps
   an agent can apply mechanically, and the outcome MUST be recorded where the next reader will find
   it.
+- **FR-064a**: The measured contrast table and the gap register MUST remain beside the design
+  system's specifications, and the project's filing rule MUST be amended to state the distinction
+  that puts them there: a living fact whose subject is the package itself is filed with the package,
+  while a living fact about the outside world is filed in the documentation directory. Both files
+  MUST stay asserted by a test rather than by re-reading.
 - **FR-065**: Deprecating anything MUST name its replacement and enumerate its consumers.
 - **FR-066**: A breaking change MUST land together with the updates to every consumer it breaks, in
   one change.
@@ -482,15 +516,22 @@ define what the specification and the tooling MUST make objectively decidable fo
 
 - **SC-001**: A search of the design system and the application for values outside the token scales
   returns nothing, and no source comment reports a missing token.
+- **SC-001a**: Every colour and typography token value in the shipped system is either newly derived
+  in this feature or carries a recorded decision to retain it, and the contrast table is measured
+  against the values that ship rather than against the values it replaced.
 - **SC-002**: The gap register has no entry that is open with only an interim workaround.
 - **SC-003**: Every route renders exactly one main landmark, and no route declares its own content
   width or page padding.
+- **SC-003a**: No component and no route remains on the pre-existing foundations at the end of the
+  feature: a search for retired tokens, application-authored layout and hand-assembled page
+  structure returns nothing across the design system and the application.
 - **SC-004**: A new route can be built with no layout or spacing decision written in the application,
   and its rhythm matches existing routes without adjustment.
 - **SC-005**: A reader whose system prefers dark opens the product in dark, with no flash of the
   other theme, and an override they set is still in effect after a reload.
 - **SC-006**: Every published story has a verified appearance in both themes and at every declared
-  review width.
+  review width, and a story the diff affects is compared across that whole matrix before the pull
+  request can merge.
 - **SC-007**: Removing an accessible name, a label association or a role from any component causes an
   automated check to fail and to name the component.
 - **SC-008**: Changing any colour token causes every pair that a component actually paints with it to
@@ -514,31 +555,39 @@ define what the specification and the tooling MUST make objectively decidable fo
 
 ## Assumptions
 
-- The existing token values, palette and typographic families are the starting point and are not
-  redesigned by this feature. The art direction — warm parchment, stone, muted gold, restrained
-  rather than ornamental — is already established in the tokens and is preserved. This assumption is
-  the subject of the first unresolved decision below.
+- The palette and the typographic families are re-derived by this feature rather than inherited.
+  The established art direction — warm parchment, stone, muted gold, restrained rather than
+  ornamental — is the brief the new values must express, not a set of values to preserve. Every
+  measured contrast pair and every visual baseline is re-established against the values that ship.
 - The nine-section component specification structure, the closed state vocabulary and the six
   standing rules in the design system's own specs directory are kept and extended, not replaced.
+- The measured contrast table and the gap register stay in the design system's specs directory. The
+  filing rule is amended to record the distinction rather than the files being moved.
 - Theme selection follows the reader's system preference by default, with an explicit override
   stored per browser, and light is the defined default when neither is available.
 - The declared review widths remain the three the specs already name, so existing baselines stay
   meaningful.
 - Density is a property of a surface class in this feature, not a reader-facing setting. A
   reader-controlled density toggle is out of scope.
+- No opacity token family is introduced. Attenuation is a colour decision, so that every pair a
+  component paints stays measurable in advance rather than only after it is rendered.
 - No new domain component, no product behaviour change, no data model change and no API change is in
   scope. Every existing component keeps its current behaviour and its current public props unless a
   requirement here explicitly reconciles them.
 - Retiring an existing component or renaming a prop is permitted where FR-032 requires it, and lands
   with its consumers under FR-066.
+- Every existing component and route is retrofitted within this feature, so the migration is not a
+  standing obligation on later work and no compatibility layer between old and new foundations is
+  built.
 - Storybook remains the authoritative interactive surface, as the constitution already requires. The
   visual regression suite remains diff-scoped for pull requests with full coverage nightly, as
-  constitution VII requires; how the theme and width axes fit that budget is the third unresolved
-  decision below.
+  constitution VII requires. The scoping applies to which stories run, never to which axes: a story
+  under test is captured in both themes at all three review widths in either run.
 
 ## Out of Scope
 
-- Redesigning the palette, the typefaces or the art direction.
+- Changing the art direction. The palette and the typefaces are re-derived to express the
+  established character more deliberately; they are not replaced by a different character.
 - Any new domain composite, screen or product capability.
 - A reader-facing density control.
 - Internationalisation and localisation of formatting, which is presently fixed to one locale.
@@ -578,7 +627,7 @@ define what the specification and the tooling MUST make objectively decidable fo
 5. Container, panel and reading-measure widths.
 6. A numeric typography role independent of the monospace family.
 7. A link role, and the measured pairs it needs.
-8. An opacity family, or a recorded decision that the colour route replaces it.
+8. A recorded refusal of an opacity family, naming the colour route as its replacement.
 9. Separation of the three meanings currently carried by one monospace treatment: measured numbers,
    machine text, and unresolved identifiers.
 10. The entire structural tier: page, section, panel, table, field, text, link, empty and error.
@@ -607,70 +656,76 @@ define what the specification and the tooling MUST make objectively decidable fo
    alignment a decision rather than a coincidence.
 5. **Both themes are a correctness requirement, not a feature.** A theme that is specified,
    tokenised, contrast-measured and unreachable is unfinished work, not an optional enhancement.
-6. **Verification must match its claim.** Either the suite captures the axes the review protocol
-   names, or the protocol is narrowed to what is captured. A gate that overstates its coverage
-   displaces the manual check that would otherwise happen.
+6. **Verification must match its claim.** The suite is brought up to the axes the review protocol
+   names rather than the protocol being narrowed to what the harness does today. A gate that
+   overstates its coverage displaces the manual check that would otherwise happen.
 7. **Token compliance is necessary and not sufficient.** Each component owes at least one acceptance
    criterion about hierarchy, rhythm or legibility that a token-correct but poor implementation
    fails.
 8. **Governance is mechanical or it is absent.** Every rule added must be applicable by an agent
    working alone from a cold context. A rule needing a synchronous human decision is not kept.
+9. **The palette and the typography are re-derived, the art direction is not.** Clarified
+   2026-09-05. The values are chosen deliberately against the established character rather than
+   inherited from the first pass, because a foundation nobody decided is the same defect as a token
+   nobody named. The character itself — warm parchment, stone, muted gold, restrained — is the
+   brief, not a candidate for change.
+10. **Nothing is left on the old foundations.** Clarified 2026-09-05. Every existing component and
+    route is retrofitted inside this feature. A partial migration would mean two vocabularies alive
+    at once, which is the drift this feature exists to end, and the re-derived palette makes it
+    unsafe as well: an unmigrated surface would paint values that no longer exist.
+11. **The suite is scoped by story, never by axis.** Clarified 2026-09-05. A story that runs, runs
+    in both themes at all three review widths. Dropping an axis to save time is what produced a
+    review protocol claiming coverage the harness never had, and it would reintroduce exactly that
+    gap in a cheaper-looking form.
+12. **A living fact is filed by its subject, not by its liveness.** Clarified 2026-09-05. The
+    contrast table and the gap register are living and must be true today, but their subject is the
+    package they describe rather than the outside world, so they stay with it. The filing rule gains
+    that distinction so the next reader does not have to re-derive it.
+13. **Attenuation is a colour decision, not a transparency one.** Clarified 2026-09-05. An opacity
+    family would express the same intent a second way, and it is the way the contrast table cannot
+    hold: a transparent value's pair depends on whatever is behind it and is only measurable after
+    it is rendered. Named colour roles keep every pair measurable before it exists on screen.
 
 ## Important unresolved decisions
 
-1. **Is the art direction re-opened?** This specification assumes the existing palette and
-   typefaces are fixed and that the work is completing the system around them. Re-deriving the
-   palette would deliver a more distinctive product but invalidates the measured contrast table and
-   every visual baseline.
-   [NEEDS CLARIFICATION: are the existing colour and typography tokens the fixed starting point, or
-   is a palette and typography redesign in scope for this feature?]
-2. **How much of the existing surface is retrofitted here?** Thirty-two components and nine
-   application containers exist. Bringing all of them onto the new foundations in this feature is a
-   large body of work; leaving them to migrate opportunistically leaves the system in two states
-   indefinitely, which is the drift this feature exists to end.
-   [NEEDS CLARIFICATION: does this feature retrofit every existing component and route onto the new
-   foundations, or establish the foundations and migrate existing surfaces as they are next touched?]
-3. **What is the verification matrix, given the budget?** Two themes times three widths multiplies
-   the baseline count several-fold, against a constitutional rule that pull-request runs test only
-   what the diff affects.
-   [NEEDS CLARIFICATION: what theme and width coverage must run on a pull request versus nightly, and
-   is a larger baseline count acceptable given the free-tier constraints in docs/adr/0002-hosting.md?]
-4. **Where do the system's living facts belong?** The measured contrast table and the gap register
-   are living, world-facing facts that must be true today, which the repository's own rule places in
-   the documentation directory rather than beside the specs. They are currently in the design
-   system's specs directory and are protected by a test. Moving them is a correctness-of-filing
-   question, not a behaviour change, and this feature should settle it rather than inherit it.
-5. **Is an opacity family wanted at all?** The register has carried this question since the
-   beginning with the colour route working well. Closing it as a recorded refusal is likely correct
-   and is cheaper than leaving it open, but it is a judgement the system owner should make once.
+None. All five were settled in the clarification session of 2026-09-05 and are recorded above, in
+Clarifications and in Important design decisions.
 
 ## Risks
 
-1. **Baseline churn swamps the work.** Almost every requirement here changes rendered output.
-   Recapturing 279 baselines, and more once themes and widths become axes, risks a change so large
-   that a real regression hides inside it. Mitigation: sequence so that baseline-affecting changes
-   land in small, separately reviewable steps.
-2. **Baselines are environment-sensitive.** Full-page baselines are authoritative from the
+1. **Baseline churn swamps the work.** Almost every requirement here changes rendered output, and
+   the re-derived palette and typography change all of it at once. Recapturing 279 baselines, and
+   more once themes and widths become axes, risks a change so large that a real regression hides
+   inside it. Mitigation: land the re-derived foundations as their own reviewable step before the
+   structural and retrofit work, so that a later diff has exactly one cause.
+2. **The baseline count grows about sixfold.** Two themes at three widths over the stories that
+   exist today is on the order of 1,600 captures, and every one is storage, wall-clock and a
+   potential flake. Mitigation: the growth is bounded and known before the work starts, so it is a
+   sequencing and runtime problem rather than a discovery, and the nightly run absorbs the full
+   sweep while pull requests stay diff-scoped.
+3. **Baselines are environment-sensitive.** Full-page baselines are authoritative from the
    continuous-integration renderer, not from a developer machine. A retrofit of this size will
    produce a large number of locally captured baselines that are subtly wrong.
-3. **Premature abstraction.** The instruction to add a structural tier is also an invitation to
+4. **Premature abstraction.** The instruction to add a structural tier is also an invitation to
    invent a component for every layout shape. The promotion threshold and the admission test exist
    to prevent this, and both are written in this feature rather than before it.
-4. **A prop vocabulary reconciliation is a breaking change** across every consumer, and lands as one
+5. **A prop vocabulary reconciliation is a breaking change** across every consumer, and lands as one
    change under FR-066. That change is large and must not be batched with unrelated work.
-5. **Governance becoming bureaucracy.** Every rule added is a cost paid on every future change.
+6. **Governance becoming bureaucracy.** Every rule added is a cost paid on every future change.
    FR-067 is the guard, and it must be applied to this feature's own output.
-6. **The theme override and system preference can disagree** in ways that are easy to get subtly
+7. **The theme override and system preference can disagree** in ways that are easy to get subtly
    wrong, particularly on first paint. This is user-visible and hard to catch in a still image.
-7. **Automated accessibility checking produces findings on existing components** the moment it is
+8. **Automated accessibility checking produces findings on existing components** the moment it is
    switched on. The volume is unknown until it runs, and it may be large enough to need its own
    sequencing decision.
-8. **Two sources of truth for breakpoints already exist.** Consolidating them changes which layout
+9. **Two sources of truth for breakpoints already exist.** Consolidating them changes which layout
    renders at which width, and the widths where a structure switches are exactly the widths least
    covered by baselines today.
-9. **Scope creep into a redesign.** "Distinctive and premium" is an invitation to re-open settled
-   visual decisions. The first unresolved decision above exists to make that an explicit choice
-   rather than an accumulating one.
+10. **The redesign expands without a stopping rule.** Re-deriving the palette and the typography is
+   now in scope, which removes the boundary that kept "distinctive and premium" from re-opening
+   every settled visual decision. The replacement boundary is the art direction itself: values are
+   re-derived, the character is not. A change that alters the character is out of scope and must be
+   recorded as such rather than absorbed.
 
 ## Production-readiness acceptance criteria
 
@@ -685,8 +740,9 @@ The feature is ready to ship when all of the following hold.
    render without a flash of the other theme.
 5. Every component's every drawn colour pair is measured and asserted in both themes, and a colour
    change fails a test rather than a review.
-6. The verification suite captures the axes the review protocol claims, or the protocol has been
-   narrowed to what it captures, and the specification states which subset runs when.
+6. The verification suite captures the axes the review protocol claims: a story under test is
+   compared in both themes at all three review widths, diff-scoped on a pull request and in full
+   nightly.
 7. An automated accessibility check runs over the system's stories and fails the change on a finding.
 8. Every component specification answers every state in the closed vocabulary, verified mechanically.
 9. Every component has stories for its variants, its applicable states, a realistic composition, its

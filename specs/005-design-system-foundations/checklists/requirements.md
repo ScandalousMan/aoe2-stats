@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,27 +31,29 @@
 
 ## Notes
 
-Three [NEEDS CLARIFICATION] markers remain deliberately. Each is an arbitration the code cannot
-settle and for which no reasonable default exists, and each changes the size or the meaning of the
-work rather than a detail inside it:
+All five open decisions were settled by `/speckit-clarify` on 2026-09-05 and are recorded in the
+specification's Clarifications section. Three carried `[NEEDS CLARIFICATION]` markers and none
+remains:
 
-1. **Art direction scope** — are the existing colour and typography tokens fixed, or is a redesign
-   in scope? Re-deriving the palette invalidates the measured contrast table and every visual
-   baseline. The specification proceeds on the assumption that they are fixed, stated in Assumptions.
-2. **Retrofit scope** — do the thirty-two existing components and nine application routes move onto
-   the new foundations in this feature, or opportunistically afterwards? The effort differs by an
-   order of magnitude and the second option leaves the system in two states indefinitely.
-3. **Verification matrix** — what theme and width coverage runs on a pull request versus nightly,
-   given constitution VII's rule that pull-request runs test only what the diff affects and the
-   free-tier budget recorded in `docs/adr/0002-hosting.md`.
+1. **Art direction scope** — the palette and the typographic families are re-derived in this
+   feature, not inherited. The measured contrast table and every visual baseline are re-established
+   against the values that ship. The art direction itself is the brief and is not re-opened.
+2. **Retrofit scope** — full retrofit. All thirty-two components and all nine application routes
+   move onto the new foundations inside this feature; the system is never left in two states.
+3. **Verification matrix** — the suite is scoped by story and never by axis. A pull request captures
+   both themes at all three review widths over the stories its diff affects; the nightly run applies
+   the same matrix to every story.
 
-These are the subject of `/speckit-clarify`, which is the next command. Every other part of the
-specification is written to stand whichever way they are answered: the requirements describe the
-end state, and only the sequencing and the size of the change depend on the answers.
+Two further decisions carried no marker because a defensible default was stated. Both were settled
+in the same session rather than inherited:
 
-Two further unresolved decisions are recorded in the specification without markers, because a
-defensible default is stated and proceeding on it is safe: where the system's living facts should be
-filed, and whether an opacity token family is wanted at all.
+4. **Where living facts are filed** — the measured contrast table and the gap register stay beside
+   the design system's specifications, and the project's filing rule gains the distinction that puts
+   them there: a living fact whose subject is the package is filed with the package.
+5. **Opacity family** — refused, with the refusal dated and the colour route named as what
+   components use instead.
+
+The specification's "Important unresolved decisions" section now records that none remain.
 
 The "written for non-technical stakeholders" item is left unchecked rather than claimed. This
 artifact's stakeholders are the people and agents who build and review the interface; there is no
