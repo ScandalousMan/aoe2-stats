@@ -97,19 +97,24 @@ jobs:
           writeFileSync(process.env.STORIES_OUT, JSON.stringify(units))
           JS
           STORIES_OUT="$RUNNER_TEMP/visual-stories.json" node "$RUNNER_TEMP/visual-stories.mjs"
-          {
-            echo "VISUAL_STORIES<<VISUAL_STORIES_EOF"
-            cat "$RUNNER_TEMP/visual-stories.json"
-            echo ""
-            echo "VISUAL_STORIES_EOF"
-          } >> "$GITHUB_ENV"
 
       # The whole suite under tests/visual/, not the pull-request job's `--changed` slice: every
-      # story (via VISUAL_STORIES above) and tests/visual/app-routes.spec.ts, both rewritten from
+      # story (via VISUAL_STORIES below) and tests/visual/app-routes.spec.ts, both rewritten from
       # this run's renderer. `--update-snapshots=all` — not `changed` or `missing` — is what makes
       # every selected capture provenanced by this run rather than inherited from whichever
       # machine happened to write it before.
-      - run: pnpm exec playwright test --config=playwright.config.ts --update-snapshots=all
+      #
+      # `VISUAL_STORIES` is set here, on this one command, rather than through `$GITHUB_ENV` —
+      # the T504 axis expansion pushed the JSON payload to ~1800 units (~165 KB), and writing a
+      # value that size into `$GITHUB_ENV` puts it into the environment of *every* later step in
+      # this job, not just this one. The runner's own subsequent steps (the `setup-node` and
+      # `checkout` post-actions) inherit that environment to spawn their own processes, and the
+      # combined size overflowed the runner's argument/environment limit outright — every step
+      # after this one failed to start with `Argument list too long` (run 33958343112). Scoping
+      # the variable to this single `run:` command, the way `scripts/visual/run.mjs` itself passes
+      # it only to the one `spawnSync` that needs it, keeps the payload out of every other
+      # process's environment.
+      - run: VISUAL_STORIES="$(cat "$RUNNER_TEMP/visual-stories.json")" pnpm exec playwright test --config=playwright.config.ts --update-snapshots=all
 
       # Committing with the runner's own built-in token — actions/checkout's default
       # `persist-credentials: true` already wired `origin` to authenticate as `GITHUB_TOKEN`, and
