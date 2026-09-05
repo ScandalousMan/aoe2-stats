@@ -326,7 +326,7 @@ export function RatingFigure({
     return (
       <span
         className={cx(
-          'font-mono font-semibold tracking-tight',
+          'type-numeric font-semibold tracking-tight',
           textSize,
           ratingTone(ratingChange.value),
         )}
@@ -338,7 +338,7 @@ export function RatingFigure({
   }
 
   return (
-    <span className={cx('font-mono font-semibold tracking-tight text-text-primary', textSize)}>
+    <span className={cx('type-numeric font-semibold tracking-tight text-text-primary', textSize)}>
       {rating}
       {ratingChange && (
         <>
@@ -373,7 +373,7 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
       href={match.href}
       onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
-        'flex flex-col gap-2 rounded-lg border border-border bg-surface p-4',
+        'flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
         'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
         focusRing,
         className,
@@ -464,7 +464,7 @@ export function MatchList({
     return (
       <div className={cx('flex flex-col gap-3', className)} aria-busy="true">
         {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton key={index} variant="block" className="h-24 w-full rounded-lg" />
+          <Skeleton key={index} variant="block" className="h-24 w-full rounded-panel" />
         ))}
       </div>
     )
@@ -624,7 +624,7 @@ function MatchTableRow({
       <td className="py-3 pr-5 text-right">
         <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
       </td>
-      <td className="py-3 pr-5 text-right font-mono text-text-primary">{match.durationLabel}</td>
+      <td className="py-3 pr-5 text-right type-numeric text-text-primary">{match.durationLabel}</td>
       <td className="py-3 pr-5 text-text-secondary" title={match.playedAtAbsolute}>
         {match.playedAtRelative}
       </td>

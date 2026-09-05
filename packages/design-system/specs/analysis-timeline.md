@@ -11,7 +11,8 @@ FR-043, FR-043a, FR-043b, FR-043c, FR-044. SC-006, SC-007, SC-009a, SC-011, SC-0
 scenarios 1, 2, 3, 4, 5, 7, 8.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Badge`,
 `Skeleton`, `StatValue`. [`match-history.md`](./match-history.md) §11.2 — the `UnresolvedIdentifier`
-treatment (label prefix, `text-secondary`, `font-mono`), reused verbatim for a technology, unit or
+treatment (label prefix, `type-identifier` — mono family and `text-secondary` by the role's own
+contract, T531/research D7), reused verbatim for a technology, unit or
 building id this component's own reference data cannot name (FR-043a), never reinvented for this
 component's own three identifier kinds. [`match-history.md`](./match-history.md) §2 — team grouping
 order, reused for `ParticipantTimelineColumn` ordering so this component reads as one more section of
@@ -180,10 +181,11 @@ a new game version, ahead of this service's own naming table — the field rende
 - **"Technology ID `<n>`"**, **"Unit ID `<n>`"**, **"Building ID `<n>`"** — the label prefix names what
   the number is an id _of_, never the bare number and never the field's own label with nothing marking
   it unresolved.
-- `text-secondary`, never `text-primary` — one step down the same hierarchy a resolved name sits at,
-  exactly as `match-history.md` §11.2 states for `Civilisation`/`Map`.
-- `font-mono` — an id is data, a name is prose, and this component does not blur the two typefaces any
-  more than `match-history.md` does for its own pair.
+- `type-identifier` (research D7, FR-007) — `text-secondary`, never `text-primary`, by the role's own
+  contract: one step down the same hierarchy a resolved name sits at, exactly as `match-history.md`
+  §11.2 states for `Civilisation`/`Map`. The role also carries the mono family: an id is data, a name
+  is prose, and this component does not blur the two typefaces any more than `match-history.md` does
+  for its own pair.
 
 No icon, no additional colour token, no fourth signal — three (wording, colour step, typeface) already
 clear constitution VI's "never colour alone" rule, the identical reasoning `match-history.md` §11.2
@@ -237,7 +239,7 @@ states for a different pair — different label, and tone chosen for the same re
 
 | `state`       | Heading                                    | Body (exact copy)                                                                                                      | Tone      | Action                    |
 | ------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------- |
-| `failed`      | "This match could not be analysed"         | "The recorded game could not be parsed." + secondary line `text-secondary`/`font-mono`: "Error: `<error_class>`"       | `danger`  | none                      |
+| `failed`      | "This match could not be analysed"         | "The recorded game could not be parsed." + secondary line `text-secondary`/`type-machine`: "Error: `<error_class>`"    | `danger`  | none                      |
 | `unavailable` | "Analysis is not available for this match" | "This match's recorded game is no longer available, and it was never analysed. It cannot be analysed now."             | `danger`  | none                      |
 | `refused`     | "Analysis is temporarily unavailable"      | "This service has reached its limit for the number of recordings it can keep for analysis right now. Try again later." | `warning` | "Try requesting analysis" |
 
@@ -326,9 +328,12 @@ heading, via that component), `danger` (`failed`/`unavailable`'s `Callout` headi
 one is already measured in `specs/README.md`'s contrast table and already asserted in
 `tokens/build-tokens.test.mjs` via `Badge`'s, `Callout`'s and `Button`'s own use.
 
-Typography: `mono` for every time value (`m:ss`), every count (`StatValue`'s figures), and every
-`UnresolvedIdentifier`'s number (DS-8 — the same reasoning every stacked-figure list and every raw
-identifier in this system gives); `sans` for every name, label and sentence. Sizes: `Heading` `xl`
+Typography (T531, research D7): `type-numeric` for every time value (`m:ss`) and every count
+(`StatValue`'s figures) — the mono family with `tabular-nums`, so alignment does not ride on the
+family happening to be monospaced; `type-identifier` for every `UnresolvedIdentifier`'s number — the
+same reasoning every raw identifier in this system gives, now the mono family and `text-secondary` by
+the role's own contract rather than DS-8's shared, undifferentiated `font-mono`; `sans` for every
+name, label and sentence. Sizes: `Heading` `xl`
 (matching `MatchDetailPanel`'s own panel heading, `match-history.md` §6); participant heading `lg`
 `semibold`; list rows and `EngineProvenance` `sm`/`xs`; `StatValue/compact` per that component's own
 sizing. Weights `semibold` on aliases, participant headings and figures; `normal` elsewhere.
@@ -340,8 +345,8 @@ motion on any figure or list row** (`StatValue`'s own rule, README rule 1) — n
 fades in as it is read, including the moment a poll (§5) turns `running` into `published`. `Skeleton`'s
 own pulse, `duration.slow`, stops on its resting frame under `prefers-reduced-motion: reduce`.
 
-Gaps in play: **DS-8** (tabular alignment for every time value and count rides on `font-mono` being
-monospaced). No new gap.
+Gaps in play: none. **DS-8 closed** (T531) — every time value and count now carries `type-numeric`,
+whose `tabular-nums` keeps alignment independent of the mono family.
 
 ## 7. Spacing
 
@@ -423,7 +428,7 @@ the same viewport, so a poll that turns `running` into `published` shows no refl
       unresolved age-up technology id and shows "Technology ID `<n>` ordered — `<m:ss>`" with the same
       verb.
 - [ ] A story seeded with an unresolved technology, unit and building id each renders that field's
-      `UnresolvedIdentifier` form (§3.2) in `text-secondary`/`font-mono`, visibly distinct from a resolved
+      `UnresolvedIdentifier` form (§3.2) in `type-identifier`, visibly distinct from a resolved
       name in the same story's other rows, placed in one frame.
 - [ ] The `VillagersOrderedStat` in every `published` story shows both "Villagers ordered" and its
       secondary caveat line in the same frame — never the label alone.

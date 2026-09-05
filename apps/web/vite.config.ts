@@ -37,6 +37,24 @@ export default defineConfig({
           dest: 'game-assets/flags',
           rename: (name, extension) => `${name}.${extension}`,
         },
+        // The three self-hosted typeface packs (typography-tokens.md §8.3, feature 005 T523),
+        // served under /fonts/<pack> — the same prefix `font.json`'s `face.*.src` and this file's
+        // preload links in index.html both name, and the same prefix Storybook mounts via
+        // `staticDirs` (packages/design-system/.storybook/main.ts), so a URL is the same string
+        // in the app and in a story. The `*.woff2` glob is deliberate: the licence records stay
+        // in the repository and are not served.
+        {
+          src: '../../packages/design-system/tokens/fonts/inter/*.woff2',
+          dest: 'fonts/inter',
+        },
+        {
+          src: '../../packages/design-system/tokens/fonts/fraunces/*.woff2',
+          dest: 'fonts/fraunces',
+        },
+        {
+          src: '../../packages/design-system/tokens/fonts/jetbrains-mono/*.woff2',
+          dest: 'fonts/jetbrains-mono',
+        },
       ],
     }),
   ],

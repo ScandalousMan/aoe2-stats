@@ -28,6 +28,9 @@ export const colorTokens = {
   'info': 'var(--ds-color-info)',
   'info-contrast': 'var(--ds-color-info-contrast)',
   'focus-ring': 'var(--ds-color-focus-ring)',
+  'link': 'var(--ds-color-link)',
+  'link-hover': 'var(--ds-color-link-hover)',
+  'link-visited': 'var(--ds-color-link-visited)',
   'overlay': 'var(--ds-color-overlay)',
   'player-1': 'var(--ds-color-player-1)',
   'player-1-contrast': 'var(--ds-color-player-1-contrast)',
@@ -69,13 +72,10 @@ export const spaceTokens = {
 export type SpaceToken = keyof typeof spaceTokens
 
 export const radiusTokens = {
-  'none': 'var(--ds-radius-none)',
-  'sm': 'var(--ds-radius-sm)',
-  'md': 'var(--ds-radius-md)',
-  'lg': 'var(--ds-radius-lg)',
-  'xl': 'var(--ds-radius-xl)',
-  '2xl': 'var(--ds-radius-2xl)',
-  'full': 'var(--ds-radius-full)',
+  'control': 'var(--ds-radius-control)',
+  'panel': 'var(--ds-radius-panel)',
+  'overlay': 'var(--ds-radius-overlay)',
+  'pill': 'var(--ds-radius-pill)',
 } as const
 export type RadiusToken = keyof typeof radiusTokens
 
@@ -138,5 +138,22 @@ export const motionTokens = {
     'standard': 'var(--ds-motion-easing-standard)',
     'decelerate': 'var(--ds-motion-easing-decelerate)',
     'accelerate': 'var(--ds-motion-easing-accelerate)',
+    'linear': 'var(--ds-motion-easing-linear)',
   },
 } as const
+
+// EXCEPTION to the var()-only rule above. Every other export in this file is a var() reference
+// because its resolved value depends on the active theme — a CSS cascade concern this file leaves
+// to tokens.css. A breakpoint is not themed: it does not change when `data-theme` does. It is
+// consumed by `matchMedia`, which needs a plain number of pixels — a CSS custom property is not a
+// value `matchMedia` can read — so this is the one generated export that is a raw number rather
+// than a `var()` reference, and it should be the only one. useMediaQuery.ts imports this instead
+// of hard-coding its own copy (DS-5), so styling (preset.css's --breakpoint-* mapping, also a
+// literal for the same matchMedia-shaped reason) and structure derive from the one file.
+export const breakpointTokens = {
+  'sm': 640,
+  'md': 768,
+  'lg': 1024,
+  'xl': 1280,
+} as const
+export type BreakpointToken = keyof typeof breakpointTokens

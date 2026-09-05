@@ -167,8 +167,9 @@ button, so the one place `accent` legitimately appears (a `primary` action) is n
 toggle that happens to be on.
 
 Typography: `sans` throughout, size `sm` label (`Button/md`) or `md` (`Button/lg` on touch), weight
-`semibold` (`Button`'s own), `Explanation` `sm` `normal`. `StateGlyph` sizes from the adjacent
-font-size (`1em`, gap DS-7), never a fixed pixel size.
+`semibold` (`Button`'s own), `Explanation` `sm` `normal`. `StateGlyph` sizes from `icon-sm` (16px,
+T528) — the nearest `icon.json` step to the adjacent label size, since no step means "inherit the
+surrounding text's own size".
 
 Radius `md` (`Button`), `lg` (`Callout`, via that component). Elevation `none` — a button does not
 float, and neither does its error callout (`shared-primitives.md`). Motion `duration.fast` +
@@ -176,7 +177,7 @@ float, and neither does its error callout (`shared-primitives.md`). Motion `dura
 glyph never animates on entry and the label never counts or fades** (README rule 1). Under
 `prefers-reduced-motion`, `duration.instant` and the glyph swaps with no transition.
 
-Gaps in play: **DS-4** (focus ring), **DS-7** (`StateGlyph` sizing from the font). No new gap.
+Gaps in play: **DS-4** (focus ring). No new gap.
 
 ## 7. Spacing
 

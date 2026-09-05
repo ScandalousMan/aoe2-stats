@@ -68,7 +68,7 @@ export const Loading: Story = {
   name: 'Loading (caller-rendered Skeleton pair, not a state of this component)',
   render: () => (
     <div className="flex items-center gap-3">
-      <Skeleton variant="block" className="h-16 w-16 rounded-md" />
+      <Skeleton variant="block" className="h-16 w-16 rounded-control" />
       <Skeleton variant="text" className="w-24" />
     </div>
   ),

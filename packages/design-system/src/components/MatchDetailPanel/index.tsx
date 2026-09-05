@@ -100,16 +100,17 @@ export interface MatchDetailData {
 }
 
 /** §11.2: an identifier this service's reference data cannot name, shown as itself rather than
- * filled in with a guess. Three signals, never colour alone: a label prefix that says "id," not a
- * name; `text-secondary` (one step down from a resolved name's `text-primary`); and `font-mono`,
- * the same treatment `ProfileSummary`'s `ProfileId` already gives every other bare identifier in
- * this system (DS-8). `id` is omitted only for `Map` (§11.1's own note: this schema carries no
- * separate numeric map identifier — `map_name` already *is* the raw value, and `null` means the
- * source sent none at all, not that a known id could not be named) — the wording still says so
- * rather than presenting an empty gap silently. */
+ * filled in with a guess. Two signals, never colour alone: a label prefix that says "id," not a
+ * name; and `type-identifier` (research D7, FR-007) — a value the product could not resolve to a
+ * name, carrying the mono family for character-level legibility and `text-secondary` by contract
+ * (one step down from a resolved name's `text-primary`), the same treatment `ProfileSummary`'s
+ * `ProfileId` already gives every other bare identifier in this system. `id` is omitted only for
+ * `Map` (§11.1's own note: this schema carries no separate numeric map identifier — `map_name`
+ * already *is* the raw value, and `null` means the source sent none at all, not that a known id
+ * could not be named) — the wording still says so rather than presenting an empty gap silently. */
 export function UnresolvedIdentifier({ label, id }: { label: string; id?: number | string }) {
   return (
-    <span className="font-mono text-sm text-text-secondary">
+    <span className="text-sm type-identifier">
       {id === undefined ? `${label} — unresolved` : `${label} ID ${id}`}
     </span>
   )
@@ -239,8 +240,8 @@ export function MatchDetailPanel({
           <CaptureStateBadge context="detail" loading />
         </header>
         <div className="flex flex-col gap-3">
-          <Skeleton variant="block" className="h-14 w-full rounded-lg" />
-          <Skeleton variant="block" className="h-14 w-full rounded-lg" />
+          <Skeleton variant="block" className="h-14 w-full rounded-panel" />
+          <Skeleton variant="block" className="h-14 w-full rounded-panel" />
         </div>
       </div>
     )
@@ -432,7 +433,7 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
           {team.participants.map((participant) => (
             <li
               key={participant.id}
-              className="flex flex-col gap-1 rounded-lg border border-border p-3"
+              className="flex flex-col gap-1 rounded-panel border border-border p-3"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2">

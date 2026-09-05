@@ -59,7 +59,7 @@ export function Callout({
     <div
       role={roleForTone[tone]}
       aria-labelledby={headingId}
-      className={cx('rounded-lg border-l-2 bg-surface-raised p-4 md:p-5', stripe, className)}
+      className={cx('rounded-panel border-l-2 bg-surface-raised p-4 md:p-5', stripe, className)}
     >
       <Heading
         id={headingId}

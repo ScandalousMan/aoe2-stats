@@ -79,7 +79,7 @@ export function ArchivalControl({
   const switchDisabled = submitting || unavailable
 
   return (
-    <section aria-labelledby="archival-control-heading" className={cx('max-w-prose', className)}>
+    <section aria-labelledby="archival-control-heading" className={cx('max-w-measure', className)}>
       <h2
         id="archival-control-heading"
         className="font-display text-xl font-semibold text-text-primary"
@@ -87,7 +87,7 @@ export function ArchivalControl({
         Replay archival
       </h2>
 
-      <div className="mt-6 rounded-lg bg-surface-raised p-5">
+      <div className="mt-6 rounded-panel bg-surface-raised p-5">
         <h3 className="font-sans text-md font-semibold text-text-primary">
           Before you decide: how you get back in
         </h3>
@@ -114,7 +114,8 @@ export function ArchivalControl({
 
       <div className="mt-8">
         {loading ? (
-          <div className="flex flex-col gap-2">
+          // T532 (FR-054): one region for both skeletons below, never one announcement per block.
+          <div className="flex flex-col gap-2" aria-busy="true">
             <Skeleton variant="text" lines={1} className="w-1/2" />
             <Skeleton variant="block" className="h-10 w-48" />
           </div>

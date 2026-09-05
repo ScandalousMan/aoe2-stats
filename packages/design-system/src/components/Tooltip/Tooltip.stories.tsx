@@ -221,7 +221,7 @@ export const AboveAFigure: Story = {
     (StoryFn) => (
       <div className="flex flex-col gap-4">
         <StoryFn />
-        <div className="rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <div className="rounded-panel border border-border bg-surface p-4 text-sm text-text-primary">
           Rating board — the figure the tooltip must never cover.
         </div>
       </div>

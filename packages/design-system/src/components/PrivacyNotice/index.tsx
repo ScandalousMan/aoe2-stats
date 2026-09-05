@@ -201,8 +201,8 @@ const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
 const inlineLinkClasses = cx(
-  'text-accent underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-accent-hover active:text-accent-active',
+  'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
   focusRing,
 )
 
@@ -403,7 +403,7 @@ export function PrivacyNotice({
   return (
     <article
       aria-labelledby="privacy-notice-title"
-      className={cx('mx-auto max-w-prose px-6 py-6 md:px-0 md:py-8', className)}
+      className={cx('mx-auto max-w-measure px-6 py-6 md:px-0 md:py-8', className)}
     >
       <header>
         <h1
@@ -451,9 +451,9 @@ export function PrivacyNotice({
                 href={`#${section.id}`}
                 onClick={scrollAndFocus(section.id)}
                 className={cx(
-                  'flex min-h-11 items-center py-3 font-sans text-md text-accent underline',
+                  'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
                   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                  'hover:text-accent-hover active:text-accent-active',
+                  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
                   focusRing,
                 )}
               >
@@ -673,7 +673,7 @@ export function PrivacyNotice({
           <a
             href={hrefs.objectionForm}
             className={cx(
-              'inline-flex min-h-11 w-full items-center justify-center rounded-md border border-border-strong bg-surface px-6 font-sans text-md font-semibold text-text-primary md:w-auto',
+              'inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-6 font-sans text-md font-semibold text-text-primary md:w-auto',
               'transition-colors duration-120 ease-standard motion-reduce:duration-0',
               'hover:bg-surface-sunken active:bg-surface-sunken',
               focusRing,
@@ -700,13 +700,13 @@ export function PrivacyNotice({
       {/* Section 9 */}
       <section aria-labelledby="how-to-reach-us" className="mt-12">
         <SectionHeading id="how-to-reach-us">How to reach us</SectionHeading>
-        <div className="mt-3 rounded-lg bg-surface-raised p-5 font-sans text-md text-text-primary">
+        <div className="mt-3 rounded-panel bg-surface-raised p-5 font-sans text-md text-text-primary">
           {controllerContact ? (
             <p>
               The controller for everything described here is {controllerContact.name}.{' '}
               {controllerContact.postalAddress && `${controllerContact.postalAddress}. `}To reach us
               about anything this notice does not have a button for, use{' '}
-              <a href={controllerContact.contactRoute} className="text-text-primary underline">
+              <a href={controllerContact.contactRoute} className="text-link underline">
                 this contact route
               </a>
               .

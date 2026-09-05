@@ -107,7 +107,7 @@ export function SignInScreen({
       <section
         aria-labelledby="sign-in-screen-title"
         className={cx(
-          'mt-8 w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-raised md:mt-12 md:p-8',
+          'mt-8 w-full max-w-md rounded-panel border border-border bg-surface p-6 shadow-raised md:mt-12 md:p-8',
           className,
         )}
       >
@@ -193,9 +193,11 @@ export function SignInScreen({
   )
 }
 
+// T532 (FR-054): one region for both skeletons below, announced once via this div's own
+// `aria-busy` rather than per `Skeleton` (each stays `aria-hidden`, its own contract).
 function ReturningState() {
   return (
-    <div className="mt-6 flex flex-col gap-3">
+    <div className="mt-6 flex flex-col gap-3" aria-busy="true">
       <Skeleton variant="text" lines={3} />
       <Skeleton variant="block" className="h-12 w-full" />
       <p className="font-sans text-sm text-text-secondary">Checking that with Steam…</p>

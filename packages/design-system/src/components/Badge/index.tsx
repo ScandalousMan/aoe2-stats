@@ -35,7 +35,7 @@ export function Badge({ variant = 'neutral', children, className }: BadgeProps) 
   return (
     <span
       className={cx(
-        'inline-flex h-5 items-center rounded-full px-2 font-sans text-xs font-semibold tracking-wide',
+        'inline-flex h-5 items-center rounded-pill px-2 font-sans text-xs font-semibold tracking-wide',
         variantClasses[variant],
         className,
       )}

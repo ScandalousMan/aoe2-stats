@@ -418,20 +418,21 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
     ],
   }
 
-  it('renders an unresolved civilisation as "Civilisation ID <n>" in text-secondary/font-mono, distinct from a resolved name in the same frame (FR-020, §11.2)', () => {
+  it('renders an unresolved civilisation as "Civilisation ID <n>" in type-identifier, distinct from a resolved name in the same frame (FR-020, §11.2, T531)', () => {
     const restore = mockMatchMediaAt(1280)
     render(<MatchDetailPanel match={unresolvedMatch} />)
 
     const unresolved = screen.getByText('Civilisation ID 999')
-    expect(unresolved.className).toMatch(/\bfont-mono\b/)
-    expect(unresolved.className).toContain('text-text-secondary')
+    // `type-identifier` (research D7) carries the mono family and `text-secondary` by contract in
+    // one utility, so both are checked through the one class.
+    expect(unresolved.className).toMatch(/\btype-identifier\b/)
 
     // `CivilisationIcon` (T431, composed rather than re-implemented) inherits `currentColor`
     // instead of setting it on the name's own bare `<span>` (civilisation-icon.md §5) — the class
     // that carries the resolved-name colour therefore lives one level up, on the mark+name pair's
     // own wrapper (`ParticipantCivilisation`'s call site).
     const resolved = screen.getByText('Britons')
-    expect(resolved.className).not.toMatch(/\bfont-mono\b/)
+    expect(resolved.className).not.toMatch(/\btype-identifier\b/)
     expect(resolved.parentElement?.className).toContain('text-text-primary')
     restore()
   })
@@ -445,8 +446,9 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
   it('renders an unresolved map without inventing a name or a numeric identifier this schema does not carry', () => {
     render(<MatchDetailPanel match={unresolvedMatch} />)
     const unresolvedMap = screen.getByText(/Map — unresolved/)
-    expect(unresolvedMap.className).toMatch(/\bfont-mono\b/)
-    expect(unresolvedMap.className).toContain('text-text-secondary')
+    // T531: `type-identifier` (research D7) carries the mono family and `text-secondary` by
+    // contract in one utility.
+    expect(unresolvedMap.className).toMatch(/\btype-identifier\b/)
     expect(screen.queryByText('Arabia')).not.toBeInTheDocument()
   })
 

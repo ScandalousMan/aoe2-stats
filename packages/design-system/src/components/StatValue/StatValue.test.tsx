@@ -15,12 +15,54 @@ describe('StatValue', () => {
     expect(screen.queryByText('—')).not.toBeInTheDocument()
   })
 
-  it('renders a secondary-colour em dash, never text-primary, when the value has never been observed', () => {
+  it('states why in words, in secondary colour never text-primary, when the value has never been observed — never an em dash', () => {
     render(<StatValue label="Rank" status="empty" secondaryLine="Not ranked yet" />)
-    const dash = screen.getByText('—')
-    expect(dash.className).toMatch(/text-text-secondary/)
-    expect(dash.className).not.toMatch(/text-text-primary/)
-    expect(screen.getByText('Not ranked yet')).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    const reason = screen.getByText('Not ranked yet')
+    expect(reason.className).toMatch(/text-text-secondary/)
+    expect(reason.className).not.toMatch(/text-text-primary/)
+    // The caller's own `secondaryLine` is reused as the value slot's words rather than repeated a
+    // second time beneath it.
+    expect(screen.getAllByText('Not ranked yet')).toHaveLength(1)
+  })
+
+  it('falls back to a generic, honest reason when the empty value has neither an emptyReason nor a secondaryLine', () => {
+    render(<StatValue label="Rank" status="empty" />)
+    expect(screen.getByText('No data yet')).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('prefers an explicit emptyReason over secondaryLine, and still renders a distinct secondaryLine beneath it', () => {
+    render(
+      <StatValue
+        label="Rank"
+        status="empty"
+        emptyReason="Never played this leaderboard"
+        secondaryLine="Checked 3 minutes ago"
+      />,
+    )
+    expect(screen.getByText('Never played this leaderboard')).toBeInTheDocument()
+    expect(screen.getByText('Checked 3 minutes ago')).toBeInTheDocument()
+  })
+
+  it('never renders a digit for a genuinely-zero delta or value, and a real zero still renders as data', () => {
+    render(<StatValue label="Streak" value="0" delta={{ value: 0 }} />)
+    const value = screen.getByText('0')
+    expect(value.className).toMatch(/text-text-primary/)
+    const delta = screen.getByText('+0')
+    expect(delta.className).toMatch(/text-success/)
+  })
+
+  it('announces its own loading state as a busy region by default, correct for standalone use', () => {
+    const { container } = render(<StatValue label="Rank" status="loading" />)
+    expect(container.querySelector('dl')).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('does not announce its own loading state when composed by a caller that owns the region', () => {
+    const { container } = render(
+      <StatValue label="Rank" status="loading" announceLoading={false} />,
+    )
+    expect(container.querySelector('dl')).not.toHaveAttribute('aria-busy')
   })
 
   it('renders the stale value at full contrast alongside a secondary line explaining the staleness — never blank', () => {

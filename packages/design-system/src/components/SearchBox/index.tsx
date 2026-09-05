@@ -132,7 +132,7 @@ export function SearchBox({
           aria-describedby={rateLimited ? rateLimitId : undefined}
           onChange={(event) => onValueChange(event.target.value)}
           className={cx(
-            'h-10 w-full rounded-md border border-border bg-surface px-4 font-sans text-md text-text-primary',
+            'h-10 w-full rounded-control border border-border bg-surface px-4 font-sans text-md text-text-primary',
             'transition-colors duration-120 ease-standard',
             'hover:border-border-strong focus-visible:border-border-strong',
             'disabled:cursor-default disabled:border-border disabled:bg-surface-sunken disabled:text-text-disabled',
@@ -189,7 +189,7 @@ function ResultsRegionContent({
             <li key={index}>
               <Skeleton
                 variant="block"
-                className="h-20 w-full rounded-lg md:h-12 md:rounded-none"
+                className="h-20 w-full rounded-panel md:h-12 md:rounded-none"
               />
             </li>
           ))}

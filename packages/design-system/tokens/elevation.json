@@ -1,5 +1,11 @@
 {
-  "$comment": "Elevation (box-shadow) tokens (T016). Themed like colour: dark surfaces need a darker, less transparent shadow to read at all, so the same names carry different values per theme. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Elevation (box-shadow) tokens (T016, per-level meaning added T519, FR-009). Themed like colour: dark surfaces need a darker, less transparent shadow to read at all, so the same names carry different values per theme. Each level's stated meaning and admission rule — what it means, what may sit at it, and the document-order decision `overlay` relies on for at least one call site — is `$meaning` below, in full in `packages/design-system/specs/README.md`, 'Elevation' section. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$meaning": {
+    "none": "The resting, flush state. Inline content and any non-elevated surface draw no shadow — this is the default, not an omission.",
+    "raised": "A surface lifted slightly off the page, enough to read as its own bounded unit without floating above unrelated content. `SignInScreen`'s card is the one call site today.",
+    "overlay": "A floating surface above other content but not modal: `Tooltip`'s bubble and `Menu`'s panel. This is the level the 'Not a gap: stacking' decision governs for the call site that has no explicit stacking value of its own.",
+    "modal": "The ceiling. A surface that blocks interaction with everything beneath it — `Dialog` is the one call site. Nothing may render at a level above `modal`: a dialog's own scrim already covers everything else, so there is nothing left underneath for a higher level to be elevated above."
+  },
   "light": {
     "none": "none",
     "raised": "0 1px 2px 0 rgb(43 32 19 / 12%)",

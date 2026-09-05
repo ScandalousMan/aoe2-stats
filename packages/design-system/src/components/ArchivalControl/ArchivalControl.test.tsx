@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ArchivalControl } from './index'
@@ -197,5 +197,19 @@ describe('ArchivalControl — loading', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(4)
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('announces loading once for the status region, not once per skeleton (FR-054)', () => {
+    vi.useFakeTimers()
+    const { container } = render(<ArchivalControl loading />)
+    act(() => vi.advanceTimersByTime(200))
+    vi.useRealTimers()
+
+    const hiddenBlocks = container.querySelectorAll('[aria-hidden="true"]')
+    expect(hiddenBlocks.length).toBeGreaterThan(1)
+    for (const block of hiddenBlocks) {
+      expect(block).not.toHaveAttribute('aria-busy')
+    }
+    expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(1)
   })
 })

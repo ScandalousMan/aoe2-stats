@@ -84,7 +84,7 @@ export function SiteHeader({
         href={skipToContentHref}
         className={cx(
           'sr-only',
-          'focus:not-sr-only focus:fixed focus:top-2 focus:left-4 focus:z-50 focus:rounded-md',
+          'focus:not-sr-only focus:fixed focus:top-2 focus:left-4 focus:z-50 focus:rounded-control',
           'focus:border focus:border-border-strong focus:bg-surface-raised focus:px-3 focus:py-2',
           'focus:font-sans focus:text-sm focus:font-normal focus:text-text-primary',
           focusRing,
@@ -117,7 +117,7 @@ export function SiteHeader({
                       aria-current={isCurrent ? 'page' : undefined}
                       onClick={createRowLinkClickHandler(item.href, onNavigate)}
                       className={cx(
-                        'flex min-h-12 items-center justify-center rounded-md border border-transparent px-3',
+                        'flex min-h-12 items-center justify-center rounded-control border border-transparent px-3',
                         'font-sans text-sm',
                         'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                         focusRing,

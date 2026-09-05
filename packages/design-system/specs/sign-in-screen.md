@@ -182,6 +182,10 @@ this screen carries the identity statement.
   `title=` attribute.
 - The screen is fully usable at 200% browser zoom and at 320px logical width without horizontal
   scrolling.
+- **Loading, `returning` phase (T532, FR-054)**: `ReturningState`'s own wrapper carries
+  `aria-busy="true"` while it holds its two `Skeleton`s — one announcement for that region, never
+  once per `Skeleton` (each stays `aria-hidden`, its own contract). See `shared-primitives.md`'s
+  `StatValue` section for the general rule this follows.
 
 ## 9. Visual acceptance criteria
 

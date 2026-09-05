@@ -53,8 +53,16 @@ const variantClasses: Record<ButtonVariant, string> = {
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
+// `primary` cannot ring with `focus-ring`: the ring must clear 3:1 against both `surface-raised`
+// and `accent` (its own fill) at once, and no single colour can bridge a near-white page and a
+// near-ink fill (proof in packages/design-system/specs/color-tokens.md §5, DS-10). So `primary`
+// rings inward instead, in `accent-contrast` — the ink it already carries, which clears 4.5:1 on
+// `accent`, `accent-hover` and `accent-active` alike (build-tokens.test.mjs).
+const primaryFocusRing =
+  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-contrast'
+
 const base = cx(
-  'inline-flex items-center justify-center gap-2 rounded-md font-sans font-semibold',
+  'inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold',
   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
   'disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border disabled:cursor-default',
 )
@@ -86,7 +94,13 @@ export function Button(props: ButtonProps) {
     </>
   )
 
-  const classes = cx(base, sizeClasses[size], variantClasses[variant], focusRing, className)
+  const classes = cx(
+    base,
+    sizeClasses[size],
+    variantClasses[variant],
+    variant === 'primary' ? primaryFocusRing : focusRing,
+    className,
+  )
 
   if (href !== undefined) {
     return (

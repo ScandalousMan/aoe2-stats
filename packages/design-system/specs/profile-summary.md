@@ -34,7 +34,7 @@ ProfileSummary
 ├─ IdentityBar
 │  ├─ ProfileSwitcher        Menu/selection. Trigger shows the viewed profile's alias as TEXT
 │  ├─ CountryLabel           country name in text; a flag glyph may accompany it, never replace it
-│  ├─ ProfileId              font-mono, xs, text-secondary — the identifier support will ask for
+│  ├─ ProfileId              type-identifier, xs — the identifier support will ask for
 │  └─ ProfileActions         Button/ghost "Manage" → primary selection, unlink (FR-004)
 ├─ NonPrimaryBanner          Callout/info, present only while viewing a non-primary profile
 ├─ RatingBoard               one entry per leaderboard the profile has PLAYED (FR-008)
@@ -111,7 +111,7 @@ defect even though it renders correctly.
 ## 5. States
 
 **default** — identity bar, one `RatingEntry` per played leaderboard, freshness line. Ratings in
-`font-mono`, the largest type in the component.
+`type-numeric` (T531/research D7), the largest type in the component.
 
 **hover** — switcher trigger and menu items per `Menu`. A `RatingEntry` is **not** interactive in
 this feature (rating history is a later route) and therefore has no hover affordance: a row that
@@ -148,7 +148,7 @@ Do not paint before 200 ms. After 10 s, fall through to the error state.
    profile yet. Ratings appear after your first ranked match." The identity bar still renders: the
    user is real even if their record is not.
 2. _A played leaderboard with a rating but no rank yet_ (provisional): the `Rank` `StatValue` shows
-   its empty state — a secondary-colour em dash — with the secondary line "Not ranked yet". The
+   its empty state — "Not ranked yet" in words, `text-secondary` (T532; never an em dash). The
    rating still renders; a missing rank never suppresses a known rating.
 3. _One linked profile only_: not an empty state of the board but of the switcher — see §4. The
    trigger renders normally.
@@ -176,9 +176,10 @@ Motion `duration.fast` + `easing.standard` on interactive transitions; `duration
 `easing.decelerate` on the switcher opening. **No motion on any figure**: no count-up, no
 odometer, no entrance fade. Numbers are for reading, not for arriving.
 
-Gaps in play: **DS-4** (focus ring), **DS-5** (the layout change at `lg`), **DS-8** (tabular
-alignment currently rides on `font-mono` being monospaced — this component is the reason that gap
-matters).
+Gaps in play: **DS-4** (focus ring), **DS-5** (the layout change at `lg`). **DS-8 closed** (T531) —
+the rating board's tabular alignment now comes from `type-numeric`'s `tabular-nums`, and the
+fallback heading and `ProfileId` carry `type-identifier` instead; this component was the reason that
+gap mattered.
 
 ## 7. Spacing
 
@@ -243,6 +244,14 @@ breakpoint.
   `text-primary`, and `accent` stays reserved for the badge label.
 - 200% zoom and 320px logical width without horizontal scrolling; at 320px the desktop table is not
   in play, so no figure is ever truncated or ellipsised. Figures never ellipsise at any viewport.
+- **Loading (T532, FR-054)**: two independent regions, because the two load independently — the
+  identity row (avatar and alias `Skeleton`s) carries `aria-busy` on its own wrapper while
+  `viewedProfile` is absent, and `RatingBoard`'s own loading wrapper carries `aria-busy="true"` while
+  `status="loading"`. Neither announces per `Skeleton` (each stays `aria-hidden`, its own contract),
+  and a `StatValue` composed here never declares its own `aria-busy` (`announceLoading={false}` is
+  implied by `RatingBoard` never actually rendering a `status="loading"` `StatValue` — it draws its
+  own matching `Skeleton`s directly instead, precisely so the region and the placeholder shape stay
+  one wrapper's decision). See `shared-primitives.md`'s `StatValue` section for the general rule.
 
 ## 10. Visual acceptance criteria
 
@@ -277,8 +286,8 @@ breakpoint.
 - [ ] Never-loaded error: a danger callout with a retry, no pulsing skeleton, no zeros.
 - [ ] Empty (no rated leaderboard): the identity bar still renders, and an info callout explains
       when ratings will appear; the frame is not blank.
-- [ ] Provisional rank: a secondary-colour em dash with "Not ranked yet", while the rating beside it
-      still shows its real value.
+- [ ] Provisional rank: "Not ranked yet" in words, `text-secondary` (never an em dash), while the
+      rating beside it still shows its real value.
 
 **Layout and craft**
 
@@ -448,12 +457,19 @@ heading — precisely what 004 FR-007 forbids. The test is emptiness, not nullis
   unlabelled numeral as the page's heading repeats that. The prefix follows the rule
   [`match-history.md`](./match-history.md) §11.2 already fixed for an unnamed identifier: "a label
   prefix that says what it is an id of, never the bare number".
-- **`font-mono`**, at the alias's own size (`xl`) and weight (`semibold`) — an id is data, a name is
-  prose, and DS-8 keeps the two out of one typeface.
-- **`text-primary`, and here §12 deliberately diverges from §11.2's `text-secondary`.** An unnamed
-  civilisation is a fact this service admits it could not resolve. This is not that: the profile
-  really is identified by this number, exactly and verifiably. The page's subject may not be typeset
-  one step down the hierarchy, or the page has no visible subject at all.
+- **`type-identifier`**, at the alias's own size (`xl`) and weight (`semibold`) — an id is data, a
+  name is prose, and the role (T531, research D7, FR-007) keeps the two out of one typeface.
+- **Amended 2026-09-05 (T531): `text-secondary`, by `type-identifier`'s own contract, no longer
+  `text-primary`.** Before the typography roles split, this rule deliberately diverged from §11.2's
+  `text-secondary` — reasoning that the profile "really is identified by this number, exactly and
+  verifiably," so the page's subject should not read one step down the hierarchy. SC-010 (US4,
+  design-system-foundations) now settles this the other way for the whole system: an unobserved
+  value — and no alias was ever recorded here — must be **visibly distinct from a measured or
+  resolved one**, in colour as well as in wording, so a reader who is not reading every word still
+  sees the difference. The wording ("Player `<id>`") already carries the distinction the old rule
+  relied on; the colour now does too, matching every other identifier in this system rather than
+  being the one exception. This is a recorded, intended visual change, not a regression — see
+  `ProfileSummary`'s hand-back for T531.
 - **Never** "Unknown player", "Anonymous", an em dash, a placeholder name, or an `<h2>` with a
   `Skeleton` left in it after loading finished.
 
@@ -526,7 +542,7 @@ IdentityBar (widened — §2's parts, rearranged around two new ones)
    ├─ NameLine
    │  ├─ ProfileSwitcher | AliasHeading    the <h2>: the alias, or §12.3's "Player <id>"
    │  └─ CountryFlag                       flag + country name — outside the trigger, after it
-   ├─ ProfileId                            font-mono xs text-secondary — ABSENT under §12.3
+   ├─ ProfileId                            type-identifier xs — ABSENT under §12.3
    ├─ AliasFreshnessNote                   subject="other" only; absent when there is no alias
    └─ (ProfileActions | FavouriteToggle)   §2 / §11.1.3, unchanged, still right-aligned from md
 ```
@@ -596,8 +612,9 @@ service discovered from a match and never enriched:
 **Tokens.** No new token and no new gap. Via the two components: `border` (the flag's frame,
 decorative), `border-strong` (the avatar's frame, meaning-bearing, 3:1), `surface-sunken` (the
 avatar's placeholder fill), `icon-sm` / `icon-md` / `icon-lg` / `icon-2xl`, `radius-sm`, `radius-md`.
-§6's own list is otherwise unchanged. `mono` now also carries §12.3's fallback heading, which is why
-**DS-8** is in play for this section and not only for the rating board.
+§6's own list is otherwise unchanged. §12.3's fallback heading carries `type-identifier` (T531),
+which is why **DS-8**, closed in §6, was in play for this section too and not only for the rating
+board.
 
 **Contrast pairing.** This component's root is `bg-background`
 (`src/components/ProfileSummary/index.tsx`), so its pairs are README's `background` rows, per that

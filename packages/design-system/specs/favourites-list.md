@@ -67,10 +67,11 @@ it is not hand-rolled text:
   state (a `number` skeleton), never `0`, `–` or `--` (`StatValue` §loading — "the worst failure this
   design system can produce").
 - **Never played a ranked ladder** (US5 scenario 3 reaches players of any kind; spec.md edge case: "a
-  favourited player who never played ranked"): `StatValue`'s **empty** state — a `text-secondary` em
-  dash with the secondary line "Not ranked yet" — exactly as `profile-summary.md` §5 empty case 2
-  renders a provisional profile. The em dash is `text-secondary` so it can never be misread as a
-  measured `text-primary` figure.
+  favourited player who never played ranked"): `StatValue`'s **empty** state — the value slot states
+  "Not ranked yet" in words, `type-supporting`/`text-secondary` (T532), reusing the row's own
+  `secondaryLine` rather than repeating it beneath the value — exactly as `profile-summary.md` §5
+  empty case 2 renders a provisional profile. Never a punctuation mark a reader has to interpret; the
+  words are `text-secondary` so they can never be misread as a measured `text-primary` figure.
 - **Standing could not be refreshed** (spec.md edge case: "a favourited player who later disappears
   from the source"): `StatValue`'s **error** state — the last-known figure at full contrast with a
   secondary line stating when it was measured and that the refresh failed, per `StatValue` §error
@@ -165,8 +166,8 @@ identically. Motion `duration.fast` + `easing.standard` on `ProfileLink` hover; 
 standing figure** — no count-up, no entrance fade (`StatValue`'s own rule, README rule 1). Under
 `prefers-reduced-motion`, `duration.instant`.
 
-Gaps in play: **DS-4** (focus ring), **DS-8** (`Standing`'s tabular alignment rides on `font-mono`
-being monospaced). No new gap.
+Gaps in play: **DS-4** (focus ring). **DS-8 closed** (T531) — `Standing`'s tabular alignment now
+comes from `type-numeric`'s `tabular-nums`.
 
 ## 7. Spacing
 
@@ -219,6 +220,9 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
 - The signed-out "Sign in" action is a real activation that navigates carrying the return location, so a
   keyboard or screen-reader user reaches the sign-in screen and returns to `/favourites` the same way a
   pointer user does (§5a).
+- **Loading (T532, FR-054)**: the `<ul>` of `Skeleton` rows carries `aria-busy="true"` itself — one
+  announcement for the whole list, never once per row's `Skeleton` (each stays `aria-hidden`, its own
+  contract). See `shared-primitives.md`'s `StatValue` section for the general rule this follows.
 - Contrast per `specs/README.md`'s measured table, entirely through the primitives above.
 - Usable at 200% zoom and 320px logical width without horizontal scrolling; no field ellipsises at any
   viewport (§8).
@@ -228,11 +232,11 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
 - [ ] Each row shows the player's alias as a link **and** a separate "Remove from favourites" control —
       counting focusable elements in a row story finds exactly two, in the order link-then-remove, never
       a nested button inside the link.
-- [ ] A row seeded with a real standing shows the rating and rank in `font-mono`, aligning
+- [ ] A row seeded with a real standing shows the rating and rank in `type-numeric`, aligning
       digit-for-digit down the column against other rows in the same frame.
-- [ ] A row seeded with a never-ranked player shows a `text-secondary` em dash with "Not ranked yet" in
-      the standing position — never `0`, never a `text-primary` numeral — placed beside a rated row to
-      confirm the two are distinguishable.
+- [ ] A row seeded with a never-ranked player shows "Not ranked yet" in words, `text-secondary`, in the
+      standing position — never `0`, never an em dash, never a `text-primary` numeral — placed beside a
+      rated row to confirm the two are distinguishable.
 - [ ] A row seeded with an unrefreshable standing shows the last-known figure at full contrast with a
       "measured … / could not refresh" secondary line, and the row still links to the profile — the
       disappeared player is not dropped from the list.

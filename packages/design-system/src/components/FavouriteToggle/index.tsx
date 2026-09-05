@@ -42,14 +42,20 @@ export interface FavouriteToggleProps {
 
 // §2: "an original geometric bookmark/pin device — no star, crest, unit, portrait or lettering
 // from the game". Purely decorative (aria-hidden) and never the sole carrier of state — the label
-// text always carries it too (§5, §9). Sized from the adjacent font-size (1em, gap DS-7), never a
-// fixed pixel size, and swaps outline/filled with a token motion transition (§6).
+// text always carries it too (§5, §9). T528: closes the two arbitrary length values that used to
+// size this from the adjacent font-size (`1em`, gap DS-7, closed system-wide by feature 004/T517).
+// No `icon.json` step means "inherit the surrounding text's size" — the same finding `Spinner`
+// records — so `icon-sm` (16px) is the nearest reasonable step, sitting beside `Button`'s `md`
+// (`text-sm`, 14px) and `lg` (`text-md`, 16px, exact) sizes. `transition-[fill,opacity]` stays: it
+// names which properties transition, not a value, and is allowlisted by
+// `scripts/checks/token-scale.mjs` on exactly that reading. Swaps outline/filled with a token
+// motion transition (§6).
 function StateGlyph({ filled }: { filled: boolean }) {
   return (
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className="h-[1em] w-[1em] shrink-0 transition-[fill,opacity] duration-120 ease-standard motion-reduce:duration-0"
+      className="icon-sm shrink-0 transition-[fill,opacity] duration-120 ease-standard motion-reduce:duration-0"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth="1.5"

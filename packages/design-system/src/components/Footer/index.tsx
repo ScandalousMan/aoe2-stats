@@ -35,7 +35,7 @@ export function Footer({ privacyNoticeHref, objectionHref, className }: FooterPr
           {privacyNoticeHref && (
             <a
               href={privacyNoticeHref}
-              className="py-2 font-sans text-sm text-text-secondary underline hover:text-accent-hover active:text-accent-active"
+              className="py-2 font-sans text-sm text-link underline hover:text-link-hover active:text-link-hover"
             >
               Read the privacy notice
             </a>
@@ -43,7 +43,7 @@ export function Footer({ privacyNoticeHref, objectionHref, className }: FooterPr
           {objectionHref && (
             <a
               href={objectionHref}
-              className="py-2 font-sans text-sm text-text-secondary underline hover:text-accent-hover active:text-accent-active"
+              className="py-2 font-sans text-sm text-link underline hover:text-link-hover active:text-link-hover"
             >
               Object to what is held about me
             </a>

@@ -161,6 +161,10 @@ test.describe('the built application, served and stubbed', () => {
     await page.waitForURL('**/sign-in')
     await expect(page.getByRole('button', { name: 'Continue with Steam' })).toBeVisible()
 
+    // typography-tokens.md §10: with `font-display: swap` a capture taken before the fonts finish
+    // loading bakes in the fallback face — the DOM has rendered, but the render has not finished.
+    // Waited here, after the page has settled and before the screenshot.
+    await page.evaluate(() => document.fonts.ready)
     await expect(page).toHaveScreenshot('app-signed-out-sign-in.png', FULL_PAGE)
   })
 
@@ -173,6 +177,8 @@ test.describe('the built application, served and stubbed', () => {
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
     await expect(page.getByText('VisualSuitePlayer')).toBeVisible()
 
+    // typography-tokens.md §10: see the identical wait and comment above.
+    await page.evaluate(() => document.fonts.ready)
     await expect(page).toHaveScreenshot('app-signed-in-dashboard.png', FULL_PAGE)
   })
 })

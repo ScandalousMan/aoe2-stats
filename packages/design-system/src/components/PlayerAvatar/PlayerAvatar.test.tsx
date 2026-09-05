@@ -117,13 +117,13 @@ describe('PlayerAvatar', () => {
   it('uses border-md radius, border-strong frame and surface-sunken fill in both loaded and empty states', () => {
     const { container: loaded } = render(<PlayerAvatar avatarHash={HASH} />)
     const loadedFrame = loaded.firstElementChild as HTMLElement
-    expect(loadedFrame.className).toContain('rounded-md')
+    expect(loadedFrame.className).toContain('rounded-control')
     expect(loadedFrame.className).toContain('border-border-strong')
     expect(loadedFrame.className).toContain('bg-surface-sunken')
 
     const { container: empty } = render(<PlayerAvatar avatarHash={undefined} />)
     const emptyFrame = empty.firstElementChild as HTMLElement
-    expect(emptyFrame.className).toContain('rounded-md')
+    expect(emptyFrame.className).toContain('rounded-control')
     expect(emptyFrame.className).toContain('border-border-strong')
     expect(emptyFrame.className).toContain('bg-surface-sunken')
   })

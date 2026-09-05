@@ -1,6 +1,32 @@
 /* GENERATED FILE — do not hand-edit.
  * Source: packages/design-system/tokens/*.json
  * Regenerate with `pnpm --filter design-system tokens:build`. */
+/* Self-hosted @font-face declarations (typography-tokens.md §8.1). Ahead of :root so the browser
+ * discovers them before anything below requests the family they declare. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter/inter-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('/fonts/fraunces/fraunces-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Untheme families (space, radius, icon, font, motion) plus the light theme's colour and elevation
  * — light is the default so a component works before any theme is chosen. */
 :root {
@@ -20,13 +46,10 @@
   --ds-space-24: 6rem;
   --ds-space-32: 8rem;
   --ds-space-px: 0.0625rem;
-  --ds-radius-none: 0rem;
-  --ds-radius-sm: 0.125rem;
-  --ds-radius-md: 0.25rem;
-  --ds-radius-lg: 0.5rem;
-  --ds-radius-xl: 0.75rem;
-  --ds-radius-2xl: 1rem;
-  --ds-radius-full: 9999px;
+  --ds-radius-control: 0.25rem;
+  --ds-radius-panel: 0.5rem;
+  --ds-radius-overlay: 0.5rem;
+  --ds-radius-pill: 9999px;
   --ds-icon-xs: 0.75rem;
   --ds-icon-sm: 1rem;
   --ds-icon-md: 1.5rem;
@@ -44,13 +67,13 @@
   --ds-font-size-md: 1rem;
   --ds-font-size-md-line-height: 1.5rem;
   --ds-font-size-lg: 1.125rem;
-  --ds-font-size-lg-line-height: 1.75rem;
+  --ds-font-size-lg-line-height: 1.5rem;
   --ds-font-size-xl: 1.25rem;
-  --ds-font-size-xl-line-height: 1.75rem;
+  --ds-font-size-xl-line-height: 1.5rem;
   --ds-font-size-2xl: 1.5rem;
   --ds-font-size-2xl-line-height: 2rem;
   --ds-font-size-3xl: 1.875rem;
-  --ds-font-size-3xl-line-height: 2.25rem;
+  --ds-font-size-3xl-line-height: 2rem;
   --ds-font-size-4xl: 2.25rem;
   --ds-font-size-4xl-line-height: 2.5rem;
   --ds-font-weight-normal: 400;
@@ -67,30 +90,44 @@
   --ds-motion-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ds-motion-easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
   --ds-motion-easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
-  --ds-color-background: #f4ecd8;
-  --ds-color-surface: #fffaf0;
-  --ds-color-surface-raised: #fff4dc;
-  --ds-color-surface-sunken: #e8dcc0;
-  --ds-color-border: #d6c39a;
-  --ds-color-border-strong: #9d8050;
-  --ds-color-text-primary: #2b2013;
-  --ds-color-text-secondary: #6b5c42;
-  --ds-color-text-disabled: #a89b81;
-  --ds-color-text-inverse: #f4ecd8;
-  --ds-color-accent: #916626;
-  --ds-color-accent-hover: #76521d;
-  --ds-color-accent-active: #5d3e15;
-  --ds-color-accent-contrast: #fffaf0;
-  --ds-color-success: #3f6b3f;
-  --ds-color-success-contrast: #f4ecd8;
-  --ds-color-warning: #96671a;
-  --ds-color-warning-contrast: #241a08;
-  --ds-color-danger: #9c3b2c;
-  --ds-color-danger-contrast: #f4ecd8;
-  --ds-color-info: #2f5f73;
-  --ds-color-info-contrast: #f4ecd8;
-  --ds-color-focus-ring: #2f5f73;
-  --ds-color-overlay: rgb(43 32 19 / 55%);
+  --ds-motion-easing-linear: linear;
+  --ds-breakpoint-sm: 640px;
+  --ds-breakpoint-md: 768px;
+  --ds-breakpoint-lg: 1024px;
+  --ds-breakpoint-xl: 1280px;
+  --ds-border-hairline: 1px;
+  --ds-border-ring: 2px;
+  --ds-border-ring-offset: 2px;
+  --ds-size-page: 80rem;
+  --ds-size-panel: 42rem;
+  --ds-size-measure: 65ch;
+  --ds-color-background: #f0e6d0;
+  --ds-color-surface: #faf3e4;
+  --ds-color-surface-raised: #fffbf2;
+  --ds-color-surface-sunken: #e1d4b8;
+  --ds-color-border: #a89268;
+  --ds-color-border-strong: #7d6934;
+  --ds-color-text-primary: #241a0e;
+  --ds-color-text-secondary: #5c4a30;
+  --ds-color-text-disabled: #847459;
+  --ds-color-text-inverse: #f0e6d0;
+  --ds-color-accent: #7d5a1c;
+  --ds-color-accent-hover: #6a4c15;
+  --ds-color-accent-active: #573d0f;
+  --ds-color-accent-contrast: #fffbf2;
+  --ds-color-success: #365e33;
+  --ds-color-success-contrast: #fffbf2;
+  --ds-color-warning: #85460e;
+  --ds-color-warning-contrast: #fffbf2;
+  --ds-color-danger: #93372a;
+  --ds-color-danger-contrast: #fffbf2;
+  --ds-color-info: #245c63;
+  --ds-color-info-contrast: #fffbf2;
+  --ds-color-focus-ring: #1f4e8c;
+  --ds-color-link: #603fb0;
+  --ds-color-link-hover: #503396;
+  --ds-color-link-visited: #56467d;
+  --ds-color-overlay: rgb(36 26 14 / 55%);
   --ds-color-player-1: #405BFF;
   --ds-color-player-1-contrast: #fffaf0;
   --ds-color-player-2: #FF0000;
@@ -111,34 +148,38 @@
   --ds-elevation-raised: 0 1px 2px 0 rgb(43 32 19 / 12%);
   --ds-elevation-overlay: 0 4px 12px 0 rgb(43 32 19 / 18%);
   --ds-elevation-modal: 0 16px 32px -4px rgb(43 32 19 / 28%);
+  font-synthesis-weight: none;
 }
 
 /* Same variable names, dark values. Set data-theme="dark" on <html> or any ancestor; nothing
  * downstream needs to know which theme is active (design-system skill, "Tokens"). */
 [data-theme='dark'] {
-  --ds-color-background: #1c1710;
-  --ds-color-surface: #241d13;
-  --ds-color-surface-raised: #2d251a;
-  --ds-color-surface-sunken: #141009;
-  --ds-color-border: #4a3d28;
-  --ds-color-border-strong: #8c764c;
-  --ds-color-text-primary: #f0e5cd;
-  --ds-color-text-secondary: #c2b090;
-  --ds-color-text-disabled: #7a6c50;
-  --ds-color-text-inverse: #1c1710;
-  --ds-color-accent: #d9a94b;
-  --ds-color-accent-hover: #e6bb66;
-  --ds-color-accent-active: #c99938;
-  --ds-color-accent-contrast: #1c1710;
-  --ds-color-success: #7fae6e;
-  --ds-color-success-contrast: #12190f;
-  --ds-color-warning: #d99a3f;
-  --ds-color-warning-contrast: #1c1710;
-  --ds-color-danger: #d9705c;
-  --ds-color-danger-contrast: #1c1710;
-  --ds-color-info: #6fa8c0;
-  --ds-color-info-contrast: #101a1e;
-  --ds-color-focus-ring: #6fa8c0;
+  --ds-color-background: #1b160e;
+  --ds-color-surface: #251e14;
+  --ds-color-surface-raised: #31281b;
+  --ds-color-surface-sunken: #120e08;
+  --ds-color-border: #6e5c3b;
+  --ds-color-border-strong: #9e8757;
+  --ds-color-text-primary: #f2e7ce;
+  --ds-color-text-secondary: #c6b593;
+  --ds-color-text-disabled: #8a7859;
+  --ds-color-text-inverse: #1b160e;
+  --ds-color-accent: #d6a64c;
+  --ds-color-accent-hover: #e5bc6c;
+  --ds-color-accent-active: #c4913a;
+  --ds-color-accent-contrast: #1b160e;
+  --ds-color-success: #84b673;
+  --ds-color-success-contrast: #1b160e;
+  --ds-color-warning: #e89555;
+  --ds-color-warning-contrast: #1b160e;
+  --ds-color-danger: #e5907e;
+  --ds-color-danger-contrast: #1b160e;
+  --ds-color-info: #74aebe;
+  --ds-color-info-contrast: #1b160e;
+  --ds-color-focus-ring: #6fa0e0;
+  --ds-color-link: #b39ce2;
+  --ds-color-link-hover: #c6b2ee;
+  --ds-color-link-visited: #a897c9;
   --ds-color-overlay: rgb(0 0 0 / 65%);
   --ds-color-player-1: #405BFF;
   --ds-color-player-1-contrast: #fffaf0;
