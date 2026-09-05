@@ -333,6 +333,18 @@ the same way a colour role painted on a surface it does not declare is a defect 
 whether the resulting pair happens to pass contrast (FR-005). `elevation.json`'s `$meaning` carries
 the one-line form of the four bullets above; this section is where the full reasoning lives.
 
+**The sheet ceiling, `max-h-sheet` (T528).** `Menu`'s `overlay`-level panel, when it renders as a
+bottom sheet on a narrow viewport, is bounded to `max-height: 80vh` so it never grows past the
+screen it floats over. That number is not a token, and adding one to `elevation.json` would be the
+wrong fix for it: a viewport-relative ceiling is a **containment rule** about where an `overlay`
+surface may extend to, not a reusable design decision the way a shadow depth or a duration is — it
+says "never taller than the screen", not "here is a length someone chose", and no other call site
+at any level needs the same number. `build-tokens.mjs`'s `elevationUtilityBlocks()` emits it as a
+fixed-value `@utility max-h-sheet { max-height: 80vh; }` instead, alongside the icon, border and
+type-role utilities that also have no Tailwind theme namespace to extend — a name `Menu` writes in
+place of the arbitrary `max-h-[80vh]` bracket it used to carry, with no `size.json`/`elevation.json`
+entry behind it, because there is nothing reusable to name.
+
 ## Iconography contract
 
 FR-011 in reverse order: the size scale is closed (DS-7, feature 004, below); what follows is the

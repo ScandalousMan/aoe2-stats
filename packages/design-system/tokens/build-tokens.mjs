@@ -400,6 +400,19 @@ function typeRoleUtilityBlocks() {
   })
 }
 
+// T528/D15: `Menu`'s sheet mode pins a floating surface to the viewport with a ceiling —
+// `max-height: 80vh` — so it never grows past the screen it floats over. That is a containment
+// rule about a viewport-relative surface, not a reusable design decision the way a shadow depth
+// or a duration is: `elevation.json` names what a level *means*, never a length, so this number
+// does not belong in that JSON as a themed value. It still needs a *name* `Menu` can write instead
+// of an inline arbitrary bracket (`max-h-[80vh]`), which is what this fixed-value `@utility`
+// gives it — see `packages/design-system/specs/README.md`'s Elevation section for the reading
+// this utility records. No token JSON entry backs it on purpose: there is no other call site this
+// value could be reused for today, and a family of one hard-coded literal is not a scale.
+function elevationUtilityBlocks() {
+  return ['@utility max-h-sheet {\n  max-height: 80vh;\n}']
+}
+
 // The `@keyframes` a looping `--animate-*` mapping names. Declarations here are literal CSS
 // values (a transform, an opacity), not design tokens, so — unlike every var() mapping above —
 // there is nothing to reference back to tokens.css.
@@ -437,6 +450,7 @@ const presetSections = [
   ...iconUtilityBlocks(),
   ...borderUtilityBlocks(),
   ...typeRoleUtilityBlocks(),
+  ...elevationUtilityBlocks(),
 ].filter(Boolean)
 
 const presetCss = `${CSS_BANNER}

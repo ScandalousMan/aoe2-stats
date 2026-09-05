@@ -111,13 +111,15 @@ function fallbackHeading(profileId: string): string {
   return `Player ${profileId}`
 }
 
-// `PlayerAvatar`'s size tokens (`icon-2xl` / `icon-lg`) have no Tailwind namespace
-// (`game-asset-tokens.md`), so the loading skeleton reserves the identical footprint via the same
-// arbitrary-value-referencing-the-token-variable technique `Skeleton`'s own pulse animation already
-// uses, rather than a hard-coded pixel figure.
+// T528: closes four hand-written `var(--ds-*)` references. `icon.json` (T517) now emits one
+// `@utility icon-<step>` block per size, setting width and height together, so the loading
+// skeleton reserves `PlayerAvatar`'s own footprint (`icon-2xl` board / `icon-lg` compact,
+// `game-asset-tokens.md`) by writing the real utility class rather than reading its CSS variable
+// by hand — `h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]` was token-derived and still a defect,
+// the exact shape `scripts/checks/token-scale.mjs` exists to catch.
 const AVATAR_SKELETON_SIZE: Record<'board' | 'compact', string> = {
-  board: 'h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]',
-  compact: 'h-[var(--ds-icon-lg)] w-[var(--ds-icon-lg)]',
+  board: 'icon-2xl',
+  compact: 'icon-lg',
 }
 
 /** Leaderboards the profile has never played are absent, not present-and-empty (FR-008). One DOM

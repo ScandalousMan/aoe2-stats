@@ -61,9 +61,19 @@ export function StatValue({
       <dt className="font-sans text-sm text-text-secondary">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-2">
         {status === 'loading' && (
+          // T528: closes an arbitrary length value. `1.2em` rode the font-size class beside it
+          // (`valueSize[variant]`) to approximate one line's height at whichever variant's own
+          // size. No `icon.json` step is the right token here: every icon step sets width *and*
+          // height together, and this placeholder already takes its width from the caller's own
+          // `loadingWidthClassName` — pairing a width-setting utility onto it would race that
+          // prop for the same property. The nearest sanctioned utility is instead the ordinary
+          // spacing scale (`h-6`, `1.5rem`/24px), matching `type-body`'s own line-height and the
+          // `inline` variant's own text-md size exactly; `hero` and `compact` skeletons now
+          // render at a fixed height rather than scaling with `1.2em` per variant, an accepted
+          // trade-off recorded here rather than left as a silent behaviour change.
           <Skeleton
             variant="number"
-            className={cx(valueSize[variant], 'h-[1.2em]', loadingWidthClassName)}
+            className={cx(valueSize[variant], 'h-6', loadingWidthClassName)}
           />
         )}
         {status === 'empty' && (

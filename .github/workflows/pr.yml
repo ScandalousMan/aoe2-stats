@@ -224,6 +224,14 @@ jobs:
       # exactly why the broken bundle looked healthy.
       - run: pnpm --filter web build
       - run: node scripts/checks/built-css.mjs
+      # T527: FR-062's mechanical scale check — an arbitrary bracket value, a raw hex/px/rem/ms
+      # literal, or a hand-written `var(--ds-*)` in the design system's own component source fails
+      # here rather than depending on a reviewer noticing. Needs no build (it reads source
+      # directly), so it costs nothing to run right beside the other static source checks; its own
+      # `node --test` suite runs immediately after so a regression in the check itself is caught on
+      # the same pull request rather than only once it stops catching something real.
+      - run: node scripts/checks/token-scale.mjs
+      - run: node --test scripts/checks/token-scale.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

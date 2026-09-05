@@ -218,3 +218,7 @@
   font-family: var(--ds-font-family-mono);
   color: var(--ds-color-text-secondary);
 }
+
+@utility max-h-sheet {
+  max-height: 80vh;
+}

@@ -15,12 +15,11 @@ export interface SkeletonProps {
   className?: string
 }
 
-// Continuous pulse has no motion token of its own (closest named duration is `duration.slow`), so
-// the keyframe reads the token's CSS variable directly instead of a literal — the same technique
-// the generated tokens themselves use — and stops on its resting frame under
-// `prefers-reduced-motion` via `motion-safe:`.
-const pulse =
-  'rounded-control bg-surface-sunken motion-safe:animate-[pulse_var(--ds-motion-duration-slow)_var(--ds-motion-easing-standard)_infinite]'
+// T528: closes an arbitrary animation value. The continuous pulse now reads the real
+// `animate-pulse` utility (`motion.json`'s `animation.spin`/`pulse` group, T516/T512) instead of
+// an arbitrary bracket composing the duration and easing variables by hand, and still stops on its
+// resting frame under `prefers-reduced-motion` via `motion-safe:`.
+const pulse = 'rounded-control bg-surface-sunken motion-safe:animate-pulse'
 
 const textLineWidths = ['w-full', 'w-11/12', 'w-4/5', 'w-3/4', 'w-5/6']
 

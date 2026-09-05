@@ -163,7 +163,11 @@ export function Menu({
             className={cx(
               'z-50 flex flex-col gap-2 rounded-overlay border border-border bg-surface-raised py-2 shadow-overlay',
               isSheet
-                ? 'fixed inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-b-none'
+                ? // T528: `max-h-sheet` — a viewport ceiling on a floating surface, not a token
+                  // gap. Owned by the elevation contract (`build-tokens.mjs`'s
+                  // `elevationUtilityBlocks`, README's Elevation section), never an arbitrary
+                  // `max-h-[80vh]` bracket.
+                  'fixed inset-x-0 bottom-0 max-h-sheet overflow-y-auto rounded-b-none'
                 : 'absolute left-0 mt-2 min-w-64 max-w-sm',
             )}
           >
