@@ -77,7 +77,7 @@ export function ThirdPartyObjectionForm({
 
   if (state === 'recorded') {
     return (
-      <main className={cx('mx-auto max-w-prose px-6 py-6 md:px-0 md:py-8', className)}>
+      <main className={cx('mx-auto max-w-measure px-6 py-6 md:px-0 md:py-8', className)}>
         <Explanation privacyNoticeHref={privacyNoticeHref} />
         <div className="mt-8">
           <Callout tone="success" heading="Your objection has been recorded.">
@@ -92,7 +92,7 @@ export function ThirdPartyObjectionForm({
   }
 
   return (
-    <main className={cx('mx-auto max-w-prose px-6 py-6 md:px-0 md:py-8', className)}>
+    <main className={cx('mx-auto max-w-measure px-6 py-6 md:px-0 md:py-8', className)}>
       <Explanation privacyNoticeHref={privacyNoticeHref} />
 
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-6">
@@ -110,7 +110,7 @@ export function ThirdPartyObjectionForm({
             value={value}
             onChange={(event) => setValue(event.target.value)}
             className={cx(
-              'h-12 w-full max-w-xs rounded-md border bg-surface px-4 font-sans text-md text-text-primary',
+              'h-12 w-full max-w-xs rounded-control border bg-surface px-4 font-sans text-md text-text-primary',
               'transition-colors duration-120 ease-standard motion-reduce:duration-0',
               fieldError ? 'border-danger' : 'border-border-strong',
               focusRing,

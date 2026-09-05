@@ -264,7 +264,7 @@ export function UploadControl({
             onDragLeave={hasFile ? undefined : handleDragLeave}
             onDrop={hasFile ? undefined : handleDrop}
             className={cx(
-              'flex flex-col items-center gap-3 rounded-lg border-2 border-dashed p-6 text-center',
+              'flex flex-col items-center gap-3 rounded-panel border-2 border-dashed p-6 text-center',
               'transition-colors duration-120 ease-standard motion-reduce:duration-0',
               isDragOver && !hasFile
                 ? 'border-focus-ring bg-surface-sunken'
@@ -349,7 +349,7 @@ function FileChip({
   onRemove: () => void
 }) {
   return (
-    <div className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface p-3">
+    <div className="flex w-full items-center justify-between gap-3 rounded-control border border-border bg-surface p-3">
       <div className="min-w-0 flex-1 text-left">
         {/* manual-upload.md §8: a long name wraps or middle-truncates, never cut without
          * recourse. `break-words` alone still overflows a name with no natural break point

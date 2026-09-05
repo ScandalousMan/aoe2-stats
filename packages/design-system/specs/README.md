@@ -195,6 +195,127 @@ or `NULL` `color_id` renders a `surface-sunken` fill inside the same frame, with
 carrying the meaning (rule 4). The component that draws it, and the states it owes, are in
 [`player-colour-swatch.md`](./player-colour-swatch.md).
 
+## Elevation
+
+`packages/design-system/tokens/elevation.json` names four levels — `none`, `raised`, `overlay`,
+`modal` — each a themed `box-shadow`, generated as the `shadow-*` utility. A shadow is not a
+decoration a component picks by eye; it is a claim about where a surface sits relative to everything
+else on the page, and FR-009 requires each level to carry a stated meaning and a statement of what
+may sit at it, so that claim is checkable rather than assumed.
+
+- **`none`** — the resting, flush state. Inline content and any surface that is not lifted off the
+  page draws no shadow at all; this is the default, not an absence.
+- **`raised`** — a surface lifted slightly off the page, enough to read as its own bounded unit
+  without floating above unrelated content. `SignInScreen`'s card
+  (`src/components/SignInScreen/index.tsx`) is the one call site today: the sign-in form is the
+  page's single focal surface, and the lift is what separates it from the parchment behind it. A row
+  or a control that sits flush with its container has no claim on this level.
+- **`overlay`** — a floating surface above other content but not modal. `Tooltip`'s bubble
+  (`src/components/Tooltip/index.tsx`) and `Menu`'s panel (`src/components/Menu/index.tsx`) both draw
+  it. This is exactly the level the **"Not a gap: stacking"** decision below governs: it is the
+  tooltip's bubble — the one floating surface with no explicit stacking value of its own — that the
+  document-order constraints named there apply to (no clipping ancestor between it and the page root,
+  no later positioned sibling over it). Any future component drawn at `overlay` without its own
+  explicit stacking value inherits the same two constraints; see that decision rather than this one
+  for what they are.
+- **`modal`** — the highest level, for a surface that blocks interaction with everything beneath it.
+  `Dialog` (`src/components/Dialog/index.tsx`) is the one call site. `modal` is a ceiling, not a step:
+  nothing may render at a shadow level above it, because a dialog's own scrim already covers
+  everything else on the page — there is nothing left underneath for a higher level to be elevated
+  above.
+
+A component may only use an elevation level whose stated meaning matches what it is. Reaching for
+`shadow-modal` on a plain hoverable card would be a defect even though it "looks fine" on screen —
+the same way a colour role painted on a surface it does not declare is a defect regardless of
+whether the resulting pair happens to pass contrast (FR-005). `elevation.json`'s `$meaning` carries
+the one-line form of the four bullets above; this section is where the full reasoning lives.
+
+## Iconography contract
+
+FR-011 in reverse order: the size scale is closed (DS-7, feature 004, below); what follows is the
+rest of the contract — how an icon aligns with adjacent text, how it is given or denied an
+accessible name, and the minimum interactive footprint it owes. All four are already load-bearing
+in shipping components; this section states them as rules so the next icon-bearing component reads
+them here rather than re-deriving them from four different files.
+
+**Size scale.** `icon-xs` through `icon-3xl` in `packages/design-system/tokens/icon.json` (closed
+as DS-7, feature 004, below). `packages/design-system/tokens/build-tokens.mjs` emits one `@utility`
+block per step into `packages/design-system/tokens/generated/preset.css` — `icon-xs { width:
+var(--ds-icon-xs); height: var(--ds-icon-xs); }` through `icon-3xl` — so a component writes
+`className="icon-md"` in the same utility vocabulary as every other family, with no hand-written
+`var()` reference. The values do not move; what changes is that reaching for one no longer requires
+writing a variable by hand, closing the icon half of the arbitrary-value escapes this system was
+carrying silently (`h-[1em]`/`w-[1em]` in the spinner and in `FavouriteToggle`'s glyph, four
+`h-`/`w-[var(--ds-icon-*)]` in `ProfileSummary`).
+
+**Text alignment.** An icon that sits beside text is a flex sibling of that text inside a shared
+`flex`/`inline-flex items-center` row — centred against the row's box, never aligned to the text's
+own baseline. Every shipping pairing already does this: `Button`'s base class is `inline-flex
+items-center justify-center gap-2`, and its leading/trailing icon slots and its loading `Spinner`
+sit in that row beside the label
+(`packages/design-system/src/components/Button/index.tsx`); `Menu`'s trigger is `inline-flex h-10
+items-center gap-2` around its label; `FavouriteToggle`'s `StateGlyph`, sized `h-[1em] w-[1em]`,
+sits inside that same `Button` row, centred against the label's line box by the row's
+`items-center` rather than by matching the glyph to the font's own baseline; `CivilisationIcon`
+wraps its mark and its name in one `inline-flex items-center gap-2` span for the same reason. An
+icon needing to sit mid-sentence inside running prose, rather than beside a label, has no shipping
+precedent and is out of this contract's scope until one exists.
+
+**Accessible naming.** Three shapes cover every icon in the system today; a fourth is forbidden.
+
+- **Decorative — the meaning is already carried by adjacent visible text.** An inline SVG mark
+  gets `aria-hidden="true"`; an `<img>` mark gets `alt=""` — the same rule expressed through the
+  mechanism the element type owns. `Button`'s leading/trailing icons and its loading `Spinner`,
+  `FavouriteToggle`'s `StateGlyph` (the button's own label — "Add to favourites" / "Remove from
+  favourites" — carries the state, never the glyph), `ProfileSummary`'s disclosure chevron,
+  `PlayerAvatar` and `CivilisationIcon`'s image mark (the heading or name rendered beside each one
+  carries the identity) are all this shape. It is the default, and it is wrong to also add
+  `aria-label` here: a name on the icon and a name on the text it duplicates is two names racing
+  each other in the accessibility tree, not a second signal.
+- **The control's own accessible name covers the icon, rather than the icon carrying one of its
+  own.** `Menu`'s profile-switcher trigger renders visible text plus an `aria-hidden` chevron, and
+  the enclosing `<button>` still carries `aria-label={triggerAriaLabel}` ("aoe2guy, switch
+  profile") because the visible text alone under-describes what activating the control does
+  (`ProfileSummary`). The name lives on the interactive element; the glyph inside it stays
+  decorative either way.
+- **The icon reveals a name that would otherwise not exist — `Tooltip` with `relation="label"`.**
+  `CountryFlag` is the shipping case: some flags are indistinguishable from each other at `icon-sm`,
+  so the country name becomes the trigger's accessible name via `aria-labelledby`, reachable on
+  hover, keyboard focus and press alike, and present in the accessibility tree whether or not the
+  tooltip has ever opened (`tooltip.md` §2, `country-flag.md` §11, rule 4 above). `relation="describe"`
+  is the sibling shape for a control that already shows its name as visible text and only needs the
+  icon to add to it — never to replace what a sighted reader already sees (WCAG 2.5.3).
+- **Forbidden**: an `aria-label` placed on the icon itself when adjacent visible text, or the
+  enclosing control's own `aria-label`, already states the same fact. The icon is never the thing
+  that is named; the control or the text beside it is.
+
+**Minimum interactive footprint.** WCAG 2.5.8's 44×44px floor applies to any icon serving as, or
+sitting inside, an interactive control, whether or not the glyph itself renders that large. Two
+routes satisfy it, both already shipping, and a third is forbidden:
+
+- **The icon's own box is the hit area.** `icon-xl` is fixed at 44px rather than following the
+  space-scale rhythm the other six steps share, for exactly this reason
+  (`packages/design-system/tokens/icon.json`'s own `$comment`) — a control sized directly from
+  `icon-xl` needs no separate padding calculation.
+- **Padding on the real interactive element composes a smaller icon token up to 44px.**
+  `CountryFlag` draws its flag at `icon-sm` (16px) or `icon-md` (24px), but the `<button>` wrapping
+  it pads out to a 44px hit area in both axes at both sizes, "reached by padding on the button
+  itself, never by a transparent overlay" (`country-flag.md` §11.5). The visible mark stays small;
+  the operable box does not.
+- **Forbidden: enlarging a target with an overlay that intercepts unrelated interaction.** FR-056
+  already states this for the system generally; an icon-sized control is where it is most tempting,
+  because the glyph looks finished at its visual size and the padding around it looks like wasted
+  space. It is not — it is the touch target.
+
+**An icon is never the only carrier of a meaning (FR-011).** Rule 4 above, applied to icons
+specifically: an icon-only control needs a text alternative reachable by every input — a visible
+label, a `Tooltip`, or an `aria-label` on the control — and a purely decorative icon must never
+appear without the meaning it draws already being carried by adjacent visible text. `Button`'s
+leading icons, `FavouriteToggle`'s `StateGlyph` and `CountryFlag`'s flag are the three accessible-
+naming shapes above precisely because each pairs the icon with a text route to the same fact; a
+fourth shape — an icon standing alone with no label, no tooltip and no adjacent text — has no
+shipping precedent and is not sanctioned by this contract.
+
 ## Token gap register
 
 Open items. Each names what is missing, what a component does until it exists, and who has to act.

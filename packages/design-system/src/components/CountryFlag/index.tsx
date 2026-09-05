@@ -70,7 +70,7 @@ export function CountryFlag({ flagUrl, countryName, size = 'sm', className }: Co
     // its accessible name (tooltip.md §3).
     <Tooltip content={countryName} qualifier="Country:" className={className}>
       <span
-        className="flex items-center justify-center overflow-hidden rounded-sm border border-border"
+        className="flex items-center justify-center overflow-hidden rounded-control border border-border"
         style={{ height, width }}
       >
         <img

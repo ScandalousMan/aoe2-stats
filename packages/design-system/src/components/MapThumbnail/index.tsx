@@ -63,7 +63,7 @@ export function MapThumbnail({ thumbnailUrl, mapName, size = 'md', className }: 
     <span className={cx('inline-flex items-center', GAP_CLASS[size], className)}>
       {showThumbnail && (
         <span
-          className="flex items-center justify-center rounded-md border border-border"
+          className="flex items-center justify-center rounded-control border border-border"
           style={{ width: dimension, height: dimension }}
         >
           <img

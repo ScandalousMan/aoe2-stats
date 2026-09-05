@@ -52,7 +52,7 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       href={result.href}
       onClick={createRowLinkClickHandler(result.href, onNavigate)}
       className={cx(
-        'flex flex-col gap-1 rounded-lg border border-border bg-surface p-4',
+        'flex flex-col gap-1 rounded-panel border border-border bg-surface p-4',
         'md:rounded-none md:border-x-0 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
         'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
         focusRing,

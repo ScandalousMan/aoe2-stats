@@ -250,7 +250,7 @@ function ParticipantTimelineColumn({ participant }: { participant: AnalysisParti
   return (
     <article
       aria-labelledby={headingId}
-      className="flex flex-col rounded-lg border border-border p-4"
+      className="flex flex-col rounded-panel border border-border p-4"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
@@ -340,8 +340,8 @@ function AnalysisProgress({ state }: { state: 'queued' | 'running' }) {
     <div aria-busy="true">
       <p className="font-sans text-sm text-text-secondary">{label}</p>
       <div className="mt-4 flex flex-col gap-3">
-        <Skeleton variant="block" className="h-40 w-full rounded-lg" />
-        <Skeleton variant="block" className="h-40 w-full rounded-lg" />
+        <Skeleton variant="block" className="h-40 w-full rounded-panel" />
+        <Skeleton variant="block" className="h-40 w-full rounded-panel" />
       </div>
     </div>
   )
@@ -462,8 +462,8 @@ export function AnalysisTimeline({
           {HEADING_TEXT}
         </h3>
         <div className="mt-4 flex flex-col gap-3">
-          <Skeleton variant="block" className="h-40 w-full rounded-lg" />
-          <Skeleton variant="block" className="h-40 w-full rounded-lg" />
+          <Skeleton variant="block" className="h-40 w-full rounded-panel" />
+          <Skeleton variant="block" className="h-40 w-full rounded-panel" />
         </div>
       </section>
     )

@@ -132,7 +132,7 @@ export function AccountErasurePanel({
   return (
     <section
       aria-labelledby="account-erasure-panel-heading"
-      className={cx('max-w-prose', className)}
+      className={cx('max-w-measure', className)}
     >
       <h2
         id="account-erasure-panel-heading"
@@ -250,7 +250,7 @@ export function AccountErasurePanel({
  * Attempts no authenticated fetch of any kind — there is no longer an account to fetch. */
 export function ErasedScreen({ homeHref }: { homeHref: string }) {
   return (
-    <section aria-labelledby="erased-screen-heading" className="max-w-prose">
+    <section aria-labelledby="erased-screen-heading" className="max-w-measure">
       <h2
         id="erased-screen-heading"
         className="font-display text-xl font-semibold text-text-primary"

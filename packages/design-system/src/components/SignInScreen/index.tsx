@@ -107,7 +107,7 @@ export function SignInScreen({
       <section
         aria-labelledby="sign-in-screen-title"
         className={cx(
-          'mt-8 w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-raised md:mt-12 md:p-8',
+          'mt-8 w-full max-w-md rounded-panel border border-border bg-surface p-6 shadow-raised md:mt-12 md:p-8',
           className,
         )}
       >

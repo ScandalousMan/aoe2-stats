@@ -135,7 +135,7 @@ export const FailedImage: Story = {
 export const NoCountryAtAll: Story = {
   name: 'Empty — no country at all (countryName blank, renders nothing)',
   render: () => (
-    <div className="rounded-sm border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
+    <div className="rounded-panel border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
       Nothing renders below this line —{' '}
       <span className="inline-block align-middle">
         <CountryFlag flagUrl={FRANCE_URL} countryName="" />

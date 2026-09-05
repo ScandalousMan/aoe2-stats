@@ -239,8 +239,8 @@ export function MatchDetailPanel({
           <CaptureStateBadge context="detail" loading />
         </header>
         <div className="flex flex-col gap-3">
-          <Skeleton variant="block" className="h-14 w-full rounded-lg" />
-          <Skeleton variant="block" className="h-14 w-full rounded-lg" />
+          <Skeleton variant="block" className="h-14 w-full rounded-panel" />
+          <Skeleton variant="block" className="h-14 w-full rounded-panel" />
         </div>
       </div>
     )
@@ -432,7 +432,7 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
           {team.participants.map((participant) => (
             <li
               key={participant.id}
-              className="flex flex-col gap-1 rounded-lg border border-border p-3"
+              className="flex flex-col gap-1 rounded-panel border border-border p-3"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2">

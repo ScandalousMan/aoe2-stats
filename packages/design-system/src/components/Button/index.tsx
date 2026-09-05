@@ -54,7 +54,7 @@ const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
 const base = cx(
-  'inline-flex items-center justify-center gap-2 rounded-md font-sans font-semibold',
+  'inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold',
   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
   'disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border disabled:cursor-default',
 )

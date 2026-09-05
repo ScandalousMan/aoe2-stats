@@ -228,7 +228,7 @@ export function ProfileSummary({
             <Skeleton
               variant="block"
               className={cx(
-                'shrink-0 rounded-md',
+                'shrink-0 rounded-control',
                 AVATAR_SKELETON_SIZE[compact ? 'compact' : 'board'],
               )}
             />
@@ -545,7 +545,7 @@ function RatingCard({ entry }: { entry: RatingEntryData }) {
   return (
     <article
       aria-labelledby={`entry-${entry.leaderboardId}-heading`}
-      className="rounded-lg border border-border p-4"
+      className="rounded-panel border border-border p-4"
     >
       <h3
         id={`entry-${entry.leaderboardId}-heading`}
@@ -580,7 +580,7 @@ function RecordBar({ wins, losses }: { wins: number; losses: number }) {
   return (
     <div
       aria-hidden="true"
-      className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken"
+      className="mt-2 flex h-1.5 w-full overflow-hidden rounded-pill bg-surface-sunken"
     >
       <div className="h-full bg-success" style={{ width: `${winPercent}%` }} />
       <div className="h-full bg-danger" style={{ width: `${100 - winPercent}%` }} />

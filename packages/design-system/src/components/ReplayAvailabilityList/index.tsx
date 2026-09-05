@@ -151,7 +151,7 @@ export function ReplayAvailabilityList({
         {loading
           ? LOADING_ROW_IDS.map((id) => (
               <li key={id}>
-                <Skeleton variant="block" className="h-14 w-full rounded-lg" />
+                <Skeleton variant="block" className="h-14 w-full rounded-panel" />
               </li>
             ))
           : rows.map((row) => (

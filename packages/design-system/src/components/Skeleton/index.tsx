@@ -20,7 +20,7 @@ export interface SkeletonProps {
 // the generated tokens themselves use — and stops on its resting frame under
 // `prefers-reduced-motion` via `motion-safe:`.
 const pulse =
-  'rounded-sm bg-surface-sunken motion-safe:animate-[pulse_var(--ds-motion-duration-slow)_var(--ds-motion-easing-standard)_infinite]'
+  'rounded-control bg-surface-sunken motion-safe:animate-[pulse_var(--ds-motion-duration-slow)_var(--ds-motion-easing-standard)_infinite]'
 
 const textLineWidths = ['w-full', 'w-11/12', 'w-4/5', 'w-3/4', 'w-5/6']
 

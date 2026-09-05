@@ -11,10 +11,13 @@
 // Zero dependencies on purpose: this script must run before `pnpm install` has finished resolving
 // anything else in the workspace.
 //
-// Families read defensively (see `readJsonSafe`): `breakpoint.json`, `size.json` and motion.json's
-// `animation` group are 005 additions that do not all exist in every checkout yet (contracts/
-// token-families.md §1). A missing one degrades to no output for the shape it feeds, never a
-// crash — the follow-up task that adds the JSON is expected to need no further edit here.
+// Families read defensively (see `readJsonSafe`): `breakpoint.json`, `border.json`, `size.json`
+// and motion.json's `animation` group are 005 additions that do not all exist in every checkout
+// yet (contracts/token-families.md §1). A missing one degrades to no output for the shape it
+// feeds, never a crash. Most of these need no further edit here once their JSON lands — but
+// `border.json` (T514) is the one exception: it has no Tailwind theme namespace to extend (no
+// `--border-width-*`, unlike `--radius-*`), so it needed its own `borderVars` and
+// `borderUtilityBlocks` below rather than reusing an existing flat-family code path.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -75,9 +78,11 @@ const elevation = readJson('elevation')
 const motion = readJson('motion')
 
 // 005 additions — see the header comment and contracts/token-families.md §1. `breakpoint.json`
-// (T513) and `size.json` (T515) do not exist in every checkout yet; `motion.json` already exists,
-// but its `animation` group (T516) is optional until that task adds it.
+// (T513), `border.json` (T514) and `size.json` (T515) do not exist in every checkout yet;
+// `motion.json` already exists, but its `animation` group (T516) is optional until that task
+// adds it.
 const breakpoint = readJsonSafe('breakpoint')
+const border = readJsonSafe('border')
 const size = readJsonSafe('size')
 const animation = motion.animation ?? null
 
@@ -174,6 +179,18 @@ function sizeVars() {
   )
 }
 
+// Border, focus-ring and focus-ring-offset widths (DS-4). Flat, untheme, same shape as
+// `radiusVars` — but unlike radius there is no Tailwind theme namespace to map these onto
+// (`--radius-*` is a real namespace in Tailwind's own theme.css; `--border-width-*`,
+// `--outline-width-*` and `--outline-offset-*` are not), so these three variables are consumed
+// through the `@utility` blocks below rather than through `@theme inline`.
+function borderVars() {
+  if (!border) return {}
+  return Object.fromEntries(
+    Object.entries(border).map(([key, value]) => [cssVar(`border-${cssKey(key)}`), value]),
+  )
+}
+
 function renderBlock(vars, indent = '  ') {
   return Object.entries(vars)
     .map(([name, value]) => `${indent}${name}: ${value};`)
@@ -187,6 +204,7 @@ const rootVars = {
   ...fontVars(),
   ...motionVars(),
   ...breakpointVars(),
+  ...borderVars(),
   ...sizeVars(),
   ...colorVars('light'),
   ...elevationVars('light'),
@@ -297,14 +315,36 @@ function breakpointThemeBlock() {
 }
 
 // `@utility` — Tailwind v4's mechanism for a fixed-value custom utility class with no matching
-// theme namespace to extend (contracts/token-families.md §1, §2). Icon sizes are the one family
-// that needs it today: no Tailwind namespace maps a fixed scale onto width/height/size utilities
-// the way `radius` maps onto `rounded-*`, so each step becomes its own utility instead.
+// theme namespace to extend (contracts/token-families.md §1, §2). Icon sizes are one family that
+// needs it: no Tailwind namespace maps a fixed scale onto width/height/size utilities the way
+// `radius` maps onto `rounded-*`, so each step becomes its own utility instead.
 function iconUtilityBlocks() {
   return Object.keys(icon).map((key) => {
     const varName = cssVar(`icon-${cssKey(key)}`)
     return `@utility icon-${cssKey(key)} {\n  width: var(${varName});\n  height: var(${varName});\n}`
   })
+}
+
+// `border.json` (DS-4) is the other family with no theme namespace to extend — Tailwind exposes
+// no `--border-width-*`, `--outline-width-*` or `--outline-offset-*` namespace the way it exposes
+// `--radius-*`, and its own border-width/outline-width/outline-offset utilities are an unbounded
+// numeric scale rather than a themed one (research D5). Unlike icon's uniform "one step, one
+// width-and-height utility" shape, this family's three keys each need a different CSS property
+// and a utility name distinct from the JSON key, so this stays a literal mapping rather than a
+// generic loop — the utility names are fixed by contracts/token-families.md §2, not derived.
+function borderUtilityBlocks() {
+  if (!border) return []
+  const utilities = [
+    ['hairline', 'border-hairline', 'border-width'],
+    ['ring', 'outline-ring', 'outline-width'],
+    ['ring-offset', 'outline-offset-ring', 'outline-offset'],
+  ]
+  return utilities
+    .filter(([key]) => key in border)
+    .map(([key, utilityName, property]) => {
+      const varName = cssVar(`border-${cssKey(key)}`)
+      return `@utility ${utilityName} {\n  ${property}: var(${varName});\n}`
+    })
 }
 
 // The `@keyframes` a looping `--animate-*` mapping names. Declarations here are literal CSS
@@ -342,6 +382,7 @@ const presetSections = [
   breakpointThemeBlock(),
   ...animationKeyframeBlocks(),
   ...iconUtilityBlocks(),
+  ...borderUtilityBlocks(),
 ].filter(Boolean)
 
 const presetCss = `${CSS_BANNER}

@@ -171,7 +171,7 @@ function LoadingState({ count }: { count: number }) {
     <ul className="flex flex-col gap-3 md:gap-4">
       {Array.from({ length: rowCount }, (_, index) => (
         <li key={index}>
-          <Skeleton variant="block" className="h-20 w-full rounded-lg md:h-14" />
+          <Skeleton variant="block" className="h-20 w-full rounded-panel md:h-14" />
         </li>
       ))}
     </ul>
@@ -220,7 +220,7 @@ function FavouriteRow({
   return (
     <li
       className={cx(
-        'flex flex-col gap-4 rounded-lg border border-border bg-surface p-4',
+        'flex flex-col gap-4 rounded-panel border border-border bg-surface p-4',
         isMd &&
           'flex-row items-center justify-between gap-4 rounded-none border-x-0 border-t-0 border-b bg-transparent px-0 py-3',
       )}
@@ -229,7 +229,7 @@ function FavouriteRow({
         href={entry.href}
         onClick={createRowLinkClickHandler(entry.href, onNavigate)}
         className={cx(
-          'flex flex-1 flex-col gap-1 rounded-md',
+          'flex flex-1 flex-col gap-1 rounded-control',
           'md:flex-row md:items-center md:justify-between md:gap-4',
           'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',

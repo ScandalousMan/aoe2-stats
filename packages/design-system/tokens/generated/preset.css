@@ -50,13 +50,10 @@
   --color-player-8-contrast: var(--ds-color-player-8-contrast);
 
   /* radius */
-  --radius-none: var(--ds-radius-none);
-  --radius-sm: var(--ds-radius-sm);
-  --radius-md: var(--ds-radius-md);
-  --radius-lg: var(--ds-radius-lg);
-  --radius-xl: var(--ds-radius-xl);
-  --radius-2xl: var(--ds-radius-2xl);
-  --radius-full: var(--ds-radius-full);
+  --radius-control: var(--ds-radius-control);
+  --radius-panel: var(--ds-radius-panel);
+  --radius-overlay: var(--ds-radius-overlay);
+  --radius-pill: var(--ds-radius-pill);
 
   /* icon — no Tailwind theme namespace maps a fixed size scale onto width, height or size
    * utilities the way radius maps onto rounded-*, so there is nothing to add here. Icon sizes
@@ -102,6 +99,48 @@
   --ease-standard: var(--ds-motion-easing-standard);
   --ease-decelerate: var(--ds-motion-easing-decelerate);
   --ease-accelerate: var(--ds-motion-easing-accelerate);
+  --ease-linear: var(--ds-motion-easing-linear);
+
+  /* size — container widths, mapped onto Tailwind's own --container-* namespace so
+   * max-w-page / max-w-panel / max-w-measure are ordinary utilities */
+  --container-page: var(--ds-size-page);
+  --container-panel: var(--ds-size-panel);
+  --container-measure: var(--ds-size-measure);
+
+  /* motion — looping animations, mapped onto Tailwind's own --animate-* namespace so
+   * animate-spin / animate-pulse derive from this file's durations instead of Tailwind's
+   * built-in ones. Each one's @keyframes are emitted below, outside this theme block —
+   * a keyframe selector and its declarations are not var() references. */
+  --animate-spin: ds-spin var(--ds-motion-duration-slow) var(--ds-motion-easing-linear) infinite;
+  --animate-pulse: ds-pulse var(--ds-motion-duration-slow) var(--ds-motion-easing-standard) infinite;
+}
+
+@theme {
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+@keyframes ds-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ds-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @utility icon-xs {
@@ -137,4 +176,16 @@
 @utility icon-3xl {
   width: var(--ds-icon-3xl);
   height: var(--ds-icon-3xl);
+}
+
+@utility border-hairline {
+  border-width: var(--ds-border-hairline);
+}
+
+@utility outline-ring {
+  outline-width: var(--ds-border-ring);
+}
+
+@utility outline-offset-ring {
+  outline-offset: var(--ds-border-ring-offset);
 }

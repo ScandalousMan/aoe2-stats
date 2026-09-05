@@ -101,7 +101,7 @@ export function DataExportPanel({
   const requestPending = state === 'requesting' || state === 'preparing'
 
   return (
-    <section aria-labelledby="data-export-panel-heading" className={cx('max-w-prose', className)}>
+    <section aria-labelledby="data-export-panel-heading" className={cx('max-w-measure', className)}>
       <h2
         id="data-export-panel-heading"
         className="font-display text-xl font-semibold text-text-primary"
@@ -150,7 +150,7 @@ export function DataExportPanel({
                 href={downloadUrl}
                 download
                 className={cx(
-                  'inline-flex min-h-11 w-fit items-center justify-center rounded-md bg-accent px-6 font-sans text-md font-semibold text-accent-contrast',
+                  'inline-flex min-h-11 w-fit items-center justify-center rounded-control bg-accent px-6 font-sans text-md font-semibold text-accent-contrast',
                   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                   'hover:bg-accent-hover active:bg-accent-active',
                   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',

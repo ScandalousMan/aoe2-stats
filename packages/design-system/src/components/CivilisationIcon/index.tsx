@@ -57,7 +57,7 @@ export function CivilisationIcon({ iconUrl, name, size = 'md', className }: Civi
           loading="lazy"
           decoding="async"
           style={{ width: dimension, height: dimension }}
-          className="rounded-sm"
+          className="rounded-control"
           onError={() => setFailedUrl(iconUrl)}
         />
       )}

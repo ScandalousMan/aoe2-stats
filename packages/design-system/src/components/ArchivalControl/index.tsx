@@ -79,7 +79,7 @@ export function ArchivalControl({
   const switchDisabled = submitting || unavailable
 
   return (
-    <section aria-labelledby="archival-control-heading" className={cx('max-w-prose', className)}>
+    <section aria-labelledby="archival-control-heading" className={cx('max-w-measure', className)}>
       <h2
         id="archival-control-heading"
         className="font-display text-xl font-semibold text-text-primary"
@@ -87,7 +87,7 @@ export function ArchivalControl({
         Replay archival
       </h2>
 
-      <div className="mt-6 rounded-lg bg-surface-raised p-5">
+      <div className="mt-6 rounded-panel bg-surface-raised p-5">
         <h3 className="font-sans text-md font-semibold text-text-primary">
           Before you decide: how you get back in
         </h3>
