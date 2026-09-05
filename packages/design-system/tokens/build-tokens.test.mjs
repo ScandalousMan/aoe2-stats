@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -72,6 +72,37 @@ test('tokens.ts exports every family as a typed, var()-referencing const', () =>
     assert.match(ts, new RegExp(`export const ${exportName} = {`))
   }
   assert.match(ts, /'accent': 'var\(--ds-color-accent\)',/)
+})
+
+// --- Key-set symmetry (T512). A themed family (color.light/color.dark, elevation.light/
+// elevation.dark, and any family this shape is added to later) names the same tokens in both
+// themes by construction (design-system skill, "Tokens": "a component never knows which is
+// active"). A key present in one theme only is not a smaller palette — it is a component that
+// renders in the theme that has it and breaks, silently, the moment the reader switches to the
+// one that doesn't. Generic over every `*.json` in this directory rather than hard-coded to
+// `color` and `elevation`, so a themed family added later is covered with no edit here.
+test('every themed family declares the same key set in both themes', () => {
+  const jsonFiles = readdirSync(tokensDir).filter((name) => name.endsWith('.json'))
+  for (const file of jsonFiles) {
+    const family = JSON.parse(readFileSync(path.join(tokensDir, file), 'utf8'))
+    if (!('light' in family) || !('dark' in family)) continue // not a themed family
+    const lightKeys = new Set(Object.keys(family.light))
+    const darkKeys = new Set(Object.keys(family.dark))
+    const onlyLight = [...lightKeys].filter((key) => !darkKeys.has(key)).sort()
+    const onlyDark = [...darkKeys].filter((key) => !lightKeys.has(key)).sort()
+    assert.deepStrictEqual(
+      onlyLight,
+      [],
+      `${file}: key(s) declared in "light" only: ${onlyLight.join(', ')} — a component reading ` +
+        'one of these renders in light and breaks the moment the reader switches to dark',
+    )
+    assert.deepStrictEqual(
+      onlyDark,
+      [],
+      `${file}: key(s) declared in "dark" only: ${onlyDark.join(', ')} — a component reading one ` +
+        'of these renders in dark and breaks the moment the reader switches to light',
+    )
+  }
 })
 
 // --- Contrast assertions (T034a, corrected by T038a and T034c). These are the pairs the specs'

@@ -59,8 +59,9 @@
   --radius-full: var(--ds-radius-full);
 
   /* icon — no Tailwind theme namespace maps a fixed size scale onto width, height or size
-   * utilities the way radius maps onto rounded-*, so icon sizes are consumed via iconTokens
-   * / --ds-icon-* only, never through a Tailwind utility class. Re-visit if that changes. */
+   * utilities the way radius maps onto rounded-*, so there is nothing to add here. Icon sizes
+   * are reachable as ordinary classes (icon-xs … icon-3xl) through the @utility blocks below
+   * instead, and through iconTokens / --ds-icon-* for the rare non-utility consumer. */
 
   /* font */
   --font-sans: var(--ds-font-family-sans);
@@ -101,4 +102,39 @@
   --ease-standard: var(--ds-motion-easing-standard);
   --ease-decelerate: var(--ds-motion-easing-decelerate);
   --ease-accelerate: var(--ds-motion-easing-accelerate);
+}
+
+@utility icon-xs {
+  width: var(--ds-icon-xs);
+  height: var(--ds-icon-xs);
+}
+
+@utility icon-sm {
+  width: var(--ds-icon-sm);
+  height: var(--ds-icon-sm);
+}
+
+@utility icon-md {
+  width: var(--ds-icon-md);
+  height: var(--ds-icon-md);
+}
+
+@utility icon-lg {
+  width: var(--ds-icon-lg);
+  height: var(--ds-icon-lg);
+}
+
+@utility icon-xl {
+  width: var(--ds-icon-xl);
+  height: var(--ds-icon-xl);
+}
+
+@utility icon-2xl {
+  width: var(--ds-icon-2xl);
+  height: var(--ds-icon-2xl);
+}
+
+@utility icon-3xl {
+  width: var(--ds-icon-3xl);
+  height: var(--ds-icon-3xl);
 }
