@@ -169,6 +169,21 @@ byte-identical one — Playwright's own `maxDiffPixelRatio: 0.01` is what alread
 this size in ordinary (non-identity-proof) runs; the identity proof holds the harness itself to the
 stricter, git-level standard because that is the one property `maxDiffPixelRatio` cannot vouch for.
 
+**A second, distinct instability (phase 1 close).**
+`composite-searchbox--rate-limited-{light,dark}-1280` are known-unstable baselines that will show as
+modified on essentially every regeneration, for a different reason than the jitter above. The
+`RateLimited` story fixes `retryAfterSeconds`, but `SearchBox` itself renders a live per-second
+countdown off that prop, so the captured digit depends on elapsed time between mount and screenshot
+— verified by cropping two baselines and reading "8s" in one, "7s" in the other (112-117 differing
+pixels, max channel delta 172-194). That is a real content difference, not sub-perceptual
+antialiasing: a reader measuring the delta will find it alarming until they know the cause. It is
+still below Playwright's `maxDiffPixelRatio: 0.01`, so it has never failed a run — it only means
+these two baselines carry no evidence and churn independent of whether the component changed.
+Freezing `Date.now()` (the T505 fix) does not necessarily fix this, because the story's prop is
+already fixed; the timer inside the component is what moves. The fix owed is to freeze or disable
+the tick for this story — deliberately deferred at the close of phase 1 as documented debt, not
+overlooked.
+
 ## D4 — Breakpoints: one definition, two generated consumers
 
 **Decision.** A new `tokens/breakpoint.json` family with `sm`, `md`, `lg`, `xl`. The generator emits
