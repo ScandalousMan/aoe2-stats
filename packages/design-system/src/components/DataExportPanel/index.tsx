@@ -153,7 +153,10 @@ export function DataExportPanel({
                   'inline-flex min-h-11 w-fit items-center justify-center rounded-control bg-accent px-6 font-sans text-md font-semibold text-accent-contrast',
                   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                   'hover:bg-accent-hover active:bg-accent-active',
-                  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                  // Inward ring, in `accent-contrast` — this link fills with `accent`, and
+                  // `focus-ring` cannot clear 3:1 against both the page and an accent fill at
+                  // once (packages/design-system/specs/color-tokens.md §5, DS-10).
+                  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-contrast',
                 )}
               >
                 Download the archive
