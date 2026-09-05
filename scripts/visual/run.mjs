@@ -24,8 +24,9 @@
 // checkout left `origin/main` unresolvable, `runGit()` swallowed the failed `git diff` and returned
 // `[]`, and an empty diff and an unreadable one printed the identical "nothing to test" — see
 // `runGitOrFail()`, which exists to keep those two outcomes from ever looking the same again).
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 // `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
@@ -197,27 +198,47 @@ function main() {
   // component this run never reselected look "covered", corrupting the staleness check below.
   resetResultsDir()
 
-  const result = spawnSync(
-    'pnpm',
-    ['exec', 'playwright', 'test', '--config=playwright.config.ts'],
-    {
+  // The selected units used to travel to Playwright as inline JSON in `VISUAL_STORIES`. Linux
+  // caps a single argv/envp string at `MAX_ARG_STRLEN` (128 KiB), independent of and far tighter
+  // than the combined `ARG_MAX` the whole process's argv+environ share; the full, unscoped
+  // matrix's JSON is ~166 KB and crosses that ceiling on its own, so `spawnSync` below failed with
+  // `E2BIG` before Playwright ever started (confirmed on CI, run 33971176171). Writing the payload
+  // to a temp file and passing only its path removes the ceiling entirely — a path is a few dozen
+  // bytes regardless of how many units it names.
+  //
+  // `mkdtempSync(tmpdir())`, not `RUNNER_TEMP`: this script also runs on a developer machine
+  // (`pnpm test:visual` / `--changed`), where `RUNNER_TEMP` does not exist at all, so branching on
+  // it would need a fallback anyway. `tmpdir()` (Node's own cross-platform temp directory, `/tmp`
+  // on the `ubuntu-latest` runner this workflow uses) needs none: the runner's job container is
+  // torn down at the end of every job regardless, so there is no accumulation risk to design
+  // around, and `finally` below removes the directory immediately in the common case besides.
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'aoe2-visual-stories-'))
+  const storiesPath = path.join(tmpDir, 'stories.json')
+  writeFileSync(storiesPath, JSON.stringify(units))
+
+  let result
+  try {
+    result = spawnSync('pnpm', ['exec', 'playwright', 'test', '--config=playwright.config.ts'], {
       cwd: rootDir,
       stdio: 'inherit',
       env: {
         ...process.env,
-        VISUAL_STORIES: JSON.stringify(units),
+        VISUAL_STORIES_FILE: storiesPath,
       },
-    },
-  )
+    })
+  } finally {
+    // Cleaned up here — a `finally` runs whether `spawnSync` above returned normally or threw —
+    // rather than left for the OS's own temp-directory reaping, so a developer running this
+    // repeatedly does not accumulate one leftover directory per invocation.
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
 
   // spawnSync() reports a spawn-level failure (the executable never ran at all — not "ran and
   // exited non-zero") through `result.error`, not `result.status`, which stays `null` in that
   // case. `result.status ?? 1` below turns that into a plain exit code with nothing printed —
   // the same shape of silence `runGitOrFail()` exists to end for `git`, and worth naming here
   // too: `stdio: 'inherit'` means Playwright's own output would normally explain a real test
-  // failure, so an exit with none is spawnSync itself refusing the call, most plausibly because
-  // `VISUAL_STORIES` above exceeds a platform limit on a single argv/envp string (Linux caps this
-  // at 128 KiB per string; a full, unscoped run's JSON payload can exceed it).
+  // failure, so an exit with none is spawnSync itself refusing the call.
   if (result.error) {
     log(`could not start \`pnpm exec playwright test\`: ${result.error.message}`)
   }

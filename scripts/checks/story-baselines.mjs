@@ -61,7 +61,7 @@ const EXEMPT_BASELINES = new Set(['app-signed-out-sign-in', 'app-signed-in-dashb
 
 // The axes `scripts/visual/run.mjs` expands every selected story across (T504). Duplicated here,
 // not imported, because this check has to be able to name a missing unit for a story that
-// run.mjs's own VISUAL_STORIES payload may never have produced yet.
+// run.mjs's own selected-units payload may never have produced yet.
 const THEMES = ['light', 'dark']
 const WIDTHS = [375, 768, 1280]
 

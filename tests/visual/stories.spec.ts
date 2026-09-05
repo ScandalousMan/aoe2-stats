@@ -1,10 +1,18 @@
 // Generated per run by `scripts/visual/run.mjs`, which decides *which* stories to test (all of
 // them, or only the diff-affected ones) and expands each into one capture unit per {theme, width}
-// pair — {light, dark} x {375, 768, 1280}, T504, FR-060/FR-061/SC-006 — passed through
-// VISUAL_STORIES. Each unit names its story id, its theme, its width and whether its subject
-// escapes the story root (a `position: fixed` element, or a popover that overflows its trigger's
-// layout box — see run.mjs for why that happens). This file stays dumb on purpose: it never
-// re-derives scope or which axes apply to which story, it only renders what it is told to.
+// pair — {light, dark} x {375, 768, 1280}, T504, FR-060/FR-061/SC-006. Each unit names its story
+// id, its theme, its width and whether its subject escapes the story root (a `position: fixed`
+// element, or a popover that overflows its trigger's layout box — see run.mjs for why that
+// happens). This file stays dumb on purpose: it never re-derives scope or which axes apply to
+// which story, it only renders what it is told to.
+//
+// The units travel as JSON in a file, named by `VISUAL_STORIES_FILE`, not inline in an env var
+// (`VISUAL_STORIES`, retired): Linux caps a single argv/envp string at `MAX_ARG_STRLEN` (128 KiB),
+// and the full, unscoped matrix's JSON is ~166 KB — comfortably over that ceiling on its own — so
+// `run.mjs`'s `spawnSync` failed with `E2BIG` before Playwright ever started (confirmed on CI, run
+// 33971176171). A path is a few dozen bytes regardless of how many units it names, which removes
+// the ceiling entirely rather than working around it (chunking, as `.github/workflows/
+// baselines.yml` used to, before this same file transport replaced its batching too).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { test, expect, type Route } from '@playwright/test'
@@ -24,8 +32,8 @@ import {
 // (playwright.config.ts's own comment) — `__dirname` is what stays valid either way.
 const rootDir = path.resolve(__dirname, '..', '..')
 
-// T507 (FR-057, FR-058, SC-007): `VISUAL_STORIES` (below) carries only each unit's story id, not
-// its Storybook `title`, and the axe allowlist keys its entries by a human-readable component name
+// T507 (FR-057, FR-058, SC-007): each unit (below) carries only its story id, not its Storybook
+// `title`, and the axe allowlist keys its entries by a human-readable component name
 // derived from that title (see `componentFromTitle`) rather than by the raw id — so this reads the
 // same built Storybook index `scripts/visual/run.mjs` already reads, purely to recover `title` for
 // each id. This is a one-time lookup at module load, not part of the render loop below.
@@ -79,7 +87,14 @@ interface VisualStory {
   fullPage: boolean
 }
 
-const stories: VisualStory[] = JSON.parse(process.env.VISUAL_STORIES ?? '[]')
+// `run.mjs` always sets `VISUAL_STORIES_FILE`; `tests/visual/app-routes.spec.ts` is Playwright's
+// other spec under this same config and takes no units at all, so an unset var here (any run that
+// selects `stories.spec.ts` at all comes from `run.mjs` or `baselines.yml`, both of which set it)
+// falls back to an empty list rather than throwing.
+const storiesFilePath = process.env.VISUAL_STORIES_FILE
+const stories: VisualStory[] = storiesFilePath
+  ? (JSON.parse(readFileSync(storiesFilePath, 'utf8')) as VisualStory[])
+  : []
 
 for (const { id, theme, width, fullPage } of stories) {
   test(`${id} matches its visual baseline (${theme}, ${width})`, async ({ page }) => {

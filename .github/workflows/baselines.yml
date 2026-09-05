@@ -65,20 +65,19 @@ jobs:
       # This step reproduces only its unscoped branch — every story in the built index, expanded
       # into the same {theme, width} capture units `run.mjs` computes (T504) — because a full
       # regeneration selects everything, the same set `pnpm test:visual` (with no `--changed`)
-      # would. `stories.spec.ts` reads `VISUAL_STORIES` as one entry per {id, theme, width} unit,
-      # not one per story, so this step has to emit the same shape or every test in the matrix
-      # renders with `width: undefined` (the failure this comment fixes: run 33957950328).
+      # would. `stories.spec.ts` reads its units from the file named by `VISUAL_STORIES_FILE`, one
+      # entry per {id, theme, width} unit, not one per story, so this step has to emit the same
+      # shape or every test in the matrix renders with `width: undefined` (the failure this comment
+      # fixes: run 33957950328).
       #
-      # The full matrix's JSON is ~1800 units, ~165 KB as one string — scoping it to a single
-      # command (rather than `$GITHUB_ENV`) is not enough on its own: Linux caps any *single*
-      # argv/environment string at `MAX_ARG_STRLEN` (32 pages, 128 KiB), independent of and far
-      # tighter than the combined `ARG_MAX` the whole process's argv+environ share. pnpm itself
-      # failed to exec with "Argument list too long" the instant `VISUAL_STORIES` carried the
-      # whole matrix (run 33959623359), and that is a kernel limit any Linux machine hits at this
-      # size, not something the CI runner specifically does wrong. So this step also chunks the
-      # units into batches small enough that no single batch's JSON approaches the cap, and each
-      # batch is written to its own file for the next step to feed to a separate Playwright
-      # invocation.
+      # This used to pass the JSON inline through `VISUAL_STORIES` and, once the matrix grew past
+      # ~800 units, batch it into chunks small enough to fit Linux's `MAX_ARG_STRLEN` (128 KiB per
+      # argv/envp string — pnpm failed to exec with "Argument list too long" the instant the whole
+      # matrix's ~165 KB JSON was handed to it inline, run 33959623359, and `scripts/visual/run.mjs`
+      # hit the identical ceiling later, run 33971176171). A file has no such ceiling — the value
+      # crossing the environment is a path, a few dozen bytes regardless of how many units it
+      # names — so both this step and the run step below write and read one file for the whole
+      # matrix, and the batching this comment used to describe is gone rather than merely resized.
       - name: Compute the full story list (every story x theme x width, not diff-scoped)
         run: |
           cat <<'JS' > "$RUNNER_TEMP/visual-stories.mjs"
@@ -107,42 +106,22 @@ jobs:
             ),
           )
 
-          // 200 units at this shape is on the order of 20 KB — an order of magnitude under
-          // MAX_ARG_STRLEN even before accounting for the rest of the invocation's own
-          // environment, which shares the same per-string budget with nothing else.
-          const BATCH_SIZE = 200
-          const outDir = process.env.STORIES_DIR
-          let batchCount = 0
-          for (let i = 0; i < units.length; i += BATCH_SIZE) {
-            writeFileSync(
-              path.join(outDir, `visual-stories-${batchCount}.json`),
-              JSON.stringify(units.slice(i, i + BATCH_SIZE)),
-            )
-            batchCount += 1
-          }
-          writeFileSync(path.join(outDir, 'visual-stories-batch-count.txt'), String(batchCount))
-          console.log(`${units.length} units across ${stories.length} stories, in ${batchCount} batches.`)
+          const outPath = path.join(process.env.STORIES_DIR, 'visual-stories.json')
+          writeFileSync(outPath, JSON.stringify(units))
+          console.log(`${units.length} units across ${stories.length} stories, written to ${outPath}.`)
           JS
           STORIES_DIR="$RUNNER_TEMP" node "$RUNNER_TEMP/visual-stories.mjs"
 
-      # The whole suite under tests/visual/: every story, batched (see the step above), and
-      # tests/visual/app-routes.spec.ts (which needs no batching — it takes no VISUAL_STORIES and
-      # captures only its own two routes) — the pull-request job's `--changed` slice plays no part
-      # here. `--update-snapshots=all` — not `changed` or `missing` — is what makes every selected
+      # The whole suite under tests/visual/: every story (see the step above), and
+      # tests/visual/app-routes.spec.ts (which takes no VISUAL_STORIES_FILE and captures only its
+      # own two routes) — the pull-request job's `--changed` slice plays no part here.
+      # `--update-snapshots=all` — not `changed` or `missing` — is what makes every selected
       # capture provenanced by this run rather than inherited from whichever machine happened to
-      # write it before. Each batch is its own Playwright invocation against the same
-      # `tests/visual/stories.spec.ts` file and the same `__screenshots__` output directory, so the
-      # combined effect across all of them is identical to one invocation that could see the whole
-      # matrix at once.
-      - name: Run the full matrix, batched to stay under Linux's per-string argument limit
+      # write it before.
+      - name: Run the full matrix
         run: |
-          batch_count="$(cat "$RUNNER_TEMP/visual-stories-batch-count.txt")"
-          echo "Running $batch_count batch(es) of story x theme x width units."
-          for ((i = 0; i < batch_count; i++)); do
-            echo "== batch $i of $((batch_count - 1)) =="
-            VISUAL_STORIES="$(cat "$RUNNER_TEMP/visual-stories-$i.json")" \
-              pnpm exec playwright test tests/visual/stories.spec.ts --config=playwright.config.ts --update-snapshots=all
-          done
+          VISUAL_STORIES_FILE="$RUNNER_TEMP/visual-stories.json" \
+            pnpm exec playwright test tests/visual/stories.spec.ts --config=playwright.config.ts --update-snapshots=all
           pnpm exec playwright test tests/visual/app-routes.spec.ts --config=playwright.config.ts --update-snapshots=all
 
       # Committing with the runner's own built-in token — actions/checkout's default

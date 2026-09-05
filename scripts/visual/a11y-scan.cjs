@@ -43,9 +43,9 @@ const violationsLogPath = path.join(resultsDir, 'violations.ndjson')
 /**
  * A Storybook title's last path segment, in the kebab-case the design system's own spec files use
  * (`packages/design-system/specs/site-header.md`), so an allowlist entry reads the same way a
- * component is named everywhere else in this repository. `VISUAL_STORIES` only carries the story
- * id, not the title, which is why `stories.spec.ts` reads the built Storybook index itself to
- * recover it — see the comment at that call site.
+ * component is named everywhere else in this repository. Each selected unit only carries the
+ * story id, not the title, which is why `stories.spec.ts` reads the built Storybook index itself
+ * to recover it — see the comment at that call site.
  */
 function componentFromTitle(title) {
   const name = title.split('/').pop() ?? title
