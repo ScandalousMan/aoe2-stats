@@ -61,7 +61,7 @@ is added: capture the 25 missing baselines, delete the 3 orphans, and add a chec
 story has no baseline or a baseline has no story.
 
 **Rationale.** Multiplying an unreconciled set by six multiplies the discrepancy with it, and the
-"pixel-identical at 1280 in light" proof that D1 depends on is only meaningful over stories that
+"byte-identical at the existing axes" proof that D1 depends on is only meaningful over stories that
 have a baseline to be identical to. Reconciling first also makes phase 1's diff readable: 25 new
 captures at the old axes is a reviewable number, and the same 25 buried inside a 1,794-file
 regeneration is not.
@@ -69,8 +69,10 @@ regeneration is not.
 **What the check adds that the suite does not have.** Today a story with no baseline fails only in a
 run that selects it, and the pull-request runner selects only the stories the diff touched — so a
 story merged without its baseline is never selected again and the gap persists silently until the
-nightly run, whose failure is a single job among many. A set-equality check runs in the ordinary web
-job, names the specific stories, and cannot be outrun by diff scoping. It is the same shape as
+nightly run, whose failure is a single job among many. A set-equality check runs as its own step in the
+`visual` job, after `build-storybook` and ahead of the diff-scoped run — the `web` job never builds
+Storybook, so the index it reads does not exist there — names the specific stories, and cannot be
+outrun by diff scoping. It is the same shape as
 FR-061's prohibition living in the runner: put the guarantee where it can be broken.
 
 **Not in scope here.** Why the 25 were merged uncaptured is a question about a past pull request,
@@ -89,7 +91,9 @@ tier's spacing rhythm (phase 4) and the retrofit (phase 5). A visual diff only c
 when the change is expected to be local, so a phase that repaints everything is verified by the
 contrast test, the accessibility check and `visual-reviewer` — never by the diff. That is exactly
 why the machinery comes first: phase 1 changes the harness while changing **no** value, so the
-1280-wide light captures it produces must be pixel-identical to the 279 baselines that exist today.
+captures it produces at the existing axes — 1280 light, and 375 light for the ten `visual-mobile`
+stories — must be byte-identical to the baselines that exist today, proved from the regeneration
+commit (only additions under `__screenshots__`), not from Playwright's 1% tolerance.
 That identity is the proof the harness change is correct, and it is available only in the one phase
 where nothing else moves. Run the machinery after the palette and that proof is gone forever.
 
@@ -135,7 +139,10 @@ that removes an axis.
 ## D3 — Baselines are regenerated in CI, never on a developer's machine
 
 **Decision.** Add a manually dispatched `baselines` workflow that runs the suite with
-`--update-snapshots` on `ubuntu-latest` and commits the result to the branch it was dispatched from.
+`--update-snapshots=all` on `ubuntu-latest` and commits the result to the branch it was dispatched
+from. `all` rather than the default `changed`, so that every selected capture is rewritten from the CI
+renderer and a baseline's provenance is never in question — which is what lets phase 1 prove
+identity from the commit itself.
 Local regeneration is not part of the workflow for any full-page or application-route baseline.
 
 **Rationale.** This repository has already paid for the alternative: full-page baselines captured on
@@ -241,8 +248,11 @@ clarification session — a foundation nobody decided is the same defect as a to
 admissible and the `product-designer` chooses between them with the palette:
 
 - **Load them.** Self-host `Inter`, `Fraunces` and `JetBrains Mono` under
-  `packages/design-system/tokens`, each with the licence record `scripts/checks/asset_packs.py`
-  already enforces for a pack, and a preload so the first paint is not a swap. All three carry open
+  `packages/design-system/tokens/fonts/`, each with the five-field licence record a pack carries,
+  and a preload so the first paint is not a swap. `scripts/checks/asset_packs.py` is hard-scoped to
+  `packages/game-assets` and `pr.yml`'s `asset-packs` filter lists only that directory, so the check
+  and the filter are extended to the font directory in the same change — otherwise the gate
+  constitution X requires would neither see nor run on a font (T523). All three carry open
   licences (SIL OFL), so nothing here depends on Microsoft's Game Content Usage Rules.
 - **Re-derive the stacks against what actually renders.** Name `Georgia` and `ui-monospace` as the
   chosen families, deliberately, and delete the three names nothing serves.

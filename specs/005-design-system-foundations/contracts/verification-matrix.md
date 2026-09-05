@@ -19,8 +19,9 @@ rides on the story axis rather than being duplicated.
 **The two sets do not currently agree.** 25 stories have no baseline — `Tooltip`'s thirteen were
 never committed at all — and 3 baselines name stories that no longer exist. Phase 1 reconciles them
 at the existing axes *before* expanding, because multiplying an unreconciled set by six multiplies
-the discrepancy, and a set-equality check then keeps them reconciled in the ordinary web job, where
-diff scoping cannot outrun it.
+the discrepancy, and a set-equality check then keeps them reconciled as its own step in the `visual` job,
+ahead of the diff-scoped run, where diff scoping cannot outrun it (the `web` job never builds the
+Storybook index it reads).
 
 | Run          | Story selection              | Axes            |
 | ------------ | ---------------------------- | --------------- |

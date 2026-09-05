@@ -31,16 +31,20 @@ transpile-only.
 ## Scenario 1 — The harness change altered no value (phase 1)
 
 The whole point of doing the machinery first. After the matrix lands and before any token moves,
-the 1280-wide light captures must be **byte-identical** to the 279 baselines that existed before.
+the captures at the existing axes must be **byte-identical** to the baselines T502 reconciled. The
+proof is the commit the `baselines` workflow made, not Playwright's verdict — the suite's
+`maxDiffPixelRatio` of 0.01 reports a sub-percent rendering change as clean.
 
 ```bash
-pnpm --filter design-system build-storybook && pnpm test:visual
+git show --stat --format= HEAD -- packages/design-system/__screenshots__ | grep -v 'Bin 0 ->'
 ```
 
-**Pass**: every pre-existing baseline compares clean at 1280 in light. The dark and narrow captures
-are new files, not diffs. **Fail**: any 1280-light diff at all means the harness changed rendering,
-which is the one thing this phase may not do — and this is the only phase in which that is
-detectable.
+**Pass**: the command prints nothing but the summary line — every file in that commit is an
+addition. Every pre-existing baseline, renamed by T504 to its light-1280 name (light-375 for the ten
+stories that were `visual-mobile`), is untouched byte for byte, and every dark and other-width
+capture is a new file. **Fail**: any pre-existing file listed as modified means the harness changed
+rendering, which is the one thing this phase may not do — and this is the only phase in which that
+is detectable.
 
 ## Scenario 2 — Every design decision has a token (US1)
 
