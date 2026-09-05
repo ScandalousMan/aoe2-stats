@@ -22,6 +22,24 @@ product-designer's agreement; do not work around it.
 Families: `color`, `space`, `font`, `radius`, `elevation`, `motion`. Light and dark themes are served
 by the same token names — a component never knows the active theme.
 
+## Design decisions
+
+The design system is evolved deliberately rather than by accumulating components.
+
+Before introducing a new component or token:
+
+1. Check whether an existing token, component or pattern already satisfies the need.
+2. Prefer composition of existing primitives when appropriate.
+3. Introduce a new token only when the visual decision represents a reusable semantic concept.
+4. Introduce a new component only when reuse, consistency or interaction complexity justifies it.
+5. Do not create abstractions solely to reduce local code duplication.
+6. Do not create variants solely to accommodate one page.
+7. Application-specific composition belongs in the application unless repeated usage demonstrates
+   that it is a design-system pattern.
+8. When a component is visually or behaviourally related to an existing component, preserve the
+   existing interaction and visual language unless the specification explicitly establishes a
+   difference.
+
 ## Component checklist — the eight points
 
 A component is done only when all eight are true.
