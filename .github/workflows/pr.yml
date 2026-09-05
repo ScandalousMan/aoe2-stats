@@ -53,6 +53,15 @@ jobs:
               - 'packages/game-assets/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              # T510: `scripts/**` above maps only to the `python` filter, so a pull request
+              # touching only a Node check or the visual runner used to run the Python job and
+              # neither `web` nor `visual` — and this feature ships four such checks
+              # (story-baselines.mjs, a11y-allowlist.mjs, and the runner and spec they gate)
+              # whose own edits were verified by nothing. `visual` runs on the same `if` as
+              # `web` (see that job below), so listing these here is what makes both trigger.
+              - 'scripts/checks/*.mjs'
+              - 'scripts/visual/**'
+              - 'tests/visual/**'
             design:
               - 'packages/design-system/**'
             migrations:
@@ -238,10 +247,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - uses: actions/cache@v4
-        with:
-          path: packages/design-system/__screenshots__
-          key: visual-baselines-${{ runner.os }}-${{ github.base_ref || 'main' }}
+      # T510: an `actions/cache` step for `packages/design-system/__screenshots__` used to sit
+      # here, keyed only on `runner.os` and the base branch. Baselines are committed to the
+      # repository (verified: `git ls-files` and the working tree agree on 1,796 files after
+      # T504's rename), so `actions/checkout` above already puts the correct-for-this-commit set
+      # in place — the cache step never restored anything checkout had not already provided. A
+      # content-independent key made that redundancy actively harmful the moment T504 renamed
+      # every baseline: a cache entry saved from a run before the rename would restore its 301
+      # old-named files on top of (not instead of — `actions/cache` extracts additively, it does
+      # not mirror) the 1,796 correctly-named ones checkout just supplied, and the very next step
+      # (`story-baselines.mjs`, T503) does set equality between the Storybook index and the
+      # baseline directory — it would then fail every run on 301 phantom "baseline with no
+      # story" entries that have nothing to do with the pull request's actual diff. There is no
+      # key formula that recovers value here: git is already the source of truth for this
+      # directory, and a hash-of-contents key would only ever restore what checkout already
+      # produced. Removed rather than repaired.
       - run: pnpm --filter design-system build-storybook
       # T503: set equality between the built Storybook index and the checked-in baselines, run
       # ahead of `--changed` below so a story merged with no baseline fails here — on every run,

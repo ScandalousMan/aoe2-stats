@@ -22,7 +22,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // T510: raised from 2 to 4 once the matrix (T504) put every affected story through six capture
+  // units instead of one — GitHub's standard `ubuntu-latest` runner has 4 vCPUs, so this matches
+  // the box rather than overcommitting it. Throughput only; the comparison itself (`expect` above)
+  // and the settle logic in `tests/visual/stories.spec.ts` are unchanged.
+  workers: process.env.CI ? 4 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${storybookPort}`,
