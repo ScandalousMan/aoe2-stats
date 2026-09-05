@@ -53,6 +53,15 @@ jobs:
               - 'packages/game-assets/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
+              # T510: `scripts/**` above maps only to the `python` filter, so a pull request
+              # touching only a Node check or the visual runner used to run the Python job and
+              # neither `web` nor `visual` — and this feature ships four such checks
+              # (story-baselines.mjs, a11y-allowlist.mjs, and the runner and spec they gate)
+              # whose own edits were verified by nothing. `visual` runs on the same `if` as
+              # `web` (see that job below), so listing these here is what makes both trigger.
+              - 'scripts/checks/*.mjs'
+              - 'scripts/visual/**'
+              - 'tests/visual/**'
             design:
               - 'packages/design-system/**'
             migrations:
@@ -214,6 +223,11 @@ jobs:
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
       # 404 before a line of JavaScript ran, because there was no fallback to `index.html`.
       - run: node scripts/checks/spa-routing.mjs
+      # T509: fails on an allowlist entry missing a field or past its fix-by date — both decidable
+      # from the file alone, which is why this lives here rather than in `visual`. The third
+      # failure mode (a stale suppression the scan no longer reports) needs Playwright's results
+      # and belongs to T507's scan in the `visual` job instead.
+      - run: node scripts/checks/a11y-allowlist.mjs
 
   visual:
     name: Visual regression — affected stories and the built application
@@ -225,7 +239,20 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0, not the default depth-1 shallow clone every other job here uses: `pnpm
+      # test:visual --changed` below (scripts/visual/run.mjs) diffs against `origin/main` (or
+      # VISUAL_BASE_REF) to select stories, and a depth-1 checkout never has that ref locally at
+      # all. That used to fail silently — `git diff` errored, the runner swallowed it as "nothing
+      # changed", and this job passed having selected zero stories on every pull request (the
+      # `runGitOrFail` in run.mjs now makes that failure fatal instead, so a regression here shows
+      # up as a red job rather than a vacuous green one). Full history is the same trade-off the
+      # `secrets` job below already makes for gitleaks, for the same reason: this job needs commits
+      # a shallow clone doesn't carry, and per actions/checkout's own docs `fetch-depth: 0` is what
+      # fetches "all history for all branches and tags" — including `origin/main` — regardless of
+      # which event (`pull_request` or `push`) triggered the run.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -233,11 +260,27 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - uses: actions/cache@v4
-        with:
-          path: packages/design-system/__screenshots__
-          key: visual-baselines-${{ runner.os }}-${{ github.base_ref || 'main' }}
+      # T510: an `actions/cache` step for `packages/design-system/__screenshots__` used to sit
+      # here, keyed only on `runner.os` and the base branch. Baselines are committed to the
+      # repository (verified: `git ls-files` and the working tree agree on 1,796 files after
+      # T504's rename), so `actions/checkout` above already puts the correct-for-this-commit set
+      # in place — the cache step never restored anything checkout had not already provided. A
+      # content-independent key made that redundancy actively harmful the moment T504 renamed
+      # every baseline: a cache entry saved from a run before the rename would restore its 301
+      # old-named files on top of (not instead of — `actions/cache` extracts additively, it does
+      # not mirror) the 1,796 correctly-named ones checkout just supplied, and the very next step
+      # (`story-baselines.mjs`, T503) does set equality between the Storybook index and the
+      # baseline directory — it would then fail every run on 301 phantom "baseline with no
+      # story" entries that have nothing to do with the pull request's actual diff. There is no
+      # key formula that recovers value here: git is already the source of truth for this
+      # directory, and a hash-of-contents key would only ever restore what checkout already
+      # produced. Removed rather than repaired.
       - run: pnpm --filter design-system build-storybook
+      # T503: set equality between the built Storybook index and the checked-in baselines, run
+      # ahead of `--changed` below so a story merged with no baseline fails here — on every run,
+      # not only the one that happens to select it — instead of surfacing only in nightly's
+      # unscoped run, as one Playwright failure among many.
+      - run: node scripts/checks/story-baselines.mjs
       # T108: `tests/visual/app-routes.spec.ts` serves this build (stubbing `/api/*` itself,
       # never `apps/api`) instead of screenshotting only the component library — the T107 defect
       # (every screen unstyled in production) never touched a Storybook story, so nothing above

@@ -101,13 +101,12 @@ export const UploadingValidating: Story = {
 // T083a defect 2: `FileChip` rendered the file name with Tailwind `truncate` (single-line
 // end-ellipsis), so at 375px a real name collapsed to ~5 characters ("MP Re…") against
 // manual-upload.md §8, which requires the name to wrap or middle-truncate and never be cut
-// without recourse. Tagged `visual-mobile` (scripts/visual/run.mjs) so the harness captures this
-// story at the 375px width where the regression showed — nothing screenshotted that width before
-// this story existed. `file-chosen`'s seeded file (index.tsx) already carries a realistic long
-// name, so no extra fixture is needed.
+// without recourse. Every story is now captured at 375px as a matter of course (T504), so this
+// story needs no tag to reach that width — it exists for its own name, not to opt into a capture.
+// `file-chosen`'s seeded file (index.tsx) already carries a realistic long name, so no extra
+// fixture is needed.
 export const FileChosenMobile: Story = {
   name: '375px viewport — a long file name wraps instead of being cut to a stub',
-  tags: ['visual-mobile'],
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' },
 }
 

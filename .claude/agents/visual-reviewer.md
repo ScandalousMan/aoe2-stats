@@ -14,6 +14,19 @@ Protocol:
 3. Build Storybook and capture the relevant stories:
    `pnpm --filter design-system build-storybook && pnpm test:visual --grep "<component>"`
 4. Capture **every** state declared in the spec, in light and dark theme, at all three breakpoints.
+   As of T510 this claim is true of the harness you drive: `scripts/visual/run.mjs` expands every
+   affected story into the full story x {light, dark} x {375, 768, 1280} matrix with no flag that
+   narrows it, on both the pull-request run and nightly's unscoped one, so a story you ask this
+   harness to capture is captured on every axis, not just the one the diff happened to touch. That
+   was not true before this phase — an agent told to judge axes the runner could not produce was
+   reporting coverage nobody had — so do not extend the same claim past its boundary:
+   - It covers Storybook stories only. `tests/visual/app-routes.spec.ts` still captures one
+     signed-in and one signed-out screenshot of the built application, no theme or width axis,
+     deliberately left out of the matrix (T504).
+   - The application has no theme toggle until phase 3 (T533–T538, not yet done). There is nothing
+     to drive into dark on a route, so do not ask for one — a route-level finding is single-theme,
+     single-width by construction, and the verdict should say so rather than imply the gap is a
+     miss on your part.
 5. Compare each capture against the spec's acceptance criteria.
 
 Standing checklist:

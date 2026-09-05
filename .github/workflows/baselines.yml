@@ -62,40 +62,67 @@ jobs:
 
       # `scripts/visual/run.mjs` decides which stories to select and never forwards an update flag
       # to Playwright, so it cannot be reused here as-is (this task touches no file but this one).
-      # This step reproduces only its unscoped branch — every story in the built index, tagged the
-      # same way — because a full regeneration selects everything, the same set `pnpm test:visual`
-      # (with no `--changed`) would.
-      - name: Compute the full story list (every story, not diff-scoped)
+      # This step reproduces only its unscoped branch — every story in the built index, expanded
+      # into the same {theme, width} capture units `run.mjs` computes (T504) — because a full
+      # regeneration selects everything, the same set `pnpm test:visual` (with no `--changed`)
+      # would. `stories.spec.ts` reads its units from the file named by `VISUAL_STORIES_FILE`, one
+      # entry per {id, theme, width} unit, not one per story, so this step has to emit the same
+      # shape or every test in the matrix renders with `width: undefined` (the failure this comment
+      # fixes: run 33957950328).
+      #
+      # This used to pass the JSON inline through `VISUAL_STORIES` and, once the matrix grew past
+      # ~800 units, batch it into chunks small enough to fit Linux's `MAX_ARG_STRLEN` (128 KiB per
+      # argv/envp string — pnpm failed to exec with "Argument list too long" the instant the whole
+      # matrix's ~165 KB JSON was handed to it inline, run 33959623359, and `scripts/visual/run.mjs`
+      # hit the identical ceiling later, run 33971176171). A file has no such ceiling — the value
+      # crossing the environment is a path, a few dozen bytes regardless of how many units it
+      # names — so both this step and the run step below write and read one file for the whole
+      # matrix, and the batching this comment used to describe is gone rather than merely resized.
+      - name: Compute the full story list (every story x theme x width, not diff-scoped)
         run: |
           cat <<'JS' > "$RUNNER_TEMP/visual-stories.mjs"
-          import { readFileSync, writeFileSync } from 'node:fs'
+          import { writeFileSync, readFileSync } from 'node:fs'
+          import path from 'node:path'
+
+          // Mirrors scripts/visual/run.mjs's THEMES/WIDTHS and unscoped expansion exactly — this
+          // step is that script's unscoped branch reproduced for the runner, not a second
+          // definition of the axes (T504's `visual-mobile` tag was retired: every story is now
+          // captured at every width as a matter of course).
+          const THEMES = ['light', 'dark']
+          const WIDTHS = [375, 768, 1280]
 
           const indexPath = 'packages/design-system/storybook-static/index.json'
           const index = JSON.parse(readFileSync(indexPath, 'utf8'))
           const entries = Object.values(index.entries ?? index.stories ?? {})
-          const stories = entries
-            .filter((entry) => entry.type === undefined || entry.type === 'story')
-            .map((entry) => ({
-              id: entry.id,
-              fullPage: (entry.tags ?? []).includes('visual-full-page'),
-              mobile: (entry.tags ?? []).includes('visual-mobile'),
-            }))
-          writeFileSync(process.env.STORIES_OUT, JSON.stringify(stories))
-          JS
-          STORIES_OUT="$RUNNER_TEMP/visual-stories.json" node "$RUNNER_TEMP/visual-stories.mjs"
-          {
-            echo "VISUAL_STORIES<<VISUAL_STORIES_EOF"
-            cat "$RUNNER_TEMP/visual-stories.json"
-            echo ""
-            echo "VISUAL_STORIES_EOF"
-          } >> "$GITHUB_ENV"
+          const stories = entries.filter((entry) => entry.type === undefined || entry.type === 'story')
+          const units = stories.flatMap((entry) =>
+            THEMES.flatMap((theme) =>
+              WIDTHS.map((width) => ({
+                id: entry.id,
+                theme,
+                width,
+                fullPage: (entry.tags ?? []).includes('visual-full-page'),
+              })),
+            ),
+          )
 
-      # The whole suite under tests/visual/, not the pull-request job's `--changed` slice: every
-      # story (via VISUAL_STORIES above) and tests/visual/app-routes.spec.ts, both rewritten from
-      # this run's renderer. `--update-snapshots=all` — not `changed` or `missing` — is what makes
-      # every selected capture provenanced by this run rather than inherited from whichever
-      # machine happened to write it before.
-      - run: pnpm exec playwright test --config=playwright.config.ts --update-snapshots=all
+          const outPath = path.join(process.env.STORIES_DIR, 'visual-stories.json')
+          writeFileSync(outPath, JSON.stringify(units))
+          console.log(`${units.length} units across ${stories.length} stories, written to ${outPath}.`)
+          JS
+          STORIES_DIR="$RUNNER_TEMP" node "$RUNNER_TEMP/visual-stories.mjs"
+
+      # The whole suite under tests/visual/: every story (see the step above), and
+      # tests/visual/app-routes.spec.ts (which takes no VISUAL_STORIES_FILE and captures only its
+      # own two routes) — the pull-request job's `--changed` slice plays no part here.
+      # `--update-snapshots=all` — not `changed` or `missing` — is what makes every selected
+      # capture provenanced by this run rather than inherited from whichever machine happened to
+      # write it before.
+      - name: Run the full matrix
+        run: |
+          VISUAL_STORIES_FILE="$RUNNER_TEMP/visual-stories.json" \
+            pnpm exec playwright test tests/visual/stories.spec.ts --config=playwright.config.ts --update-snapshots=all
+          pnpm exec playwright test tests/visual/app-routes.spec.ts --config=playwright.config.ts --update-snapshots=all
 
       # Committing with the runner's own built-in token — actions/checkout's default
       # `persist-credentials: true` already wired `origin` to authenticate as `GITHUB_TOKEN`, and

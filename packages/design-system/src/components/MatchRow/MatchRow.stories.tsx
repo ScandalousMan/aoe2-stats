@@ -10,6 +10,15 @@ const meta: Meta<typeof MatchRow> = {
 export default meta
 type Story = StoryObj<typeof MatchRow>
 
+// Deadlines are computed relative to render time, not a fixed date, so the countdown text stays
+// the same no matter which day this story is captured. `Date.now` is frozen for the whole iframe
+// — the same technique `CaptureStateBadge.stories.tsx` uses and explains: `MatchRow` renders
+// `CaptureStateBadge` internally, whose own clock (`useTickingNow`) reads `Date.now()`
+// independently of the read below, and an unfrozen clock lets those two reads land on either side
+// of an exact-unit boundary, flipping the rendered text between runs (T505's identity proof).
+const FROZEN_NOW_MS = Date.parse('2026-01-01T00:00:00.000Z')
+Date.now = () => FROZEN_NOW_MS
+
 const HOUR_MS = 60 * 60_000
 const DAY_MS = 24 * HOUR_MS
 

@@ -15,8 +15,9 @@
     "test:visual": "node scripts/visual/run.mjs"
   },
   "devDependencies": {
-    "prettier": "^3.9.6",
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "prettier": "^3.9.6"
   }
 }

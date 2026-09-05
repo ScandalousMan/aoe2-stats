@@ -111,11 +111,10 @@ export const Board: Story = {
 // T457 remediation (004 spec §13.3/§13.8) — the resting (tooltip-closed) `Board` frame at 375,
 // where the defect actually lived: the flag must stay on the name line beside the switcher
 // trigger, not wrap beneath it, and the identity bar must not force the page wider than the
-// viewport. `visual-mobile` is the tag that captures this width at all — see the comment on
-// `BoardFlagHoverRevealed` below.
+// viewport. Every story is now captured at 375px as a matter of course (T504), so no tag is
+// needed to reach that width.
 export const BoardMobile: Story = {
   name: 'Board at 375 — the flag stays on the name line, resting (004 §13.8, T457)',
-  tags: ['visual-mobile'],
   args: {
     subject: 'self',
     authenticated: true,
@@ -131,7 +130,6 @@ export const BoardMobile: Story = {
 // horizontal overflow, and the flag still lands beside the trigger, not beneath it.
 export const BoardLongAliasMobile: Story = {
   name: 'Board at 375, long alias — the alias truncates, the flag does not wrap (004 §13.8, T457)',
-  tags: ['visual-mobile'],
   args: {
     subject: 'self',
     authenticated: true,
@@ -171,12 +169,12 @@ async function pinFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
   await waitFor(() => expect(flag).not.toHaveFocus())
 }
 
-// `visual-mobile`: this is the one viewport where the flag can be pushed onto the switcher
-// trigger's line (T457) — the defect was invisible at the suite's default desktop width, exactly
-// the PrivacyNotice T096 lesson `scripts/visual/run.mjs` documents for this tag.
+// 375 is the one width where the flag can be pushed onto the switcher trigger's line (T457) —
+// the defect was invisible at the suite's default desktop width. Every story is now captured at
+// 375px as a matter of course (T504), so `visual-full-page` is the only tag this needs.
 export const BoardFlagHoverRevealed: Story = {
   name: 'Flag hover — country name in a tooltip above the flag (004 §13.9)',
-  tags: ['visual-full-page', 'visual-mobile'],
+  tags: ['visual-full-page'],
   play: hoverFlagOpen,
   args: {
     subject: 'self',
@@ -190,7 +188,7 @@ export const BoardFlagHoverRevealed: Story = {
 
 export const BoardFlagKeyboardFocusRevealed: Story = {
   name: 'Flag keyboard focus — tooltip open and focus ring together (004 §13.9)',
-  tags: ['visual-full-page', 'visual-mobile'],
+  tags: ['visual-full-page'],
   play: focusFlagOpen,
   args: {
     subject: 'self',
@@ -204,7 +202,7 @@ export const BoardFlagKeyboardFocusRevealed: Story = {
 
 export const BoardFlagPinned: Story = {
   name: 'Flag pinned — the touch route, no pointer, no focus ring (004 §13.9)',
-  tags: ['visual-full-page', 'visual-mobile'],
+  tags: ['visual-full-page'],
   play: pinFlagOpen,
   args: {
     subject: 'self',
@@ -223,7 +221,7 @@ export const BoardFlagPinned: Story = {
 // switcher trigger and the alias, exactly as it does for a short alias.
 export const BoardLongAliasFlagHoverRevealed: Story = {
   name: 'Flag hover, long alias — the fix holds when the alias is 19 characters, not 7 (004 §13.8, T457)',
-  tags: ['visual-full-page', 'visual-mobile'],
+  tags: ['visual-full-page'],
   play: hoverFlagOpen,
   args: {
     subject: 'self',
