@@ -1,6 +1,32 @@
 /* GENERATED FILE — do not hand-edit.
  * Source: packages/design-system/tokens/*.json
  * Regenerate with `pnpm --filter design-system tokens:build`. */
+/* Self-hosted @font-face declarations (typography-tokens.md §8.1). Ahead of :root so the browser
+ * discovers them before anything below requests the family they declare. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter/inter-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('/fonts/fraunces/fraunces-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-variable-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Untheme families (space, radius, icon, font, motion) plus the light theme's colour and elevation
  * — light is the default so a component works before any theme is chosen. */
 :root {
@@ -122,6 +148,7 @@
   --ds-elevation-raised: 0 1px 2px 0 rgb(43 32 19 / 12%);
   --ds-elevation-overlay: 0 4px 12px 0 rgb(43 32 19 / 18%);
   --ds-elevation-modal: 0 16px 32px -4px rgb(43 32 19 / 28%);
+  font-synthesis-weight: none;
 }
 
 /* Same variable names, dark values. Set data-theme="dark" on <html> or any ancestor; nothing

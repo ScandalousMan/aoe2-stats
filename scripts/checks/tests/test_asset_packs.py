@@ -415,3 +415,134 @@ def test_a_fully_compliant_tree_passes_every_check(tmp_path: Path) -> None:
     )
 
     assert failures == []
+
+
+# --------------------------------------------------------- (h) check_asset_roots — the multi-root
+# aggregate `main()` actually runs (typography-tokens.md §9.2 point 3). `check_asset_packs` above
+# stays exactly as it is — these are the coverage for the composition alongside it, not in place
+# of it.
+
+
+def test_font_shaped_pack_with_all_fields_and_matching_docs_row_passes(tmp_path: Path) -> None:
+    """A pack shaped like a real font pack (`LICENCE.md` plus one `.woff2`), all five fields
+    present, correctly mirrored — `check_asset_roots` must report nothing for it."""
+    from scripts.checks.asset_packs import check_asset_roots
+
+    fonts_root = tmp_path / "fonts"
+    fields = _valid_fields()
+    _write_pack(fonts_root, "a-typeface", fields, extra_files=["a-typeface-variable-latin.woff2"])
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([_docs_row_for("a-typeface", fields)]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=((fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+    )
+
+    assert failures == []
+
+
+def test_font_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path: Path) -> None:
+    """The failure case: one field dropped from the font pack's `LICENCE.md`. The aggregate must
+    fail, and the failure string must name the pack directory — not just "a pack somewhere"."""
+    from scripts.checks.asset_packs import check_asset_roots
+
+    fonts_root = tmp_path / "fonts"
+    fields = _valid_fields()
+    del fields["Checked"]
+    _write_pack(fonts_root, "incomplete-typeface", fields, extra_files=["icon.woff2"])
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=((fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+    )
+
+    assert failures, "a font pack missing a required field must fail check_asset_roots"
+    assert any("incomplete-typeface" in failure for failure in failures)
+
+
+def test_two_roots_are_each_held_to_their_own_size_budget(tmp_path: Path) -> None:
+    """A 1.5 MB fonts root fails against a 1 MB-shaped budget while a 1.5 MB game-assets root
+    passes against a 10 MB-shaped budget — each root's own budget applies, never the other's."""
+    from scripts.checks.asset_packs import check_asset_roots
+
+    one_and_half_mb = 1_572_864  # 1.5 MiB
+
+    game_assets_root = tmp_path / "game-assets"
+    game_assets_fields = _valid_fields()
+    game_assets_pack = _write_pack(
+        game_assets_root, "big-game-asset-pack", game_assets_fields, extra_files=[]
+    )
+    (game_assets_pack / "payload.webp").write_bytes(b"x" * one_and_half_mb)
+
+    fonts_root = tmp_path / "fonts"
+    fonts_fields = _valid_fields()
+    fonts_pack = _write_pack(fonts_root, "big-font-pack", fonts_fields, extra_files=[])
+    (fonts_pack / "payload.woff2").write_bytes(b"x" * one_and_half_mb)
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(
+        _docs_table(
+            [
+                _docs_row_for("big-game-asset-pack", game_assets_fields),
+                _docs_row_for("big-font-pack", fonts_fields),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    failures = check_asset_roots(
+        roots=(
+            (game_assets_root, 10 * 1024 * 1024),  # 10 MiB budget — 1.5 MiB comfortably passes
+            (fonts_root, 1024 * 1024),  # 1 MiB budget — 1.5 MiB fails
+        ),
+        docs_file=docs_file,
+        readme_file=_REAL_README,
+    )
+
+    assert any(
+        "big-font-pack" not in failure and "fonts" in failure and "budget" in failure.lower()
+        for failure in failures
+    ), f"expected the fonts root over its own budget to fail, got {failures!r}"
+    assert not any(
+        "game-assets" in failure and "budget" in failure.lower() for failure in failures
+    ), f"the game-assets root must not fail its own, larger budget: {failures!r}"
+
+
+def test_disclaimer_failure_is_reported_once_across_two_roots(tmp_path: Path) -> None:
+    """The disclaimer is a repository-wide anchor, not a per-root one (typography-tokens.md §9.2
+    point 3): calling `check_asset_packs` once per root would report a missing disclaimer twice.
+    `check_asset_roots` must report it exactly once regardless of how many roots are checked."""
+    from scripts.checks.asset_packs import check_asset_roots
+
+    game_assets_root = tmp_path / "game-assets"
+    fonts_root = tmp_path / "fonts"
+    _write_pack(game_assets_root, "clean-game-asset-pack", _valid_fields(), extra_files=[])
+    _write_pack(fonts_root, "clean-font-pack", _valid_fields(), extra_files=[])
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(
+        _docs_table(
+            [
+                _docs_row_for("clean-game-asset-pack", _valid_fields()),
+                _docs_row_for("clean-font-pack", _valid_fields()),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    empty_readme = tmp_path / "README.md"
+    empty_readme.write_text("no disclaimer here\n", encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=((game_assets_root, 10 * 1024 * 1024), (fonts_root, 1024 * 1024)),
+        docs_file=docs_file,
+        readme_file=empty_readme,
+    )
+
+    disclaimer_failures = [failure for failure in failures if "disclaimer" in failure.lower()]
+    assert len(disclaimer_failures) == 1, (
+        f"expected exactly one disclaimer failure across two roots, got {disclaimer_failures!r}"
+    )

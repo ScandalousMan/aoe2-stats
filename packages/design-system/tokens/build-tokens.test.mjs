@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 const tokensDir = path.dirname(fileURLToPath(import.meta.url))
 const generatedDir = path.join(tokensDir, 'generated')
 const color = JSON.parse(readFileSync(path.join(tokensDir, 'color.json'), 'utf8'))
+const font = JSON.parse(readFileSync(path.join(tokensDir, 'font.json'), 'utf8'))
 
 // --- WCAG 2.2 contrast ratio, computed from the same relative-luminance formula the specs table
 // (packages/design-system/specs/README.md, "Measured contrast pairs") is computed from by hand.
@@ -389,5 +390,29 @@ test('every player colour has a paired -contrast token that clears 4.5:1, in bot
           'below the 4.5:1 AA floor a glyph on the swatch needs',
       )
     }
+  }
+})
+
+// --- T523 addition (typography-tokens.md §4.3 step 6, §10) --------------------------------------
+// A family-name mismatch between `font.face`'s `@font-face` declaration and `font.family`'s stack
+// is invisible: the browser silently falls back to the next name in the stack, with no error and
+// no failing test anywhere else. This is the JSON half of the trap; the font-file half is a manual
+// verification `visual-reviewer`'s screenshots back up (§13).
+test('every font.face family matches the first quoted name in the matching font.family stack', () => {
+  for (const [name, face] of [
+    ['sans', font.face.sans],
+    ['display', font.face.display],
+    ['mono', font.face.mono],
+  ]) {
+    const stack = font.family[name]
+    const firstName = stack.match(/^'([^']+)'/)?.[1]
+    assert.ok(firstName, `font.family.${name} ("${stack}") does not start with a quoted name`)
+    assert.strictEqual(
+      face.family,
+      firstName,
+      `font.face.${name}.family ("${face.family}") disagrees with the first name in ` +
+        `font.family.${name} ("${firstName}") — a mismatch here is invisible at runtime, the ` +
+        'browser silently uses the fallback instead',
+    )
   }
 })

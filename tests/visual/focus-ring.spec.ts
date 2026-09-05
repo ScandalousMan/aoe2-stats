@@ -289,6 +289,13 @@ for (const { level, storyId, locate, reach, knownContrastFailure } of controls) 
       const root = page.locator('#storybook-root')
       await root.waitFor({ state: 'visible' })
 
+      // typography-tokens.md §10: with `font-display: swap` a story can still be mid-swap here —
+      // the DOM has rendered, but the render has not finished. This file reads no font metric
+      // directly, but it does read painted colour and outline geometry off the same settled
+      // render every other spec in this suite waits for, so it waits the same way, before any of
+      // that reading begins.
+      await page.evaluate(() => document.fonts.ready)
+
       // `.storybook/preview.tsx` sets `data-theme` in a `useEffect`, after first paint, and every
       // token-coloured property in `tokens.css` transitions over 120ms — so a read taken right
       // after mount can land mid-transition, between the light and dark value, on whichever

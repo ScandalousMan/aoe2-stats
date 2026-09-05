@@ -142,6 +142,27 @@ function fontVars() {
   return Object.fromEntries(entries)
 }
 
+// `@font-face` blocks, one per `font.face` entry (typography-tokens.md §8.1, §14 step 5). Emitted
+// at the top of tokens.css, before `:root`, so both consumers — apps/web's index.css and
+// Storybook's preview.tsx — receive the rules through the one stylesheet they already import
+// (`preset.css` opens with `@import './tokens.css'`), with no consumer gaining a font import of
+// its own. `format('woff2')` and not the hinted `tech(variations)`/`woff2-variations` forms
+// (§8.1); an absolute `url()`, never bundler-relative, because these files are served as static
+// assets under a fixed prefix in both consumers (§8.3) rather than resolved through a bundler.
+function fontFaceRules() {
+  return Object.values(font.face)
+    .map(
+      (face) => `@font-face {
+  font-family: '${face.family}';
+  src: url('${face.src}') format('woff2');
+  font-weight: ${face.weight};
+  font-style: ${face.style};
+  font-display: ${face.display};
+}`,
+    )
+    .join('\n\n')
+}
+
 function motionVars() {
   const entries = []
   for (const [key, value] of Object.entries(motion.duration)) {
@@ -208,6 +229,11 @@ const rootVars = {
   ...sizeVars(),
   ...colorVars('light'),
   ...elevationVars('light'),
+  // typography-tokens.md §7.3, §8.1: every declared weight (400-700) is a real interpolation of
+  // the shipped weight axis, so nothing ever needs synthesis. This is small hardening rather than
+  // load-bearing — its only job is to make a future missing weight fail visibly instead of being
+  // faked into a smeared approximation nobody notices.
+  'font-synthesis-weight': 'none',
 }
 const darkVars = {
   ...colorVars('dark'),
@@ -215,6 +241,10 @@ const darkVars = {
 }
 
 const tokensCss = `${CSS_BANNER}
+/* Self-hosted @font-face declarations (typography-tokens.md §8.1). Ahead of :root so the browser
+ * discovers them before anything below requests the family they declare. */
+${fontFaceRules()}
+
 /* Untheme families (space, radius, icon, font, motion) plus the light theme's colour and elevation
  * — light is the default so a component works before any theme is chosen. */
 :root {

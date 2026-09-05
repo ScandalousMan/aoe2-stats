@@ -1,9 +1,32 @@
 {
-  "$comment": "Typography tokens (T016). Family stacks name free-licensed web fonts only — no font file is copied into the repository (constitution X); self-hosting them, if ever needed, is a separate decision with its licence documented. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Typography tokens (T016). All three families are self-hosted under packages/design-system/tokens/fonts/, one licence-recorded pack each — the decision, the licence records and the @font-face delivery are in packages/design-system/specs/typography-tokens.md (feature 005 T523); read that file before editing `family` or `face`. Edit here, then run `pnpm --filter design-system tokens:build`.",
   "family": {
     "sans": "'Inter', system-ui, sans-serif",
     "display": "'Fraunces', Georgia, serif",
     "mono": "'JetBrains Mono', ui-monospace, monospace"
+  },
+  "face": {
+    "sans": {
+      "family": "Inter",
+      "src": "/fonts/inter/inter-variable-latin.woff2",
+      "weight": "400 700",
+      "style": "normal",
+      "display": "swap"
+    },
+    "display": {
+      "family": "Fraunces",
+      "src": "/fonts/fraunces/fraunces-variable-latin.woff2",
+      "weight": "400 700",
+      "style": "normal",
+      "display": "swap"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "src": "/fonts/jetbrains-mono/jetbrains-mono-variable-latin.woff2",
+      "weight": "400 700",
+      "style": "normal",
+      "display": "swap"
+    }
   },
   "size": {
     "xs": { "value": "0.75rem", "lineHeight": "1rem" },
