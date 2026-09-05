@@ -6,7 +6,7 @@
 //   2. an expired entry — `fixBy` earlier than today.
 // It does NOT check staleness (an entry naming a component-and-rule pair this run's axe scan no
 // longer reports). That needs the scan's results, which exist only in the `visual` job — see
-// `scripts/visual/a11y-scan.mjs`'s `checkStaleness()`, T507's concern, not this one. Keeping the
+// `scripts/visual/a11y-scan.cjs`'s `checkStaleness()`, T507's concern, not this one. Keeping the
 // two apart is why this check can live in the `web` job at all: it never builds Storybook.
 //
 // The fix-by date is what turns FR-067's "an entry may not outlive the feature" into something

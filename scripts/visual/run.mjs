@@ -20,7 +20,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resetResultsDir, checkStaleness } from './a11y-scan.mjs'
+// `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
+// CommonJS module directly (`cjs-module-lexer` statically finds these named exports), which is the
+// only shape this shared module can take without also being ambiguous to Playwright's transpile of
+// `tests/visual/stories.spec.ts`, the module's other consumer.
+import { resetResultsDir, checkStaleness } from './a11y-scan.cjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
