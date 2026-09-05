@@ -71,6 +71,13 @@ disabling it would be wrong, and here is what happens instead".
    resting frame.
 6. **Theme-blind components.** Light and dark share token names. A component never branches on the
    active theme, and every contrast obligation is met in both.
+7. **The three review widths are 375, 768 and 1280** (mobile, tablet, desktop) — FR-018's system
+   declaration of where the suite verifies correctness, and the one place that declaration lives
+   (closes DS-5, T529). They are not the `breakpoint` family (`tokens/breakpoint.json`'s `sm`/`md`/
+   `lg`/`xl` = 640/768/1024/1280): two of the four values happen to coincide (768, 1280) but 375 is
+   not a breakpoint at all, and a structural switch in a component still reads `breakpoint.json`
+   alone. `scripts/visual/run.mjs`'s `WIDTHS` constant names this rule as its source in a comment, so
+   the number is written once in prose and once, necessarily, as the array a runner has to iterate.
 
 ## Measured contrast pairs
 
@@ -493,18 +500,14 @@ reads.
 
 ## Token gap register
 
-Open items. Each names what is missing, what a component does until it exists, and who has to act.
-An implementer who finds themselves needing a value not covered here stops and asks
-`product-designer`; they do not invent one.
-
-| Id       | Gap                                                                                                   | Impact                                                                                 | Interim                                                                                                                                                                                                                                        | Action owed                                                                                                                                                                                                                                                                                                                 |
-| -------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **DS-3** | No opacity token family.                                                                              | Disabled styling has no sanctioned dimming route.                                      | Disabled state is expressed with `text-disabled` on `surface-sunken` with `border`, never with an opacity value. `text-disabled` fails AA by design; a disabled control must therefore never be the only place a piece of information appears. | Decide whether an opacity family is wanted at all. Low priority: the colour route is better.                                                                                                                                                                                                                                |
-| **DS-4** | No border-width, focus-ring-width or focus-ring-offset tokens.                                        | The focus ring — required on every interactive element — cannot be fully token-backed. | One uniform ring everywhere: Tailwind's `outline-2 outline-offset-2` with `outline-focus-ring`. No arbitrary values, no per-component variation.                                                                                               | Ratify Tailwind's built-in width scale as token-equivalent for hairlines and rings, and record that decision, **or** add a `border-width` family. Owner: design-system.                                                                                                                                                     |
-| **DS-5** | No breakpoint tokens.                                                                                 | Responsive sections cannot name breakpoints in our own vocabulary.                     | Specs name Tailwind's default breakpoints (`md` = 768px, `lg` = 1024px, `xl` = 1280px) and the review viewports stay 375 / 768 / 1280.                                                                                                         | Optional. Adopting Tailwind's defaults verbatim is a defensible answer; write it down either way.                                                                                                                                                                                                                           |
-| **DS-6** | No container / max-width / reading-measure tokens.                                                    | Text columns and centred panels have no token-backed width.                            | Tailwind's `max-w-*` scale, and `max-w-prose` for any paragraph column.                                                                                                                                                                        | Add a `size` family if panel widths start diverging between routes.                                                                                                                                                                                                                                                         |
-| **DS-8** | No numeric-typography role. Tabular alignment currently rides on `font.family.mono` being monospaced. | A future change of mono family silently breaks column alignment on every rating table. | Numeric cells use `font-mono`.                                                                                                                                                                                                                 | Add a `font.role.numeric` alias, or a `font-variant-numeric: tabular-nums` utility, so the intent is recorded rather than inferred. Number legibility is this product's functional priority; it should not depend on a coincidence.                                                                                         |
-| **DS-9** | No link colour role, and `accent` on `surface-raised` is not in the measured contrast table.          | Long-form prose with inline links has no sanctioned link colour on every background.   | Inline links use `accent` with a permanent underline, **on `surface` only** — the one pair measured (4.9 light / 7.7 dark). A link that would sit on `surface-raised` renders `text-primary` with an underline instead. Never colour alone.    | Add a `link` / `link-hover` / `link-visited` role, **or** measure `accent` on `surface-raised` and `surface-sunken` and add the rows. Raised by `privacy-notice.md`, the first component whose body copy is mostly prose with links in it. Owner: design-system. Until then no component paints a link on a raised surface. |
+**No gap is open as of 2026-09-05 (T529).** This section holds open token decisions when they
+exist — what is missing, what a component does until it exists, and who has to act — and an
+implementer who finds themselves needing a value not covered by the standing rules above or the
+utility vocabulary in `contracts/token-families.md` stops and asks `product-designer`; they do not
+invent one. The six gaps this feature resolved (DS-3 through DS-6, DS-8, DS-9) are recorded below as
+closures or, for DS-3, a dated refusal — kept under their original ids, never renumbered, so this
+register and the commit history keep lining up with the defects they describe, the rule the DS-1,
+DS-2 and DS-7 closures below already followed.
 
 **Not a gap: stacking.** There is no `z-index` family and, as of `tooltip.md`, none is needed. The
 one floating surface outside `Menu` and `Dialog` is the tooltip, which is absolutely positioned and
@@ -620,3 +623,77 @@ above are what `build-tokens.test.mjs` asserts against. A handful of other rows 
 record by a few hundredths, consistent with a floor-vs-nearest rounding choice rather than a
 computation error; this table now states every ratio to two decimals, computed directly, precisely
 so a discrepancy like this one is a diff against `color.json` rather than a transcription to trust.
+
+**Closed — DS-4 (T514, research D5).** There was no border-width, focus-ring-width or
+focus-ring-offset token family; the interim was one uniform ring everywhere,
+`outline-2 outline-offset-2` with `outline-focus-ring`, hand-written rather than named.
+`tokens/border.json` closes it with a deliberately small, closed family — `hairline` (1px), `ring`
+(2px), `ring-offset` (2px) — reached through the `border-hairline`, `outline-ring` and
+`outline-offset-ring` utilities (`contracts/token-families.md` §2). The register's own suggested
+alternative, ratifying Tailwind's built-in border-width scale, is explicitly overruled rather than
+taken: FR-062 needs a mechanical check that an off-scale value fails, and
+Tailwind's numeric width scale is unbounded (`border-7` compiles), so ratifying it would hand that
+checker nothing to enforce. The values name what already shipped and do not move; only who owns them
+does.
+
+**Closed — DS-5 (T513, `tokens/breakpoint.json`) — and the review widths are a separate fact, now
+declared elsewhere.** The register's interim answered two different questions in one sentence:
+Tailwind's default breakpoints (`md` = 768, `lg` = 1024, `xl` = 1280) and, separately, "the review
+viewports stay 375 / 768 / 1280." `tokens/breakpoint.json` closes the breakpoint half: `sm`, `md`,
+`lg`, `xl` at 640, 768, 1024 and 1280, the single source both Tailwind's responsive variants and
+`useMediaQuery`'s structural switch now read, so a layout's shape and its styling cannot disagree
+(research D4). The three review widths are not this family — 375 has no breakpoint counterpart, and
+768 and 1280 only coincide with two of the four breakpoint values by chance — so closing this row
+without saying where they are declared would erase the one system-level place FR-018's declaration
+lived. They are now standing rule 7 above, and `scripts/visual/run.mjs`'s `WIDTHS` constant names
+that rule as its source in a comment: one home in prose, one consumer in code, the number written
+once.
+
+**Closed — DS-6 (T515, `tokens/size.json`, research D8).** There was no container / max-width /
+reading-measure token family; the interim was Tailwind's own `max-w-*` scale, with `max-w-prose` for
+any paragraph column — and the register's own recorded impact, "one route constrains its width;
+eight do not," is exactly what an unnamed decision produces, because every route was left to invent
+one. `tokens/size.json` closes it with `page` (80rem, matching the `xl` breakpoint), `panel` (42rem,
+the one route-level width the application had already committed to, in
+`apps/web/src/features/search/SearchContainer.tsx`) and `measure` (65ch, replacing every
+`max-w-prose` call site), mapped onto Tailwind's `--container-*` theme namespace so `max-w-page`,
+`max-w-panel` and `max-w-measure` are ordinary utilities. `measure` renames Tailwind's own opinion
+about reading measure into ours; it moves no rendered pixel, only who owns the decision.
+
+**Closed — DS-8 (T524, `font.json`'s `role` group).** There was no numeric-typography role; tabular
+alignment rode on `font.family.mono` being monospaced, so a future change of that family would have
+silently broken every rating table's alignment. The new `role` group in `tokens/font.json` adds
+`type-numeric`, naming the mono family and `font-variant-numeric: tabular-nums` explicitly, beside
+five other roles (`type-display`, `type-body`, `type-supporting`, `type-machine`, `type-identifier`)
+that split the one meaning the mono family used to carry into three — a measured number, a machine
+string and an unresolved identifier. `tabular-nums` sits only on `numeric`, never on the shared mono
+role, because declaring it there would also apply it to `machine`'s filenames and error classes,
+where it means nothing (research D7). T531 puts the three split roles — `type-numeric`,
+`type-machine` and `type-identifier` — onto the eight components that shared the old monospace
+treatment; digit alignment now survives a change of the monospace family because it is declared
+rather than inherited.
+
+**Closed — DS-9 (T522, the `link` / `link-hover` / `link-visited` roles).** The register named two
+problems in one row: no link colour role, and `accent` on `surface-raised` missing from the measured
+table. The contrast half closed inside T526's re-measurement of the table above, already recorded
+there and not restated here. This closure is the semantic half, which is the one the interim could
+not fix by adding rows: measuring `accent` on the other backgrounds would have left the real gap
+open, because `accent` means the product's emphasis colour and a link is not that. `link`,
+`link-hover` and `link-visited` are new roles in `tokens/color.json`, each declaring the surfaces it
+may be painted on and measured against `background`, `surface`, `surface-raised` and
+`surface-sunken` in both themes (research D10). The interim restriction this retires — no component
+paints a link on a raised surface — was a real cost already paid once, by `privacy-notice.md`. The
+permanent underline stays: a link is never distinguished by colour alone.
+
+**Refused — DS-3, dated 2026-09-05.** No opacity token family is added. The three attenuated
+appearances this register named resolve as named colour roles instead, each with a pair that can be
+measured before it exists on screen rather than only after it is rendered: disabled is
+`text-disabled` on `surface-sunken` with `border` — unchanged, already the interim; de-emphasised is
+`text-secondary`; the dialog scrim is the existing `overlay` role. `overlay` keeps its alpha —
+`text-primary` at 55% — and that is not a contradiction of this refusal: a scrim carries no
+foreground, nothing is read _against_ it the way a foreground is read against a background, so it
+owes no contrast pair. What it owes is that the dialog rendered above it reads clearly, and that
+pair — `text-primary` on `surface`, the fill and heading ink `Dialog` (`src/components/Dialog/`)
+actually paints — is already measured in the table above (research D9). This reasoning is recorded
+here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
+by stripping its alpha and breaking the scrim it draws.
