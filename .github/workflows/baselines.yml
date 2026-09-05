@@ -8,17 +8,20 @@ name: Regenerate visual baselines
 # rewritten rather than merged with whatever a prior run left behind. That makes T505's proof a
 # `git` fact — the commit this workflow makes either lists only the files a phase deliberately
 # repainted, or it doesn't — instead of a Playwright tolerance.
+#
+# `cause` is free text, not a closed set: phases 2, 4 and 5 (T530, T550, T562) dispatch this
+# workflow with exactly one of `palette-and-typefaces`, `structural-rhythm` or `retrofit`
+# verbatim, but phase 1 itself dispatches it twice for reasons that are neither — T502
+# reconciling the story/baseline set at the existing axes, and T505 proving the new theme/width
+# axes moved no pre-existing value — so the input has to accept whatever accurately describes
+# the dispatch rather than being limited to those three.
 on:
   workflow_dispatch:
     inputs:
       cause:
-        description: 'Why these baselines are being regenerated (goes verbatim into the commit body)'
+        description: "Why these baselines are being regenerated (goes verbatim into the commit body). Phases 2/4/5 use one of palette-and-typefaces, structural-rhythm or retrofit; any other accurate description is valid too (e.g. phase 1's own reconciliation or axis-verification dispatches)."
         required: true
-        type: choice
-        options:
-          - palette-and-typefaces
-          - structural-rhythm
-          - retrofit
+        type: string
 
 permissions:
   contents: read
