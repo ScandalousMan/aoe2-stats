@@ -199,6 +199,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm --filter design-system build-storybook
+      # T503: same set-equality check `pr.yml`'s `visual` job runs, same relative position —
+      # ahead of the full run below, reading the whole built index rather than a diff-scoped
+      # subset.
+      - run: node scripts/checks/story-baselines.mjs
       # Needed for tests/visual/app-routes.spec.ts, part of the same testDir this job's
       # unscoped `pnpm test:visual` below walks in full — see the job comment above.
       - run: pnpm --filter web build

@@ -238,6 +238,11 @@ jobs:
           path: packages/design-system/__screenshots__
           key: visual-baselines-${{ runner.os }}-${{ github.base_ref || 'main' }}
       - run: pnpm --filter design-system build-storybook
+      # T503: set equality between the built Storybook index and the checked-in baselines, run
+      # ahead of `--changed` below so a story merged with no baseline fails here — on every run,
+      # not only the one that happens to select it — instead of surfacing only in nightly's
+      # unscoped run, as one Playwright failure among many.
+      - run: node scripts/checks/story-baselines.mjs
       # T108: `tests/visual/app-routes.spec.ts` serves this build (stubbing `/api/*` itself,
       # never `apps/api`) instead of screenshotting only the component library — the T107 defect
       # (every screen unstyled in production) never touched a Storybook story, so nothing above
