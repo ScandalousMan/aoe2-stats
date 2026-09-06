@@ -19,6 +19,19 @@ export const disclaimer =
 export const affiliationNote =
   "This project is not affiliated with or endorsed by Microsoft or World's Edge."
 
+// T560 (FR-038): the same inline-link classes `ThirdPartyObjectionForm`, `AccountErasurePanel` and
+// `PrivacyNotice` already give every inline link in the product — footer.md §5 already documents a
+// focus ring and a `duration.fast`/`easing.standard` transition for these two links, and neither
+// was actually built. Same category, same behaviour.
+const focusRing =
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+
+const linkClasses = cx(
+  'py-2 font-sans text-sm text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:text-link-hover active:text-link-hover',
+  focusRing,
+)
+
 /** The Microsoft Game Content Usage Rules disclaimer (constitution X), mounted in the web shell by
  * T098a so it renders on every route. §5: this component has effectively one state — the
  * disclaimer and the affiliation note are never conditional; `LinkRow`'s two entries render
@@ -33,18 +46,12 @@ export function Footer({ privacyNoticeHref, objectionHref, className }: FooterPr
       {hasLinks && (
         <div className="mt-4 flex flex-col gap-4 md:flex-row">
           {privacyNoticeHref && (
-            <a
-              href={privacyNoticeHref}
-              className="py-2 font-sans text-sm text-link underline hover:text-link-hover active:text-link-hover"
-            >
+            <a href={privacyNoticeHref} className={linkClasses}>
               Read the privacy notice
             </a>
           )}
           {objectionHref && (
-            <a
-              href={objectionHref}
-              className="py-2 font-sans text-sm text-link underline hover:text-link-hover active:text-link-hover"
-            >
+            <a href={objectionHref} className={linkClasses}>
               Object to what is held about me
             </a>
           )}

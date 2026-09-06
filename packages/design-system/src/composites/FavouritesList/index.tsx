@@ -240,7 +240,12 @@ function FavouriteRow({
         className={cx(
           'flex flex-1 flex-col gap-1 rounded-control',
           'md:flex-row md:items-center md:justify-between md:gap-4',
-          'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+          // T560 (FR-038): `active` paints the same fill as `hover`, matching `MatchRow`,
+          // `PlayerResultRow` and `Table`'s identical row-link category (a keyboard `Enter`
+          // triggers `:active` with no pointer ever hovering). `motion-reduce:duration-0` closes
+          // the README rule 5 gap.
+          'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+          'hover:bg-surface-sunken active:bg-surface-sunken',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
         )}
       >

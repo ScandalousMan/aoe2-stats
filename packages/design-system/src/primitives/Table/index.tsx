@@ -238,7 +238,11 @@ export function Table<Row>({
                   key={getRowKey(row)}
                   className={cx(
                     'relative border-b border-border',
-                    href && 'hover:bg-surface-sunken active:bg-surface-sunken',
+                    // T560 (FR-038): this is the same row-link category `MatchRow`,
+                    // `PlayerResultRow` and `FavouritesList` already give a transition and a
+                    // reduced-motion resting frame to — this row snapped instantly with neither.
+                    href &&
+                      'transition-colors duration-120 ease-standard motion-reduce:duration-0 hover:bg-surface-sunken active:bg-surface-sunken',
                   )}
                 >
                   <th

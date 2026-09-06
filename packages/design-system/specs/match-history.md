@@ -50,7 +50,9 @@ MatchRow                                                       one per match, th
 ├─ RatingChange         StatValue/inline, signed
 │                       — WIDENED by §12.4 to Rating: the absolute value and its signed change
 ├─ Duration             "34 min" — never raw seconds
-├─ When                 relative time, absolute time on hover/focus (title attribute or tooltip)
+├─ When                 relative time visible; absolute time via native `title` on hover, and
+│                       always present to assistive technology as a visually hidden note — never
+│                       only the hover route (T560, FR-039)
 └─ CaptureStateBadge    variant="compact" — see capture-state-badge.md
 
 MatchDetailPanel

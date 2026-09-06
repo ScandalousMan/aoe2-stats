@@ -140,11 +140,14 @@ export function Menu({
         onKeyDown={onTriggerKeyDown}
         className={cx(
           'inline-flex h-10 items-center gap-2 rounded-control border border-border-strong bg-surface px-4 font-sans text-sm',
-          'transition-colors duration-120 ease-standard',
+          // T560 (FR-038): this trigger paints the same resting/border recipe as `Button`'s
+          // `secondary` variant (`bg-surface`, `border-border-strong`) but had none of its
+          // active/reduced-motion behaviour — same category, now the same response.
+          'transition-colors duration-120 ease-standard motion-reduce:duration-0',
           'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
           isEmpty
             ? 'cursor-default text-text-disabled'
-            : 'text-text-primary hover:bg-surface-sunken',
+            : 'text-text-primary hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
         )}
       >
         {triggerLabel}
@@ -222,8 +225,13 @@ export function Menu({
                     close()
                   }}
                   className={cx(
-                    'flex min-h-12 w-full items-center px-4 font-sans text-sm text-text-primary',
-                    'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+                    'flex min-h-12 w-full items-center border-l-2 border-l-transparent px-4 font-sans text-sm text-text-primary',
+                    // T560 (FR-038): a `role="menuitem"`, same category as `MenuItemRow` below,
+                    // so it gets the same active state (shared-primitives.md#Menu "active" — fill
+                    // plus a `border-strong` boundary on the inline-start edge) and the same
+                    // reduced-motion resting frame, neither of which it had.
+                    'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+                    'hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
                     'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
                   )}
                 >
@@ -280,12 +288,17 @@ function MenuItemRow({
         onKeyDown={onKeyDown}
         onClick={onActivate}
         className={cx(
-          'flex min-h-12 w-full items-center justify-between gap-3 px-4 text-left font-sans text-sm',
-          'transition-colors duration-120 ease-standard',
+          'flex min-h-12 w-full items-center justify-between gap-3 border-l-2 border-l-transparent px-4 text-left font-sans text-sm',
+          // T560 (FR-038): shared-primitives.md#Menu documents "active — item fill
+          // `surface-sunken` with boundary `border-strong` on the inline-start edge", never
+          // built. `border-l-transparent` at rest reserves the width so the border does not shift
+          // the label when it turns solid on press. `motion-reduce:duration-0` closes README
+          // rule 5's gap, present on every other transition in the system but missing here.
+          'transition-colors duration-120 ease-standard motion-reduce:duration-0',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
           item.disabled || item.loading
             ? 'cursor-default text-text-disabled'
-            : 'text-text-primary hover:bg-surface-sunken',
+            : 'text-text-primary hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
         )}
       >
         <span className="flex flex-col">

@@ -103,6 +103,26 @@ describe('Table', () => {
     expect(unlinkedRow?.className).not.toMatch(/hover:bg-surface-sunken/)
   })
 
+  // T560 (FR-038): a linked row is the same row-link category `MatchRow`, `PlayerResultRow` and
+  // `FavouritesList` already transition and give a reduced-motion resting frame to — this row
+  // snapped instantly, with neither, before this task.
+  it('transitions a linked row on the same schedule as the rest of the row-link category', () => {
+    render(
+      <Table
+        caption="Recent matches"
+        columns={columns}
+        rows={rows}
+        getRowKey={(r) => r.id}
+        getRowHref={(row) => `/matches/${row.id}`}
+      />,
+    )
+    const linkedRow = screen.getAllByRole('link')[0].closest('tr')
+    expect(linkedRow?.className).toMatch(/\btransition-colors\b/)
+    expect(linkedRow?.className).toMatch(/\bduration-120\b/)
+    expect(linkedRow?.className).toMatch(/\bmotion-reduce:duration-0\b/)
+    expect(linkedRow?.className).toMatch(/\bactive:bg-surface-sunken\b/)
+  })
+
   it('intercepts a plain left click on the row link into onNavigate', () => {
     const onNavigate = vi.fn()
     render(

@@ -94,6 +94,16 @@ describe('MatchRow', () => {
     expect(within(links[0]).queryAllByRole('button')).toHaveLength(0)
   })
 
+  // T560 (FR-038): match-history.md §5 states "active — per link": a keyboard Enter triggers
+  // `:active` with no pointer ever hovering, so the row's press feedback must not depend on the
+  // hover fill alone. `Table`'s identical row-link category already paints both.
+  it('paints the same fill on active as on hover, matching the row-link category', () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+  })
+
   it('shows "Win"/"Loss" as text, never colour alone', () => {
     const { rerender } = render(<MatchRow match={match} />)
     expect(screen.getByText('Win')).toBeInTheDocument()
@@ -157,6 +167,25 @@ describe('MatchRow', () => {
   it('shows the relative time with the absolute time available as a title tooltip', () => {
     render(<MatchRow match={match} />)
     expect(screen.getByText('3 hours ago')).toHaveAttribute('title', '2026-08-22T09:12:00Z')
+  })
+
+  // T560 (FR-039): the absolute time used to live only in the `title` attribute — visible on
+  // hover, absent from the accessibility tree, unreachable by keyboard and by touch. The row's
+  // one link is where a keyboard or a screen-reader user actually reaches this row, so the whole
+  // card's accessible name is the assertion that matters — not a hover event nobody here fires.
+  it("carries the absolute time in the row link's accessible name, with no hover ever fired", () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link).toHaveAccessibleName(/2026-08-22T09:12:00Z/)
+    // ... and the relative time is still the visible fact, not replaced by the absolute one.
+    expect(screen.getByText('3 hours ago')).toBeInTheDocument()
+  })
+
+  it('omits the absolute-time note entirely when no absolute time is known', () => {
+    render(<MatchRow match={{ ...match, playedAtAbsolute: undefined }} />)
+    const link = screen.getByRole('link')
+    expect(link).not.toHaveAccessibleName(/played/)
+    expect(screen.getByText('3 hours ago')).not.toHaveAttribute('title')
   })
 
   it('renders the capture-state badge collapsed to one of the four labels', () => {

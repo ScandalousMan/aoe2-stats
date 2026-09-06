@@ -56,6 +56,17 @@ describe('FavouritesList', () => {
       expect(button.contains(link)).toBe(false)
     })
 
+    // T560 (FR-038): favourites-list.md §5 groups "hover / focus-visible / active" as one rule for
+    // `ProfileLink` — a keyboard Enter triggers `:active` with no pointer ever hovering, so the
+    // link's press feedback must not depend on the hover fill alone.
+    it("paints ProfileLink's active fill the same as its hover fill", () => {
+      render(<FavouritesList entries={[entries[0]]} />)
+      const row = screen.getAllByRole('listitem')[0]
+      const link = within(row).getByRole('link')
+      expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
+      expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    })
+
     it('shows a bracketed clan beside the alias when present, and none when absent', () => {
       render(<FavouritesList entries={entries} />)
       expect(screen.getByText('[GL]')).toBeInTheDocument()

@@ -83,7 +83,9 @@ export interface MatchRowData {
   durationLabel: ReactNode
   /** Pre-formatted relative time — "3 hours ago" (§2). */
   playedAtRelative: ReactNode
-  /** Absolute date/time, shown on hover/focus via the native `title` tooltip (§2). */
+  /** Absolute date/time. Shown to a pointer user via the native `title` tooltip on hover (§2),
+   * and always present to assistive technology as a visually hidden note beside the relative time
+   * — never only the hover route (T560, FR-039). */
   playedAtAbsolute?: string
   captureStatus?: string | null
   captureDeadlineAt?: string | null
@@ -354,12 +356,30 @@ export function RatingFigure({
   )
 }
 
+// T560 (FR-039): the absolute date/time used to be reachable only through the native `title`
+// tooltip — hover-only, with no keyboard or touch route and no reliable presence in the
+// accessibility tree (a `title` on a non-focusable element with its own visible text is not
+// announced by most screen readers). The native tooltip stays, as a free bonus for a sighted
+// pointer user, but it is no longer the only carrier: a visually hidden note beside the visible
+// relative time puts the absolute time in the row's own accessible name unconditionally, reachable
+// the instant the row itself (its one focus stop) is reached, whether or not anyone ever hovers.
+function WhenLabel({ match }: { match: MatchRowData }) {
+  return (
+    <>
+      <span title={match.playedAtAbsolute}>{match.playedAtRelative}</span>
+      {match.playedAtAbsolute && <span className="sr-only">, played {match.playedAtAbsolute}</span>}
+    </>
+  )
+}
+
 function MatchMeta({ match }: { match: MatchRowData }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs text-text-secondary">
       <span>{match.durationLabel}</span>
       <span aria-hidden="true">·</span>
-      <span title={match.playedAtAbsolute}>{match.playedAtRelative}</span>
+      <span>
+        <WhenLabel match={match} />
+      </span>
     </div>
   )
 }
@@ -375,7 +395,13 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
       onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
         'flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
-        'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+        // T560 (FR-038): `active` now paints the same fill as `hover` — a keyboard `Enter`
+        // triggers `:active` with no pointer ever hovering (`Link`'s own rule, §9), and this row
+        // is the same row-link category `Table` (structural-tier.md §10 "active") already gives
+        // both. `motion-reduce:duration-0` closes the gap against README rule 5, present on every
+        // other transition in the system but missing here.
+        'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+        'hover:bg-surface-sunken active:bg-surface-sunken',
         focusRing,
         className,
       )}
@@ -584,7 +610,7 @@ const MATCH_TABLE_COLUMNS: [TableColumn<MatchRowData>, ...TableColumn<MatchRowDa
   {
     key: 'when',
     header: 'When',
-    render: (match) => <span title={match.playedAtAbsolute}>{match.playedAtRelative}</span>,
+    render: (match) => <WhenLabel match={match} />,
   },
   {
     key: 'capture',

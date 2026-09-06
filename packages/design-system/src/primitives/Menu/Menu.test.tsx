@@ -80,6 +80,49 @@ describe('Menu', () => {
     expect(trigger.className).not.toMatch(/\btext-text-disabled\b/)
   })
 
+  // T560 (FR-038): the trigger paints the same resting recipe as `Button`'s `secondary` variant
+  // (`bg-surface`, `border-border-strong`) — same category, so it owes the same active feedback
+  // and the same reduced-motion resting frame, neither of which it had before this task.
+  it('a non-empty trigger paints an active fill and border, and stops transitioning under reduced motion', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(trigger.className).toMatch(/\bactive:border-border-strong\b/)
+    expect(trigger.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
+  // shared-primitives.md#Menu "active — item fill `surface-sunken` with boundary `border-strong`
+  // on the inline-start edge" — documented, never built, until T560.
+  it("paints a selection item's active state exactly as shared-primitives.md#Menu documents it", async () => {
+    const user = userEvent.setup()
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+    const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    expect(current.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(current.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(current.className).toMatch(/\bactive:border-l-border-strong\b/)
+    expect(current.className).toMatch(/\bborder-l-transparent\b/)
+    expect(current.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
+  it('paints the footer item the same active/reduced-motion treatment as a regular menu item', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={items}
+        footerItem={{ id: 'link', label: 'Add another' }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const footer = screen.getByRole('menuitem', { name: 'Add another' })
+    expect(footer.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(footer.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(footer.className).toMatch(/\bactive:border-l-border-strong\b/)
+    expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
   it('opens on click and marks the checked item with role=menuitemradio and aria-checked', async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
