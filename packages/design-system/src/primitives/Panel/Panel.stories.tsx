@@ -197,6 +197,17 @@ const realisticMatchColumns: [TableColumn<RealisticMatch>, ...TableColumn<Realis
 
 export const RealisticMatchTable: Story = {
   name: 'Realistic composition — a real Table of recent matches',
+  // The caption text deliberately does not repeat `heading` verbatim. `Panel`'s own `<section>`
+  // (labelled by its heading) and `Table`'s scroll region (structural-tier.md §10, "a labelled,
+  // focusable `role=\"region\"`", labelled by its caption) are two independent landmarks, and axe's
+  // `landmark-unique` correctly flags two of them sharing one accessible name — confirmed by
+  // reproducing it with the caption at the identical string and watching it clear once the text
+  // diverges. `captionHidden` only says the caption is visually redundant next to `heading`
+  // (structural-tier.md §9); it never licenses giving the table's own landmark the exact same name
+  // as the one already naming its ancestor. Naming the specific fact this table's region adds —
+  // how much of it is showing — both keeps the caption non-redundant with the heading and
+  // gives a screen-reader user tabbing straight into the scrollable region something the heading
+  // alone did not already tell them.
   render: () => (
     <Panel
       density="dense"
@@ -204,7 +215,7 @@ export const RealisticMatchTable: Story = {
       footer={<span className="type-supporting text-sm text-text-secondary">3 of 47 shown</span>}
     >
       <Table
-        caption="Recent matches"
+        caption="3 of 47 recent matches"
         captionHidden
         columns={realisticMatchColumns}
         rows={realisticMatchRows}

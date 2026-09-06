@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Panel } from './index'
+import { Table } from '../Table'
 
 describe('Panel', () => {
   it('renders a plain <div> when it has no heading', () => {
@@ -115,5 +116,35 @@ describe('Panel', () => {
     const panel = container.firstElementChild
     expect(panel?.className).toMatch(/rounded-panel/)
     expect(panel?.className).not.toMatch(/shadow-/)
+  })
+
+  // Regression guard for the `landmark-unique` violation axe found in
+  // `Panel.stories.tsx`'s `RealisticMatchTable` (remediated 2026-09-06): `Panel`'s own `<section>`
+  // and `Table`'s scroll region (structural-tier.md §10) are two independent landmarks, each
+  // correctly labelled on its own, but a caller that gives `Table`'s hidden caption the exact same
+  // text as the enclosing `Panel`'s `heading` produces two landmarks with one accessible name —
+  // confirmed with axe-core directly, not assumed from this DOM assertion alone. Neither component
+  // is responsible for the other's label; this only proves the composition Panel.stories.tsx now
+  // relies on keeps the two names apart.
+  it('keeps its own landmark name distinct from a nested Table region named differently', () => {
+    render(
+      <Panel density="dense" heading="Recent matches">
+        <Table
+          caption="3 of 47 recent matches"
+          captionHidden
+          columns={[
+            {
+              key: 'opponent',
+              header: 'Opponent',
+              render: (row: { opponent: string }) => row.opponent,
+            },
+          ]}
+          rows={[{ opponent: 'RedBull_Barley' }]}
+          getRowKey={(row) => row.opponent}
+        />
+      </Panel>,
+    )
+    expect(screen.getByRole('region', { name: 'Recent matches' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '3 of 47 recent matches' })).toBeInTheDocument()
   })
 })

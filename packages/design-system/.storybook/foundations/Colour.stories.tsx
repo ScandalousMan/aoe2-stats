@@ -66,6 +66,20 @@ const INK_ROLES: {
   meaning: string
   surfaces: SurfaceKey[]
   note?: string
+  // Set only for a role the token ramp *deliberately* holds under 4.5:1 (color-tokens.md's own
+  // "exempt" entries — today just `text-disabled`, WCAG 1.4.3's carve-out for text that is part of
+  // an *inactive* interface component). `aria-hidden` was tried first and rejected: axe's
+  // `color-contrast` check is a visual-rendering rule, not an accessibility-tree one — it still
+  // flags an `aria-hidden` span exactly as it would any other visually-painted text, and rightly
+  // so, since a low-vision reader with no assistive technology at all still looks straight at the
+  // pixels. `aria-disabled="true"` is what axe's own check actually special-cases (mirroring the
+  // WCAG carve-out itself: literally "part of an inactive interface component"), and it is also
+  // the more honest label — the specimen word *is* what a disabled control's caption looks like,
+  // which `role.meaning` already says in words, so a screen reader still gets the word plus its
+  // disabled state rather than losing the node outright. A role that fails contrast by *mistake*
+  // must never set this: it would suppress axe without fixing the token, which is not a
+  // remediation, only a hidden regression.
+  lowContrast?: boolean
 }[] = [
   {
     name: 'text-primary',
@@ -85,6 +99,7 @@ const INK_ROLES: {
     meaning: 'The label of an inactive control.',
     surfaces: ['background', 'surface', 'surface-raised', 'surface-sunken'],
     note: 'Exempt from WCAG 1.4.3 (inactive), held to 3:1 anyway — a disabled control is often the one carrying the explanation.',
+    lowContrast: true,
   },
   {
     name: 'link',
@@ -229,7 +244,21 @@ function InkRoleCard(role: (typeof INK_ROLES)[number]) {
           const surface = findSurface(key)
           return (
             <div key={key} className={cx(chipShell, surface.bg)}>
-              <span className={cx('type-body text-sm', role.roleClass)}>Text</span>
+              {/* `role.lowContrast` roles (today: text-disabled) are held under 4.5:1 by design
+                  (color-tokens.md's own WCAG 1.4.3 exemption for text that is part of an inactive
+                  interface component) — `aria-disabled` names exactly that state, which is also
+                  what the specimen literally shows (role.meaning: "the label of an inactive
+                  control"), and it is the attribute axe's own `color-contrast` check special-cases
+                  for this reason, rather than flagging visually-painted text no assistive
+                  technology is even involved in reading (both themes). A role that is *not*
+                  declared `lowContrast` renders this span exactly as before: real, readable,
+                  non-exempt text. */}
+              <span
+                className={cx('type-body text-sm', role.roleClass)}
+                aria-disabled={role.lowContrast || undefined}
+              >
+                Text
+              </span>
               <span className="type-identifier text-xs">{surface.label}</span>
             </div>
           )
