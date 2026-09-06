@@ -30,6 +30,11 @@ export * from './primitives/Dialog'
 // unreachable by omission, not by decision, and the omission is fixed. Published.
 export * from './primitives/Tooltip'
 
+// The structural tier (T543-T548, packages/design-system/specs/structural-tier.md). `Page` is the
+// first of the nine: the single main landmark, the content width and the page padding a route must
+// not declare for itself (FR-020, FR-021).
+export * from './primitives/Page'
+
 // ---------------------------------------------------------------------------------------------
 // Composites (packages/design-system/src/composites/)
 // ---------------------------------------------------------------------------------------------
