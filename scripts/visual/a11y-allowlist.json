@@ -1,26 +1,5 @@
 [
   {
-    "component": "account-erasure-panel",
-    "rule": "color-contrast",
-    "date": "2026-09-05",
-    "fixOwed": "Light-theme `text-accent` link text fails 4.5:1 on `background` (measured 4.32:1; the same token passes on `surface` at 4.88:1 and `surface-raised` at 4.65:1, and dark passes everywhere at 6.99-8.25:1) — one root cause, a semantic role painted on a surface it was never measured against. Fixed by T521 re-deriving `color.json` so every semantic role declares the surfaces it may be painted on, and reasserted by T526's per-pair contrast table. Same token family as gap DS-10 (the focus ring at 1.38:1 on `accent`) in packages/design-system/specs/README.md.",
-    "fixBy": "2026-09-19"
-  },
-  {
-    "component": "privacy-notice",
-    "rule": "color-contrast",
-    "date": "2026-09-05",
-    "fixOwed": "Same root cause as account-erasure-panel and third-party-objection-form: light-theme `text-accent` on `background` measures 4.32:1, below the 4.5:1 floor. Fixed by T521 (per-surface role declarations in color.json) and reasserted by T526 (contrast table over every pair a component actually paints).",
-    "fixBy": "2026-09-19"
-  },
-  {
-    "component": "third-party-objection-form",
-    "rule": "color-contrast",
-    "date": "2026-09-05",
-    "fixOwed": "Same root cause as account-erasure-panel and privacy-notice: light-theme `text-accent` on `background` measures 4.32:1, below the 4.5:1 floor. Fixed by T521 (per-surface role declarations in color.json) and reasserted by T526 (contrast table over every pair a component actually paints).",
-    "fixBy": "2026-09-19"
-  },
-  {
     "component": "privacy-notice",
     "rule": "heading-order",
     "date": "2026-09-05",
