@@ -174,9 +174,18 @@ export const FocusVisible: Story = {
 }
 
 // FR-045: keyboard interaction beyond opening — `onItemKeyDown` in `index.tsx` moves the roving
-// item with Arrow keys, jumps to either end with Home/End, and Escape closes the surface and
-// returns focus to the trigger. Asserted, not only driven: the roving `tabIndex` swap between
-// items is a state a screenshot alone would not prove.
+// item with Arrow keys and jumps to either end with Home/End. Asserted, not only driven: the
+// roving `tabIndex` swap between items is a state a screenshot alone would not prove.
+//
+// T572 scenario 9 remediation (defect 2): this story used to end with `{Escape}` and an assertion
+// that focus returns to the trigger, so its resting frame — the frame the visual baseline actually
+// captures — was a closed trigger with a focus ring, documenting nothing about keyboard
+// navigation. The Escape/return-focus coverage was not deleted, only moved: it is exactly what
+// `EscapeReturnsFocusToTrigger` below exists to demonstrate, where a closed, refocused trigger *is*
+// the point rather than an accident of the play function's own ending. This story instead now ends
+// on `{End}`, so its resting frame shows the footer row focused — a state neither `FocusVisible`
+// (first item) nor `Active` (a mouse press on the second item) already shows, so it is worth
+// capturing on its own.
 export const KeyboardNavigation: Story = {
   tags: ['visual-full-page'],
   play: async ({ canvasElement }) => {
@@ -189,11 +198,36 @@ export const KeyboardNavigation: Story = {
     await userEvent.keyboard('{ArrowDown}')
     const second = canvas.getByRole('menuitemradio', { name: /aoe2alt/ })
     await expect(second).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    await expect(first).toHaveFocus()
     await userEvent.keyboard('{End}')
     const footer = canvas.getByRole('menuitem', { name: 'Link another Steam account' })
     await expect(footer).toHaveFocus()
-    await userEvent.keyboard('{Home}')
-    await expect(first).toHaveFocus()
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// The other half of the split above: FR-045's "Escape closes the surface and returns focus to the
+// trigger" as its own story, so the closed, refocused trigger this play function ends on is the
+// documented state, not a leftover. No `visual-full-page` tag — like `Empty` and `ClosedTrigger`,
+// nothing here escapes the trigger's own layout box, so the default clipped capture already
+// reaches it.
+export const EscapeReturnsFocusToTrigger: Story = {
+  name: 'Escape closes the surface and returns focus to the trigger',
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    trigger.focus()
+    await userEvent.keyboard('{Enter}')
+    await canvas.findByRole('menu')
     await userEvent.keyboard('{Escape}')
     expect(canvas.queryByRole('menu')).not.toBeInTheDocument()
     await expect(trigger).toHaveFocus()

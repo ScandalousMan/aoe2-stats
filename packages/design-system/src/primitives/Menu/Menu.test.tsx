@@ -123,6 +123,45 @@ describe('Menu', () => {
     expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
   })
 
+  // T572 scenario 9 remediation (defect 1): shared-primitives.md#Menu's "selection" state used to
+  // rely entirely on a caller-supplied `badge` to be distinguishable in a still image; a screen
+  // reader given only the built Storybook could not tell a checked item's ring (the focus ring)
+  // from an actual selection mark, and no `badge` at all reads identically to unchecked. The fix is
+  // an intrinsic, always-rendered leading glyph — visible when checked, `invisible` (space
+  // reserved, not painted) otherwise — so the still-image difference exists with zero caller input.
+  it('marks a checked selection item with an intrinsic glyph, distinct from the focus ring and from any caller-supplied badge', async () => {
+    const user = userEvent.setup()
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+    const checked = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    const unchecked = screen.getByRole('menuitemradio', { name: /aoe2alt/ })
+    const checkedGlyph = checked.querySelector('svg[aria-hidden="true"]')
+    const uncheckedGlyph = unchecked.querySelector('svg[aria-hidden="true"]')
+    expect(checkedGlyph).not.toBeNull()
+    expect(uncheckedGlyph).not.toBeNull()
+    // Both items reserve the identical glyph slot (so labels stay aligned); only the checked one
+    // is actually painted — neither relies on the focus ring, which only one item can carry at a
+    // time and which is a separate outline, not part of this glyph at all.
+    expect(checkedGlyph?.getAttribute('class')).not.toMatch(/\binvisible\b/)
+    expect(uncheckedGlyph?.getAttribute('class')).toMatch(/\binvisible\b/)
+  })
+
+  // `actions` items never carry a checked concept (aria-checked is only meaningful on
+  // `menuitemradio`), so the glyph slot this test guards above must not appear there at all.
+  it('never renders the selection glyph slot on an actions-variant item', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[{ id: 'unlink', label: 'Unlink this profile' }]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const item = screen.getByRole('menuitem', { name: 'Unlink this profile' })
+    expect(item.querySelector('svg[aria-hidden="true"]')).toBeNull()
+  })
+
   it('opens on click and marks the checked item with role=menuitemradio and aria-checked', async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)

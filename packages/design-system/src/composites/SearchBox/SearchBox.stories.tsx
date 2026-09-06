@@ -82,6 +82,11 @@ export const Found: Story = {
   ),
 }
 
+// The "N of 3" numbering below is a display name only — it does not touch the export names above,
+// which is what a baseline filename is keyed on (`story-baselines.mjs`'s own header comment), so
+// renumbering here orphans nothing. T572 scenario 9 found `DegradedAndEmpty` still reading "2 of 3",
+// the same number as `DegradedWithResults` immediately above it, and no story reading "3 of 3" at
+// all — fixed below.
 export const NotFound: Story = {
   name: 'empty 1 of 3 — found nothing (Callout/info, distinguishable from degraded by tone and copy)',
   render: () => (
@@ -102,7 +107,7 @@ export const DegradedWithResults: Story = {
 }
 
 export const DegradedAndEmpty: Story = {
-  name: 'empty 2 of 3 — search degraded, fallback found nothing either (one Callout, not two)',
+  name: 'empty 3 of 3 — search degraded, fallback found nothing either (one Callout, not two)',
   render: () => (
     <DemoSearchBox
       initialValue="xyzzy"
