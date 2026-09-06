@@ -169,6 +169,27 @@ byte-identical one — Playwright's own `maxDiffPixelRatio: 0.01` is what alread
 this size in ordinary (non-identity-proof) runs; the identity proof holds the harness itself to the
 stricter, git-level standard because that is the one property `maxDiffPixelRatio` cannot vouch for.
 
+**Amendment (T538, phase 3).** The addendum above is right about the *nature* of the jitter and
+wrong about its *scale*, and the number matters because T550 and T562 both reuse this dispatch. T538
+regenerated after a change confined to one component and measured every one of the 116 files the
+workflow listed as modified. 38 were the intended change — `SiteHeader`'s six stories, all six units
+each, 20 of them changing dimensions outright as the new control makes the header taller (375:
+279->403px), plus the two `app-*` route captures that mount it. The other **78 were jitter — not the
+"roughly 3" this addendum records, 25 times that.** Per-file magnitude is unchanged and matches
+exactly: 66 of the 78 sit at a max channel delta of **1**, in clusters of 4-26 pixels, on the
+intermediate tones between a surface and an ink that only antialiasing produces. **The cause of the
+growth is not established.** The obvious candidate is that phase 2 (T523) replaced the system
+fallbacks every prior capture rendered in with three real self-hosted faces, but the differing
+clusters look more like icon and avatar edges than glyph runs, so that is a hypothesis and is
+recorded as one — the next reader should measure rather than inherit it.
+
+The reviewable property is therefore **not** the count, which this feature has now seen move by a
+factor of 25, but the *shape*: a story that genuinely changed moves as a **complete** 6-unit set,
+because no value change can repaint light-375 and leave light-768 alone. Every one of the 78 moved
+as a partial set (1, 2, 3 or 5 of 6). That test settled in minutes a question the file count cannot
+answer at any size, and it is the one to apply at T550 and T562 rather than comparing against a
+number measured once under different conditions.
+
 **A second, distinct instability (phase 1 close).**
 `composite-searchbox--rate-limited-{light,dark}-1280` are known-unstable baselines that will show as
 modified on essentially every regeneration, for a different reason than the jitter above. The

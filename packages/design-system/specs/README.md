@@ -78,6 +78,25 @@ disabling it would be wrong, and here is what happens instead".
    not a breakpoint at all, and a structural switch in a component still reads `breakpoint.json`
    alone. `scripts/visual/run.mjs`'s `WIDTHS` constant names this rule as its source in a comment, so
    the number is written once in prose and once, necessarily, as the array a runner has to iterate.
+8. **The theme toggle is the one exemption to rule 6, and it is one component wide.** `SiteHeader`'s
+   `ThemeControl` (`site-header.md` §2d, T535) is the single component in this package permitted to
+   read which theme is active, because its own job — showing the reader which of System, Light and
+   Dark is current and letting them change it — cannot be done without reading it. What keeps it
+   inside FR-017 rather than outside it is that it **sets** the theme and styles nothing by it: every
+   pixel `ThemeControl` draws comes from the same token set in both themes, and what changes between
+   them is which theme those tokens resolve to for the rest of the page, never how `ThemeControl`
+   itself looks. Rule 6 forbids a component that reads the theme to choose its own colour, its own
+   layout or its own copy; a component that reads the theme only to report it and to set it is a
+   different thing, because nothing about its own rendering differs when the theme does. **This is
+   not a precedent.** No other component may cite it to acquire the same exemption: a second
+   component calling `useTheme()`, reading `document.documentElement.dataset.theme` directly, or
+   importing anything from `packages/design-system/src/theme` for a reason other than setting the
+   theme is the violation rule 6 already names, not a second toggle. Mechanically checked by the grep
+   [quickstart scenario 6](../../../specs/005-design-system-foundations/quickstart.md) already runs
+   over `packages/design-system/src` for `dataset.theme`/`data-theme`: it must match only
+   `packages/design-system/src/theme` and `SiteHeader`'s `ThemeControl`, and a third location in that
+   output is the defect, not a finding to explain away. The command lives once, in the quickstart —
+   restated here it would be the same number in two files.
 
 ## Measured contrast pairs
 

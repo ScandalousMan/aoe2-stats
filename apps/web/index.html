@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>aoe2-stats</title>
+    <!-- Theme resolution (feature 005 T533, research D11): inline, synchronous, before any
+         stylesheet, so the first paint is never the wrong theme. Reads the stored override
+         (`ds-theme-override`, feature 005 T534's ThemeProvider owns it) then the system
+         colour-scheme preference, falling back to light. Both reads are wrapped: a browser
+         blocking site data throws on `localStorage`, and that must fall through rather than
+         throw. Sets `data-theme` on <html>, the attribute `tokens/generated/tokens.css` keys
+         its dark values on. -->
+    <script>
+      ;(function () {
+        var el = document.documentElement
+        var t
+        try {
+          t = localStorage.getItem('ds-theme-override')
+        } catch (e) {}
+        if (t !== 'light' && t !== 'dark') {
+          try {
+            t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          } catch (e) {
+            t = 'light'
+          }
+        }
+        el.dataset.theme = t
+      })()
+    </script>
     <!-- Self-hosted typefaces (typography-tokens.md §8.3, feature 005 T523): preloaded so the
          first paint is not a swap. `crossorigin` is mandatory even though these are same-origin —
          fonts are always fetched in CORS mode, and a preload without it is discarded and the file

@@ -60,6 +60,13 @@ export * from './components/Footer'
 // every route; mounted beside `Footer` in `apps/web/src/routes/__root.tsx` by T442.
 export * from './components/SiteHeader'
 
+// Theme (T534, research D11). `ThemeProvider` owns the stored override and the live
+// system-preference subscription; `apps/web` mounts it once near the app root so `useTheme` is
+// reachable everywhere, including `SiteHeader`'s three-state toggle (T535). The `localStorage`
+// key it reads and writes is fixed by `apps/web/index.html`'s inline theme-resolution script
+// (T533) and must not be renamed independently of it.
+export * from './theme'
+
 // Visual parity (T429, packages/design-system/specs/{civilisation-icon,map-thumbnail,
 // player-colour-swatch}.md). Take an image URL as a prop; never import `packages/game-assets`.
 // Consumed by `MatchRow`/`MatchDetailPanel` in T430/T431.
