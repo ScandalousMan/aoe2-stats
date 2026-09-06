@@ -23,7 +23,7 @@ export interface SignInContainerProps {
 }
 
 /**
- * Wires `SignInScreen` (T035, packages/design-system/src/components/SignInScreen/) to this
+ * Wires `SignInScreen` (T035, packages/design-system/src/screens/SignInScreen/) to this
  * feature's two real effects — a full-page navigation to Steam, and a client-side navigation back
  * into the app — and to nothing else. Every visual state lives in the component; this module owns
  * none of its own.

@@ -6,32 +6,32 @@ component carries a hard-coded style value.
 
 ## Index
 
-| Spec                                                     | Component directory                                                      | Feature                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------- |
-| [`shared-primitives.md`](./shared-primitives.md)         | `src/components/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`         | 001                          |
-| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/components/SignInScreen/`                                           | 001, US1                     |
-| [`archival-control.md`](./archival-control.md)           | `src/components/ArchivalControl/`                                        | 001, US1/US5                 |
-| [`profile-summary.md`](./profile-summary.md)             | `src/components/ProfileSummary/`                                         | 001, US1; 003, US1; 004, US2 |
-| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/components/CaptureStateBadge/` (grows `Badge`'s tone variants)      | 001, US3                     |
-| [`match-history.md`](./match-history.md)                 | `src/components/MatchRow/`, `src/components/MatchDetailPanel/`           | 001, US3; 003, US2; 004, US1 |
-| [`manual-upload.md`](./manual-upload.md)                 | `src/components/UploadControl/`                                          | 001, US4                     |
-| [`privacy-notice.md`](./privacy-notice.md)               | `src/components/PrivacyNotice/`                                          | 001, US5                     |
-| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/components/DataExportPanel/`, `src/components/AccountErasurePanel/` | 001, US5                     |
-| [`third-party-objection.md`](./third-party-objection.md) | `src/components/ThirdPartyObjectionForm/`                                | 001, US5                     |
-| [`footer.md`](./footer.md)                               | `src/components/Footer/`                                                 | 001, US5                     |
-| [`player-search.md`](./player-search.md)                 | `src/components/SearchBox/`, `src/components/PlayerResultRow/`           | 003, US1                     |
-| [`replay-availability.md`](./replay-availability.md)     | `src/components/ReplayAvailabilityList/`                                 | 003, US3                     |
-| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/components/FavouriteToggle/`                                        | 003, US5                     |
-| [`favourites-list.md`](./favourites-list.md)             | `src/components/FavouritesList/`                                         | 003, US5                     |
-| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/components/AnalysisTimeline/`                                       | 003, US4                     |
-| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)               | 004                          |
-| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/components/CivilisationIcon/`                                       | 004, US1                     |
-| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/components/MapThumbnail/`                                           | 004, US1                     |
-| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/components/PlayerColourSwatch/`                                     | 004, US1                     |
-| [`country-flag.md`](./country-flag.md)                   | `src/components/CountryFlag/`                                            | 004, US2; 004, Phase 8       |
-| [`player-avatar.md`](./player-avatar.md)                 | `src/components/PlayerAvatar/`                                           | 004, US2                     |
-| [`site-header.md`](./site-header.md)                     | `src/components/SiteHeader/`                                             | 004, US3                     |
-| [`tooltip.md`](./tooltip.md)                             | `src/components/Tooltip/`                                                | 004, Phase 8                 |
+| Spec                                                     | Component directory                                                 | Feature                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------- |
+| [`shared-primitives.md`](./shared-primitives.md)         | `src/primitives/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`    | 001                          |
+| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/screens/SignInScreen/`                                         | 001, US1                     |
+| [`archival-control.md`](./archival-control.md)           | `src/screens/ArchivalControl/`                                      | 001, US1/US5                 |
+| [`profile-summary.md`](./profile-summary.md)             | `src/screens/ProfileSummary/`                                       | 001, US1; 003, US1; 004, US2 |
+| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/composites/CaptureStateBadge/` (grows `Badge`'s tone variants) | 001, US3                     |
+| [`match-history.md`](./match-history.md)                 | `src/composites/MatchRow/`, `src/composites/MatchDetailPanel/`      | 001, US3; 003, US2; 004, US1 |
+| [`manual-upload.md`](./manual-upload.md)                 | `src/composites/UploadControl/`                                     | 001, US4                     |
+| [`privacy-notice.md`](./privacy-notice.md)               | `src/screens/PrivacyNotice/`                                        | 001, US5                     |
+| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/screens/DataExportPanel/`, `src/screens/AccountErasurePanel/`  | 001, US5                     |
+| [`third-party-objection.md`](./third-party-objection.md) | `src/screens/ThirdPartyObjectionForm/`                              | 001, US5                     |
+| [`footer.md`](./footer.md)                               | `src/composites/Footer/`                                            | 001, US5                     |
+| [`player-search.md`](./player-search.md)                 | `src/composites/SearchBox/`, `src/composites/PlayerResultRow/`      | 003, US1                     |
+| [`replay-availability.md`](./replay-availability.md)     | `src/composites/ReplayAvailabilityList/`                            | 003, US3                     |
+| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/composites/FavouriteToggle/`                                   | 003, US5                     |
+| [`favourites-list.md`](./favourites-list.md)             | `src/composites/FavouritesList/`                                    | 003, US5                     |
+| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/composites/AnalysisTimeline/`                                  | 003, US4                     |
+| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)          | 004                          |
+| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/composites/CivilisationIcon/`                                  | 004, US1                     |
+| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/composites/MapThumbnail/`                                      | 004, US1                     |
+| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/composites/PlayerColourSwatch/`                                | 004, US1                     |
+| [`country-flag.md`](./country-flag.md)                   | `src/composites/CountryFlag/`                                       | 004, US2; 004, Phase 8       |
+| [`player-avatar.md`](./player-avatar.md)                 | `src/composites/PlayerAvatar/`                                      | 004, US2                     |
+| [`site-header.md`](./site-header.md)                     | `src/composites/SiteHeader/`                                        | 004, US3                     |
+| [`tooltip.md`](./tooltip.md)                             | `src/primitives/Tooltip/`                                           | 004, Phase 8                 |
 
 ## Every spec has nine sections
 
@@ -394,7 +394,7 @@ carrying silently (`h-[1em]`/`w-[1em]` in the spinner and in `FavouriteToggle`'s
 own baseline. Every shipping pairing already does this: `Button`'s base class is `inline-flex
 items-center justify-center gap-2`, and its leading/trailing icon slots and its loading `Spinner`
 sit in that row beside the label
-(`packages/design-system/src/components/Button/index.tsx`); `Menu`'s trigger is `inline-flex h-10
+(`packages/design-system/src/primitives/Button/index.tsx`); `Menu`'s trigger is `inline-flex h-10
 items-center gap-2` around its label; `FavouriteToggle`'s `StateGlyph`, sized `h-[1em] w-[1em]`,
 sits inside that same `Button` row, centred against the label's line box by the row's
 `items-center` rather than by matching the glyph to the font's own baseline; `CivilisationIcon`
@@ -474,12 +474,12 @@ are what fills it, grounded in what `MatchRow`, `AnalysisTimeline` and `PrivacyN
 | `prose` | `space-6` surface padding narrow, `space-8` from `md` | `space-4` between paragraphs in one subsection; `space-8` between sections                      | `type-display`, `type-body`, `type-supporting` |
 
 **`dense`.** Row padding is `space-3` (`py-3`), the value every `<th>` and `<td>` in `MatchRow`'s
-table already carries (`packages/design-system/src/components/MatchRow/index.tsx`). A pairing inside
+table already carries (`packages/design-system/src/composites/MatchRow/index.tsx`). A pairing inside
 one row — a duration icon beside its label, a badge beside a value — uses `space-2` (`gap-2`), the
 same step `space.json`'s `rhythm` group names `within-component`, evidenced by the same file's
 inline clusters. The line rhythm between one dense row and the next is tighter still: `space-1`
 (`gap-1`), evidenced by `AnalysisTimeline`'s event list
-(`packages/design-system/src/components/AnalysisTimeline/index.tsx`), which is exactly the "tight"
+(`packages/design-system/src/composites/AnalysisTimeline/index.tsx`), which is exactly the "tight"
 rhythm `data-model.md` names for this class. `space-3` and `space-1` are raw `scale` steps rather
 than named `rhythm` values — a dense surface's rows sit closer together than the rhythm group's own
 `within-component` step, which is why the group does not already name them.
@@ -487,7 +487,7 @@ than named `rhythm` values — a dense surface's rows sit closer together than t
 **`prose`.** A prose surface has no tabular rows; its unit is the paragraph, and its "row height and
 padding" is the padding around the whole reading block: `space-6` (`px-6 py-6`) narrow, opening to
 `space-8` (`md:px-0 md:py-8`) from `md`, exactly as `PrivacyNotice`'s outer wrapper already renders
-(`packages/design-system/src/components/PrivacyNotice/index.tsx`). Within one subsection,
+(`packages/design-system/src/screens/PrivacyNotice/index.tsx`). Within one subsection,
 consecutive paragraphs sit `space-4` (`gap-4`) apart, the step `PrivacyNotice`'s repeated body blocks
 already use. Between one section and the next, the rhythm opens further to `space-8` (`gap-8`,
 `mt-8`) — the same step `space.json`'s `rhythm` group names `between-sections`, evidenced by
