@@ -279,6 +279,26 @@ describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
     restore()
   })
+
+  // Regression guard for the residual recorded against structural-tier.md's Table section
+  // (2026-09-06, following the `landmark-unique` fix in Panel.stories.tsx, commit 0ceadeb):
+  // `TeamGroup`'s own `<section aria-labelledby>` landmark and its nested `Table`'s
+  // `role="region"` (named from its `captionHidden` caption) compose the exact same shape that
+  // broke `RealisticMatchTable` there. They currently keep two distinct accessible names —
+  // "Team 1 Won" for the section, "Team 1 — Won" for the table region — but only because the
+  // heading's "—" separator is `aria-hidden` while the caption's own "—" is real text queried by
+  // its accessible name. That is an accident of markup, not a contract either component enforces,
+  // so this asserts the two stay apart rather than assuming it.
+  it("keeps a team section's landmark name distinct from its nested Table region's name", () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={match} />)
+    const sectionLandmark = screen.getByRole('region', { name: 'Team 1 Won' })
+    const tableRegion = screen.getByRole('region', { name: 'Team 1 — Won' })
+    expect(sectionLandmark.tagName).toBe('SECTION')
+    expect(tableRegion.tagName).toBe('DIV')
+    expect(sectionLandmark).not.toBe(tableRegion)
+    restore()
+  })
 })
 
 // T074b: every button reachable on a touch viewport must clear the 44px floor

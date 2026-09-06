@@ -731,6 +731,14 @@ Table
       └─ <tfoot> optional  a totals or summary row
 ```
 
+**A hidden caption must say something the heading above it does not.** Hiding the caption (the
+anatomy above) is permitted only when a heading already names the table — it is not permission to
+give the caption the same words as that heading. A `Panel` composing a `Table` labels its own
+landmark from its heading (§7); the table's scroll region labels itself from the caption (below).
+Two landmarks with one accessible name is a `landmark-unique` failure whether or not the caption is
+visible, so the hidden caption must add what the heading omits (what the table holds, its scope, its
+unit — not that it is a table) rather than repeat the heading verbatim.
+
 **Variants and sizes** — no variants. One prop: `density`, `dense` (default) or `prose`, whose row
 padding and body typography are §3's. Column alignment is declared per column as `text` or `numeric`
 and nothing else — a two-value vocabulary, because an alignment a caller can invent is an alignment
