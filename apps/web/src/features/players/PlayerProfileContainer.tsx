@@ -111,10 +111,13 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
   // slot for `subject="self"` (profile-summary.md §11.1 point 3), so no further guard is needed
   // here for a caller viewing their own profile through this route.
   const favouriteToggle = profile ? (
+    // T561 (FR-018/FR-019): reachable at 375 — `size="lg"`, matching `FavouritesList`'s own
+    // `FavouriteToggle` call site rather than relying on the component's pointer-only `md` default.
     <FavouriteToggle
       favourited={favourited}
       authenticated={session?.authenticated ?? false}
       loading={favouritePending}
+      size="lg"
       onAdd={() => void runFavouriteMutation(() => addFavourite(profileId))}
       onRemove={() => void runFavouriteMutation(() => removeFavourite(profileId))}
       signInHref={buildSignInHref(`/players/${profileId}`)}
@@ -135,7 +138,8 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
        * that forces a full document reload. */}
       {status !== 'not-found' && (
         <div className="flex justify-start">
-          <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
+          <Button variant="ghost" size="lg" onClick={() => void navigate({ to: '/search' })}>
             Back to search
           </Button>
         </div>
@@ -177,8 +181,10 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
        * link to yet while loading, and `not-found`'s own callout already owns the page below it. */}
       {profile && (
         <div className="flex justify-start">
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
           <Button
             variant="secondary"
+            size="lg"
             onClick={() =>
               void navigate({
                 to: '/players/$profileId/matches',

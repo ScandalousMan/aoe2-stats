@@ -297,4 +297,27 @@ describe('Menu', () => {
       getBoundingClientRect.mockRestore()
     }
   })
+
+  // T561 (FR-018/FR-019): the trigger is reachable at 375 on every call site — `ProfileSummary`'s
+  // profile switcher and "Manage" trigger, `SiteHeader`'s theme control — and had regressed to
+  // `Button`'s pointer-only `md` height (40px, `h-10`). Guards the class contract the way the
+  // rest of this file already does (`toMatch`, not a literal pixel copied into the assertion) so a
+  // future edit that drops this back below the touch floor fails here, not just at review.
+  it('the trigger clears the 44px touch floor at min-h-12, not md/h-10 (FR-018, FR-019)', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\bmin-h-12\b/)
+    expect(trigger.className).not.toMatch(/\bh-10\b/)
+  })
+
+  it('the trigger really measures at least 44px tall', () => {
+    const getBoundingClientRect = mockMinHeightLayout()
+    try {
+      render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+      const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+      expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
 })

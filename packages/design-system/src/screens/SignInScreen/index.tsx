@@ -254,15 +254,18 @@ interface OutcomeHandlers {
   requestAccessHref?: string
 }
 
+// T561 (FR-018/FR-019): every branch below renders into the outcome `Callout`'s `actions` slot on
+// this screen's one route, at every viewport including 375 — `size="lg"`, matching the two main
+// CTAs a few lines below in `SignInScreen` itself, not the `md` default these had been left at.
 function renderOutcomeActions(outcome: SignInOutcome, handlers: OutcomeHandlers): ReactNode {
   switch (outcome) {
     case 'no_aoe2_profile':
       return (
         <>
-          <Button variant="primary" onClick={handlers.onTryAgain}>
+          <Button variant="primary" size="lg" onClick={handlers.onTryAgain}>
             Try again
           </Button>
-          <Button variant="secondary" onClick={handlers.onUseDifferentAccount}>
+          <Button variant="secondary" size="lg" onClick={handlers.onUseDifferentAccount}>
             Use a different Steam account
           </Button>
         </>
@@ -271,34 +274,34 @@ function renderOutcomeActions(outcome: SignInOutcome, handlers: OutcomeHandlers)
       return (
         <>
           {handlers.requestAccessHref && (
-            <Button variant="primary" href={handlers.requestAccessHref}>
+            <Button variant="primary" size="lg" href={handlers.requestAccessHref}>
               Request access
             </Button>
           )}
-          <Button variant="secondary" onClick={handlers.onTryAgain}>
+          <Button variant="secondary" size="lg" onClick={handlers.onTryAgain}>
             Try again
           </Button>
         </>
       )
     case 'steam_assertion_invalid':
       return (
-        <Button variant="primary" onClick={handlers.onStartOver}>
+        <Button variant="primary" size="lg" onClick={handlers.onStartOver}>
           Start over
         </Button>
       )
     case 'unreachable':
       return (
-        <Button variant="primary" onClick={handlers.onTryAgain}>
+        <Button variant="primary" size="lg" onClick={handlers.onTryAgain}>
           Try again
         </Button>
       )
     case 'profile_already_linked':
       return (
         <>
-          <Button variant="primary" onClick={handlers.onTryDifferentAccount}>
+          <Button variant="primary" size="lg" onClick={handlers.onTryDifferentAccount}>
             Try a different account
           </Button>
-          <Button variant="secondary" onClick={handlers.onCancel}>
+          <Button variant="secondary" size="lg" onClick={handlers.onCancel}>
             Cancel
           </Button>
         </>

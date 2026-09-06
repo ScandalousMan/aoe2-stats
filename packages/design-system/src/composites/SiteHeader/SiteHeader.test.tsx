@@ -195,6 +195,25 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
     rerender(<SiteHeader items={items} currentPath="/dashboard" />)
     expect(screen.getByRole('link', { name: 'Matches' }).className).toBe(restingClassName)
   })
+
+  // T561 (FR-018/FR-019, site-header.md §9): "SkipLink and Brand clear it [44px] by their own
+  // padding-block" was, until this task, a claim the code did not back — `Brand` carried no
+  // padding at all (measured 24px tall at 375/1280 in Chromium) and `SkipLink`'s `py-2` fell short
+  // of 44px once its own `text-sm` line-height is added in. Guards the class contract so a future
+  // edit that drops either back below the floor fails here, not only at a human's eye on a
+  // screenshot the visual suite is structurally blind to (it never focuses `SkipLink` and never
+  // measures a resting-state box against a numeric floor).
+  it('SkipLink and Brand each carry real padding-block clearing the 44px touch floor', () => {
+    render(<SiteHeader items={[]} />)
+    const skipLink = screen.getByRole('link', { name: 'Skip to content' })
+    expect(skipLink.className).toMatch(/\bfocus:py-3\b/)
+    expect(skipLink.className).not.toMatch(/\bfocus:py-2\b/)
+
+    const brand = screen.getByRole('link', { name: 'aoe2-stats' })
+    expect(brand.className).toMatch(/\binline-flex\b/)
+    expect(brand.className).toMatch(/\bitems-center\b/)
+    expect(brand.className).toMatch(/\bpy-3\b/)
+  })
 })
 
 // site-header.md §ThemeControl (T535, FR-014): the three-state control — system, light, dark —

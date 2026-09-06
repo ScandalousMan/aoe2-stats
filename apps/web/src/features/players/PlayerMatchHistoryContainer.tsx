@@ -87,8 +87,10 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
        * where `ProfileSummary`'s own "Back to search" already carries the round trip. */}
       {!notFound && (
         <div className="flex justify-start">
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
           <Button
             variant="ghost"
+            size="lg"
             onClick={() =>
               void navigate({ to: '/players/$profileId', params: { profileId: String(profileId) } })
             }

@@ -249,8 +249,12 @@ family (`game-asset-tokens.md`), which is what §12's three marks size from.
   right-aligned on the first line, `CaptureStateBadge` on its own line beneath (its `SecondaryLine`
   wraps per `capture-state-badge.md` §7). `MatchDetailPanel`'s `ParticipantsTable` renders as one
   card per participant, grouped under a `TeamGroup` heading.
-- **768** — `MatchRow` cards gain a second column (map/civilisation beside duration/when).
-  `ParticipantsTable` stays card-based but two participants sit side by side within a `TeamGroup`.
+- **768** — `MatchRow` is unchanged from 375: still a single-column stacked card, just wider. A
+  second column at this width (map/civilisation beside duration/when) is **not** used: an earlier
+  draft of this section described one, but it was never built — the card carries no `md:` class
+  anywhere in the component — and this file no longer asserts it. The row's one structural change is
+  the table below, and it happens once, at `xl`, not in two steps. `ParticipantsTable` stays
+  card-based but two participants sit side by side within a `TeamGroup`.
 - **1280** — `MatchRow` becomes a `Table` (structural-tier.md §10, T558 — no longer a hand-rolled
   `<table>`): columns _Result · Opponent · Map · Civilisation · Change · Duration · When · Capture_.
   Figures right-aligned through the `numeric` column role, `CaptureStateBadge` in the trailing

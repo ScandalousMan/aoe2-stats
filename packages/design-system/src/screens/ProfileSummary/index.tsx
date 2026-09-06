@@ -166,7 +166,10 @@ export function ProfileSummary({
         tone="danger"
         heading="This player could not be found."
         actions={
-          <Button variant="secondary" href={searchHref}>
+          // T561 (FR-018/FR-019): reachable at 375 like every other action on this screen —
+          // `size="lg"`, never the `md` default, matching every other touch-reachable `Button`
+          // call site in this file and package.
+          <Button variant="secondary" size="lg" href={searchHref}>
             Back to search
           </Button>
         }
@@ -426,10 +429,16 @@ export function ProfileSummary({
             headingLevel={3}
             actions={
               <>
-                <Button variant="primary" onClick={() => onMakePrimary?.(viewedProfile.id)}>
+                {/* T561 (FR-018/FR-019): reachable at 375 — `size="lg"`, not the `md` default it
+                 * had been rendering at (40px). */}
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => onMakePrimary?.(viewedProfile.id)}
+                >
                   Make primary
                 </Button>
-                <Button variant="secondary" onClick={onBackToPrimary}>
+                <Button variant="secondary" size="lg" onClick={onBackToPrimary}>
                   Back to primary
                 </Button>
               </>
@@ -494,7 +503,8 @@ function RatingBoard({
         tone="danger"
         heading="We could not load your ratings"
         actions={
-          <Button variant="primary" onClick={onRetry}>
+          // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+          <Button variant="primary" size="lg" onClick={onRetry}>
             Try again
           </Button>
         }
@@ -518,7 +528,8 @@ function RatingBoard({
           tone="warning"
           heading="These figures could not be refreshed"
           actions={
-            <Button variant="primary" onClick={onRetry}>
+            // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+            <Button variant="primary" size="lg" onClick={onRetry}>
               Try again
             </Button>
           }

@@ -176,7 +176,8 @@ export function DataExportPanel({
             tone="danger"
             heading="We could not build your export"
             actions={
-              <Button variant="secondary" onClick={handleRequestExport}>
+              // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+              <Button variant="secondary" size="lg" onClick={handleRequestExport}>
                 Try again
               </Button>
             }

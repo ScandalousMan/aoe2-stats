@@ -274,8 +274,10 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
           tone="info"
           heading="No Steam account is linked yet"
           actions={
+            // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
             <Button
               variant="primary"
+              size="lg"
               onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
             >
               Link a Steam account

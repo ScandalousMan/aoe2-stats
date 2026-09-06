@@ -163,7 +163,13 @@ function SignedOutState({
       tone="info"
       heading="Sign in to see the players you've favourited."
       actions={
-        <Button variant="primary" href={href} onClick={createRowLinkClickHandler(href, onNavigate)}>
+        // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+        <Button
+          variant="primary"
+          size="lg"
+          href={href}
+          onClick={createRowLinkClickHandler(href, onNavigate)}
+        >
           Sign in
         </Button>
       }
@@ -195,7 +201,8 @@ function ErrorState({ onRetry }: { onRetry?: () => void }) {
       tone="danger"
       heading="We could not load your favourites. Try again."
       actions={
-        <Button variant="primary" onClick={onRetry}>
+        // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+        <Button variant="primary" size="lg" onClick={onRetry}>
           Try again
         </Button>
       }

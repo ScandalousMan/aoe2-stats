@@ -134,8 +134,10 @@ export function MatchHistoryContainer() {
           heading="No Steam account is linked yet"
           explanation="Link a Steam account to see your match history."
           action={
+            // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
             <Button
               variant="primary"
+              size="lg"
               onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
             >
               Link a Steam account

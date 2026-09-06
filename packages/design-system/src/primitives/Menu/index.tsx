@@ -139,7 +139,13 @@ export function Menu({
         onClick={() => !isEmpty && setOpen((value) => !value)}
         onKeyDown={onTriggerKeyDown}
         className={cx(
-          'inline-flex h-10 items-center gap-2 rounded-control border border-border-strong bg-surface px-4 font-sans text-sm',
+          // T561 (FR-018/FR-019, shared-primitives.md §Sizes): this trigger is reachable on every
+          // viewport including 375 — there is no pointer-only call site — so it clears the 44px
+          // touch floor unconditionally at `min-h-12` (48px), the same size `Menu`'s own items
+          // already use, rather than `Button`'s pointer-only `md` (40px) it used to copy. `min-h-`,
+          // not `h-`, so a caller's `triggerLabel` that wraps onto two lines (a long alias, at a
+          // narrow width) still grows the box instead of clipping it.
+          'inline-flex min-h-12 items-center gap-2 rounded-control border border-border-strong bg-surface px-4 font-sans text-sm',
           // T560 (FR-038): this trigger paints the same resting/border recipe as `Button`'s
           // `secondary` variant (`bg-surface`, `border-border-strong`) but had none of its
           // active/reduced-motion behaviour — same category, now the same response.

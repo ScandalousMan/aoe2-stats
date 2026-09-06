@@ -168,8 +168,11 @@ function StatusRegion({
         tone="info"
         heading={objectedAt ? <>Archival is off. You objected {objectedAt}.</> : 'Archival is off.'}
         actions={
+          // T561 (FR-018/FR-019): the one visible control on this route, reachable at 375 —
+          // `size="lg"` not the `md` default.
           <Button
             variant="primary"
+            size="lg"
             disabled={switchDisabled}
             loading={submitting}
             loadingLabel="Saving your choice…"
@@ -190,8 +193,11 @@ function StatusRegion({
       tone="success"
       heading={justResumed ? 'Archival resumed.' : 'Archival is on.'}
       actions={
+        // T561 (FR-018/FR-019): the one visible control on this route, reachable at 375 —
+        // `size="lg"` not the `md` default.
         <Button
           variant="secondary"
+          size="lg"
           disabled={switchDisabled}
           loading={submitting}
           loadingLabel="Saving your choice…"

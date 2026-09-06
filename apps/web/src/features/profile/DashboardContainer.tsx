@@ -230,11 +230,14 @@ export function DashboardContainer() {
              * can find any player by name") did not. Plain `navigate()`, matching every other
              * cross-page action in this container (`onLinkAnotherAccount` below), not `Button`'s
              * `href` — that renders a raw `<a>` and forces a full document reload in this SPA. */}
-            <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+            {/* T561 (FR-018/FR-019): `Page`'s `actions` render unconditionally at every viewport,
+             * including 375 — `size="lg"` on both, not the `md` default. */}
+            <Button variant="ghost" size="lg" onClick={() => void navigate({ to: '/search' })}>
               Search players
             </Button>
             <Button
               variant="ghost"
+              size="lg"
               onClick={() => void handleSignOut()}
               loading={signOutPending}
               loadingLabel="Signing out…"
@@ -256,8 +259,10 @@ export function DashboardContainer() {
           heading="No Steam account is linked yet"
           explanation="Link a Steam account to see your ratings and match history."
           action={
+            // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
             <Button
               variant="secondary"
+              size="lg"
               onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
             >
               Link a Steam account

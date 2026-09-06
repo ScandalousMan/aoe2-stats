@@ -824,3 +824,52 @@ describe('ProfileSummary — loading regions (T532, FR-054)', () => {
     expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(0)
   })
 })
+
+// T561 (FR-018/FR-019): "Make primary", "Back to primary" and both "Try again" retries are
+// reachable at 375 like everything else on this screen, and had been left at `Button`'s
+// pointer-only `md` default (40px, `h-10`) instead of the `lg` (48px) every other touch-reachable
+// `Button` call site in this package pins explicitly. Guards the class contract — not a literal
+// pixel height jsdom cannot lay out — so a future edit that drops any of these back to the default
+// fails here, not only at a human's eye on a screenshot (the visual suite is structurally blind to
+// this: it captures components at rest, never measures a resting box against a numeric floor).
+describe('ProfileSummary — touch floor (T561, FR-018/FR-019)', () => {
+  const nonPrimaryProfile = { ...viewedProfile, isPrimary: false }
+
+  it('"Make primary" and "Back to primary" render at size lg, not the md default', () => {
+    render(
+      <ProfileSummary
+        authenticated
+        viewedProfile={nonPrimaryProfile}
+        linkedProfiles={linkedProfiles}
+        entries={entries}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Make primary' }).className).toMatch(/\bh-12\b/)
+    expect(screen.getByRole('button', { name: 'Back to primary' }).className).toMatch(/\bh-12\b/)
+  })
+
+  it('the never-loaded-error "Try again" renders at size lg, not the md default', () => {
+    render(
+      <ProfileSummary authenticated viewedProfile={viewedProfile} entries={[]} status="error" />,
+    )
+    expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/\bh-12\b/)
+  })
+
+  it('the stale-refresh "Try again" renders at size lg, not the md default', () => {
+    render(
+      <ProfileSummary
+        authenticated
+        viewedProfile={viewedProfile}
+        linkedProfiles={linkedProfiles}
+        entries={entries}
+        status="stale"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/\bh-12\b/)
+  })
+
+  it('the not-found "Back to search" link renders at size lg, not the md default', () => {
+    render(<ProfileSummary subject="other" authenticated entries={[]} status="not-found" />)
+    expect(screen.getByRole('link', { name: 'Back to search' }).className).toMatch(/\bh-12\b/)
+  })
+})
