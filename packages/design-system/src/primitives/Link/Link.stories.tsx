@@ -77,9 +77,7 @@ export const TokenSwatch: Story = {
 // A `standalone` link's tappable box must measure at least 44px in both axes at 375 (§9).
 export const TouchFootprint: Story = {
   args: { variant: 'standalone', children: 'Export match history' },
-  parameters: {
-    viewport: { defaultViewport: 'mobile1' },
-  },
+  globals: { viewport: { value: 'mobile1' } },
 }
 
 // §9 "empty": no text renders nothing — an icon-only link is forbidden in this tier.

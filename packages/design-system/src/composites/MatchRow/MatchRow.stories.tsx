@@ -294,17 +294,14 @@ export const ListOtherSubjectEmpty: Story = {
 // `scripts/visual/run.mjs`'s `WIDTHS` array is their one necessary code consumer, so a preset name
 // stands in for the narrow one rather than a second literal for that number to go stale against.
 // `ListPopulated` above already reads at the wide, table shape in the ordinary case; this is the
-// one story that pins toward the shape none of this file's others force. The pin has no visible
-// effect in this Storybook build today, though: `@storybook/addon-viewport` is not an installed
-// dependency (confirmed absent from `package.json` and `node_modules`), so `parameters.viewport` is
-// currently inert everywhere it is written, including here and in `Link.stories.tsx`'s pre-existing
-// `TouchFootprint` — a real, narrow gap, flagged rather than fixed because closing it needs a new
-// dependency, out of a story file's reach. What genuinely demonstrates both shapes regardless is the
-// automated visual suite's own matrix: every story here is already captured at all three review
-// widths (rule 7), which is what a reviewer actually judges this against.
+// one story that pins toward the shape none of this file's others force. Pinned through
+// `globals.viewport`, not `parameters.viewport.defaultViewport`: Storybook 10 folded the old
+// `@storybook/addon-viewport` into core (`storybook/viewport`), and its per-story API is the
+// `globals` shape — `parameters.viewport.defaultViewport` was never wired to anything in this
+// version and silently did nothing, including here and in `Link.stories.tsx`'s `TouchFootprint`.
 export const ListCardsBelowXl: Story = {
   name: 'MatchList — cards below xl, a real <table> from it (§8)',
-  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  globals: { viewport: { value: 'mobile1' } },
   render: () => <MatchList matches={populated} />,
 }
 

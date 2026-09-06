@@ -94,12 +94,12 @@ export const RealisticList: Story = {
 
 // FR-044: `FavouriteRow`'s own doc comment (§8) names `md` as the breakpoint — a stacked
 // full-width card below it, one line with a right-aligned remove control from it. Pinned toward
-// the narrow shape with Storybook's built-in `mobile1` preset (see `MatchRow.stories.tsx`'s
-// identical rationale for why a preset name, why `mobile1`, and why the pin has no visible effect
-// in this Storybook build today) — `RealisticList` above already reads at the wide, one-line shape.
+// the narrow shape with Storybook's built-in `mobile1` preset via `globals.viewport` (see
+// `MatchRow.stories.tsx`'s identical rationale for why a preset name and why `mobile1`) —
+// `RealisticList` above already reads at the wide, one-line shape.
 export const StackedBelowMd: Story = {
   name: 'Stacked card below md, one line from it (§8)',
-  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  globals: { viewport: { value: 'mobile1' } },
   args: { entries: [rated, neverRanked, staleStanding] },
 }
 
