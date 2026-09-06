@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent } from 'storybook/test'
 import type { FavouriteEntryData } from './index'
 import { FavouritesList } from './index'
 
@@ -88,4 +89,45 @@ export const SignedOut: Story = {
 // actually renders.
 export const RealisticList: Story = {
   args: { entries: [rated, neverRanked, staleStanding] },
+}
+
+// favourites-list.md §5 "hover / focus-visible / active — `ProfileLink`: whole-block hover fill
+// `surface-sunken`... `RemoveControl`: `FavouriteToggle`'s own hover/focus/active. The two never
+// share a hover."
+export const Hover: Story = {
+  args: { entries: [rated] },
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/players/1"]')
+    if (link) await userEvent.hover(link)
+  },
+}
+
+export const FocusVisible: Story = {
+  args: { entries: [rated] },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+export const Active: Story = {
+  args: { entries: [rated] },
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/players/1"]')
+    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §5 "disabled — the list has no disabled form. `RemoveControl` is disabled only transiently
+// while its own `DELETE` is in flight."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The list itself has no disabled form. Its remove control disables only transiently while its
+        own removal request is in flight — see `FavouriteToggle`'s own loading story.
+      </p>
+      <FavouritesList {...args} />
+    </div>
+  ),
+  args: { entries: [rated] },
 }

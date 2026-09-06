@@ -115,3 +115,52 @@ export const ThemeControlSetToDark: Story = {
   play: openThemeControl,
   args: { items, currentPath: '/dashboard' },
 }
+
+// site-header.md §5 "hover — the item's box fills `surface-sunken` and its label moves to
+// `text-primary`... No underline on hover."
+export const Hover: Story = {
+  args: { items, currentPath: '/dashboard' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('link', { name: 'Matches' }))
+  },
+}
+
+// §5 "focus-visible — named explicitly, because this is the state a later reviewer will assume
+// was covered... the one documented ring... drawn outside the item's box, on top of whatever the
+// hover state is."
+export const FocusVisible: Story = {
+  args: { items, currentPath: '/dashboard' },
+  play: async () => {
+    await userEvent.tab()
+    await userEvent.tab()
+  },
+}
+
+// §5 "active — fill `surface-sunken` with a 1px `border-strong` boundary drawn inside the box...
+// label `text-primary`."
+export const Active: Story = {
+  args: { items, currentPath: '/dashboard' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const link = canvas.getByRole('link', { name: 'Matches' })
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §5 "disabled — never, for any part"; "loading — none, and specifically no skeleton row"; "error
+// — none of its own. This component makes no request and awaits nothing." Grouped as one story:
+// all three share the same reasoning (a build-time-known item set with no request of its own).
+export const DisabledLoadingErrorNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        No part of this header is ever disabled — a destination either exists as a link or is
+        omitted from `items`. There is no loading state (the session resolves before this component
+        paints) and no error state of its own (this component makes no request).
+      </p>
+      <SiteHeader {...args} />
+    </div>
+  ),
+  args: { items, currentPath: '/dashboard' },
+}

@@ -133,3 +133,43 @@ export const LoadFailed: Story = {
   name: 'Error — the match-detail response itself failed to load (§5)',
   args: { error: true },
 }
+
+// analysis-timeline.md §5 "hover / focus-visible / active — none on `Heading`, `EngineProvenance`,
+// or any list row; all are static text. `Button`s ... follow `Button`'s own states."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The heading, the engine provenance line and every list row are static text — no hover, focus
+        or active rendering of their own. The `Recompute` and "Try requesting analysis" buttons
+        follow `Button`'s own states.
+      </p>
+      <AnalysisTimeline {...args} />
+    </div>
+  ),
+  args: { state: 'published', teams, ...engineProps },
+}
+
+// §5 "disabled — neither `Button` has a disabled form. `Recompute` is offered only while
+// `stale: true` (never rendered and disabled otherwise)... 'Try requesting analysis' is never
+// disabled while shown."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      Neither button here has a disabled form — `Recompute` is offered only while the result is
+      stale (absent otherwise, never disabled), and "Try requesting analysis" is never disabled
+      while shown.
+    </p>
+  ),
+}
+
+// §5 "empty — not applicable in the sense this vocabulary usually means it: there is no
+// participant list that can be legitimately empty once `state` is `published`."
+export const EmptyNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      There is no participant list that can be legitimately empty once a match is published — a real
+      match's timeline is never empty, so this component has no empty rendering to show.
+    </p>
+  ),
+}

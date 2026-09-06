@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 import { Callout } from '../../primitives/Callout'
 import { FavouriteToggle } from './index'
 
@@ -85,6 +86,43 @@ export const RequestFailedError: Story = {
         headingLevel={3}
       />
     </div>
+  ),
+}
+
+// favourite-toggle.md §5 "hover / focus-visible / active — owned entirely by `Button/ghost`... In
+// the bounded/disabled case there is no hover." Forced here on the enabled control.
+export const Hover: Story = {
+  args: { favourited: false, authenticated: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('button'))
+  },
+}
+
+export const FocusVisible: Story = {
+  args: { favourited: false, authenticated: true },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+export const Active: Story = {
+  args: { favourited: false, authenticated: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button')
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: button })
+  },
+}
+
+// §5 "empty — not applicable... a toggle with no label is invalid, the same as `Button`. Every
+// state above renders a label; there is no zero-content form of this control."
+export const EmptyNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A toggle with no label is invalid, the same as `Button` — every state renders a label, so
+      there is no zero-content form of this control to show.
+    </p>
   ),
 }
 

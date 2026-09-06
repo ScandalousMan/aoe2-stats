@@ -75,6 +75,8 @@ export const EmptyWithExplicitReason: Story = {
   },
 }
 
+// shared-primitives.md §StatValue "error — the last known value renders, with the secondary line
+// stating when it was measured and that the refresh failed, plus a retry in the parent."
 export const StaleAfterFailedRefresh: Story = {
   args: {
     variant: 'hero',
@@ -82,6 +84,22 @@ export const StaleAfterFailedRefresh: Story = {
     value: '1842',
     secondaryLine: 'Measured 2 hours ago — refresh failed',
   },
+}
+
+// §StatValue "hover — none on the value... focus-visible — none unless the value is a link...
+// active — none... disabled — none. A number is never dimmed to mean 'not applicable'."
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A value has no hover, active or disabled rendering of its own — a number is never dimmed to
+        mean "not applicable"; where it does not apply, the `empty` state below renders instead.
+        Focus-visible applies only when the value is itself a link, in which case the standard ring
+        applies to the link and never crops the digits.
+      </p>
+      <StatValue variant="hero" label="1v1 Random Map" value="1842" />
+    </div>
+  ),
 }
 
 export const StackedAlignment: Story = {

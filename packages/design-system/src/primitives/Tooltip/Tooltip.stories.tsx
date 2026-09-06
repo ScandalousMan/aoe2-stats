@@ -238,6 +238,60 @@ export const Blank: Story = {
   },
 }
 
+// §4 "loading — the content has not arrived: the tooltip does not exist yet... The trigger renders
+// as a plain, non-interactive element with no tab stop until content exists." Rendered the same
+// way `Blank` is (both hit the component's one `isBlank` branch), because there is genuinely no
+// third rendering: content that has not arrived and content that resolved to blank are
+// indistinguishable to this component by design — it never guesses which case it is in.
+export const Loading: Story = {
+  args: {
+    content: undefined,
+    children: <FlagIcon />,
+  },
+}
+
+// §4 "error — none of its own. Content that failed to resolve is content that is absent, and
+// absent content is the empty state below. A tooltip never reports its own failure."
+export const ErrorNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A tooltip never reports its own failure — content that failed to resolve is content that is
+        absent, which renders exactly like `Blank`/`Loading` above: the trigger's child alone.
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: undefined,
+    children: <FlagIcon />,
+  },
+}
+
+// §4 "disabled — the trigger is never the `disabled` attribute... A caller with a non-actionable
+// trigger uses `aria-disabled=\"true\"`, keeps the tab stop." There is no `disabled` prop on this
+// component to force: the wrapping `<button>` this component renders never carries the `disabled`
+// attribute by construction, in every story on this page, which is the rule holding rather than a
+// toggle to demonstrate.
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This component has no `disabled` prop: its own trigger button never carries the `disabled`
+        attribute, in any story on this page. A caller with a non-actionable trigger uses
+        `aria-disabled="true"` on the element it wraps instead, which keeps the tab stop and the
+        tooltip working as specified.
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: 'France',
+    qualifier: 'Country:',
+    children: <FlagIcon />,
+  },
+}
+
 // A realistic combined story: the first real consumer's shape (T457) — a flag beside an alias,
 // the country name only in the tooltip, revealed on hover.
 export const RealisticIdentityBar: Story = {

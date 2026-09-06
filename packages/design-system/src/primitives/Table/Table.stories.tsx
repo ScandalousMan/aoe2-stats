@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
@@ -243,6 +244,79 @@ export const Overflow: Story = {
       <Table
         caption="Recent matches"
         columns={wideColumns}
+        rows={matches}
+        getRowKey={(row) => row.gameId}
+      />
+    </div>
+  ),
+}
+
+// structural-tier.md §10 "hover — a row highlights with `surface-sunken` only when the whole row
+// is a real link." Forced with a real `:hover` on the row's own anchor.
+export const RowLinkHover: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('link', { name: /RedBull_Barley/ }))
+  },
+}
+
+// §10 "active — a row link's press paints `surface-sunken` with the row's rule retained." Held
+// down rather than released so the capture shows the pressed frame.
+export const RowLinkActive: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const link = canvas.getByRole('link', { name: /RedBull_Barley/ })
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §10 "focus-visible — the scroll region shows the standard ring when it is focused for
+// scrolling; a focusable element inside a cell shows its own ring, offset so the frame does not
+// clip it." Shown here on the region itself, reached the way a keyboard user reaches it.
+export const FocusVisible: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+    />
+  ),
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+// §10 "disabled — never. A table whose data is stale says so in a `Callout` above it; a greyed
+// table is unreadable and still on screen."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A table is never disabled — data that is stale says so in a `Callout` above it, never in a
+        greyed-out, still-readable table.
+      </p>
+      <Table
+        caption="Recent matches"
+        columns={columns}
         rows={matches}
         getRowKey={(row) => row.gameId}
       />

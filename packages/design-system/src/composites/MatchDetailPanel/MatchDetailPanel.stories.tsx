@@ -497,3 +497,18 @@ export const NotFound: Story = {
   name: "Not found — unknown or not the caller's own, indistinguishable (FR-045)",
   args: { status: 'not-found' },
 }
+
+// match-history.md §5 "hover / focus-visible / active... `DownloadAction`: per `Button`." The
+// panel itself is not a link and carries no hover, focus or active rendering of its own — only its
+// `DownloadAction` button does, already covered by `Button`'s own stories.
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The panel itself is not a link or a control: no hover, focus or active rendering of its own.
+        Its `DownloadAction` button carries its own, per `Button`'s stories.
+      </p>
+      <MatchDetailPanel {...args} match={baseMatch} />
+    </div>
+  ),
+}

@@ -163,3 +163,30 @@ export const CombinedList: Story = {
     </ul>
   ),
 }
+
+// country-flag.md §11.6 "disabled — never... a `disabled` button is neither focusable nor
+// hoverable, so disabling this one would make the country unreachable rather than merely dim."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This control is never disabled — a disabled button is neither focusable nor hoverable, so
+        disabling it would make the country unreachable rather than merely dim.
+      </p>
+      <CountryFlag flagUrl={FRANCE_URL} countryName="France" />
+    </div>
+  ),
+}
+
+// §4 "loading — the component has no loading state of its own and the caller renders no skeleton
+// in its place... Whether a country exists at all is not known until the data arrives."
+export const LoadingNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      This component has no loading state of its own, and the caller renders no skeleton in its
+      place — whether a country exists at all is not known until the data arrives, so
+      `ProfileSummary`'s identity-bar skeleton covers this position as part of the alias line
+      instead.
+    </p>
+  ),
+}

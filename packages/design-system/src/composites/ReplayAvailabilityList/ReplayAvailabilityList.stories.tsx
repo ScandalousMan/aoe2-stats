@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 import type { ReplayAvailabilityRowData } from './index'
 import { ReplayAvailabilityList } from './index'
 
@@ -226,4 +227,54 @@ const realisticRows: ReplayAvailabilityRowData[] = [
 
 export const RealisticMatch: Story = {
   args: { rows: realisticRows },
+}
+
+// replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per
+// `Badge`'s own rule... `DownloadAction`: per `Button`."
+export const Hover: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('button', { name: 'Download' }))
+  },
+}
+
+export const FocusVisible: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+export const Active: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button', { name: 'Download' })
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: button })
+  },
+}
+
+// §5 "disabled — `DownloadAction` has no disabled form... for `expired` and `never_recorded` it is
+// absent, not disabled." Already demonstrated by `Expired`/`NeverRecorded` above; named here so
+// the state has its own entry in the sidebar.
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        `DownloadAction` has no disabled form — for `expired` and `never_recorded` rows it is
+        absent, not greyed out, because the badge and secondary line already say why.
+      </p>
+      <ReplayAvailabilityList {...args} />
+    </div>
+  ),
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'expired' }],
+  },
 }

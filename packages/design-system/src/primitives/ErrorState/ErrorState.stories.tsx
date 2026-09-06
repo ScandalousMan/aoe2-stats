@@ -121,3 +121,33 @@ export const NoHeadingRendersNothing: Story = {
     </div>
   ),
 }
+
+// structural-tier.md §13 "hover / focus-visible / active — none of its own; the recovery action
+// carries `Button`'s."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        An error state has no hover, focus or active rendering of its own — the recovery action
+        inside it carries `Button`'s.
+      </p>
+      <ErrorState
+        heading="We could not load this match history"
+        explanation="Something went wrong on our side. Your data is safe — try again."
+        action={<Button variant="secondary">Try again</Button>}
+      />
+    </div>
+  ),
+}
+
+// §13 "disabled — never, and this is the state FR-024 is about: the control that caused the
+// failure returns to being pressable." See `RetryFailedStaysEnabled` above for the same fact
+// demonstrated by an actual retry.
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      An error state is never disabled — the retry that caused the failure always returns to being
+      pressable, never greyed out after failing.
+    </p>
+  ),
+}

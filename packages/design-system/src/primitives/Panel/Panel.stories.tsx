@@ -142,3 +142,30 @@ export const Nested: Story = {
     </Panel>
   ),
 }
+
+// structural-tier.md §7 "hover — none. A `Panel` is never itself interactive... focus-visible —
+// none of its own; it is not focusable... active — none, for the same reason as hover."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <Panel {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A panel is never itself interactive: no hover fill, no lift, no pointer cursor, and it is
+        not focusable. A call site that needs a clickable card puts a real link inside the panel
+        spanning its content, and that link owns its own hover, focus and active states.
+      </p>
+    </Panel>
+  ),
+}
+
+// §7 "disabled — never. A panel whose content is unavailable says so in words; a greyed-out
+// bordered box is a dead end with a frame around it."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <Panel {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A panel is never disabled — content that is unavailable says so in words instead of a
+        greyed-out frame.
+      </p>
+    </Panel>
+  ),
+}

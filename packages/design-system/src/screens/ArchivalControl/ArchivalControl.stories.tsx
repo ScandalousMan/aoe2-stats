@@ -55,3 +55,30 @@ export const WithPrivacyNotice: Story = {
     privacyNoticeHref: '/privacy',
   },
 }
+
+// archival-control.md §5 "hover / focus-visible / active — owned by `Button` and by the privacy
+// link. The section itself is not interactive and shows no hover affordance."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This section is not interactive and shows no hover affordance of its own — the switch button
+        and the privacy link carry their own hover, focus and active states.
+      </p>
+      <ArchivalControl {...args} />
+    </div>
+  ),
+  args: { state: 'archiving', onObject: () => {} },
+}
+
+// §5 "empty — this component has no list and no collection to be empty. Its only content is the
+// current archival status... there is no third 'nothing yet' fact for an empty state to
+// represent."
+export const EmptyNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      This component has no list and no collection to be empty — its only content is the current
+      archival status, which is always one of exactly two values.
+    </p>
+  ),
+}

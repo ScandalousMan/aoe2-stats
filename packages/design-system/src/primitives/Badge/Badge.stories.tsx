@@ -72,3 +72,50 @@ export const InAList: Story = {
     </ul>
   ),
 }
+
+// shared-primitives.md §Badge "empty — a badge with no label renders nothing."
+export const Empty: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Nothing renders below this line — a badge with no label is absent, not a blank pill.
+      </p>
+      <Badge variant="neutral">{''}</Badge>
+    </div>
+  ),
+}
+
+// §Badge "default only. No hover, no active, no focus: a badge is not interactive and must never
+// be the control that changes the state it names."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A badge is not interactive: no hover, focus or active state, and it is never itself the
+        control that changes the state it names.
+      </p>
+      <Badge variant="neutral">Not ranked yet</Badge>
+    </div>
+  ),
+}
+
+// §Badge "disabled / loading — none; during a state change the badge is replaced by a `Skeleton`
+// of the same footprint."
+export const DisabledLoadingNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A badge has no disabled or loading rendering of its own — while the state it names is
+      changing, the caller replaces it with a `Skeleton` of the same footprint instead.
+    </p>
+  ),
+}
+
+// §Badge "error — none."
+export const ErrorNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A badge carries no error state of its own — a failure belongs to whatever produced the state
+      it names, never to the badge.
+    </p>
+  ),
+}

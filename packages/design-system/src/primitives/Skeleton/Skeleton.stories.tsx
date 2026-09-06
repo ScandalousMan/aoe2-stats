@@ -30,3 +30,30 @@ export const CombinedLoadingRegion: Story = {
     </div>
   ),
 }
+
+// shared-primitives.md §Skeleton "empty — a skeleton with a zero count renders nothing."
+export const Empty: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Nothing renders below this line — a skeleton asked for zero lines is absent, not a
+        zero-height pulse.
+      </p>
+      <Skeleton variant="text" lines={0} />
+    </div>
+  ),
+}
+
+// §Skeleton "loading is the only state the component exists for. It has no hover, focus, active,
+// disabled or error state."
+export const HoverFocusActiveDisabledErrorNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Loading is the only state a skeleton has — no hover, focus, active, disabled or error
+        rendering exists for it.
+      </p>
+      <Skeleton variant="block" className="h-12 w-full" />
+    </div>
+  ),
+}

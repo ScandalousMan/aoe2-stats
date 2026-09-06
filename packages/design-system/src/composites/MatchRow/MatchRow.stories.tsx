@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent } from 'storybook/test'
 import { MatchList, MatchRow } from './index'
 import type { MatchRowData, MatchRowParticipant } from './index'
 
@@ -283,4 +284,50 @@ export const ListOtherSubjectPopulated: Story = {
 export const ListOtherSubjectEmpty: Story = {
   name: 'MatchList — subject="other", empty ("<alias> has no matches in their history yet.")',
   render: () => <MatchList status="empty" subject="other" subjectAlias="aoe2villain" />,
+}
+
+// match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
+// including `CaptureStateBadge` — has its own hover."
+export const Hover: Story = {
+  render: () => <MatchRow match={base} />,
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/matches/1001"]')
+    if (link) await userEvent.hover(link)
+  },
+}
+
+// §5 "focus-visible — standard ring on the row's own link wrapper, inset so it never crops the
+// outcome text or a numeral."
+export const FocusVisible: Story = {
+  render: () => <MatchRow match={base} />,
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+// §5 "active — per link" (`Link`'s own `standalone` press paint).
+export const Active: Story = {
+  render: () => <MatchRow match={base} />,
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/matches/1001"]')
+    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §5 "disabled — `DownloadAction` has no disabled form: while `capture_status != \"stored\"` it is
+// absent, not disabled... a greyed-out button repeating 'you can't do this yet' next to a badge
+// that already said so is noise." `MatchRow` itself carries no `DownloadAction`; this documents
+// the rule for the row's own capture badge, which `MatchDetailPanel`'s stories show applied to the
+// real download control.
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A row is never disabled, and its download control has no disabled form either — while a
+        match is not yet stored, the control is absent, not greyed out, because the capture badge
+        beside it already explains why.
+      </p>
+      <MatchRow match={base} />
+    </div>
+  ),
 }

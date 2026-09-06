@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent } from 'storybook/test'
 import { PlayerResultRow } from './index'
 import type { PlayerSearchResultData } from './index'
 
@@ -22,6 +23,48 @@ const base: PlayerSearchResultData = {
 export const SourceBacked: Story = {
   name: 'Source-backed result — country, standing and clan all known',
   args: { result: base },
+}
+
+// player-search.md §5 "hover / focus-visible / active — `PlayerResultRow`: whole-row hover fill
+// `surface-sunken`... nothing inside the row — including `Standing` — has its own hover; focus
+// ring on the row's own link wrapper."
+export const Hover: Story = {
+  args: { result: base },
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/players/12345"]')
+    if (link) await userEvent.hover(link)
+  },
+}
+
+export const FocusVisible: Story = {
+  args: { result: base },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+export const Active: Story = {
+  args: { result: base },
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector('a[href="/players/12345"]')
+    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §5 "disabled — `Input` only... there is no other disabled condition for either component." This
+// row has no loading, error or empty rendering of its own either — it is always a fully-resolved
+// result by the time `SearchBox` renders one.
+export const DisabledLoadingErrorEmptyNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A result row has no disabled, loading, error or empty rendering of its own — by the time
+        `SearchBox` renders one, it is always a fully-resolved result. Those states belong to
+        `SearchBox`'s own `ResultsRegion`.
+      </p>
+      <PlayerResultRow result={base} />
+    </div>
+  ),
 }
 
 export const NoClanTag: Story = {

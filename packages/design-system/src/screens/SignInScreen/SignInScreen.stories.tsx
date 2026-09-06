@@ -56,3 +56,17 @@ export const Unreachable: Story = {
 export const ProfileAlreadyLinked: Story = {
   args: { variant: 'link', outcome: 'profile_already_linked', onCancel: () => {} },
 }
+
+// sign-in-screen.md §4 "hover / focus-visible / active — owned entirely by `Button`. The panel
+// itself has no hover affordance and does not lift, glow or change fill: it is not a control."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The panel itself has no hover, focus or active rendering of its own — it is not a control.
+        Its "Continue with Steam" button carries its own, per `Button`'s stories.
+      </p>
+      <SignInScreen {...args} />
+    </div>
+  ),
+}

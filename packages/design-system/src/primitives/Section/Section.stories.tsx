@@ -100,6 +100,32 @@ export const Nested: Story = {
   ),
 }
 
+// structural-tier.md §6 "hover / active / focus-visible — none of its own. Its heading is not a
+// control and the section is not focusable; the components inside it carry their own."
+export const HoverActiveFocusVisibleNotApplicable: Story = {
+  render: (args) => (
+    <Section {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A section's heading is not a control and the section itself is not focusable — no hover,
+        active or focus-visible rendering of its own. The components inside it carry their own.
+      </p>
+    </Section>
+  ),
+}
+
+// §6 "disabled — never. A section the reader may not act on keeps its heading and explains itself
+// in words; greying out a whole region tells the reader nothing about why."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <Section {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A section is never disabled — a region the reader may not act on keeps its heading and
+        explains itself in words instead of greying out.
+      </p>
+    </Section>
+  ),
+}
+
 // Composed inside `Page` (structural-tier.md §6, acceptance criteria): the gap between the last
 // element of the first section and the heading of the second must read visibly larger than the
 // gap between two components inside either section — `Page` owns that between-sections gap,

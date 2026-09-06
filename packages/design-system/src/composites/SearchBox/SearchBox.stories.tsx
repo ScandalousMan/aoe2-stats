@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { userEvent, within } from 'storybook/test'
 import type { PlayerSearchResultData } from '../PlayerResultRow'
 import { SearchBox } from './index'
 import type { SearchBoxState } from './index'
@@ -117,4 +118,21 @@ export const RateLimited: Story = {
 export const RequestFailed: Story = {
   name: 'error — request failed (Callout/danger, distinct from a degraded-but-successful response)',
   render: () => <DemoSearchBox state={{ status: 'failed' }} />,
+}
+
+// player-search.md §5 "hover / focus-visible / active — `Input`: standard text-input interaction,
+// focus ring per DS-4."
+export const Hover: Story = {
+  render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('textbox'))
+  },
+}
+
+export const FocusVisible: Story = {
+  render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
+  play: async () => {
+    await userEvent.tab()
+  },
 }

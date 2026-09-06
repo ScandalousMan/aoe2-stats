@@ -107,3 +107,67 @@ export const Empty: Story = {
     items: [],
   },
 }
+
+// §Menu "hover — item fill `surface-sunken`."
+export const Hover: Story = {
+  tags: ['visual-full-page'],
+  play: async ({ canvasElement }) => {
+    await openMenu({ canvasElement })
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('menuitemradio', { name: /aoe2alt/ }))
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// §Menu "focus-visible — the focused item shows the standard focus ring inset within its bounds.
+// Focus follows the roving item, never both trigger and item." Opened by keyboard (Enter on the
+// trigger) rather than by click, which is what actually reaches `:focus-visible` in Chromium's own
+// heuristic — the same reach `tests/visual/focus-ring.spec.ts` uses for this component.
+export const FocusVisible: Story = {
+  tags: ['visual-full-page'],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    trigger.focus()
+    await userEvent.keyboard('{Enter}')
+    await canvas.findByRole('menu')
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// §Menu "active — item fill `surface-sunken` with boundary `border-strong` on the inline-start
+// edge." Held down rather than released so the capture shows the pressed frame.
+export const Active: Story = {
+  tags: ['visual-full-page'],
+  play: async ({ canvasElement }) => {
+    await openMenu({ canvasElement })
+    const canvas = within(canvasElement)
+    const item = canvas.getByRole('menuitemradio', { name: /aoe2alt/ })
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: item })
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}

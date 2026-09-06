@@ -125,3 +125,32 @@ export const RealSelectionThenSuccess: Story = {
     await canvas.findByText('Archived from your upload.')
   },
 }
+
+// manual-upload.md §5 "focus-visible — the standard ring... on the `Choose file` control, the
+// `Remove` button, `SubmitButton` and the `Refresh` button, in both themes."
+export const FocusVisible: Story = {
+  name: 'focus-visible — the standard ring on the "Choose file" control',
+  args: { gameId: 42, onUpload: noopOnUpload, initialState: 'idle' },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+// §5 "disabled — there is no resting disabled control. `SubmitButton` does not exist until a file
+// is chosen... The only disable is transient: during `uploading`, ... all disable so the file
+// cannot change under an in-flight request." The transient case is `Uploading` above; this names
+// the resting half of the rule.
+export const DisabledRestingNotApplicable: Story = {
+  name: 'disabled (resting) — not applicable; the submit button withholds itself instead',
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        There is no resting disabled control here — `SubmitButton` does not exist until a file is
+        chosen, so it is never rendered as a dead grey button waiting for one. The only disable is
+        transient, during `uploading` (see that story), so nothing can change under an in-flight
+        request.
+      </p>
+      <UploadControl gameId={42} onUpload={noopOnUpload} initialState="idle" />
+    </div>
+  ),
+}

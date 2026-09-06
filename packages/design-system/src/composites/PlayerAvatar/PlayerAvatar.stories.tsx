@@ -88,3 +88,16 @@ export const BesideAHeading: Story = {
     </ul>
   ),
 }
+
+// player-avatar.md §4 "hover / focus-visible / active — none... disabled — never."
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        On a profile page an avatar is never interactive: no hover, focus, active or disabled
+        rendering. It does not lift, brighten, zoom or dim.
+      </p>
+      <PlayerAvatar avatarHash={FIXTURE_HASH} />
+    </div>
+  ),
+}

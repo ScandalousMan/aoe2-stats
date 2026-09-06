@@ -404,3 +404,83 @@ export const CompactVariant: Story = {
     entries,
   },
 }
+
+// profile-summary.md §5 "hover — switcher trigger and menu items per `Menu`. A `RatingEntry` is
+// not interactive in this feature... and therefore has no hover affordance." / "focus-visible —
+// standard ring on the trigger, on menu items, and on the ghost actions." / "active — per `Button`
+// and `Menu`." The switcher's own hover/focus/active are `Menu`'s stories (`ProfileSwitcher`); this
+// opens it here by keyboard, the same technique `SiteHeader`'s `ThemeControl` stories use, and
+// calls out the one part that has none of its own.
+async function openSwitcher({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button', { name: /aoe2guy/ })
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  await canvas.findByRole('menu')
+}
+
+export const SwitcherFocusVisibleAndOpen: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+export const RatingEntryHoverNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A `RatingEntry` is not interactive in this feature — rating history is a later route — so it
+        has no hover affordance of its own. The switcher trigger and its menu items carry theirs,
+        per `Menu`.
+      </p>
+      <ProfileSummary {...args} />
+    </div>
+  ),
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// §5 "disabled — the primary profile's own 'Make primary' item is absent, not disabled... While a
+// primary change is in flight, every menu item is `aria-disabled` and the target item shows the
+// `Menu` loading state."
+export const PrimaryChangeInFlight: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+    primaryChangeInFlight: true,
+  },
+}
+
+// §5 "disabled — ... The unlink action is disabled only while an unlink is in flight."
+export const UnlinkInFlight: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+    unlinkInFlight: true,
+  },
+}

@@ -118,3 +118,17 @@ export const CombinedList: Story = {
     </ul>
   ),
 }
+
+// map-thumbnail.md §4 "hover / focus-visible / active — none... disabled — never." All four
+// grouped: the enclosing row link owns interaction, this mark never does.
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This thumbnail has no hover, focus, active or disabled rendering of its own — it is a fact
+        about a finished match, not a control. The enclosing row's own link owns the hover fill.
+      </p>
+      <MapThumbnail thumbnailUrl={ARABIA_URL} mapName="Arabia" />
+    </div>
+  ),
+}

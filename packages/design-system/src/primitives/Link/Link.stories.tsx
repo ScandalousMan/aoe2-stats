@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 import { Link } from './index'
 
 const meta: Meta<typeof Link> = {
@@ -88,6 +89,78 @@ export const Empty: Story = {
         The link below has no text and renders nothing.
       </p>
       <Link href="/players/1807091">{''}</Link>
+    </div>
+  ),
+}
+
+// structural-tier.md §9 "hover — ink `link-hover`, underline thickens to `border.ring`." Forced
+// with a real `:hover`, its own named story rather than only `RestAndHover`'s invitation above.
+export const Hover: Story = {
+  args: { variant: 'standalone' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('link'))
+  },
+}
+
+// §9 "focus-visible — `outline-ring`... around the whole link box, on top of whatever the hover
+// paint is. Never removed on pointer interaction."
+export const FocusVisible: Story = {
+  args: { variant: 'standalone' },
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+// §9 "active — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box."
+export const ActiveStandalone: Story = {
+  args: { variant: 'standalone' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const link = canvas.getByRole('link')
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
+// words inside a paragraph breaks the line." The difference from `ActiveStandalone` above is
+// stated rather than smoothed over (FR-038).
+export const ActiveInline: Story = {
+  render: (args) => (
+    <p className="type-body max-w-measure text-md text-text-primary">
+      Every match this profile has played is listed below. To link a different account,{' '}
+      <Link {...args}>view its profile</Link> and choose "Link this account" instead.
+    </p>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const link = canvas.getByRole('link')
+    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  },
+}
+
+// §9 "disabled — a link is never disabled. A destination the reader may not reach renders as
+// `Text` with a sentence saying why."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <p className="type-body text-md text-text-primary">
+      This replay is past Microsoft's 31-day retention window, so nothing can retrieve it — a
+      greyed-out link would be a promise this product could not keep.
+    </p>
+  ),
+}
+
+// §9 "loading — none... error — none of its own. A navigation that fails lands on a route that
+// renders `ErrorState`."
+export const LoadingErrorNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Navigation is the browser's own: a link never shows a loading spinner (that is a `Button`'s
+        job), and it carries no error state of its own — a navigation that fails lands on a route
+        that renders `ErrorState`.
+      </p>
+      <Link href="/players/1807091">View profile</Link>
     </div>
   ),
 }

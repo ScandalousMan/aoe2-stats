@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { ReactNode } from 'react'
+import { within } from 'storybook/test'
 import { Button } from '../Button'
+import { EmptyState } from '../EmptyState'
+import { ErrorState } from '../ErrorState'
 import { Skeleton } from '../Skeleton'
 import { Page } from './index'
 
@@ -120,6 +123,65 @@ export const TwoSections: Story = {
     <Page {...args}>
       <SamplePanel title="This week">Three matches.</SamplePanel>
       <SamplePanel title="Favourites">Two profiles.</SamplePanel>
+    </Page>
+  ),
+}
+
+// structural-tier.md §5 "error — the header is retained and the section stack is replaced by one
+// `ErrorState`. Retaining the header is what keeps a failed route from looking like the wrong
+// route."
+export const Error: Story = {
+  render: (args) => (
+    <Page {...args}>
+      <ErrorState
+        heading="We could not load this match history"
+        explanation="Something went wrong on our end. Try again in a moment."
+        action={<Button variant="secondary">Try again</Button>}
+      />
+    </Page>
+  ),
+}
+
+// §5 "empty — a `Page` with a header and no sections renders the header plus one `EmptyState`. A
+// padded, bordered, wordless column is the defect FR-023 names."
+export const Empty: Story = {
+  render: (args) => (
+    <Page {...args}>
+      <EmptyState
+        heading="No matches yet"
+        explanation="Matches this profile plays online will appear here automatically."
+      />
+    </Page>
+  ),
+}
+
+// §5 "focus-visible — the landmark is the skip link's target and carries `tabIndex={-1}`. When
+// the skip link sends focus to it, it shows the standard ring... It never shows a ring on a
+// pointer click." Forced here by focusing the `<main>` landmark directly, the same route a real
+// skip link takes.
+export const FocusVisible: Story = {
+  render: (args) => (
+    <Page {...args}>
+      <SamplePanel title="Recent matches">Three matches this week.</SamplePanel>
+    </Page>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    canvas.getByRole('main').focus()
+  },
+}
+
+// §5 "hover / active — none. A page is not a control." / "disabled — never. A page cannot be
+// disabled; a route the reader may not use renders an `ErrorState` (§13) explaining why, inside a
+// normal `Page`."
+export const HoverActiveDisabledNotApplicable: Story = {
+  render: (args) => (
+    <Page {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A page is not a control: no hover and no active state. It cannot be disabled either — a
+        route the reader may not use renders an `ErrorState` explaining why, inside a normal page,
+        rather than a disabled one.
+      </p>
     </Page>
   ),
 }

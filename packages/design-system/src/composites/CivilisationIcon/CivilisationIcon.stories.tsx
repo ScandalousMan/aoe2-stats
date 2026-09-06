@@ -92,3 +92,17 @@ export const CombinedRow: Story = {
     </ul>
   ),
 }
+
+// civilisation-icon.md §4 "hover / focus-visible / active — none... disabled — never." All four
+// grouped: the enclosing row link owns interaction, this mark never does.
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This mark has no hover, focus, active or disabled rendering of its own — it is a fact, not a
+        control. The enclosing row's own link owns the hover fill.
+      </p>
+      <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" />
+    </div>
+  ),
+}

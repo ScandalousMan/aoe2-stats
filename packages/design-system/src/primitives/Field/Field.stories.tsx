@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { userEvent, within } from 'storybook/test'
 import { Button } from '../Button'
 import { Field } from './index'
 
@@ -171,6 +172,71 @@ export const ErrorAppearsAfterMount: Story = {
     }
     return <Demo />
   },
+}
+
+// structural-tier.md §11 "hover — the control's boundary deepens to `border-strong` on a
+// `surface-sunken` fill; the label and hint do not change."
+export const Hover: Story = {
+  args: { label: 'Display name' },
+  render: (args) => (
+    <div className="max-w-xs">
+      <Field {...args}>
+        <DemoInput defaultValue="" placeholder="e.g. TheViper" />
+      </Field>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.hover(canvas.getByRole('textbox'))
+  },
+}
+
+// §11 "focus-visible — `outline-ring` at `outline-offset-ring` in `focus-ring` around the control,
+// never around the whole field."
+export const FocusVisible: Story = {
+  args: { label: 'Display name' },
+  render: (args) => (
+    <div className="max-w-xs">
+      <Field {...args}>
+        <DemoInput defaultValue="" placeholder="e.g. TheViper" />
+      </Field>
+    </div>
+  ),
+  play: async () => {
+    await userEvent.tab()
+  },
+}
+
+// §11 "active — the control's own text-entry state; no separate paint. A press on a text input is
+// indistinguishable from focusing it, and pretending otherwise would be inventing a state."
+export const ActiveNotApplicable: Story = {
+  render: () => (
+    <div className="flex max-w-xs flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A press on a text input is indistinguishable from focusing it — there is no separate active
+        paint to show; see the `focus-visible` story above.
+      </p>
+      <Field label="Display name">
+        <DemoInput defaultValue="" placeholder="e.g. TheViper" />
+      </Field>
+    </div>
+  ),
+}
+
+// §11 "empty — an empty value is not an error. A required field that has never been touched shows
+// its default paint; it errors on blur or on submit, never on first render."
+export const EmptyValueIsNotAnError: Story = {
+  render: () => (
+    <div className="flex max-w-xs flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        An empty value is not an error — a required field that has never been touched shows its
+        default paint, identical to `Default` above, and errors only on blur or submit.
+      </p>
+      <Field label="Display name">
+        <DemoInput defaultValue="" placeholder="e.g. TheViper" />
+      </Field>
+    </div>
+  ),
 }
 
 export const RealisticForm: Story = {

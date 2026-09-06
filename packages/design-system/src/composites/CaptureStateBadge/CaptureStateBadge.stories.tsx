@@ -155,3 +155,17 @@ export const AllFourStates: Story = {
     </ul>
   ),
 }
+
+// capture-state-badge.md §6 "hover / focus-visible / active — none... disabled — not applicable,
+// for the same reason. Nothing about a match's capture state is decided by clicking its badge."
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A capture-state badge is not interactive: no hover, focus, active or disabled rendering.
+        Nothing about a match's capture state is decided by clicking its badge.
+      </p>
+      <CaptureStateBadge captureStatus="stored" />
+    </div>
+  ),
+}

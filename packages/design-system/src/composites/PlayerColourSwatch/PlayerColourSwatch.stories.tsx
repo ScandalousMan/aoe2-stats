@@ -103,3 +103,29 @@ export const ColouredAndNeutralAligned: Story = {
     </ul>
   ),
 }
+
+// player-colour-swatch.md §4 "hover / focus-visible / active — none... disabled — never." All
+// four grouped: the enclosing row link owns interaction, this chip never does.
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This chip has no hover, focus, active or disabled rendering of its own — it is a fact, not a
+        control. The enclosing row's own link owns the hover fill.
+      </p>
+      <PlayerColourSwatch colorId={4} playerName="Yellow player" />
+    </div>
+  ),
+}
+
+// §4 "loading — the component has no loading state of its own, and must never render a neutral
+// chip as a 'loading colour'... no swatch renders at all" while the row loads.
+export const LoadingNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      This component has no loading state of its own — a neutral chip must never stand in for "the
+      colour has not arrived yet". While the row loads, the row's own skeleton covers this position;
+      no swatch renders at all.
+    </p>
+  ),
+}
