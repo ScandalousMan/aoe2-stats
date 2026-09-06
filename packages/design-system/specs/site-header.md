@@ -1,6 +1,6 @@
 # SiteHeader
 
-**Component**: `src/components/SiteHeader/` (T441)
+**Component**: `src/composites/SiteHeader/` (T441)
 **Feature**: 004, US3 — mounted in the web shell by T442, in `apps/web/src/routes/__root.tsx`,
 beside the `Footer` that is already mounted there, so it renders on every route.
 **Requirements**: FR-009 (a header with primary navigation on every page, footer intact), FR-013
@@ -12,9 +12,9 @@ chrome; the two are specified to agree on inline padding, on link behaviour and 
 quietest thing on the page". `src/lib/rowLink.ts` — the existing SPA navigation seam
 (`createRowLinkClickHandler`), reused rather than re-invented. `src/theme/` (`ThemeProvider`,
 `useTheme`, T534) — owned locally by §ThemeControl rather than required of every host of this
-component (see that section for why). `src/components/Menu/` — the `selection` variant this
+component (see that section for why). `src/primitives/Menu/` — the `selection` variant this
 control reuses rather than inventing a second "choose one of a few named things" pattern; see
-`shared-primitives.md#Menu`. `src/components/Badge/` — the checked item's non-colour marker.
+`shared-primitives.md#Menu`. `src/primitives/Badge/` — the checked item's non-colour marker.
 **Asset origin** (README rule 3): **none.** This component renders no image of any kind — no logo,
 no crest, no emblem, no civilisation mark, no flag. The brand is a text wordmark set in the
 `display` family. There is nothing here for the licence gate to record, and §10 has a criterion
@@ -411,11 +411,15 @@ above.
 
 ## 10. Visual acceptance criteria
 
-Stories live under **`Chrome/SiteHeader`** (the id quickstart scenario 6 names). `Footer` stays at
-`Composite/Footer`; moving it would recapture every footer baseline for no functional gain, and the
-inconsistency is recorded here rather than resolved silently. Every criterion below is judged in
-**both themes**; the small-viewport stories carry the `visual-mobile` tag, without which the whole
-of §8's 375 arrangement is invisible to the suite (`scripts/visual/run.mjs`).
+Stories live under **`Composite/SiteHeader`** (T540, research D13: `chrome` collapses into
+`composites` — `SiteHeader` and `Footer` are domain composites that happen to be mounted once, and a
+fourth tier for "mounted by the root layout" would be a location rather than a dependency rule). This
+resolves the inconsistency this section used to record: `Footer` was already at `Composite/Footer`
+and `SiteHeader` previously sat apart at `Chrome/SiteHeader` (the id quickstart scenario 6 named);
+the rename moves every `chrome-siteheader--*` baseline to `composite-siteheader--*` (T540, repainted
+by T550). Every criterion below is judged in **both themes**; the small-viewport stories carry the
+`visual-mobile` tag, without which the whole of §8's 375 arrangement is invisible to the suite
+(`scripts/visual/run.mjs`).
 
 Required stories: `SignedIn` (five items, `/dashboard` current), `CurrentIsNestedRoute`
 (`currentPath` `/matches/12345`), `NoCurrentItem` (`currentPath` `/players/1807091`), `SignedOut`

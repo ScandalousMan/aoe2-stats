@@ -118,7 +118,7 @@ const controls: readonly Control[] = [
   },
   {
     level: 'NavItem',
-    storyId: 'chrome-siteheader--signed-in',
+    storyId: 'composite-siteheader--signed-in',
     locate: (page) => page.getByRole('link', { name: 'Matches' }),
   },
 
@@ -138,7 +138,7 @@ const controls: readonly Control[] = [
     // this exact constant and background (`bg-surface`, already the `NavItem` control's surface),
     // so they are not repeated here.
     level: 'SkipLink',
-    storyId: 'chrome-siteheader--signed-in',
+    storyId: 'composite-siteheader--signed-in',
     locate: (page) => page.getByRole('link', { name: 'Skip to content' }),
   },
   {

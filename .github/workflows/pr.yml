@@ -232,6 +232,12 @@ jobs:
       # the same pull request rather than only once it stops catching something real.
       - run: node scripts/checks/token-scale.mjs
       - run: node --test scripts/checks/token-scale.test.mjs
+      # T541: FR-029's dependency rule — a primitive MUST NOT depend on a domain composite or a
+      # screen, and no component MUST depend on the application — read straight off the
+      # filesystem T540 made it decidable from, rather than a manifest that would be a second
+      # home for the same fact. Needs no build, same as token-scale.mjs above, so it costs
+      # nothing to run beside the other static source checks.
+      - run: node scripts/checks/tier-deps.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

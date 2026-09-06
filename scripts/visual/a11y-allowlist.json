@@ -31,7 +31,7 @@
     "component": "stat-value",
     "rule": "definition-list",
     "date": "2026-09-05",
-    "fixOwed": "`StatValue`'s `<dl>` renders `<dt>` (the label) and `<dd>` (the value), then, when `secondaryLine` is set, a bare `<span>` as a third direct child of the `<dl>` — not an allowed direct child alongside a `dt`/`dd` group. Fix: move `secondaryLine` inside the `<dd>` (or wrap it in a `<div>`) in `packages/design-system/src/components/StatValue/index.tsx`. This is the structural source for the matching analysis-timeline and favourites-list entries above. Owed to T559 (phase 5, the retrofit that empties this allowlist).",
+    "fixOwed": "`StatValue`'s `<dl>` renders `<dt>` (the label) and `<dd>` (the value), then, when `secondaryLine` is set, a bare `<span>` as a third direct child of the `<dl>` — not an allowed direct child alongside a `dt`/`dd` group. Fix: move `secondaryLine` inside the `<dd>` (or wrap it in a `<div>`) in `packages/design-system/src/primitives/StatValue/index.tsx`. This is the structural source for the matching analysis-timeline and favourites-list entries above. Owed to T559 (phase 5, the retrofit that empties this allowlist).",
     "fixBy": "2026-09-19"
   }
 ]

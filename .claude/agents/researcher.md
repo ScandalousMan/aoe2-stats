@@ -20,7 +20,8 @@ Always deliver in this shape:
 Repository-specific checks:
 
 - All network access must live in `packages/providers` — flag any exception.
-- UI components live in `packages/design-system/src/components`, always with `.stories.tsx`.
+- UI components live in `packages/design-system/src/{primitives,composites,screens}`, always with
+  `.stories.tsx`.
 - Migrations live in `infra/migrations`.
 - Parser engines live in `apps/parser/src/aoe2stats_parser/engines`, one adapter per parser.
 - The ingester's only entrypoints are `run_once()`, `api/cron/ingest.py` and `worker.py` — flag any

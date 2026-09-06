@@ -147,7 +147,7 @@ function main() {
 
     if (!globallyAffected) {
       // Directory of each story's own file, relative to the design-system package (matching
-      // `entry.importPath`, e.g. `src/components/Button`), so a change to the component's
+      // `entry.importPath`, e.g. `src/primitives/Button`), so a change to the component's
       // implementation file — not only to its `.stories.tsx` — selects the story too.
       const touchedInPackage = diff
         .filter((f) => f.startsWith('packages/design-system/'))

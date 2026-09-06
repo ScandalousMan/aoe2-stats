@@ -482,8 +482,8 @@ strings change:
 
 | File                                                              | From                                                                   | To                                                                 |
 | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `packages/design-system/src/components/Button/index.tsx`          | `primary` shares the shared `outline-focus-ring outline-offset-2` ring | `primary` overrides to `outline-accent-contrast -outline-offset-2` |
-| `packages/design-system/src/components/DataExportPanel/index.tsx` | `focus-visible:outline-focus-ring` + `outline-offset-2`                | `focus-visible:outline-accent-contrast` + `-outline-offset-2`      |
+| `packages/design-system/src/primitives/Button/index.tsx`          | `primary` shares the shared `outline-focus-ring outline-offset-2` ring | `primary` overrides to `outline-accent-contrast -outline-offset-2` |
+| `packages/design-system/src/screens/DataExportPanel/index.tsx` | `focus-visible:outline-focus-ring` + `outline-offset-2`                | `focus-visible:outline-accent-contrast` + `-outline-offset-2`      |
 
 **The other rings are unaffected.** The package's non-test source carries **fourteen**
 `outline-focus-ring` declarations. Twelve are untouched. The thirteenth is `Button`'s shared ring,
@@ -1011,7 +1011,7 @@ by these hues at any value; the 5.97–7.17 column is not permission to drop it.
 
 The interim being retired is quoted in the register: _"Until then no component paints a link on a
 raised surface."_ `privacy-notice.md` §6 records what that cost, and
-`packages/design-system/src/components/PrivacyNotice/index.tsx:709` is where it was paid — inside
+`packages/design-system/src/screens/PrivacyNotice/index.tsx:709` is where it was paid — inside
 `ContactBlock`, which is `bg-surface-raised`, the contact route renders `text-text-primary underline`
 instead of a link colour. **A link the same colour as the sentence around it is a link found by
 mousing over the paragraph.** In a legal notice that anchor is the one route a reader has to a human

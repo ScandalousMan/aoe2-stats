@@ -22,7 +22,7 @@
 //   { "component": "site-header", "rule": "color-contrast", "date": "2026-09-05",
 //     "fixOwed": "...", "fixBy": "2026-..." }
 // `component` MUST be the kebab-case form `componentFromTitle` below produces (the last path
-// segment of the story's Storybook title, e.g. "Chrome/SiteHeader" -> "site-header"), and `rule`
+// segment of the story's Storybook title, e.g. "Composite/SiteHeader" -> "site-header"), and `rule`
 // MUST be the axe-core rule id (e.g. "color-contrast", "aria-allowed-attr"). Only `component` and
 // `rule` are read here; the date fields are T509's concern (`scripts/checks/a11y-allowlist.mjs`),
 // not this scan's.
