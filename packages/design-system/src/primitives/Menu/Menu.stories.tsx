@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
+import { expect, userEvent, within } from 'storybook/test'
 import { Menu } from './index'
 
 const meta: Meta<typeof Menu> = {
@@ -46,6 +46,28 @@ export const SingleProfile: Story = {
     variant: 'selection',
     triggerLabel: 'aoe2guy — profile ▾',
     items: [{ id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> }],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// FR-044: `isSheet = !useBreakpoint('md')` (index.tsx's own doc comment) — a full-width bottom
+// sheet below `md`, an anchored popover from it, one DOM tree restructured at the breakpoint.
+// Pinned toward the narrow shape with Storybook's built-in `mobile1` preset (see
+// `MatchRow.stories.tsx`'s identical rationale for why a preset name, why `mobile1`, and why the
+// pin has no visible effect in this Storybook build today) — `ProfileSwitcher` above already reads
+// at the wide, popover shape.
+export const SheetBelowMd: Story = {
+  name: 'Bottom sheet below md, an anchored popover from it',
+  tags: ['visual-full-page'],
+  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  play: openMenu,
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
     footerItem: { id: 'link', label: 'Link another Steam account' },
   },
 }
@@ -140,6 +162,42 @@ export const FocusVisible: Story = {
     trigger.focus()
     await userEvent.keyboard('{Enter}')
     await canvas.findByRole('menu')
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// FR-045: keyboard interaction beyond opening — `onItemKeyDown` in `index.tsx` moves the roving
+// item with Arrow keys, jumps to either end with Home/End, and Escape closes the surface and
+// returns focus to the trigger. Asserted, not only driven: the roving `tabIndex` swap between
+// items is a state a screenshot alone would not prove.
+export const KeyboardNavigation: Story = {
+  tags: ['visual-full-page'],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    trigger.focus()
+    await userEvent.keyboard('{Enter}')
+    const first = await canvas.findByRole('menuitemradio', { name: /aoe2guy/ })
+    await expect(first).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
+    const second = canvas.getByRole('menuitemradio', { name: /aoe2alt/ })
+    await expect(second).toHaveFocus()
+    await userEvent.keyboard('{End}')
+    const footer = canvas.getByRole('menuitem', { name: 'Link another Steam account' })
+    await expect(footer).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    await expect(first).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(canvas.queryByRole('menu')).not.toBeInTheDocument()
+    await expect(trigger).toHaveFocus()
   },
   args: {
     variant: 'selection',

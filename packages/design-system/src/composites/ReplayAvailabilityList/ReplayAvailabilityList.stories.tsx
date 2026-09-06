@@ -230,6 +230,18 @@ export const RealisticMatch: Story = {
   args: { rows: realisticRows },
 }
 
+// FR-044: `ReplayAvailabilityRow`'s own doc comment (§9) names `md` as the breakpoint — the whole
+// row stacks below it, one line with an intrinsic-width, right-aligned `DownloadAction` from it
+// (unchanged again at `xl`, per the same comment). Pinned toward the narrow shape with Storybook's
+// built-in `mobile1` preset (see `MatchRow.stories.tsx`'s identical rationale for why a preset
+// name, why `mobile1`, and why the pin has no visible effect in this Storybook build today) —
+// `RealisticMatch` above already reads at the wide, one-line shape.
+export const StackedRowsBelowMd: Story = {
+  name: 'Stacked row below md, one line from it (§9)',
+  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  args: { rows: realisticRows },
+}
+
 // replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per
 // `Badge`'s own rule... `DownloadAction`: per `Button`."
 export const Hover: Story = {

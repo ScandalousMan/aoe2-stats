@@ -287,6 +287,27 @@ export const ListOtherSubjectEmpty: Story = {
   render: () => <MatchList status="empty" subject="other" subjectAlias="aoe2villain" />,
 }
 
+// FR-044: `MatchList` reads the same `xl` breakpoint `useBreakpoint('xl')` names in `index.tsx`'s
+// own doc comment (§8) — below it every match is its own card list item, at or above it a real
+// `<table>`. Pinned to Storybook's built-in `mobile1` preset — never a literal pixel value:
+// `specs/README.md` rule 7 is the one place the review widths (375/768/1280) are declared, and
+// `scripts/visual/run.mjs`'s `WIDTHS` array is their one necessary code consumer, so a preset name
+// stands in for the narrow one rather than a second literal for that number to go stale against.
+// `ListPopulated` above already reads at the wide, table shape in the ordinary case; this is the
+// one story that pins toward the shape none of this file's others force. The pin has no visible
+// effect in this Storybook build today, though: `@storybook/addon-viewport` is not an installed
+// dependency (confirmed absent from `package.json` and `node_modules`), so `parameters.viewport` is
+// currently inert everywhere it is written, including here and in `Link.stories.tsx`'s pre-existing
+// `TouchFootprint` — a real, narrow gap, flagged rather than fixed because closing it needs a new
+// dependency, out of a story file's reach. What genuinely demonstrates both shapes regardless is the
+// automated visual suite's own matrix: every story here is already captured at all three review
+// widths (rule 7), which is what a reviewer actually judges this against.
+export const ListCardsBelowXl: Story = {
+  name: 'MatchList — cards below xl, a real <table> from it (§8)',
+  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  render: () => <MatchList matches={populated} />,
+}
+
 // match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
 // including `CaptureStateBadge` — has its own hover."
 export const Hover: Story = {

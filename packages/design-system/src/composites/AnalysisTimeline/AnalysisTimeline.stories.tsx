@@ -135,6 +135,17 @@ export const LoadFailed: Story = {
   args: { error: true },
 }
 
+// FR-044: `ParticipantColumns`'s own doc comment (§8) names `md` as the breakpoint — every column
+// stacks full-width below it, two side by side (same team) from it. Pinned toward the narrow shape
+// with Storybook's built-in `mobile1` preset (see `MatchRow.stories.tsx`'s identical rationale for
+// why a preset name, why `mobile1`, and why the pin has no visible effect in this Storybook build
+// today) — `Published` above already reads at the wide, two-column shape.
+export const StackedColumnsBelowMd: Story = {
+  name: 'Participant columns stacked below md, two-column grid from it (§8)',
+  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  args: { state: 'published', teams, ...engineProps },
+}
+
 // analysis-timeline.md §5 "hover / focus-visible / active — none on `Heading`, `EngineProvenance`,
 // or any list row; all are static text. `Button`s ... follow `Button`'s own states."
 export const HoverFocusActiveNotApplicable: Story = {

@@ -45,6 +45,27 @@ export const Empty: Story = {
   ),
 }
 
+// FR-055/SC-016: the pulse below is the real `animate-pulse` utility, gated by Tailwind's
+// `motion-safe:` variant (`motion.json`'s `animation.pulse`, T516/T528) — under `prefers-reduced-
+// motion: reduce` the utility does not apply at all, and what is left is this static block at its
+// own resting frame, never a paused mid-pulse one (README rule 5). No mechanism here can force that
+// browser preference for an automated capture (`.storybook/foundations/Motion.stories.tsx` names
+// the same limit for the same reason) — toggle "Emulate CSS media feature prefers-reduced-motion"
+// in the browser's dev tools to see the block below settle on exactly this frame, live.
+export const ReducedMotionRestingFrame: Story = {
+  name: 'Reduced motion — resting frame, no perceptible animation (FR-055)',
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Toggle your browser's reduced-motion emulation to see the block below stop pulsing and
+        settle on this frame — the same static state a reader with the OS preference set sees from
+        the very first paint.
+      </p>
+      <Skeleton variant="block" className="h-12 w-full" />
+    </div>
+  ),
+}
+
 // §Skeleton "loading is the only state the component exists for. It has no hover, focus, active,
 // disabled or error state."
 export const HoverFocusActiveDisabledErrorNotApplicable: Story = {

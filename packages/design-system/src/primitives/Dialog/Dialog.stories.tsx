@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { Callout } from '../Callout'
 import { Dialog } from './index'
 
@@ -74,6 +75,37 @@ export const FocusVisible: Story = {
       'While this is off, nothing of yours is downloaded or stored. Matches you play meanwhile will expire on Microsoft’s servers.',
     primaryAction: { label: 'Turn it off' },
     secondaryAction: { label: 'Keep it on' },
+  },
+}
+
+// FR-045/FR-049: the focus order inside the trap. Focus lands on the heading on mount (`Dialog.
+// test.tsx` covers that transition already); this shows the sequence a keyboard user drives next —
+// Tab reaches `primaryAction` (rendered first, `index.tsx`'s own doc comment), then
+// `secondaryAction`, and Tab from the last one wraps back to the first rather than escaping the
+// dialog — the one trap FR-049 permits ("no trap outside a modal surface that defines its own").
+export const KeyboardFocusOrderAndTrap: Story = {
+  tags: ['visual-full-page'],
+  args: {
+    heading: 'Turn off replay archival?',
+    children:
+      'While this is off, nothing of yours is downloaded or stored. Matches you play meanwhile will expire on Microsoft’s servers.',
+    primaryAction: { label: 'Turn it off' },
+    secondaryAction: { label: 'Keep it on' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const heading = canvas.getByRole('heading', { name: 'Turn off replay archival?' })
+    // The mount effect (`headingRef.current?.focus()`) commits a tick after this play function
+    // starts, the same race `CountryFlag.stories.tsx`'s own focus assertions already wait out.
+    await waitFor(() => expect(heading).toHaveFocus())
+    const primary = canvas.getByRole('button', { name: 'Turn it off' })
+    const secondary = canvas.getByRole('button', { name: 'Keep it on' })
+    await userEvent.tab()
+    await expect(primary).toHaveFocus()
+    await userEvent.tab()
+    await expect(secondary).toHaveFocus()
+    await userEvent.tab()
+    await expect(primary).toHaveFocus()
   },
 }
 
