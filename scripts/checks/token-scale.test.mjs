@@ -9,11 +9,20 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkStringLiteral, checkFile, isScannableFile, listTsxFiles } from './token-scale.mjs'
+import {
+  checkStringLiteral,
+  checkFile,
+  isScannableFile,
+  listTsxFiles,
+  checkAppLayoutStringLiteral,
+  isClassNameAttributeLiteral,
+  checkAppLayoutFile,
+} from './token-scale.mjs'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(scriptDir, '..', '..')
 const srcDir = path.join(rootDir, 'packages', 'design-system', 'src')
+const webSrcDir = path.join(rootDir, 'apps', 'web', 'src')
 
 test('a real arbitrary length value fails', () => {
   const findings = checkStringLiteral('h-[1em] w-[1em] shrink-0')
@@ -22,7 +31,9 @@ test('a real arbitrary length value fails', () => {
 
 test('a viewport-length arbitrary bracket fails (max-h-[80vh])', () => {
   const findings = checkStringLiteral('fixed inset-x-0 bottom-0 max-h-[80vh]')
-  assert.ok(findings.some((f) => f.includes('arbitrary bracket value') && f.includes('max-h-[80vh]')))
+  assert.ok(
+    findings.some((f) => f.includes('arbitrary bracket value') && f.includes('max-h-[80vh]')),
+  )
 })
 
 test('an arbitrary animate-[...] value fails on its prefix alone, with no literal duration inside', () => {
@@ -50,7 +61,7 @@ test('a bare px/rem/ms literal fails outside any bracket', () => {
   assert.ok(findings.some((f) => f.includes('raw px/rem/ms literal')))
 })
 
-test('a hand-written var(--ds-*) fails, the check\'s signature clause (D15)', () => {
+test("a hand-written var(--ds-*) fails, the check's signature clause (D15)", () => {
   const findings = checkStringLiteral('h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]')
   assert.ok(findings.some((f) => f.includes('hand-written var(--ds-*)')))
 })
@@ -120,7 +131,10 @@ test('isScannableFile excludes stories and tests, which carry no component style
 
 test('running the check against the actual, now-fixed packages/design-system/src tree is clean', () => {
   const files = listTsxFiles(srcDir).filter(isScannableFile)
-  assert.ok(files.length > 0, 'expected to find implementation files under packages/design-system/src')
+  assert.ok(
+    files.length > 0,
+    'expected to find implementation files under packages/design-system/src',
+  )
 
   const allFindings = []
   for (const file of files) {
@@ -134,5 +148,115 @@ test('running the check against the actual, now-fixed packages/design-system/src
     allFindings,
     [],
     'T528 must close every off-scale value before this check can pass — see the findings above',
+  )
+})
+
+// --- T556: the application-authored-layout rule ----------------------------------------------
+
+test('each class quickstart scenario 5 names fails, including variant-prefixed', () => {
+  const cases = ['mx-auto', 'max-w-page', 'px-4', 'py-6', 'mt-4', 'gap-3', 'md:px-6', 'hover:mt-2']
+  for (const token of cases) {
+    const findings = checkAppLayoutStringLiteral(token)
+    assert.ok(
+      findings.some((f) => f.includes('application-authored layout class') && f.includes(token)),
+      `expected \`${token}\` to be reported`,
+    )
+  }
+})
+
+test('a class outside the six named shapes passes the application-layout rule', () => {
+  assert.deepEqual(checkAppLayoutStringLiteral('flex items-center gap-x-auto rounded-control'), [])
+})
+
+test('isClassNameAttributeLiteral accepts className="..." and the braced literal spelling', () => {
+  const doubleQuoted = 'return <div className="mt-4" />'
+  assert.equal(isClassNameAttributeLiteral(doubleQuoted, doubleQuoted.indexOf('"')), true)
+
+  const braced = "return <Widget className={'mt-4'} />"
+  assert.equal(isClassNameAttributeLiteral(braced, braced.indexOf("'")), true)
+
+  const spaced = 'return <div className = "mt-4" />'
+  assert.equal(isClassNameAttributeLiteral(spaced, spaced.indexOf('"')), true)
+})
+
+test('isClassNameAttributeLiteral rejects an identifier-referenced class and an unrelated prop', () => {
+  // The real shape T558's sweep owns, not this rule (see the file header): a class assigned to a
+  // module-scope constant first, only interpolated as `className={sectionClassName}` — no string
+  // literal sits in attribute position at all, so there is nothing here to accept or reject; the
+  // literal this test does construct is the *constant's own initialiser*, which is not a
+  // `className` attribute value either.
+  const indirect = "const sectionClassName = 'mt-8 px-4'"
+  assert.equal(isClassNameAttributeLiteral(indirect, indirect.indexOf("'")), false)
+
+  const unrelatedProp = 'return <Callout heading="mt-4 is just a heading here" />'
+  assert.equal(isClassNameAttributeLiteral(unrelatedProp, unrelatedProp.indexOf('"')), false)
+})
+
+test('checkAppLayoutFile FAILS on a fixture that writes application layout — the check has been seen to fail', () => {
+  const findings = checkAppLayoutFile(
+    'fixture.tsx',
+    `
+    export function Widget({ error }) {
+      return (
+        <div className="mt-4">
+          <Callout tone="danger">{error}</Callout>
+        </div>
+      )
+    }
+    `,
+  )
+  assert.ok(
+    findings.some(
+      (f) => f.message.includes('application-authored layout class') && f.message.includes('mt-4'),
+    ),
+    'expected the fixture\'s own className="mt-4" to be reported',
+  )
+})
+
+test('checkAppLayoutFile ignores the same class name when it is not a className value', () => {
+  const findings = checkAppLayoutFile(
+    'fixture.tsx',
+    `
+    const sectionClassName = 'mt-8 px-4 pb-8 md:px-6'
+    export function Widget() {
+      return <AnalysisTimeline className={sectionClassName} />
+    }
+    `,
+  )
+  // Documents the rule's actual boundary rather than asserting a false negative by accident: the
+  // literal here is the constant's initialiser, not a className attribute, so this rule is silent
+  // — T558's sweep is where this exact shape gets closed.
+  assert.deepEqual(findings, [])
+})
+
+test('a clean file with only real, on-scale classes passes the application-layout rule', () => {
+  const findings = checkAppLayoutFile(
+    'fixture.tsx',
+    `
+    export function Widget({ className }) {
+      return <div className={cx('flex items-center gap-2 rounded-control bg-surface', className)} />
+    }
+    `,
+  )
+  assert.deepEqual(findings, [])
+})
+
+test('running the application-layout rule against the actual apps/web/src tree is clean', () => {
+  const files = listTsxFiles(webSrcDir).filter(isScannableFile)
+  assert.ok(files.length > 0, 'expected to find implementation files under apps/web/src')
+
+  const allFindings = []
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8')
+    for (const finding of checkAppLayoutFile(file, source)) {
+      allFindings.push(`${path.relative(rootDir, file)}:${finding.line}: ${finding.message}`)
+    }
+  }
+
+  assert.deepEqual(
+    allFindings,
+    [],
+    'T556 must close every application-authored layout class before this check can pass — see ' +
+      'the findings above',
   )
 })

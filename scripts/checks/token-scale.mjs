@@ -53,16 +53,38 @@
 // its own. Restricting the scan to implementation files only is what makes "every string literal"
 // precise enough to use instead of tracing `className`/`cx()` call sites exactly.
 //
+// T556 (FR-021, SC-004, SC-003a): a second, independent scan of `apps/web/src/` — the application
+// — for the class-name shapes quickstart.md scenario 5's grep names: `mx-auto`, `max-w-`,
+// `px-<n>`, `py-<n>`, `mt-<n>`, `gap-<n>`. Every one of those is a layout or spacing decision that
+// FR-021 says the application may not make; it belongs to `Page`, `Section` or `Panel`
+// (contracts/structural-tier.md, "The nine"). This is a *different* rule from the three above —
+// the design system legitimately writes layout, the application does not — so it runs as its own
+// pass, over its own tree, and never touches `packages/design-system/src/`. It reuses this file's
+// string-literal extraction (comments and template literals excluded, same rationale) rather than
+// grepping raw text, so a hit in a stripped comment — history, not a live class — is not reported;
+// quickstart's own grep is still scenario 5's authority and is run over the raw file, unfiltered.
+//
+// Scoped, deliberately, to literals that are themselves the value of a `className` attribute —
+// `className="..."` and the rarer `className={'...'}` — the same shape the grep looks for. A
+// class string assembled indirectly (assigned to a module-scope constant first, then interpolated
+// as `className={someConst}`) is a further indirection this lexical rule does not follow: finding
+// it means tracing an identifier back to its declaration, a data-flow question outside what a
+// text scan answers. That shape is real in this codebase today and is exactly what T558's sweep
+// ("no application-authored layout... no component still declaring its own content width or page
+// padding") exists to find and close — this rule does not silently widen to cover it.
+//
 // Usage:  node scripts/checks/token-scale.mjs
 // Exit:   0 if no forbidden shape is found in any implementation file under
-//         packages/design-system/src/, 1 otherwise — every finding is reported with its file,
-//         line and the exact fragment.
+//         packages/design-system/src/, and no application-authored layout class is found under
+//         apps/web/src/; 1 otherwise — every finding is reported with its file, line and the
+//         exact fragment.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const srcDir = path.join(rootDir, 'packages', 'design-system', 'src')
+const webSrcDir = path.join(rootDir, 'apps', 'web', 'src')
 
 function log(message) {
   console.log(`token-scale: ${message}`)
@@ -146,6 +168,9 @@ export function extractStringLiterals(source) {
     if (ch === "'" || ch === '"') {
       const quote = ch
       const startLine = line
+      const start = i // index of the opening quote itself, in the original source — T556's
+      // className-attribute rule (below) walks backwards from here to see what the literal is
+      // assigned to; nothing above this line needed it.
       let value = ''
       i++
       while (i < n && source[i] !== quote) {
@@ -159,7 +184,7 @@ export function extractStringLiterals(source) {
         i++
       }
       i++ // closing quote
-      literals.push({ value, line: startLine })
+      literals.push({ value, line: startLine, start })
       continue
     }
     i++
@@ -227,12 +252,22 @@ function checkBracket(token, prefix, content) {
       // even though `red` is a bare keyword, the same shape `[overflow-wrap:anywhere]` uses.
       return `bracket sets a colour-bearing property: \`[${prop}:${value}]\``
     }
-    if (LENGTH_RE.test(value) || COLOR_FN_RE.test(value) || HEX_RE.test(value) || DURATION_RE.test(value)) {
+    if (
+      LENGTH_RE.test(value) ||
+      COLOR_FN_RE.test(value) ||
+      HEX_RE.test(value) ||
+      DURATION_RE.test(value)
+    ) {
       return `bracket property value is not a bare keyword: \`[${prop}:${value}]\``
     }
     return null // allowlisted: a CSS property declaration with no design-token concern
   }
-  if (LENGTH_RE.test(content) || COLOR_FN_RE.test(content) || HEX_RE.test(content) || DURATION_RE.test(content)) {
+  if (
+    LENGTH_RE.test(content) ||
+    COLOR_FN_RE.test(content) ||
+    HEX_RE.test(content) ||
+    DURATION_RE.test(content)
+  ) {
     return `arbitrary bracket value: \`${prefix ? `${prefix}-` : ''}[${content}]\``
   }
   return null // not a value shape this check governs (e.g. an arbitrary variant selector)
@@ -275,12 +310,69 @@ export function checkStringLiteral(value) {
   return [...new Set(findings)]
 }
 
+// --- Application-authored-layout rule (T556, FR-021/SC-004/SC-003a) --------------------------
+
+// Mirrors quickstart.md scenario 5's grep exactly, class by class rather than as one regex over
+// raw file text: `mx-auto`, `max-w-`, `px-<digit>`, `py-<digit>`, `mt-<digit>`, `gap-<digit>`.
+// Every one of these is a layout or spacing decision `Page`, `Section` or `Panel` now owns
+// (contracts/structural-tier.md), so the application may never write one — not even variant-
+// prefixed (`md:px-4`, `hover:mt-2`), which is why this is not anchored to the start of the token.
+const APP_LAYOUT_RE = /\b(mx-auto|max-w-|px-[0-9]|py-[0-9]|mt-[0-9]|gap-[0-9])/
+
+// Evaluates one extracted string literal for application-authored layout classes. Whitespace-
+// tokenised, like `checkStringLiteral` above, so the reported fragment is the whole class token
+// (`md:px-4`) rather than just the substring the pattern matched.
+export function checkAppLayoutStringLiteral(value) {
+  const findings = []
+  for (const token of value.split(/\s+/).filter(Boolean)) {
+    if (APP_LAYOUT_RE.test(token)) {
+      findings.push(
+        `application-authored layout class: \`${token}\` — this decision belongs to Page, ` +
+          `Section or Panel`,
+      )
+    }
+  }
+  return [...new Set(findings)]
+}
+
+// Is the string literal starting at `quoteStart` (the index of its opening quote in `source`,
+// `extractStringLiterals`'s `start`) the value of a `className` attribute? Walks backwards over
+// whitespace and an optional `{`, expecting an `=` and then the identifier `className` — accepts
+// `className="..."`, `className = "..."` and `className={'...'}`, rejects everything else (a
+// `cx()` argument, a module-scope constant's own initialiser, an unrelated prop).
+export function isClassNameAttributeLiteral(source, quoteStart) {
+  let i = quoteStart - 1
+  while (i >= 0 && /\s/.test(source[i])) i--
+  if (source[i] === '{') {
+    i--
+    while (i >= 0 && /\s/.test(source[i])) i--
+  }
+  if (source[i] !== '=') return false
+  i--
+  while (i >= 0 && /\s/.test(source[i])) i--
+  return /\bclassName$/.test(source.slice(Math.max(0, i - 20), i + 1))
+}
+
 // --- File-level scan --------------------------------------------------------------------------
 
 export function checkFile(filePath, source) {
   const findings = []
   for (const { value, line } of extractStringLiterals(source)) {
     for (const message of checkStringLiteral(value)) {
+      findings.push({ line, message })
+    }
+  }
+  return findings
+}
+
+// T556: the application-layout rule's own file-level scan — unlike `checkFile` above, it only
+// evaluates a literal that is itself a `className` attribute's value (see
+// `isClassNameAttributeLiteral`), never every string literal in the file.
+export function checkAppLayoutFile(filePath, source) {
+  const findings = []
+  for (const { value, line, start } of extractStringLiterals(source)) {
+    if (!isClassNameAttributeLiteral(source, start)) continue
+    for (const message of checkAppLayoutStringLiteral(value)) {
       findings.push({ line, message })
     }
   }
@@ -298,14 +390,38 @@ function main() {
       fail(`${path.relative(rootDir, file)}:${line}: ${message}`)
     }
   }
-  if (total > 0) {
-    fail(
-      `${total} off-scale value${total === 1 ? '' : 's'} found across ${files.length} files ` +
-        `under ${path.relative(rootDir, srcDir)}.`,
-    )
+
+  const webFiles = listTsxFiles(webSrcDir).filter(isScannableFile)
+  let webTotal = 0
+  for (const file of webFiles) {
+    const source = readFileSync(file, 'utf8')
+    const findings = checkAppLayoutFile(file, source)
+    for (const { line, message } of findings) {
+      webTotal++
+      fail(`${path.relative(rootDir, file)}:${line}: ${message}`)
+    }
+  }
+
+  if (total > 0 || webTotal > 0) {
+    if (total > 0) {
+      fail(
+        `${total} off-scale value${total === 1 ? '' : 's'} found across ${files.length} files ` +
+          `under ${path.relative(rootDir, srcDir)}.`,
+      )
+    }
+    if (webTotal > 0) {
+      fail(
+        `${webTotal} application-authored layout class${webTotal === 1 ? '' : 'es'} found ` +
+          `across ${webFiles.length} files under ${path.relative(rootDir, webSrcDir)}.`,
+      )
+    }
     return
   }
   log(`${files.length} files under ${path.relative(rootDir, srcDir)} carry no off-scale value.`)
+  log(
+    `${webFiles.length} files under ${path.relative(rootDir, webSrcDir)} carry no ` +
+      `application-authored layout class.`,
+  )
 }
 
 // Only run when invoked directly (`node scripts/checks/token-scale.mjs`) — token-scale.test.mjs

@@ -100,7 +100,14 @@ export function Dialog({
           {heading}
         </h2>
 
-        {children && <div className="mt-3 font-sans text-sm text-text-secondary">{children}</div>}
+        {children && (
+          // `space-y-4` is the dialog's own decision about the rhythm between its body content
+          // and anything a caller stacks below it (an inline `Callout`, per this primitive's own
+          // doc comment) — `UnlinkDialog` used to write that gap itself as `mt-4` on its own
+          // wrapping div; a caller may not write layout (FR-021), so the step now lives here,
+          // where every consumer of this body slot gets it for free.
+          <div className="mt-3 space-y-4 font-sans text-sm text-text-secondary">{children}</div>
+        )}
 
         <div className="mt-6 flex flex-col gap-3 md:flex-row">
           <Button

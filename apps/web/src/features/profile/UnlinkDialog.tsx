@@ -40,15 +40,15 @@ export function UnlinkDialog({
       }}
       secondaryAction={{ label: 'Keep it linked', onClick: onCancel, disabled: pending }}
     >
-      {archivedReplayCount > 0 &&
-        `You have ${archivedReplayCount} replay${archivedReplayCount === 1 ? '' : 's'} archived from this profile. `}
-      {consequenceMessage}
+      <p>
+        {archivedReplayCount > 0 &&
+          `You have ${archivedReplayCount} replay${archivedReplayCount === 1 ? '' : 's'} archived from this profile. `}
+        {consequenceMessage}
+      </p>
       {error && (
-        <div className="mt-4">
-          <Callout tone="danger" heading="We could not unlink this profile" headingLevel={3}>
-            {error}
-          </Callout>
-        </div>
+        <Callout tone="danger" heading="We could not unlink this profile" headingLevel={3}>
+          {error}
+        </Callout>
       )}
     </Dialog>
   )
