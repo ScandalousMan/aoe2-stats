@@ -40,8 +40,42 @@ Visual acceptance criteria. A spec missing one is incomplete, and "this componen
 state" is a design bug, not an exemption.
 
 The state vocabulary is closed: **default, hover, focus-visible, active, disabled, loading, error,
-empty**. Every spec answers all eight, even when the answer is "this part is never disabled;
-disabling it would be wrong, and here is what happens instead".
+empty, selection, expansion**. Every spec answers all ten, even when the answer is "this part is
+never disabled; disabling it would be wrong, and here is what happens instead".
+
+**Selection and expansion (FR-034, T569) join the vocabulary here because several components
+already ship them and none named them.** The original eight describe a single control's own
+resting, interaction and lifecycle states; these two describe a relationship between a component
+and the set or surface it governs, which is a different shape and was going unrecorded rather than
+absent. **Selection** is a component holding one current member of a set: `SiteHeader`'s primary
+navigation marks the current route with `aria-current="page"`, a persistent underline strip (`<span
+aria-hidden="true">` filled `bg-accent` when current, `bg-transparent` and reserving the same height
+otherwise) and a font-weight change (`font-semibold` against `font-medium`)
+(`src/composites/SiteHeader/index.tsx`), and `Menu`'s `selection` variant marks the current item with
+`role="menuitemradio"` and `aria-checked`, consumed by `SiteHeader`'s `ThemeControl` — which pairs the
+checked option with a `<Badge>Current</Badge>` — and by `ProfileSummary`'s profile switcher
+(`src/primitives/Menu/index.tsx`, `src/composites/SiteHeader/index.tsx`,
+`src/screens/ProfileSummary/index.tsx`). **Expansion** is a disclosure that reveals or hides a surface
+without navigating away from it: `Menu`'s own trigger carries `aria-expanded` on the button that opens
+and closes its panel (`src/primitives/Menu/index.tsx`) — the one shipping case; no accordion and no
+`<details>`/`<summary>` exists in the package today, and naming expansion here is not licence to add
+one — a state is documented because it is real, never built because the vocabulary lists it (FR-036).
+
+**Two states of one component must be distinguishable from one another by more than colour, and
+that distinction must survive as a still image (FR-037).** Rule 4 below already forbids colour as
+the only carrier of meaning; the still-image half is what the first half was silent on and is the
+reason the vocabulary is reviewable by `visual-reviewer` at all — that agent compares screenshots,
+never a live page, so a difference that exists only while a pointer hovers, only mid-animation, or
+only in a hue shift is not reviewable by it, closed vocabulary or not. What satisfies it is a shape,
+a mark, a weight, a position, a border or an icon that a screenshot still shows once whatever
+produced it has stopped changing: `SiteHeader`'s current-route underline is a strip that is present
+or transparent at a height reserved either way, never a colour swap alone, and `Menu`'s `ThemeControl`
+consumer pairs its checked option with a text badge rather than a tint. `Menu`'s own open panel —
+drawn beside the trigger, or absent entirely — is the still-image evidence for expansion: the two
+states differ in what exists on the page, not merely in how it is painted. A spec that answers
+selection or expansion with a hue change and nothing else has not answered it (T570 amends the
+existing 23 specs against this vocabulary; this paragraph is the bar each amendment is checked
+against).
 
 ## Rules that apply to every spec here
 
