@@ -4,8 +4,12 @@ import type { StorybookConfig } from '@storybook/react-vite'
 // Storybook configuration (T016). No stories exist yet — the first component and its story land
 // in T035 — so `stories` names the pattern every future `*.stories.tsx` under src/ will match,
 // not any file that exists today.
+//
+// `./foundations/**` (T563, FR-040, FR-041) is the one deliberate exception to "every story lives
+// under src/": the foundation pages document the token system itself, not a component, so they
+// have no `src/` component directory to sit beside — this file is their only home.
 const config: StorybookConfig = {
-  stories: ['../src/**/*.stories.@(ts|tsx)'],
+  stories: ['../src/**/*.stories.@(ts|tsx)', './foundations/**/*.stories.@(ts|tsx)'],
   addons: [
     // Accessibility checks against every story, for checklist point 5 in the design-system skill.
     '@storybook/addon-a11y',
