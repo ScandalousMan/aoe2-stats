@@ -3,7 +3,8 @@ import { Callout } from '../Callout'
 import { Dialog } from './index'
 
 const meta: Meta<typeof Dialog> = {
-  title: 'Primitives/Dialog',
+  id: 'primitives-dialog',
+  title: 'Primitives/Forms/Dialog',
   component: Dialog,
 }
 

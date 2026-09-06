@@ -4,7 +4,8 @@ import { THEME_STORAGE_KEY } from '../../theme'
 import { SiteHeader, type SiteHeaderNavItem } from './index'
 
 const meta: Meta<typeof SiteHeader> = {
-  title: 'Composite/SiteHeader',
+  id: 'composite-siteheader',
+  title: 'Composites/Site chrome/SiteHeader',
   component: SiteHeader,
 }
 

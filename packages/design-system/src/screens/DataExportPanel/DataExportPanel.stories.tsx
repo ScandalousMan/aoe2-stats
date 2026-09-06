@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { DataExportPanel } from './index'
 
 const meta: Meta<typeof DataExportPanel> = {
-  title: 'Screens/DataExportPanel',
+  id: 'screens-dataexportpanel',
+  title: 'Screens/Account & privacy/DataExportPanel',
   component: DataExportPanel,
 }
 

@@ -3,7 +3,8 @@ import { Button } from '../Button'
 import { EmptyState } from './index'
 
 const meta: Meta<typeof EmptyState> = {
-  title: 'Primitives/EmptyState',
+  id: 'primitives-emptystate',
+  title: 'Primitives/Feedback & status/EmptyState',
   component: EmptyState,
   args: {
     heading: 'No matches yet',

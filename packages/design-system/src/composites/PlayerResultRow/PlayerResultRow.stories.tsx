@@ -4,7 +4,8 @@ import { PlayerResultRow } from './index'
 import type { PlayerSearchResultData } from './index'
 
 const meta: Meta<typeof PlayerResultRow> = {
-  title: 'Composite/PlayerResultRow',
+  id: 'composite-playerresultrow',
+  title: 'Composites/Player identity/PlayerResultRow',
   component: PlayerResultRow,
 }
 

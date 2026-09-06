@@ -3,7 +3,8 @@ import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { CountryFlag } from './index'
 
 const meta: Meta<typeof CountryFlag> = {
-  title: 'Composite/CountryFlag',
+  id: 'composite-countryflag',
+  title: 'Composites/Player identity/CountryFlag',
   component: CountryFlag,
 }
 

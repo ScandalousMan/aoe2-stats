@@ -2,10 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Button } from '../Button'
 import { Page } from '../Page'
 import { Skeleton } from '../Skeleton'
+import { StatValue } from '../StatValue'
 import { Section } from './index'
 
 const meta: Meta<typeof Section> = {
-  title: 'Primitives/Section',
+  id: 'primitives-section',
+  title: 'Primitives/Layout & structure/Section',
   component: Section,
   args: {
     heading: 'Recent matches',
@@ -146,4 +148,29 @@ export const TwoSectionsInPage: Story = {
   parameters: {
     layout: 'fullscreen',
   },
+}
+
+// A realistic combined story: the shape a ratings summary section actually holds — a real
+// explanatory sentence and three real `StatValue` leaderboards, at plausible content lengths
+// rather than `Three matches.`'s one-line specimens.
+export const RealisticRatingsSummary: Story = {
+  name: 'Realistic composition — a ratings summary section',
+  render: () => (
+    <Section
+      heading="Your ratings"
+      description="Measured after your most recent match on each leaderboard."
+    >
+      <div className="flex flex-col gap-3">
+        <StatValue
+          variant="hero"
+          label="1v1 Random Map"
+          value="1842"
+          delta={{ value: 12 }}
+          secondaryLine="Measured 3 minutes ago"
+        />
+        <StatValue variant="hero" label="Team Random Map" value="1690" delta={{ value: -8 }} />
+        <StatValue variant="hero" label="4v4 Random Map" value="1512" delta={{ value: 4 }} />
+      </div>
+    </Section>
+  ),
 }

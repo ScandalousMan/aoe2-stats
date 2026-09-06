@@ -5,7 +5,8 @@ import { Button } from '../Button'
 import { Field } from './index'
 
 const meta: Meta<typeof Field> = {
-  title: 'Primitives/Field',
+  id: 'primitives-field',
+  title: 'Primitives/Forms/Field',
   component: Field,
 }
 

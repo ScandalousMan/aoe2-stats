@@ -3,7 +3,8 @@ import { userEvent, within } from 'storybook/test'
 import { Footer } from './index'
 
 const meta: Meta<typeof Footer> = {
-  title: 'Composite/Footer',
+  id: 'composite-footer',
+  title: 'Composites/Site chrome/Footer',
   component: Footer,
 }
 

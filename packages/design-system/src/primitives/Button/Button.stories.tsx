@@ -4,7 +4,8 @@ import { Callout } from '../Callout'
 import { Button } from './index'
 
 const meta: Meta<typeof Button> = {
-  title: 'Primitives/Button',
+  id: 'primitives-button',
+  title: 'Primitives/Forms/Button',
   component: Button,
   args: {
     children: 'Continue with Steam',
@@ -116,5 +117,22 @@ export const EmptyNotApplicable: Story = {
       A `Button` with no label is invalid — there is no icon-only form on the primary path of any
       screen in this feature, so this state has no rendering to show.
     </p>
+  ),
+}
+
+// A realistic combined story: `DashboardContainer.tsx`'s own `Page` actions — two `ghost` buttons
+// side by side, real labels at real lengths ("Search players", "Sign out"), never a single
+// isolated specimen.
+export const RealisticPageActions: Story = {
+  name: 'Realistic composition — Page actions (DashboardContainer)',
+  render: () => (
+    <div className="flex items-center gap-3">
+      <Button variant="ghost" size="lg">
+        Search players
+      </Button>
+      <Button variant="ghost" size="lg">
+        Sign out
+      </Button>
+    </div>
   ),
 }

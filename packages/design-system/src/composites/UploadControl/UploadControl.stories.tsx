@@ -3,7 +3,8 @@ import { fireEvent, userEvent, within } from 'storybook/test'
 import { UploadControl } from './index'
 
 const meta: Meta<typeof UploadControl> = {
-  title: 'Composite/UploadControl',
+  id: 'composite-uploadcontrol',
+  title: 'Composites/Uploads/UploadControl',
   component: UploadControl,
 }
 

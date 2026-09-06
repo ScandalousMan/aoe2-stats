@@ -4,7 +4,8 @@ import type { FavouriteEntryData } from './index'
 import { FavouritesList } from './index'
 
 const meta: Meta<typeof FavouritesList> = {
-  title: 'Composite/FavouritesList',
+  id: 'composite-favouriteslist',
+  title: 'Composites/Search & favourites/FavouritesList',
   component: FavouritesList,
 }
 

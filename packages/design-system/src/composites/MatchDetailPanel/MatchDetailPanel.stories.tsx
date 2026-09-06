@@ -3,7 +3,8 @@ import { MatchDetailPanel } from './index'
 import type { MatchDetailData } from './index'
 
 const meta: Meta<typeof MatchDetailPanel> = {
-  title: 'Composite/MatchDetailPanel',
+  id: 'composite-matchdetailpanel',
+  title: 'Composites/Match & game data/MatchDetailPanel',
   component: MatchDetailPanel,
 }
 

@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { AccountErasurePanel, ErasedScreen } from './index'
 
 const meta: Meta<typeof AccountErasurePanel> = {
-  title: 'Screens/AccountErasurePanel',
+  id: 'screens-accounterasurepanel',
+  title: 'Screens/Account & privacy/AccountErasurePanel',
   component: AccountErasurePanel,
 }
 

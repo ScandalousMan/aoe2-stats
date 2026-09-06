@@ -3,7 +3,8 @@ import { Skeleton } from '../../primitives/Skeleton'
 import { CivilisationIcon } from './index'
 
 const meta: Meta<typeof CivilisationIcon> = {
-  title: 'Composite/CivilisationIcon',
+  id: 'composite-civilisationicon',
+  title: 'Composites/Match & game data/CivilisationIcon',
   component: CivilisationIcon,
 }
 

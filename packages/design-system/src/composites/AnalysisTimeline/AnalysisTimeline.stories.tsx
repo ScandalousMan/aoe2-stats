@@ -3,7 +3,8 @@ import type { AnalysisTeamGroupData } from './index'
 import { AnalysisTimeline } from './index'
 
 const meta: Meta<typeof AnalysisTimeline> = {
-  title: 'Composite/AnalysisTimeline',
+  id: 'composite-analysistimeline',
+  title: 'Composites/Match & game data/AnalysisTimeline',
   component: AnalysisTimeline,
 }
 

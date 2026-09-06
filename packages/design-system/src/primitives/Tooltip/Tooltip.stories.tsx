@@ -3,7 +3,8 @@ import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { Tooltip } from './index'
 
 const meta: Meta<typeof Tooltip> = {
-  title: 'Primitives/Tooltip',
+  id: 'primitives-tooltip',
+  title: 'Primitives/Feedback & status/Tooltip',
   component: Tooltip,
 }
 

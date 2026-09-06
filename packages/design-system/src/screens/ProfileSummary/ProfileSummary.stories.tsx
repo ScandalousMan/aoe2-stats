@@ -5,7 +5,8 @@ import { ProfileSummary } from './index'
 import type { RatingEntryData } from './index'
 
 const meta: Meta<typeof ProfileSummary> = {
-  title: 'Screens/ProfileSummary',
+  id: 'screens-profilesummary',
+  title: 'Screens/Profile & capture/ProfileSummary',
   component: ProfileSummary,
 }
 

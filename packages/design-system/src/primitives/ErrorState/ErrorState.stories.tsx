@@ -4,7 +4,8 @@ import { Button } from '../Button'
 import { ErrorState } from './index'
 
 const meta: Meta<typeof ErrorState> = {
-  title: 'Primitives/ErrorState',
+  id: 'primitives-errorstate',
+  title: 'Primitives/Feedback & status/ErrorState',
   component: ErrorState,
 }
 

@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Text } from './index'
 
 const meta: Meta<typeof Text> = {
-  title: 'Primitives/Text',
+  id: 'primitives-text',
+  title: 'Primitives/Typography/Text',
   component: Text,
   args: {
     role: 'body',

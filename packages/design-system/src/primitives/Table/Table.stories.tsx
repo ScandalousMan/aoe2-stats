@@ -67,7 +67,8 @@ const columns: [TableColumn<MatchRow>, ...TableColumn<MatchRow>[]] = [
 ]
 
 const meta: Meta<typeof Table<MatchRow>> = {
-  title: 'Primitives/Table',
+  id: 'primitives-table',
+  title: 'Primitives/Layout & structure/Table',
   component: Table,
 }
 

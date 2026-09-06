@@ -3,7 +3,8 @@ import { Skeleton } from '../../primitives/Skeleton'
 import { MapThumbnail } from './index'
 
 const meta: Meta<typeof MapThumbnail> = {
-  title: 'Composite/MapThumbnail',
+  id: 'composite-mapthumbnail',
+  title: 'Composites/Match & game data/MapThumbnail',
   component: MapThumbnail,
 }
 

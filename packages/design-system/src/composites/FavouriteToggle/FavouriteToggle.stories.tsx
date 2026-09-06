@@ -4,7 +4,8 @@ import { Callout } from '../../primitives/Callout'
 import { FavouriteToggle } from './index'
 
 const meta: Meta<typeof FavouriteToggle> = {
-  title: 'Composite/FavouriteToggle',
+  id: 'composite-favouritetoggle',
+  title: 'Composites/Search & favourites/FavouriteToggle',
   component: FavouriteToggle,
 }
 
@@ -123,6 +124,19 @@ export const EmptyNotApplicable: Story = {
       A toggle with no label is invalid, the same as `Button` — every state renders a label, so
       there is no zero-content form of this control to show.
     </p>
+  ),
+}
+
+// A realistic combined story: beside a third party's profile heading, its actual seam
+// (`PlayerProfileContainer.tsx` wires this into `ProfileSummary`'s own `favouriteToggle` slot, at
+// `size="lg"` per §11.1 point 3), never rendered as an isolated specimen.
+export const RealisticProfileHeader: Story = {
+  name: 'Realistic composition — beside a third-party profile heading (PlayerProfileContainer)',
+  render: () => (
+    <div className="flex items-center gap-3">
+      <h1 className="type-display text-2xl font-semibold text-text-primary">rival_ace</h1>
+      <FavouriteToggle favourited={false} authenticated size="lg" />
+    </div>
   ),
 }
 

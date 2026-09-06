@@ -3,7 +3,8 @@ import { Skeleton } from '../../primitives/Skeleton'
 import { PlayerAvatar } from './index'
 
 const meta: Meta<typeof PlayerAvatar> = {
-  title: 'Composite/PlayerAvatar',
+  id: 'composite-playeravatar',
+  title: 'Composites/Player identity/PlayerAvatar',
   component: PlayerAvatar,
 }
 

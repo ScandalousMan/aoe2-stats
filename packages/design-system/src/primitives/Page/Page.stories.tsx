@@ -5,10 +5,13 @@ import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
 import { Skeleton } from '../Skeleton'
+import { MatchList } from '../../composites/MatchRow'
+import type { MatchRowData } from '../../composites/MatchRow'
 import { Page } from './index'
 
 const meta: Meta<typeof Page> = {
-  title: 'Primitives/Page',
+  id: 'primitives-page',
+  title: 'Primitives/Layout & structure/Page',
   component: Page,
   args: {
     title: 'Match history',
@@ -182,6 +185,78 @@ export const HoverActiveDisabledNotApplicable: Story = {
         route the reader may not use renders an `ErrorState` explaining why, inside a normal page,
         rather than a disabled one.
       </p>
+    </Page>
+  ),
+}
+
+// A realistic combined story: the shape `MatchHistoryContainer.tsx` (apps/web) actually renders —
+// a hidden title (the page header lives in `ProfileSummary/compact` instead) above a real
+// `MatchList`, at plausible content lengths rather than `SamplePanel`'s one-line specimens.
+const realisticMatches: MatchRowData[] = [
+  {
+    gameId: '1001',
+    href: '/matches/1001',
+    outcome: 'win',
+    participants: [
+      {
+        profileId: 1807091,
+        alias: 'GL.TheViper',
+        teamId: 1,
+        colorId: 4,
+        result: 'win',
+        isViewer: true,
+      },
+      { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'loss' },
+    ],
+    map: 'Arabia',
+    civilisation: 'Britons',
+    civIconUrl: '/game-assets/civilisations/britons.webp',
+    mapThumbnailUrl: '/game-assets/maps/arabia.webp',
+    leaderboardName: '1v1 Random Map',
+    rating: 1842,
+    ratingChange: { value: 16 },
+    durationLabel: '34 min',
+    playedAtRelative: '3 hours ago',
+    playedAtAbsolute: '2026-08-22T09:12:00Z',
+    captureStatus: 'stored',
+    captureDeadlineAt: null,
+  },
+  {
+    gameId: '1002',
+    href: '/matches/1002',
+    outcome: 'loss',
+    participants: [
+      {
+        profileId: 1807091,
+        alias: 'GL.TheViper',
+        teamId: 1,
+        colorId: 4,
+        result: 'loss',
+        isViewer: true,
+      },
+      { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'win' },
+    ],
+    map: 'Black Forest',
+    civilisation: 'Mayans',
+    civIconUrl: '/game-assets/civilisations/mayans.webp',
+    mapThumbnailUrl: '/game-assets/maps/black_forest.webp',
+    leaderboardName: '1v1 Random Map',
+    rating: 1826,
+    ratingChange: { value: -16 },
+    durationLabel: '52 min',
+    playedAtRelative: 'yesterday',
+    playedAtAbsolute: '2026-08-21T18:03:00Z',
+    captureStatus: 'pending',
+    captureDeadlineAt: null,
+  },
+]
+
+export const RealisticMatchHistory: Story = {
+  name: 'Realistic composition — MatchHistoryContainer (title hidden, real MatchList)',
+  args: { title: 'Match history', titleHidden: true },
+  render: (args) => (
+    <Page {...args}>
+      <MatchList matches={realisticMatches} />
     </Page>
   ),
 }

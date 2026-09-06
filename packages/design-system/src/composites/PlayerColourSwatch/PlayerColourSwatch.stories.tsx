@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { PlayerColourSwatch } from './index'
 
 const meta: Meta<typeof PlayerColourSwatch> = {
-  title: 'Composite/PlayerColourSwatch',
+  id: 'composite-playercolourswatch',
+  title: 'Composites/Player identity/PlayerColourSwatch',
   component: PlayerColourSwatch,
 }
 

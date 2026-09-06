@@ -3,7 +3,8 @@ import { userEvent, within } from 'storybook/test'
 import { ThirdPartyObjectionForm } from './index'
 
 const meta: Meta<typeof ThirdPartyObjectionForm> = {
-  title: 'Screens/ThirdPartyObjectionForm',
+  id: 'screens-thirdpartyobjectionform',
+  title: 'Screens/Account & privacy/ThirdPartyObjectionForm',
   component: ThirdPartyObjectionForm,
 }
 

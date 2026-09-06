@@ -4,7 +4,8 @@ import type { ReplayAvailabilityRowData } from './index'
 import { ReplayAvailabilityList } from './index'
 
 const meta: Meta<typeof ReplayAvailabilityList> = {
-  title: 'Composite/ReplayAvailabilityList',
+  id: 'composite-replayavailabilitylist',
+  title: 'Composites/Match & game data/ReplayAvailabilityList',
   component: ReplayAvailabilityList,
 }
 

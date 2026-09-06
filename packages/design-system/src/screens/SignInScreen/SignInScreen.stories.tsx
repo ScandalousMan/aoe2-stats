@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { SignInScreen } from './index'
 
 const meta: Meta<typeof SignInScreen> = {
-  title: 'Screens/SignInScreen',
+  id: 'screens-signinscreen',
+  title: 'Screens/Account & privacy/SignInScreen',
   component: SignInScreen,
   args: {
     onContinueWithSteam: () => {},

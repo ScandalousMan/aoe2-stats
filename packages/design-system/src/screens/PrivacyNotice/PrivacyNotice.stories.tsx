@@ -3,7 +3,8 @@ import { userEvent, within } from 'storybook/test'
 import { PrivacyNotice } from './index'
 
 const meta: Meta<typeof PrivacyNotice> = {
-  title: 'Screens/PrivacyNotice',
+  id: 'screens-privacynotice',
+  title: 'Screens/Account & privacy/PrivacyNotice',
   component: PrivacyNotice,
 }
 

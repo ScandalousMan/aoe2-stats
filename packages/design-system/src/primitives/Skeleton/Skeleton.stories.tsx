@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Skeleton } from './index'
 
 const meta: Meta<typeof Skeleton> = {
-  title: 'Primitives/Skeleton',
+  id: 'primitives-skeleton',
+  title: 'Primitives/Feedback & status/Skeleton',
   component: Skeleton,
 }
 

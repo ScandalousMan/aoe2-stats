@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { StatValue } from './index'
 
 const meta: Meta<typeof StatValue> = {
-  title: 'Primitives/StatValue',
+  id: 'primitives-statvalue',
+  title: 'Primitives/Feedback & status/StatValue',
   component: StatValue,
 }
 

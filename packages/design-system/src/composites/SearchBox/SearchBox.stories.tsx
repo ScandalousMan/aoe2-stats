@@ -6,7 +6,8 @@ import { SearchBox } from './index'
 import type { SearchBoxState } from './index'
 
 const meta: Meta<typeof SearchBox> = {
-  title: 'Composite/SearchBox',
+  id: 'composite-searchbox',
+  title: 'Composites/Search & favourites/SearchBox',
   component: SearchBox,
 }
 

@@ -4,7 +4,8 @@ import { Button } from '../Button'
 import { Callout } from './index'
 
 const meta: Meta<typeof Callout> = {
-  title: 'Primitives/Callout',
+  id: 'primitives-callout',
+  title: 'Primitives/Feedback & status/Callout',
   component: Callout,
 }
 

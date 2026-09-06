@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ArchivalControl } from './index'
 
 const meta: Meta<typeof ArchivalControl> = {
-  title: 'Screens/ArchivalControl',
+  id: 'screens-archivalcontrol',
+  title: 'Screens/Profile & capture/ArchivalControl',
   component: ArchivalControl,
 }
 

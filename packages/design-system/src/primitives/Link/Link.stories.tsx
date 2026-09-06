@@ -3,7 +3,8 @@ import { userEvent, within } from 'storybook/test'
 import { Link } from './index'
 
 const meta: Meta<typeof Link> = {
-  title: 'Primitives/Link',
+  id: 'primitives-link',
+  title: 'Primitives/Typography/Link',
   component: Link,
   args: {
     href: '/players/1807091',

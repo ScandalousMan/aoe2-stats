@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { CaptureStateBadge } from './index'
 
 const meta: Meta<typeof CaptureStateBadge> = {
-  title: 'Composite/CaptureStateBadge',
+  id: 'composite-capturestatebadge',
+  title: 'Composites/Match & game data/CaptureStateBadge',
   component: CaptureStateBadge,
 }
 

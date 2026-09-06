@@ -4,7 +4,8 @@ import { MatchList, MatchRow } from './index'
 import type { MatchRowData, MatchRowParticipant } from './index'
 
 const meta: Meta<typeof MatchRow> = {
-  title: 'Composite/MatchRow',
+  id: 'composite-matchrow',
+  title: 'Composites/Match & game data/MatchRow',
   component: MatchRow,
 }
 

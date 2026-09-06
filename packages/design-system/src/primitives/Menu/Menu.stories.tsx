@@ -3,7 +3,8 @@ import { userEvent, within } from 'storybook/test'
 import { Menu } from './index'
 
 const meta: Meta<typeof Menu> = {
-  title: 'Primitives/Menu',
+  id: 'primitives-menu',
+  title: 'Primitives/Forms/Menu',
   component: Menu,
 }
 

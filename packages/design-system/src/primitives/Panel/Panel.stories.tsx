@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Button } from '../Button'
 import { Skeleton } from '../Skeleton'
+import { Table } from '../Table'
+import type { TableColumn } from '../Table'
 import { Panel } from './index'
 
 const meta: Meta<typeof Panel> = {
-  title: 'Primitives/Panel',
+  id: 'primitives-panel',
+  title: 'Primitives/Layout & structure/Panel',
   component: Panel,
   args: {
     density: 'dense',
@@ -153,6 +156,61 @@ export const HoverFocusActiveNotApplicable: Story = {
         not focusable. A call site that needs a clickable card puts a real link inside the panel
         spanning its content, and that link owns its own hover, focus and active states.
       </p>
+    </Panel>
+  ),
+}
+
+// A realistic combined story: the shape `Panel`'s own `heading`/`footer` fixtures above imply —
+// "Recent matches", "3 of 12 shown" — with a real `Table` of plausible match content inside it,
+// rather than the one-line specimens every story above uses.
+interface RealisticMatch {
+  gameId: string
+  opponent: string
+  rating: number
+  ratingChange: number
+  when: string
+}
+
+const realisticMatchRows: RealisticMatch[] = [
+  {
+    gameId: 'g-1',
+    opponent: 'RedBull_Barley',
+    rating: 1876,
+    ratingChange: 24,
+    when: '3 hours ago',
+  },
+  { gameId: 'g-2', opponent: 'TheViper_fan99', rating: 1852, ratingChange: -12, when: 'yesterday' },
+  { gameId: 'g-3', opponent: 'aoe2villain', rating: 1864, ratingChange: 16, when: '2 days ago' },
+]
+
+const realisticMatchColumns: [TableColumn<RealisticMatch>, ...TableColumn<RealisticMatch>[]] = [
+  { key: 'opponent', header: 'Opponent', render: (row) => row.opponent },
+  { key: 'rating', header: 'Rating', align: 'numeric', render: (row) => row.rating },
+  {
+    key: 'ratingChange',
+    header: 'Change',
+    align: 'numeric',
+    render: (row) => (row.ratingChange >= 0 ? `+${row.ratingChange}` : String(row.ratingChange)),
+  },
+  { key: 'when', header: 'When', render: (row) => row.when },
+]
+
+export const RealisticMatchTable: Story = {
+  name: 'Realistic composition — a real Table of recent matches',
+  render: () => (
+    <Panel
+      density="dense"
+      heading="Recent matches"
+      footer={<span className="type-supporting text-sm text-text-secondary">3 of 47 shown</span>}
+    >
+      <Table
+        caption="Recent matches"
+        captionHidden
+        columns={realisticMatchColumns}
+        rows={realisticMatchRows}
+        getRowKey={(row) => row.gameId}
+        getRowHref={(row) => `/matches/${row.gameId}`}
+      />
     </Panel>
   ),
 }
