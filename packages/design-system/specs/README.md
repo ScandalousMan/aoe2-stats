@@ -97,6 +97,49 @@ disabling it would be wrong, and here is what happens instead".
    `packages/design-system/src/theme` and `SiteHeader`'s `ThemeControl`, and a third location in that
    output is the defect, not a finding to explain away. The command lives once, in the quickstart —
    restated here it would be the same number in two files.
+9. **One prop vocabulary for the same concept, or a recorded reason the difference is real**
+   (FR-032, T557). Sizes are `xs`/`sm`/`md`/`lg` everywhere, never spelled out, and every closed
+   `status`/`state` union that this package invents rather than mirrors a wire value is
+   kebab-case — no exception is spelled `snake_case` or `camelCase`. The survey's one genuine,
+   accidental collision was `CaptureStateBadge`'s `context` prop (`compact`/`detail`): every other
+   component whose rendering depends on where it is embedded — `ProfileSummary`, `StatValue`,
+   `SignInScreen`, and every embedding-dependent `size` scale (`CivilisationIconSize`,
+   `MapThumbnailSize`) — names that choice `variant`. `context`/`CaptureStateBadgeContext` are
+   retired; `variant`/`CaptureStateBadgeVariant` replace them, landed with every consumer in the
+   same change — `CaptureStateBadge` itself, `MatchRow`, `MatchDetailPanel`, their tests and
+   stories, and `capture-state-badge.md`, `match-history.md` and `replay-availability.md`. No
+   rendering changed; only the prop and the type are renamed. This is the deprecation procedure's
+   first real subject (T570), ahead of the procedure itself being written down (T573,
+   `GOVERNANCE.md`).
+
+   Where the same concept still reads as two names on inspection elsewhere, the difference was
+   surveyed under FR-032 and kept because it is real, not because nobody looked:
+   - `Page.title` names the route's one `<h1>`; every other structural primitive's own heading
+     (`Section`, `Panel`, `EmptyState`, `ErrorState` — `structural-tier.md` §5–§13) is `heading`,
+     the same word `Callout` (`shared-primitives.md`) already used for the identical role outside
+     the structural tier. The two are not the same concept: one page has exactly one `title`, and
+     every block inside it may have a `heading`.
+   - `ButtonVariant`'s `destructive` and `CalloutTone`/`BadgeVariant`'s `danger` are not the same
+     scale: `destructive` names what the button _does_ (an irreversible action), `danger` names
+     what a message _means_. `destructive` already paints its ink with the `danger` token
+     (`shared-primitives.md`, Button §"variants") — the layering is deliberate, not a naming gap.
+   - `Badge`'s `variant` and `Callout`'s `tone` are not the same prop under two names: `Badge`'s
+     scale is a superset (`neutral`, `accent` plus the four tone variants) because a badge may
+     carry no semantic weight at all, while `Callout` always does. The four members the two scales
+     share (`info`/`success`/`warning`/`danger`) are already spelled identically in both
+     (`capture-state-badge.md` §5).
+   - `ReplayAvailabilityList`'s `ReplayAvailability`/`ReplayDownloadState` carry `never_recorded`
+     and `rate_limited` in `snake_case`, against this rule's own kebab-case default, because both
+     values are deliberately the API's own wire spelling passed straight through
+     (`availability.py`'s `Availability` enum; the `rate_limited` error `code`) rather than
+     translated — `replay-availability.md` §3 documents the same string being read on both sides
+     of the wire. `SearchBoxState`'s `rate-limited` is the ordinary case: UI-invented vocabulary with
+     no wire value to stay identical to, so `SearchContainer.tsx` translates the wire's
+     `rate_limited` code into it deliberately.
+   - `AnalysisTimeline`'s `onRetryLoad` is not `onRetry`: it is the one component in the system
+     with two retry-shaped callbacks (reloading the page's own data, and `onRequestAnalysis`
+     recomputing the analysis itself), so the generic name every single-retry component uses would
+     be ambiguous here specifically (`analysis-timeline.md`'s prop, documented inline).
 
 ## Measured contrast pairs
 

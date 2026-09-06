@@ -96,7 +96,12 @@ function renderStandingValue(standing: FavouriteStandingData): ReactNode {
 
 /** One place to find the players a signed-in user cares about again, without searching — each
  * entry showing its current standing and reaching the profile in one step (FR-014), with a remove
- * control right there too (FR-013). See `packages/design-system/specs/favourites-list.md`. */
+ * control right there too (FR-013). See `packages/design-system/specs/favourites-list.md`.
+ *
+ * `FavouritesContainer.tsx` composes this inside `Page title="Favourites" titleHidden` (005,
+ * structural retrofit, T558): `Page` owns the route's one `<main>` and its one `<h1>`, so the
+ * heading below is an `<h2>` rather than the `<h1>` it used to duplicate `Page`'s hidden one
+ * with — the same shape `sign-in-screen.md` §8 and `privacy-notice.md` §9 already resolved. */
 export function FavouritesList({
   authenticated = true,
   signInHref,
@@ -113,9 +118,9 @@ export function FavouritesList({
 
   return (
     <section aria-labelledby={headingId} className={cx('flex flex-col', className)}>
-      <h1 id={headingId} className="font-sans text-2xl font-semibold text-text-primary">
+      <h2 id={headingId} className="font-sans text-2xl font-semibold text-text-primary">
         Favourites
-      </h1>
+      </h2>
 
       <div className="mt-6">
         {!authenticated ? (
@@ -158,7 +163,13 @@ function SignedOutState({
       tone="info"
       heading="Sign in to see the players you've favourited."
       actions={
-        <Button variant="primary" href={href} onClick={createRowLinkClickHandler(href, onNavigate)}>
+        // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+        <Button
+          variant="primary"
+          size="lg"
+          href={href}
+          onClick={createRowLinkClickHandler(href, onNavigate)}
+        >
           Sign in
         </Button>
       }
@@ -190,7 +201,8 @@ function ErrorState({ onRetry }: { onRetry?: () => void }) {
       tone="danger"
       heading="We could not load your favourites. Try again."
       actions={
-        <Button variant="primary" onClick={onRetry}>
+        // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+        <Button variant="primary" size="lg" onClick={onRetry}>
           Try again
         </Button>
       }
@@ -235,7 +247,12 @@ function FavouriteRow({
         className={cx(
           'flex flex-1 flex-col gap-1 rounded-control',
           'md:flex-row md:items-center md:justify-between md:gap-4',
-          'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+          // T560 (FR-038): `active` paints the same fill as `hover`, matching `MatchRow`,
+          // `PlayerResultRow` and `Table`'s identical row-link category (a keyboard `Enter`
+          // triggers `:active` with no pointer ever hovering). `motion-reduce:duration-0` closes
+          // the README rule 5 gap.
+          'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+          'hover:bg-surface-sunken active:bg-surface-sunken',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
         )}
       >

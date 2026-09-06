@@ -10,17 +10,19 @@ import { PrivacyNotice } from 'design-system'
 // change that makes the new copy true (privacy-notice.md's own header).
 const LAST_UPDATED = '2026-08-30'
 
+// `PrivacyNotice` composes `Page` itself (005, structural retrofit, T558) — this screen is always
+// the whole of its route, the same reasoning `SignInScreen` and `ThirdPartyObjectionForm` already
+// carry — so this container no longer wraps it in a second `Page`. Its own visible heading is now
+// an `<h2>`, downgraded from the `<h1>` it used to duplicate `Page`'s hidden one with.
 export function PrivacyNoticeContainer() {
   return (
-    <main className="min-h-svh bg-background">
-      <PrivacyNotice
-        lastUpdated={LAST_UPDATED}
-        hrefs={{
-          archivalControl: '/dashboard',
-          privacyRoute: '/privacy',
-          objectionForm: '/object',
-        }}
-      />
-    </main>
+    <PrivacyNotice
+      lastUpdated={LAST_UPDATED}
+      hrefs={{
+        archivalControl: '/dashboard',
+        privacyRoute: '/privacy',
+        objectionForm: '/object',
+      }}
+    />
   )
 }

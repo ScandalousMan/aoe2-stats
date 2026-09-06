@@ -54,7 +54,11 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       className={cx(
         'flex flex-col gap-1 rounded-panel border border-border bg-surface p-4',
         'md:rounded-none md:border-x-0 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
-        'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
+        // T560 (FR-038): `active` paints the same fill as `hover`, matching `MatchRow` and
+        // `Table`'s identical row-link category (a keyboard `Enter` triggers `:active` with no
+        // pointer ever hovering). `motion-reduce:duration-0` closes the README rule 5 gap.
+        'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+        'hover:bg-surface-sunken active:bg-surface-sunken',
         focusRing,
         className,
       )}

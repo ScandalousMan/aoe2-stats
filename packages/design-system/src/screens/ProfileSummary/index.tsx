@@ -10,6 +10,7 @@ import type { MenuItem } from '../../primitives/Menu'
 import { PlayerAvatar } from '../../composites/PlayerAvatar'
 import { Skeleton } from '../../primitives/Skeleton'
 import { StatValue } from '../../primitives/StatValue'
+import { Table, type TableColumn } from '../../primitives/Table'
 
 // packages/design-system/specs/profile-summary.md
 
@@ -165,7 +166,10 @@ export function ProfileSummary({
         tone="danger"
         heading="This player could not be found."
         actions={
-          <Button variant="secondary" href={searchHref}>
+          // T561 (FR-018/FR-019): reachable at 375 like every other action on this screen —
+          // `size="lg"`, never the `md` default, matching every other touch-reachable `Button`
+          // call site in this file and package.
+          <Button variant="secondary" size="lg" href={searchHref}>
             Back to search
           </Button>
         }
@@ -425,10 +429,16 @@ export function ProfileSummary({
             headingLevel={3}
             actions={
               <>
-                <Button variant="primary" onClick={() => onMakePrimary?.(viewedProfile.id)}>
+                {/* T561 (FR-018/FR-019): reachable at 375 — `size="lg"`, not the `md` default it
+                 * had been rendering at (40px). */}
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => onMakePrimary?.(viewedProfile.id)}
+                >
                   Make primary
                 </Button>
-                <Button variant="secondary" onClick={onBackToPrimary}>
+                <Button variant="secondary" size="lg" onClick={onBackToPrimary}>
                   Back to primary
                 </Button>
               </>
@@ -493,7 +503,8 @@ function RatingBoard({
         tone="danger"
         heading="We could not load your ratings"
         actions={
-          <Button variant="primary" onClick={onRetry}>
+          // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+          <Button variant="primary" size="lg" onClick={onRetry}>
             Try again
           </Button>
         }
@@ -517,7 +528,8 @@ function RatingBoard({
           tone="warning"
           heading="These figures could not be refreshed"
           actions={
-            <Button variant="primary" onClick={onRetry}>
+            // T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default.
+            <Button variant="primary" size="lg" onClick={onRetry}>
               Try again
             </Button>
           }
@@ -614,74 +626,82 @@ function RecordBar({ wins, losses }: { wins: number; losses: number }) {
   )
 }
 
-// Every figure below is a measured number a reader compares down the column — `type-numeric`
-// (research D7, FR-007), never `machine` or `identifier`: rating, delta, rank, record, win rate,
-// streak and highest rating are all read as values, not as raw strings.
+// T558 (FR-026, SC-009): the `lg`-and-up layout is `Table` (structural-tier.md §10), never a
+// hand-rolled `<table>` — `Table` owns the identity-first row, the numeric-column alignment
+// (`type-numeric`'s own `tabular-nums`, surviving a change of the monospace family) and the one
+// overflow rule, so this list only ever names the eight columns spec §8 lists — Leaderboard ·
+// Rating · Change · Rank · Record · Win rate · Streak · Best — never re-implements any of the
+// three. `density="dense"` per structural-tier.md §3: this is a data-comparison surface, not
+// continuous reading content.
+const RATING_TABLE_COLUMNS: [TableColumn<RatingEntryData>, ...TableColumn<RatingEntryData>[]] = [
+  {
+    key: 'leaderboard',
+    header: 'Leaderboard',
+    render: (entry) => entry.leaderboardName,
+  },
+  {
+    key: 'rating',
+    header: 'Rating',
+    align: 'numeric',
+    // The one figure this row leads with keeps its own emphasis inside the cell's content, the
+    // same layering `MatchRow`'s `RatingFigure` already uses — `Table` supplies the numeric role
+    // and the alignment, the emphasis is the caller's.
+    render: (entry) => <span className="font-semibold tracking-tight">{entry.rating}</span>,
+  },
+  {
+    key: 'change',
+    header: 'Change',
+    align: 'numeric',
+    render: (entry) =>
+      entry.ratingDelta && (
+        <span className={entry.ratingDelta.value >= 0 ? 'text-success' : 'text-danger'}>
+          {entry.ratingDelta.value >= 0 ? '+' : '−'}
+          {entry.ratingDelta.formatted ?? Math.abs(entry.ratingDelta.value)}
+        </span>
+      ),
+  },
+  {
+    key: 'rank',
+    header: 'Rank',
+    align: 'numeric',
+    render: (entry) =>
+      entry.rank ?? <span className="type-supporting text-text-secondary">{NOT_RANKED_YET}</span>,
+  },
+  {
+    key: 'record',
+    header: 'Record',
+    align: 'numeric',
+    render: (entry) => `${entry.wins} W · ${entry.losses} L`,
+  },
+  {
+    key: 'winRate',
+    header: 'Win rate',
+    align: 'numeric',
+    render: (entry) => entry.winRate,
+  },
+  {
+    key: 'streak',
+    header: 'Streak',
+    align: 'numeric',
+    render: (entry) => entry.streak,
+  },
+  {
+    key: 'best',
+    header: 'Best',
+    align: 'numeric',
+    render: (entry) => <span className="text-text-secondary">{entry.highestRating}</span>,
+  },
+]
+
 function RatingTable({ entries }: { entries: RatingEntryData[] }) {
   return (
-    <table className="w-full border-collapse text-left font-sans text-sm">
-      <caption className="sr-only">Ratings for this profile</caption>
-      <thead>
-        <tr className="border-b border-border">
-          <th scope="col" className="py-3 pr-6 font-normal text-text-secondary">
-            Leaderboard
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Rating
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Change
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Rank
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Record
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Win rate
-          </th>
-          <th scope="col" className="py-3 pr-6 text-right font-normal text-text-secondary">
-            Streak
-          </th>
-          <th scope="col" className="py-3 text-right font-normal text-text-secondary">
-            Best
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((entry) => (
-          <tr key={entry.leaderboardId} className="border-b border-border">
-            <th scope="row" className="py-3 pr-6 font-normal text-text-primary">
-              {entry.leaderboardName}
-            </th>
-            <td className="py-3 pr-6 text-right type-numeric font-semibold tracking-tight text-text-primary">
-              {entry.rating}
-            </td>
-            <td className="py-3 pr-6 text-right type-numeric text-sm">
-              {entry.ratingDelta && (
-                <span className={entry.ratingDelta.value >= 0 ? 'text-success' : 'text-danger'}>
-                  {entry.ratingDelta.value >= 0 ? '+' : '−'}
-                  {entry.ratingDelta.formatted ?? Math.abs(entry.ratingDelta.value)}
-                </span>
-              )}
-            </td>
-            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
-              {entry.rank ?? (
-                <span className="type-supporting text-text-secondary">{NOT_RANKED_YET}</span>
-              )}
-            </td>
-            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
-              {entry.wins} W · {entry.losses} L
-            </td>
-            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.winRate}</td>
-            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.streak}</td>
-            <td className="py-3 text-right type-numeric text-text-secondary">
-              {entry.highestRating}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Table<RatingEntryData>
+      density="dense"
+      caption="Ratings for this profile"
+      captionHidden
+      columns={RATING_TABLE_COLUMNS}
+      rows={entries}
+      getRowKey={(entry) => entry.leaderboardId}
+    />
   )
 }

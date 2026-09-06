@@ -310,7 +310,12 @@ six domain states tabled in §3, which this vocabulary's `loading`/`error`/`empt
   `replay-availability.md`'s identical shape for their own load failures. A poll (above) that fails
   once is retried silently at the next interval rather than surfacing this Callout, so a single dropped
   request during a multi-minute wait never interrupts `AnalysisProgress` with an alarming message; only
-  a load failure on the page's own first fetch shows this state.
+  a load failure on the page's own first fetch shows this state. This retry fires the component's own
+  `onRetryLoad`, not `onRetry` (FR-032, T557, README's rule 9) — the one deliberate exception to this
+  system's usual single retry callback, because this is the one component with two retry-shaped
+  actions: reloading this page's own data (`onRetryLoad`, this bullet) and recomputing the analysis
+  itself (`onRequestAnalysis`, §3.4/§3.5's `Recompute`/"Try requesting analysis"). A plain `onRetry`
+  here would leave a reader of the source unable to tell which of the two it retried.
 - **empty** — not applicable in the sense this vocabulary usually means it: there is no participant list
   that can be legitimately empty once `state` is `published` (`contracts/analysis.md`'s
   `MatchTimeline.participants` is never empty for a real match), and the `absent` state that would

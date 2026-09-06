@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Callout, FavouriteToggle, ProfileSummary } from 'design-system'
+import { Button, Callout, FavouriteToggle, Page, ProfileSummary } from 'design-system'
 import type { ProfileSummaryStatus } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { buildSignInHref } from '../auth/returnLocation'
@@ -111,10 +111,13 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
   // slot for `subject="self"` (profile-summary.md §11.1 point 3), so no further guard is needed
   // here for a caller viewing their own profile through this route.
   const favouriteToggle = profile ? (
+    // T561 (FR-018/FR-019): reachable at 375 — `size="lg"`, matching `FavouritesList`'s own
+    // `FavouriteToggle` call site rather than relying on the component's pointer-only `md` default.
     <FavouriteToggle
       favourited={favourited}
       authenticated={session?.authenticated ?? false}
       loading={favouritePending}
+      size="lg"
       onAdd={() => void runFavouriteMutation(() => addFavourite(profileId))}
       onRemove={() => void runFavouriteMutation(() => removeFavourite(profileId))}
       signInHref={buildSignInHref(`/players/${profileId}`)}
@@ -123,7 +126,9 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
   ) : undefined
 
   return (
-    <main className="min-h-svh bg-background">
+    // `title` is visually hidden: `ProfileSummary` is the large visible element that already
+    // carries this route's identity (structural-tier.md §5).
+    <Page title="Player profile" titleHidden>
       {/* T383: `ProfileSummary`'s own "Back to search" (its `searchHref` below) renders only for
        * `status === 'not-found'`, where it collapses the whole component to one callout — a third
        * party's profile that *did* resolve had no way back to `/search` except the browser's own
@@ -132,8 +137,9 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
        * `DashboardContainer.tsx`'s new entry point: this is a SPA, and `href` renders a raw `<a>`
        * that forces a full document reload. */}
       {status !== 'not-found' && (
-        <div className="flex justify-start px-4 pt-4 md:px-6">
-          <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+        <div className="flex justify-start">
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
+          <Button variant="ghost" size="lg" onClick={() => void navigate({ to: '/search' })}>
             Back to search
           </Button>
         </div>
@@ -160,27 +166,25 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
        * control rather than inside it (that spec's own §2), the same convention
        * `DashboardContainer.tsx` follows for `makePrimaryError`. */}
       {favouriteLimitReached && (
-        <div className="px-4 md:px-6">
-          <Callout tone="warning" heading="You have reached your favourites limit" headingLevel={3}>
-            Remove one to add another.
-          </Callout>
-        </div>
+        <Callout tone="warning" heading="You have reached your favourites limit" headingLevel={3}>
+          Remove one to add another.
+        </Callout>
       )}
       {favouriteRequestFailed && (
-        <div className="px-4 md:px-6">
-          <Callout tone="danger" heading="We could not update your favourites" headingLevel={3}>
-            Try again.
-          </Callout>
-        </div>
+        <Callout tone="danger" heading="We could not update your favourites" headingLevel={3}>
+          Try again.
+        </Callout>
       )}
 
       {/* T331: the one link into `players.$profileId.matches.tsx` — without it the history route
        * is reachable only by typing the URL. Shown once a real profile has resolved; nothing to
        * link to yet while loading, and `not-found`'s own callout already owns the page below it. */}
       {profile && (
-        <div className="flex justify-start px-4 pb-8 md:px-6">
+        <div className="flex justify-start">
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
           <Button
             variant="secondary"
+            size="lg"
             onClick={() =>
               void navigate({
                 to: '/players/$profileId/matches',
@@ -192,6 +196,6 @@ export function PlayerProfileContainer({ profileId }: PlayerProfileContainerProp
           </Button>
         </div>
       )}
-    </main>
+    </Page>
   )
 }

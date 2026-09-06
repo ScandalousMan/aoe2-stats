@@ -15,12 +15,13 @@ import { toAnalysisTeamGroups } from './mappers'
 
 // T372, US4: wires `AnalysisTimeline` (packages/design-system) onto the match page, from the
 // `analysis` object `GET /api/matches/{game_id}` already carries (T368) and, once `published`, the
-// full document `GET /api/matches/{game_id}/analysis` serves (FR-030). Rendered as its own section
-// beside `MatchDetailContainer.tsx`'s (`features/replays/`) — a second, independent container on
-// the same route, `routes/matches.$gameId.tsx`, the same relationship `ReplayAvailabilityList`
-// already has to `MatchDetailPanel` inside that other container, except this one owns its own
-// section rather than nesting inside it (`analysis-timeline.md` §1's own note: "wired directly in
-// `apps/web/src/features/analysis/`").
+// full document `GET /api/matches/{game_id}/analysis` serves (FR-030). Rendered as its own section,
+// mounted by `routes/matches.$gameId.tsx` as `MatchDetailContainer.tsx`'s (`features/replays/`)
+// trailing child (T558) rather than as a route-level sibling — the two share exactly one `Page`,
+// one main landmark and one width/padding/rhythm, none of which this component declares itself
+// (`analysis-timeline.md` §1's own note: "wired directly in `apps/web/src/features/analysis/`").
+// It stays a second, independent container rather than a component `MatchDetailContainer` imports
+// directly, for the reason the next paragraph gives.
 //
 // `matchDetailQueryOptions` (`features/matches/api.ts`) is imported, not restated: this container
 // shares that exact query key with `MatchDetailContainer`, so the two ever issue one request for
@@ -120,50 +121,38 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     return null
   }
 
-  // `analysis-timeline.md` §7: `space-8` between `ReplayAvailabilityList` (above, inside
-  // `MatchDetailContainer`) and this section — reapplied here since this section is this route's
-  // own sibling, not nested inside that container's already-padded column.
-  const sectionClassName = 'mt-8 px-4 pb-8 md:px-6'
+  // `analysis-timeline.md` §7's `space-8` between `ReplayAvailabilityList` and this section is no
+  // longer this container's to express: `matches.$gameId.tsx` renders this component as a child of
+  // `MatchDetailContainer`'s own `Page` (T558) rather than as a route-level sibling next to it, so
+  // the between-sections rhythm and the page's width and padding all come from that one `Page`
+  // (FR-021) — this container writes no layout class of its own.
 
   if (matchQuery.isPending) {
-    return <AnalysisTimeline loading className={sectionClassName} />
+    return <AnalysisTimeline loading />
   }
 
   if (matchQuery.isError || summaryShapeError || !summary) {
-    return (
-      <AnalysisTimeline
-        error
-        onRetryLoad={() => void matchQuery.refetch()}
-        className={sectionClassName}
-      />
-    )
+    return <AnalysisTimeline error onRetryLoad={() => void matchQuery.refetch()} />
   }
 
   if (effectiveState === 'absent') {
+    // `analysis-timeline.md` §1: "a plain 'Request analysis' primary `Button`... is not part of
+    // this component's anatomy" — `AnalysisTimeline` renders once `state` is anything other than
+    // `absent`. Rendered bare: `Page`'s own children column already spaces this from its
+    // neighbours (T558).
     return (
-      <div className={sectionClassName}>
-        {/* `analysis-timeline.md` §1: "a plain 'Request analysis' primary `Button`... is not part
-         * of this component's anatomy" — `AnalysisTimeline` renders once `state` is anything other
-         * than `absent`. */}
-        <Button variant="primary" size="lg" onClick={handleRequestAnalysis}>
-          Request analysis
-        </Button>
-      </div>
+      <Button variant="primary" size="lg" onClick={handleRequestAnalysis}>
+        Request analysis
+      </Button>
     )
   }
 
   if (effectiveState === 'published') {
     if (documentQuery.isPending) {
-      return <AnalysisTimeline loading className={sectionClassName} />
+      return <AnalysisTimeline loading />
     }
     if (documentQuery.isError) {
-      return (
-        <AnalysisTimeline
-          error
-          onRetryLoad={() => void documentQuery.refetch()}
-          className={sectionClassName}
-        />
-      )
+      return <AnalysisTimeline error onRetryLoad={() => void documentQuery.refetch()} />
     }
     return (
       <AnalysisTimeline
@@ -177,7 +166,6 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
         // `StaleRecomputeNotice` exactly when `stale` is true and never otherwise, so this handler
         // is passed unconditionally and simply goes unused when `stale` is `false`.
         onRequestAnalysis={handleRequestAnalysis}
-        className={sectionClassName}
       />
     )
   }
@@ -185,11 +173,5 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   // `queued` | `running` | `failed` | `unavailable` | `refused` — `AnalysisTimeline`'s remaining
   // five states. `onRequestAnalysis` is read only by `refused` (`analysis-timeline.md` §3.5); the
   // other four render no button, so passing it unconditionally is exactly as inert as it is above.
-  return (
-    <AnalysisTimeline
-      state={effectiveState}
-      onRequestAnalysis={handleRequestAnalysis}
-      className={sectionClassName}
-    />
-  )
+  return <AnalysisTimeline state={effectiveState} onRequestAnalysis={handleRequestAnalysis} />
 }

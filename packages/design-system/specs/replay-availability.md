@@ -61,6 +61,18 @@ rather than merely readable in small print:
 | `expired`        | **Expired**        | `danger`  | "This recording is no longer available from the game." (§3.1)                                 | absent           |
 | `never_recorded` | **Never recorded** | `neutral` | "The game did not record this point of view." (§3.1)                                          | absent           |
 
+**`never_recorded` (and, in §5 below, `downloadState: 'rate_limited'`) are `snake_case` on purpose
+(FR-032, T557, README's rule 9).** Every other closed union this package invents is `kebab-case` —
+`not-found`, `unknown-result`, `rate-limited` on `SearchBoxState`. These two are not invented: they
+are the API's own wire spelling, carried straight through with no translation —
+`participant.replay.availability` already reads `never_recorded` the moment it leaves
+`apps/api/src/aoe2stats_api/availability.py`'s `Availability` enum, and `downloadState:
+'rate_limited'` is set from the identical `rate_limited` error `code` (`availability.ts`, this
+file's own mapper). Translating either into this package's own kebab-case convention would buy
+nothing and would cost the one property both `availability.ts` and this spec's §5 already lean on:
+that the value read here and the value the wire sent are the same string, so a grep for one finds
+the other.
+
 **Why `expired` and `never_recorded` differ in tone, not only in label.** `danger` on `expired` reads
 as a loss — something existed and is now gone, which is exactly what happened. `neutral` (`Badge`'s
 own base variant, `shared-primitives.md` §"Badge" — `surface-sunken` fill, `text-secondary` label,
@@ -260,7 +272,8 @@ calls the same exported function, `describeCaptureCountdown(obtainableUntil, now
 than re-deriving days/hours/minutes, the floor-not-round rule, or the pluralisation a second time.
 T340 wires this call; this spec fixes what it must and must not do with the result:
 
-- **Only the `'compact'` context is ever used here.** `describeCaptureCountdown`'s `'detail'` context
+- **Only the `'compact'` variant is ever used here** (renamed from `context`, FR-032, T557 — see
+  `capture-state-badge.md`). `describeCaptureCountdown`'s `'detail'` variant
   renders "Captures automatically within `<N>` `<unit>`." — a sentence that names _capture_, a process
   this component has nothing to do with (a source-side retention window closing is not this service
   archiving anything). Calling it with `'detail'` would borrow correct arithmetic wrapped in a false

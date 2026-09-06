@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Menu } from './index'
@@ -80,6 +80,49 @@ describe('Menu', () => {
     expect(trigger.className).not.toMatch(/\btext-text-disabled\b/)
   })
 
+  // T560 (FR-038): the trigger paints the same resting recipe as `Button`'s `secondary` variant
+  // (`bg-surface`, `border-border-strong`) — same category, so it owes the same active feedback
+  // and the same reduced-motion resting frame, neither of which it had before this task.
+  it('a non-empty trigger paints an active fill and border, and stops transitioning under reduced motion', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(trigger.className).toMatch(/\bactive:border-border-strong\b/)
+    expect(trigger.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
+  // shared-primitives.md#Menu "active — item fill `surface-sunken` with boundary `border-strong`
+  // on the inline-start edge" — documented, never built, until T560.
+  it("paints a selection item's active state exactly as shared-primitives.md#Menu documents it", async () => {
+    const user = userEvent.setup()
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+    const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    expect(current.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(current.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(current.className).toMatch(/\bactive:border-l-border-strong\b/)
+    expect(current.className).toMatch(/\bborder-l-transparent\b/)
+    expect(current.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
+  it('paints the footer item the same active/reduced-motion treatment as a regular menu item', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={items}
+        footerItem={{ id: 'link', label: 'Add another' }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const footer = screen.getByRole('menuitem', { name: 'Add another' })
+    expect(footer.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(footer.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(footer.className).toMatch(/\bactive:border-l-border-strong\b/)
+    expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
+  })
+
   it('opens on click and marks the checked item with role=menuitemradio and aria-checked', async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
@@ -138,7 +181,7 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('renders a danger callout inside the surface for the item reported as failed, and keeps the menu open', async () => {
+  it('renders a danger-toned message inside the surface for the item reported as failed, and keeps the menu open', async () => {
     const user = userEvent.setup()
     render(
       <Menu
@@ -150,8 +193,95 @@ describe('Menu', () => {
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Manage' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('We could not unlink that profile')
+    // T559: the visible failure text is a plain paragraph, not a `role="alert"` region — see below
+    // for why — but it is still on the page, styled `text-danger`, and named by the failing item.
+    // Scoped to the menu itself: the same text is also mirrored into the live region below.
+    const message = within(screen.getByRole('menu')).getByText('We could not unlink that profile')
+    expect(message.tagName).toBe('P')
+    expect(message.className).toMatch(/\btext-danger\b/)
+    const item = screen.getByRole('menuitem', { name: 'Unlink this profile' })
+    expect(item).toHaveAttribute('aria-describedby', message.id)
     expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
+  it('announces the failure assertively through a live region outside role="menu", never role="alert" inside it (FR-057)', async () => {
+    // T559 (a11y-allowlist "menu"/"aria-required-children"): `role="menu"`'s required owned
+    // elements are `group`/`menuitem`/`menuitemcheckbox`/`menuitemradio`/`separator` — a nested
+    // `role="alert"` or `role="status"` region is none of those, confirmed with axe-core directly
+    // against this exact markup shape (no wrapping `role="presentation"` or `role="group"` shields
+    // a role-bearing or focusable descendant; axe's `aria-required-children` check flattens
+    // straight through both). This test is the permanent guard for that: it walks the rendered
+    // `role="menu"` subtree itself, the same containment axe inspects, rather than trusting a
+    // one-off scan never to regress.
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[{ id: 'unlink', label: 'Unlink this profile' }]}
+        errorItemId="unlink"
+        errorMessage="We could not unlink that profile"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    const live = document.querySelector('[aria-live="assertive"]')
+    expect(live).not.toBeNull()
+    expect(live).toHaveTextContent('We could not unlink that profile')
+    // Outside `role="menu"` — a sibling, never a descendant — is the whole point.
+    expect(screen.getByRole('menu').contains(live)).toBe(false)
+  })
+
+  it('never nests a role or a focusable element inside role="menu" other than its own owned roles (aria-required-children)', async () => {
+    // The structural property `aria-required-children` actually enforces for `menu`: every
+    // element reachable inside it that carries an explicit ARIA role, a global ARIA attribute, or
+    // is otherwise focusable must be one of `menu`'s own required owned roles. A plain wrapper
+    // `<div>` or `<p>` with none of those is transparent to the check (confirmed with axe-core) and
+    // is not asserted against here — this only guards the roles/attributes that would actually trip
+    // the rule.
+    const ALLOWED_OWNED_ROLES = new Set([
+      'group',
+      'menuitem',
+      'menuitemcheckbox',
+      'menuitemradio',
+      'separator',
+      'menu',
+    ])
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[
+          { id: 'unlink', label: 'Unlink this profile' },
+          { id: 'other', label: 'Other action' },
+        ]}
+        footerItem={{ id: 'link', label: 'Add another' }}
+        errorItemId="unlink"
+        errorMessage="We could not unlink that profile"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const menu = screen.getByRole('menu')
+
+    for (const el of menu.querySelectorAll<HTMLElement>('*')) {
+      const role = el.getAttribute('role')
+      if (role) {
+        expect(ALLOWED_OWNED_ROLES.has(role)).toBe(true)
+      }
+      const hasTabIndex = el.hasAttribute('tabindex')
+      const hasAriaLabelledby = el.hasAttribute('aria-labelledby')
+      const hasAriaLive = el.hasAttribute('aria-live')
+      if ((hasTabIndex || hasAriaLabelledby || hasAriaLive) && !role) {
+        throw new Error(
+          `${el.tagName.toLowerCase()} has a focusable/global ARIA attribute with no role — ` +
+            'would still be flagged as an unallowed owned element of role="menu".',
+        )
+      }
+    }
   })
 
   it('every item is at least 44px tall', async () => {
@@ -163,6 +293,29 @@ describe('Menu', () => {
       for (const item of screen.getAllByRole('menuitemradio')) {
         expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
       }
+    } finally {
+      getBoundingClientRect.mockRestore()
+    }
+  })
+
+  // T561 (FR-018/FR-019): the trigger is reachable at 375 on every call site — `ProfileSummary`'s
+  // profile switcher and "Manage" trigger, `SiteHeader`'s theme control — and had regressed to
+  // `Button`'s pointer-only `md` height (40px, `h-10`). Guards the class contract the way the
+  // rest of this file already does (`toMatch`, not a literal pixel copied into the assertion) so a
+  // future edit that drops this back below the touch floor fails here, not just at review.
+  it('the trigger clears the 44px touch floor at min-h-12, not md/h-10 (FR-018, FR-019)', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\bmin-h-12\b/)
+    expect(trigger.className).not.toMatch(/\bh-10\b/)
+  })
+
+  it('the trigger really measures at least 44px tall', () => {
+    const getBoundingClientRect = mockMinHeightLayout()
+    try {
+      render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+      const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+      expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
     } finally {
       getBoundingClientRect.mockRestore()
     }

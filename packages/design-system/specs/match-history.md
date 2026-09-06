@@ -25,7 +25,9 @@ route's header already shows. **§12 additionally depends on**
 [`civilisation-icon.md`](./civilisation-icon.md), [`map-thumbnail.md`](./map-thumbnail.md) and
 [`player-colour-swatch.md`](./player-colour-swatch.md) — the three marks are specified in full there
 and only _composed_ here — and on [`game-asset-tokens.md`](./game-asset-tokens.md) for the
-player-colour and `icon` token families.
+player-colour and `icon` token families. **The 1280 layout of both components additionally depends
+on** [`structural-tier.md`](./structural-tier.md) — `Table` (T558): both the match list and
+`ParticipantsTable` compose it rather than rendering a `<table>` of their own.
 
 ## 1. Purpose
 
@@ -48,15 +50,17 @@ MatchRow                                                       one per match, th
 ├─ RatingChange         StatValue/inline, signed
 │                       — WIDENED by §12.4 to Rating: the absolute value and its signed change
 ├─ Duration             "34 min" — never raw seconds
-├─ When                 relative time, absolute time on hover/focus (title attribute or tooltip)
-└─ CaptureStateBadge    context="compact" — see capture-state-badge.md
+├─ When                 relative time visible; absolute time via native `title` on hover, and
+│                       always present to assistive technology as a visually hidden note — never
+│                       only the hover route (T560, FR-039)
+└─ CaptureStateBadge    variant="compact" — see capture-state-badge.md
 
 MatchDetailPanel
 ├─ Header
 │  ├─ Map, leaderboard name, duration, played-on date/time
 │  │                             — Map WIDENED by §12.5 to MapThumbnail (lg) + name
 │  ├─ GameVersion                 raw patch string (e.g. "101.101") — 003 FR-018, §11.1
-│  └─ CaptureStateBadge          context="detail"
+│  └─ CaptureStateBadge          variant="detail"
 ├─ DownloadAction                Button/secondary — present only when capture_status = "stored"
 ├─ ParticipantsTable             FR-011: every participant, grouped by team
 │  └─ TeamGroup ×n               — gains a TeamResult marker in its heading (§12.3)
@@ -222,19 +226,19 @@ family (`game-asset-tokens.md`), which is what §12's three marks size from.
 
 ## 7. Spacing
 
-| Between                                                                   | Step      |
-| ------------------------------------------------------------------------- | --------- |
-| Page header (`ProfileSummary/compact`) to match list                      | `space-6` |
-| Between `MatchRow` cards (375)                                            | `space-3` |
-| `MatchRow` padding (375 card)                                             | `space-4` |
-| `MatchRow` table row padding-block (1280)                                 | `space-3` |
-| `MatchRow` table column gap (1280)                                        | `space-5` |
-| Outcome to opponent                                                       | `space-2` |
-| `CaptureStateBadge` from the rest of the row (375, wraps to its own line) | `space-2` |
-| Panel header to `DownloadAction`                                          | `space-4` |
-| `DownloadAction` to `ParticipantsTable`                                   | `space-6` |
-| Between `TeamGroup`s                                                      | `space-5` |
-| `ParticipantsTable` row padding-block                                     | `space-3` |
+| Between                                                                   | Step                                                                                                                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Page header (`ProfileSummary/compact`) to match list                      | `space-6`                                                                                                                          |
+| Between `MatchRow` cards (375)                                            | `space-3`                                                                                                                          |
+| `MatchRow` padding (375 card)                                             | `space-4`                                                                                                                          |
+| `MatchRow` table row padding-block (1280)                                 | `space-3` (`Table`'s own `dense` density, T558)                                                                                    |
+| `MatchRow` table column gap (1280)                                        | `space-4` (`Table`'s own inline cell padding, T558 — supersedes the `space-5` this row named before the `Table` primitive existed) |
+| Outcome to opponent                                                       | `space-2`                                                                                                                          |
+| `CaptureStateBadge` from the rest of the row (375, wraps to its own line) | `space-2`                                                                                                                          |
+| Panel header to `DownloadAction`                                          | `space-4`                                                                                                                          |
+| `DownloadAction` to `ParticipantsTable`                                   | `space-6`                                                                                                                          |
+| Between `TeamGroup`s                                                      | `space-5`                                                                                                                          |
+| `ParticipantsTable` row padding-block                                     | `space-3`                                                                                                                          |
 
 §12.7 adds the steps the three new marks need; nothing above changes.
 
@@ -245,13 +249,19 @@ family (`game-asset-tokens.md`), which is what §12's three marks size from.
   right-aligned on the first line, `CaptureStateBadge` on its own line beneath (its `SecondaryLine`
   wraps per `capture-state-badge.md` §7). `MatchDetailPanel`'s `ParticipantsTable` renders as one
   card per participant, grouped under a `TeamGroup` heading.
-- **768** — `MatchRow` cards gain a second column (map/civilisation beside duration/when).
-  `ParticipantsTable` stays card-based but two participants sit side by side within a `TeamGroup`.
-- **1280** — `MatchRow` becomes a real `<table>`: columns _Result · Opponent · Map · Civilisation ·
-  Change · Duration · When · Capture_. Figures right-aligned, `CaptureStateBadge` in the trailing
+- **768** — `MatchRow` is unchanged from 375: still a single-column stacked card, just wider. A
+  second column at this width (map/civilisation beside duration/when) is **not** used: an earlier
+  draft of this section described one, but it was never built — the card carries no `md:` class
+  anywhere in the component — and this file no longer asserts it. The row's one structural change is
+  the table below, and it happens once, at `xl`, not in two steps. `ParticipantsTable` stays
+  card-based but two participants sit side by side within a `TeamGroup`.
+- **1280** — `MatchRow` becomes a `Table` (structural-tier.md §10, T558 — no longer a hand-rolled
+  `<table>`): columns _Result · Opponent · Map · Civilisation · Change · Duration · When · Capture_.
+  Figures right-aligned through the `numeric` column role, `CaptureStateBadge` in the trailing
   column with its `SecondaryLine` beneath the pill rather than beside it (column width is bounded).
-  `ParticipantsTable` becomes a real `<table>` per `TeamGroup`, ruled with `border`, no card shadows —
-  the same reasoning `profile-summary.md` §8 gives for its own rating board.
+  `ParticipantsTable` becomes a `Table` per `TeamGroup` at the same `dense` surface class, ruled
+  with `border`, no card shadows — the same reasoning `profile-summary.md` §8 gives for its own
+  rating board.
 
 **Do not render both layouts and hide one** — `profile-summary.md`'s own rule, restated here because
 it is the same list-versus-table shape: one DOM, restructured at the breakpoint.
@@ -264,12 +274,13 @@ imagery to the card layout; the structure, the breakpoints and the one-DOM rule 
 - `MatchRow`'s whole card/row is one `<a>` (never a `<div>` with a click handler); everything inside
   it — including `CaptureStateBadge` — is non-interactive text, so the row has exactly one focus
   stop, not one per field.
-- The match list is a `<ul>`/`<li>` at 375/768 and a real `<table>` with `<caption>` ("Your recent
-  matches") and `<th scope="col">` at 1280 — one DOM per §8, `role`/element switching with it, never
-  duplicated.
-- `MatchDetailPanel`'s `ParticipantsTable`: a real `<table>` per `TeamGroup`, with a visually hidden
-  `<caption>` naming the team, `<th scope="col">` on every column and `<th scope="row">` on each
-  participant's alias.
+- The match list is a `<ul>`/`<li>` at 375/768 and `Table` (T558) with a hidden caption ("Your
+  recent matches") and `<th scope="col">` at 1280 — one DOM per §8, `role`/element switching with
+  it, never duplicated. `Table` itself owns the region wrapper, the caption/label association and
+  the overflow rule (structural-tier.md §10); this component only supplies the columns.
+- `MatchDetailPanel`'s `ParticipantsTable`: `Table` (T558) per `TeamGroup`, with a hidden caption
+  naming the team, `<th scope="col">` on every column and `<th scope="row">` on each participant's
+  alias.
 - Outcome ("Win"/"Loss"/"Unknown", §2a) and `RatingChange`'s sign are both text, never colour-only,
   matching `profile-summary.md`'s delta rule ("+12"/"−12", not a rotated arrow). "Unknown" is
   additionally distinct from either resolved word by its own wording, so a screen reader or a

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { Footer, affiliationNote, disclaimer } from './index'
 
@@ -74,6 +75,31 @@ describe('Footer — LinkRow (footer.md §2, ×0..1, each entry independent)', (
       'href',
       '/object',
     )
+  })
+})
+
+describe('Footer — link hover/focus/active consistency (T560, FR-038)', () => {
+  // footer.md §5 already documented a focus ring and a `duration.fast`/`easing.standard`
+  // transition for these two links — the same treatment every other inline link in the product
+  // (`ThirdPartyObjectionForm`, `AccountErasurePanel`, `PrivacyNotice`) already carries. Neither
+  // was actually built, which also meant these two links had no visible focus indicator at all
+  // (FR-050). A class-name match alone would not prove the ring reaches a real Tab stop, so this
+  // reaches the link by keyboard first.
+  it('is a real Tab stop and matches the inline-link focus, transition and active treatment', async () => {
+    const user = userEvent.setup()
+    render(<Footer privacyNoticeHref="/privacy-notice" objectionHref="/object" />)
+    const link = screen.getByRole('link', { name: 'Read the privacy notice' })
+
+    await user.tab()
+    expect(link).toHaveFocus()
+
+    expect(link.className).toMatch(/focus-visible:outline-2/)
+    expect(link.className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(link.className).toMatch(/\btransition-colors\b/)
+    expect(link.className).toMatch(/\bduration-120\b/)
+    expect(link.className).toMatch(/\bmotion-reduce:duration-0\b/)
+    expect(link.className).toMatch(/\bhover:text-link-hover\b/)
+    expect(link.className).toMatch(/\bactive:text-link-hover\b/)
   })
 })
 

@@ -6,7 +6,12 @@ import { ThirdPartyObjectionForm } from './index'
 describe('ThirdPartyObjectionForm — order and self-containment', () => {
   it('renders the explanation above the form, and exactly one input field', () => {
     render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)
-    const heading = screen.getByRole('heading', { name: 'Object to what is held about you' })
+    // level: 2 — the explanation's own visible heading, distinct from `Page`'s hidden `<h1>`
+    // which carries the same title text for the landmark (structural-tier.md §5).
+    const heading = screen.getByRole('heading', {
+      name: 'Object to what is held about you',
+      level: 2,
+    })
     const input = screen.getByLabelText('Your Age of Empires II profile id')
     expect(heading.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getAllByRole('textbox')).toHaveLength(1)

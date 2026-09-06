@@ -25,7 +25,9 @@ const entries: FavouriteEntryData[] = [
 describe('FavouritesList', () => {
   it('always renders the "Favourites" heading, in every state', () => {
     render(<FavouritesList entries={entries} />)
-    expect(screen.getByRole('heading', { name: 'Favourites', level: 1 })).toBeInTheDocument()
+    // `<h2>`, not `<h1>`: `FavouritesContainer.tsx` composes this inside `Page`, which owns the
+    // route's own hidden `<h1>` (005, structural retrofit, T558).
+    expect(screen.getByRole('heading', { name: 'Favourites', level: 2 })).toBeInTheDocument()
   })
 
   describe('default', () => {
@@ -52,6 +54,17 @@ describe('FavouritesList', () => {
       const button = within(row).getByRole('button')
       expect(link.contains(button)).toBe(false)
       expect(button.contains(link)).toBe(false)
+    })
+
+    // T560 (FR-038): favourites-list.md §5 groups "hover / focus-visible / active" as one rule for
+    // `ProfileLink` — a keyboard Enter triggers `:active` with no pointer ever hovering, so the
+    // link's press feedback must not depend on the hover fill alone.
+    it("paints ProfileLink's active fill the same as its hover fill", () => {
+      render(<FavouritesList entries={[entries[0]]} />)
+      const row = screen.getAllByRole('listitem')[0]
+      const link = within(row).getByRole('link')
+      expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
+      expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
     })
 
     it('shows a bracketed clan beside the alias when present, and none when absent', () => {
@@ -104,6 +117,36 @@ describe('FavouritesList', () => {
       await user.click(screen.getAllByRole('link')[0])
 
       expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/players/1')
+    })
+
+    it('keeps every <dl> valid for an unrefreshable standing composing StatValue with a secondaryLine (axe definition-list)', () => {
+      // T559 (a11y-allowlist "favourites-list"/"definition-list"): the root cause lived in
+      // `StatValue` itself, not here — this component only inherited it by composing `StatValue`
+      // with `secondaryLine` for a standing that could not refresh (§4). The `neverRanked` fixture
+      // above does not exercise this: its `status: 'empty'` reuses `secondaryLine` as the value
+      // slot's own words rather than rendering it as a second `<dl>` element at all (`StatValue`'s
+      // own rule) — only a `default`-status standing with a `secondaryLine` renders the shape that
+      // used to violate `<dl>`'s allowed-children rule. Fixed once, in `StatValue`; this is the
+      // permanent guard that this composition specifically stays clean.
+      const staleStanding: FavouriteEntryData = {
+        profileId: '3',
+        href: '/players/3',
+        alias: 'DauT',
+        country: 'Israel',
+        standing: {
+          label: 'Rating',
+          value: '2380',
+          unit: '#9',
+          secondaryLine: 'Measured 12 Aug 2026 · could not refresh',
+        },
+      }
+      const { container } = render(<FavouritesList entries={[staleStanding]} />)
+      const dls = container.querySelectorAll('dl')
+      expect(dls.length).toBeGreaterThan(0)
+      for (const dl of dls) {
+        const directChildTags = Array.from(dl.children).map((el) => el.tagName)
+        expect(directChildTags).toEqual(['DT', 'DD'])
+      }
     })
   })
 

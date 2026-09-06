@@ -9,7 +9,13 @@ import { PrivacyNoticeContainer } from './PrivacyNoticeContainer'
 describe('PrivacyNoticeContainer', () => {
   it('renders with the app’s real hrefs wired in, with no provider of any kind', () => {
     render(<PrivacyNoticeContainer />)
-    expect(screen.getByRole('heading', { name: 'Privacy notice', level: 1 })).toBeInTheDocument()
+    // Exactly one main landmark and exactly one `<h1>` (FR-022, `Page`'s own, T558) — `PrivacyNotice`
+    // composes `Page` itself now, so this container renders nothing of its own around it. `Page`'s
+    // title is required but visually hidden (`titleHidden`); the reader-visible "Privacy notice"
+    // heading is `PrivacyNotice`'s own, downgraded to `<h2>` so it never duplicates `Page`'s `<h1>`.
+    expect(screen.getByRole('main')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Privacy notice', level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { name: 'Privacy notice', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Object to what is held about me' })).toHaveAttribute(
       'href',
       '/object',

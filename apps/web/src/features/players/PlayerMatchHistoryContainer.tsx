@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { Button, MatchList, ProfileSummary } from 'design-system'
+import { Button, MatchList, Page, ProfileSummary } from 'design-system'
 import type { MatchListStatus, ProfileSummaryStatus } from 'design-system'
 import { toMatchRowDataList } from '../matches/mappers'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
@@ -80,13 +80,17 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
     : []
 
   return (
-    <main className="min-h-svh bg-background">
+    // `title` is visually hidden: `ProfileSummary/compact` is the large visible element that
+    // already carries this route's identity (structural-tier.md §5).
+    <Page title="Match history" titleHidden>
       {/* Mirrors `PlayerProfileContainer.tsx`'s T383 top-bar link: suppressed for `not-found`,
        * where `ProfileSummary`'s own "Back to search" already carries the round trip. */}
       {!notFound && (
-        <div className="flex justify-start px-4 pt-4 md:px-6">
+        <div className="flex justify-start">
+          {/* T561 (FR-018/FR-019): reachable at 375, `size="lg"` not the `md` default. */}
           <Button
             variant="ghost"
+            size="lg"
             onClick={() =>
               void navigate({ to: '/players/$profileId', params: { profileId: String(profileId) } })
             }
@@ -109,19 +113,16 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
         onRetry={() => void profileQuery.refetch()}
       />
 
-      {/* match-history.md §7: page header to match list — `space-6`. */}
       {!notFound && (
-        <div className="mt-6 px-4 pb-8 md:px-6">
-          <MatchList
-            status={matchListStatus}
-            matches={matchRows}
-            subject="other"
-            subjectAlias={profile?.alias}
-            onRetry={() => void matchesQuery.refetch()}
-            onNavigate={(href) => void navigate({ to: href })}
-          />
-        </div>
+        <MatchList
+          status={matchListStatus}
+          matches={matchRows}
+          subject="other"
+          subjectAlias={profile?.alias}
+          onRetry={() => void matchesQuery.refetch()}
+          onNavigate={(href) => void navigate({ to: href })}
+        />
       )}
-    </main>
+    </Page>
   )
 }

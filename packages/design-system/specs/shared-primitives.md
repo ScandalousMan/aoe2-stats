@@ -40,6 +40,15 @@ identical to its rest has not told the user it responded.
 `danger-active` token, and inventing one is forbidden. Its hover deepens by swapping the fill to
 `surface-sunken` and keeping `danger` for label and boundary.
 
+**`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
+like the same word for the same idea, and they are not: `destructive` names what this button _does_
+— commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
+names what a _message_ means, the axis `Callout`'s and `Badge`'s tone scale carries. The table above
+already shows the layering rather than a collision: `destructive` paints its label and boundary with
+the `danger` token because a consequential action and a dangerous message share a colour, not a
+name. Renaming `destructive` to `danger` would put a message-severity word on an action-hierarchy
+scale next to `primary` and `secondary`, which is the inconsistency, not the fix.
+
 **Sizes** — `md`: height `space-10`, padding-inline `space-4`, font-size `sm`. `lg`: height
 `space-12`, padding-inline `space-6`, font-size `md`. **`md` is pointer-only.** Any button reachable
 on a touch viewport renders at `lg` (48px, clearing the 44px minimum), or `md` with the hit area
@@ -181,6 +190,15 @@ needed that these four do not — lives in
 [`capture-state-badge.md`](./capture-state-badge.md#5-badge-tone-variants-new-added-to-shared-primitivesmds-badge),
 which is also where `CaptureStateBadge`, the composite that actually chooses a tone, is specified.
 
+**`Badge`'s prop is `variant`, not `tone`, even though four of its six members are `Callout`'s
+entire `tone` scale (FR-032, T557, README's rule 9).** The two are not the same prop under two
+names: `Callout`'s `tone` is required and always carries semantic weight — a callout with no
+meaning to convey would not exist — while two of `Badge`'s six values, `neutral` and `accent`, carry
+none at all. Naming the whole prop `tone` would misdescribe those two. Where the scales genuinely
+overlap — `success`/`warning`/`danger`/`info` — they already share the identical four spellings in
+both components; that is the part of this that was worth reconciling, and it already was, before
+this survey.
+
 ---
 
 ## Skeleton
@@ -242,9 +260,16 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
   attribute), shows `text-disabled`, and carries a reason on its secondary line.
 - **loading** — an item whose action is in flight shows a spinner in its trailing slot and sets
   `aria-busy`. The menu stays open; other items become `aria-disabled` for the duration.
-- **error** — the item action failed: the menu stays open, a `danger` `Callout` renders inside the
-  surface below the item, the item returns to `default`. Closing the menu on failure loses the
-  message and is forbidden.
+- **error** — the item action failed: the menu stays open, a `danger`-toned message renders inside
+  the surface below the item, the item returns to `default`. Closing the menu on failure loses the
+  message and is forbidden. Visually a `Callout`, but not the component itself (T559, FR-057):
+  `role="menu"`'s required owned elements are `group`/`menuitem`/`menuitemcheckbox`/`menuitemradio`/
+  `separator`, and `Callout` always carries `role="alert"`/`role="status"`, `aria-labelledby` and a
+  focusable heading — every one of those independently makes it a disallowed owned element of
+  `role="menu"`. The message renders as a plain, roleless paragraph instead, named by the failing
+  item via `aria-describedby`; the assertive announcement `role="alert"` would have given for free
+  is instead a dedicated `aria-live="assertive"` region that lives outside `role="menu"` entirely
+  (a sibling, mounted for the whole popover's lifetime).
 - **empty** — a menu with no items does not open; the trigger is `aria-disabled` with a reason. A
   menu that opens onto nothing is a dead end and reads as a bug.
 
@@ -379,7 +404,12 @@ truncates and never shrinks below `2xl`.
 
 **Accessibility** — label and value are associated (`<dt>`/`<dd>`, or a table header with `scope`).
 A delta's sign is a character in the accessible name, not a rotated glyph: "+12" and "−8", not an
-arrow. Values are text, never an image or a canvas.
+arrow. Values are text, never an image or a canvas. A `<dl>` may only directly contain
+properly-ordered `dt`/`dd` groups (T559, FR-057): `secondaryLine`, when present, renders inside the
+same `<dd>` as the value it qualifies, in its own row — never as a third element sibling to the
+`dt`/`dd` pair, which is not a shape `<dl>` accepts (confirmed with axe-core's `definition-list`
+rule; wrapping the trailing element in a bare `<div>` sibling does not clear it either, since the
+check inspects what that `<div>` contains, not just its own tag name).
 
 **Loading is announced once per region, never once per `StatValue` (T532, FR-054).** The `Skeleton`
 this component renders while loading is `aria-hidden`, per `Skeleton`'s own contract below; nothing

@@ -94,6 +94,16 @@ describe('MatchRow', () => {
     expect(within(links[0]).queryAllByRole('button')).toHaveLength(0)
   })
 
+  // T560 (FR-038): match-history.md §5 states "active — per link": a keyboard Enter triggers
+  // `:active` with no pointer ever hovering, so the row's press feedback must not depend on the
+  // hover fill alone. `Table`'s identical row-link category already paints both.
+  it('paints the same fill on active as on hover, matching the row-link category', () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+  })
+
   it('shows "Win"/"Loss" as text, never colour alone', () => {
     const { rerender } = render(<MatchRow match={match} />)
     expect(screen.getByText('Win')).toBeInTheDocument()
@@ -157,6 +167,25 @@ describe('MatchRow', () => {
   it('shows the relative time with the absolute time available as a title tooltip', () => {
     render(<MatchRow match={match} />)
     expect(screen.getByText('3 hours ago')).toHaveAttribute('title', '2026-08-22T09:12:00Z')
+  })
+
+  // T560 (FR-039): the absolute time used to live only in the `title` attribute — visible on
+  // hover, absent from the accessibility tree, unreachable by keyboard and by touch. The row's
+  // one link is where a keyboard or a screen-reader user actually reaches this row, so the whole
+  // card's accessible name is the assertion that matters — not a hover event nobody here fires.
+  it("carries the absolute time in the row link's accessible name, with no hover ever fired", () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link).toHaveAccessibleName(/2026-08-22T09:12:00Z/)
+    // ... and the relative time is still the visible fact, not replaced by the absolute one.
+    expect(screen.getByText('3 hours ago')).toBeInTheDocument()
+  })
+
+  it('omits the absolute-time note entirely when no absolute time is known', () => {
+    render(<MatchRow match={{ ...match, playedAtAbsolute: undefined }} />)
+    const link = screen.getByRole('link')
+    expect(link).not.toHaveAccessibleName(/played/)
+    expect(screen.getByText('3 hours ago')).not.toHaveAttribute('title')
   })
 
   it('renders the capture-state badge collapsed to one of the four labels', () => {
@@ -516,13 +545,15 @@ describe('MatchList', () => {
     }
   })
 
-  // T074b: the table column gap (match-history.md §7).
-  it('renders the table column gap at space-5 (pr-5), not space-6', () => {
+  // T558: the 1280 layout is now `Table` (structural-tier.md §10), which owns the column gap as
+  // its own `space-4` (`px-4`) inline cell padding at every density — no longer this component's
+  // own `pr-5` (superseding T074b's assertion of that value).
+  it('renders the table column inline padding at space-4 (px-4), Table primitive default', () => {
     const restore = mockMatchMediaAt(1280)
     const { container } = render(<MatchList matches={[match]} />)
     const headerCell = container.querySelector('th')
-    expect(headerCell?.className).toMatch(/\bpr-5\b/)
-    expect(headerCell?.className).not.toMatch(/\bpr-6\b/)
+    expect(headerCell?.className).toMatch(/\bpx-4\b/)
+    expect(headerCell?.className).not.toMatch(/\bpr-5\b/)
     restore()
   })
 

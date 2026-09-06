@@ -86,6 +86,16 @@ describe('PlayerResultRow', () => {
     expect(screen.getByRole('link').className).toMatch(/custom-marker/)
   })
 
+  // T560 (FR-038): a keyboard Enter triggers `:active` with no pointer ever hovering, so the row's
+  // press feedback cannot depend on the hover fill alone — the same rule `MatchRow` and `Table`'s
+  // identical row-link category already state and, before this task, this row did not follow.
+  it('paints the same fill on active as on hover, matching the row-link category', () => {
+    render(<PlayerResultRow result={base} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+  })
+
   // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
   // labelled, and nothing may be built on it.
   describe('unverifiedSteamId (§4a)', () => {

@@ -7,6 +7,7 @@ import {
   Callout,
   DataExportPanel,
   ErasedScreen,
+  Page,
 } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { formatObjectedAt } from '../profile/format'
@@ -104,22 +105,22 @@ export function PrivacyContainer() {
 
   if (erased) {
     return (
-      <main className="min-h-svh bg-background px-4 py-6 md:px-6 md:py-8">
+      <Page title="Manage your data" width="measure">
         <ErasedScreen homeHref="/privacy-notice" />
-      </main>
+      </Page>
     )
   }
 
   return (
-    <main className="min-h-svh bg-background px-4 py-6 md:px-6 md:py-8">
+    <Page title="Manage your data" width="measure" loading={meQuery.isPending}>
       {meQuery.isPending ? (
-        <p className="font-sans text-text-secondary">Loading…</p>
+        <p className="type-body text-md text-text-secondary">Loading…</p>
       ) : !authenticated ? (
         <Callout tone="info" heading="Sign in to manage your data">
           You need to be signed in to export or erase your data.
         </Callout>
       ) : (
-        <div className="flex flex-col gap-12">
+        <>
           <ArchivalControl
             state={archivalState}
             objectedAt={
@@ -142,8 +143,8 @@ export function PrivacyContainer() {
             onErase={handleErase}
             onErased={() => setErased(true)}
           />
-        </div>
+        </>
       )}
-    </main>
+    </Page>
   )
 }

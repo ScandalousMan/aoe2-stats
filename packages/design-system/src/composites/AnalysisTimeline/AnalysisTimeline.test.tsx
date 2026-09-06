@@ -192,6 +192,20 @@ describe('AnalysisTimeline', () => {
       expect(screen.getByText('143')).toBeInTheDocument()
     })
 
+    it('keeps every <dl> valid even though "Villagers ordered" composes StatValue with a secondaryLine (axe definition-list)', () => {
+      // T559 (a11y-allowlist "analysis-timeline"/"definition-list"): the root cause lived in
+      // `StatValue` itself, not here — this component only inherited it by composing `StatValue`
+      // with `secondaryLine` for "Villagers ordered" (`VILLAGERS_ORDERED_CAVEAT`). Fixed once, in
+      // `StatValue`; this is the permanent guard that this composition specifically stays clean.
+      const { container } = render(<AnalysisTimeline state="published" teams={teams} />)
+      const dls = container.querySelectorAll('dl')
+      expect(dls.length).toBeGreaterThan(0)
+      for (const dl of dls) {
+        const directChildTags = Array.from(dl.children).map((el) => el.tagName)
+        expect(directChildTags).toEqual(['DT', 'DD'])
+      }
+    })
+
     it('shows a ResignedLine only for a participant who resigned', () => {
       render(<AnalysisTimeline state="published" teams={teams} />)
       expect(

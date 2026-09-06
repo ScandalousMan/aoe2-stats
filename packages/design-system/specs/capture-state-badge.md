@@ -80,13 +80,27 @@ caller. `CaptureStateBadge` takes `captureStatus` (one of the seven raw values) 
 `SecondaryLine` itself — a call site never passes a label or a tone directly, which is what keeps
 every match row and the detail panel from ever disagreeing about what a given status means.
 
-**Context** — `compact` (inside `MatchRow`: pill and `SecondaryLine` may sit on one line or wrap to
+**Variant** — `compact` (inside `MatchRow`: pill and `SecondaryLine` may sit on one line or wrap to
 two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: pill and
 `SecondaryLine` always stack, `SecondaryLine` renders as a full sentence rather than the shortened
-countdown form — see §3's copy versus the countdown format below). Both contexts share every token,
+countdown form — see §3's copy versus the countdown format below). Both variants share every token,
 every tone and every label; only the `SecondaryLine`'s phrasing and layout differ.
 
-**Sizes** — none of its own; the pill is `Badge`'s one size (`space-5` tall) in both contexts.
+**Renamed from `context` to `variant` (FR-032, FR-066, T557).** Every other component whose
+rendering depends on where it is embedded (`ProfileSummary`, `StatValue`, `SignInScreen`) calls that
+prop `variant`; `CaptureStateBadge` alone called the identical thing `context`, which is the shape
+of collision FR-032 exists to close. There is no semantic difference the old name protected — like
+`CivilisationIconSize`, `MapThumbnailSize` and every other embedding-dependent scale in this system,
+the caller picks one of a closed set of shapes based on where it places the component, and that is
+what `variant` already means everywhere else. This is the deprecation procedure's first real
+subject (T570, ahead of the procedure itself being written down in T573/`GOVERNANCE.md`): the old
+prop name `context` and the old type name `CaptureStateBadgeContext` are retired, `variant` and
+`CaptureStateBadgeVariant` replace them, and every consumer moved in the same change —
+`CaptureStateBadge`'s own `index.tsx` and `countdown.ts`, its tests and stories, and the two call
+sites, `MatchRow` and `MatchDetailPanel`. No behaviour changed: the two values and everything they
+render are identical, only the prop and the type are renamed.
+
+**Sizes** — none of its own; the pill is `Badge`'s one size (`space-5` tall) in both variants.
 
 ## 5. Badge tone variants (new, added to `shared-primitives.md`'s `Badge`)
 
@@ -145,8 +159,8 @@ error / empty) applies to the whole component, not to be confused with the four 
 
 ## 7. The countdown (`SecondaryLine` for "Still catchable")
 
-`compact` context: `"<N> <unit> left"` — `"6 days left"`, `"18 hours left"`, `"42 minutes left"`.
-`detail` context: `"Captures automatically within <N> <unit>."`.
+`compact` variant: `"<N> <unit> left"` — `"6 days left"`, `"18 hours left"`, `"42 minutes left"`.
+`detail` variant: `"Captures automatically within <N> <unit>."`.
 
 - Unit is **days** while at least 1 full day remains to `capture_deadline_at` (floor, not round —
   "6 days left" never means less than 144 hours remain); **hours** below that while at least 1 full
@@ -180,10 +194,10 @@ Gaps in play: none. Every pair this component needs is already measured and asse
 
 ## 10. Responsive
 
-`compact` context wraps `SecondaryLine` onto its own line below 640px-equivalent row width rather
+`compact` variant wraps `SecondaryLine` onto its own line below 640px-equivalent row width rather
 than truncating — a countdown or a reason is exactly the text this product refuses to ellipsise
 (`profile-summary.md`'s "Figures never ellipsise at any viewport" extends here: this is the same
-discipline applied to the sentence explaining a figure's absence). `detail` context always stacks,
+discipline applied to the sentence explaining a figure's absence). `detail` variant always stacks,
 at every viewport.
 
 ## 11. Accessibility

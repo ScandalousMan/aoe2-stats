@@ -123,31 +123,31 @@ describe('CaptureStateBadge', () => {
       expect(screen.getByText('2 minutes left')).toBeInTheDocument()
     })
 
-    it('renders the full-sentence form in the detail context', () => {
+    it('renders the full-sentence form in the detail variant', () => {
       const deadline = new Date('2026-08-28T12:00:00Z').toISOString()
       render(
-        <CaptureStateBadge captureStatus="pending" captureDeadlineAt={deadline} context="detail" />,
+        <CaptureStateBadge captureStatus="pending" captureDeadlineAt={deadline} variant="detail" />,
       )
       expect(screen.getByText('Captures automatically within 6 days.')).toBeInTheDocument()
     })
   })
 
   describe('`stacked` — told to stack, rather than inferring the window is its own box', () => {
-    it('stacks the pill and SecondaryLine in compact context when `stacked` is set', () => {
-      render(<CaptureStateBadge captureStatus="expired" context="compact" stacked />)
+    it('stacks the pill and SecondaryLine in compact variant when `stacked` is set', () => {
+      render(<CaptureStateBadge captureStatus="expired" variant="compact" stacked />)
       const wrapper = screen.getByText('Lost').closest('div')
       expect(wrapper?.className).toContain('flex-col')
       expect(wrapper?.className).not.toContain('sm:flex-row')
     })
 
-    it('leaves compact context free to respond to the window when `stacked` is not set', () => {
-      render(<CaptureStateBadge captureStatus="expired" context="compact" />)
+    it('leaves compact variant free to respond to the window when `stacked` is not set', () => {
+      render(<CaptureStateBadge captureStatus="expired" variant="compact" />)
       const wrapper = screen.getByText('Lost').closest('div')
       expect(wrapper?.className).toContain('sm:flex-row')
     })
 
-    it('has no effect on detail context, which already always stacks', () => {
-      render(<CaptureStateBadge captureStatus="expired" context="detail" stacked={false} />)
+    it('has no effect on detail variant, which already always stacks', () => {
+      render(<CaptureStateBadge captureStatus="expired" variant="detail" stacked={false} />)
       const wrapper = screen.getByText('Lost').closest('div')
       expect(wrapper?.className).toContain('flex-col')
       expect(wrapper?.className).not.toContain('sm:flex-row')

@@ -1,9 +1,11 @@
 # SignInScreen
 
-**Component**: `src/components/SignInScreen/`
+**Component**: `src/screens/SignInScreen/`
 **Feature**: 001, US1 — consumed by `apps/web/src/routes/sign-in.tsx` (T036)
 **Requirements**: FR-001, FR-002, FR-003, FR-005, FR-006, FR-007. SC-004.
-**Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`.
+**Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`;
+[`structural-tier.md`](./structural-tier.md) — `Page` (005, structural retrofit: this screen
+composes `Page` for the route's one `<main>` and one `<h1>` rather than rendering either itself).
 
 ## 1. Purpose
 
@@ -15,9 +17,12 @@ forward instead of an empty dashboard.
 
 ```
 SignInScreen
+├─ Page                   hidden title="Sign in…"/"Link another…" (005: owns the route's <main>
+│                          and its one <h1>, visually hidden here — see §8)
 ├─ Frame                  centred panel on the page background
 │  ├─ Brandmark           original abstract mark (see IP note)
-│  ├─ Title               h1
+│  ├─ Title               h2, the visible identity a reader lands on (005: downgraded from h1
+│  │                      now that `Page` owns the page's own hidden one)
 │  ├─ Value line          why this exists, one sentence
 │  ├─ OutcomeRegion       Callout ×0..1 — the three failures and the transport failure
 │  ├─ ActionRow           the Steam button (Button/primary/lg) + secondary action when the
@@ -164,8 +169,12 @@ this screen carries the identity statement.
 
 ## 8. Accessibility
 
-- Landmark `<main>`; the panel is a `<section aria-labelledby>` pointing at the `<h1>`. Exactly one
-  `<h1>` per page. Callout headings are `<h2>`.
+- **Amended (005, structural retrofit)**: this component no longer renders its own `<main>` or its
+  own `<h1>`. It composes `Page` (`structural-tier.md` §5), which owns the route's one `<main>` and
+  the one `<h1>` — passed hidden (`title`/`titleHidden`), since this screen is always the whole of
+  its route and the visible identity a reader needs is the card's own title. The panel is a
+  `<section aria-labelledby>` pointing at that card title, now an `<h2>` rather than an `<h1>`, so
+  `Page`'s stays the only `<h1>` on the page. Callout headings sit alongside it, also `<h2>`.
 - The Steam action is a `<button>` posting to the sign-in start route, or an `<a>` when it is a
   plain navigation. Never a `div`.
 - **Focus after the callback**: when the screen mounts with an outcome, move focus to the callout

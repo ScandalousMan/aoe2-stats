@@ -96,52 +96,62 @@ export function StatValue({
       aria-busy={status === 'loading' && announceLoading ? true : undefined}
     >
       <dt className="font-sans text-sm text-text-secondary">{label}</dt>
-      <dd className="mt-1 flex items-baseline gap-2">
-        {status === 'loading' && (
-          // T528: closes an arbitrary length value. `1.2em` rode the font-size class beside it
-          // (`valueSize[variant]`) to approximate one line's height at whichever variant's own
-          // size. No `icon.json` step is the right token here: every icon step sets width *and*
-          // height together, and this placeholder already takes its width from the caller's own
-          // `loadingWidthClassName` — pairing a width-setting utility onto it would race that
-          // prop for the same property. The nearest sanctioned utility is instead the ordinary
-          // spacing scale (`h-6`, `1.5rem`/24px), matching `type-body`'s own line-height and the
-          // `inline` variant's own text-md size exactly; `hero` and `compact` skeletons now
-          // render at a fixed height rather than scaling with `1.2em` per variant, an accepted
-          // trade-off recorded here rather than left as a silent behaviour change.
-          <Skeleton
-            variant="number"
-            className={cx(valueSize[variant], 'h-6', loadingWidthClassName)}
-          />
-        )}
-        {status === 'empty' && (
-          // T532: words, not a punctuation mark — `type-supporting` (ordinary body/supporting
-          // typography, never `type-identifier`: this is prose stating a reason, not a raw value
-          // the product could not resolve to a name) at the value's own size, so the row keeps its
-          // footprint, and `text-secondary` (not `font-semibold`/`tracking-tight`, both specific to
-          // `type-numeric`'s digit treatment) so the empty state is visibly distinct from a measured
-          // value in weight and typeface as well as in colour.
-          <span className={cx('type-supporting text-text-secondary', valueSize[variant])}>
-            {resolvedEmptyReason}
-          </span>
-        )}
-        {status === 'default' && (
-          <>
-            <span
-              className={cx(
-                'type-numeric font-semibold tracking-tight text-text-primary',
-                valueSize[variant],
-              )}
-            >
-              {value}
+      {/* T559 (a11y-allowlist "stat-value"/"definition-list"): a `<dl>` may only directly contain
+          properly-ordered `dt`/`dd` groups (plus `script`/`template`/`div`, neither of which helps
+          here — confirmed with axe-core that wrapping the trailing element in a bare `<div>`
+          sibling still fails, because the check inspects what that `<div>` itself contains, not
+          just its tag name). `secondaryLine` used to render as a third direct child of the `<dl>`,
+          after this `<dd>`; it now lives inside the same `<dd>`, in its own row, which is the only
+          shape axe accepts. The value/unit/delta row moves into its own inner `<div>` so it keeps
+          exactly the layout it had as the `<dd>`'s own flex row. */}
+      <dd className="mt-1 flex flex-col">
+        <div className="flex items-baseline gap-2">
+          {status === 'loading' && (
+            // T528: closes an arbitrary length value. `1.2em` rode the font-size class beside it
+            // (`valueSize[variant]`) to approximate one line's height at whichever variant's own
+            // size. No `icon.json` step is the right token here: every icon step sets width *and*
+            // height together, and this placeholder already takes its width from the caller's own
+            // `loadingWidthClassName` — pairing a width-setting utility onto it would race that
+            // prop for the same property. The nearest sanctioned utility is instead the ordinary
+            // spacing scale (`h-6`, `1.5rem`/24px), matching `type-body`'s own line-height and the
+            // `inline` variant's own text-md size exactly; `hero` and `compact` skeletons now
+            // render at a fixed height rather than scaling with `1.2em` per variant, an accepted
+            // trade-off recorded here rather than left as a silent behaviour change.
+            <Skeleton
+              variant="number"
+              className={cx(valueSize[variant], 'h-6', loadingWidthClassName)}
+            />
+          )}
+          {status === 'empty' && (
+            // T532: words, not a punctuation mark — `type-supporting` (ordinary body/supporting
+            // typography, never `type-identifier`: this is prose stating a reason, not a raw value
+            // the product could not resolve to a name) at the value's own size, so the row keeps its
+            // footprint, and `text-secondary` (not `font-semibold`/`tracking-tight`, both specific to
+            // `type-numeric`'s digit treatment) so the empty state is visibly distinct from a measured
+            // value in weight and typeface as well as in colour.
+            <span className={cx('type-supporting text-text-secondary', valueSize[variant])}>
+              {resolvedEmptyReason}
             </span>
-            {unit && <span className="font-sans text-sm text-text-secondary">{unit}</span>}
-            {delta && <Delta delta={delta} />}
-          </>
+          )}
+          {status === 'default' && (
+            <>
+              <span
+                className={cx(
+                  'type-numeric font-semibold tracking-tight text-text-primary',
+                  valueSize[variant],
+                )}
+              >
+                {value}
+              </span>
+              {unit && <span className="font-sans text-sm text-text-secondary">{unit}</span>}
+              {delta && <Delta delta={delta} />}
+            </>
+          )}
+        </div>
+        {secondaryLine && !reuseSecondaryLineAsReason && (
+          <span className="mt-1 font-sans text-xs text-text-secondary">{secondaryLine}</span>
         )}
       </dd>
-      {secondaryLine && !reuseSecondaryLineAsReason && (
-        <span className="mt-1 font-sans text-xs text-text-secondary">{secondaryLine}</span>
-      )}
     </dl>
   )
 }

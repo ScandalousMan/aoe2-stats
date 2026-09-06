@@ -82,7 +82,11 @@ describe('SignInScreen', () => {
 
   it('the link variant never says "sign in" and includes the archiving line', () => {
     render(<SignInScreen variant="link" onContinueWithSteam={() => {}} onCancel={() => {}} />)
-    expect(screen.getByRole('heading', { name: 'Link another Steam account' })).toBeInTheDocument()
+    // level: 2 — the card's own visible heading, distinct from `Page`'s hidden `<h1>` which
+    // carries the same title text for the landmark (structural-tier.md §5).
+    expect(
+      screen.getByRole('heading', { name: 'Link another Steam account', level: 2 }),
+    ).toBeInTheDocument()
     expect(screen.getByText(/archives its replays too/)).toBeInTheDocument()
     expect(document.body.textContent?.toLowerCase()).not.toContain('sign in')
   })

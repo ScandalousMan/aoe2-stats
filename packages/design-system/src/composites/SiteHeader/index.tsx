@@ -156,7 +156,14 @@ export function SiteHeader({
         className={cx(
           'sr-only',
           'focus:not-sr-only focus:fixed focus:top-2 focus:left-4 focus:z-50 focus:rounded-control',
-          'focus:border focus:border-border-strong focus:bg-surface-raised focus:px-3 focus:py-2',
+          // T561 (FR-018/FR-019): `py-2` (8px each side) plus this text's own `text-sm` line-height
+          // (20px, `tokens/font.json`) totals 38px, short of the 44px floor — `py-3` (12px each
+          // side) clears it at 44px content height before the 1px focus border on each edge. Only
+          // reachable once focused, but reachable by touch then (a tap after landing here via
+          // switch/voice control, not only a hardware keyboard), so it owes the same floor as every
+          // other touch-reachable control (site-header.md §9's "`SkipLink` and `Brand` clear it by
+          // their own padding-block").
+          'focus:border focus:border-border-strong focus:bg-surface-raised focus:px-3 focus:py-3',
           'focus:font-sans focus:text-sm focus:font-normal focus:text-text-primary',
           focusRing,
         )}
@@ -175,7 +182,15 @@ export function SiteHeader({
             href={brandHref}
             onClick={createRowLinkClickHandler(brandHref, onNavigate)}
             className={cx(
-              'font-display text-lg font-semibold tracking-tight text-text-primary hover:underline',
+              // T561 (FR-018/FR-019): carried no padding of its own, so it measured 24px tall at
+              // 375 and 1280 — the 48px site-header.md §9 credits it with only ever came from the
+              // row's own height at `md`, incidentally, never from this link. `inline-flex
+              // items-center` turns the vertical padding below into real box height (an `inline`
+              // anchor's own padding-block does not reliably grow its hit area the way a flex
+              // item's does); `py-3` (12px each side) plus `text-lg`'s own line-height (24px,
+              // `tokens/font.json`) totals 48px, clearing the 44px floor with room, on every route
+              // this is mounted on (§9's own claim, now true in code, not only in prose).
+              'inline-flex items-center py-3 font-display text-lg font-semibold tracking-tight text-text-primary hover:underline',
               focusRing,
             )}
           >

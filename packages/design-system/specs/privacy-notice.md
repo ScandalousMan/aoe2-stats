@@ -640,9 +640,10 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
 - Each `CategoryEntry` is a `<dl>` of four `<dt>`/`<dd>` pairs. A screen reader announcing "Legal
   basis: our legitimate interest…" is exactly the association this content needs, and it is the
   reason this is not a table.
-- `ProcessorList` and `OutwardCallList` are real `<table>`s with `<th scope="col">`, small enough
-  (three columns, three rows) to fit the measure at every viewport without overflow. They are the
-  only tables in the component.
+- `ProcessorList` and `OutwardCallList` are `Table` (T558, structural-tier.md §10) at
+  `density="prose"` — structural-tier.md §3's own derivation for "a definitional table inside a
+  legal notice" — with `<th scope="col">` on every column, small enough (three columns, three rows)
+  to fit the measure at every viewport without overflow. They are the only tables in the component.
 - Inline links are `<a>` with a permanent underline, never colour alone (README rule 4).
   `ObjectionCallToAction` is a `Button` rendered as `<a>`, because it navigates.
 - Touch targets: every `Contents` entry and the objection button clear 44px. Inline links inside a

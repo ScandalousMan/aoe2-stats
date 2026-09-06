@@ -1,14 +1,16 @@
 # ThirdPartyObjectionForm
 
-**Component**: `src/components/ThirdPartyObjectionForm/`
+**Component**: `src/screens/ThirdPartyObjectionForm/`
 **Feature**: 001, US5 — built by T095, composed by `apps/web/src/routes/object.tsx`, a route **outside
 the session**, reachable from the privacy notice (`PrivacyNotice` §4.7's `ObjectionCallToAction`) and
 from the footer (T098).
 **Requirements**: FR-039 (a way for a non-user in archived matches to object, and pseudonymisation of
 their identifiers on request without corrupting match records). FR-038 (non-users are never publicly
 exposed or indexed — this screen holds no listing of anyone). Constitution IX and X.
-**Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`. This component
-defines its own labelled numeric field inline, exactly as `SearchBox`
+**Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`;
+[`structural-tier.md`](./structural-tier.md) — `Page` (005, structural retrofit: this screen
+composes `Page` for the route's one `<main>` and one `<h1>` rather than rendering either itself —
+see §2 and §9). This component defines its own labelled numeric field inline, exactly as `SearchBox`
 ([`player-search.md`](./player-search.md) §2) defines its own input — there is no shared form-field
 primitive, and inventing a general one for the two fields the product has is out of scope here.
 **Sources of truth this behaviour and copy are derived from, and must not contradict**:
@@ -43,8 +45,13 @@ for.
 ## 2. Anatomy
 
 ```
-ThirdPartyObjectionForm                     <main> with a single <h1>; no auth chrome
-├─ Heading                    h1 — "Object to what is held about you"
+ThirdPartyObjectionForm
+├─ Page                       hidden title="Object to what is held about you" (005: owns the
+│                             route's one <main> and its one <h1>, visually hidden here); no auth
+│                             chrome
+├─ Heading                    h2, the visible identity a reader lands on — "Object to what is held
+│                             about you" (005: downgraded from h1 now that `Page` owns the page's
+│                             own hidden one)
 ├─ Explanation                the disclosure, always above the form (§4.2)
 │  ├─ WhoThisIsFor            you appear here without ever signing in — why
 │  ├─ WhatWeHold             the public match fields + in-recording actions/chat
@@ -290,8 +297,12 @@ closes.
 
 ## 9. Accessibility
 
-- Root is `<main>` with a single `<h1>`; the route renders no competing `<h1>`. The explanation
-  paragraphs are ordinary prose; if grouped, the group heading is an `<h2>` and levels never skip.
+- **Amended (005, structural retrofit)**: this component no longer renders its own `<main>` or its
+  own `<h1>`. It composes `Page` (`structural-tier.md` §5), which owns the route's one `<main>` and
+  the one `<h1>` — passed hidden (`title`/`titleHidden`), since this screen is always the whole of
+  its route. The visible `Heading` a reader lands on is now an `<h2>`, so `Page`'s stays the only
+  `<h1>` on the page. The explanation paragraphs are ordinary prose; if grouped, the group heading
+  is an `<h3>` and levels never skip.
 - `ObjectionForm` is a `<form>`. `Input` is a real `<input inputmode="numeric">` with a programmatic
   `<label>` association (`for`/`id`), `HelpText` linked via `aria-describedby`, and — while a
   `FieldError` is present — `aria-invalid="true"` with the error also in `aria-describedby`. On a

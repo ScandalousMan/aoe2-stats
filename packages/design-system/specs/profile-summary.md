@@ -207,7 +207,12 @@ gap mattered.
   name, then rating at `2xl` with its delta on the same line, then rank / record / win rate / streak
   wrapping onto at most two rows. The switcher opens as a bottom sheet (`Menu`). Identity bar
   stacks: switcher trigger, then country and profile id on one line.
-- **768** — two cards per row. Identity bar on one row, actions right-aligned.
+- **768** — `RatingBoard` is unchanged from 375: still one full-width card per leaderboard, stacked
+  at `space-4`, just wider. A two-cards-per-row grid at this width is **not** used: an earlier draft
+  of this section described one, but it was never built — the card list carries no `md:grid-cols-2`
+  or any other `md:` class — and this file no longer asserts it. The board's one structural change
+  is the table below, and it happens once, at `lg`, not in two steps. The identity bar does move to
+  one row here, actions right-aligned.
 - **1280** — the rating board becomes a real `<table>`: one row per leaderboard, columns
   _Leaderboard · Rating · Change · Rank · Record · Win rate · Streak · Best_. Figures
   right-aligned, labels left-aligned, ruled with `border` between rows and no shadow. At desktop
@@ -224,8 +229,11 @@ breakpoint.
   (`<h2>`).
 - Card layout: each `RatingEntry` is an `<article>` headed by the leaderboard name (`<h3>`), with
   the figures in a `<dl>` so each label is programmatically tied to its value.
-- Table layout: a real `<table>` with a visually hidden `<caption>` ("Ratings for <alias>"),
-  `<th scope="col">` on every column and `<th scope="row">` on the leaderboard name.
+- Table layout: `Table` (T558, structural-tier.md §10) at `density="dense"`, with a visually hidden
+  `<caption>` ("Ratings for <alias>"), `<th scope="col">` on every column and `<th scope="row">` on
+  the leaderboard name — `Table` owns the region wrapper, the caption/label association, the
+  numeric-column alignment and the overflow rule; this component only supplies the eight columns
+  (§8's list) and, for `Rating`, the emphasis inside its cell's content.
 - `ProfileSwitcher` follows `Menu`: `aria-haspopup="menu"`, `aria-expanded`,
   `role="menuitemradio"` with `aria-checked` on the viewed profile, arrow-key roving, Escape closes
   and returns focus to the trigger. Items are ≥ 44px tall. The trigger's accessible name includes
