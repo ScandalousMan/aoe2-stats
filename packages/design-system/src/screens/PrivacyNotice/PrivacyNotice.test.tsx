@@ -66,6 +66,58 @@ describe('PrivacyNotice — the document exists and is whole', () => {
     const { container } = render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument()
   })
+
+  // T559 (a11y-allowlist "privacy-notice"/"heading-order"): the entry, written 2026-09-05, named a
+  // skip from the page's `h1` straight to the change-note `Callout`'s `h3` — a defect that no
+  // longer exists as of T558 (committed before this task), which made `PrivacyNotice` compose
+  // `Page` itself and downgraded its own former `<h1>` to a visible `<h2>` sitting in the header
+  // between `Page`'s hidden `h1` and the change-note's `h3`. Re-derived against the code as it
+  // stands today, not the entry's description: there is exactly one legitimate level-2-to-3 step
+  // (the visible title to the change note), and the change note's own `h3` is a fair sub-heading of
+  // that title block, not a peer of the numbered sections — so the entry's suggested fix (demoting
+  // the change note to `h2`, matching every top-level section) is now moot rather than merely
+  // outdated, and applying it would flatten a structure that is already correct. Confirmed with
+  // axe-core directly (`heading-order`, both with and without a `changeNote`): no violation either
+  // way. This is the permanent guard, walking every heading in document order.
+  describe('heading order (axe heading-order)', () => {
+    function headingLevels(container: HTMLElement): number[] {
+      return Array.from(container.querySelectorAll('h1, h2, h3, h4, h5, h6')).map((heading) =>
+        Number(heading.tagName[1]),
+      )
+    }
+
+    it('never increases by more than one step, doc-order, with a change note present', () => {
+      const { container } = render(
+        <PrivacyNotice
+          lastUpdated="2026-08-30"
+          hrefs={hrefs}
+          changeNote={{
+            heading: 'What changed',
+            body: 'We added the objection form for non-users.',
+            date: '2026-09-01',
+          }}
+        />,
+      )
+      const levels = headingLevels(container)
+      expect(levels[0]).toBe(1)
+      for (let i = 1; i < levels.length; i += 1) {
+        expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1)
+      }
+      // The one place a level-3 heading appears immediately after a level-2 one: the visible
+      // title (h2) to the change note (h3) — confirming the intervening h2 the entry's stale
+      // description was missing, rather than a direct h1-to-h3 skip.
+      const changeNoteHeading = screen.getByRole('heading', { name: 'What changed' })
+      expect(changeNoteHeading.tagName).toBe('H3')
+    })
+
+    it('never increases by more than one step, doc-order, with no change note', () => {
+      const { container } = render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+      const levels = headingLevels(container)
+      for (let i = 1; i < levels.length; i += 1) {
+        expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1)
+      }
+    })
+  })
 })
 
 describe('PrivacyNotice — legally load-bearing phrases', () => {

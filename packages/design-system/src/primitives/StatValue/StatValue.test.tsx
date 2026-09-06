@@ -95,4 +95,23 @@ describe('StatValue', () => {
     expect(screen.getByText('Win rate').tagName).toBe('DT')
     expect(screen.getByText('54%').closest('dd')).not.toBeNull()
   })
+
+  it('keeps <dl> to exactly one dt/dd group even with a secondaryLine — never a bare third child (axe definition-list)', () => {
+    // T559 (a11y-allowlist "stat-value"/"definition-list", also the root cause of the matching
+    // "analysis-timeline" and "favourites-list" entries, both of which only inherit it by composing
+    // `StatValue` with a `secondaryLine`): a `<dl>` may only directly contain properly-ordered
+    // `dt`/`dd` groups — `secondaryLine` used to render as a bare `<span>` sibling of the `<dd>`,
+    // which is neither. Confirmed with axe-core directly (`definition-list`/`dlitem`) that the fix
+    // below — nesting it inside the `<dd>` rather than wrapping it in a `<div>` sibling — is the one
+    // shape that clears the rule; a `<div>` wrapper alone still fails because the check inspects
+    // what that `<div>` itself contains, not just its tag name.
+    const { container } = render(
+      <StatValue label="Win rate" value="54%" secondaryLine="Measured 2h ago" />,
+    )
+    const dl = container.querySelector('dl')
+    expect(dl).not.toBeNull()
+    const directChildTags = Array.from(dl!.children).map((el) => el.tagName)
+    expect(directChildTags).toEqual(['DT', 'DD'])
+    expect(screen.getByText('Measured 2h ago').closest('dd')).not.toBeNull()
+  })
 })

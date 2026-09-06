@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 import { useBreakpoint } from '../../lib/useMediaQuery'
-import { Callout } from '../Callout'
 import { Spinner } from '../../lib/Spinner'
 
 // packages/design-system/specs/shared-primitives.md#Menu
@@ -37,8 +36,11 @@ export interface MenuProps {
   triggerAriaLabel?: string
   items: MenuItem[]
   footerItem?: MenuFooterItem
-  /** The item action currently reported as failed. Renders a danger `Callout` inside the surface
-   * below that item; the menu stays open. */
+  /** The item action currently reported as failed. Renders a danger-toned message inside the
+   * surface below that item — visually a `Callout`, though not the component itself (T559: `role=
+   * "menu"`'s required owned elements exclude `role="alert"`/`role="status"`, see `MenuItemRow`) —
+   * and announces it assertively via a dedicated live region outside `role="menu"`. The menu stays
+   * open. */
   errorItemId?: string | null
   errorMessage?: ReactNode
   className?: string
@@ -148,6 +150,21 @@ export function Menu({
         {triggerLabel}
       </button>
 
+      {/* T559 (FR-057): the failure text visible on the item below (`MenuItemRow`'s own paragraph)
+          carries no ARIA role of its own — a `role="alert"` region is not one of `menu`'s required
+          owned elements (`group`/`menuitem`/`menuitemcheckbox`/`menuitemradio`/`separator`), and
+          nesting one inside `role="menu"` is exactly the aria-required-children violation this
+          region exists to remove (confirmed with axe-core directly: neither a wrapping
+          `role="presentation"` nor `role="group"` shields a role-bearing or focusable descendant —
+          axe's `getOwnedRoles` flattens straight through both looking for the ancestor's allowed
+          child roles). This region sits outside `role="menu"` instead, mounted for the component's
+          whole lifetime so a screen reader has already registered it before its text ever changes —
+          the ordinary `aria-live` reliability rule — and is the sole carrier of the assertive
+          announcement `role="alert"` would otherwise have given for free. */}
+      <div aria-live="assertive" className="sr-only">
+        {errorItemId ? (errorMessage ?? 'That action failed') : ''}
+      </div>
+
       {open && !isEmpty && (
         <>
           {isSheet && (
@@ -242,6 +259,12 @@ function MenuItemRow({
   ref,
 }: MenuItemRowProps & { ref: (node: HTMLElement | null) => void }) {
   const role = variant === 'selection' ? 'menuitemradio' : 'menuitem'
+  // T559: an id for the plain error paragraph below, so the button that failed still names it via
+  // `aria-describedby` — an ordinary reference, not a containment relationship, so it costs nothing
+  // in the `role="menu"` owned-children accounting (`aria-required-children` never inspects what an
+  // id-ref points at, only DOM containment). The always-mounted live region in `Menu` itself
+  // (above) carries the assertive announcement; this is the on-focus discoverability half.
+  const errorId = useId()
 
   return (
     <div>
@@ -252,6 +275,7 @@ function MenuItemRow({
         aria-checked={variant === 'selection' ? Boolean(item.checked) : undefined}
         aria-disabled={item.disabled || item.loading || undefined}
         aria-busy={item.loading || undefined}
+        aria-describedby={showError ? errorId : undefined}
         tabIndex={tabIndex}
         onKeyDown={onKeyDown}
         onClick={onActivate}
@@ -279,7 +303,22 @@ function MenuItemRow({
       </button>
       {showError && (
         <div className="px-4 pt-2">
-          <Callout tone="danger" heading={errorMessage ?? 'That action failed'} headingLevel={3} />
+          {/* T559 (FR-057): visually a danger `Callout` (same tone-stripe and heading treatment),
+              but deliberately not the `Callout` primitive itself — `Callout` always carries
+              `role="alert"`/`role="status"`, `aria-labelledby` and a focusable (`tabIndex={-1}`)
+              heading, and every one of those three independently makes it a disallowed owned
+              element of `role="menu"` per `aria-required-children` (confirmed with axe-core: a
+              bare, roleless, non-focusable paragraph is the only shape that survives nested here —
+              see `Menu`'s own live region above for the announcement `role="alert"` would have
+              given). A `<p>`, not a heading tag: this is a transient failure message inside a
+              widget, not a document-outline heading, and a native heading tag carries an implicit
+              ARIA heading role that trips the same check even with no attributes on it at all. */}
+          <p
+            id={errorId}
+            className="rounded-panel border-l-2 border-danger bg-surface-raised p-4 font-sans text-md font-semibold text-danger md:p-5"
+          >
+            {errorMessage ?? 'That action failed'}
+          </p>
         </div>
       )}
     </div>

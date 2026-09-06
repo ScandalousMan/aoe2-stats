@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Menu } from './index'
@@ -138,7 +138,7 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('renders a danger callout inside the surface for the item reported as failed, and keeps the menu open', async () => {
+  it('renders a danger-toned message inside the surface for the item reported as failed, and keeps the menu open', async () => {
     const user = userEvent.setup()
     render(
       <Menu
@@ -150,8 +150,95 @@ describe('Menu', () => {
       />,
     )
     await user.click(screen.getByRole('button', { name: 'Manage' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('We could not unlink that profile')
+    // T559: the visible failure text is a plain paragraph, not a `role="alert"` region — see below
+    // for why — but it is still on the page, styled `text-danger`, and named by the failing item.
+    // Scoped to the menu itself: the same text is also mirrored into the live region below.
+    const message = within(screen.getByRole('menu')).getByText('We could not unlink that profile')
+    expect(message.tagName).toBe('P')
+    expect(message.className).toMatch(/\btext-danger\b/)
+    const item = screen.getByRole('menuitem', { name: 'Unlink this profile' })
+    expect(item).toHaveAttribute('aria-describedby', message.id)
     expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
+  it('announces the failure assertively through a live region outside role="menu", never role="alert" inside it (FR-057)', async () => {
+    // T559 (a11y-allowlist "menu"/"aria-required-children"): `role="menu"`'s required owned
+    // elements are `group`/`menuitem`/`menuitemcheckbox`/`menuitemradio`/`separator` — a nested
+    // `role="alert"` or `role="status"` region is none of those, confirmed with axe-core directly
+    // against this exact markup shape (no wrapping `role="presentation"` or `role="group"` shields
+    // a role-bearing or focusable descendant; axe's `aria-required-children` check flattens
+    // straight through both). This test is the permanent guard for that: it walks the rendered
+    // `role="menu"` subtree itself, the same containment axe inspects, rather than trusting a
+    // one-off scan never to regress.
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[{ id: 'unlink', label: 'Unlink this profile' }]}
+        errorItemId="unlink"
+        errorMessage="We could not unlink that profile"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    const live = document.querySelector('[aria-live="assertive"]')
+    expect(live).not.toBeNull()
+    expect(live).toHaveTextContent('We could not unlink that profile')
+    // Outside `role="menu"` — a sibling, never a descendant — is the whole point.
+    expect(screen.getByRole('menu').contains(live)).toBe(false)
+  })
+
+  it('never nests a role or a focusable element inside role="menu" other than its own owned roles (aria-required-children)', async () => {
+    // The structural property `aria-required-children` actually enforces for `menu`: every
+    // element reachable inside it that carries an explicit ARIA role, a global ARIA attribute, or
+    // is otherwise focusable must be one of `menu`'s own required owned roles. A plain wrapper
+    // `<div>` or `<p>` with none of those is transparent to the check (confirmed with axe-core) and
+    // is not asserted against here — this only guards the roles/attributes that would actually trip
+    // the rule.
+    const ALLOWED_OWNED_ROLES = new Set([
+      'group',
+      'menuitem',
+      'menuitemcheckbox',
+      'menuitemradio',
+      'separator',
+      'menu',
+    ])
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[
+          { id: 'unlink', label: 'Unlink this profile' },
+          { id: 'other', label: 'Other action' },
+        ]}
+        footerItem={{ id: 'link', label: 'Add another' }}
+        errorItemId="unlink"
+        errorMessage="We could not unlink that profile"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const menu = screen.getByRole('menu')
+
+    for (const el of menu.querySelectorAll<HTMLElement>('*')) {
+      const role = el.getAttribute('role')
+      if (role) {
+        expect(ALLOWED_OWNED_ROLES.has(role)).toBe(true)
+      }
+      const hasTabIndex = el.hasAttribute('tabindex')
+      const hasAriaLabelledby = el.hasAttribute('aria-labelledby')
+      const hasAriaLive = el.hasAttribute('aria-live')
+      if ((hasTabIndex || hasAriaLabelledby || hasAriaLive) && !role) {
+        throw new Error(
+          `${el.tagName.toLowerCase()} has a focusable/global ARIA attribute with no role — ` +
+            'would still be flagged as an unallowed owned element of role="menu".',
+        )
+      }
+    }
   })
 
   it('every item is at least 44px tall', async () => {

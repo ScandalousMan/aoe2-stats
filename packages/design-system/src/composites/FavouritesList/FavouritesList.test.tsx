@@ -107,6 +107,36 @@ describe('FavouritesList', () => {
 
       expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/players/1')
     })
+
+    it('keeps every <dl> valid for an unrefreshable standing composing StatValue with a secondaryLine (axe definition-list)', () => {
+      // T559 (a11y-allowlist "favourites-list"/"definition-list"): the root cause lived in
+      // `StatValue` itself, not here — this component only inherited it by composing `StatValue`
+      // with `secondaryLine` for a standing that could not refresh (§4). The `neverRanked` fixture
+      // above does not exercise this: its `status: 'empty'` reuses `secondaryLine` as the value
+      // slot's own words rather than rendering it as a second `<dl>` element at all (`StatValue`'s
+      // own rule) — only a `default`-status standing with a `secondaryLine` renders the shape that
+      // used to violate `<dl>`'s allowed-children rule. Fixed once, in `StatValue`; this is the
+      // permanent guard that this composition specifically stays clean.
+      const staleStanding: FavouriteEntryData = {
+        profileId: '3',
+        href: '/players/3',
+        alias: 'DauT',
+        country: 'Israel',
+        standing: {
+          label: 'Rating',
+          value: '2380',
+          unit: '#9',
+          secondaryLine: 'Measured 12 Aug 2026 · could not refresh',
+        },
+      }
+      const { container } = render(<FavouritesList entries={[staleStanding]} />)
+      const dls = container.querySelectorAll('dl')
+      expect(dls.length).toBeGreaterThan(0)
+      for (const dl of dls) {
+        const directChildTags = Array.from(dl.children).map((el) => el.tagName)
+        expect(directChildTags).toEqual(['DT', 'DD'])
+      }
+    })
   })
 
   describe('loading', () => {

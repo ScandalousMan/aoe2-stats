@@ -260,9 +260,16 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
   attribute), shows `text-disabled`, and carries a reason on its secondary line.
 - **loading** — an item whose action is in flight shows a spinner in its trailing slot and sets
   `aria-busy`. The menu stays open; other items become `aria-disabled` for the duration.
-- **error** — the item action failed: the menu stays open, a `danger` `Callout` renders inside the
-  surface below the item, the item returns to `default`. Closing the menu on failure loses the
-  message and is forbidden.
+- **error** — the item action failed: the menu stays open, a `danger`-toned message renders inside
+  the surface below the item, the item returns to `default`. Closing the menu on failure loses the
+  message and is forbidden. Visually a `Callout`, but not the component itself (T559, FR-057):
+  `role="menu"`'s required owned elements are `group`/`menuitem`/`menuitemcheckbox`/`menuitemradio`/
+  `separator`, and `Callout` always carries `role="alert"`/`role="status"`, `aria-labelledby` and a
+  focusable heading — every one of those independently makes it a disallowed owned element of
+  `role="menu"`. The message renders as a plain, roleless paragraph instead, named by the failing
+  item via `aria-describedby`; the assertive announcement `role="alert"` would have given for free
+  is instead a dedicated `aria-live="assertive"` region that lives outside `role="menu"` entirely
+  (a sibling, mounted for the whole popover's lifetime).
 - **empty** — a menu with no items does not open; the trigger is `aria-disabled` with a reason. A
   menu that opens onto nothing is a dead end and reads as a bug.
 
@@ -397,7 +404,12 @@ truncates and never shrinks below `2xl`.
 
 **Accessibility** — label and value are associated (`<dt>`/`<dd>`, or a table header with `scope`).
 A delta's sign is a character in the accessible name, not a rotated glyph: "+12" and "−8", not an
-arrow. Values are text, never an image or a canvas.
+arrow. Values are text, never an image or a canvas. A `<dl>` may only directly contain
+properly-ordered `dt`/`dd` groups (T559, FR-057): `secondaryLine`, when present, renders inside the
+same `<dd>` as the value it qualifies, in its own row — never as a third element sibling to the
+`dt`/`dd` pair, which is not a shape `<dl>` accepts (confirmed with axe-core's `definition-list`
+rule; wrapping the trailing element in a bare `<div>` sibling does not clear it either, since the
+check inspects what that `<div>` contains, not just its own tag name).
 
 **Loading is announced once per region, never once per `StatValue` (T532, FR-054).** The `Skeleton`
 this component renders while loading is `aria-hidden`, per `Skeleton`'s own contract below; nothing
