@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-system-storybook",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "design-system", "storybook"],
+      "port": 6006
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "web", "dev"],
+      "port": 5173
+    }
+  ]
+}
