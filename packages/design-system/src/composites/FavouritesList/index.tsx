@@ -96,7 +96,12 @@ function renderStandingValue(standing: FavouriteStandingData): ReactNode {
 
 /** One place to find the players a signed-in user cares about again, without searching — each
  * entry showing its current standing and reaching the profile in one step (FR-014), with a remove
- * control right there too (FR-013). See `packages/design-system/specs/favourites-list.md`. */
+ * control right there too (FR-013). See `packages/design-system/specs/favourites-list.md`.
+ *
+ * `FavouritesContainer.tsx` composes this inside `Page title="Favourites" titleHidden` (005,
+ * structural retrofit, T558): `Page` owns the route's one `<main>` and its one `<h1>`, so the
+ * heading below is an `<h2>` rather than the `<h1>` it used to duplicate `Page`'s hidden one
+ * with — the same shape `sign-in-screen.md` §8 and `privacy-notice.md` §9 already resolved. */
 export function FavouritesList({
   authenticated = true,
   signInHref,
@@ -113,9 +118,9 @@ export function FavouritesList({
 
   return (
     <section aria-labelledby={headingId} className={cx('flex flex-col', className)}>
-      <h1 id={headingId} className="font-sans text-2xl font-semibold text-text-primary">
+      <h2 id={headingId} className="font-sans text-2xl font-semibold text-text-primary">
         Favourites
-      </h1>
+      </h2>
 
       <div className="mt-6">
         {!authenticated ? (

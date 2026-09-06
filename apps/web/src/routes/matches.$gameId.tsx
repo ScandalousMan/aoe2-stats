@@ -26,14 +26,15 @@ export const Route = createFileRoute('/matches/$gameId')({
 function MatchDetailRoute() {
   const { gameId } = Route.useParams()
   return (
-    <>
-      <MatchDetailContainer gameId={gameId} />
-      {/* T372, US4: its own section, sibling to `MatchDetailContainer` rather than nested inside
-       * it — `AnalysisContainer`'s own module docstring explains why (shares that container's
-       * `GET /api/matches/{game_id}` query key, one request either way). It renders nothing at all
-       * for a `gameId` this service holds no match for, matching `MatchDetailContainer`'s own gate
-       * for `ReplayAvailabilityList`. */}
+    // T372, US4 / T558: rendered as `MatchDetailContainer`'s own trailing child rather than a
+    // route-level sibling, so the two share exactly one `Page` — one main landmark, one width and
+    // padding, one between-sections rhythm — instead of `AnalysisContainer` re-deriving `Page`'s
+    // own padding from outside it (`AnalysisContainer`'s own module docstring explains why it
+    // stays a separate component: it shares `MatchDetailContainer`'s `GET /api/matches/{game_id}`
+    // query key, one request either way). It renders nothing at all for a `gameId` this service
+    // holds no match for, matching `MatchDetailContainer`'s own gate for `ReplayAvailabilityList`.
+    <MatchDetailContainer gameId={gameId}>
       <AnalysisContainer gameId={gameId} />
-    </>
+    </MatchDetailContainer>
   )
 }

@@ -224,8 +224,11 @@ breakpoint.
   (`<h2>`).
 - Card layout: each `RatingEntry` is an `<article>` headed by the leaderboard name (`<h3>`), with
   the figures in a `<dl>` so each label is programmatically tied to its value.
-- Table layout: a real `<table>` with a visually hidden `<caption>` ("Ratings for <alias>"),
-  `<th scope="col">` on every column and `<th scope="row">` on the leaderboard name.
+- Table layout: `Table` (T558, structural-tier.md §10) at `density="dense"`, with a visually hidden
+  `<caption>` ("Ratings for <alias>"), `<th scope="col">` on every column and `<th scope="row">` on
+  the leaderboard name — `Table` owns the region wrapper, the caption/label association, the
+  numeric-column alignment and the overflow rule; this component only supplies the eight columns
+  (§8's list) and, for `Rating`, the emphasis inside its cell's content.
 - `ProfileSwitcher` follows `Menu`: `aria-haspopup="menu"`, `aria-expanded`,
   `role="menuitemradio"` with `aria-checked` on the viewed profile, arrow-key roving, Escape closes
   and returns focus to the trigger. Items are ≥ 44px tall. The trigger's accessible name includes

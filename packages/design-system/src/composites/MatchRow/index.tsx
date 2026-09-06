@@ -10,6 +10,7 @@ import { MapThumbnail } from '../MapThumbnail'
 import { PlayerColourSwatch } from '../PlayerColourSwatch'
 import { Skeleton } from '../../primitives/Skeleton'
 import type { StatValueDelta } from '../../primitives/StatValue'
+import { Table, type TableColumn } from '../../primitives/Table'
 
 // packages/design-system/specs/match-history.md, widened by §12 (004, US1)
 
@@ -526,6 +527,82 @@ export function MatchList({
   )
 }
 
+// T558 (FR-026, SC-009): the 1280 layout is `Table` (structural-tier.md §10), never a hand-rolled
+// `<table>` — `Table` owns the identity-first row link, the numeric-column alignment and the one
+// overflow rule, so this function only ever names the eight columns, never re-implements any of
+// the three.
+const MATCH_TABLE_COLUMNS: [TableColumn<MatchRowData>, ...TableColumn<MatchRowData>[]] = [
+  {
+    key: 'result',
+    header: 'Result',
+    render: (match) => <OutcomeLabel outcome={match.outcome} />,
+  },
+  {
+    key: 'players',
+    // §12.7 renames this column from "Opponent" to "Players" — both sides now name participants,
+    // not just the opponent.
+    header: 'Players',
+    render: (match) =>
+      match.participants && match.participants.length > 0 ? (
+        // §12.7: the Players column names at most two participants per side before its overflow
+        // text — the column's width is bounded by the table, not by the window.
+        <Participants participants={match.participants} cap={2} />
+      ) : null,
+  },
+  {
+    key: 'map',
+    header: 'Map',
+    render: (match) => (
+      // §12.7: `sm` (32px) here so a row with a thumbnail and a row without one are the same
+      // height — map-thumbnail.md §3's own reason for this size existing.
+      <MapThumbnail thumbnailUrl={match.mapThumbnailUrl} mapName={match.map} size="sm" />
+    ),
+  },
+  {
+    key: 'civilisation',
+    header: 'Civilisation',
+    render: (match) => (
+      <CivilisationIcon iconUrl={match.civIconUrl} name={match.civilisation} size="md" />
+    ),
+  },
+  {
+    key: 'rating',
+    // §12.7 renames this column from "Change" to "Rating" — it now carries the absolute value
+    // alongside the signed change.
+    header: 'Rating',
+    align: 'numeric',
+    render: (match) => (
+      <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
+    ),
+  },
+  {
+    key: 'duration',
+    header: 'Duration',
+    align: 'numeric',
+    render: (match) => match.durationLabel,
+  },
+  {
+    key: 'when',
+    header: 'When',
+    render: (match) => <span title={match.playedAtAbsolute}>{match.playedAtRelative}</span>,
+  },
+  {
+    key: 'capture',
+    header: 'Capture',
+    render: (match) => (
+      // `stacked`: this column's width is bounded by the table, not by the window
+      // (match-history.md §8) — told to stack rather than left to infer a container width the
+      // badge cannot observe (§8, capture-state-badge.md's own `stacked` prop).
+      <CaptureStateBadge
+        variant="compact"
+        stacked
+        captureStatus={match.captureStatus}
+        captureDeadlineAt={match.captureDeadlineAt}
+      />
+    ),
+  },
+]
+
 function MatchTable({
   matches,
   onNavigate,
@@ -538,107 +615,15 @@ function MatchTable({
   className?: string
 }) {
   return (
-    <table className={cx('w-full border-collapse text-left font-sans text-sm', className)}>
-      <caption className="sr-only">{caption}</caption>
-      <thead>
-        <tr className="border-b border-border">
-          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
-            Result
-          </th>
-          {/* §12.7 renames this column from "Opponent" to "Players" — both sides now name
-           * participants, not just the opponent. */}
-          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
-            Players
-          </th>
-          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
-            Map
-          </th>
-          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
-            Civilisation
-          </th>
-          {/* §12.7 renames this column from "Change" to "Rating" — it now carries the absolute
-           * value alongside the signed change. */}
-          <th scope="col" className="py-3 pr-5 text-right font-normal text-text-secondary">
-            Rating
-          </th>
-          <th scope="col" className="py-3 pr-5 text-right font-normal text-text-secondary">
-            Duration
-          </th>
-          <th scope="col" className="py-3 pr-5 font-normal text-text-secondary">
-            When
-          </th>
-          <th scope="col" className="py-3 font-normal text-text-secondary">
-            Capture
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {matches.map((match) => (
-          <MatchTableRow key={match.gameId} match={match} onNavigate={onNavigate} />
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-// A `<tr>` cannot itself be an `<a>`, so the row's single link lives in one cell and is stretched
-// over the whole row with `after:absolute after:inset-0` against the row's own `relative` — the
-// standard "one link, whole row clickable" technique, keeping exactly one focus stop (§9).
-function MatchTableRow({
-  match,
-  onNavigate,
-}: {
-  match: MatchRowData
-  onNavigate?: (href: string) => void
-}) {
-  return (
-    <tr className="group relative border-b border-border transition-colors duration-120 ease-standard hover:bg-surface-sunken">
-      <th scope="row" className="py-3 pr-5 font-normal">
-        <a
-          href={match.href}
-          onClick={createRowLinkClickHandler(match.href, onNavigate)}
-          className={cx(
-            'static font-sans text-sm font-semibold after:absolute after:inset-0',
-            focusRing,
-            OUTCOME_LABEL_TONE[match.outcome],
-          )}
-        >
-          {OUTCOME_LABEL_TEXT[match.outcome]}
-        </a>
-      </th>
-      <td className="py-3 pr-5 text-text-primary">
-        {/* §12.7: the Players column names at most two participants per side before its overflow
-         * text — the column's width is bounded by the table, not by the window. */}
-        {match.participants && match.participants.length > 0 && (
-          <Participants participants={match.participants} cap={2} />
-        )}
-      </td>
-      <td className="py-3 pr-5 text-text-primary">
-        {/* §12.7: `sm` (32px) here so a row with a thumbnail and a row without one are the same
-         * height — map-thumbnail.md §3's own reason for this size existing. */}
-        <MapThumbnail thumbnailUrl={match.mapThumbnailUrl} mapName={match.map} size="sm" />
-      </td>
-      <td className="py-3 pr-5 text-text-primary">
-        <CivilisationIcon iconUrl={match.civIconUrl} name={match.civilisation} size="md" />
-      </td>
-      <td className="py-3 pr-5 text-right">
-        <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
-      </td>
-      <td className="py-3 pr-5 text-right type-numeric text-text-primary">{match.durationLabel}</td>
-      <td className="py-3 pr-5 text-text-secondary" title={match.playedAtAbsolute}>
-        {match.playedAtRelative}
-      </td>
-      <td className="py-3">
-        {/* `stacked`: this column's width is bounded by the table, not by the window
-         * (match-history.md §8) — told to stack rather than left to infer a container width the
-         * badge cannot observe (§8, capture-state-badge.md's own `stacked` prop). */}
-        <CaptureStateBadge
-          variant="compact"
-          stacked
-          captureStatus={match.captureStatus}
-          captureDeadlineAt={match.captureDeadlineAt}
-        />
-      </td>
-    </tr>
+    <Table<MatchRowData>
+      caption={caption}
+      captionHidden
+      columns={MATCH_TABLE_COLUMNS}
+      rows={matches}
+      getRowKey={(match) => match.gameId}
+      getRowHref={(match) => match.href}
+      onNavigate={onNavigate}
+      className={className}
+    />
   )
 }

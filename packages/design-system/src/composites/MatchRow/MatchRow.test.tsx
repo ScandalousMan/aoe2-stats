@@ -516,13 +516,15 @@ describe('MatchList', () => {
     }
   })
 
-  // T074b: the table column gap (match-history.md §7).
-  it('renders the table column gap at space-5 (pr-5), not space-6', () => {
+  // T558: the 1280 layout is now `Table` (structural-tier.md §10), which owns the column gap as
+  // its own `space-4` (`px-4`) inline cell padding at every density — no longer this component's
+  // own `pr-5` (superseding T074b's assertion of that value).
+  it('renders the table column inline padding at space-4 (px-4), Table primitive default', () => {
     const restore = mockMatchMediaAt(1280)
     const { container } = render(<MatchList matches={[match]} />)
     const headerCell = container.querySelector('th')
-    expect(headerCell?.className).toMatch(/\bpr-5\b/)
-    expect(headerCell?.className).not.toMatch(/\bpr-6\b/)
+    expect(headerCell?.className).toMatch(/\bpx-4\b/)
+    expect(headerCell?.className).not.toMatch(/\bpr-5\b/)
     restore()
   })
 

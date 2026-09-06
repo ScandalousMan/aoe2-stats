@@ -23,7 +23,9 @@ and let them remove one from here too (FR-013, US5 scenario 2).
 
 ```
 FavouritesList                                        one per /favourites route, one row per favourite
-├─ Heading              h1 "Favourites" — present in every state, including empty and signed-out
+├─ Heading              h2 "Favourites" — present in every state, including empty and signed-out
+│                        (005, structural retrofit, T558: `FavouritesContainer.tsx` composes this
+│                        inside `Page`, which owns the route's own hidden `<h1>` — see §9)
 └─ FavouriteRow ×n      newest-favourited first (the natural order of the favourites table's created_at)
    ├─ ProfileLink       the alias (+ optional clan tag), a link to the player's profile — FR-014's
    │                    "one step". The link wraps alias, country and standing so the whole informative
@@ -202,9 +204,11 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
 
 ## 9. Accessibility
 
-- `FavouritesList` is a `<section aria-labelledby>` (or `<main>`) headed by `Heading` (`<h1>`, the page
-  title); the rows are a `<ul>`/`<li>` at every viewport (§8 keeps one DOM shape, unlike the table
-  transforms elsewhere).
+- **Amended (005, structural retrofit, T558)**: `FavouritesList` is a `<section aria-labelledby>`
+  headed by `Heading` (`<h2>`, not the page title). `FavouritesContainer.tsx` composes it inside
+  `Page title="Favourites" titleHidden`, which owns the route's one `<main>` and its one `<h1>` —
+  the same shape `sign-in-screen.md` §8 and `privacy-notice.md` §9 resolve. The rows are a
+  `<ul>`/`<li>` at every viewport (§8 keeps one DOM shape, unlike the table transforms elsewhere).
 - Each `FavouriteRow` has exactly two focus stops in document order: `ProfileLink` (a real `<a>`
   wrapping alias, country and standing) then `RemoveControl` (`FavouriteToggle`'s `<button>`). Never a
   nested interactive-in-interactive; never a `<div>` with a click handler.

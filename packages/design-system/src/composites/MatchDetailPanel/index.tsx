@@ -16,6 +16,7 @@ import {
 import { PlayerColourSwatch } from '../PlayerColourSwatch'
 import { Skeleton } from '../../primitives/Skeleton'
 import type { StatValueDelta } from '../../primitives/StatValue'
+import { Table, type TableColumn } from '../../primitives/Table'
 
 // packages/design-system/specs/match-history.md §§1-11. §11 (003, US2) widens both components to
 // any match this service holds (T327) and any player's history (T328) — see §11's own note on why
@@ -334,6 +335,57 @@ function teamResultOf(participants: ParticipantData[]): TeamResultKind {
   )
 }
 
+// T558 (FR-026, SC-009): the 1280 layout is `Table` (structural-tier.md §10), never a hand-rolled
+// `<table>` — `Table` owns the numeric-column alignment and the one overflow rule, so this array
+// only ever names the four columns.
+const PARTICIPANT_TABLE_COLUMNS: [TableColumn<ParticipantData>, ...TableColumn<ParticipantData>[]] =
+  [
+    {
+      key: 'player',
+      header: 'Player',
+      render: (participant) => (
+        // §12.5: the swatch lives inside the Player cell, not a colour column of its own
+        // (player-colour-swatch.md §2a) — composed, never re-implemented (T429).
+        <span className="inline-flex items-center gap-2">
+          <PlayerColourSwatch
+            colorId={participant.colorId}
+            playerName={participant.alias}
+            size="sm"
+          />
+          <span>{participant.alias}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'civilisation',
+      header: 'Civilisation',
+      render: (participant) => (
+        <ParticipantCivilisation
+          civId={participant.civId}
+          civName={participant.civName}
+          civIconUrl={participant.civIconUrl}
+        />
+      ),
+    },
+    {
+      key: 'result',
+      header: 'Result',
+      render: (participant) => <ResultLabel result={participant.result} />,
+    },
+    {
+      key: 'rating',
+      header: 'Rating',
+      align: 'numeric',
+      render: (participant) => (
+        <RatingFigure
+          rating={participant.rating}
+          ratingChange={participant.ratingChange}
+          size="sm"
+        />
+      ),
+    },
+  ]
+
 function TeamGroup({ team }: { team: TeamGroupData }) {
   // §8 names three tiers: 375 one card per participant, 768 two participants side by side, 1280 a
   // real table. `xl` is the named breakpoint for the table (`lg` is 1024, reserved by §8 for
@@ -360,71 +412,26 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
         )}
       </h3>
       {isTable ? (
-        <table className="w-full border-collapse text-left font-sans text-sm">
-          {/* The same words reach a screen reader (§9's existing caption rule, extended by §12.3):
-           * nesting `TeamResultMarker`'s own `<span>` inside the caption is enough, since a
-           * caption's accessible name is the concatenation of its descendants' text. */}
-          <caption className="sr-only">
-            {team.name}
-            {resultKind != null && (
-              <>
-                {' '}
-                — <TeamResultMarker kind={resultKind} />
-              </>
-            )}
-          </caption>
-          <thead>
-            <tr className="border-b border-border">
-              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
-                Player
-              </th>
-              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
-                Civilisation
-              </th>
-              <th scope="col" className="py-3 pr-4 font-normal text-text-secondary">
-                Result
-              </th>
-              <th scope="col" className="py-3 text-right font-normal text-text-secondary">
-                Rating
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.participants.map((participant) => (
-              <tr key={participant.id} className="border-b border-border">
-                {/* §12.5: the swatch lives inside the Player cell, not a colour column of its own
-                 * (player-colour-swatch.md §2a) — composed, never re-implemented (T429). */}
-                <th scope="row" className="py-3 pr-4 font-normal text-text-primary">
-                  <span className="inline-flex items-center gap-2">
-                    <PlayerColourSwatch
-                      colorId={participant.colorId}
-                      playerName={participant.alias}
-                      size="sm"
-                    />
-                    <span>{participant.alias}</span>
-                  </span>
-                </th>
-                <td className="py-3 pr-4">
-                  <ParticipantCivilisation
-                    civId={participant.civId}
-                    civName={participant.civName}
-                    civIconUrl={participant.civIconUrl}
-                  />
-                </td>
-                <td className="py-3 pr-4">
-                  <ResultLabel result={participant.result} />
-                </td>
-                <td className="py-3 text-right">
-                  <RatingFigure
-                    rating={participant.rating}
-                    ratingChange={participant.ratingChange}
-                    size="sm"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table<ParticipantData>
+          // The same words reach a screen reader (§9's existing caption rule, extended by §12.3):
+          // nesting `TeamResultMarker`'s own text inside the caption is enough, since a caption's
+          // accessible name is the concatenation of its descendants' text.
+          caption={
+            <>
+              {team.name}
+              {resultKind != null && (
+                <>
+                  {' '}
+                  — <TeamResultMarker kind={resultKind} />
+                </>
+              )}
+            </>
+          }
+          captionHidden
+          columns={PARTICIPANT_TABLE_COLUMNS}
+          rows={team.participants}
+          getRowKey={(participant) => participant.id}
+        />
       ) : (
         // §8's 768 tier: two participants side by side within a `TeamGroup`, still cards (never
         // a table below `xl`). `gap-2` reused rather than a new column-gap value invented for a

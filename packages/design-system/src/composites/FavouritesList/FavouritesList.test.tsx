@@ -25,7 +25,9 @@ const entries: FavouriteEntryData[] = [
 describe('FavouritesList', () => {
   it('always renders the "Favourites" heading, in every state', () => {
     render(<FavouritesList entries={entries} />)
-    expect(screen.getByRole('heading', { name: 'Favourites', level: 1 })).toBeInTheDocument()
+    // `<h2>`, not `<h1>`: `FavouritesContainer.tsx` composes this inside `Page`, which owns the
+    // route's own hidden `<h1>` (005, structural retrofit, T558).
+    expect(screen.getByRole('heading', { name: 'Favourites', level: 2 })).toBeInTheDocument()
   })
 
   describe('default', () => {

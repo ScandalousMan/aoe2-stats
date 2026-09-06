@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
   Button,
@@ -29,9 +30,17 @@ import { isUploadEligible } from './uploadEligibility'
 
 export interface MatchDetailContainerProps {
   gameId: string
+  /** Rendered as this `Page`'s own final section (T558): `matches.$gameId.tsx` passes
+   * `<AnalysisContainer gameId={gameId} />` here rather than mounting it as a route-level sibling,
+   * so the two containers share exactly one main landmark and one width/padding/rhythm — `Page`'s
+   * — instead of `AnalysisContainer` re-deriving Page's own padding to match it from outside. Kept
+   * as a caller-supplied child rather than imported directly: this container stays independent of
+   * the `analysis` feature's own query, the reason its module docstring already gives for the two
+   * remaining separate components. */
+  children?: ReactNode
 }
 
-export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
+export function MatchDetailContainer({ gameId, children }: MatchDetailContainerProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -310,6 +319,8 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
           onDownload={handlePointOfViewDownload}
         />
       )}
+
+      {children}
     </Page>
   )
 }

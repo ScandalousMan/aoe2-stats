@@ -1,6 +1,8 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 import { Callout } from '../../primitives/Callout'
+import { Page } from '../../primitives/Page'
+import { Table, type TableColumn } from '../../primitives/Table'
 
 // packages/design-system/specs/privacy-notice.md
 
@@ -266,6 +268,19 @@ function CategoryEntry({ entry }: { entry: CategoryEntryData }) {
   )
 }
 
+interface InfoTableRow {
+  id: number
+  cells: readonly ReactNode[]
+}
+
+// T558 (FR-026, SC-009): `Table` (structural-tier.md §10), never a hand-rolled `<table>`.
+// `density="prose"` — not `dense` — per structural-tier.md §3: these three-column, three-row
+// tables are reference prose inside a legal document, not a surface of measured values a reader
+// compares down a column, and §3 derives `prose`'s own row value ("a definitional table inside a
+// legal notice breathes at the same rate as the paragraphs around it") for exactly this case.
+// Every column stays `text`-aligned (the default): nothing here is a number. `InfoTable` only ever
+// supplies `ProcessorList`'s and `OutwardCallList`'s columns and rows; `Table` owns the region
+// wrapper, the caption/label association and the one overflow rule.
 function InfoTable({
   caption,
   columns,
@@ -275,36 +290,24 @@ function InfoTable({
   columns: readonly string[]
   rows: readonly (readonly ReactNode[])[]
 }) {
+  const tableColumns = columns.map((column, index): TableColumn<InfoTableRow> => ({
+    key: column,
+    header: column,
+    render: (row) => row.cells[index],
+  })) as [TableColumn<InfoTableRow>, ...TableColumn<InfoTableRow>[]]
+
+  const tableRows: InfoTableRow[] = rows.map((cells, id) => ({ id, cells }))
+
   return (
-    <table className="mt-3 w-full border-collapse text-left font-sans text-md text-text-primary">
-      <caption className="sr-only">{caption}</caption>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <th
-              key={column}
-              scope="col"
-              className="border-b border-border py-2 pr-4 font-sans text-sm font-semibold text-text-secondary"
-            >
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <tr key={index} className="border-b border-border">
-            {row.map((cell, cellIndex) => (
-              // eslint-disable-next-line react/no-array-index-key
-              <td key={cellIndex} className="py-2 pr-4 align-top">
-                {cell}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Table<InfoTableRow>
+      density="prose"
+      caption={caption}
+      captionHidden
+      columns={tableColumns}
+      rows={tableRows}
+      getRowKey={(row) => row.id}
+      className="mt-3"
+    />
   )
 }
 
@@ -327,8 +330,8 @@ function StackedRow({
 // §8 — below `md` `ProcessorList` and `OutwardCallList` stack as one labelled block per row, the
 // same `<dl>` pattern `CategoryEntry` uses: three columns of prose cannot be read at 375px without
 // either horizontal scrolling or truncation, and §10 forbids both, in any section, including these
-// two tables. At `md` and up they render as the real `<table>`s §9 describes. Both representations
-// are in the DOM; only one is ever visible. `display: none` (Tailwind's `hidden`), unlike
+// two tables. At `md` and up they render as `Table` (T558), the real `<table>`s §9 describes. Both
+// representations are in the DOM; only one is ever visible. `display: none` (Tailwind's `hidden`), unlike
 // `visibility: hidden` or clipping, removes the inactive one from the accessibility tree and from
 // find-in-page, so there is never a second, hidden copy of this legal text for a screen reader to
 // double-read.
@@ -386,7 +389,14 @@ function RightsItem({
 /** FR-041: what this service holds, on what basis, for how long, and the control that stops,
  * exports or erases it — one page, readable without a lawyer and without a click. Normative in the
  * stronger sense §4 of the spec describes: this file states the law of the product. No
- * `loading`/`error` prop of any kind — the notice must be complete at first paint (§5). */
+ * `loading`/`error` prop of any kind — the notice must be complete at first paint (§5).
+ *
+ * Composes `Page` itself (005, structural retrofit, T558) rather than leaving that to its caller:
+ * this screen is always the whole of its route (`PrivacyNoticeContainer.tsx`), the same reasoning
+ * `SignInScreen` and `ThirdPartyObjectionForm` already carry (`sign-in-screen.md` §8). `Page` owns
+ * the route's one `<main>`, its one `<h1>` (passed hidden) and its content width and padding, none
+ * of which this component declares itself any more; the visible title below is downgraded to
+ * `<h2>` so `Page`'s hidden title stays the page's only `<h1>`. */
 export function PrivacyNotice({
   lastUpdated,
   hrefs,
@@ -401,344 +411,349 @@ export function PrivacyNotice({
     : CATEGORY_ENTRIES
 
   return (
-    <article
-      aria-labelledby="privacy-notice-title"
-      className={cx('mx-auto max-w-measure px-6 py-6 md:px-0 md:py-8', className)}
-    >
-      <header>
-        <h1
-          id="privacy-notice-title"
-          className="font-display text-2xl font-semibold text-text-primary md:text-3xl"
-        >
-          Privacy notice
-        </h1>
-        <p className="mt-2 font-sans text-sm text-text-secondary">
-          Last updated {formatLastUpdated(lastUpdated)}.
-        </p>
-        <p className="mt-1 font-sans text-sm text-text-secondary">
-          We have no email address for you, so we cannot tell you when this notice changes. The date
-          at the top is the date it last did, and a change worth noticing appears here.
-        </p>
-        <p className="mt-4 font-sans text-md text-text-primary">
-          This service keeps your Age of Empires II profile, your match history and the recordings
-          of your own games, so that they still exist after the game deletes them. It has no
-          password and no email address for you, and it never sells or shares any of this.
-          Everything below says what is held, why we are allowed to hold it, for how long, and the
-          button that stops or removes it.
-        </p>
-      </header>
-
-      {changeNote && (
-        <div className="mt-6">
-          <Callout tone="info" heading={changeNote.heading} headingLevel={3}>
-            <p>{changeNote.body}</p>
-            <p className="text-sm text-text-secondary">{changeNote.date}</p>
-          </Callout>
-        </div>
-      )}
-
-      <nav aria-labelledby="privacy-notice-contents-heading" className="mt-6">
-        <h2
-          id="privacy-notice-contents-heading"
-          className="font-sans text-sm font-semibold text-text-secondary"
-        >
-          Contents
-        </h2>
-        <ol className="mt-3 flex flex-col gap-1">
-          {SECTIONS_TOC.map((section, index) => (
-            <li key={section.id}>
-              <a
-                href={`#${section.id}`}
-                onClick={scrollAndFocus(section.id)}
-                className={cx(
-                  'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
-                  'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
-                  focusRing,
-                )}
-              >
-                {index + 1}. {section.label}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </nav>
-
-      {/* Section 1 */}
-      <section aria-labelledby="who-we-are" className="mt-8">
-        <SectionHeading id="who-we-are">Who we are and what this is</SectionHeading>
-        <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
-          <p>
-            aoe2-stats keeps Age of Empires II: Definitive Edition stats, match history and replay
-            recordings for players who choose to link their Steam account. It is a closed-beta,
-            hobby service — not affiliated with Microsoft or Relic Entertainment.
-          </p>
-        </div>
-      </section>
-
-      {/* Section 2 */}
-      <section aria-labelledby="what-we-collect" className="mt-12">
-        <SectionHeading id="what-we-collect">What we collect</SectionHeading>
-        <p className="mt-3 font-sans text-md text-text-primary">
-          Eight kinds of thing, each with where it came from, why we have it, what allows us to hold
-          it, and when it goes.
-        </p>
-        <div className="mt-8 flex flex-col gap-8">
-          {categoryEntries.map((entry) => (
-            <CategoryEntry key={entry.id} entry={entry} />
-          ))}
-        </div>
-      </section>
-
-      {/* Section 3 */}
-      <section aria-labelledby="cookies" className="mt-12">
-        <SectionHeading id="cookies">Cookies</SectionHeading>
-        <p className="mt-3 font-sans text-md text-text-primary">
-          Two, both strictly necessary, neither of which asks you anything. One keeps you signed in.
-          The other lives for a few minutes during sign-in and exists only to make sure the trip to
-          Steam and back is really yours. There is no advertising cookie, no analytics cookie and no
-          third-party tracker on this site, which is why there is no cookie banner to dismiss.
-        </p>
-      </section>
-
-      {/* Section 4 */}
-      <section aria-labelledby="where-stored" className="mt-12">
-        <SectionHeading id="where-stored">
-          Where it is stored, and who else touches it
-        </SectionHeading>
-        <p className="mt-3 font-sans text-md text-text-primary">
-          Everything is stored in the European Union, and nothing here is sold, shared or handed to
-          anyone for their own purposes. Three companies handle it on our behalf, because we do not
-          own servers:
-        </p>
-        <ResponsiveInfoTable
-          caption="Processors handling data on our behalf"
-          columns={['Provider', 'Role', 'Where']}
-          rows={processors.map((processor) => [processor.name, processor.role, processor.location])}
-        />
-        <p className="mt-4 font-sans text-md text-text-primary">
-          They act on our instructions and for nothing else. If we ever move this service to
-          different hosting, this list changes here first.
-        </p>
-        <p className="mt-4 font-sans text-md text-text-primary">
-          We also send requests out to three services that we do not run, and this is everything we
-          send them:
-        </p>
-        <ResponsiveInfoTable
-          caption="Outside services we send requests to"
-          columns={['Service', 'What we send', 'Why']}
-          rows={OUTWARD_CALLS.map((call) => [call.service, call.what, call.why])}
-        />
-        <p className="mt-4 font-sans text-md text-text-primary">
-          Your Steam sign-in itself happens at Steam, not here: we send you there and Steam tells us
-          which account came back. We never see your Steam password.
-        </p>
-      </section>
-
-      {/* Section 5 */}
-      <section aria-labelledby="how-long" className="mt-12">
-        <SectionHeading id="how-long">How long we keep it</SectionHeading>
-        <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
-          <p>
-            Each entry above states its own end condition, and this is the summary of them. Almost
-            everything we hold about you ends when you erase your account: the account itself, the
-            sign-in records, the profile links, your favourites, the match records that name you,
-            and every recording of yours we have stored, including the files themselves in storage.
-          </p>
-          <p>
-            Three things deliberately outlive that, and each one is named above rather than buried
-            here. The matches themselves survive, with your profile id replaced by a pseudonymous
-            one, because they are other players’ match records too. The record of your erasure
-            request survives, without the link to your account, because it is the proof the erasure
-            happened. And a recording kept for an analysis you asked to be published survives,
-            because the analysis it produced has to stay checkable.
-          </p>
-          <p>
-            We do not delete anything on a timer. Nothing here expires quietly on its own, except a
-            cached search result, which is overwritten by a later search.
-          </p>
-        </div>
-      </section>
-
-      {/* Section 6 */}
-      <section aria-labelledby="your-rights" className="mt-12">
-        <SectionHeading id="your-rights">
-          Your rights, and the control that exercises each one
-        </SectionHeading>
-        <p className="mt-3 font-sans text-md text-text-primary">
-          Each of these is a control in this product, not a request form. Where a right has a limit,
-          the limit is written under the right and not somewhere else.
-        </p>
-        <div className="mt-8 flex flex-col gap-8">
-          <RightsItem
-            heading="Stop us archiving your recordings (GDPR Art. 21)"
-            what="stops every future capture of your recordings, from the moment you press it, and records the date you objected."
-            whatNot="it does not touch your match history or your ratings, which keep updating; it does not delete recordings already archived; and it does not go back and capture what was missed once you resume."
-            control={
-              <>
-                <InlineLink href={hrefs.archivalControl}>Object to archival</InlineLink>, on your
-                profile page. You can resume at any time, with one press.
-              </>
-            }
-          />
-          <RightsItem
-            heading="Get a copy of everything (GDPR Art. 15 and Art. 20)"
-            what="builds a single archive containing your account record, your Steam identities, every profile link you have ever held, the match records and per-player rows for those profiles, your archived recordings as the original files, your favourites, and the analyses you asked for."
-            whatNot="it does not include the cached search results described above, which are keyed to nobody, and it does not include the internal counters that rate-limit the API."
-            control={
-              <>
-                <InlineLink href={hrefs.privacyRoute}>Export my data</InlineLink>, on the privacy
-                page. When it is ready you get a download link, which stops working after a short
-                while — start a new export if it does.
-              </>
-            }
-          />
-          <RightsItem
-            heading="Erase your account and everything attached to it (GDPR Art. 17)"
-            what="deletes your account, your Steam identities, your sessions, your profile links, your favourites, your archived recordings — the files in storage, not just the rows pointing at them — and the access records for them. Your session stops working on the very next request."
-            whatNot="it does not delete the matches themselves. Your profile id in them is replaced by a pseudonymous one, so the other players' records stay correct. That is pseudonymisation, not anonymisation: we are not claiming the result stops being about anyone. It also leaves the record that you asked for the erasure, and any recording kept for an analysis you asked to be published."
-            control={
-              <>
-                <InlineLink href={hrefs.privacyRoute}>Erase my account</InlineLink>, on the privacy
-                page. It asks you to confirm, and then it is done.{' '}
-                <span className="font-medium">
-                  There is no undo, and no backup we can restore you from.
-                </span>
-              </>
-            }
-          />
-          <RightsItem
-            heading="Correct something that is wrong (GDPR Art. 16)"
-            what="nothing on our side, and this is the honest answer. Your alias, country, rating and match results are not written by us — we read them from the game's own services. Correcting them there is what changes them here, on the next update."
-            whatNot="we will not edit a match record, a rating or a recording to say something different from what the game reported. A stats tool that lets its numbers be edited is not one."
-            control="none here, by design."
-          />
-          <RightsItem
-            heading="Restrict processing, or anything else in Articles 15 to 22"
-            what="the controls above cover getting a copy, stopping the archiving and erasing everything, which is the whole of what this service can do to your data. Anything else goes to the controller."
-            whatNot="it does not go through an automated route, because there is not one."
-            control={
-              <>
-                see{' '}
-                <InlineLink href="#how-to-reach-us" id="how-to-reach-us">
-                  How to reach us
-                </InlineLink>{' '}
-                at the end of this notice.
-              </>
-            }
-          />
-          <RightsItem
-            heading="Complain about how we handle this"
-            what="you can complain to your national data protection authority. That right does not depend on us, and using it does not require asking us first."
-            whatNot="it does not replace the controls above, which are faster."
-            control="your own supervisory authority."
-          />
-        </div>
-        <p className="mt-8 font-sans text-md text-text-primary">
-          Nothing here makes an automated decision about you that has a legal effect or anything
-          similar. We compute statistics from your matches; we do not rank, score or judge you with
-          a consequence attached.
-        </p>
-      </section>
-
-      {/* Section 7 */}
-      <section aria-labelledby="non-user" className="mt-12">
-        <SectionHeading id="non-user">If you are not a user of this service</SectionHeading>
-        <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
-          <p>
-            You may appear here without ever having signed in: you played a match against someone
-            who did, and the game publishes that match. What we hold about you is the public part of
-            that match — profile id, alias, country, civilisation, team, colour, result, rating and
-            rating change — and, inside the recording that user’s own game produced, your in-game
-            actions and chat.
-          </p>
-          <p>
-            You can object. The form asks for the profile id you want acted on and nothing else: no
-            account, no sign-in, no email address, because we have no way to ask you for one and no
-            way to answer you.
-          </p>
-          <p>
-            What happens then: your objection is recorded with its date. A person reads it and acts
-            on it within 30 days, replacing your profile id in our match records with a pseudonymous
-            one, so that what remains no longer names you.
-          </p>
-          <p>
-            What it does not do: it does not delete the matches, which are other players’ records
-            too, and it does not delete or alter a recording. It does not reach a cached search
-            result, for the reason given above. And, again, this is pseudonymisation and not
-            anonymisation — the record still describes a game somebody played.
-          </p>
-        </div>
-        <div className="mt-6">
-          <a
-            href={hrefs.objectionForm}
-            className={cx(
-              'inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-6 font-sans text-md font-semibold text-text-primary md:w-auto',
-              'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-              'hover:bg-surface-sunken active:bg-surface-sunken',
-              focusRing,
-            )}
+    <Page title="Privacy notice" titleHidden width="measure">
+      <article aria-labelledby="privacy-notice-title" className={className}>
+        <header>
+          <h2
+            id="privacy-notice-title"
+            className="font-display text-2xl font-semibold text-text-primary md:text-3xl"
           >
-            Object to what is held about me
-          </a>
-        </div>
-      </section>
+            Privacy notice
+          </h2>
+          <p className="mt-2 font-sans text-sm text-text-secondary">
+            Last updated {formatLastUpdated(lastUpdated)}.
+          </p>
+          <p className="mt-1 font-sans text-sm text-text-secondary">
+            We have no email address for you, so we cannot tell you when this notice changes. The
+            date at the top is the date it last did, and a change worth noticing appears here.
+          </p>
+          <p className="mt-4 font-sans text-md text-text-primary">
+            This service keeps your Age of Empires II profile, your match history and the recordings
+            of your own games, so that they still exist after the game deletes them. It has no
+            password and no email address for you, and it never sells or shares any of this.
+            Everything below says what is held, why we are allowed to hold it, for how long, and the
+            button that stops or removes it.
+          </p>
+        </header>
 
-      {/* Section 8 */}
-      <section aria-labelledby="what-we-do-not-do" className="mt-12">
-        <SectionHeading id="what-we-do-not-do">What we do not do</SectionHeading>
-        <ol className="mt-3 flex flex-col gap-3 font-sans text-md text-text-primary">
-          {NOT_DO_ITEMS.map((item, index) => (
-            <li key={item} className="flex gap-2">
-              <span className="text-text-secondary">{index + 1}.</span>
-              <span>{item}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+        {changeNote && (
+          <div className="mt-6">
+            <Callout tone="info" heading={changeNote.heading} headingLevel={3}>
+              <p>{changeNote.body}</p>
+              <p className="text-sm text-text-secondary">{changeNote.date}</p>
+            </Callout>
+          </div>
+        )}
 
-      {/* Section 9 */}
-      <section aria-labelledby="how-to-reach-us" className="mt-12">
-        <SectionHeading id="how-to-reach-us">How to reach us</SectionHeading>
-        <div className="mt-3 rounded-panel bg-surface-raised p-5 font-sans text-md text-text-primary">
-          {controllerContact ? (
+        <nav aria-labelledby="privacy-notice-contents-heading" className="mt-6">
+          <h2
+            id="privacy-notice-contents-heading"
+            className="font-sans text-sm font-semibold text-text-secondary"
+          >
+            Contents
+          </h2>
+          <ol className="mt-3 flex flex-col gap-1">
+            {SECTIONS_TOC.map((section, index) => (
+              <li key={section.id}>
+                <a
+                  href={`#${section.id}`}
+                  onClick={scrollAndFocus(section.id)}
+                  className={cx(
+                    'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
+                    'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+                    'hover:text-link-hover active:text-link-hover visited:text-link-visited',
+                    focusRing,
+                  )}
+                >
+                  {index + 1}. {section.label}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        {/* Section 1 */}
+        <section aria-labelledby="who-we-are" className="mt-8">
+          <SectionHeading id="who-we-are">Who we are and what this is</SectionHeading>
+          <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
             <p>
-              The controller for everything described here is {controllerContact.name}.{' '}
-              {controllerContact.postalAddress && `${controllerContact.postalAddress}. `}To reach us
-              about anything this notice does not have a button for, use{' '}
-              <a href={controllerContact.contactRoute} className="text-link underline">
-                this contact route
-              </a>
-              .
+              aoe2-stats keeps Age of Empires II: Definitive Edition stats, match history and replay
+              recordings for players who choose to link their Steam account. It is a closed-beta,
+              hobby service — not affiliated with Microsoft or Relic Entertainment.
             </p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <p className="font-medium">
-                We have not published a contact address yet. This service is in closed beta and is
-                not open to the public. Contact details for the controller will be published in this
-                section before it opens, and that is a condition of it opening, not a task left for
-                later.
-              </p>
-              <p>
-                Until then the controls above are the whole of what is available: object to archival
-                and export or erase your data from inside the product, or object through the form
-                above if you are not a user. If you want something those do not cover, there is no
-                route here yet, and we would rather say so than print an address that reaches
-                nobody.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
 
-      {hrefs.processingRegister && (
-        <p className="mt-8 font-sans text-sm text-text-secondary">
-          <InlineLink href={hrefs.processingRegister}>
-            Read the public processing register
-          </InlineLink>
-        </p>
-      )}
-    </article>
+        {/* Section 2 */}
+        <section aria-labelledby="what-we-collect" className="mt-12">
+          <SectionHeading id="what-we-collect">What we collect</SectionHeading>
+          <p className="mt-3 font-sans text-md text-text-primary">
+            Eight kinds of thing, each with where it came from, why we have it, what allows us to
+            hold it, and when it goes.
+          </p>
+          <div className="mt-8 flex flex-col gap-8">
+            {categoryEntries.map((entry) => (
+              <CategoryEntry key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </section>
+
+        {/* Section 3 */}
+        <section aria-labelledby="cookies" className="mt-12">
+          <SectionHeading id="cookies">Cookies</SectionHeading>
+          <p className="mt-3 font-sans text-md text-text-primary">
+            Two, both strictly necessary, neither of which asks you anything. One keeps you signed
+            in. The other lives for a few minutes during sign-in and exists only to make sure the
+            trip to Steam and back is really yours. There is no advertising cookie, no analytics
+            cookie and no third-party tracker on this site, which is why there is no cookie banner
+            to dismiss.
+          </p>
+        </section>
+
+        {/* Section 4 */}
+        <section aria-labelledby="where-stored" className="mt-12">
+          <SectionHeading id="where-stored">
+            Where it is stored, and who else touches it
+          </SectionHeading>
+          <p className="mt-3 font-sans text-md text-text-primary">
+            Everything is stored in the European Union, and nothing here is sold, shared or handed
+            to anyone for their own purposes. Three companies handle it on our behalf, because we do
+            not own servers:
+          </p>
+          <ResponsiveInfoTable
+            caption="Processors handling data on our behalf"
+            columns={['Provider', 'Role', 'Where']}
+            rows={processors.map((processor) => [
+              processor.name,
+              processor.role,
+              processor.location,
+            ])}
+          />
+          <p className="mt-4 font-sans text-md text-text-primary">
+            They act on our instructions and for nothing else. If we ever move this service to
+            different hosting, this list changes here first.
+          </p>
+          <p className="mt-4 font-sans text-md text-text-primary">
+            We also send requests out to three services that we do not run, and this is everything
+            we send them:
+          </p>
+          <ResponsiveInfoTable
+            caption="Outside services we send requests to"
+            columns={['Service', 'What we send', 'Why']}
+            rows={OUTWARD_CALLS.map((call) => [call.service, call.what, call.why])}
+          />
+          <p className="mt-4 font-sans text-md text-text-primary">
+            Your Steam sign-in itself happens at Steam, not here: we send you there and Steam tells
+            us which account came back. We never see your Steam password.
+          </p>
+        </section>
+
+        {/* Section 5 */}
+        <section aria-labelledby="how-long" className="mt-12">
+          <SectionHeading id="how-long">How long we keep it</SectionHeading>
+          <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
+            <p>
+              Each entry above states its own end condition, and this is the summary of them. Almost
+              everything we hold about you ends when you erase your account: the account itself, the
+              sign-in records, the profile links, your favourites, the match records that name you,
+              and every recording of yours we have stored, including the files themselves in
+              storage.
+            </p>
+            <p>
+              Three things deliberately outlive that, and each one is named above rather than buried
+              here. The matches themselves survive, with your profile id replaced by a pseudonymous
+              one, because they are other players’ match records too. The record of your erasure
+              request survives, without the link to your account, because it is the proof the
+              erasure happened. And a recording kept for an analysis you asked to be published
+              survives, because the analysis it produced has to stay checkable.
+            </p>
+            <p>
+              We do not delete anything on a timer. Nothing here expires quietly on its own, except
+              a cached search result, which is overwritten by a later search.
+            </p>
+          </div>
+        </section>
+
+        {/* Section 6 */}
+        <section aria-labelledby="your-rights" className="mt-12">
+          <SectionHeading id="your-rights">
+            Your rights, and the control that exercises each one
+          </SectionHeading>
+          <p className="mt-3 font-sans text-md text-text-primary">
+            Each of these is a control in this product, not a request form. Where a right has a
+            limit, the limit is written under the right and not somewhere else.
+          </p>
+          <div className="mt-8 flex flex-col gap-8">
+            <RightsItem
+              heading="Stop us archiving your recordings (GDPR Art. 21)"
+              what="stops every future capture of your recordings, from the moment you press it, and records the date you objected."
+              whatNot="it does not touch your match history or your ratings, which keep updating; it does not delete recordings already archived; and it does not go back and capture what was missed once you resume."
+              control={
+                <>
+                  <InlineLink href={hrefs.archivalControl}>Object to archival</InlineLink>, on your
+                  profile page. You can resume at any time, with one press.
+                </>
+              }
+            />
+            <RightsItem
+              heading="Get a copy of everything (GDPR Art. 15 and Art. 20)"
+              what="builds a single archive containing your account record, your Steam identities, every profile link you have ever held, the match records and per-player rows for those profiles, your archived recordings as the original files, your favourites, and the analyses you asked for."
+              whatNot="it does not include the cached search results described above, which are keyed to nobody, and it does not include the internal counters that rate-limit the API."
+              control={
+                <>
+                  <InlineLink href={hrefs.privacyRoute}>Export my data</InlineLink>, on the privacy
+                  page. When it is ready you get a download link, which stops working after a short
+                  while — start a new export if it does.
+                </>
+              }
+            />
+            <RightsItem
+              heading="Erase your account and everything attached to it (GDPR Art. 17)"
+              what="deletes your account, your Steam identities, your sessions, your profile links, your favourites, your archived recordings — the files in storage, not just the rows pointing at them — and the access records for them. Your session stops working on the very next request."
+              whatNot="it does not delete the matches themselves. Your profile id in them is replaced by a pseudonymous one, so the other players' records stay correct. That is pseudonymisation, not anonymisation: we are not claiming the result stops being about anyone. It also leaves the record that you asked for the erasure, and any recording kept for an analysis you asked to be published."
+              control={
+                <>
+                  <InlineLink href={hrefs.privacyRoute}>Erase my account</InlineLink>, on the
+                  privacy page. It asks you to confirm, and then it is done.{' '}
+                  <span className="font-medium">
+                    There is no undo, and no backup we can restore you from.
+                  </span>
+                </>
+              }
+            />
+            <RightsItem
+              heading="Correct something that is wrong (GDPR Art. 16)"
+              what="nothing on our side, and this is the honest answer. Your alias, country, rating and match results are not written by us — we read them from the game's own services. Correcting them there is what changes them here, on the next update."
+              whatNot="we will not edit a match record, a rating or a recording to say something different from what the game reported. A stats tool that lets its numbers be edited is not one."
+              control="none here, by design."
+            />
+            <RightsItem
+              heading="Restrict processing, or anything else in Articles 15 to 22"
+              what="the controls above cover getting a copy, stopping the archiving and erasing everything, which is the whole of what this service can do to your data. Anything else goes to the controller."
+              whatNot="it does not go through an automated route, because there is not one."
+              control={
+                <>
+                  see{' '}
+                  <InlineLink href="#how-to-reach-us" id="how-to-reach-us">
+                    How to reach us
+                  </InlineLink>{' '}
+                  at the end of this notice.
+                </>
+              }
+            />
+            <RightsItem
+              heading="Complain about how we handle this"
+              what="you can complain to your national data protection authority. That right does not depend on us, and using it does not require asking us first."
+              whatNot="it does not replace the controls above, which are faster."
+              control="your own supervisory authority."
+            />
+          </div>
+          <p className="mt-8 font-sans text-md text-text-primary">
+            Nothing here makes an automated decision about you that has a legal effect or anything
+            similar. We compute statistics from your matches; we do not rank, score or judge you
+            with a consequence attached.
+          </p>
+        </section>
+
+        {/* Section 7 */}
+        <section aria-labelledby="non-user" className="mt-12">
+          <SectionHeading id="non-user">If you are not a user of this service</SectionHeading>
+          <div className="mt-3 flex flex-col gap-4 font-sans text-md text-text-primary">
+            <p>
+              You may appear here without ever having signed in: you played a match against someone
+              who did, and the game publishes that match. What we hold about you is the public part
+              of that match — profile id, alias, country, civilisation, team, colour, result, rating
+              and rating change — and, inside the recording that user’s own game produced, your
+              in-game actions and chat.
+            </p>
+            <p>
+              You can object. The form asks for the profile id you want acted on and nothing else:
+              no account, no sign-in, no email address, because we have no way to ask you for one
+              and no way to answer you.
+            </p>
+            <p>
+              What happens then: your objection is recorded with its date. A person reads it and
+              acts on it within 30 days, replacing your profile id in our match records with a
+              pseudonymous one, so that what remains no longer names you.
+            </p>
+            <p>
+              What it does not do: it does not delete the matches, which are other players’ records
+              too, and it does not delete or alter a recording. It does not reach a cached search
+              result, for the reason given above. And, again, this is pseudonymisation and not
+              anonymisation — the record still describes a game somebody played.
+            </p>
+          </div>
+          <div className="mt-6">
+            <a
+              href={hrefs.objectionForm}
+              className={cx(
+                'inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-6 font-sans text-md font-semibold text-text-primary md:w-auto',
+                'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+                'hover:bg-surface-sunken active:bg-surface-sunken',
+                focusRing,
+              )}
+            >
+              Object to what is held about me
+            </a>
+          </div>
+        </section>
+
+        {/* Section 8 */}
+        <section aria-labelledby="what-we-do-not-do" className="mt-12">
+          <SectionHeading id="what-we-do-not-do">What we do not do</SectionHeading>
+          <ol className="mt-3 flex flex-col gap-3 font-sans text-md text-text-primary">
+            {NOT_DO_ITEMS.map((item, index) => (
+              <li key={item} className="flex gap-2">
+                <span className="text-text-secondary">{index + 1}.</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Section 9 */}
+        <section aria-labelledby="how-to-reach-us" className="mt-12">
+          <SectionHeading id="how-to-reach-us">How to reach us</SectionHeading>
+          <div className="mt-3 rounded-panel bg-surface-raised p-5 font-sans text-md text-text-primary">
+            {controllerContact ? (
+              <p>
+                The controller for everything described here is {controllerContact.name}.{' '}
+                {controllerContact.postalAddress && `${controllerContact.postalAddress}. `}To reach
+                us about anything this notice does not have a button for, use{' '}
+                <a href={controllerContact.contactRoute} className="text-link underline">
+                  this contact route
+                </a>
+                .
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <p className="font-medium">
+                  We have not published a contact address yet. This service is in closed beta and is
+                  not open to the public. Contact details for the controller will be published in
+                  this section before it opens, and that is a condition of it opening, not a task
+                  left for later.
+                </p>
+                <p>
+                  Until then the controls above are the whole of what is available: object to
+                  archival and export or erase your data from inside the product, or object through
+                  the form above if you are not a user. If you want something those do not cover,
+                  there is no route here yet, and we would rather say so than print an address that
+                  reaches nobody.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {hrefs.processingRegister && (
+          <p className="mt-8 font-sans text-sm text-text-secondary">
+            <InlineLink href={hrefs.processingRegister}>
+              Read the public processing register
+            </InlineLink>
+          </p>
+        )}
+      </article>
+    </Page>
   )
 }
 
