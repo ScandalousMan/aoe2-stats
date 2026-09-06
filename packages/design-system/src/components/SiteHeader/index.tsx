@@ -1,5 +1,8 @@
 import { cx } from '../../lib/cx'
 import { createRowLinkClickHandler } from '../../lib/rowLink'
+import { Badge } from '../Badge'
+import { Menu, type MenuItem } from '../Menu'
+import { ThemeProvider, useTheme, type Theme } from '../../theme'
 
 // packages/design-system/specs/site-header.md
 
@@ -38,6 +41,74 @@ const focusRing =
  * absent href). */
 function isRealItem(item: SiteHeaderNavItem): boolean {
   return item.label.trim() !== '' && item.href.trim() !== ''
+}
+
+// The three states this control's trigger reports, keyed by `override` where `null` reads as
+// "system" (§ThemeControl). Fixed here, once, so the trigger label, the menu items and the tests
+// all draw from the same three words.
+const THEME_OPTION_LABEL: Record<'system' | Theme, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+}
+
+/** The one control in this package permitted to read the active theme (FR-014; the standing
+ * exemption itself is recorded in `specs/README.md` by T536, not restated here). Three states,
+ * never two: "system" is a real, reachable choice, not just the absence of one, so a reader who
+ * has never overridden can always get back to following their OS rather than a two-state flip
+ * quietly turning a "no preference" reader into someone with a permanent override.
+ *
+ * Reuses `Menu`'s `selection` variant — `role="menu"` / `menuitemradio` / `aria-checked` — rather
+ * than inventing a second "choose one of a few named things" pattern: it is the one this package
+ * already has (`ProfileSummary`'s profile switcher), and the checked item carries a `Badge` too,
+ * per that component's own acceptance bar ("marked by text or a `Badge`, not by colour alone").
+ *
+ * Owns its own `ThemeProvider` rather than requiring the application shell to mount one: `useTheme`
+ * has exactly one sanctioned consumer today — this control — so the provider travels with it
+ * instead of asking every host of `SiteHeader` to also wire one up. It reads `document`'s already-
+ * painted `data-theme` attribute on mount (`apps/web/index.html`, T533), so nesting it here changes
+ * nothing about which theme first paints. */
+function ThemeControl({ className }: { className?: string }) {
+  return (
+    <ThemeProvider>
+      <ThemeMenu className={className} />
+    </ThemeProvider>
+  )
+}
+
+function ThemeMenu({ className }: { className?: string }) {
+  const { override, setOverride, clearOverride } = useTheme()
+  const current: 'system' | Theme = override ?? 'system'
+
+  function markedItem(option: 'system' | Theme, onSelect: () => void): MenuItem {
+    const checked = current === option
+    return {
+      id: option,
+      label: THEME_OPTION_LABEL[option],
+      checked,
+      badge: checked ? <Badge>Current</Badge> : undefined,
+      onSelect,
+    }
+  }
+
+  const items: MenuItem[] = [
+    markedItem('system', clearOverride),
+    markedItem('light', () => setOverride('light')),
+    markedItem('dark', () => setOverride('dark')),
+  ]
+
+  return (
+    <Menu
+      variant="selection"
+      triggerLabel={
+        <>
+          Theme: {THEME_OPTION_LABEL[current]} <span aria-hidden="true">▾</span>
+        </>
+      }
+      items={items}
+      className={className}
+    />
+  )
 }
 
 /** §4's pure string rule, evaluated without a router this package does not depend on: exact
@@ -93,55 +164,64 @@ export function SiteHeader({
         Skip to content
       </a>
 
-      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:gap-6">
-        <a
-          href={brandHref}
-          onClick={createRowLinkClickHandler(brandHref, onNavigate)}
-          className={cx(
-            'font-display text-lg font-semibold tracking-tight text-text-primary hover:underline',
-            focusRing,
-          )}
-        >
-          {WORDMARK}
-        </a>
+      {/* The outer row places `ThemeControl` at the inline-end at every viewport — including 375,
+       * beside `Brand` rather than beneath the wrapped nav — because it is present regardless of
+       * whether there are any nav items at all (§ThemeControl is never conditional, unlike
+       * `PrimaryNav`). `items-start` keeps it aligned with `Brand`'s row when the inner group
+       * stacks at 375; `md:items-center` matches the inner group's own row alignment from `md`. */}
+      <div className="flex items-start justify-between gap-3 md:items-center">
+        <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:gap-6">
+          <a
+            href={brandHref}
+            onClick={createRowLinkClickHandler(brandHref, onNavigate)}
+            className={cx(
+              'font-display text-lg font-semibold tracking-tight text-text-primary hover:underline',
+              focusRing,
+            )}
+          >
+            {WORDMARK}
+          </a>
 
-        {realItems.length > 0 && (
-          <nav aria-label="Primary">
-            <ul className="flex flex-wrap gap-2">
-              {realItems.map((item) => {
-                const isCurrent = current?.id === item.id
-                return (
-                  <li key={item.id} className="flex flex-col">
-                    <a
-                      href={item.href}
-                      aria-current={isCurrent ? 'page' : undefined}
-                      onClick={createRowLinkClickHandler(item.href, onNavigate)}
-                      className={cx(
-                        'flex min-h-12 items-center justify-center rounded-control border border-transparent px-3',
-                        'font-sans text-sm',
-                        'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                        focusRing,
-                        'hover:bg-surface-sunken hover:text-text-primary',
-                        'active:border-border-strong active:bg-surface-sunken active:text-text-primary',
-                        isCurrent
-                          ? 'font-semibold text-text-primary'
-                          : 'font-medium text-text-secondary',
-                      )}
-                    >
-                      {item.label}
-                    </a>
-                    {/* The reserved current-route channel (§4, §7): every item renders this strip
-                     * at the same height, so marking one item current shifts nothing else. */}
-                    <span
-                      aria-hidden="true"
-                      className={cx('mt-1 h-0.5', isCurrent ? 'bg-accent' : 'bg-transparent')}
-                    />
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
-        )}
+          {realItems.length > 0 && (
+            <nav aria-label="Primary">
+              <ul className="flex flex-wrap gap-2">
+                {realItems.map((item) => {
+                  const isCurrent = current?.id === item.id
+                  return (
+                    <li key={item.id} className="flex flex-col">
+                      <a
+                        href={item.href}
+                        aria-current={isCurrent ? 'page' : undefined}
+                        onClick={createRowLinkClickHandler(item.href, onNavigate)}
+                        className={cx(
+                          'flex min-h-12 items-center justify-center rounded-control border border-transparent px-3',
+                          'font-sans text-sm',
+                          'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+                          focusRing,
+                          'hover:bg-surface-sunken hover:text-text-primary',
+                          'active:border-border-strong active:bg-surface-sunken active:text-text-primary',
+                          isCurrent
+                            ? 'font-semibold text-text-primary'
+                            : 'font-medium text-text-secondary',
+                        )}
+                      >
+                        {item.label}
+                      </a>
+                      {/* The reserved current-route channel (§4, §7): every item renders this strip
+                       * at the same height, so marking one item current shifts nothing else. */}
+                      <span
+                        aria-hidden="true"
+                        className={cx('mt-1 h-0.5', isCurrent ? 'bg-accent' : 'bg-transparent')}
+                      />
+                    </li>
+                  )
+                })}
+              </ul>
+            </nav>
+          )}
+        </div>
+
+        <ThemeControl className="shrink-0" />
       </div>
     </header>
   )

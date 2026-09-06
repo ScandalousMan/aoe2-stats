@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { THEME_STORAGE_KEY } from '../../theme'
 import { SiteHeader, type SiteHeaderNavItem } from './index'
 
 // site-header.md §11: what a static story capture cannot see — Tab order, aria-current, the
@@ -193,5 +194,135 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
 
     rerender(<SiteHeader items={items} currentPath="/dashboard" />)
     expect(screen.getByRole('link', { name: 'Matches' }).className).toBe(restingClassName)
+  })
+})
+
+// site-header.md §ThemeControl (T535, FR-014): the three-state control — system, light, dark —
+// is present in every render, regardless of `items`, and reads `override` (never `theme`) to
+// decide which of its three states is active: `override === null` must still be able to read as
+// "System", even though `theme` alone cannot distinguish "light because the system says so" from
+// "light because the reader chose it" (`theme/ThemeProvider.tsx`'s own reasoning for exposing
+// `override` at all).
+describe('SiteHeader — ThemeControl (site-header.md §ThemeControl, FR-014)', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    delete document.documentElement.dataset.theme
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+    delete document.documentElement.dataset.theme
+  })
+
+  it('with no stored override, "System" is the trigger label and the checked state', async () => {
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+
+    const trigger = screen.getByRole('button', { name: /Theme: System/ })
+    await user.click(trigger)
+
+    expect(screen.getByRole('menuitemradio', { name: /System/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    expect(screen.getByRole('menuitemradio', { name: /Light/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+    expect(screen.getByRole('menuitemradio', { name: /Dark/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+  })
+
+  it('with a stored "light" override, "Light" is the trigger label and the checked state', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'light')
+    document.documentElement.dataset.theme = 'light'
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+
+    const trigger = screen.getByRole('button', { name: /Theme: Light/ })
+    await user.click(trigger)
+
+    expect(screen.getByRole('menuitemradio', { name: /Light/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('with a stored "dark" override, "Dark" is the trigger label and the checked state', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark')
+    document.documentElement.dataset.theme = 'dark'
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+
+    const trigger = screen.getByRole('button', { name: /Theme: Dark/ })
+    await user.click(trigger)
+
+    expect(screen.getByRole('menuitemradio', { name: /Dark/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('the checked state is also carried by a visible Badge, not by colour alone', async () => {
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+    await user.click(screen.getByRole('button', { name: /Theme: System/ }))
+
+    expect(screen.getByRole('menuitemradio', { name: /System/ })).toHaveTextContent('Current')
+    expect(screen.getByRole('menuitemradio', { name: /Light/ })).not.toHaveTextContent('Current')
+  })
+
+  it('selecting "Light" sets an explicit override and paints it immediately (useTheme().setOverride)', async () => {
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+    await user.click(screen.getByRole('button', { name: /Theme: System/ }))
+    await user.click(screen.getByRole('menuitemradio', { name: /Light/ }))
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('light')
+    expect(document.documentElement.dataset.theme).toBe('light')
+  })
+
+  it('selecting "Dark" sets an explicit override and paints it immediately (useTheme().setOverride)', async () => {
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+    await user.click(screen.getByRole('button', { name: /Theme: System/ }))
+    await user.click(screen.getByRole('menuitemradio', { name: /Dark/ }))
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+  })
+
+  it('selecting "System" clears a stored override (useTheme().clearOverride)', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark')
+    document.documentElement.dataset.theme = 'dark'
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+    await user.click(screen.getByRole('button', { name: /Theme: Dark/ }))
+    await user.click(screen.getByRole('menuitemradio', { name: /System/ }))
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+  })
+
+  it('is reachable and operable by keyboard: Enter opens it, arrow keys move between options, Enter selects', async () => {
+    const user = userEvent.setup()
+    render(<SiteHeader items={[]} />)
+
+    const trigger = screen.getByRole('button', { name: /Theme: System/ })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    // Opens with the checked item ("System") focused; ArrowDown moves to "Light".
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{Enter}')
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('light')
+  })
+
+  it('renders regardless of whether `items` is empty — it is never conditional like PrimaryNav', () => {
+    render(<SiteHeader items={[]} />)
+    expect(screen.getByRole('button', { name: /Theme: System/ })).toBeInTheDocument()
   })
 })

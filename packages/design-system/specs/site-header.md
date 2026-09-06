@@ -4,12 +4,17 @@
 **Feature**: 004, US3 — mounted in the web shell by T442, in `apps/web/src/routes/__root.tsx`,
 beside the `Footer` that is already mounted there, so it renders on every route.
 **Requirements**: FR-009 (a header with primary navigation on every page, footer intact), FR-013
-(tokens only, a story, visual regression). Constitution VI, VII.
+(tokens only, a story, visual regression), FR-014 (both themes reachable, an explicit override
+remembered — §ThemeControl, T535). Constitution VI, VII.
 **Depends on**: [`README.md`](./README.md) — the measured contrast table and the gap register, which
 this spec references and never restates. [`footer.md`](./footer.md) — the other half of the site
 chrome; the two are specified to agree on inline padding, on link behaviour and on "chrome is the
 quietest thing on the page". `src/lib/rowLink.ts` — the existing SPA navigation seam
-(`createRowLinkClickHandler`), reused rather than re-invented.
+(`createRowLinkClickHandler`), reused rather than re-invented. `src/theme/` (`ThemeProvider`,
+`useTheme`, T534) — owned locally by §ThemeControl rather than required of every host of this
+component (see that section for why). `src/components/Menu/` — the `selection` variant this
+control reuses rather than inventing a second "choose one of a few named things" pattern; see
+`shared-primitives.md#Menu`. `src/components/Badge/` — the checked item's non-colour marker.
 **Asset origin** (README rule 3): **none.** This component renders no image of any kind — no logo,
 no crest, no emblem, no civilisation mark, no flag. The brand is a text wordmark set in the
 `display` family. There is nothing here for the licence gate to record, and §10 has a criterion
@@ -35,13 +40,16 @@ SiteHeader                     <header>, the banner landmark
 ├─ SkipLink                    "Skip to content" — the first focusable element on every page;
 │                              visually hidden until it takes focus, then a real, visible control
 ├─ Brand                       <a href="/"> — the wordmark "aoe2-stats", text, never an image
-└─ PrimaryNav        ×0..1     <nav aria-label="Primary">, omitted entirely when there are no items
-   └─ NavList                  <ul>
-      └─ NavItem    ×1..n      <li><a href> — label, plus the current-route marker (§4)
+├─ PrimaryNav        ×0..1     <nav aria-label="Primary">, omitted entirely when there are no items
+│  └─ NavList                  <ul>
+│     └─ NavItem    ×1..n      <li><a href> — label, plus the current-route marker (§4)
+└─ ThemeControl                a `Menu` (`selection` variant) — "System" / "Light" / "Dark" (§ThemeControl)
 ```
 
-`SkipLink` and `Brand` are never conditional. `PrimaryNav` is present only when the caller supplies
-at least one item (§5 empty), which is the signed-out case and not a fault.
+`SkipLink`, `Brand` and `ThemeControl` are never conditional. `PrimaryNav` is present only when the
+caller supplies at least one item (§5 empty), which is the signed-out case and not a fault.
+`ThemeControl` renders identically whether or not the caller is signed in — it is a property of the
+browser, not of the session (§ThemeControl).
 
 ### 2a. Props
 
@@ -88,9 +96,12 @@ modified or non-primary click is left to the browser. This is the seam `PlayerRe
 
 Stated so that three plausible additions do not arrive as call-site improvisations:
 
-- **No account or session control**, no avatar, no signed-in identity, no sign-out. Its place is
-  reserved — the inline-end of the brand row — and it is a spec change when it is wanted, not a
-  prop a container may add. FR-009 asks for navigation.
+- **No account or session control**, no avatar, no signed-in identity, no sign-out. Its place was
+  reserved at the inline-end of the header's own row; T535 puts `ThemeControl` there instead (§2d),
+  since it is the one piece of chrome present regardless of session state. An account control is
+  still a spec change when it is wanted, not a prop a container may add — it will share that
+  inline-end tray with `ThemeControl` rather than displace it, itself a decision for that later
+  spec change to make explicit. FR-009 asks for navigation.
 - **No search field in the header.** `SearchBox` is a composite with its own results surface and
   its own focus behaviour; `/search` is a destination in the nav instead. A second search entry
   point would make two components own the same keyboard interaction.
@@ -98,7 +109,47 @@ Stated so that three plausible additions do not arrive as call-site improvisatio
   `<main>`, which already renders them; a header that restates the page title costs a line of
   vertical space on every page in a tool whose functional priority is density (README rule 1).
 
-## 3. Variants and sizes
+### 2d. ThemeControl (T535, FR-014)
+
+**Three states, not two.** System, Light, Dark — "system" is a real, reachable, third choice, not
+merely the absence of a preference. A two-state light/dark switch has no way to represent "I have
+never chosen" separately from "I chose light", so the very first press of it silently converts a
+reader who was following their operating system into someone with a permanent override; recovering
+"go back to what my system says" then requires clearing browser storage by hand. Three states close
+that hole: the reader can always choose "System" again.
+
+**What it is.** A `Menu` in its `selection` variant (`shared-primitives.md#Menu`) — the pattern this
+package already uses for "choose one of a few named things" (`ProfileSummary`'s profile switcher) —
+rather than a bespoke segmented control or a second roving-radiogroup implementation. Its three
+items are `System`, `Light` and `Dark`; the checked one carries a `Badge` reading "Current" in
+addition to `aria-checked`, per `Menu`'s own acceptance bar that the checked item is marked by text
+or a `Badge`, never by colour alone. The trigger's own label states the active state in words —
+`Theme: System`, `Theme: Light` or `Theme: Dark` — with a trailing `aria-hidden` "▾", the same
+disclosure glyph `ProfileSummary`'s switcher trigger already uses, so no icon is drawn and §Asset
+origin's "no image of any kind" holds for this control too.
+
+**What it does.** Selecting **System** calls `useTheme().clearOverride()`; selecting **Light** or
+**Dark** calls `useTheme().setOverride('light' | 'dark')`. The checked state is read from
+`useTheme().override` — `null` reads as "System" — **never** from `useTheme().theme`: the resolved
+theme cannot tell "light because the system currently says so" from "light because the reader
+chose it", and only `override` carries that distinction (`theme/ThemeProvider.tsx`'s own reasoning
+for exposing both).
+
+**Why it owns its own `ThemeProvider`.** `useTheme` has exactly one sanctioned consumer in this
+package today — this control (the standing exemption from FR-017's "no component branches on the
+theme" is recorded in `README.md` by T536, not restated here) — so the provider is instantiated
+here, wrapping only this control, rather than requiring every host of `SiteHeader` to also mount
+one at the application root. It reads `document.documentElement`'s already-painted `data-theme`
+attribute on mount (`apps/web/index.html`'s inline script, T533) and only repaints it in response
+to an explicit selection, so nesting it here changes nothing about which theme first paints, and it
+never fights a theme any ancestor may separately be driving.
+
+**Placement.** The inline-end of the header's own row, at every viewport, `space-3` clear of the
+`Brand`/`PrimaryNav` group (§7) — present regardless of whether `items` is empty, unlike
+`PrimaryNav`, because it is a property of the reader's browser, not of their session. At 375 it sits
+beside `Brand` on the header's first row rather than beneath it with the wrapped nav items, so it
+never competes with nav wrapping for width; at 768 and 1280 it occupies what §2c calls out as the
+reserved inline-end space.
 
 **One variant and one size, at every viewport.** A header that changes shape per route is chrome a
 reader cannot rely on finding twice, and the whole value of this component is that it is identical
@@ -218,6 +269,11 @@ The closed vocabulary, all eight. Unless said otherwise, a state belongs to a `N
     a page you are not on is worse than one that claims nothing, and this is a routine state, not an
     edge case — the profile and match-detail routes are in it all day.
 
+`ThemeControl`'s own states — default, hover, focus-visible, active, disabled, loading, error,
+empty, for its trigger and its items — are `Menu`'s, unchanged by this composition
+(`shared-primitives.md#Menu`); the only thing specific to this control is which of its three items
+reads as checked, which is §2d's mapping from `useTheme().override`, not a state of its own.
+
 ## 6. Tokens used
 
 Colour: `surface` (the header's own fill), `border` (the block-end hairline — the README's own
@@ -259,26 +315,34 @@ nothing is blocked — but per the README's pairing convention an unmeasured pai
 one, and the light row (11.7) is measured. Add the dark row the next time the table is recomputed,
 alongside the one `profile-summary.md` §12.8 already owes.
 
+`ThemeControl` (§2d) draws no colour pair of its own: its trigger and its items are `Menu`'s
+existing `surface-raised` / `surface-sunken` / `border` / `text-primary` / `focus-ring` set
+(`shared-primitives.md#Menu`), and its checked marker is `Badge`'s existing `neutral` variant
+(`surface-sunken` fill, `text-secondary` label) — both already measured. No new pair, no new token.
+
 ## 7. Spacing
 
-| Between                                 | Step                                                                                                       |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Header padding-inline                   | `space-4`, `space-6` from `md` — identical to `Footer` and to every route's `<main>`                       |
-| Header padding-block                    | `space-2` (also the focus ring's clearance, §5)                                                            |
-| `Brand` to `PrimaryNav`                 | `space-6` from `md`; `space-3` block gap when stacked at 375                                               |
-| Between `NavItem`s                      | `space-2`                                                                                                  |
-| `NavItem` padding-inline                | `space-3`                                                                                                  |
-| `NavItem` box min-height                | `space-12` — 48px, clearing the 44px touch floor at every viewport, the same height `Menu` gives its items |
-| `NavItem` box to the current-route rule | `space-1` (the reserved channel, §4)                                                                       |
+| Between                                      | Step                                                                                                       |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Header padding-inline                        | `space-4`, `space-6` from `md` — identical to `Footer` and to every route's `<main>`                       |
+| Header padding-block                         | `space-2` (also the focus ring's clearance, §5)                                                            |
+| `Brand` to `PrimaryNav`                      | `space-6` from `md`; `space-3` block gap when stacked at 375                                               |
+| Between `NavItem`s                           | `space-2`                                                                                                  |
+| `NavItem` padding-inline                     | `space-3`                                                                                                  |
+| `NavItem` box min-height                     | `space-12` — 48px, clearing the 44px touch floor at every viewport, the same height `Menu` gives its items |
+| `NavItem` box to the current-route rule      | `space-1` (the reserved channel, §4)                                                                       |
+| `Brand`/`PrimaryNav` group to `ThemeControl` | `space-3` (§2d), at every viewport                                                                         |
 
 No value outside the scale, and no per-viewport spacing change other than the inline padding step
 above.
 
 ## 8. Responsive
 
-- **375** — two rows: `Brand` alone on the first, `PrimaryNav` beneath it, its items **wrapping**
-  onto as many rows as they need at `space-2` apart. Every item stays at least 48px tall, every
-  label stays fully readable, and nothing is hidden.
+- **375** — two rows: `Brand` **and `ThemeControl`** on the first (the pair carries `justify-between`
+  across the header's width, per §2d), `PrimaryNav` beneath both at `space-3` block gap, its items
+  **wrapping** onto as many rows as they need at `space-2` apart. Every item stays at least 48px
+  tall, every label stays fully readable, and nothing is hidden. `ThemeControl` never wraps onto the
+  nav's rows — it stays fixed on the first row regardless of how many nav rows follow.
   - **No hamburger, and this is a decision, not an omission.** Hiding five short links behind a
     disclosure costs an extra tap on every navigation in a product people consult quickly (README
     rule 1), and it introduces an overlay surface with focus trapping, an open/closed state and a
@@ -287,7 +351,8 @@ above.
   - **No horizontal scroller either.** A row that scrolls sideways hides items with no affordance,
     and an item a keyboard user tabs to off-screen is a focus ring nobody can see.
 - **768** — one row: `Brand` at the inline-start, `PrimaryNav` immediately after it at `space-6`,
-  both left-aligned. The inline-end stays empty; that is the space §2c reserves.
+  both left-aligned, then `ThemeControl` at the inline-end (§2d) — the space §2c used to describe as
+  empty is where it now sits.
 - **1280** — identical to 768. The header is full-bleed at every width and never becomes a centred
   column, a two-tier bar or a grid.
 - **Not sticky.** It scrolls away with the page in every arrangement. Two reasons: a fixed bar over
@@ -331,6 +396,18 @@ above.
   rows at 375.
 - Every label is real, selectable text. No icon-only item, no tooltip, no `title` attribute
   carrying information the label does not.
+- **`ThemeControl` (§2d)**: the trigger's accessible name states the active state in words —
+  "Theme: System", "Theme: Light" or "Theme: Dark" — so it needs no separate `aria-label`; the
+  trailing "▾" is `aria-hidden` and contributes nothing to that name. The surface is `role="menu"`
+  with three `role="menuitemradio"` items and `aria-checked` on exactly one, `Menu`'s existing
+  contract (`shared-primitives.md#Menu`) applied here with no change: Enter/Space/ArrowDown open it
+  with the checked item focused, ArrowUp/ArrowDown move between the three with wrap, Escape closes
+  and returns focus to the trigger. The checked item is additionally marked by a `Badge` reading
+  "Current", so a sighted reader who cannot distinguish the checked state by `aria-checked` alone
+  (announced only to assistive technology) still sees which of the three is active without relying
+  on colour. Reachable in the header's own tab order, after every `NavItem` — Tab order is
+  `SkipLink`, `Brand`, every `NavItem` in DOM order (unchanged from above), then `ThemeControl`'s
+  trigger.
 
 ## 10. Visual acceptance criteria
 
@@ -343,7 +420,11 @@ of §8's 375 arrangement is invisible to the suite (`scripts/visual/run.mjs`).
 Required stories: `SignedIn` (five items, `/dashboard` current), `CurrentIsNestedRoute`
 (`currentPath` `/matches/12345`), `NoCurrentItem` (`currentPath` `/players/1807091`), `SignedOut`
 (`items={[]}`), `SmallViewport` (`visual-mobile`), `LongLabels` (the longest plausible item set, at
-375, `visual-mobile`).
+375, `visual-mobile`), `ThemeControlFollowingSystem`, `ThemeControlSetToLight`,
+`ThemeControlSetToDark` (§2d — each opens the menu via `play()`; the light/dark stories seed the
+stored override through a `loader` rather than a live click, so the capture never fights the
+`theme:<light|dark>` global the rest of this suite's matrix depends on — see the stories file's own
+comment for why a live click there would repaint the page's own theme attribute).
 
 - [ ] The wordmark "aoe2-stats" is present in every story, as text.
 - [ ] **No image of any kind appears in any frame** — no logo, crest, emblem, shield, civilisation
@@ -371,10 +452,21 @@ Required stories: `SignedIn` (five items, `/dashboard` current), `CurrentIsNeste
       scrollbar, no clipped item, no ellipsis, no label truncated mid-word.
 - [ ] At 375, every item's box measures at least 44px tall (48px as specified) and items are at
       least `space-2` apart, so no two targets touch.
-- [ ] At 768 and 1280: one row, wordmark at the inline-start, items immediately after it, the
-      inline-end empty.
+- [ ] At 768 and 1280: one row, wordmark at the inline-start, items immediately after it,
+      `ThemeControl`'s trigger at the inline-end (§2d, §8).
 - [ ] Spacing snaps to the scale in every frame — no intermediate inline padding, no hand-tuned gap.
 - [ ] Every colour in the frame is a token from §6; nothing renders a hue outside the palette.
+- [ ] `ThemeControl` is present, closed, in every non-`ThemeControl*` story — its trigger reads
+      "Theme: System" in every one of them, since none seeds a stored override.
+- [ ] `ThemeControlFollowingSystem`: the open menu shows exactly one checked item, "System", marked
+      by both `aria-checked` (not visible in a screenshot, but its `Badge` is) and the "Current"
+      `Badge` — never "Light" or "Dark" checked by default.
+- [ ] `ThemeControlSetToLight` / `ThemeControlSetToDark`: the trigger reads "Theme: Light" /
+      "Theme: Dark" and the matching item, not "System", carries the `Badge`. Counting `Badge`s in
+      the open surface gives 1, on the item the story names, in both of these stories' own light and
+      dark captures alike (§2d — an explicit override is not the page's ambient theme).
+- [ ] At 375, `ThemeControl`'s trigger sits beside `Brand` on the first row, never beneath it with
+      the wrapped nav items, in every story that has both.
 
 ## 11. What a screenshot cannot see, and what covers it instead
 
@@ -396,3 +488,11 @@ it was forgotten. T441 owes both of the following:
   click calls `onNavigate` and a modified click does not (`createRowLinkClickHandler`'s contract);
   and the hover and focus class contract is present on every item, the way `Button.test.tsx` already
   asserts `focus-visible:outline-focus-ring`.
+- **`ThemeControl` (§2d, T535) also asserts what a screenshot cannot see or cannot see reliably**:
+  with no stored override the trigger reads "Theme: System" and only the System item is checked;
+  with a stored `light` or `dark` override the trigger and the checked item agree with it; selecting
+  each of the three calls through to `useTheme()`'s real `setOverride`/`clearOverride` (observed via
+  `localStorage` and `document.documentElement.dataset.theme`, since neither `useTheme` nor `Menu` is
+  mocked, matching how `ThemeProvider.test.tsx` itself asserts); the checked item carries the
+  "Current" `Badge`, not colour alone; and the control is keyboard-operable end to end — Enter opens
+  it with the checked item focused, ArrowDown moves to the next, Enter selects it.
