@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Callout, FavouritesList } from 'design-system'
+import { Callout, FavouritesList, Page } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { buildSignInHref } from '../auth/returnLocation'
 import { favouritesQueryOptions, removeFavourite } from './api'
@@ -62,26 +62,24 @@ export function FavouritesContainer() {
     : undefined
 
   return (
-    <main className="min-h-svh bg-background">
+    // `title` is visually hidden: `FavouritesList` renders its own visible "Favourites" heading
+    // (structural-tier.md §5).
+    <Page title="Favourites" titleHidden>
       {removeFailed && (
-        <div className="px-4 pt-4 md:px-6">
-          <Callout tone="danger" heading="We could not update your favourites" headingLevel={3}>
-            Try again.
-          </Callout>
-        </div>
+        <Callout tone="danger" heading="We could not update your favourites" headingLevel={3}>
+          Try again.
+        </Callout>
       )}
-      <div className="px-4 py-6 md:px-6">
-        <FavouritesList
-          authenticated={authenticated}
-          signInHref={buildSignInHref('/favourites')}
-          onNavigate={(href) => void navigate({ to: href })}
-          loading={authenticated && favouritesQuery.isPending}
-          error={listQueryFailed}
-          entries={entries}
-          onRemove={(profileId) => void handleRemove(profileId)}
-          onRetry={() => void favouritesQuery.refetch()}
-        />
-      </div>
-    </main>
+      <FavouritesList
+        authenticated={authenticated}
+        signInHref={buildSignInHref('/favourites')}
+        onNavigate={(href) => void navigate({ to: href })}
+        loading={authenticated && favouritesQuery.isPending}
+        error={listQueryFailed}
+        entries={entries}
+        onRemove={(profileId) => void handleRemove(profileId)}
+        onRetry={() => void favouritesQuery.refetch()}
+      />
+    </Page>
   )
 }

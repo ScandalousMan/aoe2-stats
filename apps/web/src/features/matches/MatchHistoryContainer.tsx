@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button, Callout, MatchList, ProfileSummary } from 'design-system'
+import { Button, Callout, EmptyState, MatchList, Page, ProfileSummary } from 'design-system'
 import type { MatchListStatus, ProfileSummaryStatus } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { profilesQueryOptions, setPrimaryProfile } from '../profile/api'
@@ -125,24 +125,23 @@ export function MatchHistoryContainer() {
     : []
 
   return (
-    <main className="min-h-svh bg-background">
+    // `title` is visually hidden: `ProfileSummary/compact` (or, with no linked account, the
+    // `EmptyState` below) is the large visible element that already carries this route's identity
+    // (structural-tier.md §5, `Page`'s own `TitleHidden` story is this exact route).
+    <Page title="Match history" titleHidden>
       {showEmptyAccount ? (
-        <div className="px-4 py-6 md:px-6">
-          <Callout
-            tone="info"
-            heading="No Steam account is linked yet"
-            actions={
-              <Button
-                variant="primary"
-                onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
-              >
-                Link a Steam account
-              </Button>
-            }
-          >
-            Link a Steam account to see your match history.
-          </Callout>
-        </div>
+        <EmptyState
+          heading="No Steam account is linked yet"
+          explanation="Link a Steam account to see your match history."
+          action={
+            <Button
+              variant="primary"
+              onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
+            >
+              Link a Steam account
+            </Button>
+          }
+        />
       ) : (
         <>
           <ProfileSummary
@@ -164,30 +163,25 @@ export function MatchHistoryContainer() {
           />
 
           {makePrimaryError && (
-            <div className="px-4 md:px-6">
-              <Callout
-                tone="danger"
-                heading="We could not change your primary profile"
-                headingLevel={3}
-              >
-                {makePrimaryError}
-              </Callout>
-            </div>
+            <Callout
+              tone="danger"
+              heading="We could not change your primary profile"
+              headingLevel={3}
+            >
+              {makePrimaryError}
+            </Callout>
           )}
 
-          {/* match-history.md §7: "Page header (ProfileSummary/compact) to match list — space-6". */}
-          <div className="mt-6 px-4 pb-8 md:px-6">
-            <MatchList
-              status={matchListStatus}
-              matches={matchRows}
-              onRetry={() => void matchesQuery.refetch()}
-              // T388: `MatchRow` renders a real `<a href>` so it degrades gracefully, but a plain
-              // click routes through here instead of forcing a full document reload.
-              onNavigate={(href) => void navigate({ to: href })}
-            />
-          </div>
+          <MatchList
+            status={matchListStatus}
+            matches={matchRows}
+            onRetry={() => void matchesQuery.refetch()}
+            // T388: `MatchRow` renders a real `<a href>` so it degrades gracefully, but a plain
+            // click routes through here instead of forcing a full document reload.
+            onNavigate={(href) => void navigate({ to: href })}
+          />
         </>
       )}
-    </main>
+    </Page>
   )
 }

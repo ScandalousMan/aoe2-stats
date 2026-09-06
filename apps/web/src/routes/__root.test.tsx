@@ -77,25 +77,25 @@ describe('RootLayout (T442)', () => {
     )
   })
 
-  it('renders the route outlet inside <main id="main-content" tabIndex={-1}>, the skip link target (§9)', () => {
-    sessionFixture = { authenticated: true }
-    render(<RootLayout />)
-
-    const outlet = screen.getByTestId('route-outlet')
-    const main = outlet.closest('main')
-    expect(main).not.toBeNull()
-    expect(main).toHaveAttribute('id', 'main-content')
-    expect(main).toHaveAttribute('tabindex', '-1')
-  })
-
-  it('renders header before main before footer, so the banner landmark leads the page (§9)', () => {
+  it('renders the route outlet, and declares no <main> of its own (structural-tier.md §5, T551)', () => {
     sessionFixture = { authenticated: true }
     const { container } = render(<RootLayout />)
 
-    const landmarks = Array.from(container.querySelectorAll('header, main, footer')).map(
-      (el) => el.tagName,
-    )
-    expect(landmarks).toEqual(['HEADER', 'MAIN', 'FOOTER'])
+    expect(screen.getByTestId('route-outlet')).toBeInTheDocument()
+    // The skip link's target, `#main-content`, now lives inside `Page` (mounted by the active
+    // route, inside `<Outlet>`) — not here. This shell declares no `<main>` at all, so no route
+    // can satisfy that obligation wrongly, because no route can find one already open here.
+    expect(container.querySelector('main')).not.toBeInTheDocument()
+  })
+
+  it('renders header before the outlet before footer, so the banner landmark leads the page (§9)', () => {
+    sessionFixture = { authenticated: true }
+    const { container } = render(<RootLayout />)
+
+    const landmarks = Array.from(
+      container.querySelectorAll('header, [data-testid="route-outlet"], footer'),
+    ).map((el) => el.tagName)
+    expect(landmarks).toEqual(['HEADER', 'DIV', 'FOOTER'])
   })
 
   it('wires SiteHeader navigation through TanStack Router: a plain left click calls navigate (§2b)', async () => {

@@ -34,11 +34,18 @@ describe('ObjectContainer', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders with no session and no wrapper of any kind', () => {
+  it('renders with no session, inside its one page landmark', () => {
     installFakeApi(() => jsonResponse({ id: 'req-1', status: 'recorded' }, 202))
     render(<ObjectContainer />)
+    // `ThirdPartyObjectionForm` composes `Page` itself (T552): exactly one main landmark, one
+    // hidden `<h1>` (`Page`'s own required title) and the form's own visible `<h2>` — no
+    // duplicate heading at the same level.
+    expect(screen.getByRole('main')).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Object to what is held about you' }),
+      screen.getByRole('heading', { name: 'Object to what is held about you', level: 1 }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Object to what is held about you', level: 2 }),
     ).toBeInTheDocument()
   })
 

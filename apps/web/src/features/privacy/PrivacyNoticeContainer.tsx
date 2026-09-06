@@ -1,4 +1,4 @@
-import { PrivacyNotice } from 'design-system'
+import { Page, PrivacyNotice } from 'design-system'
 
 // T095: composes `PrivacyNotice` (T093's spec) at `/privacy-notice`. Deliberately outside any
 // session gate — FR-041's notice is for a user and a non-user alike, and `PrivacyNotice` itself
@@ -10,9 +10,16 @@ import { PrivacyNotice } from 'design-system'
 // change that makes the new copy true (privacy-notice.md's own header).
 const LAST_UPDATED = '2026-08-30'
 
+// `Page` owns this route's one main landmark and its reading width (`measure`, the token
+// `size.page` names for "the privacy notice and every prose route" — structural-tier.md §5).
+// `PrivacyNotice` (privacy-notice.md) predates the structural tier and still carries its own
+// visible `<h1>` and "Last updated" subtitle — a call-site duplication of `Page`'s own header,
+// left for `PrivacyNotice`'s own spec to reconcile (T557/T558) rather than solved here by
+// reaching into a component outside this task's scope. `titleHidden` keeps `Page`'s required
+// title out of the picture so the reader sees the one heading `PrivacyNotice` already renders.
 export function PrivacyNoticeContainer() {
   return (
-    <main className="min-h-svh bg-background">
+    <Page title="Privacy notice" titleHidden width="measure">
       <PrivacyNotice
         lastUpdated={LAST_UPDATED}
         hrefs={{
@@ -21,6 +28,6 @@ export function PrivacyNoticeContainer() {
           objectionForm: '/object',
         }}
       />
-    </main>
+    </Page>
   )
 }

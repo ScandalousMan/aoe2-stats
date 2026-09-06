@@ -71,22 +71,24 @@ export function RootLayout() {
         currentPath={currentPath}
         onNavigate={(href) => void navigate({ to: href })}
       />
-      {/* `id="main-content"` + `tabIndex={-1}` is SiteHeader's call-site obligation
-       * (site-header.md §9): its skip link targets `#main-content` and moves focus here, not only
-       * scroll — a skip link that scrolls without moving focus is the failure it is famous for. */}
-      <main id="main-content" tabIndex={-1} className="flex-1">
-        <Outlet />
-      </main>
+      {/* SiteHeader's call-site obligation — `id="main-content"` + `tabIndex={-1}`, the skip
+       * link's target (site-header.md §9) — is satisfied by `Page` now, not here (structural-tier.md
+       * §5, T551): every route renders a `Page`, and `Page` is the one place that landmark exists.
+       * This file declares no `<main>` at all, so no route can satisfy the obligation wrongly. */}
+      <Outlet />
       <Footer privacyNoticeHref="/privacy-notice" objectionHref="/object" />
     </div>
   )
 }
 
 function RootPending() {
+  // No `<main>` here (structural-tier.md §5): this replaces the whole shell before `RootLayout`
+  // itself has mounted, so there is no `Page` yet to carry the landmark either — it stays a plain
+  // div rather than declaring a second landmark outside the one `Page` owns.
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background text-text-secondary">
+    <div className="flex min-h-svh items-center justify-center bg-background text-text-secondary">
       <p>Loading…</p>
-    </main>
+    </div>
   )
 }
 
@@ -94,10 +96,11 @@ function RootError() {
   // `GET /api/me` answers 200 even when signed out (contracts/http-api.md) — reaching this
   // component means the request itself failed (network, or the API being down), not an ordinary
   // signed-out visit. There is no design-system component to reach for yet (T035 has not landed),
-  // so this stays plain text rather than inventing markup outside the token system.
+  // so this stays plain text rather than inventing markup outside the token system. No `<main>`
+  // for the same reason as `RootPending` (structural-tier.md §5).
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background text-text-primary">
+    <div className="flex min-h-svh items-center justify-center bg-background text-text-primary">
       <p>aoe2-stats could not be reached. Please try again shortly.</p>
-    </main>
+    </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ArchivalControl, Button, Callout, ProfileSummary } from 'design-system'
+import { ArchivalControl, Button, Callout, EmptyState, Page, ProfileSummary } from 'design-system'
 import type { ProfileSummaryStatus } from 'design-system'
 import { isApiErrorCode, meQueryOptions, signOut } from '../../lib/api'
 import {
@@ -219,53 +219,51 @@ export function DashboardContainer() {
   const showEmptyAccount = !profilesLoading && !profilesQuery.isError && profiles.length === 0
 
   return (
-    <main className="min-h-svh bg-background">
-      {authenticated && (
-        <div className="flex justify-between px-4 pt-4 md:px-6">
-          {/* T383: the one entry point to `/search` (T322) a signed-in visitor reaches without
-           * typing the URL — without this, `/search` existed and Phase 3's checkpoint ("a user
-           * can find any player by name") did not. Plain `navigate()`, matching every other
-           * cross-page action in this container (`onLinkAnotherAccount` below), not `Button`'s
-           * `href` — that renders a raw `<a>` and forces a full document reload in this SPA. */}
-          <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
-            Search players
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => void handleSignOut()}
-            loading={signOutPending}
-            loadingLabel="Signing out…"
-          >
-            Sign out
-          </Button>
-        </div>
-      )}
-
+    <Page
+      title="Your dashboard"
+      width="page"
+      actions={
+        authenticated ? (
+          <>
+            {/* T383: the one entry point to `/search` (T322) a signed-in visitor reaches without
+             * typing the URL — without this, `/search` existed and Phase 3's checkpoint ("a user
+             * can find any player by name") did not. Plain `navigate()`, matching every other
+             * cross-page action in this container (`onLinkAnotherAccount` below), not `Button`'s
+             * `href` — that renders a raw `<a>` and forces a full document reload in this SPA. */}
+            <Button variant="ghost" onClick={() => void navigate({ to: '/search' })}>
+              Search players
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => void handleSignOut()}
+              loading={signOutPending}
+              loadingLabel="Signing out…"
+            >
+              Sign out
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
       {signOutError && (
-        <div className="px-4 md:px-6">
-          <Callout tone="danger" heading="We could not sign you out" headingLevel={3}>
-            {signOutError}
-          </Callout>
-        </div>
+        <Callout tone="danger" heading="We could not sign you out">
+          {signOutError}
+        </Callout>
       )}
 
       {showEmptyAccount ? (
-        <div className="px-4 py-6 md:px-6">
-          <Callout
-            tone="info"
-            heading="No Steam account is linked yet"
-            actions={
-              <Button
-                variant="primary"
-                onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
-              >
-                Link a Steam account
-              </Button>
-            }
-          >
-            Link a Steam account to see your ratings and match history.
-          </Callout>
-        </div>
+        <EmptyState
+          heading="No Steam account is linked yet"
+          explanation="Link a Steam account to see your ratings and match history."
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
+            >
+              Link a Steam account
+            </Button>
+          }
+        />
       ) : (
         <ProfileSummary
           authenticated={authenticated}
@@ -289,33 +287,25 @@ export function DashboardContainer() {
       )}
 
       {makePrimaryError && (
-        <div className="px-4 md:px-6">
-          <Callout
-            tone="danger"
-            heading="We could not change your primary profile"
-            headingLevel={3}
-          >
-            {makePrimaryError}
-          </Callout>
-        </div>
+        <Callout tone="danger" heading="We could not change your primary profile">
+          {makePrimaryError}
+        </Callout>
       )}
 
       {authenticated && (
-        <div className="mt-8 px-4 pb-8 md:px-6">
-          <ArchivalControl
-            state={archivalState}
-            objectedAt={
-              session && session.authenticated && session.archival_objected_at
-                ? formatObjectedAt(session.archival_objected_at)
-                : undefined
-            }
-            justResumed={justResumed}
-            submitting={archivalSubmitting}
-            writeFailed={archivalWriteFailed}
-            onObject={() => void submitArchivalObjection(true)}
-            onResume={() => void submitArchivalObjection(false)}
-          />
-        </div>
+        <ArchivalControl
+          state={archivalState}
+          objectedAt={
+            session && session.authenticated && session.archival_objected_at
+              ? formatObjectedAt(session.archival_objected_at)
+              : undefined
+          }
+          justResumed={justResumed}
+          submitting={archivalSubmitting}
+          writeFailed={archivalWriteFailed}
+          onObject={() => void submitArchivalObjection(true)}
+          onResume={() => void submitArchivalObjection(false)}
+        />
       )}
 
       {unlinkTarget && unlinkPreview && (
@@ -329,6 +319,6 @@ export function DashboardContainer() {
           onCancel={handleCancelUnlink}
         />
       )}
-    </main>
+    </Page>
   )
 }

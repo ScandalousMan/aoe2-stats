@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SearchBox } from 'design-system'
+import { Page, SearchBox } from 'design-system'
 import type { SearchBoxState } from 'design-system'
 import { isApiErrorCode, meQueryOptions } from '../../lib/api'
 import { searchPlayers } from './api'
@@ -71,20 +71,20 @@ export function SearchContainer() {
   )
 
   return (
-    <main className="min-h-svh bg-background px-4 py-6 md:px-6">
-      <div className="mx-auto max-w-2xl">
-        <SearchBox
-          value={value}
-          onValueChange={setValue}
-          onSearch={(query) => void runSearch(query)}
-          state={state}
-          onRetry={() => void runSearch(lastQueryRef.current)}
-          // T388: `PlayerResultRow` renders a real `<a href>` so it degrades gracefully, but a
-          // plain click routes through here instead of forcing a full document reload — the same
-          // discipline every other navigation in this container already follows.
-          onNavigate={(href) => void navigate({ to: href })}
-        />
-      </div>
-    </main>
+    // `panel` is `size.json`'s name for the 42rem column this route already committed to
+    // (structural-tier.md §5's own width table names this container as its example).
+    <Page title="Search players" width="panel">
+      <SearchBox
+        value={value}
+        onValueChange={setValue}
+        onSearch={(query) => void runSearch(query)}
+        state={state}
+        onRetry={() => void runSearch(lastQueryRef.current)}
+        // T388: `PlayerResultRow` renders a real `<a href>` so it degrades gracefully, but a
+        // plain click routes through here instead of forcing a full document reload — the same
+        // discipline every other navigation in this container already follows.
+        onNavigate={(href) => void navigate({ to: href })}
+      />
+    </Page>
   )
 }

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../../primitives/Button'
 import { Callout } from '../../primitives/Callout'
+import { Page } from '../../primitives/Page'
 import { Skeleton } from '../../primitives/Skeleton'
 
 // packages/design-system/specs/sign-in-screen.md
@@ -103,93 +104,103 @@ export function SignInScreen({
       : 'See your ratings, matches and win rate — nothing to type, no password to remember.'
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-background px-4 pt-8 md:px-6 md:pt-0 lg:px-8">
-      <section
-        aria-labelledby="sign-in-screen-title"
-        className={cx(
-          'mt-8 w-full max-w-md rounded-panel border border-border bg-surface p-6 shadow-raised md:mt-12 md:p-8',
-          className,
-        )}
-      >
-        <div
-          aria-hidden="true"
-          className="mx-auto mb-5 h-10 w-10 rounded-full border-2 border-accent"
-        />
-        <h1
-          id="sign-in-screen-title"
-          className="text-center font-display text-2xl font-bold tracking-tight text-text-primary md:text-3xl"
+    // The single main landmark, the content width and the page padding are `Page`'s (FR-021,
+    // FR-022, structural-tier.md §5) — this screen is always the sole thing its route renders, so
+    // it composes `Page` itself rather than leaving that to each caller. `title` is passed hidden:
+    // it still orients a screen-reader visitor arriving at the landmark, but the visible heading
+    // stays the card's own (downgraded to `<h2>` below so `Page`'s stays the route's only `<h1>`).
+    <Page title={title} titleHidden width="panel">
+      <div className="flex flex-col items-center">
+        <section
+          aria-labelledby="sign-in-screen-title"
+          className={cx(
+            'w-full max-w-md rounded-panel border border-border bg-surface p-6 shadow-raised md:p-8',
+            className,
+          )}
         >
-          {title}
-        </h1>
+          <div
+            aria-hidden="true"
+            className="mx-auto mb-5 h-10 w-10 rounded-full border-2 border-accent"
+          />
+          <h2
+            id="sign-in-screen-title"
+            className="text-center font-display text-2xl font-bold tracking-tight text-text-primary md:text-3xl"
+          >
+            {title}
+          </h2>
 
-        {isReturning ? (
-          <ReturningState />
-        ) : (
-          <>
-            <p className="mt-3 text-left font-sans text-md text-text-primary">{valueLine}</p>
+          {isReturning ? (
+            <ReturningState />
+          ) : (
+            <>
+              <p className="mt-3 text-left font-sans text-md text-text-primary">{valueLine}</p>
 
-            <div className="mt-6">
-              {effectiveOutcome && (
-                <Callout
-                  tone={outcomeTone[effectiveOutcome]}
-                  heading={outcomeHeading[effectiveOutcome]}
-                  headingRef={headingRef}
-                  actions={renderOutcomeActions(effectiveOutcome, {
-                    onTryAgain,
-                    onUseDifferentAccount,
-                    onStartOver,
-                    onCancel,
-                    onTryDifferentAccount,
-                    requestAccessHref,
-                  })}
-                >
-                  {outcomeBody[effectiveOutcome]}
-                </Callout>
-              )}
-            </div>
+              <div className="mt-6">
+                {effectiveOutcome && (
+                  <Callout
+                    tone={outcomeTone[effectiveOutcome]}
+                    heading={outcomeHeading[effectiveOutcome]}
+                    headingRef={headingRef}
+                    actions={renderOutcomeActions(effectiveOutcome, {
+                      onTryAgain,
+                      onUseDifferentAccount,
+                      onStartOver,
+                      onCancel,
+                      onTryDifferentAccount,
+                      requestAccessHref,
+                    })}
+                  >
+                    {outcomeBody[effectiveOutcome]}
+                  </Callout>
+                )}
+              </div>
 
-            <div
-              className={cx('flex flex-col gap-3 md:flex-row', effectiveOutcome ? 'mt-6' : 'mt-6')}
-            >
-              <Button
-                variant="primary"
-                size="lg"
-                loading={phase === 'leaving'}
-                loadingLabel="Taking you to Steam…"
-                disabled={phase === 'unavailable'}
-                onClick={onContinueWithSteam}
-                className="w-full md:w-auto"
+              <div
+                className={cx(
+                  'flex flex-col gap-3 md:flex-row',
+                  effectiveOutcome ? 'mt-6' : 'mt-6',
+                )}
               >
-                Continue with Steam
-              </Button>
-              {variant === 'link' && (
                 <Button
-                  variant="secondary"
+                  variant="primary"
                   size="lg"
-                  onClick={onCancel}
+                  loading={phase === 'leaving'}
+                  loadingLabel="Taking you to Steam…"
+                  disabled={phase === 'unavailable'}
+                  onClick={onContinueWithSteam}
                   className="w-full md:w-auto"
                 >
-                  Cancel
+                  Continue with Steam
                 </Button>
-              )}
-            </div>
-
-            <p className="mt-4 font-sans text-sm text-text-secondary">{noAdminLine}</p>
-            <p className="mt-3 font-sans text-sm text-text-primary">{identityNote}</p>
-            {phase === 'unavailable' ? (
-              <div className="mt-2">
-                <Callout tone="info" heading="Sign-in is unavailable">
-                  {unavailableMessage}
-                </Callout>
+                {variant === 'link' && (
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={onCancel}
+                    className="w-full md:w-auto"
+                  >
+                    Cancel
+                  </Button>
+                )}
               </div>
-            ) : (
-              <p className="mt-2 font-sans text-sm text-text-secondary">{betaNote}</p>
-            )}
-          </>
-        )}
-      </section>
-      {footerSlot && <div className="mt-8 w-full max-w-md">{footerSlot}</div>}
-    </main>
+
+              <p className="mt-4 font-sans text-sm text-text-secondary">{noAdminLine}</p>
+              <p className="mt-3 font-sans text-sm text-text-primary">{identityNote}</p>
+              {phase === 'unavailable' ? (
+                <div className="mt-2">
+                  <Callout tone="info" heading="Sign-in is unavailable">
+                    {unavailableMessage}
+                  </Callout>
+                </div>
+              ) : (
+                <p className="mt-2 font-sans text-sm text-text-secondary">{betaNote}</p>
+              )}
+            </>
+          )}
+        </section>
+        {footerSlot && <div className="mt-8 w-full max-w-md">{footerSlot}</div>}
+      </div>
+    </Page>
   )
 }
 

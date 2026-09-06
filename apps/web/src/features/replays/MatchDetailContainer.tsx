@@ -5,6 +5,7 @@ import {
   Button,
   Callout,
   MatchDetailPanel,
+  Page,
   ReplayAvailabilityList,
   UploadControl,
 } from 'design-system'
@@ -248,7 +249,11 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
   }
 
   return (
-    <main className="min-h-svh bg-background">
+    // T076/structural-tier.md §5: unlike the other four containers in this phase, no other
+    // element here already carries the page's identity — `MatchDetailPanel`'s own heading is
+    // deliberately an `<h2>` because it expects the *route* to supply the page-level `<h1>`
+    // (`MatchDetailPanel`'s own comment) — so `title` is visible here, not hidden.
+    <Page title="Match detail">
       {/* T327/T331: `GET /api/matches/{game_id}` carries no ownership scope any more — a caller
        * with no linked Steam profile at all can still open any match this service holds
        * (spec.md §11.4: "a match page with no consenting participant still renders in full"), so
@@ -256,64 +261,55 @@ export function MatchDetailContainer({ gameId }: MatchDetailContainerProps) {
        * `MatchHistoryContainer.tsx`'s identical-looking gate for the caller's *own* history, which
        * has nothing to show without a linked profile. */}
       {showEmptyAccount && (
-        <div className="px-4 py-6 md:px-6">
-          <Callout
-            tone="info"
-            heading="No Steam account is linked yet"
-            actions={
-              <Button
-                variant="primary"
-                onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
-              >
-                Link a Steam account
-              </Button>
-            }
-          >
-            Link a Steam account to see your own replay archive on the matches you play.
-          </Callout>
-        </div>
+        <Callout
+          tone="info"
+          heading="No Steam account is linked yet"
+          actions={
+            <Button
+              variant="primary"
+              onClick={() => void navigate({ to: '/sign-in', search: { link: true } })}
+            >
+              Link a Steam account
+            </Button>
+          }
+        >
+          Link a Steam account to see your own replay archive on the matches you play.
+        </Callout>
       )}
 
       {/* match-history.md §1/§7: this route renders no player-focus header above the panel
        * (T412) — a game detail's subject is the match, not any one participant. Rendered
        * unconditionally (T331): the match itself never depends on the caller having a linked
        * profile, only the "Link a Steam account" callout above does. */}
-      <div className="mt-6 px-4 pb-8 md:px-6">
-        <MatchDetailPanel
-          status={matchStatus}
-          match={matchDetail}
-          downloadState={downloadState}
-          onDownload={handleDownload}
-          onRetry={() => void matchQuery.refetch()}
+      <MatchDetailPanel
+        status={matchStatus}
+        match={matchDetail}
+        downloadState={downloadState}
+        onDownload={handleDownload}
+        onRetry={() => void matchQuery.refetch()}
+      />
+
+      {/* match-history.md §2: "an upload affordance for a `lost` capture is not part of
+       * `MatchDetailPanel`'s anatomy... T084 places it below `DownloadAction`'s position when
+       * `DownloadAction` itself is absent." */}
+      {showUpload && numericGameId !== null && (
+        <UploadControl gameId={numericGameId} onUpload={handleUpload} />
+      )}
+
+      {/* replay-availability.md §8: "a download action and a table of facts are two different
+       * kinds of content on the same page" — now `Page`'s own between-sections rhythm rather than
+       * a bespoke `mt-8`. */}
+      {showReplayAvailability && (
+        <ReplayAvailabilityList
+          loading={matchStatus === 'loading'}
+          rows={toReplayAvailabilityRows(
+            rawParticipants,
+            pointOfViewDownloadStates,
+            replayDownloadFailure,
+          )}
+          onDownload={handlePointOfViewDownload}
         />
-
-        {/* match-history.md §2: "an upload affordance for a `lost` capture is not part of
-         * `MatchDetailPanel`'s anatomy... T084 places it below `DownloadAction`'s position when
-         * `DownloadAction` itself is absent." `space-6` mirrors that same spec's own "`DownloadAction`
-         * to `ParticipantsTable`" step (§7) — the role this control fills here. */}
-        {showUpload && numericGameId !== null && (
-          <div className="mt-6">
-            <UploadControl gameId={numericGameId} onUpload={handleUpload} />
-          </div>
-        )}
-
-        {/* replay-availability.md §8: `space-8` between this section and `ParticipantsTable`
-         * above it (inside `MatchDetailPanel`) — "a download action and a table of facts are two
-         * different kinds of content on the same page". */}
-        {showReplayAvailability && (
-          <div className="mt-8">
-            <ReplayAvailabilityList
-              loading={matchStatus === 'loading'}
-              rows={toReplayAvailabilityRows(
-                rawParticipants,
-                pointOfViewDownloadStates,
-                replayDownloadFailure,
-              )}
-              onDownload={handlePointOfViewDownload}
-            />
-          </div>
-        )}
-      </div>
-    </main>
+      )}
+    </Page>
   )
 }
