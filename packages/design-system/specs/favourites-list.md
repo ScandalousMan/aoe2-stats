@@ -13,6 +13,10 @@ per-entry remove control **is** `FavouriteToggle`, not a second one-off button.
 reinvented. [`player-search.md`](./player-search.md) — the "absent, not blank-filled" discipline for a
 field a row cannot supply.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: `dense` (README's "Surface density" section) — `space-3` row padding from 768
+(§7), the same class `MatchRow` and `PlayerResultRow` use.
+
 ## 1. Purpose
 
 Let a signed-in user find the players they care about again from one place, without searching — each
@@ -145,6 +149,12 @@ Under the closed-beta allowlist this route is currently reached only by signed-i
 (spec.md Assumptions), so this state is not yet reachable in production; it is specified in full because
 US5 scenario 5 is written against it and it must exist the moment the allowlist is lifted.
 
+**selection** — not applicable; no row marks itself current within the list, and the list has no
+concept of "the one being read".
+
+**expansion** — not applicable; every row's fields (§4) either render or are absent (never
+blank-filled), which is presence, not disclosure.
+
 ## 6. Tokens used
 
 Colour, all via `StatValue`, `Callout`, `Skeleton`, `Button` and `FavouriteToggle` — no new token and
@@ -258,3 +268,7 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
       distinguishable by heading and body copy alone, and every standing figure still legible.
 - [ ] No avatar, clan crest or flag illustration in any frame — only text and, at most, a free-licensed
       `aria-hidden` country glyph.
+- [ ] The standing value (`lg`, `mono`, `semibold`) is visibly heavier than the alias beside it
+      (`sm`, `semibold` but smaller) — a token-correct row that sized both the same would leave the
+      one comparable figure this list exists to show no easier to scan than the name beside it, and
+      fails this criterion (FR-063).

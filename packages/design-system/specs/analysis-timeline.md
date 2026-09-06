@@ -18,6 +18,11 @@ component's own three identifier kinds. [`match-history.md`](./match-history.md)
 order, reused for `ParticipantTimelineColumn` ordering so this component reads as one more section of
 the same match page rather than a second, differently-ordered roster.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: `dense` (README's "Surface density" section) — `space-4` between the summary
+stats and the first list (§7), the tight rhythm a `dense` surface's within-row pairings use; the
+ordered lists inside a column are chronological data, not free prose.
+
 ## 1. Purpose
 
 Show, per participant, the factual account FR-043 requires — what they built, trained, researched and
@@ -320,6 +325,10 @@ six domain states tabled in §3, which this vocabulary's `loading`/`error`/`empt
   that can be legitimately empty once `state` is `published` (`contracts/analysis.md`'s
   `MatchTimeline.participants` is never empty for a real match), and the `absent` state that would
   otherwise be "nothing here yet" is out of this component's scope (§1).
+- **selection** — not applicable; no participant column or list row marks itself current within a set.
+- **expansion** — not applicable. Every list in §2 always renders in full — there is no "show more"
+  on a build order or a research list, and `stale`'s `StaleRecomputeNotice` (§3.4) sits beside the
+  timeline rather than behind it.
 
 ## 6. Tokens used
 
@@ -450,3 +459,7 @@ the same viewport, so a poll that turns `running` into `published` shows no refl
       wording and by the presence of the button alone, not by tone (constitution VI).
 - [ ] No civilisation, technology, unit or building icon, portrait or thumbnail appears in any frame —
       only text, in this system's own typeface.
+- [ ] `ParticipantHeading` (`lg`, `semibold`) is visibly larger than the list rows beneath it (`sm`) —
+      a token-correct column that sized a build-order row the same as the participant's own name would
+      leave a reader unable to tell whose timeline they are reading without re-scanning upward, and
+      fails this criterion (FR-063).

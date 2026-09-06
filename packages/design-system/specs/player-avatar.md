@@ -13,6 +13,10 @@ a hash the companion provider supplies (spec.md's clarification of 2026-08-30; F
 game asset, it is not a pack, and the constitution X licence gate has no surface here. The hash is
 personal data and is recorded as such in `docs/privacy/processing-register.md` (T427).
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — a fixed-footprint image frame, not a surface with a
+density of its own.
+
 ## 1. Purpose
 
 Put a face at the top of a profile, so a page about a person opens with that person rather than with
@@ -121,6 +125,10 @@ exactly square; the image is never stretched.
   a companion response has no hash and never will (data-model.md §2: "Nullable is the normal case,
   not the error case"), so it carries no dimming, no tooltip, no visible "no avatar" text and no
   apology.
+
+- **selection** — not applicable; an avatar is not a set member.
+- **expansion** — not applicable; the avatar never reveals a second surface, and never links to a
+  larger portrait (§4 hover).
 
 ### 4a. What the placeholder is, and what it must never contain
 
@@ -255,6 +263,9 @@ the image fills the frame edge to edge.
 - [ ] No story animates: the first and second frames of the loading → loaded transition differ only
       by the picture appearing, with no fade, no scale and no cross-fade.
 - [ ] At 375 the avatar sits beside the heading, not above it, in the `ProfileSummary` story.
+- [ ] The avatar never outweighs the heading beside it — a token-correct `lg` avatar rendered at a
+      size larger than its own token (e.g. stretched to fill an unrelated container) would compete
+      with the profile's own name for the first read, and fails this criterion (FR-063).
 
 **Verified in the DOM or the source, not the screenshot** (stated here so the reviewer knows they are
 not expected to see them)

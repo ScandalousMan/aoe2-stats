@@ -5,6 +5,10 @@
 from `ArchivalControl`'s `PrivacyNoticeLink` and from the footer (T098a)
 **Requirements**: FR-041 (the notice itself), and it discloses FR-006, FR-016, FR-034 to FR-040,
 FR-042, FR-045; 003's FR-004b, FR-010, FR-017, FR-027 to FR-029. Constitution IX and X.
+**Tier**: screen (`src/screens/`).
+**Surface class**: `prose` (README's "Surface density" section) — the longest continuous reading
+text in the product, `space-4` between paragraphs and `space-8`/`space-12` between sections, the
+class's own paragraph and section rhythm (§7).
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Callout`, `Button`.
 **Sources of truth this copy is derived from, and must not contradict**:
 `docs/privacy/processing-register.md` (categories, bases, retention, recipients, the balancing
@@ -553,6 +557,13 @@ and non-empty in the type: an empty list is a call-site defect, not a state, and
 not paper over it by silently substituting a default it was not given — a storage section that
 renders with no processors would be claiming nobody touches the data.
 
+**selection** — not applicable. `Contents` is a list of in-page links, not a set with a current
+member; no entry marks itself as the one being read.
+
+**expansion** — not applicable, and by rule (§5's own "no accordion, no 'read more', no truncation
+with an expander anywhere in this component at any viewport"). Every section is always fully
+rendered.
+
 ## 6. Tokens used
 
 Colour: `surface` (the document), `surface-raised` (`ChangeNote`, `ContactBlock` and
@@ -718,3 +729,7 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
 - [ ] The objection button is present in the non-user section in every story, including those
       rendered as if signed in.
 - [ ] At 200% zoom, no text overlaps and no line is cut off.
+- [ ] The gap between one `Section` and the next (`space-12`) is visibly larger than the gap between
+      two paragraphs inside a `Section` (`space-4`) — a token-correct document that used one rhythm
+      for both would read as a single undifferentiated block rather than nine subjects, and fails
+      this criterion (FR-063).

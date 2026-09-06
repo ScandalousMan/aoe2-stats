@@ -22,6 +22,10 @@ and the Game Content Usage Rules reasoning does not apply — but the pack carri
 because the check walks every directory under `packages/game-assets/`. **This component never imports
 a flag.** It receives a URL as a prop, exactly as `CivilisationIcon` and `MapThumbnail` do.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — an inline mark (plain text, or a tooltip trigger
+from §11), not a surface with a density of its own.
+
 ## 1. Purpose
 
 Show which country a player plays from, as the flag a reader recognises without reading, beside the
@@ -132,6 +136,13 @@ shrinks responsively (§7).
     rather than one that lost it. This is FR-008's "omit it cleanly", and it is the same mechanism
     `PlayerColourSwatch` §2a uses for a blank `playerName`: the component itself refuses to render
     half of a pair.
+- **selection** — not applicable; a country mark is not a set member.
+- **expansion** — not applicable, and the boundary matters after §11: revealing the country name on
+  hover/focus/press (§11) is the imagery-naming exception README rule 4 already carves out for a
+  `Tooltip` trigger, not the vocabulary's **expansion** state — that state names a disclosure that
+  reveals or hides a _surface_ beside its trigger (`Menu`'s own panel, `shared-primitives.md`), and a
+  tooltip's text bubble is not a second surface in that sense (`tooltip.md`'s own states answer this
+  the same way).
 
 ## 5. Tokens used
 
@@ -444,3 +455,7 @@ of default captures verifies none of them and passes anyway.
 - [ ] No story shows a two-letter country code anywhere — **including inside a tooltip** (§2a,
       SC-002).
 - [ ] No caret, arrow, dotted underline or "?" affix appears on or near the flag in any story.
+- [ ] The visible flag stays at its `icon-sm`/`icon-md` token size inside the 44px trigger box, never
+      stretched to fill it — a token-correct trigger that grew the flag itself to the hit area's own
+      size would make the flag compete with the alias beside it for visual weight, and fails this
+      criterion (FR-063).

@@ -11,6 +11,10 @@
 eight token values, not a bitmap; nothing is fetched, so nothing can 404 and the constitution X
 licence gate has no surface here. That distinction matters in §4.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — a chip beside text, not a surface with a density of
+its own.
+
 ## 1. Purpose
 
 Show which in-game colour a player used, as a chip beside their name, so a reader can tie a name in
@@ -112,6 +116,9 @@ asserted for that pair. Feature 004's winner signal is a word, not a glyph
   a **legitimate resting state**, not a migration in progress: a match companion has never heard of
   keeps `color_id` NULL permanently (`data-model.md` §6), and the view is still correct.
 
+- **selection** — not applicable; a colour chip is not a set member.
+- **expansion** — not applicable; the chip never reveals a second surface.
+
 ### Why a neutral chip is not the placeholder image FR-010 forbids
 
 [`match-history.md`](./match-history.md) §12.1's third rule — the absent-asset state is the prop
@@ -206,3 +213,7 @@ can be dropped into a table cell without shifting the cell's text.
       become indistinguishable — which is the point: nothing was riding on the colour alone.
 - [ ] No hex string appears in `PlayerColourSwatch`'s source (greppable; T429's own check), and the
       chip sizes resolve from `--ds-icon-xs` / `--ds-icon-sm` rather than a utility class.
+- [ ] At `xs` inside a dense row of up to eight chips, every chip stays legibly square and framed,
+      never crowded into an indistinct smear — a token-correct row that packed eight `xs` chips with
+      no gap between pairs would defeat the "distinct at a glance" purpose §1 states, and fails this
+      criterion (FR-063).

@@ -10,6 +10,9 @@ per-entry removal.
 with `aria-pressed`, never a bespoke control), `Callout`. [`sign-in-screen.md`](./sign-in-screen.md) —
 the destination the signed-out state routes to, carrying the caller's place.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — a control, not a surface with a density of its own.
+
 ## 1. Purpose
 
 Let a signed-in user mark any player as a favourite, or unmark them, from that player's profile in one
@@ -125,6 +128,15 @@ same as `Button` (§empty). Every state above renders a label; there is no zero-
 control. The nearest thing to "empty" — a profile the control should not appear on at all — is
 `subject="self"`, where `profile-summary.md` §11.1 point 3 makes the toggle **absent, not disabled**:
 a user cannot favourite their own profile and the API gives no route to try.
+
+**selection** — not applicable, and the boundary is worth stating: `aria-pressed`'s marked/unmarked
+pair is a two-state toggle over a set membership (in the favourites collection or not), not the
+vocabulary's **selection** — which names one component holding the current member of a mutually
+exclusive set (`Menu`'s `selection` variant, `shared-primitives.md`). A profile can be favourited or
+not independent of any other profile; there is no set this control is choosing one member from.
+
+**expansion** — not applicable; the control never reveals a second surface. `Explanation` either
+renders or does not (§5's bounded case), which is presence, not disclosure.
 
 ### 5a. signed-out — `authenticated: false` (US5 scenario 5, FR-015)
 
@@ -255,3 +267,7 @@ stays readable as words at 375px.
       `profile-summary.md` §11.4's equivalent criterion) — it is absent, not disabled.
 - [ ] No star, crest, portrait, unit or in-game font appears in any frame — at most an original,
       `aria-hidden` bookmark glyph, and the state stays legible with the glyph removed.
+- [ ] The bounded state's `Explanation` is legible at `text-secondary` beside the disabled label's
+      `text-disabled` — a token-correct control that let both fade to the same low-contrast ink would
+      leave the one sentence the reader needs to act on as hard to read as the control it explains,
+      and fails this criterion (FR-063).

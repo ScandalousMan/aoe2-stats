@@ -7,6 +7,10 @@ from the footer (T098).
 **Requirements**: FR-039 (a way for a non-user in archived matches to object, and pseudonymisation of
 their identifiers on request without corrupting match records). FR-038 (non-users are never publicly
 exposed or indexed — this screen holds no listing of anyone). Constitution IX and X.
+**Tier**: screen (`src/screens/`).
+**Surface class**: `prose` (README's "Surface density" section) — continuous reading text, ending in
+one form; the explanation renders in `type-body` at `text-md` with `space-4` between paragraphs,
+exactly the `prose` rhythm.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`;
 [`structural-tier.md`](./structural-tier.md) — `Page` (005, structural retrofit: this screen
 composes `Page` for the route's one `<main>` and one `<h1>` rather than rendering either itself —
@@ -137,7 +141,8 @@ order.
 
 ### 4.1 Heading
 
-`Heading` (`h1`): **Object to what is held about you**
+`Heading` (`h2` — 005 structural retrofit: `Page` owns the route's one hidden `<h1>`, §8): **Object
+to what is held about you**
 
 ### 4.2 Explanation — always above the form (FR-039 ordering)
 
@@ -237,6 +242,13 @@ explanation is always present, the field carries its label and help text, and th
 is no collection here to be otherwise empty, and there is no state in which the explanation is absent —
 a form that asks before it explains would violate FR-039's ordering.
 
+**selection** — not applicable. This screen has no set of items for one to be current within; it is
+one form for one profile id.
+
+**expansion** — not applicable. The explanation is never behind a "read more" — FR-039's ordering
+requires the whole of it to be readable before the field is reached, so nothing here collapses to be
+disclosed later.
+
 ## 6. Tokens used
 
 Colour: `surface` (the page and all explanatory prose — the one background the inline link is measured
@@ -247,8 +259,9 @@ confirmation body), `text-secondary` (`HelpText`, timestamps), `accent` family v
 inline link, `warning` (rate-limited callout stripe/heading), `danger` (request-failed callout, and
 `FieldError` text), `success` (`RecordedConfirmation` stripe/heading), `focus-ring`.
 
-Typography: family `sans` throughout; `display` on the `h1` only. Sizes — `h1` `2xl` (dropping no lower
-than `xl` below `md`); explanatory paragraphs and the confirmation body `md`; `Label` `md` weight
+Typography: family `sans` throughout; `display` on the `h2` heading only (005: `Page` owns the
+page's own hidden `h1`, §8). Sizes — the visible `h2` `2xl` (dropping no lower than `xl` below `md`);
+explanatory paragraphs and the confirmation body `md`; `Label` `md` weight
 `semibold`; `HelpText` and `FieldError` `sm`; the input value `md`. Weights — `semibold` on the heading
 and the label and the bolded lead phrases ("Your objection has been recorded.", "Too many objections
 right now."), `normal` elsewhere. Tracking `normal`; nothing here is a compared numeral.
@@ -273,7 +286,7 @@ closes.
 | Between                                            | Step                                                                                      |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Page padding                                       | `space-6` below `md`, `space-8` from `md`                                                 |
-| `h1` to the first explanation block                | `space-4`                                                                                 |
+| `h2` heading to the first explanation block        | `space-4`                                                                                 |
 | Between explanation blocks                         | `space-4`                                                                                 |
 | Explanation to `ObjectionForm`                     | `space-8` — the widest gap; the reader must feel the shift from being told to being asked |
 | `Label` to `Input`                                 | `space-2`                                                                                 |
@@ -369,3 +382,7 @@ closes.
 - [ ] The inline link is underlined, not colour alone, and sits on `surface` (never inside a coloured
       callout).
 - [ ] No game artwork, logo, portrait or in-game font in any frame.
+- [ ] The heading is visibly the largest, heaviest text on the page, and the bolded lead phrase of a
+      callout or confirmation is visibly heavier than the sentence following it — a token-correct
+      frame that gave the explanation's body paragraphs the same weight as the heading would leave a
+      reader unsure where the page's one statement of identity is, and fails this criterion (FR-063).

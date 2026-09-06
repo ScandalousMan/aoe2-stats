@@ -4,20 +4,37 @@
 (T543–T548; the directory is `primitives/` after T540's tier move, never `components/`).
 **Feature**: 005, US2.
 **Requirements**: FR-008, FR-012, FR-013, FR-018, FR-019, FR-020, FR-021, FR-022, FR-023, FR-024,
-FR-025, FR-026, FR-028, FR-029, FR-035, FR-037, FR-038, FR-050, FR-053, FR-054, FR-055, FR-056,
-FR-059, FR-063. SC-003, SC-004, SC-009, SC-013.
+FR-025, FR-026, FR-028, FR-029, FR-034, FR-035, FR-036, FR-037, FR-038, FR-050, FR-053, FR-054,
+FR-055, FR-056, FR-059, FR-063. SC-003, SC-004, SC-009, SC-013.
 **Contract**: [`specs/005-design-system-foundations/contracts/structural-tier.md`](../../../specs/005-design-system-foundations/contracts/structural-tier.md)
 fixes what each primitive **owns** and what it **forbids its caller**. This file is the visual
 specification of the same nine — anatomy, states, tokens, spacing, responsive behaviour,
 accessibility and the acceptance criteria `visual-reviewer` judges against. Where the two touch, the
 contract decides ownership and this file decides appearance; neither restates the other.
 **Depends on**: [`README.md`](./README.md) — the measured contrast table (referenced by pair, never
-by number), the elevation meanings, the iconography contract, the two surface classes and the eight
+by number), the elevation meanings, the iconography contract, the two surface classes and the nine
 standing rules. [`tokens/space.json`](../tokens/space.json) — the `rhythm` group §2 assigns.
 [`contracts/token-families.md`](../../../specs/005-design-system-foundations/contracts/token-families.md)
 §2 — the utility vocabulary a primitive may write, and nothing else.
-**Tier**: all nine are **primitives**. None carries domain knowledge, none imports a composite or a
-screen, and none imports from `apps/` (FR-028, FR-029, enforced by `scripts/checks/tier-deps.mjs`).
+
+**Tier and surface class, per component** (T570) — a tier and a surface class are each a property of
+a component, and a file naming nine of them declares nine, not one line for the file. All nine share
+one tier; only `Panel` and `Table` own a surface to classify:
+
+| Component    | Tier                                     | Surface class                                                                        |
+| ------------ | ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `Page`       | primitive (`src/primitives/Page/`)       | neither `dense` nor `prose` — draws no filled surface of its own (§3)                |
+| `Section`    | primitive (`src/primitives/Section/`)    | neither `dense` nor `prose` — same reason                                            |
+| `Panel`      | primitive (`src/primitives/Panel/`)      | `dense` or `prose`, by its own `density` prop (§3) — the caller picks exactly one    |
+| `Text`       | primitive (`src/primitives/Text/`)       | neither `dense` nor `prose` — ink, not a surface (§3)                                |
+| `Link`       | primitive (`src/primitives/Link/`)       | neither `dense` nor `prose` — same reason                                            |
+| `Table`      | primitive (`src/primitives/Table/`)      | `dense` or `prose`, by its own `density` prop (§3) — the caller picks exactly one    |
+| `Field`      | primitive (`src/primitives/Field/`)      | neither `dense` nor `prose` — inherits the class of whatever surface it sits on (§3) |
+| `EmptyState` | primitive (`src/primitives/EmptyState/`) | neither `dense` nor `prose` — same reason                                            |
+| `ErrorState` | primitive (`src/primitives/ErrorState/`) | neither `dense` nor `prose` — same reason                                            |
+
+None carries domain knowledge, none imports a composite or a screen, and none imports from `apps/`
+(FR-028, FR-029, enforced by `scripts/checks/tier-deps.mjs`).
 **Asset origin** (README rule 3): **none — not one of the nine renders an asset.** No icon, no
 portrait, no screenshot, no bitmap of any kind: the structural tier draws boxes, rules and text from
 tokens. `Link`'s external mark (§9) is an inline path drawn from `currentColor`, original to this
@@ -36,13 +53,13 @@ Three facts are shared by all nine and are stated **once**, in §2, §3 and §4,
 number written twice goes stale in one copy, and the rhythm rule in particular exists precisely
 because the same relationship was expressed three different ways in seven files.
 
-**The state vocabulary in force when this file was written is the eight**: default, hover,
-focus-visible, active, disabled, loading, error, empty. Every primitive below answers all eight,
-including the refusals. T569 extends the vocabulary to ten by adding **selection** and **expansion**;
-none of these nine implements either today — no primitive here is selectable and none collapses —
-so when T569 lands, its amendment to this file is nine answers of "inapplicable, and here is what
-happens instead", not a redesign. Recorded now so the next reader does not mistake the omission for
-an oversight.
+**The state vocabulary is the ten entries `README.md` names**: default, hover, focus-visible, active,
+disabled, loading, error, empty, selection, expansion (T569). Every primitive below answers all ten,
+including the refusals. None of these nine implements selection or expansion today — no primitive
+here is selectable and none collapses — so each primitive's answer to those two (§5–§13) is
+"inapplicable, and here is what happens instead," not a new behaviour: a state is documented because
+it is real, never built because the vocabulary lists it (FR-036). Recorded here so the next reader
+does not mistake the uniform refusal for nine oversights.
 
 **Hover, focus-visible and active are not decidable from a static story capture.** The suite
 screenshots stories at rest; it cannot force a pointer or a focus ring. Every criterion below that
@@ -235,6 +252,13 @@ legibility, which outranks uniformity (README rule 1).
   the header is what keeps a failed route from looking like the wrong route.
 - **empty** — a `Page` with a header and no sections renders the header plus one `EmptyState`. A
   padded, bordered, wordless column is the defect FR-023 names.
+- **selection** — inapplicable. A `Page` is the whole route; there is no set of pages for one to be
+  "current" within. The current route is `SiteHeader`'s own selection state (`site-header.md`), not
+  `Page`'s.
+- **expansion** — inapplicable. A `Page` never collapses or reveals a second surface; navigating to a
+  route replaces it wholesale. A route that needs to show or hide a surface without navigating away
+  composes `Menu` (`shared-primitives.md`) inside its `Section`s, rather than `Page` growing a state
+  for it.
 
 **Tokens used** — colour `background` (the page fill), `text-primary` (title), `text-secondary`
 (description), `focus-ring` (the landmark's ring). Width `size.page` / `size.panel` / `size.measure`.
@@ -328,6 +352,12 @@ level the way a hand-passed one can.
   never removes the rest of the page.
 - **empty** — the heading is retained, the body is replaced by one `EmptyState` with its sentence. A
   heading followed by nothing is the second most common form of the blank-region defect.
+- **selection** — inapplicable. A `Section` is not a member of a set another component tracks; two
+  sections on one page are independent regions, never mutually exclusive.
+- **expansion** — inapplicable, and this is the refusal that answers a real question: nothing here
+  makes a `Section` collapsible. A page needing an accordion of sections is describing a different
+  composite, one this tier does not build because the vocabulary now names the shape (FR-036) — it
+  is built the day a call site needs it, not before.
 
 **Tokens used** — colour `text-primary` (heading), `text-secondary` (description). Typography
 `type-display` at `text-2xl` (`h2`) / `text-xl` (`h3`), weight `semibold`, `tracking-tight` on `h2`;
@@ -428,6 +458,12 @@ enough, and which is what the parchment-and-rule character asks for anyway.
   `EmptyState`. With **no children at all**: the panel renders nothing — no frame, no padding. The
   distinction matters, and it is `Callout`'s precedent applied: an empty bordered box is a defect,
   but a region the caller deliberately marked empty needs its words.
+- **selection** — inapplicable. A `Panel` is a bounded surface, not a set member; a caller choosing
+  among several panels does that choosing in `Menu` or in the composite arranging them, never in
+  `Panel` itself.
+- **expansion** — inapplicable. `Panel` has no collapsed form; it renders its full content or, per
+  its own loading/error/empty states above, a placeholder occupying the same frame. A collapsible
+  panel is a composite's decision, not this primitive's.
 
 **Tokens used** — colour `surface`, `surface-raised` (nested once), `border` (the hairline),
 `text-primary` (heading and body), `text-secondary` (description and footer), `surface-sunken` (only
@@ -470,6 +506,10 @@ which is the readability obligation the width token exists to carry.
       area only, and the panel's own border does not change.
 - [ ] Corner radius is identical across every panel in the frame, and identical to every other panel
       in the system — a panel that looks softer or sharper than its neighbour fails (FR-013).
+- [ ] A panel's header, when present, sits visibly closer to its own body than to whatever sits above
+      the panel — a token-correct panel that used the between-components step for header-to-body
+      instead of the smaller step §3 assigns would read as two floating blocks rather than one
+      bounded unit, and fails this criterion (FR-063).
 
 ---
 
@@ -523,6 +563,11 @@ unresolved value visibly distinct from a measured one even for a caller who neve
   recovery path.
 - **empty** — `Text` with no children renders nothing, not an element occupying a line box. An empty
   paragraph is invisible in a screenshot and visible in the rhythm, which is the worst combination.
+- **selection** — inapplicable. `Text` carries no notion of being the current member of a set; the
+  browser's own text-selection (`::selection`) is a different mechanism and is outside this contract.
+- **expansion** — inapplicable. `Text` never truncates or reveals more of itself (no line-clamp
+  prop, above); a "read more" disclosure is a composite's decision built from `Text` and a `Button`,
+  not a behaviour `Text` owns.
 
 **Tokens used** — typography roles `type-display`, `type-body`, `type-supporting`, `type-numeric`,
 `type-machine`, `type-identifier`; sizes `text-xs` … `text-3xl`; weights `normal` / `semibold`;
@@ -612,6 +657,12 @@ link.
 - **error** — none of its own. A navigation that fails lands on a route that renders `ErrorState`.
 - **empty** — a `Link` with no text renders nothing. **An icon-only link is forbidden** in this tier
   (README's iconography contract): the mark is never the thing that is named.
+- **selection** — inapplicable. A `Link` navigates; it does not mark itself current within a set. The
+  current-route mark belongs to whatever navigation renders it (`SiteHeader`'s underline,
+  `site-header.md`), never to a bare `Link`.
+- **expansion** — inapplicable, and the boundary is deliberate: a control that toggles a panel
+  instead of navigating is not a `Link` — it is the anti-pattern this component's own anatomy already
+  forbids ("never a div, never a button that navigates"). A `Link` always leaves; it never discloses.
 
 **Visited** — ink `link-visited`, underline unchanged. It cannot be observed in a real render —
 browsers restrict `:visited` and report the unvisited colour — so its criterion is the token-swatch
@@ -736,6 +787,12 @@ container, **the table's own scroll region scrolls horizontally and the page doe
 - **empty** — caption and header row are retained; the body is one cell spanning every column,
   containing one `EmptyState` with its sentence. A table that renders its header over nothing, with
   no words, is the defect FR-023 names.
+- **selection** — inapplicable today. No row in a `Table` marks itself as the current one; a caller
+  needing that marks the identity cell with visible text or a `Badge`, composed at the call site,
+  because `Table` itself has no row-selection prop.
+- **expansion** — inapplicable. There is no expandable row and no `<details>` inside a cell; a row
+  that reveals more detail on click navigates to a detail screen instead (the shipping pattern,
+  `match-history.md`'s `MatchRow` → `MatchDetailPanel`), which is a navigation, not an expansion.
 
 **Tokens used** — colour `surface` (the region's fill), `border` (the frame and every row rule),
 `text-primary` (data), `text-secondary` (column labels, caption when visible), `surface-sunken` (row
@@ -836,6 +893,12 @@ case. It is not a way to make a form look cleaner.
   its default paint; it errors on blur or on submit, never on first render. The control renders no
   placeholder text standing in for a label (a placeholder disappears the moment the reader types,
   which is the moment they need it).
+- **selection** — inapplicable to `Field` itself. A radio or checkbox group composes several
+  `Field`s, and the "selected" one is a property of that group, recorded in the composite that
+  assembles them, not in `Field`.
+- **expansion** — inapplicable. A `Field` never hides its own control; its hint and error either
+  render or do not (above), which is presence, not expansion — nothing here discloses a second
+  surface.
 
 **Tokens used** — colour `surface`, `surface-sunken`, `border`, `border-strong`, `danger`,
 `text-primary`, `text-secondary`, `text-disabled`, `focus-ring`. Radius `rounded-control` — the role
@@ -925,6 +988,9 @@ it sits in a body cell spanning every column (§10).
   each; conflating them is the most common form of this defect.
 - **empty** — an `EmptyState` with no heading and no explanation renders **nothing at all**. There is
   no such thing as an empty empty state, and a wordless one is the blank region FR-023 forbids.
+- **selection** — inapplicable; an `EmptyState` is not a set member.
+- **expansion** — inapplicable. It has one size (above) and never grows to reveal more; it is already
+  showing everything it has to say.
 
 **Tokens used** — colour `text-primary` (heading), `text-secondary` (explanation). Typography
 `type-display` at `text-xl`, `type-body` at `text-md`. No fill, no border, no radius, no elevation,
@@ -957,6 +1023,9 @@ present, is a real `Button` or `Link` with a name that says what it does. Nothin
 - [ ] The no-content story renders nothing at all, not a padded blank box.
 - [ ] Inside a `Table`, the empty state sits under the retained column headers and spans the full
       table width.
+- [ ] The heading (`type-display` at `text-xl`) is visibly larger than the explanation beneath it
+      (`type-body` at `text-md`) — a token-correct `EmptyState` that gave both the same role would
+      read as one paragraph rather than a stated absence, and fails this criterion (FR-063).
 
 ---
 
@@ -1010,6 +1079,11 @@ absence of an action is silent.
 - **empty** — an `ErrorState` with no heading renders **nothing**, and that is a caller defect a
   story must show: a failure with no words is worse than a blank region, because the region at least
   does not claim to be an explanation.
+- **selection** — inapplicable; an `ErrorState` is not a set member.
+- **expansion** — inapplicable. `ErrorState` shows its full anatomy at once: there is no collapsed
+  form and no "show details" toggle. The optional `TechnicalDetail`, when present, is ordinary
+  visible text in the reading order, never hidden behind a disclosure the reader would have to
+  expand before they could select and copy it (accessibility, below).
 
 **Tokens used** — colour `danger` (stripe and heading), `text-primary` (explanation),
 `text-secondary` (technical detail). Typography `type-display` at `text-xl`, `type-body` at
@@ -1097,9 +1171,8 @@ realistic compositions FR-043 requires).
   consumer it breaks in one change. Where this file names a prop (`density`, `width`, `role`,
   `align`, `recovery`), it is naming the **concept** the primitive must expose; if T557 renames one,
   the rename lands here too rather than leaving two vocabularies alive.
-- **Selection and expansion.** T569 extends the closed vocabulary to ten. None of the nine implements
-  either today (§0); when the vocabulary grows, this file gains nine answers, not nine features
-  (FR-036: a state is never implemented because the vocabulary lists it).
-- **The index row.** `README.md`'s spec index needs a row for this file. T540 already rewrites all 24
-  rows of that table's "Component directory" column for the tier move, so the row is added there
-  rather than in two separate edits to the same table.
+- **Selection and expansion.** T569 extended the closed vocabulary to ten; T570 answers both for all
+  nine primitives here (§5–§13), each "inapplicable, and here is what happens instead" — a state is
+  documented because it is real, never built because the vocabulary lists it (FR-036).
+- **The index row.** T570 adds this file's row to `README.md`'s spec index, alongside the correction
+  to `shared-primitives.md`'s own row (`Dialog` was missing from it).

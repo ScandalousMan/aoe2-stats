@@ -6,6 +6,9 @@
 **Requirements**: none of 001's functional requirements name it; the obligation is constitutional.
 Constitution X: "The Microsoft 'Game Content Usage Rules' disclaimer appears in the README and in
 the site footer." Constitution VI: "A component without a Storybook story does not exist."
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — chrome on `background`, not a content surface with
+a row height or reading measure of its own to classify.
 **Depends on**: nothing — this component defines its own markup rather than composing
 `shared-primitives.md`, because a footer link is a plain inline `<a>` (the same shape
 `archival-control.md`'s `PrivacyNoticeLink` already uses), not a `Button`.
@@ -112,6 +115,9 @@ repository, this component is the same disclosure rendered where a visitor actua
 - **empty** — `LinkRow` itself: renders nothing when neither href prop is supplied, rather than an
   empty row with a visible gap where two links would have been. `Disclaimer` and `AffiliationNote`
   are never empty — they carry no prop that could make them so.
+- **selection** — not applicable; the footer has no set of items for one to be current within.
+- **expansion** — not applicable; nothing here collapses or reveals a second surface — every link
+  either renders or is omitted (§5 empty), which is presence, not disclosure.
 
 ## 6. Tokens used
 
@@ -187,3 +193,7 @@ contrast table (light 5.5, dark comfortable); `link` on `background` is asserted
 - [ ] At 375px, no horizontal scrolling and no clipped text in any story.
 - [ ] The focus ring is visible and unclipped on each rendered link, in both themes.
 - [ ] No game asset, icon, portrait or logo anywhere in the frame — text only.
+- [ ] The two links are visibly distinguishable from `Disclaimer`/`AffiliationNote` by ink and
+      underline, not merely by position — a token-correct footer that gave a link the same
+      `text-secondary` ink and no underline would leave a reader unable to tell prose from a control,
+      and fails this criterion (FR-063).

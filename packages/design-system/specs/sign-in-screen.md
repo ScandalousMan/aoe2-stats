@@ -3,6 +3,10 @@
 **Component**: `src/screens/SignInScreen/`
 **Feature**: 001, US1 — consumed by `apps/web/src/routes/sign-in.tsx` (T036)
 **Requirements**: FR-001, FR-002, FR-003, FR-005, FR-006, FR-007. SC-004.
+**Tier**: screen (`src/screens/`).
+**Surface class**: neither `dense` nor `prose` — the panel is a single fixed composition (§3: "it
+does not have compact and comfortable forms"), chrome around a form, not a body of rows or
+paragraphs to classify.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`;
 [`structural-tier.md`](./structural-tier.md) — `Page` (005, structural retrofit: this screen
 composes `Page` for the route's one `<main>` and one `<h1>` rather than rendering either itself).
@@ -110,6 +114,13 @@ Copy rules for the outcomes, all verifiable in review:
 visit. It renders **nothing** in that slot: no bordered box, no reserved grey rectangle, no "no
 messages" text. The failure mode being ruled out is a visibly empty container in the default
 screenshot.
+
+**selection** — not applicable. This screen offers one path (or, in `link`, one path plus a cancel);
+there is no set of items for one to be marked current within.
+
+**expansion** — not applicable. `IdentityNote` is stated in the anatomy as "always present, never
+behind a disclosure" (§2) precisely so this state never arises: nothing here collapses or reveals a
+second surface.
 
 ## 5. Tokens used
 
@@ -237,3 +248,7 @@ Verifiable from a screenshot; this is the list `visual-reviewer` works through.
 - [ ] Every interactive element measures at least 44px in its smallest dimension at 375px.
 - [ ] No text is centred except the title.
 - [ ] The panel casts the raised elevation only; nothing else in the frame carries a shadow.
+- [ ] The title reads as the panel's headline — larger and bolder than the value line beneath it — and
+      the value line in turn is visibly heavier than the no-admin line and identity note below it: a
+      token-correct panel that gave the value line the title's own weight would flatten three levels
+      into one and fails this criterion (FR-063).

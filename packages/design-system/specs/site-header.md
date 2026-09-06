@@ -6,6 +6,9 @@ beside the `Footer` that is already mounted there, so it renders on every route.
 **Requirements**: FR-009 (a header with primary navigation on every page, footer intact), FR-013
 (tokens only, a story, visual regression), FR-014 (both themes reachable, an explicit override
 remembered — §ThemeControl, T535). Constitution VI, VII.
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — chrome on `surface`, not a content surface with a
+density of its own.
 **Depends on**: [`README.md`](./README.md) — the measured contrast table and the gap register, which
 this spec references and never restates. [`footer.md`](./footer.md) — the other half of the site
 chrome; the two are specified to agree on inline padding, on link behaviour and on "chrome is the
@@ -151,10 +154,12 @@ beside `Brand` on the header's first row rather than beneath it with the wrapped
 never competes with nav wrapping for width; at 768 and 1280 it occupies what §2c calls out as the
 reserved inline-end space.
 
-**One variant and one size, at every viewport.** A header that changes shape per route is chrome a
-reader cannot rely on finding twice, and the whole value of this component is that it is identical
-everywhere. What changes between routes is which item is marked current (§4), and what changes with
-the viewport is arrangement, never composition (§8).
+## 3. Variants and sizes
+
+**Variants** — one, and one size, at every viewport. A header that changes shape per route is
+chrome a reader cannot rely on finding twice, and the whole value of this component is that it is
+identical everywhere. What changes between routes is which item is marked current (§4), and what
+changes with the viewport is arrangement, never composition (§8).
 
 ### 3a. The canonical item set for 004
 
@@ -210,8 +215,8 @@ depend on:
 
 ## 5. States
 
-The closed vocabulary, all eight. Unless said otherwise, a state belongs to a `NavItem`; `Brand` and
-`SkipLink` are called out where they differ.
+The closed vocabulary, all ten (T569). Unless said otherwise, a state belongs to a `NavItem`;
+`Brand` and `SkipLink` are called out where they differ.
 
 - **default** — header on `surface` with a `border` hairline at its block-end. Items at rest:
   transparent box, label `text-secondary`, `sans`, size `sm`, weight `medium`, no underline. The
@@ -268,6 +273,19 @@ The closed vocabulary, all eight. Unless said otherwise, a state belongs to a `N
     `aria-current`. Not "the first one", not "Dashboard by default". A header that claims you are on
     a page you are not on is worse than one that claims nothing, and this is a routine state, not an
     edge case — the profile and match-detail routes are in it all day.
+
+- **selection** — **specified, and this component is the vocabulary's other shipping case beside
+  `Menu` itself (T569/T570, README's "Selection and expansion").** `PrimaryNav`'s current-route
+  marking (§4) is a `NavItem` holding the current member of the nav's own set: the 2px `accent`
+  rule, the weight/colour change and `aria-current="page"` together, never a colour change alone —
+  exactly the still-image mark the vocabulary requires. `ThemeControl` is the same state a second
+  way, entirely through `Menu`'s own `selection` variant (§2d): the checked theme item carries
+  `aria-checked` and a `<Badge>Current</Badge>`.
+- **expansion** — not applicable to `SiteHeader` itself. `ThemeControl`'s trigger carries
+  `aria-expanded` and opens a popover, but that is `Menu`'s own contract
+  (`shared-primitives.md#Menu`), consumed here unchanged; `SiteHeader` adds no expansion behaviour of
+  its own, and `PrimaryNav` never collapses behind a disclosure (§8's "no hamburger" decision is
+  exactly the refusal to add one).
 
 `ThemeControl`'s own states — default, hover, focus-visible, active, disabled, loading, error,
 empty, for its trigger and its items — are `Menu`'s, unchanged by this composition
@@ -411,13 +429,18 @@ above.
 
 ## 10. Visual acceptance criteria
 
-Stories live under **`Composite/SiteHeader`** (T540, research D13: `chrome` collapses into
-`composites` — `SiteHeader` and `Footer` are domain composites that happen to be mounted once, and a
-fourth tier for "mounted by the root layout" would be a location rather than a dependency rule). This
-resolves the inconsistency this section used to record: `Footer` was already at `Composite/Footer`
-and `SiteHeader` previously sat apart at `Chrome/SiteHeader` (the id quickstart scenario 6 named);
-the rename moves every `chrome-siteheader--*` baseline to `composite-siteheader--*` (T540, repainted
-by T550). Every criterion below is judged in **both themes**; the small-viewport stories carry the
+Stories live under **`Composites/Site chrome/SiteHeader`** (T540, research D13: `chrome` collapses
+into `composites` — `SiteHeader` and `Footer` are domain composites that happen to be mounted once,
+and a fourth tier for "mounted by the root layout" would be a location rather than a dependency
+rule). This resolves the inconsistency this section used to record: `Footer` was already at
+`Composites/Footer` and `SiteHeader` previously sat apart at `Chrome/SiteHeader` (the id quickstart
+scenario 6 named); the rename moved every `chrome-siteheader--*` baseline to `composite-siteheader--*`
+(T540, repainted by T550). **Amended (T564, T570)**: the navigation gained one further level, `Site
+chrome`, so a reader browsing by need finds `SiteHeader` and `Footer` grouped under the same heading
+rather than only sharing a tier; the **story id stays `composite-siteheader`**
+(`SiteHeader.stories.tsx`'s own `id` field, set independently of `title`), so no baseline filename
+moved a second time. Every criterion below is judged in **both themes**; the small-viewport stories
+carry the
 `visual-mobile` tag, without which the whole of §8's 375 arrangement is invisible to the suite
 (`scripts/visual/run.mjs`).
 
@@ -428,7 +451,11 @@ Required stories: `SignedIn` (five items, `/dashboard` current), `CurrentIsNeste
 `ThemeControlSetToDark` (§2d — each opens the menu via `play()`; the light/dark stories seed the
 stored override through a `loader` rather than a live click, so the capture never fights the
 `theme:<light|dark>` global the rest of this suite's matrix depends on — see the stories file's own
-comment for why a live click there would repaint the page's own theme attribute).
+comment for why a live click there would repaint the page's own theme attribute), `Selection`
+(named for the vocabulary entry rather than the scenario — the same frame `SignedIn` already shows,
+added rather than renaming it so the checked-in baseline is not orphaned) and
+`ExpansionNotApplicable` (states in the frame that `PrimaryNav` never collapses behind a disclosure
+and that `ThemeControl`'s own expansion state belongs to `Menu`, not to this component).
 
 - [ ] The wordmark "aoe2-stats" is present in every story, as text.
 - [ ] **No image of any kind appears in any frame** — no logo, crest, emblem, shield, civilisation
@@ -471,6 +498,10 @@ comment for why a live click there would repaint the page's own theme attribute)
       dark captures alike (§2d — an explicit override is not the page's ambient theme).
 - [ ] At 375, `ThemeControl`'s trigger sits beside `Brand` on the first row, never beneath it with
       the wrapped nav items, in every story that has both.
+- [ ] The wordmark (`display`, `lg`, `semibold`) is visibly more prominent than any nav item label
+      (`sans`, `sm`) — a token-correct header that sized a nav item as large as the wordmark would
+      make a destination compete with the brand for the first read, and fails this criterion
+      (FR-063).
 
 ## 11. What a screenshot cannot see, and what covers it instead
 

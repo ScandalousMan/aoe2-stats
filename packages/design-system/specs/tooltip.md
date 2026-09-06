@@ -6,6 +6,9 @@ consumed by `ProfileSummary`'s `IdentityBar` ([`profile-summary.md`](./profile-s
 **Requirements**: FR-008 (the country name "MUST be conveyed through a design-system Tooltip on the
 flag — revealed on hover and on keyboard focus, with an accessible name for assistive technology"),
 FR-013 (tokens only, a story, visual regression). SC-002.
+**Tier**: primitive (`src/primitives/`).
+**Surface class**: neither `dense` nor `prose` — an ephemeral, out-of-flow surface, not a content
+surface of either class.
 **Depends on**: [`README.md`](./README.md) — the measured contrast pairs and the gap register. Gaps
 in play: **DS-4** (focus-ring width and offset), **DS-6** (max-width / reading measure).
 **Asset origin** (README rule 3): none. This component draws no image, no glyph and no caret. It is
@@ -100,7 +103,7 @@ user can see with one they cannot, and WCAG 2.5.3 fails the moment the two diffe
 
 ## 4. States
 
-All eight, and **four of them are invisible to a screenshot** — the reason T456 owes an interaction
+All ten (T569), and **four of them are invisible to a screenshot** — the reason T456 owes an interaction
 test and not only a story capture, and the reason this section names each one rather than grouping
 them.
 
@@ -161,6 +164,13 @@ them.
   actually ships: an API that types a field as a non-null string delivers `""`, and a component that
   tests only for `undefined` mounts a focusable control that opens an empty box. **The test is
   emptiness, not nullishness** (`profile-summary.md` §12.3 settled the same trap for the alias).
+- **selection** — not applicable; a tooltip trigger is not a set member.
+- **expansion** — not applicable, and worth stating precisely rather than assuming: this component's
+  reveal is not the vocabulary's **expansion** state. There is no `aria-expanded` toggle here, only
+  the hover/focus-visible/active states above, and the surface is ephemeral rather than a persistent
+  panel — `Menu`'s trigger (`shared-primitives.md#Menu`) is this package's one shipping expansion
+  case. `Tooltip`'s reveal is instead the imagery-naming exception README rule 4 carves out (§8,
+  `country-flag.md` §11.3), a different mechanism answering a different question.
 
 ## 5. Tokens used
 
@@ -334,3 +344,10 @@ shaped against.
       after the state is forced — nothing is caught mid-fade.
 - [ ] The empty-content story renders **no button and no surface**: the trigger's child alone, and
       tabbing through the story does not stop on it.
+- [ ] The `ExpansionNotApplicable` story's caption is present and the header renders identically to
+      the default story beneath it — confirming the refusal is documentation, not a rendering change
+      (FR-036).
+- [ ] The surface's padding (`space-2` inline, `space-1` block) keeps the text legibly clear of the
+      surface's own edge at every wrap width — a token-correct surface that let text run to the edge
+      on a wrapped second line would read as clipped rather than deliberately bounded, and fails this
+      criterion (FR-063).

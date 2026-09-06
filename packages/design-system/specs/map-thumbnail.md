@@ -13,6 +13,10 @@ no-map-at-all case.
 into the pack; the caller resolves `mapThumbnail(mapName)` and passes the result — `undefined`
 included — straight through.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — an inline thumbnail-plus-text pair, not a surface
+with a density of its own.
+
 ## 1. Purpose
 
 Show which map a match was played on, as the minimap a player recognises instantly, beside the map's
@@ -92,6 +96,8 @@ different map's shape, which is worse than no image at all.
     contract), wording that says the fact is missing rather than presenting an empty gap. **No
     thumbnail is ever guessed** from a leaderboard, a mode or a
     neighbouring match.
+- **selection** — not applicable; a map thumbnail is not a set member.
+- **expansion** — not applicable; the pair never reveals a second surface.
 
 ## 5. Tokens used
 
@@ -174,3 +180,7 @@ No outer margin; the caller's layout gap (`match-history.md` §7) positions the 
       distinction between "we have no picture" and "we have no map name").
 - [ ] Greyscale: the map is still identified by its name in every story.
 - [ ] The loading story's skeleton overlays the default story with no reflow of the name.
+- [ ] At 1280, the `sm` thumbnail sits inside the row's own height budget rather than stretching it —
+      a token-correct implementation that used `md` in the table cell would grow every row to
+      accommodate it and double the vertical distance between the figures a reader is scanning, and
+      fails this criterion (FR-063).

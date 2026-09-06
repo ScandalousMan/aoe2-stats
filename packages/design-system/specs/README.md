@@ -6,32 +6,45 @@ component carries a hard-coded style value.
 
 ## Index
 
-| Spec                                                     | Component directory                                                 | Feature                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------- |
-| [`shared-primitives.md`](./shared-primitives.md)         | `src/primitives/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`    | 001                          |
-| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/screens/SignInScreen/`                                         | 001, US1                     |
-| [`archival-control.md`](./archival-control.md)           | `src/screens/ArchivalControl/`                                      | 001, US1/US5                 |
-| [`profile-summary.md`](./profile-summary.md)             | `src/screens/ProfileSummary/`                                       | 001, US1; 003, US1; 004, US2 |
-| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/composites/CaptureStateBadge/` (grows `Badge`'s tone variants) | 001, US3                     |
-| [`match-history.md`](./match-history.md)                 | `src/composites/MatchRow/`, `src/composites/MatchDetailPanel/`      | 001, US3; 003, US2; 004, US1 |
-| [`manual-upload.md`](./manual-upload.md)                 | `src/composites/UploadControl/`                                     | 001, US4                     |
-| [`privacy-notice.md`](./privacy-notice.md)               | `src/screens/PrivacyNotice/`                                        | 001, US5                     |
-| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/screens/DataExportPanel/`, `src/screens/AccountErasurePanel/`  | 001, US5                     |
-| [`third-party-objection.md`](./third-party-objection.md) | `src/screens/ThirdPartyObjectionForm/`                              | 001, US5                     |
-| [`footer.md`](./footer.md)                               | `src/composites/Footer/`                                            | 001, US5                     |
-| [`player-search.md`](./player-search.md)                 | `src/composites/SearchBox/`, `src/composites/PlayerResultRow/`      | 003, US1                     |
-| [`replay-availability.md`](./replay-availability.md)     | `src/composites/ReplayAvailabilityList/`                            | 003, US3                     |
-| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/composites/FavouriteToggle/`                                   | 003, US5                     |
-| [`favourites-list.md`](./favourites-list.md)             | `src/composites/FavouritesList/`                                    | 003, US5                     |
-| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/composites/AnalysisTimeline/`                                  | 003, US4                     |
-| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)          | 004                          |
-| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/composites/CivilisationIcon/`                                  | 004, US1                     |
-| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/composites/MapThumbnail/`                                      | 004, US1                     |
-| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/composites/PlayerColourSwatch/`                                | 004, US1                     |
-| [`country-flag.md`](./country-flag.md)                   | `src/composites/CountryFlag/`                                       | 004, US2; 004, Phase 8       |
-| [`player-avatar.md`](./player-avatar.md)                 | `src/composites/PlayerAvatar/`                                      | 004, US2                     |
-| [`site-header.md`](./site-header.md)                     | `src/composites/SiteHeader/`                                        | 004, US3                     |
-| [`tooltip.md`](./tooltip.md)                             | `src/primitives/Tooltip/`                                           | 004, Phase 8                 |
+| Spec                                                     | Component directory                                                                | Feature                      |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------- |
+| [`shared-primitives.md`](./shared-primitives.md)         | `src/primitives/{Button,Callout,Badge,Skeleton,Menu,Dialog,StatValue}/`            | 001                          |
+| [`structural-tier.md`](./structural-tier.md)             | `src/primitives/{Page,Section,Panel,Text,Link,Table,Field,EmptyState,ErrorState}/` | 005, US2                     |
+| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/screens/SignInScreen/`                                                        | 001, US1                     |
+| [`archival-control.md`](./archival-control.md)           | `src/screens/ArchivalControl/`                                                     | 001, US1/US5                 |
+| [`profile-summary.md`](./profile-summary.md)             | `src/screens/ProfileSummary/`                                                      | 001, US1; 003, US1; 004, US2 |
+| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/composites/CaptureStateBadge/` (grows `Badge`'s tone variants)                | 001, US3                     |
+| [`match-history.md`](./match-history.md)                 | `src/composites/MatchRow/`, `src/composites/MatchDetailPanel/`                     | 001, US3; 003, US2; 004, US1 |
+| [`manual-upload.md`](./manual-upload.md)                 | `src/composites/UploadControl/`                                                    | 001, US4                     |
+| [`privacy-notice.md`](./privacy-notice.md)               | `src/screens/PrivacyNotice/`                                                       | 001, US5                     |
+| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/screens/DataExportPanel/`, `src/screens/AccountErasurePanel/`                 | 001, US5                     |
+| [`third-party-objection.md`](./third-party-objection.md) | `src/screens/ThirdPartyObjectionForm/`                                             | 001, US5                     |
+| [`footer.md`](./footer.md)                               | `src/composites/Footer/`                                                           | 001, US5                     |
+| [`player-search.md`](./player-search.md)                 | `src/composites/SearchBox/`, `src/composites/PlayerResultRow/`                     | 003, US1                     |
+| [`replay-availability.md`](./replay-availability.md)     | `src/composites/ReplayAvailabilityList/`                                           | 003, US3                     |
+| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/composites/FavouriteToggle/`                                                  | 003, US5                     |
+| [`favourites-list.md`](./favourites-list.md)             | `src/composites/FavouritesList/`                                                   | 003, US5                     |
+| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/composites/AnalysisTimeline/`                                                 | 003, US4                     |
+| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)                         | 004                          |
+| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/composites/CivilisationIcon/`                                                 | 004, US1                     |
+| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/composites/MapThumbnail/`                                                     | 004, US1                     |
+| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/composites/PlayerColourSwatch/`                                               | 004, US1                     |
+| [`country-flag.md`](./country-flag.md)                   | `src/composites/CountryFlag/`                                                      | 004, US2; 004, Phase 8       |
+| [`player-avatar.md`](./player-avatar.md)                 | `src/composites/PlayerAvatar/`                                                     | 004, US2                     |
+| [`site-header.md`](./site-header.md)                     | `src/composites/SiteHeader/`                                                       | 004, US3                     |
+| [`tooltip.md`](./tooltip.md)                             | `src/primitives/Tooltip/`                                                          | 004, Phase 8                 |
+
+**Two corrections landed with T570.** `structural-tier.md` (T540–T548, feature 005 US2) had no row
+here — its own §15 named the gap and this closes it. `shared-primitives.md`'s row was missing
+`Dialog`, which has specified that file's seventh component since feature 001; the directory column
+above now names all seven. `GOVERNANCE.md` and the three token decision records
+(`game-asset-tokens.md`, `color-tokens.md`, `typography-tokens.md`) are deliberately absent from this
+table: the first is a procedure document and the latter three specify tokens, not a component —
+`game-asset-tokens.md` already said so in its own row above, and the newer two follow the same rule
+without needing a row that would only ever say "no component" again. This index is the set T570
+amended and T571's completeness check enumerates: every row above other than `game-asset-tokens.md`
+names one or more components whose spec must answer the closed state vocabulary in full and declare
+a tier and a surface class.
 
 ## Every spec has nine sections
 

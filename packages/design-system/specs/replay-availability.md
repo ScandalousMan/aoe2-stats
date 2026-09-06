@@ -12,6 +12,10 @@ no fifth tone is introduced), `Button`, `Callout`, `Skeleton`.
 [`capture-state-badge.md`](./capture-state-badge.md) — `countdown.ts`'s remaining-time derivation,
 reused rather than reimplemented (§6).
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: `dense` (README's "Surface density" section) — `space-3` between rows (§8), the
+same tight rhythm `AnalysisTimeline`'s event list uses.
+
 ## 1. Purpose
 
 State, per participant, whether their recorded game can be had right now — and never let an
@@ -263,6 +267,10 @@ not this vocabulary's `error` or `empty`.
   single "nothing available" callout that would hide which participant is which and why (spec.md US3
   acceptance scenario 2: "not as a button that fails", not as a summary that erases the per-participant
   answer FR-023 requires either).
+- **selection** — not applicable; no row is marked current within the list, and `archived`'s
+  caller-dependence (§3.3) is a fact about that row's own data, not a selection state.
+- **expansion** — not applicable; every row's fields (§2) either render or are absent, and nothing
+  here collapses to be revealed later.
 
 ## 6. The countdown (`SecondaryLine` for `obtainable`)
 
@@ -412,3 +420,7 @@ Gaps in play: none. Every token this component needs is already in use by `Badge
       reflow between the two.
 - [ ] A story with every row `expired`/`never_recorded` still shows the section heading and one row per
       participant — never a single collapsed "nothing available" message.
+- [ ] The `AvailabilityBadge` (`xs`, `semibold`, `wide` tracking) is at least as legible as
+      `ParticipantLabel` (`sm`) in the same row — a token-correct row that let the badge fade against
+      the alias would leave the one fact this component exists to state harder to find than the name
+      beside it, and fails this criterion (FR-063).

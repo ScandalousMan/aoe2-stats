@@ -8,6 +8,13 @@ SC-002, SC-002a.
 [`profile-summary.md`](./profile-summary.md) — `CountryLabel`'s own convention (text, optional
 non-carrying flag glyph) is reused rather than reinvented.
 
+**Tier and surface class, per component**:
+
+| Component         | Tier                                          | Surface class                                                                                                      |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SearchBox`       | composite (`src/composites/SearchBox/`)       | neither `dense` nor `prose` — a labelled field plus a live region, not a surface with a density of its own         |
+| `PlayerResultRow` | composite (`src/composites/PlayerResultRow/`) | `dense` (README's "Surface density" section) — `space-3` row padding from 768 (§7), the same class `MatchRow` uses |
+
 ## 1. Purpose
 
 `SearchBox`: let a user find any player by a partial, wrongly-cased name and reach their profile
@@ -206,6 +213,13 @@ identical rule for rating figures.
 **disabled** — `Input` only, and only during the rate-limited countdown above; there is no other
 disabled condition for either component.
 
+**selection** — not applicable to either component. A result row is not marked current within the
+list; the reader leaves the list by following the row's own link rather than by selecting it in
+place.
+
+**expansion** — not applicable. Neither component collapses or reveals a second surface; every field
+a row carries (§4) either renders or is absent, which is presence, not disclosure.
+
 ## 6. Tokens used
 
 Colour: `background` (page), `surface` (`Input` fill, row/card), `surface-raised` (`Callout` fill, via
@@ -332,3 +346,7 @@ criterion, restated here because it applies identically.
       `danger`) still distinguishable by heading text and body copy alone.
 - [ ] No avatar, clan crest or flag illustration in any frame — only text and, at most, a free-licensed
       `aria-hidden` country glyph.
+- [ ] The alias (`semibold`) is visibly heavier than the clan tag, country and standing beside it
+      (`normal`) — a token-correct row that gave every field the alias's own weight would leave two
+      near-identical names no easier to tell apart than before, defeating the reason this row exists,
+      and fails this criterion (FR-063).

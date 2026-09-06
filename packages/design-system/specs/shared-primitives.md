@@ -1,7 +1,7 @@
 # Shared primitives
 
 The three screen specs in this directory (`sign-in-screen`, `archival-control`, `profile-summary`) all
-lean on the same six small components. They are specified once here so the three screens agree and
+lean on the same small set of components. They are specified once here so the three screens agree and
 so no implementer has to invent a resting colour at eleven at night.
 
 Each primitive below carries the nine sections in compressed form. Where a primitive grows a variant
@@ -9,6 +9,22 @@ a later feature needs, it earns its own file and this section becomes a stub poi
 
 Read [`README.md`](./README.md) first: the contrast table and the token gap register are shared, and
 nothing below restates them.
+
+**This file specifies seven components, not six** — `Dialog` (§ below) has lived here since feature
+001 (`dbc094c`, "extract a shared Dialog primitive from the two dialogs duplicating it") and
+`README.md`'s index row for this file omitted it; that row is corrected as part of this amendment
+(T570). A tier is a property of a component, and a file naming seven of them declares seven, not one
+line for the file:
+
+| Component   | Tier                                    | Surface class                                                                                                                        |
+| ----------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Button`    | primitive (`src/primitives/Button/`)    | neither `dense` nor `prose` — a control draws inside whatever `Panel`, `Table` or `Field` contains it; it owns no surface of its own |
+| `Callout`   | primitive (`src/primitives/Callout/`)   | neither `dense` nor `prose` — same reason                                                                                            |
+| `Badge`     | primitive (`src/primitives/Badge/`)     | neither `dense` nor `prose` — same reason                                                                                            |
+| `Skeleton`  | primitive (`src/primitives/Skeleton/`)  | neither `dense` nor `prose` — same reason                                                                                            |
+| `Menu`      | primitive (`src/primitives/Menu/`)      | neither `dense` nor `prose` — its popover is `overlay`-elevated chrome, not a content surface (README's "Surface density" section)   |
+| `Dialog`    | primitive (`src/primitives/Dialog/`)    | neither `dense` nor `prose` — same reason, at `modal`                                                                                |
+| `StatValue` | primitive (`src/primitives/StatValue/`) | neither `dense` nor `prose` — same reason                                                                                            |
 
 ---
 
@@ -76,6 +92,14 @@ extended to 44px by padding rather than by a transparent overlay.
   after a failure is the most common way a retry becomes unreachable.
 - **empty** — not applicable: a button with no label is invalid. An icon-only button carries
   `aria-label` and is forbidden on the primary path of every screen in this feature.
+- **selection** — not applicable. A `Button` is an action, not a set member; a control that marks
+  one of several choices as current is `Menu`'s `selection` variant (below), never a row of buttons
+  standing in for it.
+- **expansion** — not applicable to `Button` itself. A button that opens a popover (`Menu`'s
+  trigger) or a modal (`Dialog`'s opener) carries `aria-expanded`/`aria-haspopup`, but that attribute
+  is part of the _trigger contract_ those components define, not a state `Button` owns on its own
+  (FR-036 — a state is documented where it is real, not built into every component the vocabulary
+  could apply to).
 
 **Tokens** — colour `accent`, `accent-hover`, `accent-active`, `accent-contrast`, `surface`,
 `surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`, `text-disabled`,
@@ -93,11 +117,12 @@ a click handler). Space and Enter activate. Touch target ≥ 44px. Label contras
 table; `accent-contrast` on `accent` in the light theme is the tightest pair `primary` depends on
 and must be verified, not assumed.
 
-**Acceptance** — exactly one `primary` per screenshot; focus ring visible and 2px offset from the
-edge on the keyboard-focused button; the `primary` button's hover fill is visibly darker than its
-resting fill and its active fill darker again, so the default, hover and active screenshots are
-three distinguishable frames; loading button shows a spinner and the same width as at rest; disabled
-button has visible explanatory text near it.
+**Acceptance** — exactly one `primary` per screenshot — a token-correct screen that painted two
+controls `accent` still fails this criterion, because the reader cannot tell which action the view
+recommends (FR-063); focus ring visible and 2px offset from the edge on the keyboard-focused button;
+the `primary` button's hover fill is visibly darker than its resting fill and its active fill darker
+again, so the default, hover and active screenshots are three distinguishable frames; loading button
+shows a spinner and the same width as at rest; disabled button has visible explanatory text near it.
 
 ---
 
@@ -132,6 +157,9 @@ sign-in-screen), the heading takes `tabindex="-1"` and shows the standard focus 
 outcome. Anything still resolving is a `Skeleton`. **error** — `danger` is that state.
 **empty** — a callout with no heading and no body renders **nothing at all**, not an empty bordered
 box. This is the state that ships by accident, so the acceptance criteria test for it.
+**selection** — not applicable; a callout is not a set member. **expansion** — not applicable; the
+optional dismiss control removes the callout, it does not reveal a second surface, which is a
+different shape from `Menu`'s trigger (below).
 
 **Tokens** — colour `surface-raised` (fill), `info` / `success` / `warning` / `danger` (stripe and
 heading), `text-primary` (body), `text-secondary` (any timestamp or footnote), `border`. Radius
@@ -149,7 +177,9 @@ heading), `text-primary` (body), `text-secondary` (any timestamp or footnote), `
 
 **Acceptance** — tone stripe visible on the inline-start edge; body text is the primary text colour
 in both themes; no icon substitutes for the heading; an empty callout is absent from the screenshot
-rather than present and blank.
+rather than present and blank; the heading (`semibold`) is visibly heavier than the body (`normal`)
+even though both share a surface — a token-correct callout that gave both the same weight would read
+as one undifferentiated paragraph and fails this criterion (FR-063).
 
 ---
 
@@ -169,7 +199,10 @@ tracking `wide`, radius `full`.
 **States** — **default** only. No hover, no active, no focus: a badge is not interactive and must
 never be the control that changes the state it names. **disabled / loading** — none; during a state
 change the badge is replaced by a `Skeleton` of the same footprint. **error** — none.
-**empty** — a badge with no label renders nothing.
+**empty** — a badge with no label renders nothing. **selection** — not applicable to `Badge` on its
+own: `Badge` is the _mark_ a selection state pairs with a checked item (`Menu`'s `selection` variant,
+`ProfileSummary`'s profile switcher), never the thing that is itself selected. **expansion** — not
+applicable; a badge never reveals a second surface.
 
 **Tokens** — `surface-sunken`, `surface-raised`, `border`, `text-secondary`, `accent`,
 `accent-active`. Radius `full`. Font size `xs`, weight `semibold`, tracking `wide`.
@@ -180,7 +213,9 @@ change the badge is replaced by a `Skeleton` of the same footprint. **error** �
 communicated by colour or shape alone.
 
 **Acceptance** — the badge reads as a word at 375px without truncation; it is never the only
-difference between two rows in a screenshot.
+difference between two rows in a screenshot; its `semibold` weight and `wide` tracking keep it
+legible at `xs` beside `sm` body text in the same row — a token-correct badge that dropped to
+`normal` weight would blur into the surrounding text and fails this criterion (FR-063).
 
 **Tone variants (US3, `capture-state-badge.md`)** — `Badge` grows four more variants,
 `success` / `warning` / `danger` / `info`, each a `surface-raised` fill with a tone-coloured label
@@ -214,6 +249,8 @@ this survey.
 
 **States** — **loading** is the only state; the component exists for it. It has no hover, focus,
 active, disabled or error state. **empty** — a skeleton with a zero count renders nothing.
+**selection / expansion** — not applicable; a skeleton stands in for content that has neither state
+yet, and it never carries one that content it replaces would not also have.
 **Duration rule:** do not render before 200 ms (`motion.duration.normal`) have elapsed — a skeleton
 that flashes is worse than a brief blank. After 10 s, the caller replaces it with a `danger`
 `Callout` and a retry; a skeleton that pulses forever is a hang wearing a costume.
@@ -232,7 +269,10 @@ spec section above records which component owns that single region for every com
 pulse stops on its resting frame.
 
 **Acceptance** — skeleton footprint matches the loaded content within a couple of pixels, so the
-before/after screenshots show no reflow; no text and no zero-placeholder appears inside a skeleton.
+before/after screenshots show no reflow; no text and no zero-placeholder appears inside a skeleton;
+in a multi-line `text` skeleton, consecutive lines vary in width (60–90%) rather than repeating one
+width — a token-correct skeleton that used a single fixed width for every line reads as a decorative
+block rather than the shape of a paragraph, and fails this criterion (FR-063).
 
 ---
 
@@ -272,6 +312,25 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
   (a sibling, mounted for the whole popover's lifetime).
 - **empty** — a menu with no items does not open; the trigger is `aria-disabled` with a reason. A
   menu that opens onto nothing is a dead end and reads as a bug.
+- **selection** — the `selection` variant's shipping mechanism for the vocabulary's **selection**
+  state (T569/T570, README's "Selection and expansion"): the current item carries
+  `role="menuitemradio"` and `aria-checked="true"`, and each item may carry a `badge` slot (arbitrary
+  content, the caller's own choice) rendered beside its label — the still-image mark that must never
+  be a fill or ink change alone. `Menu` itself does not decide what that slot contains; two consumers
+  fill it with the identical, deliberate choice of a plain `<Badge>Current</Badge>` rather than
+  `variant="accent"`: `SiteHeader`'s `ThemeControl` and `ProfileSummary`'s profile switcher
+  (`site-header.md`, `profile-summary.md`). `accent` stays reserved for a different fact in both
+  consumers (the item that is also _primary_ elsewhere in the product, e.g. a `Primary` profile); the
+  checked-but-not-primary item is marked `Current` without borrowing `accent`'s meaning, which is
+  what keeps the two facts distinguishable when both can be true of different items in the same list.
+  `Menu`'s own stories (`ProfileSwitcher`, `Selection`) demonstrate the slot with a plain, unstyled
+  placeholder rather than a `Badge`, precisely because the wording is each consumer's decision, not
+  this primitive's.
+- **expansion** — the trigger's own `aria-expanded`/`aria-haspopup="menu"` toggle is this package's
+  one shipping case of the vocabulary's **expansion** state. The still-image evidence is not the
+  trigger's own paint (which does not change) but what exists on the page: the popover panel is
+  drawn beside the trigger when expanded, and is absent entirely when collapsed — never present but
+  merely dimmed or scaled to zero.
 
 **Tokens** — `surface-raised`, `surface-sunken`, `border`, `border-strong`, `text-primary`,
 `text-secondary`, `text-disabled`, `focus-ring`, `overlay` (backdrop, mobile sheet only). Radius
@@ -292,8 +351,13 @@ trigger; Tab closes and moves on. Focus is trapped only in the mobile sheet vari
 44px tall.
 
 **Acceptance** — at 375px the menu is a full-width sheet with every row at least 44px tall; the
-checked item is marked by text or a `Badge`, not by colour alone; focus ring visible on the focused
-item; the trigger regains focus after Escape.
+checked item is marked by its `badge` slot's content, not by colour alone (a consumer's own choice —
+`<Badge>Current</Badge>` in `SiteHeader` and `ProfileSummary`, a plain placeholder in `Menu`'s own
+stories); focus ring visible on the
+focused item; the trigger regains focus after Escape; an item's label and its optional secondary
+line are visibly distinguishable by size and colour (`type-body` in `text-primary` against a smaller
+line in `text-secondary`) — a token-correct item that set both to the same size and ink would read
+as one run-on line and fails this criterion (FR-063).
 
 ---
 
@@ -322,6 +386,13 @@ slot, exactly two actions — rather than generalised further than either consum
 - **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
 - **empty / hover / active** — not applicable; a dialog with no actions is a malformed call site,
   and hover/active belong to the `Button`s inside it, not to the dialog itself.
+- **selection** — not applicable; a dialog is not a set member.
+- **expansion** — not applicable, and deliberately not the vocabulary's shipping case for this
+  shape: a `Dialog` is open or closed by a caller-held boolean, not by an `aria-expanded` toggle on a
+  trigger it owns, and it blocks the rest of the page rather than sitting beside it. `Menu`'s trigger
+  (above) is where this package's one `aria-expanded` disclosure lives; `Dialog`'s open/closed switch
+  is a different, mutually-exclusive-with-the-page shape and is fully covered by its own `default`
+  state and the caller's `open` prop.
 
 **Tokens** — `overlay` (backdrop), `surface` (fill), `text-primary` / `text-secondary` (heading /
 body), `focus-ring`. Radius `xl`. Elevation `modal`.
@@ -342,7 +413,10 @@ is about position and default styling, not about who owns Escape: Escape always 
 
 **Acceptance** — heading is focused and announced on open; Escape reaches the secondary action's
 `onClick` and never the primary's; Tab cycles between exactly the dialog's own focusable elements
-and never escapes to the page behind the backdrop; both actions render at least 44px tall.
+and never escapes to the page behind the backdrop; both actions render at least 44px tall; the
+heading is visibly the most prominent text in the frame, larger and heavier than the body — a
+token-correct dialog whose heading used the body's own type role would leave the reader unsure what
+decision they are being asked to make, and fails this criterion (FR-063).
 
 ---
 
@@ -391,6 +465,10 @@ component the whole product is judged on.
     is not repeated a second time beneath the value in this one case;
   - absent both, a generic, always-true default ("No data yet") renders — never a fabricated
     specific claim.
+- **selection** — not applicable; a value is not a set member.
+- **expansion** — not applicable; `StatValue` never truncates or reveals more of itself. A value that
+  needs a longer explanation composes a `Tooltip` beside it (`tooltip.md`), which is that
+  component's contract, not a state `StatValue` owns.
 
 **Tokens** — `text-primary`, `text-secondary`, `success`, `danger`, `surface`, `surface-sunken`.
 Font family `mono` for the value and any digit compared vertically, `sans` for labels and for the
@@ -433,4 +511,6 @@ no gradient, texture or border passes behind a value; deltas show a sign charact
 genuine zero delta ("+0"), which renders as data and is never suppressed; no `0` appears where data
 has not loaded; an empty value states why in words, in `text-secondary`, never a zero and never a
 punctuation mark; a region of stacked or tabled values announces "busy" once while loading, never
-once per value.
+once per value; the value is visibly the most prominent element in its row — larger and heavier than
+its own label — a token-correct `StatValue` that gave the label the value's own weight would compete
+with the number for the first read, and fails this criterion (FR-063).
