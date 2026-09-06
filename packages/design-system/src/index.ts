@@ -30,10 +30,33 @@ export * from './primitives/Dialog'
 // unreachable by omission, not by decision, and the omission is fixed. Published.
 export * from './primitives/Tooltip'
 
-// The structural tier (T543-T548, packages/design-system/specs/structural-tier.md). `Page` is the
-// first of the nine: the single main landmark, the content width and the page padding a route must
-// not declare for itself (FR-020, FR-021).
+// The structural tier (T543-T548, packages/design-system/specs/structural-tier.md). The nine that
+// make a screen assembled rather than re-invented: each owns a decision a caller may no longer
+// make for itself, which is what turns the rhythm rule and the landmark rule from written steps
+// into steps nothing else can express (FR-020 through FR-026).
+//
+// `Page` — the single main landmark, the content width, the page padding (FR-020, FR-021).
+// `Section` — the between-components gap and its own heading level, derived from nesting depth.
+// `Panel` — the bounded surface; no elevation prop, radius fixed, density required (FR-012).
+// `Text` — every typography role and the role-to-element mapping, so no caller writes a font
+// utility by hand.
+// `Link` — the link roles, the permanent underline and external-link semantics (FR-006).
+// `Table` — column semantics, digit-aligned numeric columns, and the one definition of what
+// happens when it outgrows its container (FR-026, FR-019).
+// `Field` — label, hint and error associated with the control by the primitive, never by the
+// caller; an error that appears after mount is announced (FR-025, FR-053).
+// `EmptyState` / `ErrorState` — why a region is empty and what would fill it; what failed in the
+// reader's terms and the path forward (FR-023, FR-024). These replace failed or absent content;
+// `Callout` above sits beside content that is still present.
 export * from './primitives/Page'
+export * from './primitives/Section'
+export * from './primitives/Panel'
+export * from './primitives/Text'
+export * from './primitives/Link'
+export * from './primitives/Table'
+export * from './primitives/Field'
+export * from './primitives/EmptyState'
+export * from './primitives/ErrorState'
 
 // ---------------------------------------------------------------------------------------------
 // Composites (packages/design-system/src/composites/)
