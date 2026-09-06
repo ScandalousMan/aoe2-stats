@@ -13,11 +13,31 @@
 // runs as its own step so its failure names the exact story rather than hiding inside a full
 // Playwright report.
 //
-// The two `tests/visual/app-routes.spec.ts` full-page captures — `app-signed-out-sign-in` and
-// `app-signed-in-dashboard` — are not Storybook stories at all (they screenshot the built
-// application, T108's own comment explains why) and are declared exempt below: never flagged as
-// an orphan baseline, and never expected to have a story backing them. They carry no theme/width
-// suffix (below) and are matched by their literal, unrenamed filename.
+// `tests/visual/app-routes.spec.ts`'s full-page captures — of the built application, not of a
+// Storybook story (T108's own comment explains why) — are exempt below: never flagged as an
+// orphan baseline, and never expected to have a story backing them. They carry no theme/width
+// suffix (below), so `BASELINE_NAME_RE` never matches one, which is exactly why every one of them
+// needs an exemption rather than falling out of the story-id parse the way a real story baseline
+// does.
+//
+// T553 grew that file from two full-page captures (T108) to eleven routes each in both themes
+// (FR-022, SC-003), so the two hardcoded names this exemption carried through T504 stopped being
+// the whole set — the gap this fix closes. Two ways to widen it were rejected before landing on a
+// third:
+//   - Restating all 22 names by hand here reintroduces exactly the drift T553 just exposed: the
+//     next route app-routes.spec.ts adds would silently need a second, matching edit in this
+//     unrelated file, with nothing to fail if that edit were missed.
+//   - A blanket `app-` prefix match is worse than the two-name list it would replace: it would
+//     also exempt a baseline whose route had been deleted or renamed — precisely the orphan this
+//     check exists to catch — because "starts with `app-`" is true of every name that file has
+//     ever produced *and* every one it no longer does.
+// So `loadAppRouteBaselineNames` below reads `tests/visual/app-routes.spec.ts` itself and derives
+// the exempt set from the two shapes that file actually emits a screenshot name from: the four
+// literal `toHaveScreenshot('app-...png', ...)` calls the original two routes still use, and every
+// `routeCases` entry's `screenshotBase`, each expanded into its own light and `-dark` file the way
+// that file's own test loop expands it (T553's `screenshotName` ternary, mirrored exactly). A
+// baseline this derivation does not name is still an orphan, `app-` prefix or not — proof of that
+// lives in story-baselines.test.mjs.
 //
 // T504: a baseline's filename is now its Storybook story id, a theme and a width —
 // `composite-analysistimeline--failed` -> `composite-analysistimeline--failed-light-1280.png` —
@@ -53,11 +73,29 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..',
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
 const indexPath = path.join(designSystemDir, 'storybook-static', 'index.json')
 const screenshotsDir = path.join(designSystemDir, '__screenshots__')
+const appRoutesSpecPath = path.join(rootDir, 'tests', 'visual', 'app-routes.spec.ts')
 
-// tests/visual/app-routes.spec.ts's own two baseline names — full-page captures of the built
-// application, not of a Storybook story, so this is the one set this check never expects a
-// story-index entry for, and never expects a theme/width suffix on.
-const EXEMPT_BASELINES = new Set(['app-signed-out-sign-in', 'app-signed-in-dashboard'])
+// Recovers every baseline name `tests/visual/app-routes.spec.ts` can produce, from the two literal
+// shapes it emits a screenshot name from — see this file's header for why this is derived rather
+// than hardcoded or prefix-matched. Exported (and covered directly, not only through `main`) so
+// story-baselines.test.mjs can prove it stays exact as that spec file grows.
+export function loadAppRouteBaselineNames(specSource) {
+  const names = new Set()
+  // The two original routes' own `toHaveScreenshot('app-....png', ...)` calls — a literal string
+  // argument, never the `screenshotName` variable the loop below builds, so this pattern alone
+  // never double-counts a `routeCases` entry.
+  for (const match of specSource.matchAll(/toHaveScreenshot\(\s*'([a-z0-9-]+)\.png'/g)) {
+    names.add(match[1])
+  }
+  // Every `routeCases` entry's `screenshotBase`, expanded into its own light and `-dark` file —
+  // T553's own `theme === 'light' ? \`${screenshotBase}.png\` : \`${screenshotBase}-dark.png\``
+  // ternary, mirrored here rather than re-derived some other way.
+  for (const match of specSource.matchAll(/screenshotBase:\s*'([a-z0-9-]+)'/g)) {
+    names.add(match[1])
+    names.add(`${match[1]}-dark`)
+  }
+  return names
+}
 
 // The axes `scripts/visual/run.mjs` expands every selected story across (T504). Duplicated here,
 // not imported, because this check has to be able to name a missing unit for a story that
@@ -70,7 +108,36 @@ const WIDTHS = [375, 768, 1280]
 // does not match this shape at all (no recognised theme/width suffix) cannot name any story this
 // check knows about and is therefore an orphan by construction, same as a name that parses but
 // names no story in the index.
-const BASELINE_NAME_RE = /^(.+)-(?:light|dark)-(?:375|768|1280)\.png$/
+export const BASELINE_NAME_RE = /^(.+)-(?:light|dark)-(?:375|768|1280)\.png$/
+
+// Every story's six {theme, width} units it does not already have.
+export function findIncompleteStories(storyIds, baselineSet) {
+  return [...storyIds]
+    .sort()
+    .map((id) => ({
+      id,
+      missingUnits: THEMES.flatMap((theme) =>
+        WIDTHS.filter((width) => !baselineSet.has(`${id}-${theme}-${width}.png`)).map(
+          (width) => `${id}-${theme}-${width}.png`,
+        ),
+      ),
+    }))
+    .filter(({ missingUnits }) => missingUnits.length > 0)
+}
+
+// Every baseline file that names neither a known story (via `BASELINE_NAME_RE`) nor a name
+// `exemptBaselines` carries. Exported so story-baselines.test.mjs can prove this still reports a
+// baseline that merely starts with `app-` without being one `loadAppRouteBaselineNames` actually
+// produced — the case a blanket prefix match would have missed (see this file's header).
+export function findOrphanBaselines(baselineFiles, storyIds, exemptBaselines) {
+  return baselineFiles
+    .filter((f) => !exemptBaselines.has(f.slice(0, -'.png'.length)))
+    .filter((f) => {
+      const match = f.match(BASELINE_NAME_RE)
+      return !match || !storyIds.has(match[1])
+    })
+    .sort()
+}
 
 function log(message) {
   console.log(`story-baselines: ${message}`)
@@ -95,28 +162,13 @@ function main() {
     process.exit(1)
   }
 
+  const exemptBaselines = loadAppRouteBaselineNames(readFileSync(appRoutesSpecPath, 'utf8'))
+
   const baselineFiles = readdirSync(screenshotsDir).filter((f) => f.endsWith('.png'))
   const baselineSet = new Set(baselineFiles)
 
-  const incompleteStories = [...storyIds]
-    .sort()
-    .map((id) => ({
-      id,
-      missingUnits: THEMES.flatMap((theme) =>
-        WIDTHS.filter((width) => !baselineSet.has(`${id}-${theme}-${width}.png`)).map(
-          (width) => `${id}-${theme}-${width}.png`,
-        ),
-      ),
-    }))
-    .filter(({ missingUnits }) => missingUnits.length > 0)
-
-  const orphanBaselines = baselineFiles
-    .filter((f) => !EXEMPT_BASELINES.has(f.slice(0, -'.png'.length)))
-    .filter((f) => {
-      const match = f.match(BASELINE_NAME_RE)
-      return !match || !storyIds.has(match[1])
-    })
-    .sort()
+  const incompleteStories = findIncompleteStories(storyIds, baselineSet)
+  const orphanBaselines = findOrphanBaselines(baselineFiles, storyIds, exemptBaselines)
 
   if (incompleteStories.length > 0 || orphanBaselines.length > 0) {
     if (incompleteStories.length > 0) {
@@ -149,8 +201,13 @@ function main() {
   log(
     `${storyIds.size} stor${storyIds.size === 1 ? 'y' : 'ies'} each have all ` +
       `${THEMES.length * WIDTHS.length} baselines; ${baselineFiles.length} baseline files total ` +
-      `(${EXEMPT_BASELINES.size} exempt) agree with the built index.`,
+      `(${exemptBaselines.size} app-route captures exempt) agree with the built index.`,
   )
 }
 
-main()
+// Only run when invoked directly (`node scripts/checks/story-baselines.mjs`) —
+// story-baselines.test.mjs imports the functions above without triggering the scan or the process
+// exit code, the same guard token-scale.mjs uses.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+}
