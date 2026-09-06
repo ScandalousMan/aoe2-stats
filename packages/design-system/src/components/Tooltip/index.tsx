@@ -303,7 +303,7 @@ export function Tooltip({
           // still caps it there; short content (e.g. "France") still sizes to its own text either
           // way. `left-1/2 -translate-x-1/2` centres on the surface's own width, which `w-max`
           // does not change the meaning of.
-          'absolute left-1/2 z-10 w-max max-w-xs -translate-x-1/2 rounded-md border border-border bg-surface-raised px-2 py-1',
+          'absolute left-1/2 z-10 w-max max-w-xs -translate-x-1/2 rounded-overlay border border-border bg-surface-raised px-2 py-1',
           'font-sans text-sm font-normal text-text-primary opacity-100 shadow-overlay',
           'transition-opacity ease-decelerate motion-reduce:duration-0',
           isOpen ? 'duration-120' : 'duration-0',

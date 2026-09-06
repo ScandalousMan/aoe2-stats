@@ -1,0 +1,6 @@
+{
+  "$comment": "Border, focus-ring and focus-ring-offset widths (T514, closes gap DS-4, research D5). A deliberately small, closed family rather than a ratification of Tailwind's built-in border-width scale: FR-062 requires a mechanical check that an off-scale value fails, and Tailwind's numeric width scale is unbounded (`border-7` compiles), so ratifying it would hand the scale checker nothing to enforce. Values name what already ships and do not move: `hairline` is Tailwind's default `border` utility (1px); `ring` and `ring-offset` are the focus ring's `outline-2`/`outline-offset-2` (2px each). Consumed through the `border-hairline`, `outline-ring` and `outline-offset-ring` utilities (contracts/token-families.md §2) rather than through Tailwind's own border-width or outline namespaces, because Tailwind v4 exposes no theme namespace for border width, outline width or outline offset the way `--radius-*` exists for radius — verified against the installed `tailwindcss` package's `theme.css`. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "hairline": "1px",
+  "ring": "2px",
+  "ring-offset": "2px"
+}

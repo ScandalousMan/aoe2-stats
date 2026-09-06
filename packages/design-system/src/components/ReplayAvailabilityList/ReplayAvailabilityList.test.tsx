@@ -256,4 +256,28 @@ describe('ReplayAvailabilityList', () => {
     expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(2)
     vi.useRealTimers()
   })
+
+  it('announces loading once for the list, not once per skeleton row (FR-054)', () => {
+    vi.useFakeTimers()
+    const { container } = render(<ReplayAvailabilityList loading rows={[]} />)
+    act(() => vi.advanceTimersByTime(200))
+    vi.useRealTimers()
+
+    expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true')
+    const hiddenBlocks = container.querySelectorAll('[aria-hidden="true"]')
+    expect(hiddenBlocks).toHaveLength(2)
+    for (const block of hiddenBlocks) {
+      expect(block).not.toHaveAttribute('aria-busy')
+    }
+    expect(container.querySelectorAll('[aria-busy]')).toHaveLength(1)
+  })
+
+  it('does not mark the list busy once loaded', () => {
+    render(
+      <ReplayAvailabilityList
+        rows={[{ id: '1', alias: 'GL.TheViper', availability: 'archived' }]}
+      />,
+    )
+    expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy')
+  })
 })

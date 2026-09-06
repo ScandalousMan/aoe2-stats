@@ -203,9 +203,15 @@ that flashes is worse than a brief blank. After 10 s, the caller replaces it wit
 **Tokens** — `surface-sunken` fill. Radius `sm`. Motion `duration.slow`, `easing.standard` for the
 pulse.
 
-**Accessibility** — container carries `aria-busy="true"` and `aria-hidden` on the blocks themselves;
-the region announces once, not per block. Under `prefers-reduced-motion: reduce` the pulse stops on
-its resting frame.
+**Accessibility** — `aria-hidden` on the blocks this component renders, always; `Skeleton` itself
+never carries `aria-busy` — it is the caller's own surrounding region (not this component) that
+carries it, exactly once, no matter how many `Skeleton`s the region holds (T532, FR-054). A caller
+that renders `Skeleton` more than once and puts `aria-busy` on each occurrence, or on each item of a
+list, has reproduced the defect this rule exists to rule out — "a skeleton per cell announced per
+cell is a screen reader reading the word 'loading' forty times for one table." `StatValue`'s own
+spec section above records which component owns that single region for every composition of
+`StatValue`/`Skeleton` this design system ships today. Under `prefers-reduced-motion: reduce` the
+pulse stops on its resting frame.
 
 **Acceptance** — skeleton footprint matches the loaded content within a couple of pixels, so the
 before/after screenshots show no reflow; no text and no zero-placeholder appears inside a skeleton.
@@ -329,9 +335,10 @@ component the whole product is judged on.
 
 **States**
 
-- **default** — label `text-secondary` at `sm`; value `text-primary`, `font-mono`, `semibold`,
-  `tracking-tight`; delta `success` or `danger` **with an explicit sign character**, never colour
-  alone; secondary line `text-secondary` at `xs`.
+- **default** — label `text-secondary` at `sm`; value `text-primary`, `type-numeric` (T531/research
+  D7 — the mono family plus `tabular-nums`, so alignment survives a change of the mono family),
+  `semibold`, `tracking-tight`; delta `success` or `danger` **with an explicit sign character**,
+  never colour alone; secondary line `text-secondary` at `xs`.
 - **hover** — none on the value. If the surrounding row is interactive, the row owns hover.
 - **focus-visible** — none unless the value is a link, in which case the standard ring applies to
   the link and the ring never crops the digits.
@@ -344,13 +351,26 @@ component the whole product is judged on.
 - **error** — the last known value renders, with the secondary line stating when it was measured and
   that the refresh failed, plus a retry in the parent. Stale-and-labelled beats blank; blank beats
   wrong.
-- **empty** — the value has never been observed: render the label with an em dash in
-  `text-secondary` at the value's size, and a secondary line saying why in plain words. The em dash
-  is `text-secondary`, so it cannot be mistaken for a measured `text-primary` figure.
+- **empty** — the value has never been observed (T532, US4 acceptance scenario 3, SC-010): render
+  the reason **in words**, `type-supporting` (ordinary body/supporting typography, never
+  `type-identifier` — this is prose stating a reason, not a raw value the product could not resolve
+  to a name) in `text-secondary` at the value's own size, so the row keeps its footprint and the
+  treatment is visibly distinct from a measured `text-primary`, `type-numeric` figure in colour,
+  weight and typeface together. **Never a punctuation mark** (an em dash, `--`) a reader has to
+  interpret — that was this state's own previous defect. The reason is a fact only the caller has
+  (never played this leaderboard, not yet rated, no matches in the selected range); `StatValue`
+  never invents one:
+  - an explicit `emptyReason` prop always wins;
+  - absent that, a `secondaryLine` the caller already supplied is **reused** as the value slot's own
+    words — existing callers already pass the reason there, and it is not worth stating twice, so it
+    is not repeated a second time beneath the value in this one case;
+  - absent both, a generic, always-true default ("No data yet") renders — never a fabricated
+    specific claim.
 
 **Tokens** — `text-primary`, `text-secondary`, `success`, `danger`, `surface`, `surface-sunken`.
-Font family `mono` for the value and any digit compared vertically, `sans` for labels. Sizes `xs`,
-`sm`, `md`, `lg`, `3xl`. Weights `normal`, `semibold`. Tracking `tight` on the value.
+Font family `mono` for the value and any digit compared vertically, `sans` for labels and for the
+`empty` state's own words. Sizes `xs`, `sm`, `md`, `lg`, `3xl`. Weights `normal`, `semibold`.
+Tracking `tight` on the value.
 
 **Spacing** — label to value `space-1`; value to delta `space-2`; value to secondary line `space-1`.
 
@@ -361,7 +381,26 @@ truncates and never shrinks below `2xl`.
 A delta's sign is a character in the accessible name, not a rotated glyph: "+12" and "−8", not an
 arrow. Values are text, never an image or a canvas.
 
+**Loading is announced once per region, never once per `StatValue` (T532, FR-054).** The `Skeleton`
+this component renders while loading is `aria-hidden`, per `Skeleton`'s own contract below; nothing
+in this component reads as data. Something must still tell assistive technology the region is busy,
+and exactly one ancestor must do it: `announceLoading` (default `true`) puts `aria-busy="true"` on
+this component's own `<dl>` while `status="loading"` — correct for a `StatValue` rendered standalone,
+since nothing else would announce it. When several `StatValue`s are composed into one loading
+column, row or table (a rating board, a match list), every one of them in that group is given
+`announceLoading={false}`, and the **composing component** owns a single `aria-busy="true"` on the
+shared container instead — never once per cell, which is the exact defect FR-054 names ("a skeleton
+per cell announced per cell is a screen reader reading the word 'loading' forty times for one
+table"). This is a standing obligation on any component that composes `StatValue` or `Skeleton`
+directly; per-component application: `MatchList` (`MatchRow`), `MatchDetailPanel`, `AnalysisTimeline`
+and `SearchBox` already own a single region each around their own `Skeleton`s; `ProfileSummary` owns
+two independent regions (the identity block — avatar and alias — and the rating board), because the
+two load independently; `FavouritesList`, `ArchivalControl`, `ReplayAvailabilityList` and
+`SignInScreen`'s returning phase each own one region around their own loading list or block.
+
 **Acceptance** — digits align vertically across stacked values in a screenshot (monospaced figures);
-no gradient, texture or border passes behind a value; deltas show a sign character; no `0` appears
-where data has not loaded; an empty value shows a secondary-colour em dash with an explanation, not
-a zero.
+no gradient, texture or border passes behind a value; deltas show a sign character, including a
+genuine zero delta ("+0"), which renders as data and is never suppressed; no `0` appears where data
+has not loaded; an empty value states why in words, in `text-secondary`, never a zero and never a
+punctuation mark; a region of stacked or tabled values announces "busy" once while loading, never
+once per value.

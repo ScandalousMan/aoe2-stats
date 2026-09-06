@@ -103,6 +103,20 @@ describe('SignInScreen', () => {
       expect(screen.queryByRole('button', { name: 'Continue with Steam' })).not.toBeInTheDocument()
     })
 
+    it('announces loading once for the region, not once per skeleton (FR-054)', () => {
+      const { container } = render(
+        <SignInScreen onContinueWithSteam={() => {}} phase="returning" />,
+      )
+      act(() => vi.advanceTimersByTime(200))
+
+      expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(1)
+      const hiddenBlocks = container.querySelectorAll('[aria-hidden="true"]')
+      expect(hiddenBlocks.length).toBeGreaterThan(1)
+      for (const block of hiddenBlocks) {
+        expect(block).not.toHaveAttribute('aria-busy')
+      }
+    })
+
     it('falls through to the unreachable outcome with a retry after 10s', () => {
       render(<SignInScreen onContinueWithSteam={() => {}} phase="returning" />)
       act(() => vi.advanceTimersByTime(10_000))

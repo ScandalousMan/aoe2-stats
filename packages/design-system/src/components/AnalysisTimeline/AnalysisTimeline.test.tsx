@@ -239,11 +239,12 @@ describe('AnalysisTimeline', () => {
       const unresolvedBuilding = screen.getByText('Building ID 9999')
       const unresolvedUnit = screen.getByText('Unit ID 9998')
       const unresolvedResearch = screen.getByText('Technology ID 9997')
-      expect(unresolvedAge).toHaveClass('text-text-secondary')
-      expect(unresolvedAge).toHaveClass('font-mono')
-      expect(unresolvedBuilding).toHaveClass('text-text-secondary')
-      expect(unresolvedUnit).toHaveClass('text-text-secondary')
-      expect(unresolvedResearch).toHaveClass('text-text-secondary')
+      // T531 (research D7): `text-secondary` now comes from `type-identifier`'s own contract
+      // rather than a separately written class.
+      expect(unresolvedAge).toHaveClass('type-identifier')
+      expect(unresolvedBuilding).toHaveClass('type-identifier')
+      expect(unresolvedUnit).toHaveClass('type-identifier')
+      expect(unresolvedResearch).toHaveClass('type-identifier')
     })
   })
 

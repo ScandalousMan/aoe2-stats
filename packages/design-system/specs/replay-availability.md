@@ -360,6 +360,9 @@ Gaps in play: none. Every token this component needs is already in use by `Badge
   rate-limit/failed-request case, and the same for the `expired_since_page_load` transition, since both
   are events the user did not expect and must be told about immediately, not stumbled on.
 - Touch target ≥ 44px on every `DownloadAction`.
+- **Loading (T532, FR-054)**: the `<ul>` carries `aria-busy` while `loading`, one announcement for
+  the whole list, never once per row's `Skeleton` (each stays `aria-hidden`, its own contract). See
+  `shared-primitives.md`'s `StatValue` section for the general rule this follows.
 - Contrast per `specs/README.md`'s measured table: `success`/`info`/`danger` badge labels on
   `surface-raised` and `neutral`'s `text-secondary` on `surface-sunken`, both already asserted in
   `tokens/build-tokens.test.mjs`.

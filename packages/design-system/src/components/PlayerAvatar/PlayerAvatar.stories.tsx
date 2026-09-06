@@ -64,7 +64,7 @@ export const FailedHash: Story = {
 // while the profile data has not arrived; this component is not rendered at all in that wait.
 export const Loading: Story = {
   name: 'Loading (caller-rendered Skeleton/block, not a state of this component)',
-  render: () => <Skeleton variant="block" className="h-16 w-16 rounded-md" />,
+  render: () => <Skeleton variant="block" className="h-16 w-16 rounded-control" />,
 }
 
 // Acceptance: loaded, absent and failed avatars, each beside the heading it always sits next to —

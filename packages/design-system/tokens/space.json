@@ -1,5 +1,5 @@
 {
-  "$comment": "Spacing scale (T016). `unit` feeds Tailwind's own --spacing multiplier, so every numeric utility (p-3, gap-4, ...) derives from this one value instead of Tailwind's built-in default. `scale` names the same steps explicitly for the rare non-utility consumer (inline style, canvas). Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Spacing scale (T016; rhythm rule T520, FR-008). `unit` feeds Tailwind's own --spacing multiplier, so every numeric utility (p-3, gap-4, ...) derives from this one value instead of Tailwind's built-in default. `scale` names the same steps explicitly for the rare non-utility consumer (inline style, canvas). `rhythm` answers FR-008's question — which step expresses which relationship — by naming three of `scale`'s own keys, never a fourth value: `within-component` is the step a component's own internal layout uses (a label and its value, an icon and its text — evidenced by the majority `gap-2` usage across the design system's icon/text and label/value pairings); `between-components` is the step that separates two adjacent, independently-meaningful components stacked on one page (evidenced by `match-history.md`'s own documented rule, 'page header to match list — space-6', applied identically in both `MatchHistoryContainer` and `PlayerMatchHistoryContainer`); `between-sections` is the step for the relationship this rule exists to fix — today written as `mt-6` in three places, `mt-8` in three others and `gap-12` in one, with nothing saying which is right (spec.md, Context). `between-sections` resolves to `8`: it is the value `replay-availability.md` §8 and `analysis-timeline.md` §7 already name in words for exactly this relationship ('between this section and ParticipantsTable'; 'this section is this route's own sibling'), while the `mt-6` instances document a narrower, `between-components` relationship and `gap-12` carries no rationale at all. This file only names the rule; phase 4's `Section` and `Page` primitives are the sole place it becomes mechanically true, by being the only things that may express it (research.md D14). Edit here, then run `pnpm --filter design-system tokens:build`.",
   "unit": "0.25rem",
   "scale": {
     "0": "0rem",
@@ -17,5 +17,10 @@
     "20": "5rem",
     "24": "6rem",
     "32": "8rem"
+  },
+  "rhythm": {
+    "within-component": "2",
+    "between-components": "6",
+    "between-sections": "8"
   }
 }

@@ -96,11 +96,12 @@ repository, this component is the same disclosure rendered where a visitor actua
 
 - **default** — as anatomised in §2, always. This is functionally the only state; a footer's
   disclaimer does not have a "loading" phase.
-- **hover** — `PrivacyNoticeLink` and `ObjectionLink` only: colour moves to `accent-hover`
+- **hover** — `PrivacyNoticeLink` and `ObjectionLink` only: colour moves to `link-hover`
   underneath the permanent underline. Nothing else in this component responds to a pointer.
 - **focus-visible** — the standard ring (`outline-2 outline-offset-2`, gap DS-4) on each link that
   is present. The disclaimer and the affiliation note are not focusable; they are not controls.
-- **active** — links render `accent-active` while pressed. Nothing translates or scales.
+- **active** — links render `link-hover` while pressed (there is deliberately no `link-active`;
+  T522's `link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
 - **disabled** — not applicable. A link is either rendered (its href is present) or absent; there
   is no dimmed, unusable middle state for a footer link. Rendering a dead link when a route does
   not yet exist would be worse than omitting it, and omission is what the optional props already do.
@@ -116,12 +117,12 @@ repository, this component is the same disclosure rendered where a visitor actua
 
 Colour: `background` (the footer's own fill — it sits on the page background, not `surface`, so it
 reads as chrome rather than as a card), `border` (the top rule separating it from page content),
-`text-secondary` (`Disclaimer`, `AffiliationNote`, and the links' resting colour — matching
-`ArchivalControl`'s existing `privacyNoticeHref` link rather than introducing a new `accent`-on-
-`background` pair the README's contrast table has not measured), `accent-hover`, `accent-active`
-(link hover/active — both already measured against `surface` in the README table; a footer link's
-resting state uses `text-secondary` for exactly this reason, so no new untested pair is introduced),
-`focus-ring`.
+`text-secondary` (`Disclaimer`, `AffiliationNote`), `link` (the links' resting colour — T522 gives
+this the one signal that says it is a link, and it declares `background` and is measured there,
+which retires the earlier avoidance of an `accent`-on-`background` pair: `link` is not `accent`,
+and the pair is now measured rather than untested), `link-hover` (hover and active — there is no
+`link-active`; `color-tokens.md` §11.3), `focus-ring`. The link expresses its quietness with size
+(`sm`), which it already carried, rather than by withholding the link colour.
 
 Font: family `sans` throughout. Size `sm` for `Disclaimer` and `AffiliationNote` — small enough to
 read as chrome, never smaller, because a disclaimer nobody can read does not satisfy the obligation
@@ -134,8 +135,8 @@ Motion: `duration.fast` + `easing.standard` on link colour only, falling back to
 `duration.instant` under `prefers-reduced-motion: reduce`.
 
 Gaps in play: none new. `text-secondary` on `background` is already asserted in the README's
-contrast table (light 5.5, dark comfortable); no `accent`-on-`background` pair is introduced,
-following the same avoidance `archival-control.md`'s existing footer-style link already made.
+contrast table (light 5.5, dark comfortable); `link` on `background` is asserted by T522
+(`color-tokens.md` §11.5: 5.97 light / 7.51 dark).
 
 ## 7. Spacing
 
@@ -167,9 +168,9 @@ following the same avoidance `archival-control.md`'s existing footer-style link 
 - Touch targets: each `LinkRow` entry clears 44px at 375px via its own padding-block, matching
   `privacy-notice.md`'s `Contents` entries.
 - Contrast: `text-secondary` on `background` — 5.5 (light) per the README's measured table; dark
-  theme is the comfortable side per the README's general note. Link hover/active colours
-  (`accent-hover`, `accent-active`) are only ever shown together with the permanent underline, so
-  they never have to carry the pairing alone.
+  theme is the comfortable side per the README's general note. `link` on `background` — 5.97
+  light / 7.51 dark (`color-tokens.md` §11.5). Link hover colour (`link-hover`) is only ever shown
+  together with the permanent underline, so it never has to carry the pairing alone.
 - Reading order equals visual order equals DOM order at every viewport.
 
 ## 10. Visual acceptance criteria

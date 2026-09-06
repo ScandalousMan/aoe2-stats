@@ -51,7 +51,7 @@ UploadControl                               <section aria-labelledby>; inside Ma
 │  ├─ DropPrompt             "Drop the .aoe2record file here, or Choose file"
 │  ├─ FileInput              <input type="file" accept=".aoe2record"> — visually the Choose file
 │  │                         control; the always-present keyboard/click path (drag-drop is extra)
-│  └─ FileChip   ×0..1       chosen file: name (font-mono) + size (text-secondary) + Remove button
+│  └─ FileChip   ×0..1       chosen file: name (type-machine) + size (text-secondary) + Remove button
 ├─ SubmitButton  ×0..1       Button/primary "Upload and archive" — present only once a file is chosen
 └─ OutcomeRegion ×0..1       Callout — the one result of the last attempt (§4.4)
 ```
@@ -135,8 +135,10 @@ outcome means changes here first, and must stay true to `test_manual_upload.py`.
 `DropPrompt` (empty `DropZone`): **Drop the `.aoe2record` file here, or** — with **Choose file** the
 labelled control that opens the picker.
 
-`FileChip` renders the selected file's name in `font-mono` (so a name full of digits reads cleanly, gap
-DS-8) and its size in `text-secondary`, with a **Remove** button that returns the control to `idle`.
+`FileChip` renders the selected file's name in `type-machine` (T531/research D7 — the mono family for
+character-level legibility of a name full of digits, with no `tabular-nums`: a filename is not a
+value to compare) and its size in `text-secondary`, with a **Remove** button that returns the control
+to `idle`.
 
 `SubmitButton`: **Upload and archive** (`Button/primary`). Loading label while the bytes are in flight:
 **Uploading…**; once the request is accepted and the server is validating: **Checking the file…**.
@@ -231,7 +233,8 @@ light / 8.2 dark); `danger` on `surface-raised` (6.2 / 4.6), `info` on `surface-
 on `surface-raised` (14.5 / 12.0, AAA). Referenced by pair, per the README convention; numbers not
 restated as the source of truth.
 
-Typography: family `sans` throughout, except the chosen file **name** in `font-mono` (DS-8). Sizes —
+Typography: family `sans` throughout, except the chosen file **name** in `type-machine` (T531,
+DS-8 closed). Sizes —
 `Heading` `md`; `Explanation`, `DropPrompt` and callout bodies `md`; file name `sm` mono; file size and
 saved-games hint `sm`; callout headings `md` weight `semibold`. Weights — `semibold` on the heading and
 the bolded lead phrases of each outcome, `normal` elsewhere. No number animates on entry (README rule 1).
@@ -313,7 +316,7 @@ not invented.
 **The control and its resting shape**
 
 - [ ] In the `idle` frame at 375, 768 and 1280, there is a labelled drop zone with a visible `Choose
-  file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit button.
+file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit button.
 - [ ] The heading reads "Add the replay yourself"; the explanation names the `.aoe2record` file and the
       saved games folder, and says the file is kept unchanged and marked as supplied by the user.
 - [ ] `UploadControl` never appears in the same frame as a `DownloadAction` — the two are mutually

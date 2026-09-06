@@ -14,9 +14,12 @@
 //
 // The asserted set is drawn from a frequency scan of every packages/design-system/src/components
 // className, kept to utilities that are load-bearing for what the first production sign-in showed
-// as broken: surface backgrounds, corner radius, layout primitives and the token-driven text
-// colours and font families — not an exhaustive list of every class the library ever emits, which
-// would drift out of sync with the components on its own.
+// as broken: surface backgrounds, corner radius, layout primitives, the token-driven text colours
+// and font families, and — since feature 005 phase 2 added them as a distinct `@utility` emission
+// path alongside the `@theme`-namespace families above, and therefore a distinct way the built
+// stylesheet could silently lose content — a typographic role and an icon size, one representative
+// each. Not an exhaustive list of every class the library ever emits, which would drift out of sync
+// with the components on its own.
 //
 // Usage:  node scripts/checks/built-css.mjs
 // Exit:   0 if the built stylesheet contains every required utility, 1 otherwise.
@@ -32,13 +35,19 @@ const assetsDir = path.join(rootDir, 'apps', 'web', 'dist', 'assets')
 // reason should not make this check indistinguishable from the T107 regression it exists to catch.
 const REQUIRED_UTILITIES = [
   'bg-surface', // surface background — absent entirely in the T107 regression
-  'rounded-lg', // corner radius — likewise absent entirely
+  'rounded-panel', // corner radius — role name post-T518 (FR-013); absorbed most prior rounded-lg call sites
   'rounded-full',
   'inline-flex', // layout primitive components are built from
   'text-text-primary', // token-driven text colour
   'text-text-secondary',
   'font-sans', // token-driven typography
   'border-border', // token-driven border colour
+  'type-numeric', // font.json role group (T524) — fixed-value @utility, not a @theme namespace
+  'icon-sm', // icon.json size vocabulary (T512/T517) — same fixed-value @utility emission path
+  // No border.json (T514) representative: border-hairline/outline-ring/outline-offset-ring are not
+  // yet written by any component, so none is present in the built stylesheet — listing one here
+  // would fail this check for a reason unrelated to the T107 regression, which the family
+  // description above forbids. Add one once a component consumes it.
 ]
 
 function log(message) {

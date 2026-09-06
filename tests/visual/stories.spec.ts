@@ -163,6 +163,12 @@ for (const { id, theme, width, fullPage } of stories) {
       id,
       { timeout: 5_000 },
     )
+    // typography-tokens.md §10: with `font-display: swap` a story can be screenshotted in the
+    // fallback face if the capture beats the font — the DOM has rendered, but the render has not
+    // finished, the same class of wait as the `completing`-state one directly above. Waited here,
+    // after the story-settled wait and before the axe scan and the screenshot, so neither ever
+    // runs against a mid-swap frame.
+    await page.evaluate(() => document.fonts.ready)
     // T507 (FR-057, FR-058, SC-007): runs here, on the same settled DOM the screenshot below is
     // about to capture — "at the point the screenshot is taken" — but *before* that assertion
     // rather than after: `toHaveScreenshot` throws on the first pixel mismatch, and a real (or

@@ -86,7 +86,7 @@ export const NeedsReview: Story = {
 export const CompactStacked: Story = {
   name: 'Compact context, stacked (told to, not inferred — e.g. MatchRow’s bounded column)',
   render: () => (
-    <div className="w-32 rounded-sm border border-dashed border-border p-2">
+    <div className="w-32 rounded-panel border border-dashed border-border p-2">
       <CaptureStateBadge
         captureStatus="pending"
         captureDeadlineAt={inFromNow(6 * DAY_MS)}
@@ -115,7 +115,7 @@ export const Loading: Story = {
 // wrapper so the empty result is visibly confirmable rather than an indistinguishable blank canvas.
 export const Empty: Story = {
   render: () => (
-    <div className="rounded-sm border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
+    <div className="rounded-panel border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
       Nothing renders below this line —{' '}
       <span className="inline-block align-middle">
         <CaptureStateBadge captureStatus={null} />

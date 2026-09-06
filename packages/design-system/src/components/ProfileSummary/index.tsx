@@ -111,14 +111,21 @@ function fallbackHeading(profileId: string): string {
   return `Player ${profileId}`
 }
 
-// `PlayerAvatar`'s size tokens (`icon-2xl` / `icon-lg`) have no Tailwind namespace
-// (`game-asset-tokens.md`), so the loading skeleton reserves the identical footprint via the same
-// arbitrary-value-referencing-the-token-variable technique `Skeleton`'s own pulse animation already
-// uses, rather than a hard-coded pixel figure.
+// T528: closes four hand-written `var(--ds-*)` references. `icon.json` (T517) now emits one
+// `@utility icon-<step>` block per size, setting width and height together, so the loading
+// skeleton reserves `PlayerAvatar`'s own footprint (`icon-2xl` board / `icon-lg` compact,
+// `game-asset-tokens.md`) by writing the real utility class rather than reading its CSS variable
+// by hand — `h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]` was token-derived and still a defect,
+// the exact shape `scripts/checks/token-scale.mjs` exists to catch.
 const AVATAR_SKELETON_SIZE: Record<'board' | 'compact', string> = {
-  board: 'h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]',
-  compact: 'h-[var(--ds-icon-lg)] w-[var(--ds-icon-lg)]',
+  board: 'icon-2xl',
+  compact: 'icon-lg',
 }
+
+// T532 (US4 scenario 3, SC-010): the one reason this component ever states for an empty value,
+// shared by `CompactRatingSummary`, `RatingCard` (both via `StatValue`'s own `emptyReason`/
+// `secondaryLine` promotion) and `RatingTable` below, so the same fact is never worded twice.
+const NOT_RANKED_YET = 'Not ranked yet'
 
 /** Leaderboards the profile has never played are absent, not present-and-empty (FR-008). One DOM
  * layout only: a real `<table>` from `lg` up, stacked cards below it — never both, per the
@@ -220,15 +227,18 @@ export function ProfileSummary({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         {/* IdentityBar (004 spec §12.6): the avatar leads, at every viewport — it never stacks
          * above the identity column, even at 375, so the ratings below stay as close to the fold
-         * as they were before the avatar existed. */}
-        <div className="flex items-center gap-4">
+         * as they were before the avatar existed. T532 (FR-054): the avatar and alias skeletons
+         * inside this one div are announced once, by this div's own `aria-busy`, never per
+         * `Skeleton` — this is the region for that specific loading concern, distinct from
+         * `RatingBoard`'s own loading region below, because the two load independently. */}
+        <div className="flex items-center gap-4" aria-busy={!viewedProfile || undefined}>
           {viewedProfile ? (
             <PlayerAvatar avatarHash={viewedProfile.avatarHash} size={avatarSize} />
           ) : (
             <Skeleton
               variant="block"
               className={cx(
-                'shrink-0 rounded-md',
+                'shrink-0 rounded-control',
                 AVATAR_SKELETON_SIZE[compact ? 'compact' : 'board'],
               )}
             />
@@ -305,11 +315,21 @@ export function ProfileSummary({
                   className="!flex min-w-0 [&>button]:min-w-0 [&>button]:px-3 md:[&>button]:px-4"
                   triggerLabel={
                     <>
+                      {/* T531 (research D7, FR-007, SC-010): the fallback heading is a value the
+                       * product could not resolve to a name — `type-identifier`, not a bare
+                       * `font-mono`. Its `text-secondary` (by the role's own contract) replaces
+                       * profile-summary.md §12.3's old `text-primary` deliberately: that rule
+                       * predates the split roles and reasoned the id "really is identified...
+                       * exactly and verifiably" so should not read as one step down. SC-010 now
+                       * requires the opposite for any value that was never observed — an alias
+                       * was never recorded here — so this is a recorded, intended visual change,
+                       * not a regression; §12.3 is amended to match. `text-text-primary` is kept
+                       * only for the resolved-alias branch, where the role does not apply. */}
                       <span
                         id="profile-summary-alias"
                         className={cx(
-                          'min-w-0 truncate text-xl font-semibold text-text-primary',
-                          usingFallbackHeading ? 'font-mono' : 'font-sans',
+                          'min-w-0 truncate text-xl font-semibold',
+                          usingFallbackHeading ? 'type-identifier' : 'font-sans text-text-primary',
                         )}
                       >
                         {headingAlias}
@@ -327,11 +347,12 @@ export function ProfileSummary({
                 />
               )}
               {(!isSelf || !authenticated) && viewedProfile && (
+                // T531: same `type-identifier` reasoning as the switcher-trigger heading above.
                 <span
                   id="profile-summary-alias"
                   className={cx(
-                    'min-w-0 truncate text-xl font-semibold text-text-primary',
-                    usingFallbackHeading ? 'font-mono' : 'font-sans',
+                    'min-w-0 truncate text-xl font-semibold',
+                    usingFallbackHeading ? 'type-identifier' : 'font-sans text-text-primary',
                   )}
                 >
                   {headingAlias}
@@ -357,10 +378,13 @@ export function ProfileSummary({
             {/* ProfileId is omitted while the fallback heading is in force (004 spec §12.3): the
              * same number twice — once as the heading, once demoted beneath it — reads as a
              * rendering fault, and there is nothing left to demote it beneath. */}
+            {/* T531: a bare platform id, never itself resolved to a name — `type-identifier`
+             * (research D7, FR-007), the same role `MatchDetailPanel`'s `UnresolvedIdentifier`
+             * and `MapThumbnail`'s unresolved-map treatment use. Its `text-secondary` is by the
+             * role's own contract, so the standing `text-text-secondary` class is redundant and
+             * dropped here. */}
             {viewedProfile && hasAlias(viewedProfile.alias) && (
-              <span className="font-mono text-xs text-text-secondary">
-                {viewedProfile.profileId}
-              </span>
+              <span className="type-identifier text-xs">{viewedProfile.profileId}</span>
             )}
             {/* AliasFreshnessNote (003 spec §11.1.4) — a third party's alias can go stale between
              * when this service last observed it and today; the signed-in user's own never can.
@@ -446,8 +470,10 @@ function RatingBoard({
   onRetry?: () => void
 }) {
   if (status === 'loading') {
+    // T532 (FR-054): one region for the whole board, not once per stat block — every `Skeleton`
+    // below stays `aria-hidden` (its own contract) and this single wrapper owns `aria-busy`.
     return (
-      <div className={cx('flex flex-col gap-4', compact && 'flex-row gap-6')}>
+      <div className={cx('flex flex-col gap-4', compact && 'flex-row gap-6')} aria-busy="true">
         {(entries.length > 0 ? entries : [0, 1, 2]).map((entry, index) => (
           <div
             key={typeof entry === 'object' ? entry.leaderboardId : index}
@@ -535,7 +561,7 @@ function CompactRatingSummary({ entry }: { entry: RatingEntryData }) {
         label="Rank"
         status={entry.rank ? 'default' : 'empty'}
         value={entry.rank}
-        secondaryLine={entry.rank ? undefined : 'Not ranked yet'}
+        secondaryLine={entry.rank ? undefined : NOT_RANKED_YET}
       />
     </div>
   )
@@ -545,7 +571,7 @@ function RatingCard({ entry }: { entry: RatingEntryData }) {
   return (
     <article
       aria-labelledby={`entry-${entry.leaderboardId}-heading`}
-      className="rounded-lg border border-border p-4"
+      className="rounded-panel border border-border p-4"
     >
       <h3
         id={`entry-${entry.leaderboardId}-heading`}
@@ -560,7 +586,7 @@ function RatingCard({ entry }: { entry: RatingEntryData }) {
           label="Rank"
           status={entry.rank ? 'default' : 'empty'}
           value={entry.rank}
-          secondaryLine={entry.rank ? undefined : 'Not ranked yet'}
+          secondaryLine={entry.rank ? undefined : NOT_RANKED_YET}
         />
         <StatValue variant="compact" label="Record" value={`${entry.wins} W · ${entry.losses} L`} />
         <StatValue variant="compact" label="Win rate" value={entry.winRate} />
@@ -580,7 +606,7 @@ function RecordBar({ wins, losses }: { wins: number; losses: number }) {
   return (
     <div
       aria-hidden="true"
-      className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken"
+      className="mt-2 flex h-1.5 w-full overflow-hidden rounded-pill bg-surface-sunken"
     >
       <div className="h-full bg-success" style={{ width: `${winPercent}%` }} />
       <div className="h-full bg-danger" style={{ width: `${100 - winPercent}%` }} />
@@ -588,6 +614,9 @@ function RecordBar({ wins, losses }: { wins: number; losses: number }) {
   )
 }
 
+// Every figure below is a measured number a reader compares down the column — `type-numeric`
+// (research D7, FR-007), never `machine` or `identifier`: rating, delta, rank, record, win rate,
+// streak and highest rating are all read as values, not as raw strings.
 function RatingTable({ entries }: { entries: RatingEntryData[] }) {
   return (
     <table className="w-full border-collapse text-left font-sans text-sm">
@@ -626,10 +655,10 @@ function RatingTable({ entries }: { entries: RatingEntryData[] }) {
             <th scope="row" className="py-3 pr-6 font-normal text-text-primary">
               {entry.leaderboardName}
             </th>
-            <td className="py-3 pr-6 text-right font-mono font-semibold tracking-tight text-text-primary">
+            <td className="py-3 pr-6 text-right type-numeric font-semibold tracking-tight text-text-primary">
               {entry.rating}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-sm">
+            <td className="py-3 pr-6 text-right type-numeric text-sm">
               {entry.ratingDelta && (
                 <span className={entry.ratingDelta.value >= 0 ? 'text-success' : 'text-danger'}>
                   {entry.ratingDelta.value >= 0 ? '+' : '−'}
@@ -637,15 +666,19 @@ function RatingTable({ entries }: { entries: RatingEntryData[] }) {
                 </span>
               )}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">
-              {entry.rank ?? <span className="text-text-secondary">— Not ranked yet</span>}
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
+              {entry.rank ?? (
+                <span className="type-supporting text-text-secondary">{NOT_RANKED_YET}</span>
+              )}
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">
               {entry.wins} W · {entry.losses} L
             </td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">{entry.winRate}</td>
-            <td className="py-3 pr-6 text-right font-mono text-text-primary">{entry.streak}</td>
-            <td className="py-3 text-right font-mono text-text-secondary">{entry.highestRating}</td>
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.winRate}</td>
+            <td className="py-3 pr-6 text-right type-numeric text-text-primary">{entry.streak}</td>
+            <td className="py-3 text-right type-numeric text-text-secondary">
+              {entry.highestRating}
+            </td>
           </tr>
         ))}
       </tbody>

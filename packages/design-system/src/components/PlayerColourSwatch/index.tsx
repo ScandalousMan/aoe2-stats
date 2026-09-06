@@ -66,7 +66,7 @@ export function PlayerColourSwatch({
       <span
         aria-hidden="true"
         className={cx(
-          'rounded-sm border border-border-strong',
+          'rounded-control border border-border-strong',
           known ? known.fill : 'bg-surface-sunken',
         )}
         style={{ width: dimension, height: dimension }}

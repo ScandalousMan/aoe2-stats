@@ -1,10 +1,7 @@
 {
-  "$comment": "Corner radius scale (T016). Names match Tailwind's own rounded-* vocabulary so the utility class stays familiar while the value stays ours. Edit here, then run `pnpm --filter design-system tokens:build`.",
-  "none": "0rem",
-  "sm": "0.125rem",
-  "md": "0.25rem",
-  "lg": "0.5rem",
-  "xl": "0.75rem",
-  "2xl": "1rem",
-  "full": "9999px"
+  "$comment": "Corner radius, assigned by role rather than by size (T518, FR-013): every component of a given role reaches for the same token, so two components of the same role cannot differ. `control` is the small, interactive, form-like shape — buttons, inputs, search boxes, nav links, and the compact decorative marks (avatars, flags, civilisation icons, colour swatches) that sit inline with them; grounded in Button's own `rounded-md` (0.25rem), the majority value across control call sites before this task — three swatch components (CivilisationIcon, CountryFlag, PlayerColourSwatch) were normalized up from a smaller `0.125rem` outlier to reach it. `panel` is the card- or container-shaped block of content — panels, list rows acting as cards, table containers, the match-detail and analysis-timeline blocks; grounded in the near-unanimous prior `rounded-lg` (0.5rem) — `SignInScreen`'s card was the one `0.75rem` outlier, normalized down to reach it. `overlay` is the floating surface above the page — dialogs, menus, tooltips; the three prior values disagreed (`Dialog` 0.75rem, `Menu` 0.5rem, `Tooltip` 0.25rem) with no majority, so the median, least-disruptive value was kept (0.5rem), normalizing the other two toward it. `pill` is the fully-rounded chip shape — badges and the rating record bar; unchanged at 9999px, the prior `full` value. A genuine circle (an avatar frame, a decorative mark) stays on Tailwind's own literal `rounded-full`, and a genuine zero-radius override (a card flattening into a table row at a breakpoint) stays on Tailwind's own literal `rounded-none` family — neither is a role, in the same way neither was ever a value in this file's own scale. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "control": "0.25rem",
+  "panel": "0.5rem",
+  "overlay": "0.5rem",
+  "pill": "9999px"
 }

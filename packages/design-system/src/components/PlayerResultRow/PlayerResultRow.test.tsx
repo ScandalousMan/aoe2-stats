@@ -49,11 +49,11 @@ describe('PlayerResultRow', () => {
     expect(screen.queryByText('—')).not.toBeInTheDocument()
   })
 
-  it('renders standing as "<N> games" in the monospaced family when games_played is known', () => {
+  it('renders standing as "<N> games" in type-numeric (T531, research D7)', () => {
     render(<PlayerResultRow result={base} />)
     const standing = screen.getByText('1042 games')
     expect(standing).toBeInTheDocument()
-    expect(standing.className).toMatch(/font-mono/)
+    expect(standing.className).toMatch(/type-numeric/)
   })
 
   // §4: `aoe_profiles`, the local fallback, has no games-played column — the row must show no
@@ -89,12 +89,12 @@ describe('PlayerResultRow', () => {
   // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
   // labelled, and nothing may be built on it.
   describe('unverifiedSteamId (§4a)', () => {
-    it('shows the claim labelled "Unverified Steam ID:" with the value in the monospaced family', () => {
+    it('shows the claim labelled "Unverified Steam ID:" with the value in type-identifier (T531, research D7)', () => {
       render(<PlayerResultRow result={{ ...base, unverifiedSteamId: '76561198012345678' }} />)
       expect(screen.getByText(/Unverified Steam ID:/)).toBeInTheDocument()
       const value = screen.getByText('76561198012345678')
       expect(value).toBeInTheDocument()
-      expect(value.className).toMatch(/font-mono/)
+      expect(value.className).toMatch(/type-identifier/)
     })
 
     it('renders no claim line at all when unverifiedSteamId is null, never a placeholder', () => {

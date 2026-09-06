@@ -43,6 +43,8 @@ const indexPath = path.join(storybookStaticDir, 'index.json')
 // The two axes every selected story is captured across. Order matters only for log readability —
 // `stories.spec.ts` treats every unit independently.
 const THEMES = ['light', 'dark']
+// 375/768/1280 are declared as standing rule 7 in packages/design-system/specs/README.md (closes
+// DS-5, T529) — that rule is this array's source, not a value this file decides on its own.
 const WIDTHS = [375, 768, 1280]
 
 // Paths whose diff repaints or can repaint *every* story, so touching any of them selects the

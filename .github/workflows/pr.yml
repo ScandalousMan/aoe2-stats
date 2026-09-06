@@ -78,6 +78,11 @@ jobs:
             asset-packs:
               - 'packages/game-assets/**'
               - 'docs/asset-packs.md'
+              # 005 T523: the second assets root. The design-system filter above already fires on
+              # this path, but the licence-gate job is gated on `asset-packs` alone, so without this
+              # line a font pack could be added, changed or stripped of its record without the gate
+              # constitution X requires ever running.
+              - 'packages/design-system/tokens/fonts/**'
               # 004 T403, load-bearing: the Game Content Usage Rules disclaimer anchor
               # (constitution X) can be removed by a pull request that touches no asset at all,
               # and this job has to run on exactly that pull request.
@@ -108,7 +113,7 @@ jobs:
           exit $status
 
   asset-packs:
-    name: Asset packs — the licence gate (constitution X, FR-011, SC-003)
+    name: Asset packs — the licence gate over game-assets and fonts (constitution X, FR-011, SC-003)
     needs: changes
     if: needs.changes.outputs.asset-packs == 'true'
     runs-on: ubuntu-latest
@@ -117,12 +122,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      # Read-only, no network, stdlib only — every pack under packages/game-assets/ must carry a
-      # complete LICENCE.md, a `READ ONLY` ruling must hold no payload file, the package must stay
-      # under its size budget, docs/asset-packs.md must mirror every LICENCE.md, and README.md
-      # must still carry the Game Content Usage Rules disclaimer. Removing either anchor — the
-      # non-commercial condition or the disclaimer — lapses the permission constitution X grants,
-      # which is why this job's own path filter (above) includes README.md and not only the packs.
+      # Read-only, no network, stdlib only — every pack under packages/game-assets/ and, since
+      # feature 005 T523, packages/design-system/tokens/fonts/ must carry a complete LICENCE.md, a
+      # `READ ONLY` ruling must hold no payload file, each root must stay under its own size
+      # budget, docs/asset-packs.md must mirror every LICENCE.md, and README.md must still carry
+      # the Game Content Usage Rules disclaimer. Removing either anchor — the non-commercial
+      # condition or the disclaimer — lapses the permission constitution X grants, which is why
+      # this job's own path filter (above) includes README.md and not only the packs.
       - run: uv run scripts/checks/asset_packs.py
 
   config:
@@ -218,6 +224,14 @@ jobs:
       # exactly why the broken bundle looked healthy.
       - run: pnpm --filter web build
       - run: node scripts/checks/built-css.mjs
+      # T527: FR-062's mechanical scale check — an arbitrary bracket value, a raw hex/px/rem/ms
+      # literal, or a hand-written `var(--ds-*)` in the design system's own component source fails
+      # here rather than depending on a reviewer noticing. Needs no build (it reads source
+      # directly), so it costs nothing to run right beside the other static source checks; its own
+      # `node --test` suite runs immediately after so a regression in the check itself is caught on
+      # the same pull request rather than only once it stops catching something real.
+      - run: node scripts/checks/token-scale.mjs
+      - run: node --test scripts/checks/token-scale.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

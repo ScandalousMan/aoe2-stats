@@ -1,0 +1,7 @@
+{
+  "$comment": "Breakpoint scale (T513, closes DS-5). The single source both Tailwind's responsive variants and useBreakpoint's structural switch derive from, so a layout's shape and its styling cannot disagree. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "sm": 640,
+  "md": 768,
+  "lg": 1024,
+  "xl": 1280
+}

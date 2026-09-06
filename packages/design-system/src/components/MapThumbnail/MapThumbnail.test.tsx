@@ -56,8 +56,9 @@ describe('MapThumbnail', () => {
     render(<MapThumbnail thumbnailUrl={ARABIA_URL} mapName={null} />)
     expect(document.querySelector('img')).not.toBeInTheDocument()
     const unresolved = screen.getByText('Map — unresolved')
-    expect(unresolved.className).toContain('font-mono')
-    expect(unresolved.className).toContain('text-text-secondary')
+    // T531: `type-identifier` (research D7) carries the mono family and `text-secondary` by
+    // contract in one utility.
+    expect(unresolved.className).toContain('type-identifier')
   })
 
   it('never guesses a thumbnail from a leaderboard or a neighbouring match when mapName is null', () => {

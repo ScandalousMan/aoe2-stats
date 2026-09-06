@@ -34,6 +34,22 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 #: research.md D5's budget on the whole `packages/game-assets` payload.
 SIZE_BUDGET_BYTES = 10 * 1024 * 1024
 
+#: typography-tokens.md §4.4's budget on the whole `packages/design-system/tokens/fonts` payload —
+#: a separate constant from `SIZE_BUDGET_BYTES` deliberately: the two are different facts with
+#: different justifications, and a shared constant would make one of them a coincidence.
+FONT_SIZE_BUDGET_BYTES = 1 * 1024 * 1024
+
+#: Every assets root this gate covers, paired with its own size budget. Constitution X's "a pack
+#: whose licence is not recorded MUST NOT be added" is enforced only where this gate looks — until
+#: feature 005 T523 that was exactly one directory, so a font (or any future asset kind) landing
+#: anywhere else was covered by nothing and did not even trigger the CI job. A font directory is an
+#: assets root for the same reason `packages/game-assets` is: it holds files copied in under a
+#: licence this gate has to keep honest.
+ASSET_ROOTS: tuple[tuple[Path, int], ...] = (
+    (REPO / "packages" / "game-assets", SIZE_BUDGET_BYTES),
+    (REPO / "packages" / "design-system" / "tokens" / "fonts", FONT_SIZE_BUDGET_BYTES),
+)
+
 #: Directories under `packages/game-assets/` that hold package plumbing rather than an asset pack
 #: (T401: the resolver's source and its build/test tooling live beside the pack directories, not
 #: inside one). A pack is a directory the licence gate can hold to `contracts/asset-pack.md`'s
@@ -266,6 +282,26 @@ def check_asset_packs(
     return failures
 
 
+def check_asset_roots(
+    roots: tuple[tuple[Path, int], ...], docs_file: Path, readme_file: Path
+) -> list[str]:
+    """The multi-root composition `main()` actually runs (typography-tokens.md §9.2 point 3):
+    `check_pack`, `check_size_budget` (with that root's own budget) and `check_docs_mirror` for
+    every pack in every one of `roots`, plus `check_disclaimer` **exactly once** — the disclaimer
+    is a repository-wide anchor, not a per-root one, so calling `check_asset_packs` once per root
+    would report its failure once per root too. Composed alongside `check_asset_packs`, not in
+    place of it: that aggregate's signature and behaviour stay untouched for its existing
+    single-root callers."""
+    failures: list[str] = []
+    for assets_root, size_budget_bytes in roots:
+        for pack_dir in _pack_dirs(assets_root):
+            failures.extend(check_pack(pack_dir))
+        failures.extend(check_size_budget(assets_root, size_budget_bytes))
+        failures.extend(check_docs_mirror(assets_root, docs_file))
+    failures.extend(check_disclaimer(readme_file))
+    return failures
+
+
 _RULING_LABEL_RE = re.compile(r"\**\s*(COPY IN|READ ONLY)\b", re.IGNORECASE)
 
 
@@ -280,24 +316,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.parse_args()
 
-    assets_root = REPO / "packages" / "game-assets"
     docs_file = REPO / "docs" / "asset-packs.md"
     readme_file = REPO / "README.md"
 
-    print("asset_packs: packages/game-assets\n")
-    for pack_dir in _pack_dirs(assets_root):
-        licence_path = pack_dir / "LICENCE.md"
-        fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
-        ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
-        checked = fields.get("Checked") or "UNRECORDED"
-        print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+    for assets_root, _size_budget_bytes in ASSET_ROOTS:
+        print(f"asset_packs: {assets_root.relative_to(REPO)}\n")
+        for pack_dir in _pack_dirs(assets_root):
+            licence_path = pack_dir / "LICENCE.md"
+            fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
+            ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
+            checked = fields.get("Checked") or "UNRECORDED"
+            print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+        print()
 
-    failures = check_asset_packs(
-        assets_root=assets_root,
-        docs_file=docs_file,
-        readme_file=readme_file,
-        size_budget_bytes=SIZE_BUDGET_BYTES,
-    )
+    failures = check_asset_roots(roots=ASSET_ROOTS, docs_file=docs_file, readme_file=readme_file)
 
     if failures:
         print()

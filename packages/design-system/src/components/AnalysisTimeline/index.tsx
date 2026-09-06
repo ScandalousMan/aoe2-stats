@@ -117,8 +117,10 @@ function formatTime(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+// A measured elapsed-time value (§2.1's own m:ss format), compared down the list — `numeric`
+// (research D7, FR-007), never `machine`: the digits are a duration, not a raw string.
 function TimeValue({ ms }: { ms: number }) {
-  return <span className="font-mono">{formatTime(ms)}</span>
+  return <span className="type-numeric">{formatTime(ms)}</span>
 }
 
 function ResolvedOrUnresolved({
@@ -171,7 +173,8 @@ function TrainingOrderList({ items }: { items: TrainingEventData[] }) {
     <ListSection labelId={labelId} label="Training order">
       {items.map((item) => (
         <li key={item.id}>
-          <span className="font-mono">{item.amount}×</span>{' '}
+          {/* A measured count — `numeric` (research D7), not `machine`. */}
+          <span className="type-numeric">{item.amount}×</span>{' '}
           <ResolvedOrUnresolved label="Unit" id={item.unitId} name={item.unitName} /> —{' '}
           <TimeValue ms={item.timeMs} />
         </li>
@@ -250,7 +253,7 @@ function ParticipantTimelineColumn({ participant }: { participant: AnalysisParti
   return (
     <article
       aria-labelledby={headingId}
-      className="flex flex-col rounded-lg border border-border p-4"
+      className="flex flex-col rounded-panel border border-border p-4"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
@@ -340,8 +343,8 @@ function AnalysisProgress({ state }: { state: 'queued' | 'running' }) {
     <div aria-busy="true">
       <p className="font-sans text-sm text-text-secondary">{label}</p>
       <div className="mt-4 flex flex-col gap-3">
-        <Skeleton variant="block" className="h-40 w-full rounded-lg" />
-        <Skeleton variant="block" className="h-40 w-full rounded-lg" />
+        <Skeleton variant="block" className="h-40 w-full rounded-panel" />
+        <Skeleton variant="block" className="h-40 w-full rounded-panel" />
       </div>
     </div>
   )
@@ -410,8 +413,10 @@ function AnalysisFailureNotice({
       }
     >
       <p>{copy.body}</p>
+      {/* A raw error class — `machine` (research D7, FR-007): character-level legibility, no
+       * `tabular-nums`, because a digit run inside an error class carries no comparable value. */}
       {state === 'failed' && errorClass && (
-        <p className="font-mono text-xs text-text-secondary">Error: {errorClass}</p>
+        <p className="type-machine text-xs text-text-secondary">Error: {errorClass}</p>
       )}
     </Callout>
   )
@@ -462,8 +467,8 @@ export function AnalysisTimeline({
           {HEADING_TEXT}
         </h3>
         <div className="mt-4 flex flex-col gap-3">
-          <Skeleton variant="block" className="h-40 w-full rounded-lg" />
-          <Skeleton variant="block" className="h-40 w-full rounded-lg" />
+          <Skeleton variant="block" className="h-40 w-full rounded-panel" />
+          <Skeleton variant="block" className="h-40 w-full rounded-panel" />
         </div>
       </section>
     )

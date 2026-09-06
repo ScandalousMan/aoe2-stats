@@ -1,0 +1,6 @@
+{
+  "$comment": "Container widths (T515, closes DS-6, research D8). Flat, untheme, mapped onto Tailwind's own --container-* theme namespace so max-w-page / max-w-panel / max-w-measure are ordinary utilities (contracts/token-families.md §1, §2). Each value names an existing product decision rather than inventing a new one. `page` is the widest container and matches the `xl` breakpoint already declared in breakpoint.json (1280px == 80rem): page content never needs to grow wider than the widest viewport the suite reviews. `panel` is a card/panel's max width, narrower than `page`, and matches Tailwind's `max-w-2xl` (42rem / 672px) — the one route-level width the application already commits to today, in apps/web/src/features/search/SearchContainer.tsx. `measure` is the reading-measure width for prose and replaces every `max-w-prose` call site inside the design system: Tailwind's own default for that utility is 65ch, so naming it here changes no rendered pixel, only who owns the decision. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "page": "80rem",
+  "panel": "42rem",
+  "measure": "65ch"
+}

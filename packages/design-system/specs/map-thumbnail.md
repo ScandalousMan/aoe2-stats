@@ -88,8 +88,9 @@ different map's shape, which is worse than no image at all.
     expected render for every custom and tournament map and must not look like a failure.
   - **No map name at all** (`mapName` is `null` — the source recorded none; `MatchDetailPanel`'s
     `map: ReactNode | null`): no thumbnail, and §11.2's `UnresolvedIdentifier` treatment for the
-    name — `text-secondary`, `font-mono`, wording that says the fact is missing rather than
-    presenting an empty gap. **No thumbnail is ever guessed** from a leaderboard, a mode or a
+    name — `type-identifier` (T531/research D7: mono family and `text-secondary` by the role's own
+    contract), wording that says the fact is missing rather than presenting an empty gap. **No
+    thumbnail is ever guessed** from a leaderboard, a mode or a
     neighbouring match.
 
 ## 5. Tokens used
@@ -168,7 +169,7 @@ No outer margin; the caller's layout gap (`match-history.md` §7) positions the 
       screenshot.
 - [ ] `sm`, `md` and `lg` in one frame are three visibly different sizes; every one is square and
       undistorted, and none is blurred at 2× device pixel ratio.
-- [ ] The null-map story shows `UnresolvedIdentifier` wording in `text-secondary`/`font-mono` and no
+- [ ] The null-map story shows `UnresolvedIdentifier` wording in `type-identifier` and no
       image — visibly distinct, in the same frame, from a resolved name with no thumbnail (§11.2's
       distinction between "we have no picture" and "we have no map name").
 - [ ] Greyscale: the map is still identified by its name in every story.

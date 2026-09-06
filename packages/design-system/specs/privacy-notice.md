@@ -515,7 +515,7 @@ That sentence sits in the header, under `LastUpdatedLine`, whether or not a `Cha
 accordion, no "read more", no truncation with an expander anywhere in this component at any
 viewport. The page is allowed to be long.
 
-**hover** — inline links and `Contents` entries only: the link colour moves to `accent-hover` and
+**hover** — inline links and `Contents` entries only: the link colour moves to `link-hover` and
 the underline stays (it was never absent). `ObjectionCallToAction` hovers as `Button/secondary`. No
 other part of this component responds to a pointer.
 
@@ -524,7 +524,8 @@ every link and on the objection button. Following a `Contents` entry moves focus
 `<h2>`, which carries `tabindex="-1"` for that purpose — a jump that moves the viewport without
 moving focus leaves a keyboard user at the top of a nine-section document.
 
-**active** — links render in `accent-active` while pressed. Nothing translates or scales.
+**active** — links render in `link-hover` while pressed (there is deliberately no `link-active`;
+`link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
 
 **disabled** — **nothing in this component is ever disabled.** A right that is described and then
 greyed out has been withdrawn without saying so. If a target route is unavailable, the link is still
@@ -557,9 +558,9 @@ renders with no processors would be claiming nobody touches the data.
 Colour: `surface` (the document), `surface-raised` (`ChangeNote`, `ContactBlock` and
 `ContactUnpublished`), `border` (section separators, list rules), `text-primary` (all body copy,
 every heading, every `<dd>` value), `text-secondary` (`LastUpdatedLine`, the `<dt>` labels in a
-`CategoryEntry`, table column headers), `accent` (inline and `Contents` links, on `surface` only —
-see the DS-9 note below), `accent-hover`, `accent-active`, `info` (`ChangeNote` stripe and heading,
-via `Callout`), `focus-ring`. No `danger`, no `warning`: nothing in this notice is an alarm, and
+`CategoryEntry`, table column headers), `link` (inline and `Contents` links, and the `ContactBlock`
+contact route), `link-hover`, `link-visited`, `info` (`ChangeNote` stripe and heading, via
+`Callout`), `focus-ring`. No `danger`, no `warning`: nothing in this notice is an alarm, and
 colouring the erasure paragraph red would make a right look like a hazard.
 
 Typography: family `sans` throughout; `display` for the `h1` only. Sizes — `h1` `3xl` (`2xl` below
@@ -580,11 +581,7 @@ instant jump under `prefers-reduced-motion: reduce`, where every transition here
 scrolled past before it exists.
 
 Gaps in play: **DS-4** (focus ring width and offset), **DS-6** (reading measure — this is the
-longest prose in the product and needs one), **DS-5** (breakpoints), and **DS-9**, added by this
-spec to the README's gap register: there is no link colour role, and `accent` on `surface-raised` is
-not in the measured contrast table. Until DS-9 closes, this component paints **no link on
-`surface-raised`** — the contact block and the change note contain no inline links, and the contact
-route in `ContactBlock` renders as `text-primary` with a permanent underline rather than as `accent`.
+longest prose in the product and needs one), **DS-5** (breakpoints).
 
 ## 7. Spacing
 
@@ -653,10 +650,9 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
   break the line rhythm of a long document, and every one of them has a standalone equivalent in
   `Contents` or in a `RightsItem` control.
 - Contrast per the README table, in both themes: body `text-primary` on `surface`; `<dt>` labels
-  `text-secondary` on `surface` (6.2 light / 7.8 dark); links `accent` on `surface` (4.9 light /
-  7.7 dark — passing normal text in both, which is why DS-9 permits `accent` here and only on this
-  background). `ChangeNote` follows `Callout`'s own rule: `info` heading, `text-primary` body, on
-  `surface-raised`.
+  `text-secondary` on `surface` (6.2 light / 7.8 dark); links `link` on `surface` (6.70 light /
+  6.88 dark) and on `surface-raised` (7.17 light / 6.05 dark). `ChangeNote` follows `Callout`'s own
+  rule: `info` heading, `text-primary` body, on `surface-raised`.
 - Reading order equals visual order equals DOM order, verified with CSS disabled. With stylesheets
   off, the notice must still read as a complete, ordered document — this is the state a text browser
   and a "reader mode" both produce, and it is a plausible way a regulator reads it.

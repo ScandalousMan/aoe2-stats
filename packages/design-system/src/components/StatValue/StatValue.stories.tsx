@@ -54,6 +54,27 @@ export const EmptyNeverObserved: Story = {
   },
 }
 
+// T532: no caller-supplied reason at all — the generic, always-true default, never a punctuation
+// mark and never a fabricated specific claim.
+export const EmptyGenericDefault: Story = {
+  args: {
+    variant: 'compact',
+    label: 'Streak',
+    status: 'empty',
+  },
+}
+
+// T532: an explicit `emptyReason` and a distinct `secondaryLine` compose independently.
+export const EmptyWithExplicitReason: Story = {
+  args: {
+    variant: 'inline',
+    label: 'Win rate',
+    status: 'empty',
+    emptyReason: 'Never played this leaderboard',
+    secondaryLine: 'Checked 3 minutes ago',
+  },
+}
+
 export const StaleAfterFailedRefresh: Story = {
   args: {
     variant: 'hero',

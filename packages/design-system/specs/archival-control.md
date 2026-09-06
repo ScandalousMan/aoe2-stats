@@ -291,6 +291,10 @@ needs one).
   `surface-raised`, the strongest pair available in both themes; that is deliberate and unchanged.
 - Zoom to 200% and 320px logical width without horizontal scrolling, with the identity statement
   fully readable.
+- **Loading (T532, FR-054)**: the status region's own wrapper carries `aria-busy="true"` while it
+  holds the two loading `Skeleton`s — one announcement for that region, never once per `Skeleton`
+  (each stays `aria-hidden`, its own contract). See `shared-primitives.md`'s `StatValue` section for
+  the general rule this follows.
 
 ## 10. Visual acceptance criteria
 

@@ -147,11 +147,13 @@ export function ReplayAvailabilityList({
       <h3 id={headingId} className="font-sans text-md font-semibold text-text-primary">
         Recorded games
       </h3>
-      <ul className="mt-4 flex flex-col gap-3">
+      {/* T532 (FR-054): `aria-busy` sits once on this list while `loading`, never once per row's
+       * `Skeleton` (each stays `aria-hidden`, its own contract). */}
+      <ul className="mt-4 flex flex-col gap-3" aria-busy={loading || undefined}>
         {loading
           ? LOADING_ROW_IDS.map((id) => (
               <li key={id}>
-                <Skeleton variant="block" className="h-14 w-full rounded-lg" />
+                <Skeleton variant="block" className="h-14 w-full rounded-panel" />
               </li>
             ))
           : rows.map((row) => (

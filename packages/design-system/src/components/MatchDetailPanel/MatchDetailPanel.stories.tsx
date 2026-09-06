@@ -237,8 +237,8 @@ const eightPlayerFfaMatch: MatchDetailData = {
 
 // §11.2: FR-020, no guess. `Fr020B`'s civilisation is a game-version id this service's reference
 // data has never learned, and the header's map carries no name either — placed alongside a fully
-// resolved participant so the visual distinction (`text-secondary`/`font-mono` vs
-// `text-primary`/`sans`) reads in one frame (§11.6).
+// resolved participant so the visual distinction (`type-identifier` vs `text-primary`/`sans`,
+// T531, research D7) reads in one frame (§11.6).
 const unresolvedIdentifierMatch: MatchDetailData = {
   ...baseMatch,
   gameId: '1007',

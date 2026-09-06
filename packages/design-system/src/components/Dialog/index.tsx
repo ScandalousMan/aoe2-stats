@@ -87,7 +87,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={headingId}
         className={cx(
-          'w-full max-w-sm rounded-t-xl bg-surface p-6 shadow-modal md:rounded-xl',
+          'w-full max-w-sm rounded-t-overlay bg-surface p-6 shadow-modal md:rounded-overlay',
           className,
         )}
       >

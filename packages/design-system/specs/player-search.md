@@ -122,8 +122,9 @@ minimum, never inventing past it:**
 
 - `CountryLabel` renders whenever `country` is not null. This is the one field both paths can supply
   and is present on essentially every result — the closest thing to a guarantee this component has.
-- `Standing` renders `"<N> games"` (`font-mono`, per DS-8, so a stacked column of counts aligns
-  digit-for-digit) whenever `games_played` is not null. **When it is null, `Standing` is absent, not a
+- `Standing` renders `"<N> games"` (`type-numeric`, T531/research D7 — the mono family plus
+  `tabular-nums`, so a stacked column of counts aligns digit-for-digit independent of the family)
+  whenever `games_played` is not null. **When it is null, `Standing` is absent, not a
   placeholder** — no `0`, no em dash standing in for an unmeasured count, following `StatValue`'s own
   rule against a placeholder numeral reading as real.
 - `Clan` renders whenever present, and is the row's fallback distinguishing signal on a locally-known
@@ -234,8 +235,8 @@ values are scoped to input-handling latency, and treating one as if it were woul
 behaviour it was never measured against. It is left as a plain numeric prop with a sensible default,
 not specified here.
 
-Gaps in play: **DS-4** (focus ring), **DS-8** (`Standing`'s tabular alignment rides on `font-mono`
-being monospaced, same as every other stacked-figure list in this system).
+Gaps in play: **DS-4** (focus ring). **DS-8 closed** (T531) — `Standing`'s tabular alignment now
+comes from `type-numeric`'s `tabular-nums`, same as every other stacked-figure list in this system.
 
 ## 7. Spacing
 
@@ -257,7 +258,7 @@ being monospaced, same as every other stacked-figure list in this system).
 
 - **375** — `Input` full width. `PlayerResultRow` renders as a stacked full-width card: alias plus
   clan on the first line, country and standing wrapping onto a second line at `text-secondary`/
-  `font-mono` respectively. Neither field ever truncates or ellipsises — `profile-summary.md`'s own
+  `type-numeric` respectively. Neither field ever truncates or ellipsises — `profile-summary.md`'s own
   rule for figures extended to every field here, because a half-visible alias is exactly the
   "near-identical names" failure FR-002 exists to prevent.
 - **768** — country and standing move onto the alias's own line, right-aligned, still one `<a>` per
@@ -319,7 +320,7 @@ criterion, restated here because it applies identically.
 - [ ] A row seeded with a `clan` renders the tag beside the alias in every story that sets it, and a
       row without one shows no empty bracket.
 - [ ] A row seeded with `unverifiedSteamId` shows "Unverified Steam ID: `<value>`" verbatim, the id in
-      `font-mono`, and the row still renders exactly one link in the accessibility tree — confirmed by
+      `type-identifier`, and the row still renders exactly one link in the accessibility tree — confirmed by
       counting focusable elements in that story against a row without the field and finding no
       difference.
 - [ ] No screenshot in this file, at any state, shows a second link, a button, or any copy reading

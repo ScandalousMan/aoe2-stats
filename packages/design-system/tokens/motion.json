@@ -1,5 +1,5 @@
 {
-  "$comment": "Motion tokens (T016). Tailwind's duration-<n> utility already takes a bare millisecond number, so these durations are the closed set a component picks from (duration-120, not duration-137) rather than a Tailwind theme namespace. Easings map onto Tailwind's ease-* namespace. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Motion tokens (T016, + `animation` group T516). Tailwind's duration-<n> utility already takes a bare millisecond number, so these durations are the closed set a component picks from (duration-120, not duration-137) rather than a Tailwind theme namespace. Easings map onto Tailwind's ease-* namespace. The `animation` group names the loops the system actually runs, `spin` and `pulse`, each composing a `duration` and an `easing` key from this same file (not a literal) plus an `iterationCount` and a `keyframes` map; `build-tokens.mjs` emits `@keyframes ds-<name>` and `--animate-<name>` from each entry (contracts/token-families.md §1). Both loops are gated behind Tailwind's `motion-safe:` variant at every call site, so under `prefers-reduced-motion: reduce` the animation utility does not apply at all and the element sits at its resting frame (FR-055) — `motion-safe:animate-spin` / `motion-safe:animate-pulse` replace today's arbitrary `animate-[...]` bracket syntax without changing that behaviour. Edit here, then run `pnpm --filter design-system tokens:build`.",
   "duration": {
     "instant": "0ms",
     "fast": "120ms",
@@ -9,6 +9,28 @@
   "easing": {
     "standard": "cubic-bezier(0.4, 0, 0.2, 1)",
     "decelerate": "cubic-bezier(0, 0, 0.2, 1)",
-    "accelerate": "cubic-bezier(0.4, 0, 1, 1)"
+    "accelerate": "cubic-bezier(0.4, 0, 1, 1)",
+    "linear": "linear"
+  },
+  "animation": {
+    "spin": {
+      "duration": "slow",
+      "easing": "linear",
+      "iterationCount": "infinite",
+      "keyframes": {
+        "0%": { "transform": "rotate(0deg)" },
+        "100%": { "transform": "rotate(360deg)" }
+      }
+    },
+    "pulse": {
+      "duration": "slow",
+      "easing": "standard",
+      "iterationCount": "infinite",
+      "keyframes": {
+        "0%": { "opacity": "1" },
+        "50%": { "opacity": ".5" },
+        "100%": { "opacity": "1" }
+      }
+    }
   }
 }

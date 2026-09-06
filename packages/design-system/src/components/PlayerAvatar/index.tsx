@@ -65,7 +65,7 @@ export function PlayerAvatar({ avatarHash, size = 'md', className }: PlayerAvata
     <span
       aria-hidden="true"
       className={cx(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-strong bg-surface-sunken',
+        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-control border border-border-strong bg-surface-sunken',
         className,
       )}
       style={{ width: dimension, height: dimension }}

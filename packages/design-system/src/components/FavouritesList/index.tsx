@@ -74,20 +74,22 @@ export interface FavouritesListProps {
 
 const EMPTY_ENTRIES: FavouriteEntryData[] = []
 
-// §10 bullet 2, §6: "shows the rating and rank in font-mono, aligning digit-for-digit down the
-// column." Composing the rank inside `StatValue`'s own `value` slot — instead of its `unit` slot
-// — lets it inherit that slot's `font-mono font-semibold tracking-tight`
-// (`shared-primitives.md#StatValue`) from its ancestor span; `font-mono` is repeated explicitly on
-// the rank's own span too, so the treatment holds even if `StatValue`'s value markup changes
+// §10 bullet 2, §6: "shows the rating and rank in `type-numeric`, aligning digit-for-digit down
+// the column." Composing the rank inside `StatValue`'s own `value` slot — instead of its `unit`
+// slot — lets it inherit that slot's `type-numeric font-semibold tracking-tight`
+// (`shared-primitives.md#StatValue`) from its ancestor span; `type-numeric` is repeated explicitly
+// on the rank's own span too, so the treatment holds even if `StatValue`'s value markup changes
 // later, and so it is a directly assertable class rather than an inherited one. Only colour is
 // overridden (`text-secondary`), the same distinction `unit` used to carry, now without giving up
-// the mono alignment `StatValue`'s own figures depend on.
+// the `tabular-nums` alignment `StatValue`'s own figures depend on (research D7, FR-007): the rank
+// is a measured figure compared down the column, not a unit label, so it takes `numeric`, never
+// `machine` or `identifier`.
 function renderStandingValue(standing: FavouriteStandingData): ReactNode {
   if (!standing.unit) return standing.value
   return (
     <>
       {standing.value}
-      <span className="ml-2 font-mono text-text-secondary">{standing.unit}</span>
+      <span className="ml-2 type-numeric text-text-secondary">{standing.unit}</span>
     </>
   )
 }
@@ -165,13 +167,15 @@ function SignedOutState({
 }
 
 // §5 "loading" — footprint matches `FavouriteRow`'s own, so loading-to-loaded shows no reflow.
+// T532 (FR-054): `aria-busy` sits once on this list, not once per row's `Skeleton` — each
+// `Skeleton` stays `aria-hidden` (its own contract), and this `<ul>` is the region.
 function LoadingState({ count }: { count: number }) {
   const rowCount = Math.max(count, 0)
   return (
-    <ul className="flex flex-col gap-3 md:gap-4">
+    <ul className="flex flex-col gap-3 md:gap-4" aria-busy="true">
       {Array.from({ length: rowCount }, (_, index) => (
         <li key={index}>
-          <Skeleton variant="block" className="h-20 w-full rounded-lg md:h-14" />
+          <Skeleton variant="block" className="h-20 w-full rounded-panel md:h-14" />
         </li>
       ))}
     </ul>
@@ -220,7 +224,7 @@ function FavouriteRow({
   return (
     <li
       className={cx(
-        'flex flex-col gap-4 rounded-lg border border-border bg-surface p-4',
+        'flex flex-col gap-4 rounded-panel border border-border bg-surface p-4',
         isMd &&
           'flex-row items-center justify-between gap-4 rounded-none border-x-0 border-t-0 border-b bg-transparent px-0 py-3',
       )}
@@ -229,7 +233,7 @@ function FavouriteRow({
         href={entry.href}
         onClick={createRowLinkClickHandler(entry.href, onNavigate)}
         className={cx(
-          'flex flex-1 flex-col gap-1 rounded-md',
+          'flex flex-1 flex-col gap-1 rounded-control',
           'md:flex-row md:items-center md:justify-between md:gap-4',
           'transition-colors duration-120 ease-standard hover:bg-surface-sunken',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',

@@ -77,7 +77,7 @@ export const OutOfRange: Story = {
 export const BlankPlayerName: Story = {
   name: 'Blank playerName — renders nothing where the chip would be',
   render: () => (
-    <div className="rounded-sm border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
+    <div className="rounded-panel border border-dashed border-border p-4 font-sans text-xs text-text-secondary">
       Nothing renders below this line —{' '}
       <span className="inline-block align-middle">
         <PlayerColourSwatch colorId={1} playerName="" />
