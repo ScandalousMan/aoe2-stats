@@ -27,6 +27,17 @@ export const SignedIn: Story = {
   args: { items, currentPath: '/dashboard' },
 }
 
+// FR-034/FR-037 (T569 residual 2): a story literally named for the *selection* vocabulary entry —
+// the persistent underline strip plus the `font-semibold` weight change on the current item
+// (`aria-current="page"`), both of which survive as a still image, per README's own worked example
+// for this exact component. `SignedIn` above already shows the same frame but is named for its
+// scenario, not the state, so a reader browsing for "selection" or `visual-reviewer` mapping a
+// capture to the vocabulary has nothing to find. Added rather than renaming `SignedIn`: renaming an
+// export changes its story id and orphans the checked-in baseline.
+export const Selection: Story = {
+  args: { items, currentPath: '/dashboard' },
+}
+
 export const CurrentIsNestedRoute: Story = {
   name: 'current path is a nested route — /matches/12345 still marks Matches (§4)',
   args: { items, currentPath: '/matches/12345' },
@@ -152,6 +163,28 @@ export const Active: Story = {
 // §5 "disabled — never, for any part"; "loading — none, and specifically no skeleton row"; "error
 // — none of its own. This component makes no request and awaits nothing." Grouped as one story:
 // all three share the same reasoning (a build-time-known item set with no request of its own).
+// §8 "No hamburger, and this is a decision, not an omission" (T569 residual 2): `PrimaryNav`
+// itself never collapses behind a disclosure at any viewport — it wraps onto further rows instead
+// (`LongLabels` above) — so it plausibly reads as a candidate for the *expansion* vocabulary entry
+// and needs its own explicit refusal rather than a silent omission. `ThemeControl`'s own `Menu`
+// does carry expansion, but that state belongs to `Menu` (see `Menu.stories.tsx`'s `Expansion` /
+// `ClosedTrigger`) — `SiteHeader` only mounts it, the same way `DisabledLoadingErrorNotApplicable`
+// below already separates what this component owns from what its children answer for themselves.
+export const ExpansionNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        `PrimaryNav` never collapses behind a hamburger or any other disclosure — wrapping onto
+        further rows at 375 is the whole answer (§8). `ThemeControl`'s own `Menu` does carry the
+        expansion state, but that state is `Menu`'s to answer, not this component's — `SiteHeader`
+        only mounts it.
+      </p>
+      <SiteHeader {...args} />
+    </div>
+  ),
+  args: { items, currentPath: '/dashboard' },
+}
+
 export const DisabledLoadingErrorNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">

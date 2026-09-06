@@ -431,7 +431,10 @@ export const CompactVariant: Story = {
 // calls out the one part that has none of its own.
 async function openSwitcher({ canvasElement }: { canvasElement: HTMLElement }) {
   const canvas = within(canvasElement)
-  const trigger = canvas.getByRole('button', { name: /aoe2guy/ })
+  // Matched by the trigger's own accessible name suffix (`${headingAlias}, switch profile`,
+  // index.tsx) rather than a hardcoded alias, so this helper still finds the trigger in a story
+  // whose `viewedProfile` is not `aoe2guy` (the `Selection` story below views `aoe2alt`).
+  const trigger = canvas.getByRole('button', { name: /switch profile$/ })
   trigger.focus()
   await userEvent.keyboard('{Enter}')
   await canvas.findByRole('menu')
@@ -444,6 +447,28 @@ export const SwitcherFocusVisibleAndOpen: Story = {
     subject: 'self',
     authenticated: true,
     viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// FR-034/FR-037, T569 residual 1 and 2: a story named for the *selection* vocabulary entry, and
+// deliberately the case `SwitcherFocusVisibleAndOpen` above cannot exercise — there, the viewed
+// profile (`aoe2guy`) is also the primary one, so the checked item's `<Badge>Current</Badge>` and
+// the primary item's `<Badge variant="accent">Primary</Badge>` would land on the same row and the
+// defect (no mark at all for a checked-but-not-primary item) stayed invisible. Here `viewedProfile`
+// is `aoe2alt`, non-primary, so this frame is the still-image proof that the checked profile now
+// carries its own mark independent of `isPrimary` — the same `Menu`/`selection` idiom `SiteHeader`'s
+// `ThemeControl` already ships (`shared-primitives.md#Menu`'s "the checked item is marked by text
+// or a `Badge`, not by colour alone").
+export const Selection: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: { ...viewedProfile, id: 'p2', alias: 'aoe2alt', isPrimary: false },
     linkedProfiles,
     entries,
     freshnessLine: 'Measured 3 minutes ago',

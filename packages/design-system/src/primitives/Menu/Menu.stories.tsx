@@ -209,6 +209,63 @@ export const KeyboardNavigation: Story = {
   },
 }
 
+// FR-034/FR-037 (T569 residual 2): a story literally named for the *selection* vocabulary entry.
+// `ProfileSwitcher` above already shows the same shape — `checked: true` plus a trailing badge —
+// but is named for its consumer's scenario, not the state, so a reader browsing for "selection" or
+// `visual-reviewer` mapping a capture to the vocabulary has nothing to find. Added rather than
+// renaming `ProfileSwitcher`: renaming an export changes its story id and orphans the checked-in
+// baseline.
+export const Selection: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// FR-034/FR-037 (T569 residual 2): a story literally named for the *expansion* vocabulary entry —
+// the trigger's `aria-expanded` true, the panel drawn beside it. Every other `visual-full-page`
+// story above already opens the panel via `play`, but none is named for the state itself. Paired
+// with `ClosedTrigger` below, the resting half; a still image of one without the other has nothing
+// to be distinguishable from (README's governing requirement, T569). `actions` rather than
+// `selection`: this story is about the disclosure, not the checked item, which `Selection` above
+// already owns.
+export const Expansion: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
+// The resting half of the expansion pair (T569 residual 2): a closed, *non-empty* trigger, so the
+// open panel above has something to be distinguishable from in a still image. `Empty` below is the
+// only existing closed-trigger story, and its trigger is `aria-disabled` — it cannot stand in for
+// "closed" generally, only for the empty state. No `play`: the point is the unopened, operable
+// trigger.
+export const ClosedTrigger: Story = {
+  name: 'Closed trigger — the resting half of expansion',
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
 // §Menu "active — item fill `surface-sunken` with boundary `border-strong` on the inline-start
 // edge." Held down rather than released so the capture shows the pressed frame.
 export const Active: Story = {

@@ -178,14 +178,30 @@ export function ProfileSummary({
     )
   }
 
-  const switcherItems: MenuItem[] = linkedProfiles.map((profile) => ({
-    id: profile.id,
-    label: profile.alias,
-    checked: viewedProfile?.id === profile.id,
-    badge: profile.isPrimary ? <Badge variant="accent">Primary</Badge> : undefined,
-    disabled: primaryChangeInFlight,
-    onSelect: () => onSelectProfile?.(profile.id),
-  }))
+  const switcherItems: MenuItem[] = linkedProfiles.map((profile) => {
+    const checked = viewedProfile?.id === profile.id
+    // T569 residual 1: the checked item needs its own still-image mark, independent of whether
+    // it is also the primary profile — a colour-only `aria-checked` carries nothing in a
+    // screenshot. Same idiom `SiteHeader`'s `ThemeControl` already ships for the identical
+    // `Menu`/`selection` shape (`shared-primitives.md#Menu`'s "marked by text or a `Badge`, not by
+    // colour alone"): a plain `<Badge>Current</Badge>`, never `variant="accent"` — that variant
+    // stays reserved for "Primary" so the two facts stay visually distinct from one another when
+    // both land on the same item. `Menu`'s trailing slot (`gap-2`) already spaces two badges
+    // without a wrapper.
+    return {
+      id: profile.id,
+      label: profile.alias,
+      checked,
+      badge: (
+        <>
+          {checked && <Badge>Current</Badge>}
+          {profile.isPrimary && <Badge variant="accent">Primary</Badge>}
+        </>
+      ),
+      disabled: primaryChangeInFlight,
+      onSelect: () => onSelectProfile?.(profile.id),
+    }
+  })
 
   const manageItems: MenuItem[] =
     isSelf && viewedProfile

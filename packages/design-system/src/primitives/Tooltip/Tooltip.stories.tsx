@@ -293,6 +293,32 @@ export const DisabledNotApplicable: Story = {
   },
 }
 
+// T569 residual 2: `Tooltip` reveals and hides a surface without navigating away, which is the
+// README's own definition of *expansion* — but its mechanism is deliberately not that state.
+// `Menu`'s expansion is a persistent toggle: a `<button aria-expanded>` whose panel stays open
+// until dismissed. `Tooltip` has no `aria-expanded` anywhere in this spec (§accessibility): it is
+// hover-, focus- and press-driven, ephemeral, and already fully answered by the `hover`,
+// `focus-visible` and `active` states above (`HoverRevealed`, `KeyboardFocusRevealed`, `Pinned`).
+// Naming it *expansion* as well would be the same fact counted twice under two vocabulary entries.
+export const ExpansionNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This component's reveal is not the *expansion* vocabulary entry: there is no `aria-expanded`
+        toggle here, only the hover/focus-visible/active states above, and the surface is ephemeral
+        rather than a persistent panel. `Menu`'s trigger is the one shipping *expansion* case
+        (`Menu.stories.tsx`'s `Expansion` / `ClosedTrigger`).
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: 'France',
+    qualifier: 'Country:',
+    children: <FlagIcon />,
+  },
+}
+
 // A realistic combined story: the first real consumer's shape (T457) — a flag beside an alias,
 // the country name only in the tooltip, revealed on hover.
 export const RealisticIdentityBar: Story = {
