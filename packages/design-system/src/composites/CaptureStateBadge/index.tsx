@@ -4,7 +4,7 @@ import { Badge } from '../../primitives/Badge'
 import type { BadgeVariant } from '../../primitives/Badge'
 import { Skeleton } from '../../primitives/Skeleton'
 import { describeCaptureCountdown } from './countdown'
-import type { CaptureStateBadgeContext } from './countdown'
+import type { CaptureStateBadgeVariant } from './countdown'
 
 // packages/design-system/specs/capture-state-badge.md
 
@@ -14,7 +14,7 @@ import type { CaptureStateBadgeContext } from './countdown'
 export type CaptureStatus =
   'pending' | 'downloading' | 'stored' | 'unavailable' | 'expired' | 'failed' | 'quarantined'
 
-export type { CaptureStateBadgeContext }
+export type { CaptureStateBadgeVariant }
 
 export interface CaptureStateBadgeProps {
   /** One of the seven raw values, or any other string (§6 "error"), or `null`/`undefined` — no
@@ -24,15 +24,17 @@ export interface CaptureStateBadgeProps {
   captureStatus?: CaptureStatus | (string & {}) | null
   /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading`. */
   captureDeadlineAt?: string | null
-  /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). */
-  context?: CaptureStateBadgeContext
+  /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). Renamed
+   * from `context` (FR-032, T557): every other component whose rendering depends on where it is
+   * embedded calls this `variant`. */
+  variant?: CaptureStateBadgeVariant
   /** Force the pill and `SecondaryLine` to always stack, regardless of the *window's* width.
-   * `context="compact"`'s own default (`sm:flex-row` at 640px-equivalent) reads the window, which
+   * `variant="compact"`'s own default (`sm:flex-row` at 640px-equivalent) reads the window, which
    * is the right approximation for a full-width `MatchRow` card but the wrong one for a caller
    * whose own box is narrower than the window — e.g. `MatchRow`'s bounded trailing table column
    * (match-history.md §8: "`SecondaryLine` beneath the pill rather than beside it, column width
    * is bounded"). Rather than have this component infer a container width it cannot observe, the
-   * caller that knows its own box is bounded tells it so. No effect on `context="detail"`, which
+   * caller that knows its own box is bounded tells it so. No effect on `variant="detail"`, which
    * already always stacks. */
   stacked?: boolean
   /** The owning row has not received `capture_status` yet: renders a `Skeleton` matching the
@@ -86,12 +88,12 @@ function secondaryLineFor(
   status: CaptureStatus,
   deadlineAt: string | null,
   now: number,
-  context: CaptureStateBadgeContext,
+  variant: CaptureStateBadgeVariant,
 ): string | undefined {
   if (CATCHABLE.has(status)) {
     // "Never a countdown built from a missing value" (§6) — should not happen per data-model.md,
     // but a missing deadline renders the pill with no SecondaryLine rather than trusted blindly.
-    return deadlineAt ? describeCaptureCountdown(deadlineAt, now, context) : undefined
+    return deadlineAt ? describeCaptureCountdown(deadlineAt, now, variant) : undefined
   }
   return REASON[status]
 }
@@ -101,7 +103,7 @@ function secondaryLineFor(
 export function CaptureStateBadge({
   captureStatus,
   captureDeadlineAt = null,
-  context = 'compact',
+  variant = 'compact',
   stacked = false,
   loading = false,
   className,
@@ -132,7 +134,7 @@ export function CaptureStateBadge({
     captureStatus as CaptureStatus,
     captureDeadlineAt,
     now,
-    context,
+    variant,
   )
 
   // `detail` always stacks, `space-1` between pill and SecondaryLine (§4, §9). `compact` stacks
@@ -142,7 +144,7 @@ export function CaptureStateBadge({
   // exists. Both compact cases keep `space-2` (§9's own "inline, compact" row; no dedicated
   // "stacked, compact" row exists, so this reuses the one pair the spec already gives compact).
   const layoutClassName =
-    context === 'detail'
+    variant === 'detail'
       ? 'flex-col items-start gap-1'
       : cx('flex-col items-start gap-2', !stacked && 'sm:flex-row sm:items-center')
 

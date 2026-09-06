@@ -84,7 +84,7 @@ export const NeedsReview: Story = {
 // beneath the pill, not beside it) is visible at any viewport this story is captured at, unlike the
 // prop-less default which would only stack below a wide window.
 export const CompactStacked: Story = {
-  name: 'Compact context, stacked (told to, not inferred — e.g. MatchRow’s bounded column)',
+  name: 'Compact variant, stacked (told to, not inferred — e.g. MatchRow’s bounded column)',
   render: () => (
     <div className="w-32 rounded-panel border border-dashed border-border p-2">
       <CaptureStateBadge
@@ -97,13 +97,13 @@ export const CompactStacked: Story = {
 }
 
 export const DetailContext: Story = {
-  name: 'Detail context — stacked, full-sentence SecondaryLine',
-  args: { captureStatus: 'expired', context: 'detail' },
+  name: 'Detail variant — stacked, full-sentence SecondaryLine',
+  args: { captureStatus: 'expired', variant: 'detail' },
 }
 
 export const DetailContextCountdown: Story = {
-  name: 'Detail context — countdown as a full sentence',
-  args: { captureStatus: 'pending', captureDeadlineAt: inFromNow(6 * DAY_MS), context: 'detail' },
+  name: 'Detail variant — countdown as a full sentence',
+  args: { captureStatus: 'pending', captureDeadlineAt: inFromNow(6 * DAY_MS), variant: 'detail' },
 }
 
 // §6 "loading": a Skeleton matching the pill's own footprint, never a placeholder tone.

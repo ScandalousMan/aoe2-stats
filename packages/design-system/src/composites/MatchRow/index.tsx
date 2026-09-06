@@ -401,7 +401,7 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
 
       <MatchMeta match={match} />
       <CaptureStateBadge
-        context="compact"
+        variant="compact"
         captureStatus={match.captureStatus}
         captureDeadlineAt={match.captureDeadlineAt}
       />
@@ -633,7 +633,7 @@ function MatchTableRow({
          * (match-history.md §8) — told to stack rather than left to infer a container width the
          * badge cannot observe (§8, capture-state-badge.md's own `stacked` prop). */}
         <CaptureStateBadge
-          context="compact"
+          variant="compact"
           stacked
           captureStatus={match.captureStatus}
           captureDeadlineAt={match.captureDeadlineAt}

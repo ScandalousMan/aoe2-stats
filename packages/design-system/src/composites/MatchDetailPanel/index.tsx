@@ -237,7 +237,7 @@ export function MatchDetailPanel({
           {/* §11.6: GameVersion carries its own loading placeholder, extending §5's existing
            * header-loading rule to this field rather than folding it into the line above. */}
           <Skeleton variant="text" lines={1} className="w-24" />
-          <CaptureStateBadge context="detail" loading />
+          <CaptureStateBadge variant="detail" loading />
         </header>
         <div className="flex flex-col gap-3">
           <Skeleton variant="block" className="h-14 w-full rounded-panel" />
@@ -281,7 +281,7 @@ export function MatchDetailPanel({
             </p>
           </div>
           <CaptureStateBadge
-            context="detail"
+            variant="detail"
             captureStatus={match.captureStatus}
             captureDeadlineAt={match.captureDeadlineAt}
           />

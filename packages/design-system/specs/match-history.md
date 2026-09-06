@@ -49,14 +49,14 @@ MatchRow                                                       one per match, th
 │                       — WIDENED by §12.4 to Rating: the absolute value and its signed change
 ├─ Duration             "34 min" — never raw seconds
 ├─ When                 relative time, absolute time on hover/focus (title attribute or tooltip)
-└─ CaptureStateBadge    context="compact" — see capture-state-badge.md
+└─ CaptureStateBadge    variant="compact" — see capture-state-badge.md
 
 MatchDetailPanel
 ├─ Header
 │  ├─ Map, leaderboard name, duration, played-on date/time
 │  │                             — Map WIDENED by §12.5 to MapThumbnail (lg) + name
 │  ├─ GameVersion                 raw patch string (e.g. "101.101") — 003 FR-018, §11.1
-│  └─ CaptureStateBadge          context="detail"
+│  └─ CaptureStateBadge          variant="detail"
 ├─ DownloadAction                Button/secondary — present only when capture_status = "stored"
 ├─ ParticipantsTable             FR-011: every participant, grouped by team
 │  └─ TeamGroup ×n               — gains a TeamResult marker in its heading (§12.3)

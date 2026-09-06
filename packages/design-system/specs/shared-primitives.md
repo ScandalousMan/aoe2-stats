@@ -40,6 +40,15 @@ identical to its rest has not told the user it responded.
 `danger-active` token, and inventing one is forbidden. Its hover deepens by swapping the fill to
 `surface-sunken` and keeping `danger` for label and boundary.
 
+**`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
+like the same word for the same idea, and they are not: `destructive` names what this button _does_
+— commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
+names what a _message_ means, the axis `Callout`'s and `Badge`'s tone scale carries. The table above
+already shows the layering rather than a collision: `destructive` paints its label and boundary with
+the `danger` token because a consequential action and a dangerous message share a colour, not a
+name. Renaming `destructive` to `danger` would put a message-severity word on an action-hierarchy
+scale next to `primary` and `secondary`, which is the inconsistency, not the fix.
+
 **Sizes** — `md`: height `space-10`, padding-inline `space-4`, font-size `sm`. `lg`: height
 `space-12`, padding-inline `space-6`, font-size `md`. **`md` is pointer-only.** Any button reachable
 on a touch viewport renders at `lg` (48px, clearing the 44px minimum), or `md` with the hit area
@@ -180,6 +189,15 @@ the fill stays neutral rather than tone-tinted, and the one theme-branching exce
 needed that these four do not — lives in
 [`capture-state-badge.md`](./capture-state-badge.md#5-badge-tone-variants-new-added-to-shared-primitivesmds-badge),
 which is also where `CaptureStateBadge`, the composite that actually chooses a tone, is specified.
+
+**`Badge`'s prop is `variant`, not `tone`, even though four of its six members are `Callout`'s
+entire `tone` scale (FR-032, T557, README's rule 9).** The two are not the same prop under two
+names: `Callout`'s `tone` is required and always carries semantic weight — a callout with no
+meaning to convey would not exist — while two of `Badge`'s six values, `neutral` and `accent`, carry
+none at all. Naming the whole prop `tone` would misdescribe those two. Where the scales genuinely
+overlap — `success`/`warning`/`danger`/`info` — they already share the identical four spellings in
+both components; that is the part of this that was worth reconciling, and it already was, before
+this survey.
 
 ---
 

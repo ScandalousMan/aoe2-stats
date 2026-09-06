@@ -196,6 +196,13 @@ defect happened in the first place. A route whose title is already carried by a 
 element passes `titleHidden`, which renders the same `<h1>` visually hidden — present in the
 accessibility tree, absent from the picture. There is no third option.
 
+**`Page` says `title`; `Section`, `Panel`, `EmptyState` and `ErrorState` say `heading` (FR-032,
+T557, `packages/design-system/specs/README.md`'s rule 9).** These are not the same concept under
+two names: a page has exactly one `title` — its `<h1>`, the document's own identity — and any
+number of blocks inside it may each carry a `heading`, one level down. Calling both `heading` would
+suggest a `Page` is one more block among the ones it contains, which is exactly the flattening the
+landmark defect came from.
+
 **Variants and sizes** — no variants. One prop shapes it, a closed three-value width vocabulary
 drawn from `size.json`:
 

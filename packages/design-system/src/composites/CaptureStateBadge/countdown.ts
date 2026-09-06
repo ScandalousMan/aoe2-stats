@@ -5,7 +5,7 @@
 // clock; Storybook stories supply a `captureDeadlineAt` computed relative to render time, so the
 // rendered text ("6 days left") stays the same on every run regardless of which day it runs on.
 
-export type CaptureStateBadgeContext = 'compact' | 'detail'
+export type CaptureStateBadgeVariant = 'compact' | 'detail'
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
@@ -39,18 +39,18 @@ function pluralise(amount: number, unit: string): string {
 export function describeCaptureCountdown(
   deadlineAt: string,
   now: number,
-  context: CaptureStateBadgeContext,
+  variant: CaptureStateBadgeVariant,
 ): string {
   const remainingMs = new Date(deadlineAt).getTime() - now
 
   if (remainingMs <= 0) {
-    return context === 'compact' ? 'Capture window closing' : 'This capture is due any moment.'
+    return variant === 'compact' ? 'Capture window closing' : 'This capture is due any moment.'
   }
 
   const { amount, unit } = remainingParts(remainingMs)
   const label = pluralise(amount, unit)
 
-  return context === 'compact'
+  return variant === 'compact'
     ? `${amount} ${label} left`
     : `Captures automatically within ${amount} ${label}.`
 }
