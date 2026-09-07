@@ -270,7 +270,11 @@ export const RealisticMatchHistory: Story = {
       <Section heading="Recent matches">
         <Panel density="dense">
           <Table
-            caption="Recent matches"
+            // structural-tier.md: a hidden caption must say something the heading above it does
+            // not, or the Section landmark and this Table's scroll region collapse to one
+            // accessible name (landmark-unique). "Recent matches" duplicated the Section heading
+            // above and was caught by CI's axe pass, not by this file's own tests.
+            caption="2 most recent matches, newest first"
             captionHidden
             density="dense"
             columns={realisticMatchColumns}
