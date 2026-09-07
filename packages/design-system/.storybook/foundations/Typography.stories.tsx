@@ -167,6 +167,37 @@ export const Overview: Story = {
             </div>
           </div>
         </Section>
+
+        <Section
+          heading="Delivery"
+          description="The three families each role reads from `font.family` (above), and the file each is actually shipped as — read from `font.json`'s own `face` group rather than restated: which weights are self-hosted, in what style, under which font-display strategy. The typeface decision itself — why these three, and the licence record for each — is specs/typography-tokens.md; the facts on this row are the ones that answer 'which font actually renders this role' without opening it."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {(Object.keys(font.face) as (keyof typeof font.face)[]).map((name) => (
+              <div
+                key={name}
+                className="flex flex-col gap-2 rounded-panel border-hairline border-border p-4"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                    {name}
+                  </code>
+                  <Text role="supporting">{font.face[name].family}</Text>
+                </div>
+                <Text role="supporting">
+                  <code className="type-machine text-xs">{font.family[name]}</code>
+                </Text>
+                <Text role="supporting">
+                  weight {font.face[name].weight} · {font.face[name].style} · font-display:{' '}
+                  {font.face[name].display}
+                </Text>
+                <Text role="supporting">
+                  <code className="type-machine text-xs">{font.face[name].src}</code>
+                </Text>
+              </div>
+            ))}
+          </div>
+        </Section>
       </Section>
     </div>
   ),

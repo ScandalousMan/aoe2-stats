@@ -46,38 +46,46 @@ export default meta
 type Story = StoryObj
 
 export const Overview: Story = {
-  render: () => (
-    <div className="mx-auto flex max-w-page flex-col gap-8 p-6">
-      <Section
-        heading="Elevation"
-        description="Four levels. A shadow is a claim about where a surface sits relative to everything else on the page, not a decoration picked by eye — each level states what it means and what may sit at it."
-      >
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {LEVELS.map((level) => (
-            <div key={level} className="flex flex-col gap-3 rounded-panel bg-surface p-4">
-              <code className="type-machine w-fit rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
-                {level}
-              </code>
-              <Text role="supporting">{renderMarkdownCode(elevation.$meaning[level])}</Text>
-              <div className="flex justify-center py-4">
-                <div
-                  className={cx(
-                    'flex h-16 w-32 items-center justify-center rounded-panel bg-surface-raised text-xs',
-                    SHADOW_CLASS[level],
-                  )}
-                >
-                  shadow-{level}
+  render: (_args, context) => {
+    const theme = context.globals.theme === 'dark' ? 'dark' : 'light'
+    const shadows = elevation[theme]
+
+    return (
+      <div className="mx-auto flex max-w-page flex-col gap-8 p-6">
+        <Section
+          heading="Elevation"
+          description="Four levels. A shadow is a claim about where a surface sits relative to everything else on the page, not a decoration picked by eye — each level states what it means and what may sit at it. The raw box-shadow value below is read from elevation.json for the active theme, the same value the shadow-<level> utility resolves to."
+        >
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {LEVELS.map((level) => (
+              <div key={level} className="flex flex-col gap-3 rounded-panel bg-surface p-4">
+                <code className="type-machine w-fit rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                  {level}
+                </code>
+                <Text role="supporting">{renderMarkdownCode(elevation.$meaning[level])}</Text>
+                <Text role="supporting">
+                  <code className="type-machine text-xs">{shadows[level]}</code>
+                </Text>
+                <div className="flex justify-center py-4">
+                  <div
+                    className={cx(
+                      'flex h-16 w-32 items-center justify-center rounded-panel bg-surface-raised text-xs',
+                      SHADOW_CLASS[level],
+                    )}
+                  >
+                    shadow-{level}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-        <Text role="supporting">
-          Themed like colour: dark surfaces need a darker, less transparent shadow to read at all,
-          so the same names carry different values per theme — switch the theme toolbar above to see
-          it.
-        </Text>
-      </Section>
-    </div>
-  ),
+            ))}
+          </div>
+          <Text role="supporting">
+            Themed like colour: dark surfaces need a darker, less transparent shadow to read at all,
+            so the same names carry different values per theme — switch the theme toolbar above to
+            see it.
+          </Text>
+        </Section>
+      </div>
+    )
+  },
 }

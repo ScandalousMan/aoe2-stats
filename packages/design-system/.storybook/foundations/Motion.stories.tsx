@@ -121,6 +121,14 @@ export const Overview: Story = {
                 )}
                 <code className="type-machine text-xs">{name}</code>
                 <Text role="supporting">{ANIMATION_MEANING[name]}</Text>
+                <Text role="supporting">
+                  <code className="type-machine text-xs">
+                    duration: {motion.duration[motion.animation[name].duration as Duration]} (
+                    {motion.animation[name].duration}) · easing:{' '}
+                    {motion.easing[motion.animation[name].easing as Easing]} (
+                    {motion.animation[name].easing}) · {motion.animation[name].iterationCount}
+                  </code>
+                </Text>
               </div>
             ))}
           </div>
