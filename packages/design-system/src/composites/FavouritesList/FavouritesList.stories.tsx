@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent } from 'storybook/test'
+import { expect, userEvent, waitFor } from 'storybook/test'
 import type { FavouriteEntryData } from './index'
 import { FavouritesList } from './index'
 
@@ -59,8 +59,18 @@ export const UnrefreshableStanding: Story = {
   args: { entries: [staleStanding] },
 }
 
+// `loading: true` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: { loading: true, loadingRowCount: 3 },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const LoadFailed: Story = {

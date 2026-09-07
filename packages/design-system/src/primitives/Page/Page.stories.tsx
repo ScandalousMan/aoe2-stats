@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { ReactNode } from 'react'
-import { within } from 'storybook/test'
+import { expect, waitFor, within } from 'storybook/test'
 import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
@@ -105,6 +105,11 @@ export const WidthMeasure: Story = {
   ),
 }
 
+// `Skeleton` stays invisible for the first `duration.normal` (200ms, `useDelayedVisible`) so a
+// fast-resolving load never flashes a pulse — a `setTimeout`, not a wall clock, but a clock all
+// the same (T568, FR-047). Waiting here for the pulse to exist, rather than screenshotting
+// whatever frame Storybook happened to reach first, is what makes this baseline the same no
+// matter how long mounting this particular story took.
 export const Loading: Story = {
   args: {
     title: 'Match history',
@@ -116,6 +121,11 @@ export const Loading: Story = {
       <Skeleton variant="block" className="h-24 w-full" />
     </Page>
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const TwoSections: Story = {

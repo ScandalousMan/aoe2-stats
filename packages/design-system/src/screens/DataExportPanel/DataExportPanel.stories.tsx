@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { DataExportPanel } from './index'
 
 const meta: Meta<typeof DataExportPanel> = {
@@ -29,9 +30,19 @@ export const Requesting: Story = {
   args: { ...noopHandlers, initialState: 'requesting' },
 }
 
+// The skeleton at the download-link footprint stays invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Preparing: Story = {
   name: 'preparing — info callout with a skeleton at the download link footprint',
   args: { ...noopHandlers, initialState: 'preparing' },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const Ready: Story = {

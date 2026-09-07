@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { userEvent, within } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import type { PlayerSearchResultData } from '../PlayerResultRow'
 import { SearchBox } from './index'
 import type { SearchBoxState } from './index'
@@ -13,6 +13,21 @@ const meta: Meta<typeof SearchBox> = {
 
 export default meta
 type Story = StoryObj<typeof SearchBox>
+
+// The rate-limited countdown sentence ("Try again in Ns.") depends on real elapsed time since
+// mount: `SearchBox` decrements `secondsLeft` once per real `window.setInterval` tick (index.tsx),
+// rather than reading a wall clock — freezing `Date.now` (`CaptureStateBadge.stories.tsx`'s own
+// technique for its live clock) would do nothing here, because the decrement counts ticks fired,
+// not time elapsed. T550 measured exactly this: the same commit's `RateLimited` baseline read
+// "Try again in 7s." from one CI capture and "Try again in 6s." from the next, purely because the
+// screenshot fired a beat later relative to mount and caught one extra tick — invisible to the
+// visual gate (0.095% of pixels, under `maxDiffPixelRatio: 0.01`), so it silently rewrote its own
+// baseline instead of ever failing (T568). `window.setInterval` is disabled for the whole iframe
+// below, at module load — before `SearchBox` ever mounts — so its internal timer never fires and
+// `secondsLeft` stays at the value passed in (`state.retryAfterSeconds`) for as long as the story
+// is on screen. The sentence this story exists to show ("You're searching too quickly. Try again
+// in 8s.") stays exactly that sentence, deterministically, no matter when the screenshot fires.
+window.setInterval = (() => 0) as unknown as typeof window.setInterval
 
 const results: PlayerSearchResultData[] = [
   {
@@ -70,9 +85,19 @@ export const Idle: Story = {
   render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
 }
 
+// `status: 'loading'` renders `Skeleton` rows, which stay invisible for the first
+// `duration.normal` (200ms, `useDelayedVisible`) so a fast-resolving query never flashes a pulse —
+// a `setTimeout`, not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the
+// pulse to exist, rather than screenshotting whatever frame Storybook happened to reach first, is
+// what makes this baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   name: 'loading — a query is in flight (skeleton footprint matches the loaded rows)',
   render: () => <DemoSearchBox state={{ status: 'loading' }} />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const Found: Story = {

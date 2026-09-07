@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { StatValue } from './index'
 
 const meta: Meta<typeof StatValue> = {
@@ -37,12 +38,22 @@ export const NegativeDelta: Story = {
   },
 }
 
+// `status: 'loading'` renders `Skeleton`, which stays invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: {
     variant: 'hero',
     label: '1v1 Random Map',
     status: 'loading',
     loadingWidthClassName: 'w-24',
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
   },
 }
 

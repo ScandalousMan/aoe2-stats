@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import type { AnalysisTeamGroupData } from './index'
 import { AnalysisTimeline } from './index'
 
@@ -6,6 +7,17 @@ const meta: Meta<typeof AnalysisTimeline> = {
   id: 'composite-analysistimeline',
   title: 'Composites/Match & game data/AnalysisTimeline',
   component: AnalysisTimeline,
+}
+
+// `queued`/`running` and `loading` all render `Skeleton`, which stays invisible for the first
+// `duration.normal` (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse —
+// a `setTimeout`, not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the
+// pulse to exist, rather than screenshotting whatever frame Storybook happened to reach first, is
+// what makes each baseline the same no matter how long mounting that particular story took.
+async function waitForPulse({ canvasElement }: { canvasElement: HTMLElement }) {
+  await waitFor(() => {
+    expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+  })
 }
 
 export default meta
@@ -105,10 +117,12 @@ export const UnresolvedIdentifiers: Story = {
 
 export const Queued: Story = {
   args: { state: 'queued' },
+  play: waitForPulse,
 }
 
 export const Running: Story = {
   args: { state: 'running' },
+  play: waitForPulse,
 }
 
 export const Failed: Story = {
@@ -128,6 +142,7 @@ export const Refused: Story = {
 
 export const Loading: Story = {
   args: { loading: true },
+  play: waitForPulse,
 }
 
 export const LoadFailed: Story = {

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { Skeleton } from '../../primitives/Skeleton'
 import { CivilisationIcon } from './index'
 
@@ -61,7 +62,11 @@ export const BlankName: Story = {
 }
 
 // §4 "loading" — the caller renders a Skeleton pair at the mark's exact footprint; this component
-// has no loading state of its own.
+// has no loading state of its own. `Skeleton` stays invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   name: 'Loading (caller-rendered Skeleton pair, not a state of this component)',
   render: () => (
@@ -70,6 +75,11 @@ export const Loading: Story = {
       <Skeleton variant="text" className="w-20" />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // Acceptance: every story renders a name, the uncovered and failed stories overlay pixel-for-pixel,

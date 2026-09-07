@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import type { ReplayAvailabilityRowData } from './index'
 import { ReplayAvailabilityList } from './index'
 
@@ -153,8 +153,18 @@ export const EveryRowUnobtainable: Story = {
 
 // §5 "loading": before the match detail response arrives — skeleton row count (2) matches the
 // smallest known participant count, at the row's own footprint.
+// `loading: true` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: { loading: true },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // §5 "error" — request could not be started at all: the row returns to default (button still

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { Skeleton } from '../../primitives/Skeleton'
 import { PlayerAvatar } from './index'
 
@@ -63,9 +64,19 @@ export const FailedHash: Story = {
 
 // §4 "loading" (first wait) — the caller draws Skeleton/block at the avatar's exact footprint
 // while the profile data has not arrived; this component is not rendered at all in that wait.
+// `Skeleton` stays invisible for the first `duration.normal` (200ms, `useDelayedVisible`) so a
+// fast-resolving load never flashes a pulse — a `setTimeout`, not a wall clock, but a clock all
+// the same (T568, FR-047). Waiting here for the pulse to exist, rather than screenshotting
+// whatever frame Storybook happened to reach first, is what makes this baseline the same no
+// matter how long mounting this particular story took.
 export const Loading: Story = {
   name: 'Loading (caller-rendered Skeleton/block, not a state of this component)',
   render: () => <Skeleton variant="block" className="h-16 w-16 rounded-control" />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // Acceptance: loaded, absent and failed avatars, each beside the heading it always sits next to —

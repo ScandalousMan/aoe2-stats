@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { Skeleton } from '../../primitives/Skeleton'
 import { MapThumbnail } from './index'
 
@@ -64,7 +65,12 @@ export const NoMapNameAtAll: Story = {
   args: { thumbnailUrl: ARABIA_URL, mapName: null },
 }
 
-// §4 "loading" — caller-rendered Skeleton pair at the frame's exact footprint.
+// §4 "loading" — caller-rendered Skeleton pair at the frame's exact footprint. `Skeleton` stays
+// invisible for the first `duration.normal` (200ms, `useDelayedVisible`) so a fast-resolving load
+// never flashes a pulse — a `setTimeout`, not a wall clock, but a clock all the same (T568,
+// FR-047). Waiting here for the pulse to exist, rather than screenshotting whatever frame
+// Storybook happened to reach first, is what makes this baseline the same no matter how long
+// mounting this particular story took.
 export const Loading: Story = {
   name: 'Loading (caller-rendered Skeleton pair, not a state of this component)',
   render: () => (
@@ -73,6 +79,11 @@ export const Loading: Story = {
       <Skeleton variant="text" className="w-24" />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // The 1280 table story: a row with a thumbnail and a row without one, at the same size, showing
