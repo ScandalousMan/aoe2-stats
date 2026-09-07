@@ -74,10 +74,13 @@ export const TokenSwatch: Story = {
   ),
 }
 
-// A `standalone` link's tappable box must measure at least 44px in both axes at 375 (§9).
+// A `standalone` link's tappable box must measure at least 44px in both axes at the narrow review
+// width (§9). Pinned to `reviewWidthNarrow` (`.storybook/preview.tsx`, see `MatchRow.stories.tsx`'s
+// identical rationale for why a declared option rather than a Storybook device preset) — this pin
+// serves the browsable Storybook only; the visual suite's own `WIDTHS` axis governs a baseline.
 export const TouchFootprint: Story = {
   args: { variant: 'standalone', children: 'Export match history' },
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
 }
 
 // §9 "empty": no text renders nothing — an icon-only link is forbidden in this tier.

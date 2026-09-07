@@ -196,20 +196,24 @@ asked the three questions. This is a mixed verdict, not a pass.
    page "the strongest thing in the build", but it then delegated every number to
    `packages/design-system/specs/README.md` and `color-tokens.md` — files the scenario forbids — so
    it could show a rectangle but not the colour behind it, and captioned emphasis tiles with the role
-   name four times instead of the surface. `7f8ff24` now computes every contrast ratio live from the
-   token pair the tile actually paints and captions each tile with its surface. This question passes
-   against the tree as it stands today; it did not pass during the run.
+   name four times instead of the surface. A fix landed on this branch (PR #69, following this
+   run) that now computes every contrast ratio live from the token pair the tile actually paints and
+   captions each tile with its surface. This question passes against the tree as it stands today; it
+   did not pass during the run.
 3. **What a stated state looks like** (rate-limited `SearchBox`; `selection` on a `Menu`): **half
    excellent, half failed at the time of the run, fixed since.** `SearchBox`'s rate-limited story was
    singled out as the model the rest of the library should follow — its story name is a contract and
    the render honours it line by line. `Menu/Selection`, `Menu/ProfileSwitcher` and
    `Menu/FocusVisible` rendered pixel-identically: a checked item carried `aria-checked` and no
    visual mark, so the ring visible on that row was the focus ring, not a selection mark, and a
-   reader could not tell the two states apart. `3032e21`/`338d731` gave `Menu` an intrinsic leading
-   checkmark, painted when checked and holding reserved space when not, and `8eac38d` moved
-   `FocusVisible`'s focus onto an unchecked item so selection and focus read as two signals; the spec
-   files that had described the retired caller-supplied badge (`shared-primitives.md`,
-   `profile-summary.md`, `site-header.md`) were corrected to match.
+   reader could not tell the two states apart. A fix landed on this branch (PR #69, following this
+   run) that gave `Menu` an intrinsic leading checkmark, painted when checked and holding reserved
+   space when not, and a follow-up spec correction in the same PR moved `FocusVisible`'s focus onto
+   an unchecked item so selection and focus read as two signals; the spec files that had described
+   the retired caller-supplied badge (`shared-primitives.md`, `profile-summary.md`,
+   `site-header.md`) were corrected to match. (One of the two fix commits behind this paragraph was
+   superseded by a rebase before landing; only the surviving commit is citable, which is why neither
+   is named by hash here.)
 
 Two of the three fixes above landed only after this run named them, and Q1's accessibility half is
 still open. What remains — no `docs` entries in the build, docgen off so no prop tables, no

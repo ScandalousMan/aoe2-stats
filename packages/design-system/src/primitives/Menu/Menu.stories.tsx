@@ -52,13 +52,14 @@ export const SingleProfile: Story = {
 
 // FR-044: `isSheet = !useBreakpoint('md')` (index.tsx's own doc comment) — a full-width bottom
 // sheet below `md`, an anchored popover from it, one DOM tree restructured at the breakpoint.
-// Pinned toward the narrow shape with Storybook's built-in `mobile1` preset via `globals.viewport`
-// (see `MatchRow.stories.tsx`'s identical rationale for why a preset name and why `mobile1`) —
-// `ProfileSwitcher` above already reads at the wide, popover shape.
+// Pinned toward the narrow shape with the declared `reviewWidthNarrow` viewport via
+// `globals.viewport` (see `MatchRow.stories.tsx`'s identical rationale for why a declared option
+// rather than a Storybook device preset) — `ProfileSwitcher` above already reads at the wide,
+// popover shape.
 export const SheetBelowMd: Story = {
   name: 'Bottom sheet below md, an anchored popover from it',
   tags: ['visual-full-page'],
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   play: openMenu,
   args: {
     variant: 'selection',

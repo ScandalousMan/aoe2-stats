@@ -110,12 +110,13 @@ export const Board: Story = {
 }
 
 // FR-044: `index.tsx`'s own `isTable = useBreakpoint('lg')` — ratings render as cards below `lg`
-// (1024) and as a `<table>` from it. Pinned toward the narrow shape with Storybook's built-in
-// `mobile1` preset via `globals.viewport` (see `MatchRow.stories.tsx`'s identical rationale for
-// why a preset name and why `mobile1`) — `Board` above already reads at the wide, table shape.
+// (1024) and as a `<table>` from it. Pinned toward the narrow shape with the declared
+// `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
+// rationale for why a declared option rather than a Storybook device preset) — `Board` above
+// already reads at the wide, table shape.
 export const BoardRatingsCardsBelowLg: Story = {
   name: 'Ratings as cards below lg, a table from it',
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: {
     subject: 'self',
     authenticated: true,

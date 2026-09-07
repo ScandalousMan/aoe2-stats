@@ -299,19 +299,21 @@ export const ListOtherSubjectEmpty: Story = {
 
 // FR-044: `MatchList` reads the same `xl` breakpoint `useBreakpoint('xl')` names in `index.tsx`'s
 // own doc comment (§8) — below it every match is its own card list item, at or above it a real
-// `<table>`. Pinned to Storybook's built-in `mobile1` preset — never a literal pixel value:
-// `specs/README.md` rule 7 is the one place the review widths (375/768/1280) are declared, and
-// `scripts/visual/run.mjs`'s `WIDTHS` array is their one necessary code consumer, so a preset name
-// stands in for the narrow one rather than a second literal for that number to go stale against.
-// `ListPopulated` above already reads at the wide, table shape in the ordinary case; this is the
-// one story that pins toward the shape none of this file's others force. Pinned through
-// `globals.viewport`, not `parameters.viewport.defaultViewport`: Storybook 10 folded the old
-// `@storybook/addon-viewport` into core (`storybook/viewport`), and its per-story API is the
-// `globals` shape — `parameters.viewport.defaultViewport` was never wired to anything in this
-// version and silently did nothing, including here and in `Link.stories.tsx`'s `TouchFootprint`.
+// `<table>`. Pinned to `reviewWidthNarrow`, the one custom viewport `.storybook/preview.tsx`
+// declares at `specs/README.md` rule 7's narrowest review width — never a literal pixel value here,
+// and never one of Storybook's own device presets either, none of which sits at that width. This
+// pin serves the browsable Storybook only: the visual regression suite's own width axis
+// (`scripts/visual/run.mjs`'s `WIDTHS`) is what actually governs a baseline's dimensions, and it
+// overrides whatever viewport a story pins. `ListPopulated` above already reads at the wide, table
+// shape in the ordinary case; this is the one story that pins toward the shape none of this file's
+// others force. Pinned through `globals.viewport`, not `parameters.viewport.defaultViewport`:
+// Storybook 10 folded the old `@storybook/addon-viewport` into core (`storybook/viewport`), and its
+// per-story API is the `globals` shape — `parameters.viewport.defaultViewport` was never wired to
+// anything in this version and silently did nothing, including here and in `Link.stories.tsx`'s
+// `TouchFootprint`.
 export const ListCardsBelowXl: Story = {
   name: 'MatchList — cards below xl, a real <table> from it (§8)',
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   render: () => <MatchList matches={populated} />,
 }
 

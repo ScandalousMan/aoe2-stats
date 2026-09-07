@@ -152,12 +152,12 @@ export const LoadFailed: Story = {
 
 // FR-044: `ParticipantColumns`'s own doc comment (§8) names `md` as the breakpoint — every column
 // stacks full-width below it, two side by side (same team) from it. Pinned toward the narrow shape
-// with Storybook's built-in `mobile1` preset via `globals.viewport` (see `MatchRow.stories.tsx`'s
-// identical rationale for why a preset name and why `mobile1`) — `Published` above already reads
-// at the wide, two-column shape.
+// with the declared `reviewWidthNarrow` viewport via `globals.viewport` (see
+// `MatchRow.stories.tsx`'s identical rationale for why a declared option rather than a Storybook
+// device preset) — `Published` above already reads at the wide, two-column shape.
 export const StackedColumnsBelowMd: Story = {
   name: 'Participant columns stacked below md, two-column grid from it (§8)',
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { state: 'published', teams, ...engineProps },
 }
 

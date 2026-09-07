@@ -818,7 +818,15 @@ found it (`specs/005-design-system-foundations/quickstart.md`, "Scenario 9 — R
 distinction is CLAUDE.md's: a fact about this package's Storybook build needs updating whenever a
 future task changes that build, so it stays here rather than in a spec, which is written once. This
 phase deliberately does not close any of the four rows below; each names what a follow-up task
-would do and why closing it matters, so the next reader can act without re-running the scenario.
+would do, who has to act and by when, and why closing it matters, so the next reader can act without
+re-running the scenario.
+
+**FR-040 is not met at the end of Phase 6, and neither is production-readiness item 10.** spec.md's
+FR-040 requires Storybook to be sufficient to understand the system without reading the application
+source; the four rows below are the specific ways it is not, as of this register's date. T563, T565
+and T566 close everything FR-040 asked of story coverage and composition realism, which is why they
+stay ticked in `tasks.md` — the remaining gap is documentation infrastructure (autodocs, docgen, a
+purpose line, a naming-contract statement), not missing coverage, and T578 below is what closes it.
 
 A human reader, given the built Storybook and no repository access, could reliably answer _what
 does X look like when Y_ (Foundations → Colour computes every ratio live and captions every tile
@@ -830,13 +838,15 @@ between the two.
    there is no autodocs page and no MDX page for a single component. A reader has no page to land on
    that describes a component rather than one of its states. Closing this needs Storybook's autodocs
    turned on per component (or an MDX page per component directory) in
-   `packages/design-system/.storybook/`, which is out of this phase's scope.
+   `packages/design-system/.storybook/`, which is out of this phase's scope. **Owner: T578. Fix by
+   2026-09-21.**
 2. **No prop documentation.** The Controls panel shows a prop's name and its control widget only —
    no type column, no description — because docgen is off. The reader reconstructed
    `PlayerColourSwatch`'s valid `colorId` range from a _story name_, not from a documented prop. This
    closes together with row 1: turning on docgen (`react-docgen-typescript` or the Storybook
    equivalent) is what populates both the type/description columns and an autodocs page's prop
    table from the same source, a component's own TypeScript props, so the fact is written once.
+   **Owner: T578. Fix by 2026-09-21.**
 3. **No component states its purpose in a sentence.** Not one of the 41 components under
    `packages/design-system/src/` opens with a line saying what it is for. The reader named this the
    single highest-value gap and the direct cause of Q1's difficulty in the scenario 9 run: finding
@@ -844,7 +854,7 @@ between the two.
    component page itself confirmed the need it served once found. A purpose line is a per-component
    authoring task, one sentence per `*.stories.tsx`'s default export or an MDX/autodocs page's
    opening paragraph (see row 1); it is not a token or a mechanical check, which is why it is
-   recorded as a register row rather than turned into one.
+   recorded as a register row rather than turned into one. **Owner: T578. Fix by 2026-09-21.**
 4. **No component states which `sr-only` naming shape it follows.** Foundations → Iconography
    states the rule an icon-carried meaning must satisfy (FR-011: an icon is never the only carrier of
    a meaning), but no component story links to that page or claims conformance with it, so a reader
@@ -852,6 +862,7 @@ between the two.
    exists at all — it is `sr-only` text, invisible in a rendered story and undiscoverable without
    the DOM. Closing this needs each component that carries a redundant accessible name to say so and
    link the rule it follows, most naturally beside the purpose line in row 3 once that exists.
+   **Owner: T578. Fix by 2026-09-21.**
 
 Two smaller findings from the same run are already fixed and are not repeated here as open rows:
 `SearchBox`'s two stories both numbered "empty 2 of 3" is corrected, and `Menu/KeyboardNavigation`'s

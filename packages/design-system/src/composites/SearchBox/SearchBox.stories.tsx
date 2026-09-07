@@ -14,21 +14,6 @@ const meta: Meta<typeof SearchBox> = {
 export default meta
 type Story = StoryObj<typeof SearchBox>
 
-// The rate-limited countdown sentence ("Try again in Ns.") depends on real elapsed time since
-// mount: `SearchBox` decrements `secondsLeft` once per real `window.setInterval` tick (index.tsx),
-// rather than reading a wall clock — freezing `Date.now` (`CaptureStateBadge.stories.tsx`'s own
-// technique for its live clock) would do nothing here, because the decrement counts ticks fired,
-// not time elapsed. T550 measured exactly this: the same commit's `RateLimited` baseline read
-// "Try again in 7s." from one CI capture and "Try again in 6s." from the next, purely because the
-// screenshot fired a beat later relative to mount and caught one extra tick — invisible to the
-// visual gate (0.095% of pixels, under `maxDiffPixelRatio: 0.01`), so it silently rewrote its own
-// baseline instead of ever failing (T568). `window.setInterval` is disabled for the whole iframe
-// below, at module load — before `SearchBox` ever mounts — so its internal timer never fires and
-// `secondsLeft` stays at the value passed in (`state.retryAfterSeconds`) for as long as the story
-// is on screen. The sentence this story exists to show ("You're searching too quickly. Try again
-// in 8s.") stays exactly that sentence, deterministically, no matter when the screenshot fires.
-window.setInterval = (() => 0) as unknown as typeof window.setInterval
-
 const results: PlayerSearchResultData[] = [
   {
     profileId: '1',
@@ -141,8 +126,31 @@ export const DegradedAndEmpty: Story = {
   ),
 }
 
+// The rate-limited countdown sentence ("Try again in Ns.") depends on real elapsed time since
+// mount: `SearchBox` decrements `secondsLeft` once per real `window.setInterval` tick (index.tsx),
+// rather than reading a wall clock — freezing `Date.now` (`CaptureStateBadge.stories.tsx`'s own
+// technique for its live clock) would do nothing here, because the decrement counts ticks fired,
+// not time elapsed. T550 measured exactly this: the same commit's `RateLimited` baseline read
+// "Try again in 7s." from one CI capture and "Try again in 6s." from the next, purely because the
+// screenshot fired a beat later relative to mount and caught one extra tick — invisible to the
+// visual gate (0.095% of pixels, under `maxDiffPixelRatio: 0.01`), so it silently rewrote its own
+// baseline instead of ever failing (T568). `window.setInterval` is disabled here, in this story's
+// own `beforeEach`, before `SearchBox` ever mounts, and restored by the returned cleanup once the
+// story is torn down — never at module scope, which would leave every other `setInterval` consumer
+// in the browsable Storybook preview (e.g. `CaptureStateBadge`, `ReplayAvailabilityList`) dead for
+// the rest of the session (the defect this scoping fixes). `secondsLeft` stays at the value passed
+// in (`state.retryAfterSeconds`) for as long as this story is on screen, so the sentence it exists
+// to show ("You're searching too quickly. Try again in 8s.") stays exactly that sentence,
+// deterministically, no matter when the screenshot fires.
 export const RateLimited: Story = {
   name: 'error — rate limited (Callout/warning, Input disabled, countdown sentence in the same frame)',
+  beforeEach: () => {
+    const realSetInterval = window.setInterval
+    window.setInterval = (() => 0) as unknown as typeof window.setInterval
+    return () => {
+      window.setInterval = realSetInterval
+    }
+  },
   render: () => <DemoSearchBox state={{ status: 'rate-limited', retryAfterSeconds: 8 }} />,
 }
 

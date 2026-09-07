@@ -1,8 +1,25 @@
 import type { Decorator, Preview } from '@storybook/react-vite'
 import { useEffect } from 'react'
+import { MINIMAL_VIEWPORTS } from 'storybook/viewport'
 // The one stylesheet every consumer imports (see tokens/tailwind.css) — Storybook renders
 // components exactly the way apps/web does, tokens included, never a second copy of Tailwind.
 import '../tokens/tailwind.css'
+
+// A handful of stories pin a viewport to force the narrow shape of a responsive component into
+// view in the browsable Storybook (each such story's own comment names why). None of Storybook's
+// built-in presets sits at the narrowest width `packages/design-system/specs/README.md` rule 7
+// declares for review — `MINIMAL_VIEWPORTS.mobile1` is narrower than that — so it is declared once
+// here rather than borrowed from a preset chosen for a different number. This pin is cosmetic only:
+// the visual regression suite's own width axis (`scripts/visual/run.mjs`'s `WIDTHS`) is what
+// actually governs a baseline's dimensions, and it overrides whatever this preview sets.
+const VIEWPORT_OPTIONS = {
+  ...MINIMAL_VIEWPORTS,
+  reviewWidthNarrow: {
+    name: 'Review width (narrow)',
+    styles: { width: '375px', height: '667px' },
+    type: 'mobile' as const,
+  },
+}
 
 // Every story renders inside this element so it always carries the theme's own background and
 // text colour from tokens — never a Storybook default that the token set doesn't own.
@@ -51,6 +68,9 @@ const preview: Preview = {
           ['Account & privacy', 'Profile & capture'],
         ],
       },
+    },
+    viewport: {
+      options: VIEWPORT_OPTIONS,
     },
   },
   globalTypes: {

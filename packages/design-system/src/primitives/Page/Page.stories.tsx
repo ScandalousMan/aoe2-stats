@@ -4,9 +4,10 @@ import { expect, waitFor, within } from 'storybook/test'
 import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
+import { Panel } from '../Panel'
+import { Section } from '../Section'
 import { Skeleton } from '../Skeleton'
-import { MatchList } from '../../composites/MatchRow'
-import type { MatchRowData } from '../../composites/MatchRow'
+import { Table, type TableColumn } from '../Table'
 import { Page } from './index'
 
 const meta: Meta<typeof Page> = {
@@ -199,74 +200,86 @@ export const HoverActiveDisabledNotApplicable: Story = {
   ),
 }
 
-// A realistic combined story: the shape `MatchHistoryContainer.tsx` (apps/web) actually renders —
-// a hidden title (the page header lives in `ProfileSummary/compact` instead) above a real
-// `MatchList`, at plausible content lengths rather than `SamplePanel`'s one-line specimens.
-const realisticMatches: MatchRowData[] = [
+// A realistic combined story: a hidden title (the page header lives in `ProfileSummary/compact`
+// instead) above a bounded `Section`/`Panel` holding a `dense` `Table` of plausible match rows —
+// the shape `structural-tier.md` §10 names `Table` for (a data-comparison surface), built from
+// primitives only. `MatchList` (`composites/MatchRow`) is the domain composite that actually wraps
+// this shape in `apps/web`; a primitive story may not import it (FR-029, `tier-deps.mjs`), so this
+// story demonstrates the same realistic content lengths — full alias, map and civilisation names,
+// double- and triple-digit rating deltas, plausible durations — through `Table` directly, the
+// primitive `structural-tier.md` says a domain composite is itself built from.
+interface RealisticMatchRow {
+  gameId: string
+  opponent: string
+  map: string
+  civilisation: string
+  rating: number
+  ratingChange: number
+  durationLabel: string
+  when: string
+  captureStatus: string
+}
+
+const realisticMatches: RealisticMatchRow[] = [
   {
     gameId: '1001',
-    href: '/matches/1001',
-    outcome: 'win',
-    participants: [
-      {
-        profileId: 1807091,
-        alias: 'GL.TheViper',
-        teamId: 1,
-        colorId: 4,
-        result: 'win',
-        isViewer: true,
-      },
-      { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'loss' },
-    ],
+    opponent: 'aoe2villain',
     map: 'Arabia',
     civilisation: 'Britons',
-    civIconUrl: '/game-assets/civilisations/britons.webp',
-    mapThumbnailUrl: '/game-assets/maps/arabia.webp',
-    leaderboardName: '1v1 Random Map',
     rating: 1842,
-    ratingChange: { value: 16 },
+    ratingChange: 16,
     durationLabel: '34 min',
-    playedAtRelative: '3 hours ago',
-    playedAtAbsolute: '2026-08-22T09:12:00Z',
-    captureStatus: 'stored',
-    captureDeadlineAt: null,
+    when: '3 hours ago',
+    captureStatus: 'Replay stored',
   },
   {
     gameId: '1002',
-    href: '/matches/1002',
-    outcome: 'loss',
-    participants: [
-      {
-        profileId: 1807091,
-        alias: 'GL.TheViper',
-        teamId: 1,
-        colorId: 4,
-        result: 'loss',
-        isViewer: true,
-      },
-      { profileId: 264353, alias: 'aoe2villain', teamId: 2, colorId: 2, result: 'win' },
-    ],
+    opponent: 'aoe2villain',
     map: 'Black Forest',
     civilisation: 'Mayans',
-    civIconUrl: '/game-assets/civilisations/mayans.webp',
-    mapThumbnailUrl: '/game-assets/maps/black_forest.webp',
-    leaderboardName: '1v1 Random Map',
     rating: 1826,
-    ratingChange: { value: -16 },
+    ratingChange: -16,
     durationLabel: '52 min',
-    playedAtRelative: 'yesterday',
-    playedAtAbsolute: '2026-08-21T18:03:00Z',
-    captureStatus: 'pending',
-    captureDeadlineAt: null,
+    when: 'yesterday',
+    captureStatus: 'Capture pending',
   },
 ]
 
+const realisticMatchColumns: [TableColumn<RealisticMatchRow>, ...TableColumn<RealisticMatchRow>[]] =
+  [
+    { key: 'opponent', header: 'Opponent', render: (row) => row.opponent },
+    { key: 'civilisation', header: 'Civilisation', render: (row) => row.civilisation },
+    { key: 'map', header: 'Map', render: (row) => row.map },
+    { key: 'rating', header: 'Rating', align: 'numeric', render: (row) => row.rating },
+    {
+      key: 'ratingChange',
+      header: 'Change',
+      align: 'numeric',
+      render: (row) => (row.ratingChange >= 0 ? `+${row.ratingChange}` : String(row.ratingChange)),
+    },
+    { key: 'duration', header: 'Duration', render: (row) => row.durationLabel },
+    { key: 'when', header: 'When', render: (row) => row.when },
+    { key: 'captureStatus', header: 'Capture', render: (row) => row.captureStatus },
+  ]
+
 export const RealisticMatchHistory: Story = {
-  name: 'Realistic composition — MatchHistoryContainer (title hidden, real MatchList)',
+  name: 'Realistic composition — a dense Table of match rows',
   args: { title: 'Match history', titleHidden: true },
   render: (args) => (
     <Page {...args}>
-      <MatchList matches={realisticMatches} />
+      <Section heading="Recent matches">
+        <Panel density="dense">
+          <Table
+            caption="Recent matches"
+            captionHidden
+            density="dense"
+            columns={realisticMatchColumns}
+            rows={realisticMatches}
+            getRowKey={(row) => row.gameId}
+            getRowHref={(row) => `/matches/${row.gameId}`}
+          />
+        </Panel>
+      </Section>
     </Page>
   ),
 }

@@ -196,9 +196,10 @@ is why the light theme uses the darker token, and this is the one place `accent`
 **Sizes** — one: height `space-5`, padding-inline `space-2`, font-size `xs`, weight `semibold`,
 tracking `wide`, radius `full`.
 
-**States** — **default** only. No hover, no active, no focus: a badge is not interactive and must
-never be the control that changes the state it names. **disabled / loading** — none; during a state
-change the badge is replaced by a `Skeleton` of the same footprint. **error** — none.
+**States** — **default** only. **hover / focus-visible / active** — none: a badge is not
+interactive and must never be the control that changes the state it names. **disabled / loading** —
+none; during a state change the badge is replaced by a `Skeleton` of the same footprint.
+**error** — none.
 **empty** — a badge with no label renders nothing. **selection** — not applicable to `Badge` on its
 own: a selection state's still-image mark is `Menu`'s own intrinsic checkmark glyph
 (`shared-primitives.md#Menu`, T572), not `Badge`. A `Badge` beside a checked item (`Menu`'s
@@ -250,10 +251,22 @@ this survey.
 
 **Sizes** — derived from the content, never chosen freely.
 
-**States** — **loading** is the only state; the component exists for it. It has no hover, focus,
-active, disabled or error state. **empty** — a skeleton with a zero count renders nothing.
-**selection / expansion** — not applicable; a skeleton stands in for content that has neither state
-yet, and it never carries one that content it replaces would not also have.
+**States** — **loading** is the only real state; the component exists for it, and everything below
+answers what happens instead of each of the others rather than leaving it unbuilt (FR-036).
+**default** — not applicable: before `duration.normal` (200 ms) has elapsed nothing renders at all
+(see the Duration rule below); once it has, the component goes straight to `loading` rather than
+resting anywhere first, because it has no appearance independent of loading.
+**hover / focus-visible / active** — not applicable: `Skeleton`'s blocks carry `aria-hidden` and sit
+outside the tab order, so none can ever receive a pointer, keyboard or press event; the pulse keeps
+running unchanged regardless of where the pointer or focus is.
+**disabled** — not applicable: `Skeleton` is never an interactive control to disable; instead it
+just holds its footprint until the content it stands in for replaces it.
+**error** — not applicable to `Skeleton` itself: the caller's region owns the failure, and after the
+10 s stall named in the Duration rule below it replaces the skeleton with a `danger` `Callout` and a
+retry, rather than the skeleton ever painting an error appearance of its own.
+**empty** — a skeleton with a zero count renders nothing. **selection / expansion** — not
+applicable; a skeleton stands in for content that has neither state yet, and it never carries one
+that content it replaces would not also have.
 **Duration rule:** do not render before 200 ms (`motion.duration.normal`) have elapsed — a skeleton
 that flashes is worse than a brief blank. After 10 s, the caller replaces it with a `danger`
 `Callout` and a retry; a skeleton that pulses forever is a hang wearing a costume.
@@ -403,12 +416,25 @@ slot, exactly two actions — rather than generalised further than either consum
 
 - **default** — backdrop `overlay`, surface `surface`, elevation `modal`, radius `xl` (`t-xl` on the
   sheet's top corners only below `md`, all four corners from `md` up).
+- **focus-visible** — real, and it shares its first frame with `default` rather than following it:
+  opening the dialog moves focus straight to the heading (`tabIndex={-1}`) on mount, so there is no
+  frame of `default` in which the heading has not already become the accessibility tree's focus
+  target — the `Default` screenshot above is already this state's still-image evidence, which is
+  why the still-image obligation (FR-037) is met without a second, visually different frame to
+  compare it against. From there, Tab reaches `primaryAction` then `secondaryAction` (rendered in
+  that order) and wraps from the last back to the first without ever escaping to the page behind
+  the backdrop — the one trap FR-049 permits, and the trap this dialog owns rather than delegating.
+  The heading's own focus is for the accessible-name announcement, not a ring of its own; the
+  visible ring at each later step of the trap paints on whichever `Button` currently holds focus,
+  per that component's own `focus-visible` answer above.
 - **loading** — the action in flight sets `loading` and `loadingLabel` on its own `Button`; the
   other action disables via its own `disabled` rather than a dialog-wide flag, so a caller can
   disable one without the other.
 - **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
-- **empty / hover / active** — not applicable; a dialog with no actions is a malformed call site,
-  and hover/active belong to the `Button`s inside it, not to the dialog itself.
+- **empty / hover / active / disabled** — not applicable; a dialog with no actions is a malformed
+  call site, and hover, active and disabled all belong to the `Button`s inside it — each one's own
+  `disabled` prop, as `loading` above already uses to disable one action without the other — not to
+  the dialog itself, which has no resting/pressed/disabled distinction independent of its actions.
 - **selection** — not applicable; a dialog is not a set member.
 - **expansion** — not applicable, and deliberately not the vocabulary's shipping case for this
   shape: a `Dialog` is open or closed by a caller-held boolean, not by an `aria-expanded` toggle on a

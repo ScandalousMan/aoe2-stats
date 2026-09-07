@@ -242,13 +242,13 @@ export const RealisticMatch: Story = {
 
 // FR-044: `ReplayAvailabilityRow`'s own doc comment (§9) names `md` as the breakpoint — the whole
 // row stacks below it, one line with an intrinsic-width, right-aligned `DownloadAction` from it
-// (unchanged again at `xl`, per the same comment). Pinned toward the narrow shape with Storybook's
-// built-in `mobile1` preset via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
-// rationale for why a preset name and why `mobile1`) — `RealisticMatch` above already reads at the
-// wide, one-line shape.
+// (unchanged again at `xl`, per the same comment). Pinned toward the narrow shape with the declared
+// `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
+// rationale for why a declared option rather than a Storybook device preset) — `RealisticMatch`
+// above already reads at the wide, one-line shape.
 export const StackedRowsBelowMd: Story = {
   name: 'Stacked row below md, one line from it (§9)',
-  globals: { viewport: { value: 'mobile1' } },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { rows: realisticRows },
 }
 

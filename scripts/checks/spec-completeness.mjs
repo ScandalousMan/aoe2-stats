@@ -40,8 +40,10 @@
 // (token-scale.mjs's own header explains the reasoning: the shapes are lexical, not structural).
 // Two conventions both ship today for declaring a section or a state, and both are matched:
 //   - A `#`-`######` heading whose text names the section (`## 5. States`, numbering and trailing
-//     qualifiers ignored — `## 3. The four-state collapse` is not a match for "States", but
-//     `## 6. Tokens used` is a match for "Tokens used").
+//     qualifiers ignored). Matching is by whole word, not substring: `## 3. The four-state
+//     collapse` is genuinely not a match for "States" (the hyphenated compound `four-state` is one
+//     token, and no token in it equals or starts with the keyword `state`), while `## 6. Tokens
+//     used` is a match for "Tokens used" (the token `tokens` starts with the keyword `token`).
 //   - A bold label at the very start of a (trimmed) line, optionally bulleted (`**Purpose** —
 //     ...`, `- **default** — ...`) — the compressed shape `shared-primitives.md`,
 //     `structural-tier.md` and several screen specs already use per component instead of numbered
@@ -51,10 +53,25 @@
 // "answered", exactly as FR-035 allows: "specifying its appearance and behaviour or recording why
 // it does not apply" both start with the state's name written down.
 //
+// The state vocabulary is checked **per component**, not per file, for the same reason tier and
+// surface class already are (T570: "a tier is a property of a component and a file covering six
+// cannot declare one"). A multi-component file that also uses one `##` heading per component
+// (`shared-primitives.md`, `structural-tier.md` — see `findComponentSection`) is scoped to that
+// heading's own body before the ten-entry scan runs, so a state answered for one component no
+// longer silently covers a sibling that never answered it. A multi-component file with no such
+// heading boundary (`match-history.md`, `player-search.md`, `privacy-data-rights.md` — one shared
+// numbered "States" section naming each component inline, e.g. "`MatchRow`: ...; `DownloadAction`:
+// ...") has no boundary to scope to and is checked whole-document, exactly as before: that shape
+// already answers each component by name inside the one section, which the per-component heading
+// scope cannot see and does not need to. The nine other sections stay file-scoped everywhere: the
+// compressed per-component shape already restates all nine section labels inside every component's
+// own heading block (`shared-primitives.md`'s `## Button` carries its own `**Purpose**` through
+// `**Acceptance**`), so the equivalent hole does not exist for sections today.
+//
 // Usage:  node scripts/checks/spec-completeness.mjs
-// Exit:   0 if every Index-mapped spec answers all nine sections and all ten states, declares a
-//         tier and a surface class for every component it covers, and no component directory on
-//         disk is missing from the Index — 1 otherwise, naming the file, the component and the
+// Exit:   0 if every Index-mapped spec answers all nine sections, every component it covers
+//         answers all ten states, declares a tier and a surface class, and no component directory
+//         on disk is missing from the Index — 1 otherwise, naming the file, the component and the
 //         exact missing thing for every finding.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -69,7 +86,10 @@ const readmePath = path.join(specsDir, 'README.md')
 // The one hand-maintained exemption the task requires by name — see the file header for why
 // nothing else needs one.
 export const EXEMPT_SPEC_FILES = new Map([
-  ['game-asset-tokens.md', 'specifies tokens, not a component (its own Index row: "no component; `tokens/`")'],
+  [
+    'game-asset-tokens.md',
+    'specifies tokens, not a component (its own Index row: "no component; `tokens/`")',
+  ],
 ])
 
 function log(message) {
@@ -84,41 +104,111 @@ function fail(message) {
 // --- Derived from README.md: sections, vocabulary, surface classes --------------------------
 
 const SECTIONS_HEADING = '## Every spec has nine sections'
+const SECTIONS_HEADING_RE = /^## Every spec has (\w+) sections$/m
+
+// English number words this check needs to cross-check a count against, small and closed rather
+// than pulled from a library — README never counts past "ten" today.
+const COUNT_WORDS = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+}
+
+function parseCountWord(word, contextLabel) {
+  const number = COUNT_WORDS[word.toLowerCase()]
+  if (number === undefined) {
+    throw new Error(`README.md's "${contextLabel}" names an unrecognised count word "${word}"`)
+  }
+  return number
+}
 
 // The first sentence of the "Every spec has nine sections" paragraph is the nine-item list itself
 // (`README.md`'s own text: "Purpose, Anatomy, ... Visual acceptance criteria. A spec missing one is
 // incomplete..."). Read structurally rather than restated, so a future edit to the sentence's
 // wording is the only place that ever needs to change.
+//
+// The heading's own count word ("nine") is cross-checked against how many names the sentence below
+// it actually lists, rather than trusted on its own — a heading is a promise, the list beneath it
+// is the delivery, and a bare `=== 9` here would only ever notice the list side of that promise
+// breaking, never the heading itself drifting out of step with a list that still has nine names
+// but a heading now claiming eight. See C2 in the T571 remediation this guards against.
 export function deriveNineSections(readmeSource) {
-  const idx = readmeSource.indexOf(SECTIONS_HEADING)
-  if (idx === -1) {
+  // Matched by pattern, not by the literal "nine" text, so a heading whose count word has drifted
+  // is still found here — the mismatch is caught below by comparison, not by failing to locate the
+  // heading at all (which would misreport a drifted count as "the heading is missing").
+  const headingMatch = readmeSource.match(SECTIONS_HEADING_RE)
+  if (!headingMatch) {
     throw new Error(`README.md is missing the "${SECTIONS_HEADING}" heading this check reads from`)
   }
-  const body = readmeSource.slice(idx + SECTIONS_HEADING.length)
+  const expectedCount = parseCountWord(headingMatch[1], headingMatch[0])
+
+  const body = readmeSource.slice(headingMatch.index + headingMatch[0].length)
   const periodIdx = body.indexOf('. ')
   if (periodIdx === -1) {
     throw new Error('could not find the end of the nine-sections sentence in README.md')
   }
-  return body
+  const sections = body
     .slice(0, periodIdx)
     .replace(/\n/g, ' ')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+
+  if (sections.length !== expectedCount) {
+    throw new Error(
+      `README.md's "${headingMatch[0]}" heading says "${headingMatch[1]}" (${expectedCount}) ` +
+        `but the sentence beneath it names ${sections.length} section${sections.length === 1 ? '' : 's'} ` +
+        `(${sections.join(', ')}) — the two halves disagree.`,
+    )
+  }
+  return sections
 }
+
+const VOCABULARY_COUNT_SENTENCE_RE = /Every spec answers all (\w+)/i
 
 // The closed, ten-entry state vocabulary, bolded in README.md right after "The state vocabulary is
 // closed:". Lower-cased: every state name in this system is already lower-case prose.
+//
+// Cross-checked the same way as `deriveNineSections`, against the count word in README's own
+// "Every spec answers all ten..." sentence a few words later — the two are two independent halves
+// of the same paragraph, and only comparing them catches either one drifting without the other
+// (shrink the bolded list to nine and this throws even though nothing here hard-codes "10").
 export function deriveVocabulary(readmeSource) {
   const match = readmeSource.match(/state vocabulary is closed:\s*\*\*([^*]+)\*\*/)
   if (!match) {
     throw new Error('README.md is missing the "state vocabulary is closed: **...**" sentence')
   }
-  return match[1]
+  const countMatch = readmeSource.match(VOCABULARY_COUNT_SENTENCE_RE)
+  if (!countMatch) {
+    throw new Error(
+      'README.md is missing the "Every spec answers all ten..." sentence this check cross-checks the vocabulary count against',
+    )
+  }
+  const expectedCount = parseCountWord(countMatch[1], countMatch[0])
+
+  const vocabulary = match[1]
     .replace(/\n/g, ' ')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
+
+  if (vocabulary.length !== expectedCount) {
+    throw new Error(
+      `README.md says "${countMatch[0]}" (${expectedCount}) but the closed state vocabulary lists ` +
+        `${vocabulary.length} entr${vocabulary.length === 1 ? 'y' : 'ies'} (${vocabulary.join(', ')}) ` +
+        '— the two halves disagree.',
+    )
+  }
+  return vocabulary
 }
 
 // The two surface classes, named in the "## Surface density: `dense` and `prose`" heading itself
@@ -126,7 +216,9 @@ export function deriveVocabulary(readmeSource) {
 export function deriveSurfaceClasses(readmeSource) {
   const headingMatch = readmeSource.match(/^## Surface density:.*$/m)
   if (!headingMatch) {
-    throw new Error('README.md is missing the "## Surface density: ..." heading this check reads from')
+    throw new Error(
+      'README.md is missing the "## Surface density: ..." heading this check reads from',
+    )
   }
   const classes = [...headingMatch[0].matchAll(/`([a-z]+)`/g)].map((m) => m[1])
   if (classes.length === 0) {
@@ -228,22 +320,69 @@ export function extractHeadingsAndLabels(specSource) {
   return items
 }
 
+// Whole letter/hyphen runs, so a hyphenated compound (`four-state`) is one token rather than two —
+// splitting on the hyphen too would let `state` re-match inside it, exactly the false match this
+// tokenisation exists to prevent (see the file header, and C3 of the T571 remediation: `## 3. The
+// four-state collapse` must genuinely not match "States").
+function tokenise(text) {
+  return text.match(/[a-z][a-z-]*/g) ?? []
+}
+
+function haystackTextMatchesKeyword(text, keyword) {
+  return tokenise(text).some((token) => token.startsWith(keyword))
+}
+
 export function checkNineSections(specSource, sections) {
   const haystack = extractHeadingsAndLabels(specSource).map((s) => s.toLowerCase())
   return sections.filter((name) => {
     const keyword = sectionKeyword(name)
-    return !haystack.some((text) => text.includes(keyword))
+    return !haystack.some((text) => haystackTextMatchesKeyword(text, keyword))
   })
 }
 
-// Every bold span at the very start of a (trimmed) line, optionally bulleted (`- **default** —
-// ...` and bare `**default** — ...` both ship today, see the file header). Raw content, not yet
-// split on the `/`-combined shape (`hover / focus-visible / active`) a single bullet may answer
-// several states with at once.
+// True when the bold span starting at `matchIndex` opens a new clause rather than sitting mid-
+// sentence: the nearest non-whitespace character before it (skipping one optional `-`/`*` bullet
+// marker) is the start of the string, a newline, a sentence-ending mark (`.`, `!`, `?`, `:`, `;`) or
+// an em/en dash. This is the boundary a "line-leading" bold span (`- **default** — ...`) already
+// satisfies, generalised to also admit a *sentence*-leading one on a shared line — the inline,
+// run-on-paragraph shape `shared-primitives.md`'s `Callout`, `Badge`, `Skeleton` and `Dialog` write
+// their States section in (`**States** — **default** as above. **hover / active** — none; ...`),
+// discovered when C1 of the T571 remediation scoped the vocabulary scan to each component's own
+// section and found this shape had never been exercised on its own before (previously it only ever
+// had to share a file with a sibling component using the bulleted form, which supplied the match).
+function isClauseLeadingBoldSpan(text, matchIndex) {
+  let i = matchIndex - 1
+  while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1
+  if (i < 0) return true
+  if (text[i] === '\n') return true
+  if ('.!?:;'.includes(text[i]) || text[i] === '—' || text[i] === '–') return true
+  if (text[i] === '-' || text[i] === '*') {
+    let j = i - 1
+    while (j >= 0 && (text[j] === ' ' || text[j] === '\t')) j -= 1
+    return j < 0 || text[j] === '\n'
+  }
+  return false
+}
+
+// Every clause-leading bold span (see `isClauseLeadingBoldSpan`) — line-leading, optionally bulleted
+// (`- **default** — ...`, bare `**default** — ...`), and sentence-leading within a shared line
+// (`**States** — **default** as above. **hover** — ...`) all ship today; see the file header. Raw
+// content, not yet split on the `/`-combined shape (`hover / focus-visible / active`) a single
+// bullet or clause may answer several states with at once.
+//
+// A bold span's own content never crosses a line in this repository's specs — every real label is
+// a short word or two, and prose that follows one wraps, the label itself does not — so the pair is
+// matched within one line (`[^*\n]+`), never across one. This is load-bearing, not cosmetic: an
+// unrelated single, unpaired `*` elsewhere in the file (a glob like `--ds-icon-*` inside its own,
+// unrelated bold phrase) is real prose this repository's specs already contain, and letting bold
+// content cross lines lets that one stray `*` re-pair every `**` for the rest of the document,
+// silently losing real labels far away from it (found while implementing C1 of the T571
+// remediation) — confined to one line, the same stray `*` only ever breaks the one bold phrase it
+// sits inside, exactly as it did before this function existed.
 export function extractLineLeadingBoldSpans(specSource) {
   const items = []
-  for (const m of specSource.matchAll(/^\s*(?:[-*]\s*)?\*\*([^*]+)\*\*/gm)) {
-    items.push(m[1])
+  for (const m of specSource.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+    if (isClauseLeadingBoldSpan(specSource, m.index)) items.push(m[1])
   }
   return items
 }
@@ -254,7 +393,10 @@ export function extractLineLeadingBoldSpans(specSource) {
 // stripping non-letters everywhere, which would otherwise glue "default" and "(closed)" into one
 // unmatched word).
 function normaliseStateToken(token) {
-  const trimmed = token.trim().toLowerCase().replace(/^and\s+/, '')
+  const trimmed = token
+    .trim()
+    .toLowerCase()
+    .replace(/^and\s+/, '')
   const match = trimmed.match(/^[a-z-]+/)
   return match ? match[0].replace(/-+$/, '') : ''
 }
@@ -268,6 +410,71 @@ export function checkVocabulary(specSource, vocabulary) {
     }
   }
   return vocabulary.filter((word) => !answered.has(word))
+}
+
+// --- Per-component vocabulary scoping (C1) -------------------------------------------------------
+
+// Every `#`-`######` heading's exact position and level, alongside the same numbering-stripped text
+// `extractHeadingsAndLabels` already computes — kept separate because this rule needs the position
+// in the source, not only the text.
+function extractHeadingPositions(specSource) {
+  const headings = []
+  for (const m of specSource.matchAll(/^(#{1,6})\s+(.*)$/gm)) {
+    headings.push({
+      level: m[1].length,
+      text: m[2].replace(/^\d+[a-z]?\.\s*/i, '').trim(),
+      start: m.index,
+      end: m.index + m[0].length,
+    })
+  }
+  return headings
+}
+
+// A heading names a component when its (numbering-stripped) text is exactly the component's name,
+// bare or backtick-fenced (`## Button`, `` ## 5. `Page` `` — both shapes `shared-primitives.md` and
+// `structural-tier.md` already ship). Deliberately exact, not `.includes`: a heading like `` ## 4.
+// `Opponent` for team matches `` (match-history.md) names a sub-concept, not the component itself,
+// and must not be mistaken for one.
+function headingNamesComponent(headingText, componentName) {
+  const bare = headingText.replace(/^`([^`]+)`$/, '$1').trim()
+  return bare === componentName
+}
+
+// The slice of `specSource` between a component's own heading (matched by `headingNamesComponent`)
+// and the next heading at the same level or shallower — or `null` when the file has no such heading
+// at all, or names it more than once (either way, there is no unambiguous boundary to scope to, and
+// the caller falls back to the whole document). This is the per-component analogue of
+// `findComponentRow`'s table-row lookup, for files whose per-component boundary is a `##` heading
+// rather than a declarations-table row (`shared-primitives.md`'s `## Button`, `structural-tier.md`'s
+// `` ## 5. `Page` ``) — see the file header for why a third shape (one shared section naming every
+// component inline, `match-history.md`'s own "States") has no heading boundary and is intentionally
+// left unscoped.
+export function findComponentSection(specSource, componentName) {
+  const headings = extractHeadingPositions(specSource)
+  const matches = headings.filter((h) => headingNamesComponent(h.text, componentName))
+  if (matches.length !== 1) return null
+  const [heading] = matches
+  const next = headings.find((h) => h.start > heading.start && h.level <= heading.level)
+  return specSource.slice(heading.end, next ? next.start : specSource.length)
+}
+
+// One entry per component with at least one state left unanswered: `{ component, missing }`. A
+// single-component file is already that component's own section in full, so no heading lookup is
+// needed for it. A multi-component file scopes each component to `findComponentSection` when the
+// file draws that boundary; when it does not (see the file header), that component is checked
+// against the whole document, unchanged from before this rule existed.
+export function checkComponentVocabulary(specSource, components, vocabulary) {
+  if (components.length === 1) {
+    const missing = checkVocabulary(specSource, vocabulary)
+    return missing.length > 0 ? [{ component: components[0].name, missing }] : []
+  }
+  const findings = []
+  for (const component of components) {
+    const section = findComponentSection(specSource, component.name)
+    const missing = checkVocabulary(section ?? specSource, vocabulary)
+    if (missing.length > 0) findings.push({ component: component.name, missing })
+  }
+  return findings
 }
 
 // --- Per-component tier / surface-class declarations --------------------------------------------
@@ -306,7 +513,10 @@ export function extractMarkdownTables(specSource) {
     .filter((block) => block.length > 1)
     .map((block) => ({
       header: splitTableRow(block[0]),
-      rows: block.slice(1).filter((l) => !isSeparatorRow(l)).map(splitTableRow),
+      rows: block
+        .slice(1)
+        .filter((l) => !isSeparatorRow(l))
+        .map(splitTableRow),
     }))
 }
 
@@ -354,46 +564,128 @@ function classNamePattern(className) {
   return '`?\\b' + escapeRegExp(className) + '\\b`?'
 }
 
-// The "A, B, ..., joinWord Z" middle of both sanctioned multi-class forms below, built from
-// whatever `surfaceClasses` README derives rather than the two names hardcoded — not order-
-// tolerant: T570's specs, and README's own heading, always name the classes in the same order
-// README declares them in, so the derived order is the only one recognised.
-function classListBody(surfaceClasses, joinWord) {
-  const [last, ...rest] = [...surfaceClasses].reverse()
+// Every ordering of `surfaceClasses` — small and closed (README names two today, "neither `A`, `B`
+// nor `Z`" if it ever grows), so a plain permutation is cheap and exact rather than approximated.
+function permutations(items) {
+  if (items.length <= 1) return [items]
+  const result = []
+  for (let i = 0; i < items.length; i += 1) {
+    const rest = [...items.slice(0, i), ...items.slice(i + 1)]
+    for (const tail of permutations(rest)) result.push([items[i], ...tail])
+  }
+  return result
+}
+
+// The "A, B, ..., joinWord Z" middle of both sanctioned multi-class forms below, for one fixed
+// ordering of `orderedClasses`.
+function classListBodyForOrder(orderedClasses, joinWord) {
+  const [last, ...rest] = [...orderedClasses].reverse()
   const allButLast = rest.reverse().map(classNamePattern).join('\\s*,\\s*')
   return `${allButLast}\\s*,?\\s*${joinWord}\\s+${classNamePattern(last)}`
 }
 
-// The sanctioned negation's own head — "neither `A` nor `Z`" for two classes, "neither `A`, `B` nor
-// `Z`" if the vocabulary ever grows past two.
-function negationHeadPattern(surfaceClasses) {
-  return new RegExp(`^neither\\s+${classListBody(surfaceClasses, 'nor')}`, 'i')
+// The same "A, B, ..., joinWord Z" middle, but matching the class *set* regardless of which order
+// the spec names them in — every permutation of `surfaceClasses`, alternated. Order-tolerance is
+// the point (C4 of the T571 remediation): "`prose` or `dense`, by its own `density` prop" is the
+// same semantic claim as "`dense` or `prose`, ..." with the two names swapped, and a spec arguing
+// what a component is *not* reasonably leads with either name first.
+function classListBodyAnySet(surfaceClasses, joinWord) {
+  return permutations(surfaceClasses)
+    .map((order) => classListBodyForOrder(order, joinWord))
+    .join('|')
 }
 
-// The sanctioned prop-selection form's own head — "`A` or `Z`" — data-model.md §5's other
-// admission-test exit besides "two components": "a prop, decided by the admission test."
+// The sanctioned negation's own head — "neither `A` nor `Z`" for two classes, "neither `A`, `B` nor
+// `Z`" if the vocabulary ever grows past two, in any order the two names may appear. Not anchored
+// to the start of the string (C4): "Not applicable: neither `dense` nor `prose` — ..." carries a
+// prefix before "neither" and is exactly as sanctioned as the bare form.
+function negationHeadPattern(surfaceClasses) {
+  return new RegExp(`neither\\s+(?:${classListBodyAnySet(surfaceClasses, 'nor')})`, 'i')
+}
+
+// The sanctioned prop-selection form's own head — "`A` or `Z`" in either order — data-model.md §5's
+// other admission-test exit besides "two components": "a prop, decided by the admission test."
 // `structural-tier.md`'s own shape: "`dense` or `prose`, by its own `density` prop (§3) — the
 // caller picks exactly one." This is not the same claim as naming both classes outright: the
 // component itself never draws both densities at once, a caller-supplied prop picks one per
 // instance, which is exactly what makes it "a prop" rather than "two components" in that sentence.
+// Not anchored to the start of the string, for the same reason as the negation head above.
 function classSelectionHeadPattern(surfaceClasses) {
-  return new RegExp(`^${classListBody(surfaceClasses, 'or')}`, 'i')
+  return new RegExp(`(?:${classListBodyAnySet(surfaceClasses, 'or')})`, 'i')
+}
+
+// A prop-selection claim must name the actual prop, not merely use the word "prop(s)" somewhere in
+// the sentence — "by its own `density` prop" names one; "whichever the parent Panel props supply"
+// does not (`Panel` is never backtick-fenced, "props" is plural and belongs to a *different*
+// component, and nothing here is the caller's own prop). A named prop is a backtick-fenced
+// identifier immediately followed by the singular word "prop".
+const NAMED_PROP_RE = /`[^`]+`\s*prop\b/i
+
+// Cue words that negate the class mention immediately preceding them, within the same clause —
+// "never", "not", "no", "isn't"/"is not" all ship in this repository's specs, which habitually argue
+// what a decision is *not* (C4's own example: "`prose`. Never `dense`: rows here are paragraphs,
+// not data." is a correct, single-class claim naming the class it is not, not a conflict).
+const NEGATION_CUE_RE = /\b(?:never|not|no|isn['’]t|is\s+not)\s*$/i
+
+// The start of the clause containing `matchIndex` — the char after the nearest clause-ending
+// punctuation (`.`, `;`, `:`, an em/en dash, or a newline) at or before it, or the start of the
+// string when there is none. A negation only counts within its own clause, so an earlier negation
+// elsewhere in the sentence never reaches across a period into an unrelated claim.
+function clauseStartBefore(text, index) {
+  const boundaries = ['.', ';', ':', '—', '–', '\n'].map((ch) => text.lastIndexOf(ch, index - 1))
+  return Math.max(-1, ...boundaries) + 1
+}
+
+function isNegatedOccurrence(text, matchIndex) {
+  const prefix = text.slice(clauseStartBefore(text, matchIndex), matchIndex)
+  return NEGATION_CUE_RE.test(prefix.trim())
+}
+
+// For each of `surfaceClasses`, whether `text` names it as a positive claim (an occurrence not
+// immediately preceded, in its own clause, by a negation cue) and/or negates it (an occurrence that
+// is). A class mentioned only ever negated is not a claim — "Never `dense`" beside a positive claim
+// of `prose` is how this repository's specs name the class a component is *not*, and must not read
+// as if both had been claimed.
+function classifyOccurrences(text, surfaceClasses) {
+  return surfaceClasses.map((className) => {
+    const pattern = new RegExp(classNamePattern(className), 'gi')
+    let positive = false
+    let negated = false
+    for (const m of text.matchAll(pattern)) {
+      if (isNegatedOccurrence(text, m.index)) negated = true
+      else positive = true
+    }
+    return { className, positive, negated }
+  })
 }
 
 // Classifies one surface-class declaration cell/value against the vocabulary `surfaceClasses`
-// (`deriveSurfaceClasses`, never hardcoded). Four ways to pass, per data-model.md §5 and FR-036's
-// "record why it does not apply and what happens instead":
+// (`deriveSurfaceClasses`, never hardcoded). Every accepted shape (C4 of the T571 remediation
+// documents each one so the next spec author does not have to discover it by running the check):
 //   - exactly one class named as a claim (`` `dense` ``) — `{ valid: true, kind: 'declared' }`.
-//   - the sanctioned negation with a non-empty reason after it (`` neither `dense` nor `prose` — a
-//     control, not a surface with a density of its own. ``) — `{ valid: true, kind: 'inapplicable' }`.
-//   - the sanctioned prop-selection form, naming both classes joined by "or" and a `prop`
-//     (`` `dense` or `prose`, by its own `density` prop — the caller picks exactly one. ``) —
-//     `{ valid: true, kind: 'prop-selected' }` — data-model.md §5's "or a prop" exit.
-// Three ways to fail:
+//   - the sanctioned negation, either order, with a non-empty reason after it that does not itself
+//     name a class as a claim (`` neither `dense` nor `prose` — a control, not a surface with a
+//     density of its own. ``, `` Not applicable: neither `prose` nor `dense` — ... ``) —
+//     `{ valid: true, kind: 'inapplicable' }`.
+//   - the sanctioned prop-selection form, either order, naming both classes joined by "or" and one
+//     backtick-fenced, singular `prop` (`` `dense` or `prose`, by its own `density` prop — the
+//     caller picks exactly one. ``) — `{ valid: true, kind: 'prop-selected' }` — data-model.md §5's
+//     "or a prop" exit.
+//   - a positive claim naming one class while explicitly negating the other, in either order
+//     (`` `prose`. Never `dense`: rows here are paragraphs, not data. ``) — `{ valid: true, kind:
+//     'declared' }`, exactly as a bare single-class claim is: this repository's specs routinely
+//     argue what a decision is not, and a negated mention of the other class is not a second claim.
+// Ways to fail:
 //   - nothing recognisable at all (empty, `null`, bare "N/A") — `{ valid: false, kind: 'missing' }`.
 //   - the negation's head with no reason after it (a bare "neither `dense` nor `prose`") —
 //     `{ valid: false, kind: 'bare-negation' }` — FR-036 requires the "what happens instead" clause,
 //     exactly as it does for a state.
+//   - the negation's reason itself makes a positive claim of a class (`` neither `dense` nor
+//     `prose` — it is `dense`. ``, contradicting the "neither" it just made) —
+//     `{ valid: false, kind: 'contradiction' }`.
+//   - the "A or B" head present with no named prop after it (`` `dense` or `prose`, depending on
+//     mood ``, `` `dense` or `prose`, whichever the parent Panel props supply ``) falls through to
+//     the next rule, where naming both classes as positive claims is a conflict.
 //   - more than one class named as a positive claim that is neither the negation nor the
 //     prop-selection form — `{ valid: false, kind: 'conflict' }` — data-model.md §5: "every
 //     component declares exactly one class. A component that would need both is two components or
@@ -406,30 +698,37 @@ export function classifySurfaceClassDeclaration(rawText, surfaceClasses) {
   const negationMatch = text.match(negationHeadPattern(surfaceClasses))
   if (negationMatch) {
     const reason = text
-      .slice(negationMatch[0].length)
+      .slice(negationMatch.index + negationMatch[0].length)
       .replace(/^\s*[—–-]\s*/, '')
       .trim()
     // Trailing punctuation with no actual words (a bare "." closing the sentence, or nothing at
     // all) is not a reason — FR-036's "what happens instead" clause has to say something.
     if (!/[A-Za-z]/.test(reason)) return { valid: false, kind: 'bare-negation' }
+    // A reason that itself claims a surface class contradicts the "neither ... nor ..." it just
+    // made (C4's fifth row: "neither `dense` nor `prose` — it is `dense`.").
+    if (classifyOccurrences(reason, surfaceClasses).some((o) => o.positive)) {
+      return { valid: false, kind: 'contradiction' }
+    }
     return { valid: true, kind: 'inapplicable' }
   }
 
   const selectionMatch = text.match(classSelectionHeadPattern(surfaceClasses))
-  if (selectionMatch && /\bprops?\b/i.test(text)) {
+  if (selectionMatch && NAMED_PROP_RE.test(text)) {
     return { valid: true, kind: 'prop-selected' }
   }
 
-  const namedClasses = surfaceClasses.filter((c) => new RegExp(classNamePattern(c), 'i').test(text))
-  if (namedClasses.length === 0) return { valid: false, kind: 'missing' }
-  if (namedClasses.length > 1) return { valid: false, kind: 'conflict' }
+  const occurrences = classifyOccurrences(text, surfaceClasses)
+  const positiveClasses = occurrences.filter((o) => o.positive)
+  if (positiveClasses.length === 0) return { valid: false, kind: 'missing' }
+  if (positiveClasses.length > 1) return { valid: false, kind: 'conflict' }
   return { valid: true, kind: 'declared' }
 }
 
 // One finding per missing or malformed declaration: `{ component, kind: 'tier' | 'surface-class' |
-// 'surface-class-conflict' | 'surface-class-bare-negation' | 'no-row', detail }`. `kind: 'no-row'`
-// only happens for a multi-component file (see the file header): a component sharing a file with
-// siblings has nowhere else a declaration could be attributed to it.
+// 'surface-class-conflict' | 'surface-class-bare-negation' | 'surface-class-contradiction' |
+// 'no-row', detail }`. `kind: 'no-row'` only happens for a multi-component file (see the file
+// header): a component sharing a file with siblings has nowhere else a declaration could be
+// attributed to it.
 export function checkComponentDeclarations(specSource, components, surfaceClasses) {
   const declarationsTables = extractMarkdownTables(specSource)
     .map(annotateDeclarationsTable)
@@ -444,6 +743,8 @@ export function checkComponentDeclarations(specSource, components, surfaceClasse
       findings.push({ component: componentName, kind: 'surface-class-conflict', detail })
     } else if (result.kind === 'bare-negation') {
       findings.push({ component: componentName, kind: 'surface-class-bare-negation', detail })
+    } else if (result.kind === 'contradiction') {
+      findings.push({ component: componentName, kind: 'surface-class-contradiction', detail })
     } else {
       findings.push({ component: componentName, kind: 'surface-class', detail })
     }
@@ -542,15 +843,27 @@ export function evaluateSpecsDirectory({
       )
     }
 
-    for (const missingState of checkVocabulary(source, vocabulary)) {
-      findings.push(
-        `packages/design-system/specs/${specFile}: state "${missingState}" is not answered — no ` +
-          `"**${missingState}**" declaration found (FR-035: specify it, or record why it does not ` +
-          'apply and what happens instead).',
-      )
+    if (components.length === 0) {
+      for (const missingState of checkVocabulary(source, vocabulary)) {
+        findings.push(
+          `packages/design-system/specs/${specFile}: state "${missingState}" is not answered — no ` +
+            `"**${missingState}**" declaration found (FR-035: specify it, or record why it does not ` +
+            'apply and what happens instead).',
+        )
+      }
+      continue
     }
 
-    if (components.length === 0) continue
+    for (const { component, missing } of checkComponentVocabulary(source, components, vocabulary)) {
+      for (const missingState of missing) {
+        findings.push(
+          `packages/design-system/specs/${specFile}: component \`${component}\` — state ` +
+            `"${missingState}" is not answered — no "**${missingState}**" declaration found within ` +
+            `its own section (FR-035: specify it, or record why it does not apply and what happens ` +
+            'instead).',
+        )
+      }
+    }
 
     for (const finding of checkComponentDeclarations(source, components, surfaceClasses)) {
       if (finding.kind === 'no-row') {
@@ -580,6 +893,13 @@ export function evaluateSpecsDirectory({
             `neither surface class applies (found "${finding.detail.trim()}") but gives no reason — ` +
             'FR-036 requires "what happens instead" for a declared-inapplicable answer, exactly as ' +
             'it does for a state.',
+        )
+      } else if (finding.kind === 'surface-class-contradiction') {
+        findings.push(
+          `packages/design-system/specs/${specFile}: component \`${finding.component}\` records ` +
+            `neither surface class applies, but its own reason claims one (found ` +
+            `"${finding.detail.trim()}") — the "what happens instead" clause must not name the ` +
+            'class the negation just ruled out.',
         )
       } else {
         findings.push(
