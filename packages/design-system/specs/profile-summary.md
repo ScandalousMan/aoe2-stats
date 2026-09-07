@@ -82,10 +82,14 @@ menu item. Making another primary is an explicit action ("Make primary"), never 
 viewing one.
 
 **The currently-viewed profile is a separate fact from the primary one, and is marked differently
-(T569/T570, README's "Selection and expansion").** The switcher is `Menu`'s `selection` variant
-(`shared-primitives.md`): the item matching the profile on screen carries `role="menuitemradio"` and
-`aria-checked="true"`, and its still-image mark is a plain `<Badge>Current</Badge>` beside its alias
-— never a fill, tint or border change alone. `accent` stays reserved for `Primary`: a profile can be
+(T569/T570, README's "Selection and expansion"; T572).** The switcher is `Menu`'s `selection`
+variant (`shared-primitives.md`): the item matching the profile on screen carries
+`role="menuitemradio"` and `aria-checked="true"`, and `Menu` itself paints that state's still-image
+mark — a leading checkmark glyph, never a fill, tint or border change alone
+(`shared-primitives.md#Menu`). Its own `<Badge>Current</Badge>` beside its alias is an additional,
+independent signal, not the selection mark itself: it exists so the fact reads in the label as well
+as in the shape, but the mark `Menu` guarantees does not depend on it being supplied. `accent` stays
+reserved for `Primary`: a profile can be
 primary and not currently viewed, currently viewed and not primary, both, or neither, and the two
 badges — `Badge/accent` "Primary" and the plain `Badge` "Current" — can appear on the same item or on
 two different ones without either borrowing the other's meaning. This is what keeps "which account
@@ -168,9 +172,10 @@ Do not paint before 200 ms. After 10 s, fall through to the error state.
    trigger renders normally.
 
 **selection** — specified: the switcher's own `selection` variant (§4) marks the profile currently
-on screen with `aria-checked` and a plain `<Badge>Current</Badge>`, independent of the `Primary`
-badge. This is the vocabulary's selection state (T569); nothing else in this component is a set
-member.
+on screen with `aria-checked` and `Menu`'s own intrinsic checkmark glyph (T572); its
+`<Badge>Current</Badge>`, independent of the `Primary` badge, is an additional signal beside that
+mark, not the mark itself. This is the vocabulary's selection state (T569); nothing else in this
+component is a set member.
 
 **expansion** — inapplicable. The switcher's own popover open/closed toggle is `Menu`'s contract
 (`shared-primitives.md`), not a state `ProfileSummary` owns; nothing in this component's own anatomy
@@ -262,8 +267,9 @@ breakpoint.
   `role="menuitemradio"` with `aria-checked` on the viewed profile, arrow-key roving, Escape closes
   and returns focus to the trigger. Items are ≥ 44px tall. The trigger's accessible name includes
   the word "profile" so it is not announced as a bare alias.
-- The viewed profile's `aria-checked="true"` is paired with a visible `<Badge>Current</Badge>` on
-  the same item, so the still-image mark and the accessibility-tree state agree (T569/T570).
+- The viewed profile's `aria-checked="true"` is paired with `Menu`'s own intrinsic checkmark glyph,
+  the still-image mark the accessibility-tree state agrees with (T569/T570; T572); a visible
+  `<Badge>Current</Badge>` on the same item is an additional signal, not a substitute for it.
 - The "Primary" state is carried by the badge's **text**, never by colour or position alone, and the
   "Current" state is carried by its own, separate badge — the two never merge into one label even
   when both are true of the same item.

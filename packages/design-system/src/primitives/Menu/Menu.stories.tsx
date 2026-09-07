@@ -153,6 +153,15 @@ export const Hover: Story = {
 // Focus follows the roving item, never both trigger and item." Opened by keyboard (Enter on the
 // trigger) rather than by click, which is what actually reaches `:focus-visible` in Chromium's own
 // heuristic — the same reach `tests/visual/focus-ring.spec.ts` uses for this component.
+//
+// T572 scenario 9 remediation (residual 2): opening focuses the *checked* item by default
+// (`index.tsx`'s own `checkedIndex` effect), so this story used to land on the exact same row
+// `Selection`/`ProfileSwitcher` already show checked — a reader comparing the three stories saw
+// focus and selection as one and the same signal, even after the checkmark glyph fix made checked
+// and unchecked rows distinguishable *within* a single image. One `ArrowDown` after opening moves
+// the roving item onto `aoe2alt`, the *unchecked* row, so this story's own still image shows a
+// focus ring on a row that carries no checkmark glyph — focus and selection now read as two
+// independent facts here too, not only within `Selection`'s own frame.
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
   play: async ({ canvasElement }) => {
@@ -161,6 +170,7 @@ export const FocusVisible: Story = {
     trigger.focus()
     await userEvent.keyboard('{Enter}')
     await canvas.findByRole('menu')
+    await userEvent.keyboard('{ArrowDown}')
   },
   args: {
     variant: 'selection',

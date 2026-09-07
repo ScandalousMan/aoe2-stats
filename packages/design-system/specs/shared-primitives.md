@@ -200,9 +200,12 @@ tracking `wide`, radius `full`.
 never be the control that changes the state it names. **disabled / loading** — none; during a state
 change the badge is replaced by a `Skeleton` of the same footprint. **error** — none.
 **empty** — a badge with no label renders nothing. **selection** — not applicable to `Badge` on its
-own: `Badge` is the _mark_ a selection state pairs with a checked item (`Menu`'s `selection` variant,
-`ProfileSummary`'s profile switcher), never the thing that is itself selected. **expansion** — not
-applicable; a badge never reveals a second surface.
+own: a selection state's still-image mark is `Menu`'s own intrinsic checkmark glyph
+(`shared-primitives.md#Menu`, T572), not `Badge`. A `Badge` beside a checked item (`Menu`'s
+`selection` variant, `ProfileSummary`'s profile switcher) is an _additional_ signal carrying a
+different, caller-chosen fact (`Current`, `Primary`) — never the selection mark itself, and never
+the thing that is itself selected. **expansion** — not applicable; a badge never reveals a second
+surface.
 
 **Tokens** — `surface-sunken`, `surface-raised`, `border`, `text-secondary`, `accent`,
 `accent-active`. Radius `full`. Font size `xs`, weight `semibold`, tracking `wide`.
@@ -280,8 +283,10 @@ block rather than the shape of a paragraph, and fails this criterion (FR-063).
 
 **Purpose** — offer a short, known set of choices from a trigger, without leaving the page.
 
-**Anatomy** — trigger button / popover surface / group label(s) / items (each: label, optional
-secondary line, optional trailing `Badge`, optional trailing item-action) / separator / footer item.
+**Anatomy** — trigger button / popover surface / group label(s) / items (each: optional leading
+selection glyph — `selection` variant only, present in every such item's markup, painted only when
+checked — label, optional secondary line, optional trailing `Badge`, optional trailing item-action) /
+separator / footer item.
 
 **Variants** — `selection` (choosing one of a set; the current one is marked) and `actions` (each
 item does something). The profile switcher is `selection` with an `actions` footer.
@@ -313,19 +318,34 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
 - **empty** — a menu with no items does not open; the trigger is `aria-disabled` with a reason. A
   menu that opens onto nothing is a dead end and reads as a bug.
 - **selection** — the `selection` variant's shipping mechanism for the vocabulary's **selection**
-  state (T569/T570, README's "Selection and expansion"): the current item carries
-  `role="menuitemradio"` and `aria-checked="true"`, and each item may carry a `badge` slot (arbitrary
-  content, the caller's own choice) rendered beside its label — the still-image mark that must never
-  be a fill or ink change alone. `Menu` itself does not decide what that slot contains; two consumers
-  fill it with the identical, deliberate choice of a plain `<Badge>Current</Badge>` rather than
-  `variant="accent"`: `SiteHeader`'s `ThemeControl` and `ProfileSummary`'s profile switcher
-  (`site-header.md`, `profile-summary.md`). `accent` stays reserved for a different fact in both
-  consumers (the item that is also _primary_ elsewhere in the product, e.g. a `Primary` profile); the
-  checked-but-not-primary item is marked `Current` without borrowing `accent`'s meaning, which is
-  what keeps the two facts distinguishable when both can be true of different items in the same list.
-  `Menu`'s own stories (`ProfileSwitcher`, `Selection`) demonstrate the slot with a plain, unstyled
-  placeholder rather than a `Badge`, precisely because the wording is each consumer's decision, not
-  this primitive's.
+  state (T569/T570, README's "Selection and expansion"; revised T572): the current item carries
+  `role="menuitemradio"` and `aria-checked="true"`, and `Menu` itself paints the still-image mark for
+  that state on every `selection`-variant item, regardless of what a caller supplies — a leading
+  checkmark glyph, present when `checked` and holding the same, invisible-but-reserved width when
+  not: a shape difference, never a fill or ink change alone. This mark lives in the primitive rather
+  than in a caller-supplied slot because a caller cannot be trusted to supply it: T570 first shipped
+  it as the `badge` slot's own content, "`Menu` itself does not decide what that slot contains," and
+  T572 scenario 9 — a reader given only the built Storybook — found the predictable consequence:
+  `Menu`'s own `Empty` and `ActionsWithDisabledItem` stories carry no badge at all, neither variant
+  enforced one, and a checked item with no badge was pixel-identical to an unchecked one. That is
+  T556's rule for a different component, applying here without exception: a decision a caller may
+  not be trusted to write has to live somewhere that is not a caller. "Paint the selection mark"
+  turned out to be exactly that kind of decision, not a wording choice a consumer should own.
+
+  The `badge` slot each item may still carry (arbitrary content, the caller's own choice) is now an
+  _additional_, optional signal, not the selection mark itself: it carries a different fact from
+  "this is the checked item" — the identical, deliberate choice two consumers make is a plain
+  `<Badge>Current</Badge>` rather than `variant="accent"`, at the item's _trailing_ edge, opposite
+  the leading glyph so the two never occupy the same pixels: `SiteHeader`'s `ThemeControl` and
+  `ProfileSummary`'s profile switcher (`site-header.md`, `profile-summary.md`). `accent` stays
+  reserved for a different fact in both consumers (the item that is also _primary_ elsewhere in the
+  product, e.g. a `Primary` profile); the checked-but-not-primary item is marked `Current` without
+  borrowing `accent`'s meaning, which is what keeps the two facts distinguishable when both can be
+  true of different items in the same list. `Menu`'s own stories (`ProfileSwitcher`, `Selection`)
+  demonstrate the trailing slot with a plain, unstyled placeholder rather than a `Badge`, precisely
+  because its wording is each consumer's decision — the leading glyph beside it is not a decision
+  either consumer makes, or needs to.
+
 - **expansion** — the trigger's own `aria-expanded`/`aria-haspopup="menu"` toggle is this package's
   one shipping case of the vocabulary's **expansion** state. The still-image evidence is not the
   trigger's own paint (which does not change) but what exists on the page: the popover panel is
@@ -351,9 +371,12 @@ trigger; Tab closes and moves on. Focus is trapped only in the mobile sheet vari
 44px tall.
 
 **Acceptance** — at 375px the menu is a full-width sheet with every row at least 44px tall; the
-checked item is marked by its `badge` slot's content, not by colour alone (a consumer's own choice —
-`<Badge>Current</Badge>` in `SiteHeader` and `ProfileSummary`, a plain placeholder in `Menu`'s own
-stories); focus ring visible on the
+checked item is marked by its own leading checkmark glyph — present whether or not a caller supplies
+a `badge` — never by colour alone, so the checked and unchecked rows in the same screenshot are two
+visibly different shapes, not merely two different hues; a `badge` slot, where a consumer supplies
+one, adds a second, independent signal beside that glyph (`<Badge>Current</Badge>` in `SiteHeader`
+and `ProfileSummary`, a plain placeholder in `Menu`'s own stories) rather than standing in for it;
+focus ring visible on the
 focused item; the trigger regains focus after Escape; an item's label and its optional secondary
 line are visibly distinguishable by size and colour (`type-body` in `text-primary` against a smaller
 line in `text-secondary`) — a token-correct item that set both to the same size and ink would read
