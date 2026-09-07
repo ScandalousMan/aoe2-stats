@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url'
 // only shape this shared module can take without also being ambiguous to Playwright's transpile of
 // `tests/visual/stories.spec.ts`, the module's other consumer.
 import { resetResultsDir, checkStaleness } from './a11y-scan.cjs'
+import { REVIEW_WIDTHS } from './review-widths.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -45,7 +46,9 @@ const indexPath = path.join(storybookStaticDir, 'index.json')
 const THEMES = ['light', 'dark']
 // 375/768/1280 are declared as standing rule 7 in packages/design-system/specs/README.md (closes
 // DS-5, T529) — that rule is this array's source, not a value this file decides on its own.
-const WIDTHS = [375, 768, 1280]
+// `review-widths.mjs` is the one place the literal itself lives in code (T529's design, low
+// remediation finding — see that module's own comment).
+const WIDTHS = REVIEW_WIDTHS
 
 // Paths whose diff repaints or can repaint *every* story, so touching any of them selects the
 // full story set rather than only the stories under the touched directory. Relative to the repo

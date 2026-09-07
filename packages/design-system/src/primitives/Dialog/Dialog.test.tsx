@@ -67,6 +67,18 @@ describe('Dialog', () => {
     expect(secondary).toHaveFocus()
   })
 
+  it('Shift+Tab from the heading — where focus starts on open — wraps to the last action instead of escaping the dialog', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    const dialog = screen.getByRole('dialog', { name: 'Turn off replay archival?' })
+    const heading = screen.getByRole('heading', { name: 'Turn off replay archival?' })
+    const secondary = screen.getByRole('button', { name: 'Keep it on' })
+    expect(heading).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(secondary).toHaveFocus()
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  })
+
   it('always calls the latest secondary action on Escape, even after a re-render', async () => {
     const user = userEvent.setup()
     const onSecondary = vi.fn()

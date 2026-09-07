@@ -1,6 +1,7 @@
 import type { Decorator, Preview } from '@storybook/react-vite'
 import { useEffect } from 'react'
 import { MINIMAL_VIEWPORTS } from 'storybook/viewport'
+import { REVIEW_WIDTHS } from '../../../scripts/visual/review-widths.mjs'
 // The one stylesheet every consumer imports (see tokens/tailwind.css) — Storybook renders
 // components exactly the way apps/web does, tokens included, never a second copy of Tailwind.
 import '../tokens/tailwind.css'
@@ -9,14 +10,16 @@ import '../tokens/tailwind.css'
 // view in the browsable Storybook (each such story's own comment names why). None of Storybook's
 // built-in presets sits at the narrowest width `packages/design-system/specs/README.md` rule 7
 // declares for review — `MINIMAL_VIEWPORTS.mobile1` is narrower than that — so it is declared once
-// here rather than borrowed from a preset chosen for a different number. This pin is cosmetic only:
-// the visual regression suite's own width axis (`scripts/visual/run.mjs`'s `WIDTHS`) is what
-// actually governs a baseline's dimensions, and it overrides whatever this preview sets.
+// here rather than borrowed from a preset chosen for a different number, and its width comes from
+// `REVIEW_WIDTHS` (`scripts/visual/review-widths.mjs`), the one place that literal exists in code.
+// This pin is cosmetic only: the visual regression suite's own width axis
+// (`scripts/visual/run.mjs`'s `WIDTHS`, the same import) is what actually governs a baseline's
+// dimensions, and it overrides whatever this preview sets.
 const VIEWPORT_OPTIONS = {
   ...MINIMAL_VIEWPORTS,
   reviewWidthNarrow: {
     name: 'Review width (narrow)',
-    styles: { width: '375px', height: '667px' },
+    styles: { width: `${REVIEW_WIDTHS[0]}px`, height: '667px' },
     type: 'mobile' as const,
   },
 }

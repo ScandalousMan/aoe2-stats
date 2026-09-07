@@ -66,7 +66,15 @@ export function Dialog({
         if (focusable.length === 0) return
         const first = focusable[0]
         const last = focusable[focusable.length - 1]
-        if (event.shiftKey && document.activeElement === first) {
+        // Focus starts on the heading (`tabIndex={-1}`), which the selector above deliberately
+        // excludes from the trap's own tab order (it is never a Tab *destination*), but it is
+        // still a real focus position Shift+Tab can be pressed from — the very first one, on
+        // open. Treat it like `first` for the wrap check, or Shift+Tab from the heading falls
+        // through both branches below and the browser walks focus out to the page behind the
+        // backdrop.
+        const atStart =
+          document.activeElement === first || document.activeElement === headingRef.current
+        if (event.shiftKey && atStart) {
           event.preventDefault()
           last.focus()
         } else if (!event.shiftKey && document.activeElement === last) {

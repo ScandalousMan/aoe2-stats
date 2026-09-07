@@ -238,6 +238,18 @@ landmark name) closed real axe violations that were blocking the baseline dispat
 value moved: the 239 pre-existing baselines the phase's second capture modified are these fixes plus
 determinism and realistic-composition repaints already in flight, not an unrelated repaint — see the
 "Baseline-capture attribution" note at the end of this phase, below, for the full accounting.
+**Amended again 2026-09-07, remediation of the amendment above's own gap**: the paragraph above
+still did not cover the value changes that landed in the very commit that wrote it, `b161d2f`
+("fix(005): the review's blocking findings, and the gap its check was hiding"): `MatchDetailPanel`'s
+`TeamGroup` caption changed (`src/composites/MatchDetailPanel/index.tsx`), a component-source change
+that alters an accessible name, corrected because it repeated its own heading and differed from it
+only by an `aria-hidden` dash; seven stories' narrow-shape viewport pin moved from Storybook's
+built-in `mobile1` preset (320px, not one of the three declared review widths) to a new
+`reviewWidthNarrow` viewport declared once in `.storybook/preview.tsx` at 375px —
+`AnalysisTimeline`, `FavouritesList`, `MatchRow`, `ReplayAvailabilityList`, `Link`, `Menu` and
+`ProfileSummary`; and `Page`'s own story file was rebuilt so its realistic-composition story renders
+a dense `Table` of real match rows inside `Section` and `Panel`, composed from primitives, rather
+than importing `MatchList` from composites, which `tier-deps.mjs` forbids a primitive from doing.
 
 **Independent test**: quickstart scenario 9 — hand someone Storybook and no repository access and
 they answer all three questions — plus the spec completeness check failing on an unanswered state.
@@ -262,32 +274,61 @@ evolves deliberately, by a rule an agent can apply alone.
 - [ ] T577 Run the whole of [quickstart.md](./quickstart.md) end to end against `packages/design-system/` and `apps/web/`, then walk the fifteen production-readiness criteria in [spec.md](./spec.md) and record each as met with its evidence. Walk the front-end items of `docs/risks.md`'s verification checklist in the same pass and tick only what a scenario now proves — "Storybook renders components in both themes" by scenario 8's dark-only breakage; "visual-reviewer returns a reasoned FAIL" by naming the component it failed during this feature, and if it never failed one the item stays unticked; "runs only on touched stories" stays true by story and is left as it is. `CLAUDE.md` makes that file one that must be true today, and a box ticked on belief is the same lie as a task checkbox committed alone. `visual-reviewer` returns a pass for every affected component and the general `reviewer` approves against the specification and the constitution; both are gates, not formalities, and this is where SC-001, SC-001a, SC-002, SC-003, SC-003a, SC-005, SC-006, SC-008, SC-010, SC-011, SC-013, SC-014 and SC-016 are each shown to hold rather than asserted. **T577 must record FR-040 and production-readiness item 10 as NOT met**, naming T578 below as what closes them — the four rows of `packages/design-system/specs/README.md`'s "Storybook documentation gap register" are real, dated debt, not a passing footnote
 - [ ] T578 [US6] Close the four rows of `packages/design-system/specs/README.md`'s "Storybook documentation gap register", found by T572's scenario 9 run and owed as of 2026-09-07 (**fix by 2026-09-21**): turn on Storybook autodocs (or an MDX page) per component; turn on docgen so the Controls panel and the autodocs prop table both derive from the component's own TypeScript props; give every component a one-sentence purpose line; and have every component that carries a redundant accessible name state which `sr-only` naming shape it follows and link Foundations → Iconography. This is the work T563, T565 and T566 did not owe — those three closed story coverage and composition realism, which is why they stay ticked — and it is what turns FR-040 and production-readiness item 10 from "not met" (T577) into "met." Close each row in `README.md`'s register in the same change that does the row's work
 
-**Baseline-capture attribution, recorded 2026-09-07** (M2 remediation): this phase's two ad hoc
-`chore(visual): regenerate baselines from CI` commits each state one cause, and neither cause
-explains its own diff in full.
+**Baseline-capture attribution, recorded 2026-09-07, extended 2026-09-07** (M2/M2′ remediation):
+every `chore(visual): regenerate baselines from CI` commit on this branch states one cause in its
+own commit message, and none of the three landed so far explains its own diff in full. This note
+exists to carry the difference. It is written **per capture commit, against that commit's own
+parent**, on purpose: a fourth capture landing later adds a fourth entry below rather than
+invalidating anything already written here, and nothing in this note is labelled "current" or
+"HEAD" — that label is what went stale the moment the next capture landed. `git log --oneline --
+packages/design-system/__screenshots__` lists every capture commit on this branch in order; each one
+not named below has not yet been checked and its diff must be attributed the same way before it is
+trusted.
 
 - `f4d6bc4` (2026-09-06), cause `storybook-story-coverage`: 918 new baselines, which the cause
   explains (T563's foundation pages, T565's per-state stories, T567's responsive-and-accessibility
   stories), plus 102 modified baselines the cause does not name — T566's realistic-composition
   rewrites changed existing story content, and the ProfileSummary switcher's still-image mark
   (`1212e0c`, landed before this capture) repainted the pre-existing `ProfileSummary` baselines.
-- `c2a052b` (2026-09-07, HEAD), cause `storybook-story-coverage and determinism`: 6 new baselines,
-  239 modified. Coverage explains none of the 239; determinism (T568's clock freeze, `37f0c02`)
-  explains a broad slice of them — 19 story files across `AnalysisTimeline`, `CaptureStateBadge`,
-  `CivilisationIcon`, `FavouritesList`, `MapThumbnail`, `MatchDetailPanel`, `MatchRow`,
-  `PlayerAvatar`, `ReplayAvailabilityList`, `SearchBox`, `Page`, `Panel`, `Section`, `Skeleton`,
-  `StatValue`, `Table`, `ArchivalControl`, `DataExportPanel`, `ProfileSummary` and `SignInScreen`.
-  Two more real repaints in this same diff are named by neither stated cause: `Menu`'s intrinsic
-  selection checkmark and `FocusVisible`'s reframe onto an unchecked item (`3032e21`, roughly 54 of
-  the 239 — every `Menu` baseline plus its compositions in `SiteHeader` and `ProfileSummary`), and
-  the Foundations pages computing contrast live instead of showing an unlabelled rectangle
-  (`7f8ff24`, roughly 24 of the 239, across `Colour.stories.tsx`, `Elevation.stories.tsx`,
-  `Motion.stories.tsx` and `Typography.stories.tsx`). The hidden-caption fix (`20dc2e4`) and the
-  remainder are consistent with T566's realistic-composition rewrites, present across most of the
-  package's stories in this same capture window, rather than an unattributed repaint. (Every commit
-  hash in this note — `f4d6bc4`, `c2a052b`, `1212e0c`, `37f0c02`, `3032e21`, `7f8ff24`, `20dc2e4` — is
-  branch-local and pre-squash, citable only while PR #69 is open; T566, T568 and PR #69 are what
-  survives the squash.)
+- `c2a052b` (2026-09-07), cause `storybook-story-coverage and determinism`: 6 new baselines, 239
+  modified, against `f4d6bc4`. Coverage explains none of the 239; determinism (T568's clock freeze,
+  `37f0c02`) explains a broad slice of them — 19 story files across `AnalysisTimeline`,
+  `CaptureStateBadge`, `CivilisationIcon`, `FavouritesList`, `MapThumbnail`, `MatchDetailPanel`,
+  `MatchRow`, `PlayerAvatar`, `ReplayAvailabilityList`, `SearchBox`, `Page`, `Panel`, `Section`,
+  `Skeleton`, `StatValue`, `Table`, `ArchivalControl`, `DataExportPanel`, `ProfileSummary` and
+  `SignInScreen`. Two more real repaints in this same diff are named by neither stated cause: `Menu`'s
+  intrinsic selection checkmark and `FocusVisible`'s reframe onto an unchecked item (`3032e21`,
+  roughly 54 of the 239 — every `Menu` baseline plus its compositions in `SiteHeader` and
+  `ProfileSummary`), and the Foundations pages computing contrast live instead of showing an
+  unlabelled rectangle (`7f8ff24`, roughly 24 of the 239, across `Colour.stories.tsx`,
+  `Elevation.stories.tsx`, `Motion.stories.tsx` and `Typography.stories.tsx`). The hidden-caption fix
+  (`20dc2e4`) and the remainder are consistent with T566's realistic-composition rewrites, present
+  across most of the package's stories in this same capture window, rather than an unattributed
+  repaint.
+- `e22762e` (2026-09-07), cause `review remediation retry: RealisticMatchHistory's caption collided
+  with its own Section heading (landmark-unique)`: 0 new baselines, 128 modified, against `c2a052b`.
+  The stated cause names one story and explains at most 6 of the 128 — `primitives-page--realistic-
+  match-history-{light,dark}-{375,768,1280}`, the only filenames matching it. The other ~122 are not
+  this commit's own work: two source commits landed between `c2a052b` and `e22762e` —
+  `b161d2f` (review remediation: seven stories' narrow-shape viewport pin moved from Storybook's
+  `mobile1` preset to the declared `reviewWidthNarrow` at 375px — `AnalysisTimeline`, `FavouritesList`,
+  `MatchRow`, `ReplayAvailabilityList`, `Link`, `Menu` and `ProfileSummary`; `MatchDetailPanel`'s
+  `TeamGroup` caption stopped repeating its own heading; `SearchBox`'s frozen clock moved from module
+  to story scope; and `Page`'s `RealisticMatchHistory` story was rebuilt on primitives instead of
+  importing `MatchList`) and `339bb9d` (the caption-collision fix this capture's own cause names) —
+  and `e22762e` is the first capture to render either, so its diff is their combined repaint, not a
+  fresh one of its own. The `Link` (14) and `Menu` (14) baselines in this diff are `b161d2f`'s
+  viewport-pin repoint; the `MatchDetailPanel` entries are its `TeamGroup` caption fix; the rest —
+  `Footer`, `PlayerAvatar`, `PlayerResultRow`, `CountryFlag`, `Field`, `Button`, `Dialog`,
+  `SiteHeader`, `Table`, `Tooltip`, `Section`, `Callout`, `ErrorState`, `MapThumbnail`,
+  `UploadControl`, `AccountErasurePanel`, `DataExportPanel` and the remaining `ProfileSummary`
+  frames — are `b161d2f`'s `.storybook/preview.tsx` change, which sits in `run.mjs`'s
+  `GLOBAL_REACH_PREFIXES` and re-renders every story; a repaint this wide from one file is expected
+  once that file is touched, not evidence of an unrelated change reaching each of those components on
+  its own.
+
+(Every commit hash in this note is branch-local and pre-squash, citable only while PR #69 is open;
+the task ids and PR number are what survives the squash.)
 
 Recorded here rather than beside the package (`CLAUDE.md`'s three-homes rule, amended by T575):
 what caused two specific commits on this one branch to change what they changed is a record of one

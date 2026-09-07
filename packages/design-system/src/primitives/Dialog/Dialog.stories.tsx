@@ -63,10 +63,10 @@ export const Error: Story = {
   },
 }
 
-// §Dialog "focus-visible" is not named as its own bullet, but the accessibility section states
-// focus moves to the heading (`tabIndex={-1}`) on mount — the same rendering `Default` above
-// already shows, since that focus happens synchronously on the very first paint. Named separately
-// so the state has its own entry in the sidebar, matching the closed vocabulary.
+// §Dialog's `focus-visible` bullet states focus moves to the heading (`tabIndex={-1}`) on mount —
+// the same rendering `Default` above already shows, since that focus happens synchronously on the
+// very first paint. Named separately here too, so the state has its own entry in the sidebar,
+// matching the closed vocabulary.
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
   args: {
@@ -109,10 +109,10 @@ export const KeyboardFocusOrderAndTrap: Story = {
   },
 }
 
-// §Dialog "empty / hover / active — not applicable; a dialog with no actions is a malformed call
-// site, and hover/active belong to the `Button`s inside it, not to the dialog itself." `disabled`
-// has no bullet of its own in this spec; the same reasoning applies by extension — a dialog is not
-// itself disableable, only the actions inside it are, via their own `disabled` prop (see
+// §Dialog's "empty / hover / active / disabled — not applicable; a dialog with no actions is a
+// malformed call site, and hover, active and disabled all belong to the `Button`s inside it — not
+// to the dialog itself." `disabled` shares that bullet rather than owning one of its own: a dialog
+// is not itself disableable, only the actions inside it are, via their own `disabled` prop (see
 // `PrimaryPending` above).
 export const EmptyHoverActiveDisabledNotApplicable: Story = {
   render: () => (

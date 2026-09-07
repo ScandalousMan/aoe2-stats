@@ -288,9 +288,10 @@ export const RealisticMatchHistory: Story = {
   ),
 }
 
-// A stand-in for `Panel` (T544, not yet built) and `Section` (T544): a bounded block with a
-// heading, just enough to show the between-sections rhythm `Page` owns without depending on a
-// primitive this task does not build.
+// A deliberately minimal bounded block with a heading — not `Panel` or `Section`, which this file
+// imports and uses directly in the realistic-composition stories above. This stand-in exists for
+// the stories that only need to show the between-sections rhythm `Page` owns, without pulling in
+// either primitive's own surface and heading conventions for a specimen that doesn't need them.
 function SamplePanel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section
