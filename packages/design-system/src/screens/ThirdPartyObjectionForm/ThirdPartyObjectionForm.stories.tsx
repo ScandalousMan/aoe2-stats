@@ -58,32 +58,25 @@ export const FieldError: Story = {
 
 // §5 "disabled — the submit button is never disabled. Validation happens on submit, not by
 // greying the button."
-// §5 "hover — the privacy-notice link... and the submit button (per `Button`)."
+// §5 "hover — the privacy-notice link... and the submit button (per `Button`)." Forced from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('link'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
 }
 
 // §5 "focus-visible — the standard ring... on the input, the submit button and the
 // privacy-notice link."
 export const FocusVisible: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
 }
 
 // §5 "active — the link renders `accent-active` while pressed; the button per `Button`."
 export const Active: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getByRole('link')
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
 }
 
 export const DisabledNotApplicable: Story = {

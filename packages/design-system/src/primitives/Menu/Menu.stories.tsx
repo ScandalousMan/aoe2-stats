@@ -131,13 +131,17 @@ export const Empty: Story = {
   },
 }
 
-// §Menu "hover — item fill `surface-sunken`."
+// §Menu "hover — item fill `surface-sunken`." `play()` here only opens the menu (a real state
+// change, since the component's own `onClick` handler responds to a synthetic click just as it
+// would a real one) — `tests/visual/stories.spec.ts` drives the real `:hover` on the item itself
+// from Playwright, once the menu has opened and the story has settled, because a synthetic
+// `userEvent.hover()` would dispatch an event every listener sees but the `:hover` pseudo-class
+// itself ignores (see that file's own `VisualForceState` comment).
 export const Hover: Story = {
   tags: ['visual-full-page'],
-  play: async ({ canvasElement }) => {
-    await openMenu({ canvasElement })
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('menuitemradio', { name: /aoe2alt/ }))
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' },
   },
   args: {
     variant: 'selection',
@@ -151,27 +155,25 @@ export const Hover: Story = {
 }
 
 // §Menu "focus-visible — the focused item shows the standard focus ring inset within its bounds.
-// Focus follows the roving item, never both trigger and item." Opened by keyboard (Enter on the
-// trigger) rather than by click, which is what actually reaches `:focus-visible` in Chromium's own
-// heuristic — the same reach `tests/visual/focus-ring.spec.ts` uses for this component.
+// Focus follows the roving item, never both trigger and item."
 //
 // T572 scenario 9 remediation (residual 2): opening focuses the *checked* item by default
 // (`index.tsx`'s own `checkedIndex` effect), so this story used to land on the exact same row
 // `Selection`/`ProfileSwitcher` already show checked — a reader comparing the three stories saw
 // focus and selection as one and the same signal, even after the checkmark glyph fix made checked
-// and unchecked rows distinguishable *within* a single image. One `ArrowDown` after opening moves
-// the roving item onto `aoe2alt`, the *unchecked* row, so this story's own still image shows a
-// focus ring on a row that carries no checkmark glyph — focus and selection now read as two
-// independent facts here too, not only within `Selection`'s own frame.
+// and unchecked rows distinguishable *within* a single image. Forced onto `aoe2alt`, the
+// *unchecked* row, instead, so this story's own still image shows a focus ring on a row that
+// carries no checkmark glyph — focus and selection now read as two independent facts here too, not
+// only within `Selection`'s own frame. `play()` here only opens the menu (the same `openMenu`
+// every other story on this page uses); `tests/visual/stories.spec.ts` drives the real
+// `:focus-visible` from Playwright afterward (see that file's own `VisualForceState` comment) —
+// a synthetic keyboard event here could open the menu (a real state change other listeners
+// receive) but not itself the pseudo-class.
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const trigger = canvas.getByRole('button')
-    trigger.focus()
-    await userEvent.keyboard('{Enter}')
-    await canvas.findByRole('menu')
-    await userEvent.keyboard('{ArrowDown}')
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2alt' },
   },
   args: {
     variant: 'selection',
@@ -312,14 +314,14 @@ export const ClosedTrigger: Story = {
 }
 
 // §Menu "active — item fill `surface-sunken` with boundary `border-strong` on the inline-start
-// edge." Held down rather than released so the capture shows the pressed frame.
+// edge." Held down rather than released so the capture shows the pressed frame. `play()` here
+// only opens the menu; the real `:active` state is driven from Playwright afterward (see `Hover`
+// above's comment).
 export const Active: Story = {
   tags: ['visual-full-page'],
-  play: async ({ canvasElement }) => {
-    await openMenu({ canvasElement })
-    const canvas = within(canvasElement)
-    const item = canvas.getByRole('menuitemradio', { name: /aoe2alt/ })
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: item })
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'active', role: 'menuitemradio', name: 'aoe2alt' },
   },
   args: {
     variant: 'selection',

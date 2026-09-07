@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent } from 'storybook/test'
 import { PlayerResultRow } from './index'
 import type { PlayerSearchResultData } from './index'
 
@@ -28,28 +27,24 @@ export const SourceBacked: Story = {
 
 // player-search.md §5 "hover / focus-visible / active — `PlayerResultRow`: whole-row hover fill
 // `surface-sunken`... nothing inside the row — including `Standing` — has its own hover; focus
-// ring on the row's own link wrapper."
+// ring on the row's own link wrapper." Forced from Playwright in `tests/visual/stories.spec.ts`
+// (see that file's own `VisualForceState` comment) — a `play()` could only dispatch a synthetic
+// event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   args: { result: base },
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/players/12345"]')
-    if (link) await userEvent.hover(link)
-  },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/players/12345"]' } },
 }
 
 export const FocusVisible: Story = {
   args: { result: base },
-  play: async () => {
-    await userEvent.tab()
+  parameters: {
+    visualForceState: { state: 'focus-visible', selector: 'a[href="/players/12345"]' },
   },
 }
 
 export const Active: Story = {
   args: { result: base },
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/players/12345"]')
-    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', selector: 'a[href="/players/12345"]' } },
 }
 
 // §5 "disabled — `Input` only... there is no other disabled condition for either component." This

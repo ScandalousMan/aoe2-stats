@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
 import { PrivacyNotice } from './index'
 
 const meta: Meta<typeof PrivacyNotice> = {
@@ -76,32 +75,25 @@ export const MobileViewport: Story = {
 }
 
 // §5 "hover — inline links and `Contents` entries only... `ObjectionCallToAction` hovers as
-// `Button/secondary`. No other part of this component responds to a pointer."
+// `Button/secondary`. No other part of this component responds to a pointer." Forced from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores. `nth: 0`
+// picks the first link the same way `getAllByRole(...)[0]` used to.
 export const Hover: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const links = canvas.getAllByRole('link')
-    if (links[0]) await userEvent.hover(links[0])
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
 }
 
 // §5 "focus-visible — the standard ring... on every link and on the objection button."
 export const FocusVisible: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link', nth: 0 } },
 }
 
 // §5 "active — links render in `link-hover` while pressed... Nothing translates or scales."
 export const Active: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const links = canvas.getAllByRole('link')
-    if (links[0]) await userEvent.pointer({ keys: '[MouseLeft>]', target: links[0] })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link', nth: 0 } },
 }
 
 // §5 "disabled — nothing in this component is ever disabled. A right that is described and then

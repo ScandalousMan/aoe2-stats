@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
 import { Callout } from '../../primitives/Callout'
 import { FavouriteToggle } from './index'
 
@@ -91,29 +90,22 @@ export const RequestFailedError: Story = {
 }
 
 // favourite-toggle.md §5 "hover / focus-visible / active — owned entirely by `Button/ghost`... In
-// the bounded/disabled case there is no hover." Forced here on the enabled control.
+// the bounded/disabled case there is no hover." Forced here on the enabled control, from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   args: { favourited: false, authenticated: true },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('button'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
 }
 
 export const FocusVisible: Story = {
   args: { favourited: false, authenticated: true },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
 }
 
 export const Active: Story = {
   args: { favourited: false, authenticated: true },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button')
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: button })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
 }
 
 // §5 "empty — not applicable... a toggle with no label is invalid, the same as `Button`. Every

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import type { ReplayAvailabilityRowData } from './index'
 import { ReplayAvailabilityList } from './index'
 
@@ -253,35 +253,28 @@ export const StackedRowsBelowMd: Story = {
 }
 
 // replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per
-// `Badge`'s own rule... `DownloadAction`: per `Button`."
+// `Badge`'s own rule... `DownloadAction`: per `Button`." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('button', { name: 'Download' }))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Download' } },
 }
 
 export const FocusVisible: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Download' } },
 }
 
 export const Active: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button', { name: 'Download' })
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: button })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'button', name: 'Download' } },
 }
 
 // §5 "disabled — `DownloadAction` has no disabled form... for `expired` and `never_recorded` it is

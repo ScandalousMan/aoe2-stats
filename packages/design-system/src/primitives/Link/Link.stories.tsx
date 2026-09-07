@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
 import { Link } from './index'
 
 const meta: Meta<typeof Link> = {
@@ -95,33 +94,27 @@ export const Empty: Story = {
   ),
 }
 
-// structural-tier.md §9 "hover — ink `link-hover`, underline thickens to `border.ring`." Forced
-// with a real `:hover`, its own named story rather than only `RestAndHover`'s invitation above.
+// structural-tier.md §9 "hover — ink `link-hover`, underline thickens to `border.ring`." Its own
+// named story rather than only `RestAndHover`'s invitation above. `tests/visual/stories.spec.ts`
+// drives the real `:hover` from Playwright once this story has settled (see that file's own
+// `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
+// pseudo-class ignores.
 export const Hover: Story = {
   args: { variant: 'standalone' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('link'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
 }
 
 // §9 "focus-visible — `outline-ring`... around the whole link box, on top of whatever the hover
 // paint is. Never removed on pointer interaction."
 export const FocusVisible: Story = {
   args: { variant: 'standalone' },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
 }
 
 // §9 "active — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box."
 export const ActiveStandalone: Story = {
   args: { variant: 'standalone' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getByRole('link')
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
 }
 
 // §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
@@ -134,11 +127,7 @@ export const ActiveInline: Story = {
       <Link {...args}>view its profile</Link> and choose "Link this account" instead.
     </p>
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getByRole('link')
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
 }
 
 // §9 "disabled — a link is never disabled. A destination the reader may not reach renders as

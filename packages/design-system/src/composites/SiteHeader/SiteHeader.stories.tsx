@@ -129,13 +129,12 @@ export const ThemeControlSetToDark: Story = {
 }
 
 // site-header.md §5 "hover — the item's box fills `surface-sunken` and its label moves to
-// `text-primary`... No underline on hover."
+// `text-primary`... No underline on hover." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   args: { items, currentPath: '/dashboard' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('link', { name: 'Matches' }))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'link', name: 'Matches' } },
 }
 
 // §5 "focus-visible — named explicitly, because this is the state a later reviewer will assume
@@ -143,21 +142,14 @@ export const Hover: Story = {
 // hover state is."
 export const FocusVisible: Story = {
   args: { items, currentPath: '/dashboard' },
-  play: async () => {
-    await userEvent.tab()
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link', name: 'Matches' } },
 }
 
 // §5 "active — fill `surface-sunken` with a 1px `border-strong` boundary drawn inside the box...
 // label `text-primary`."
 export const Active: Story = {
   args: { items, currentPath: '/dashboard' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getByRole('link', { name: 'Matches' })
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link', name: 'Matches' } },
 }
 
 // §5 "disabled — never, for any part"; "loading — none, and specifically no skeleton row"; "error

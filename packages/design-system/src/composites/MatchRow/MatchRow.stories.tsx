@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, waitFor } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import { MatchList, MatchRow } from './index'
 import type { MatchRowData, MatchRowParticipant } from './index'
 
@@ -318,31 +318,27 @@ export const ListCardsBelowXl: Story = {
 }
 
 // match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
-// including `CaptureStateBadge` — has its own hover."
+// including `CaptureStateBadge` — has its own hover." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const Hover: Story = {
   render: () => <MatchRow match={base} />,
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/matches/1001"]')
-    if (link) await userEvent.hover(link)
-  },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' } },
 }
 
 // §5 "focus-visible — standard ring on the row's own link wrapper, inset so it never crops the
 // outcome text or a numeral."
 export const FocusVisible: Story = {
   render: () => <MatchRow match={base} />,
-  play: async () => {
-    await userEvent.tab()
+  parameters: {
+    visualForceState: { state: 'focus-visible', selector: 'a[href="/matches/1001"]' },
   },
 }
 
 // §5 "active — per link" (`Link`'s own `standalone` press paint).
 export const Active: Story = {
   render: () => <MatchRow match={base} />,
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/matches/1001"]')
-    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', selector: 'a[href="/matches/1001"]' } },
 }
 
 // §5 "disabled — `DownloadAction` has no disabled form: while `capture_status != \"stored\"` it is

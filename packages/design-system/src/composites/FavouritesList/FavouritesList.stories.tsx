@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, waitFor } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import type { FavouriteEntryData } from './index'
 import { FavouritesList } from './index'
 
@@ -115,28 +115,22 @@ export const StackedBelowMd: Story = {
 
 // favourites-list.md §5 "hover / focus-visible / active — `ProfileLink`: whole-block hover fill
 // `surface-sunken`... `RemoveControl`: `FavouriteToggle`'s own hover/focus/active. The two never
-// share a hover."
+// share a hover." Forced from Playwright in `tests/visual/stories.spec.ts` (see that file's own
+// `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which the CSS
+// pseudo-class ignores.
 export const Hover: Story = {
   args: { entries: [rated] },
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/players/1"]')
-    if (link) await userEvent.hover(link)
-  },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/players/1"]' } },
 }
 
 export const FocusVisible: Story = {
   args: { entries: [rated] },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', selector: 'a[href="/players/1"]' } },
 }
 
 export const Active: Story = {
   args: { entries: [rated] },
-  play: async ({ canvasElement }) => {
-    const link = canvasElement.querySelector('a[href="/players/1"]')
-    if (link) await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', selector: 'a[href="/players/1"]' } },
 }
 
 // §5 "disabled — the list has no disabled form. `RemoveControl` is disabled only transiently

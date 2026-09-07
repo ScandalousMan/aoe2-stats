@@ -65,10 +65,16 @@ export const Error: Story = {
 
 // §Dialog's `focus-visible` bullet states focus moves to the heading (`tabIndex={-1}`) on mount —
 // the same rendering `Default` above already shows, since that focus happens synchronously on the
-// very first paint. Named separately here too, so the state has its own entry in the sidebar,
-// matching the closed vocabulary.
+// very first paint. A story verbatim identical to `Default` documents nothing (FR-037), so this
+// one is forced onto `primaryAction` instead — a real control the mount effect never focuses on
+// its own — via `tests/visual/stories.spec.ts`'s `visualForceState` (see that file's own comment):
+// the same real Tab a keyboard user takes next from the heading (`KeyboardFocusOrderAndTrap`
+// below asserts that transition functionally; this is its still-image counterpart).
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Turn it off' },
+  },
   args: {
     heading: 'Turn off replay archival?',
     children:

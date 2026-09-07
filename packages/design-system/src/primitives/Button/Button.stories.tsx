@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
 import { Callout } from '../Callout'
 import { Button } from './index'
 
@@ -62,34 +61,27 @@ export const AsLink: Story = {
 }
 
 // shared-primitives.md §Button "hover": fill deepens to `accent-hover`, colour only — a still
-// capture of the real `:hover` pseudo-class, forced here because Storybook cannot force it from
-// controls alone.
+// capture of the real `:hover` pseudo-class. `tests/visual/stories.spec.ts` drives the real state
+// from Playwright, in a real browser, once this story has settled — a `play()` here could only
+// dispatch a synthetic event, which every one of Chromium's `:hover`/`:active`/`:focus-visible`
+// pseudo-classes ignores (see that file's own `VisualForceState` comment for the measurement).
 export const Hover: Story = {
   args: { variant: 'primary', size: 'lg' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('button'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
 }
 
 // §Button "focus-visible": the standard ring, reached by the keyboard only — never by a pointer
 // click (that is what makes it `:focus-visible` rather than `:focus`).
 export const FocusVisible: Story = {
   args: { variant: 'primary', size: 'lg' },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
 }
 
 // §Button "active": `accent-active`, the third of three deliberately distinct fills (rest, hover,
 // press) — held down rather than released so the capture shows the pressed frame.
 export const Active: Story = {
   args: { variant: 'primary', size: 'lg' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const button = canvas.getByRole('button')
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: button })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
 }
 
 // §Button "error": "the button has no error state of its own. The failure renders in a `Callout`

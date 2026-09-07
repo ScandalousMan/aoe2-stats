@@ -128,13 +128,13 @@ export const RealSelectionThenSuccess: Story = {
 }
 
 // manual-upload.md §5 "focus-visible — the standard ring... on the `Choose file` control, the
-// `Remove` button, `SubmitButton` and the `Refresh` button, in both themes."
+// `Remove` button, `SubmitButton` and the `Refresh` button, in both themes." Forced from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` here could only dispatch a synthetic event, which the CSS pseudo-class ignores.
 export const FocusVisible: Story = {
   name: 'focus-visible — the standard ring on the "Choose file" control',
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'idle' },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Choose file' } },
 }
 
 // §5 "disabled — there is no resting disabled control. `SubmitButton` does not exist until a file

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
@@ -263,7 +263,9 @@ export const Overflow: Story = {
 }
 
 // structural-tier.md §10 "hover — a row highlights with `surface-sunken` only when the whole row
-// is a real link." Forced with a real `:hover` on the row's own anchor.
+// is a real link." `tests/visual/stories.spec.ts` drives the real `:hover` on the row's own anchor
+// from Playwright once this story has settled (see that file's own `VisualForceState` comment) — a
+// `play()` here could only dispatch a synthetic event, which the pseudo-class ignores.
 export const RowLinkHover: Story = {
   render: () => (
     <Table
@@ -274,9 +276,8 @@ export const RowLinkHover: Story = {
       getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
     />
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('link', { name: /RedBull_Barley/ }))
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', name: 'RedBull_Barley' },
   },
 }
 
@@ -292,16 +293,15 @@ export const RowLinkActive: Story = {
       getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
     />
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getByRole('link', { name: /RedBull_Barley/ })
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' },
   },
 }
 
 // §10 "focus-visible — the scroll region shows the standard ring when it is focused for
 // scrolling; a focusable element inside a cell shows its own ring, offset so the frame does not
-// clip it." Shown here on the region itself, reached the way a keyboard user reaches it.
+// clip it." Shown here on the region itself, named by its own caption (`index.tsx`'s
+// `aria-labelledby={captionId}`).
 export const FocusVisible: Story = {
   render: () => (
     <Table
@@ -311,8 +311,8 @@ export const FocusVisible: Story = {
       getRowKey={(row) => row.gameId}
     />
   ),
-  play: async () => {
-    await userEvent.tab()
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'region', name: 'Recent matches' },
   },
 }
 

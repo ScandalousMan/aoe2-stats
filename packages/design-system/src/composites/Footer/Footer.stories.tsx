@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { userEvent, within } from 'storybook/test'
 import { Footer } from './index'
 
 const meta: Meta<typeof Footer> = {
@@ -35,32 +34,26 @@ export const ObjectionOnly: Story = {
 }
 
 // §5 "hover — `PrivacyNoticeLink` and `ObjectionLink` only... Nothing else in this component
-// responds to a pointer."
+// responds to a pointer." Forced from Playwright in `tests/visual/stories.spec.ts` (see that
+// file's own `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which
+// the CSS pseudo-class ignores. `nth: 0` picks the first link the same way `getAllByRole(...)[0]`
+// used to.
 export const Hover: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getAllByRole('link')[0])
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
 }
 
 // §5 "focus-visible — the standard ring... on each link that is present. The disclaimer and the
 // affiliation note are not focusable."
 export const FocusVisible: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link', nth: 0 } },
 }
 
 // §5 "active — links render `link-hover` while pressed... Nothing translates or scales."
 export const Active: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    const link = canvas.getAllByRole('link')[0]
-    await userEvent.pointer({ keys: '[MouseLeft>]', target: link })
-  },
+  parameters: { visualForceState: { state: 'active', role: 'link', nth: 0 } },
 }
 
 // §5 "disabled — not applicable... loading — none... error — none of its own." Grouped as one

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import type { PlayerSearchResultData } from '../PlayerResultRow'
 import { SearchBox } from './index'
 import type { SearchBoxState } from './index'
@@ -160,18 +160,15 @@ export const RequestFailed: Story = {
 }
 
 // player-search.md §5 "hover / focus-visible / active — `Input`: standard text-input interaction,
-// focus ring per DS-4."
+// focus ring per DS-4." Forced from Playwright in `tests/visual/stories.spec.ts` (see that file's
+// own `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which the
+// CSS pseudo-class ignores.
 export const Hover: Story = {
   render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('textbox'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'searchbox' } },
 }
 
 export const FocusVisible: Story = {
   render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'searchbox' } },
 }

@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { userEvent, within } from 'storybook/test'
 import { Button } from '../Button'
 import { Field } from './index'
 
@@ -19,6 +18,17 @@ type Story = StoryObj<typeof Field>
 // route would. `invalid` is plain conditional logic driven by the same boolean the story already
 // has in scope, not a CSS attribute selector, so a story never depends on anything beyond React
 // props to render correctly.
+//
+// `hover:bg-surface-sunken` (T565 remediation): §11's own "hover" bullet names a sunken fill, which
+// this demo never actually carried — found only once `tests/visual/stories.spec.ts` started driving
+// a real `:hover` instead of a `userEvent.hover()` no synthetic dispatch could ever paint. Its own
+// `FocusVisible` story stays undistinguished from `Default` for an unrelated, pre-existing reason
+// this fix does not touch: `focus-visible:outline-ring`/`outline-offset-ring` set only the
+// outline's width and offset, never `outline-style`, so the ring these classes name never paints
+// regardless of how genuinely `:focus-visible` matches — that is a token/utility defect
+// (`tokens/generated/preset.css`'s `@utility outline-ring`) shared with `Link` and `Table`, out of
+// this remediation's scope (no `index.tsx` or `tokens/` edits here), and reported rather than
+// papered over with a duplicate baseline.
 function DemoInput({
   invalid,
   ...rest
@@ -29,6 +39,7 @@ function DemoInput({
       className={
         'w-full rounded-control border bg-surface px-3 type-body text-sm text-text-primary ' +
         'transition-colors duration-120 ease-standard motion-reduce:duration-0 outline-none ' +
+        'hover:bg-surface-sunken ' +
         'focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring ' +
         'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border ' +
         (invalid ? 'border-danger' : 'border-border-strong')
@@ -176,7 +187,10 @@ export const ErrorAppearsAfterMount: Story = {
 }
 
 // structural-tier.md §11 "hover — the control's boundary deepens to `border-strong` on a
-// `surface-sunken` fill; the label and hint do not change."
+// `surface-sunken` fill; the label and hint do not change." `tests/visual/stories.spec.ts` drives
+// the real `:hover` from Playwright once this story has settled (see that file's own
+// `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
+// pseudo-class ignores.
 export const Hover: Story = {
   args: { label: 'Display name' },
   render: (args) => (
@@ -186,10 +200,7 @@ export const Hover: Story = {
       </Field>
     </div>
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.hover(canvas.getByRole('textbox'))
-  },
+  parameters: { visualForceState: { state: 'hover', role: 'textbox' } },
 }
 
 // §11 "focus-visible — `outline-ring` at `outline-offset-ring` in `focus-ring` around the control,
@@ -203,9 +214,7 @@ export const FocusVisible: Story = {
       </Field>
     </div>
   ),
-  play: async () => {
-    await userEvent.tab()
-  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'textbox' } },
 }
 
 // §11 "active — the control's own text-entry state; no separate paint. A press on a text input is
