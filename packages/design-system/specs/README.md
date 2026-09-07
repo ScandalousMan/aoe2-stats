@@ -808,3 +808,57 @@ pair — `text-primary` on `surface`, the fill and heading ink `Dialog` (`src/co
 actually paints — is already measured in the table above (research D9). This reasoning is recorded
 here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
 by stripping its alpha and breaking the scrim it draws.
+
+## Storybook documentation gap register
+
+**Open as of 2026-09-07 (T572).** This register holds what quickstart.md scenario 9 found still
+missing from the built Storybook after the fixes it also triggered landed, so the gap is filed
+where a future reader of the package meets it rather than only in the frozen record of the run that
+found it (`specs/005-design-system-foundations/quickstart.md`, "Scenario 9 — Result"). The
+distinction is CLAUDE.md's: a fact about this package's Storybook build needs updating whenever a
+future task changes that build, so it stays here rather than in a spec, which is written once. This
+phase deliberately does not close any of the four rows below; each names what a follow-up task
+would do and why closing it matters, so the next reader can act without re-running the scenario.
+
+A human reader, given the built Storybook and no repository access, could reliably answer _what
+does X look like when Y_ (Foundations → Colour computes every ratio live and captions every tile
+with its surface; `SearchBox`'s rate-limited story and `Menu`'s corrected selection mark were both
+named as models) but could only guess at _which X, and why_. The four rows below are what stands
+between the two.
+
+1. **Zero `docs` entries in the build.** All 536 entries in the built Storybook are `type: "story"`;
+   there is no autodocs page and no MDX page for a single component. A reader has no page to land on
+   that describes a component rather than one of its states. Closing this needs Storybook's autodocs
+   turned on per component (or an MDX page per component directory) in
+   `packages/design-system/.storybook/`, which is out of this phase's scope.
+2. **No prop documentation.** The Controls panel shows a prop's name and its control widget only —
+   no type column, no description — because docgen is off. The reader reconstructed
+   `PlayerColourSwatch`'s valid `colorId` range from a _story name_, not from a documented prop. This
+   closes together with row 1: turning on docgen (`react-docgen-typescript` or the Storybook
+   equivalent) is what populates both the type/description columns and an autodocs page's prop
+   table from the same source, a component's own TypeScript props, so the fact is written once.
+3. **No component states its purpose in a sentence.** Not one of the 41 components under
+   `packages/design-system/src/` opens with a line saying what it is for. The reader named this the
+   single highest-value gap and the direct cause of Q1's difficulty in the scenario 9 run: finding
+   `PlayerColourSwatch` by need depended entirely on the navigation grouping (T564), because no
+   component page itself confirmed the need it served once found. A purpose line is a per-component
+   authoring task, one sentence per `*.stories.tsx`'s default export or an MDX/autodocs page's
+   opening paragraph (see row 1); it is not a token or a mechanical check, which is why it is
+   recorded as a register row rather than turned into one.
+4. **No component states which `sr-only` naming shape it follows.** Foundations → Iconography
+   states the rule an icon-carried meaning must satisfy (FR-011: an icon is never the only carrier of
+   a meaning), but no component story links to that page or claims conformance with it, so a reader
+   cannot tell from the built Storybook alone that `PlayerColourSwatch`'s colour-blind redundancy
+   exists at all — it is `sr-only` text, invisible in a rendered story and undiscoverable without
+   the DOM. Closing this needs each component that carries a redundant accessible name to say so and
+   link the rule it follows, most naturally beside the purpose line in row 3 once that exists.
+
+Two smaller findings from the same run are already fixed and are not repeated here as open rows:
+`SearchBox`'s two stories both numbered "empty 2 of 3" is corrected, and `Menu/KeyboardNavigation`'s
+resting frame now documents something rather than showing a closed menu. Two findings are recorded
+but deliberately not rows above because neither blocks an answer, only convenience: story ids do not
+follow the sidebar path (`composite-playercolourswatch` vs `primitives-menu`), so a URL is not
+guessable from the tree; and Storybook's built-in search is name-matching only, so `colourblind` and
+`accessible` return nothing and `contrast` returns a false positive on the words "contract
+violation" — a full-text search would need indexing every story's rendered content and captions,
+which no tool here does today.

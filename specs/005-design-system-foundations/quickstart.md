@@ -157,12 +157,12 @@ visibly distinct from a measured one.
 
 Four deliberate breakages, each of which must fail a check by name.
 
-| Break                                                   | Must fail                             |
-| ------------------------------------------------------- | ------------------------------------- |
-| Remove a required accessible name from a component       | the axe scan, naming the component    |
-| Change a dark-theme-only colour value                    | a dark baseline, and the contrast test if it crosses a floor |
-| Introduce an overflow at 768                             | a 768 baseline                        |
-| Import a composite from a primitive                      | `scripts/checks/tier-deps.mjs`        |
+| Break                                              | Must fail                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| Remove a required accessible name from a component | the axe scan, naming the component                           |
+| Change a dark-theme-only colour value              | a dark baseline, and the contrast test if it crosses a floor |
+| Introduce an overflow at 768                       | a 768 baseline                                               |
+| Import a composite from a primitive                | `scripts/checks/tier-deps.mjs`                               |
 
 Revert each afterwards. A check that does not fail here is a check that will not fail in a pull
 request either.
@@ -178,6 +178,45 @@ Hand someone Storybook and no repository access. Ask three questions:
 **Pass**: all three answered from the foundation pages and the navigation alone. **Fail**: any
 answer that needs the source. This is the only scenario here with a human in it, and it is the one
 that decides whether the system is maintainable by an agent working from a cold context.
+
+### Result (T572, run 2026-09-07)
+
+A fresh agent was given the built static Storybook only — no repository access, with
+`packages/design-system/src/`, `specs/`, `tokens/`, `apps/` and every `*.stories.tsx` withheld — and
+asked the three questions. This is a mixed verdict, not a pass.
+
+1. **Which component for a stated need** (show a player's in-game colour beside their name, and it
+   must still make sense for someone who cannot distinguish red from green): **partly answered.**
+   `PlayerColourSwatch` was found in two clicks via `Composites → Player identity` — the
+   tier-and-need navigation (T564) did its job. The colour-blindness half failed: the redundancy is
+   `sr-only` text only, discoverable only by reading the DOM, and the governing rule (FR-011,
+   Foundations → Iconography) is not linked from, or claimed by, any component story.
+2. **Which token means "this failed", and on which surfaces**: **failed at the time of the run,
+   fixed since.** The reader found `danger` on Foundations → Colour in one navigation and called the
+   page "the strongest thing in the build", but it then delegated every number to
+   `packages/design-system/specs/README.md` and `color-tokens.md` — files the scenario forbids — so
+   it could show a rectangle but not the colour behind it, and captioned emphasis tiles with the role
+   name four times instead of the surface. `7f8ff24` now computes every contrast ratio live from the
+   token pair the tile actually paints and captions each tile with its surface. This question passes
+   against the tree as it stands today; it did not pass during the run.
+3. **What a stated state looks like** (rate-limited `SearchBox`; `selection` on a `Menu`): **half
+   excellent, half failed at the time of the run, fixed since.** `SearchBox`'s rate-limited story was
+   singled out as the model the rest of the library should follow — its story name is a contract and
+   the render honours it line by line. `Menu/Selection`, `Menu/ProfileSwitcher` and
+   `Menu/FocusVisible` rendered pixel-identically: a checked item carried `aria-checked` and no
+   visual mark, so the ring visible on that row was the focus ring, not a selection mark, and a
+   reader could not tell the two states apart. `3032e21`/`338d731` gave `Menu` an intrinsic leading
+   checkmark, painted when checked and holding reserved space when not, and `8eac38d` moved
+   `FocusVisible`'s focus onto an unchecked item so selection and focus read as two signals; the spec
+   files that had described the retired caller-supplied badge (`shared-primitives.md`,
+   `profile-summary.md`, `site-header.md`) were corrected to match.
+
+Two of the three fixes above landed only after this run named them, and Q1's accessibility half is
+still open. What remains — no `docs` entries in the build, docgen off so no prop tables, no
+component stating its purpose in a sentence, no story stating which `sr-only` naming shape it
+follows — is a property of the package's Storybook build itself, not of the one run that found it,
+so it is recorded beside the package rather than here: see
+`packages/design-system/specs/README.md`, "Storybook documentation gap register".
 
 ## Regenerating baselines
 
