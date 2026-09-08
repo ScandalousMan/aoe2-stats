@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { Button } from '../Button'
+import { cx } from '../../lib/cx'
 import { Field } from './index'
 
 const meta: Meta<typeof Field> = {
@@ -31,19 +32,21 @@ type Story = StoryObj<typeof Field>
 // papered over with a duplicate baseline.
 function DemoInput({
   invalid,
+  className,
   ...rest
 }: React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return (
     <input
       {...rest}
-      className={
+      className={cx(
         'w-full rounded-control border bg-surface px-3 type-body text-sm text-text-primary ' +
-        'transition-colors duration-120 ease-standard motion-reduce:duration-0 outline-none ' +
-        'hover:bg-surface-sunken ' +
-        'focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring ' +
-        'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border ' +
-        (invalid ? 'border-danger' : 'border-border-strong')
-      }
+          'transition-colors duration-120 ease-standard motion-reduce:duration-0 outline-none ' +
+          'hover:bg-surface-sunken ' +
+          'focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring ' +
+          'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border ' +
+          (invalid ? 'border-danger' : 'border-border-strong'),
+        className,
+      )}
     />
   )
 }
