@@ -446,8 +446,11 @@ has not been exercised by any CI run either.
     occurrence (ten named consumer files); T557's prop-vocabulary reconciliation is recorded as the
     deprecation procedure's one subject. All four procedures have at least one recorded outcome.
 15. **`visual-reviewer` returns a pass for every affected component; the general reviewer approves
-    against the spec and the constitution.** **Not met.** See "Reviewer gates" below — neither half
-    is demonstrated as of this walk.
+    against the spec and the constitution.** **Partly met.** The first half is now met — this walk
+    found `visual-reviewer` had never been run in this feature, it was run immediately afterwards,
+    and it returned PASS for all six components Phase 6 touched. The second half is not: the general
+    reviewer has returned REJECT twice, and the pass over the remediated tree is outstanding. See
+    "Reviewer gates" below.
 
 ### Named success criteria
 
@@ -506,11 +509,24 @@ has not been exercised by any CI run either.
 **`visual-reviewer`**: no invocation of this agent — a PASS or a reasoned FAIL naming a component —
 appears anywhere in feature 005's commit history, across all six phases (`git log --grep
 "visual-reviewer"` over `main..HEAD` and over each of the five already-merged phase branches
-returns only artifact edits to `.claude/agents/visual-reviewer.md` itself, never a verdict; contrast
-with 003/004, which each carry commits literally named "visual-reviewer PASS"). Production-readiness
-item 15's first half is therefore recorded **not met**, not merely unconfirmed: the gate was never
-run, so it cannot have passed. This is also why `docs/risks.md`'s "visual-reviewer returns a
-reasoned FAIL" item stays unticked below — it never returned one, reasoned or otherwise.
+returned only artifact edits to `.claude/agents/visual-reviewer.md` itself, never a verdict; contrast
+with 003/004, which each carry commits literally named "visual-reviewer PASS"). The gate had never
+been run, so it could not have passed — a gate believed rather than held, which is the shape phase
+1 exists to end.
+
+**It was run as soon as this walk exposed that**, against the remediated tree, and returned **PASS
+for all six components Phase 6 touched**: `Menu`'s intrinsic checkmark (reserved width confirmed to
+hold unchecked labels flush, so the mark is a shape difference and not a shift), `ProfileSummary`'s
+three coexisting signals on one row, the focus ring painting for the first time on `Page`, `Link`
+and `Table` in both themes at all three widths with no clipping, `Dialog`'s Shift+Tab landing on the
+last action instead of `<body>`, `Field`'s `lg` measured at 48px against `md`'s 40px, and
+`MatchDetailPanel`'s two landmarks no longer sharing an accessible name. It verified by driving a
+real browser and measuring, not by reading the diff — and reported that its own first capture pass
+had forgotten to apply `visualForceState`, the same defect class this phase fixed. Item 15's first
+half is therefore **met**; the second is not.
+
+`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL" item still stays unticked below: the
+verdict was a PASS, and that item asks for a reasoned FAIL specifically.
 
 **General `reviewer`**: run twice, **REJECT both times**. The first pass's findings are recorded in
 `b161d2f`'s commit message ("An adversarial review rejected phase 6. Its first finding is the one
