@@ -121,7 +121,11 @@ jurisdiction, `<account>.r2...` does not).
 
 **Front end**
 
-- [ ] Storybook renders components in both themes
+- [x] Storybook renders components in both themes — verified by breaking it, not by rendering it:
+      quickstart scenario 8 (`specs/005-design-system-foundations/quickstart.md`, T511, Phase 2,
+      PR #64) changed a dark-theme-only colour value and confirmed a dark baseline failed, which
+      is proof a dark capture is actually compared rather than merely captured — recorded by
+      T577's production-readiness walk
 - [ ] visual-reviewer returns a reasoned FAIL on a component deviated from its spec
 - [ ] Pull-request visual regression runs only on touched stories
 
