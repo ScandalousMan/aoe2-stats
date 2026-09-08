@@ -273,6 +273,7 @@ evolves deliberately, by a rule an agent can apply alone.
 - [x] T576 Update the `design-system` skill in `.claude/skills/design-system/` and `.claude/agents/visual-reviewer.md` to point at what now exists: the nine primitives and the tier rule, the utility vocabulary a component may write, the ten-entry state vocabulary, `GOVERNANCE.md` as the admission and promotion authority, and the matrix the harness now actually captures — with the review widths referenced from the standing rule T529 wrote rather than restated: the skill states 375, 768 and 1280 verbatim today, which is the number-in-two-files defect `CLAUDE.md` names. The skill carries judgement and points at the specs for every value — it does not restate one, because a number that exists in two files will be wrong in one of them
 - [x] T577 Run the whole of [quickstart.md](./quickstart.md) end to end against `packages/design-system/` and `apps/web/`, then walk the fifteen production-readiness criteria in [spec.md](./spec.md) and record each as met with its evidence. Walk the front-end items of `docs/risks.md`'s verification checklist in the same pass and tick only what a scenario now proves — "Storybook renders components in both themes" by scenario 8's dark-only breakage; "visual-reviewer returns a reasoned FAIL" by naming the component it failed during this feature, and if it never failed one the item stays unticked; "runs only on touched stories" stays true by story and is left as it is. `CLAUDE.md` makes that file one that must be true today, and a box ticked on belief is the same lie as a task checkbox committed alone. `visual-reviewer` returns a pass for every affected component and the general `reviewer` approves against the specification and the constitution; both are gates, not formalities, and this is where SC-001, SC-001a, SC-002, SC-003, SC-003a, SC-005, SC-006, SC-008, SC-010, SC-011, SC-013, SC-014 and SC-016 are each shown to hold rather than asserted. **T577 must record FR-040 and production-readiness item 10 as NOT met**, naming T578 below as what closes them — the four rows of `packages/design-system/specs/README.md`'s "Storybook documentation gap register" are real, dated debt, not a passing footnote. **Recorded 2026-09-08** in `specs/005-design-system-foundations/quickstart.md`, "Production-readiness walk (T577, run 2026-09-08)": 3 of 15 production-readiness criteria not met (item 10/FR-040, owned by T578; item 15, `visual-reviewer` never invoked in this feature and the general reviewer at REJECT x2 with a third pass outstanding; item 12 unverified rather than checked), 6 partly met pending a browser run this task was told not to attempt, 6 met with evidence cited. A pre-existing `spec_lint.py` failure (3 findings, unrelated to this task, in this file's own Phase 6 prose) and an unconfirmed CI state on the pushed commit were found while verifying and are recorded there rather than fixed here.
 - [ ] T578 [US6] Close the four rows of `packages/design-system/specs/README.md`'s "Storybook documentation gap register", found by T572's scenario 9 run and owed as of 2026-09-07 (**fix by 2026-09-21**): turn on Storybook autodocs (or an MDX page) per component; turn on docgen so the Controls panel and the autodocs prop table both derive from the component's own TypeScript props; give every component a one-sentence purpose line; and have every component that carries a redundant accessible name state which `sr-only` naming shape it follows and link Foundations → Iconography. This is the work T563, T565 and T566 did not owe — those three closed story coverage and composition realism, which is why they stay ticked — and it is what turns FR-040 and production-readiness item 10 from "not met" (T577) into "met." Close each row in `README.md`'s register in the same change that does the row's work
+- [ ] T579 [US5] Close the one row of `packages/design-system/specs/README.md`'s "Accessibility mechanism gap register", found by the third-pass adversarial review (finding M2a) and owed as of 2026-09-08 (**fix by 2026-09-15**): today `axe-core` runs only inside `tests/visual/stories.spec.ts`, which needs a built Storybook and a browser, i.e. CI only — nothing catches a `landmark-unique` violation (or any other axe finding) at the point a component is authored, and this exact defect class (a hidden caption repeating an ancestor heading) has shipped three times in this one phase, caught by CI each time and never at write-time. Write one generic vitest assertion — render a component tree, scan it with `axe-core` (already a dependency), fail on any `landmark-unique` violation — and reuse it across component test files, rather than the per-composition hand-written guards `Panel.test.tsx` and `MatchDetailPanel.test.tsx` carry today. This is what turns production-readiness item 7 from "not met" (recorded by the M2a remediation) into "met." Close the row in `README.md`'s register in the same change that does the row's work
 
 **Baseline-capture attribution, recorded 2026-09-07, extended 2026-09-07** (M2/M2′ remediation):
 every `chore(visual): regenerate baselines from CI` commit on this branch states one cause in its
@@ -306,9 +307,9 @@ trusted.
   across most of the package's stories in this same capture window, rather than an unattributed
   repaint.
 - `e22762e` (2026-09-07), cause `review remediation retry: RealisticMatchHistory's caption collided
-  with its own Section heading (landmark-unique)`: 0 new baselines, 128 modified, against `c2a052b`.
+with its own Section heading (landmark-unique)`: 0 new baselines, 128 modified, against `c2a052b`.
   The stated cause names one story and explains at most 6 of the 128 — `primitives-page--realistic-
-  match-history-{light,dark}-{375,768,1280}`, the only filenames matching it. The other ~122 are not
+match-history-{light,dark}-{375,768,1280}`, the only filenames matching it. The other ~122 are not
   this commit's own work: two source commits landed between `c2a052b` and `e22762e` —
   `b161d2f` (review remediation: seven stories' narrow-shape viewport pin moved from Storybook's
   `mobile1` preset to the declared `reviewWidthNarrow` at 375px — `AnalysisTimeline`, `FavouritesList`,
@@ -322,10 +323,44 @@ trusted.
   `Footer`, `PlayerAvatar`, `PlayerResultRow`, `CountryFlag`, `Field`, `Button`, `Dialog`,
   `SiteHeader`, `Table`, `Tooltip`, `Section`, `Callout`, `ErrorState`, `MapThumbnail`,
   `UploadControl`, `AccountErasurePanel`, `DataExportPanel` and the remaining `ProfileSummary`
-  frames — are `b161d2f`'s `packages/design-system/.storybook/preview.tsx` change, which sits in `run.mjs`'s
-  its global-reach prefix list and re-renders every story; a repaint this wide from one file is expected
+  frames — are `b161d2f`'s `packages/design-system/.storybook/preview.tsx` change, which sits in
+  `run.mjs`'s global-reach prefix list and re-renders every story; a repaint this wide from one file is
+  expected
   once that file is touched, not evidence of an unrelated change reaching each of those components on
   its own.
+- `1b795bc` (2026-09-08), cause `state stories now capture real :hover/:active/:focus-visible via
+Playwright input … and the focus ring now paints on Page/Link/Table/Text` (the `baselines`
+  workflow dispatch, `34188746865`): 326 files changed, all modified, none added — measured this
+  session (`git show --stat 1b795bc`, `git diff --name-status 1b795bc^ 1b795bc`), not trusted
+  from the commit message's own figure — against `c9fff2e`, its direct parent. Two source commits
+  landed between the previous capture (`e22762e`) and this one and both are real causes:
+  `fbb3dba` (`the state stories capture the state they are named for`) rewrote seventeen story
+  files' hover/active/focus-visible fixtures from CSS-class simulation to real Playwright
+  pointer/focus input — `Button`, `Dialog`, `Field`, `Link`, `Menu`, `Table`, `PrivacyNotice`,
+  `ThirdPartyObjectionForm`, `FavouriteToggle`, `FavouritesList`, `Footer`, `MatchRow`,
+  `PlayerResultRow`, `ReplayAvailabilityList`, `SearchBox`, `SiteHeader` and `UploadControl` —
+  and this diff's repaint of exactly those seventeen components is 263 of the 326 files, measured
+  by grep against the touched-file list rather than assumed. `c9fff2e` (`the focus ring paints on
+Page, Link, Table and Text`) regenerated `packages/design-system/tokens/generated/preset.css`'s
+  focus-ring utility from `packages/design-system/tokens/build-tokens.mjs`; a token/CSS-
+  generator change reaches every focusable element the package renders, not only the four
+  components its own commit message names, and the remaining 63 files — `ProfileSummary` (31),
+  `PlayerAvatar` (7), `Page` (6), `CountryFlag` (3), `AccountErasurePanel` (2), `ErrorState` (2),
+  `MatchDetailPanel` (2), `AnalysisTimeline` (2), `Section` (1), `Callout` (1), `MapThumbnail`
+  (1), `CivilisationIcon` (1) and the four `app-signed-in-*` route captures — are consistent with
+  that wider reach: none of them appear in `fbb3dba`'s touched-file list, and each renders at
+  least one focus-visible-capable element. `Link` and `Table` sit in both commits' scope (story
+  rewrite and focus-ring both) and are not cleanly separable between the two causes; both are
+  named rather than one chosen arbitrarily. A third commit landed in the same window, `2b8d05c`
+  (Dialog's focus trap fix), also touches `packages/design-system/.storybook/preview.tsx` — on
+  `run.mjs`'s global-reach prefix list — but its change there swaps a literal for an import of
+  the same value (the review-width array `scripts/visual/review-widths.mjs` exports) with no
+  rendering difference, so it explains why the harness re-selected every story for this run
+  without explaining any pixel this diff repaints. Whether a fifth capture is owed is not this
+  note's question — it is not, as of this entry, by anything that has landed on this branch, but
+  a sibling change fixing this pass's three blocking defects (`Button`'s active/hover collapse,
+  `ProfileSummary`'s `UnlinkInFlight` menu, `AccountErasurePanel`'s `minting`/`confirming`
+  collapse) is in flight and will owe a fifth entry once it lands.
 
 (Every commit hash in this note is branch-local and pre-squash, citable only while PR #69 is open;
 the task ids and PR number are what survives the squash.)

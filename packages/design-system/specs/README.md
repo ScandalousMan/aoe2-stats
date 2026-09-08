@@ -873,3 +873,30 @@ guessable from the tree; and Storybook's built-in search is name-matching only, 
 `accessible` return nothing and `contrast` returns a false positive on the words "contract
 violation" — a full-text search would need indexing every story's rendered content and captions,
 which no tool here does today.
+
+## Accessibility mechanism gap register
+
+**Open as of 2026-09-08** (third-pass adversarial review, finding M2a). This register holds a
+standing property of this package's own tooling — where an accessibility check runs, and where it
+does not — the same distinction CLAUDE.md draws for the Storybook documentation gap register above:
+a fact about this package's own check coverage needs updating whenever a future task changes that
+coverage, so it is filed here rather than in a spec, which is written once (T575's amendment: the
+subject is this package, so the fact is filed beside it).
+
+1. **`axe-core` runs only inside `tests/visual/stories.spec.ts` (~line 317), which needs a built
+   Storybook and a real browser — CI only, never at the point a component is authored.**
+   `scripts/checks/a11y-allowlist.mjs` printing "empty — nothing to validate" proves no _known_
+   violation is currently suppressed; it says nothing about _when_ the scan that would catch a new
+   one runs, and today the answer is: after the PR is open, not while the component is written. The
+   two `landmark-unique` guards that exist —
+   `packages/design-system/src/primitives/Panel/Panel.test.tsx` (~lines 121-131) and
+   `packages/design-system/src/composites/MatchDetailPanel/MatchDetailPanel.test.tsx` (~line 283)
+   — are hand-written DOM assertions pinned to the two compositions that were caught, not a check
+   for the class: a third component that gives a hidden caption the same accessible name as its
+   ancestor heading is guarded by neither. This defect class has shipped three separate times within
+   this one phase, caught by CI's axe pass each time and never at write-time — two point-fixes have
+   not stopped a third, and there is no reason a fourth would fare differently. The fix is cheap:
+   `axe-core` is already a dependency, and the gap is closed by one generic vitest assertion —
+   render a component tree, scan it with `axe-core`, fail on any `landmark-unique` violation —
+   written once and reused across component test files, rather than by hand-writing a guard per
+   composition the way the two existing ones were. **Owner: T579. Fix by 2026-09-15.**

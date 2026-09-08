@@ -404,11 +404,25 @@ has not been exercised by any CI run either.
    itself currently passes is exactly what the "CI's actual state" paragraph above records as
    unconfirmed (last completed run red on other-than-app-routes stories; no green run yet against
    the regenerated baselines).
-7. **An automated accessibility check runs and fails the change on a finding.** **Met.**
-   `a11y-allowlist.mjs` exit 0, "empty — nothing to validate" — T559 drove every prior entry to zero
-   by fixing what it named rather than deleting it, and the check is wired into the `web` job of
-   `.github/workflows/pr.yml` (read, not re-verified here since that file is out of this task's
-   touch-scope).
+7. **An automated accessibility check runs and fails the change on a finding.** **Partly met, and
+   recorded more narrowly than the first pass of this walk recorded it.** `a11y-allowlist.mjs` exit
+   0, "empty — nothing to validate" — T559 drove every prior entry to zero by fixing what it named
+   rather than deleting it, and the check is wired into the `web` job of `.github/workflows/pr.yml`
+   (read, not re-verified here since that file is out of this task's touch-scope). That is real, but
+   it proves only that no _known_ violation is currently suppressed; it says nothing about _when_
+   the scan that would catch a new one runs. `axe-core` executes exactly once in this codebase,
+   inside `tests/visual/stories.spec.ts` (~line 317), which needs a built Storybook and a real
+   browser — CI only, never at the point a component is authored. The two `landmark-unique` guards
+   that exist outside it — `Panel.test.tsx` (~lines 121-131) and `MatchDetailPanel.test.tsx`
+   (~line 283) — are hand-written per-composition DOM assertions pinned to the two cases that were
+   caught, not a check for the class. This matters concretely, not hypothetically: this exact defect
+   (a hidden `Table` caption repeating an ancestor heading) has shipped three separate times within
+   this one phase, caught by CI's axe pass each time and never at write-time — two point-fixes have
+   not stopped a third. Recorded as a dated gap rather than closed silently:
+   `packages/design-system/specs/README.md`'s "Accessibility mechanism gap register", **owner T579,
+   fix by 2026-09-15** — the fix is cheap, one generic vitest assertion reusing `axe-core` (already a
+   dependency) against a rendered tree, reused across component test files instead of hand-written
+   per composition.
 8. **Every component spec answers every state in the closed vocabulary, verified mechanically.**
    **Met.** `spec-completeness.mjs` exit 0: "41 component directories … answers all 9 sections and
    all 10 states" (above), and the check is wired into CI (T571).
@@ -446,11 +460,32 @@ has not been exercised by any CI run either.
     occurrence (ten named consumer files); T557's prop-vocabulary reconciliation is recorded as the
     deprecation procedure's one subject. All four procedures have at least one recorded outcome.
 15. **`visual-reviewer` returns a pass for every affected component; the general reviewer approves
-    against the spec and the constitution.** **Partly met.** The first half is now met — this walk
-    found `visual-reviewer` had never been run in this feature, it was run immediately afterwards,
-    and it returned PASS for all six components Phase 6 touched. The second half is not: the general
-    reviewer has returned REJECT twice, and the pass over the remediated tree is outstanding. See
-    "Reviewer gates" below.
+    against the spec and the constitution.** **Not met, on either half — recorded more narrowly
+    than the first pass of this walk recorded it.** This walk found `visual-reviewer` had never been
+    run in this feature and ran it immediately afterwards, which has real value: it drove a browser
+    and measured rather than reading a diff, and it caught its own missing `visualForceState`. But
+    the criterion asks for a pass covering **every affected component**, and T565/T566/T567 touched
+    all 41; the run this walk triggered covered six. It was also **run by the same session that
+    authored the code** — self-verification, not the independent gate the criterion assumes. The
+    honest form is **met for six components, by a non-independent run**, not a flat "met": it
+    returned PASS for the six named below, and it did not catch the three blocking defects a later,
+    independent third-pass review found — a stale `Field` baseline contradicting the very "48px vs
+    40px" evidence this run itself cites, `ProfileSummary`'s `UnlinkInFlight` opening the wrong menu,
+    and `Button`'s active state being identical to hover on three variants. The second half is not
+    met either: the general reviewer has returned REJECT twice, and the pass over the remediated tree
+    is outstanding. See "Reviewer gates" below.
+
+**FR-037** (not one of the fifteen numbered criteria above, and no named success criterion below
+covers it either — checked here because a third-pass adversarial review found it silently absent
+from both, finding M2c): "Two states of the same component MUST be distinguishable from one another
+by more than colour, and MUST be distinguishable in a still image." **Not met, as of this walk.**
+That same third-pass review is the source of all three breaches: `Button`'s `secondary`, `ghost` and
+`destructive` variants render an identical still image for `active` and `hover`; `ProfileSummary`'s
+`UnlinkInFlight` state renders the same still image as `SwitcherFocusVisibleAndOpen`; and
+`AccountErasurePanel`'s `minting` state renders the same still image as `confirming`. This entry
+records the state of the branch at the time of this walk, not a verdict on work this session did not
+see land: a sibling change is fixing all three now, and FR-037 moves to "met" only once that change's
+own baselines confirm each pair is a still-image difference, not before.
 
 ### Named success criteria
 
@@ -515,15 +550,23 @@ been run, so it could not have passed — a gate believed rather than held, whic
 1 exists to end.
 
 **It was run as soon as this walk exposed that**, against the remediated tree, and returned **PASS
-for all six components Phase 6 touched**: `Menu`'s intrinsic checkmark (reserved width confirmed to
-hold unchecked labels flush, so the mark is a shape difference and not a shift), `ProfileSummary`'s
-three coexisting signals on one row, the focus ring painting for the first time on `Page`, `Link`
-and `Table` in both themes at all three widths with no clipping, `Dialog`'s Shift+Tab landing on the
-last action instead of `<body>`, `Field`'s `lg` measured at 48px against `md`'s 40px, and
-`MatchDetailPanel`'s two landmarks no longer sharing an accessible name. It verified by driving a
-real browser and measuring, not by reading the diff — and reported that its own first capture pass
-had forgotten to apply `visualForceState`, the same defect class this phase fixed. Item 15's first
-half is therefore **met**; the second is not.
+for six components — not every component Phase 6 touched, and not by an independent gate**: `Menu`'s
+intrinsic checkmark (reserved width confirmed to hold unchecked labels flush, so the mark is a shape
+difference and not a shift), `ProfileSummary`'s three coexisting signals on one row, the focus ring
+painting for the first time on `Page`, `Link` and `Table` in both themes at all three widths with no
+clipping, `Dialog`'s Shift+Tab landing on the last action instead of `<body>`, `Field`'s `lg`
+measured at 48px against `md`'s 40px, and `MatchDetailPanel`'s two landmarks no longer sharing an
+accessible name. It verified by driving a real browser and measuring, not by reading the diff — and
+reported that its own first capture pass had forgotten to apply `visualForceState`, the same defect
+class this phase fixed — which is real value a post-hoc self-run has. It is not, however, what the
+criterion asks: T565/T566/T567 touched all 41 components, this run covered six of them, and the
+session that ran it is the same one that wrote the code, not an independent gate. It also did not
+catch the three blocking defects an independent third-pass review found afterwards on components
+this run itself had passed or left unexamined: a stale `Field` baseline that contradicts this run's
+own "48px vs 40px" citation above, `ProfileSummary`'s `UnlinkInFlight` opening the wrong menu, and
+`Button`'s active state being identical to hover on three variants. Item 15's first half is therefore
+**met for six components, by a non-independent run** — not a flat "met" — and the second is not met
+at all.
 
 `docs/risks.md`'s "visual-reviewer returns a reasoned FAIL" item still stays unticked below: the
 verdict was a PASS, and that item asks for a reasoned FAIL specifically.
