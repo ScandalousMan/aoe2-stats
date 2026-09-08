@@ -497,6 +497,63 @@ test('type-identifier carries the text-secondary colour var by contract (researc
 // is invisible: the browser silently falls back to the next name in the stack, with no error and
 // no failing test anywhere else. This is the JSON half of the trap; the font-file half is a manual
 // verification `visual-reviewer`'s screenshots back up (§13).
+// --- Focus-ring recurrence guard (defect: outline-ring shipped width-only) ----------------------
+// This is the *second* time this defect class has shipped (tailwind.css's T096 comment documents
+// the first: `outline-none` zeroing the shared `--tw-outline-style` custom property with no ring
+// painting anywhere, 178 green baselines never noticing). That first fix restored
+// `--tw-outline-style` under `.outline-none:focus-visible`, but nothing in this generator ever
+// paired the width utility it emits with the style property that makes a width visible — so the
+// same failure mode reappeared here, in a new place, the moment `border.json` (T514) needed its own
+// `@utility` block instead of a Tailwind theme namespace. Confirmed against the real compiled
+// Tailwind output (`tailwindcss@4.3.3`, `@tailwindcss/vite`, classes `outline-2`/`border-2`): both
+// of Tailwind's own width utilities pair the width with `<property>-style: var(--tw-<property>-style)`
+// — `.outline-2{outline-style:var(--tw-outline-style);outline-width:2px}`,
+// `.border-2{border-style:var(--tw-border-style);border-width:2px}` — never a bare width.
+test('outline-ring pairs outline-width with outline-style, in Tailwind\'s own shape', () => {
+  const preset = readFileSync(path.join(generatedDir, 'preset.css'), 'utf8')
+  const block = preset.match(/@utility outline-ring \{([^}]*)\}/s)?.[1]
+  assert.ok(block, 'preset.css has no @utility outline-ring block')
+  assert.match(
+    block,
+    /outline-style:\s*var\(--tw-outline-style\);/,
+    'outline-ring sets outline-width without outline-style — outline-style has no browser default ' +
+      "the way border-style gets one from Tailwind preflight's `border: 0 solid` reset, so the " +
+      'width paints nothing while outline-style stays at its initial value (`none`): confirmed ' +
+      "against the compiled CSS, `getComputedStyle(el).outlineStyle === 'none'` under " +
+      ':focus-visible even though outline-width is set. This is exactly the T096 defect class, ' +
+      'reopened in a new utility.',
+  )
+  assert.match(block, /outline-width:\s*var\(--ds-border-ring\);/)
+})
+
+// Generalised form of the same assertion: no `@utility` block this generator ever emits may set a
+// `*-width` property without the matching `*-style` property beside it, for *any* prefix — not just
+// `outline` — so the next family that needs its own width utility (border, or one not yet
+// invented) cannot ship the same defect silently. A property this generator has no companion for
+// yet (there is none today besides border/outline) would need a new entry in
+// `WIDTH_STYLE_COMPANIONS` in build-tokens.mjs before it could pass this test, which is the point:
+// the omission has to be a decision, not an accident.
+test('no @utility block sets a *-width property without its matching *-style property', () => {
+  const preset = readFileSync(path.join(generatedDir, 'preset.css'), 'utf8')
+  const utilityBlocks = [...preset.matchAll(/@utility ([\w-]+) \{([^}]*)\}/gs)]
+  assert.ok(
+    utilityBlocks.length > 0,
+    'no @utility blocks found in preset.css — is the generator still emitting them?',
+  )
+  for (const [, name, body] of utilityBlocks) {
+    const widthMatch = body.match(/(^|\s)([\w-]+)-width:/)
+    if (!widthMatch) continue
+    const prefix = widthMatch[2]
+    assert.match(
+      body,
+      new RegExp(`${prefix}-style:`),
+      `@utility ${name} sets ${prefix}-width without ${prefix}-style — the width has no visible ` +
+        'effect while the style property stays at its initial value, the same shape of defect ' +
+        'outline-ring shipped (see the test above)',
+    )
+  }
+})
+
 test('every font.face family matches the first quoted name in the matching font.family stack', () => {
   for (const [name, face] of [
     ['sans', font.face.sans],

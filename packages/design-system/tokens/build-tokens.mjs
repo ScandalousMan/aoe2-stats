@@ -355,6 +355,25 @@ function iconUtilityBlocks() {
   })
 }
 
+// A `*-width` property paints nothing while its matching `*-style` property sits at its initial
+// value — `outline-style`'s initial value is `none`, with no browser default the way
+// `border-style` gets one from Tailwind preflight's `border: 0 solid` reset, so a width-only
+// `@utility` for an outline is invisible until something else sets the style. Tailwind's own width
+// utilities never ship that gap: `.outline-2{outline-style:var(--tw-outline-style);outline-width:2px}`
+// and `.border-2{border-style:var(--tw-border-style);border-width:2px}` both pair the width with
+// `<property>-style: var(--tw-<property>-style)` (confirmed against the compiled
+// `tailwindcss@4.3.3` output) — reading the same shared custom property `tailwind.css`'s T096 fix
+// and its sibling utilities (`.outline-none`, `.border-dashed`, ...) write to, so a later variant
+// can still override the style without touching width. This table is what makes that pairing
+// automatic for every width property this generator emits, rather than a fact a future contributor
+// has to remember per family — the defect this closes (T096's recurrence, `outline-ring` shipped
+// width-only) was exactly one width utility forgetting it once; a new property with no entry here
+// fails the generalised regression test in build-tokens.test.mjs instead of shipping invisible.
+const WIDTH_STYLE_COMPANIONS = {
+  'border-width': '--tw-border-style',
+  'outline-width': '--tw-outline-style',
+}
+
 // `border.json` (DS-4) is the other family with no theme namespace to extend — Tailwind exposes
 // no `--border-width-*`, `--outline-width-*` or `--outline-offset-*` namespace the way it exposes
 // `--radius-*`, and its own border-width/outline-width/outline-offset utilities are an unbounded
@@ -373,7 +392,12 @@ function borderUtilityBlocks() {
     .filter(([key]) => key in border)
     .map(([key, utilityName, property]) => {
       const varName = cssVar(`border-${cssKey(key)}`)
-      return `@utility ${utilityName} {\n  ${property}: var(${varName});\n}`
+      const companionVar = WIDTH_STYLE_COMPANIONS[property]
+      const styleProperty = property.replace(/-width$/, '-style')
+      const declarations = companionVar
+        ? [`  ${styleProperty}: var(${companionVar});`, `  ${property}: var(${varName});`]
+        : [`  ${property}: var(${varName});`]
+      return `@utility ${utilityName} {\n${declarations.join('\n')}\n}`
     })
 }
 
