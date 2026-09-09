@@ -202,9 +202,14 @@ const NOT_DO_ITEMS: readonly string[] = [
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
+// Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
+// signal, so a press was not distinguishable from a hover in a still image.
+// `active:underline-offset-4` gives press its own frame without a fill — the same fix now shared
+// with `Link`'s `inline` variant, `Footer`, `ThirdPartyObjectionForm` and `AccountErasurePanel`'s
+// own copies of this pattern.
 const inlineLinkClasses = cx(
   'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover active:text-link-hover visited:text-link-visited',
+  'hover:text-link-hover active:text-link-hover active:underline-offset-4 visited:text-link-visited',
   focusRing,
 )
 
@@ -230,12 +235,29 @@ function InlineLink({ href, id, children }: { href: string; id?: string; childre
   )
 }
 
+// This heading is a real Tab/click destination — `scrollAndFocus` above moves focus here from a
+// genuine `<a href="#...">` a keyboard user activates (the "Contents" list, and the in-page
+// `href="#how-to-reach-us"` link inside "Restrict processing" §6) — unlike `Dialog`'s and
+// `Callout`'s own `tabIndex={-1}` headings (shared-primitives.md#Dialog, #Callout), which are
+// only ever reached by a caller's own programmatic `.focus()` call for an assistive-technology
+// announcement, never by the reader's own keyboard action. A reader who follows that link needs
+// to see where they landed, so this heading keeps the token ring rather than suppressing it
+// (remediation, B5): `outline-none` at rest (Chromium's user-agent default would otherwise paint
+// unconditionally, not only while focused), `focus-visible:outline-ring
+// focus-visible:outline-offset-ring focus-visible:outline-focus-ring` on activation — the same
+// three token utilities `Page`'s own landmark ring already uses.
+const sectionHeadingFocusRing =
+  'outline-none focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
+
 function SectionHeading({ id, children }: { id: string; children: ReactNode }) {
   return (
     <h2
       id={id}
       tabIndex={-1}
-      className="font-display text-xl font-semibold text-text-primary outline-none"
+      className={cx(
+        'font-display text-xl font-semibold text-text-primary',
+        sectionHeadingFocusRing,
+      )}
     >
       {children}
     </h2>
@@ -461,7 +483,14 @@ export function PrivacyNotice({
                   className={cx(
                     'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
                     'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                    'hover:text-link-hover active:text-link-hover visited:text-link-visited',
+                    // Fourth-pass review remediation (FR-037): hover and active shared
+                    // `link-hover` with no other signal, so a press was not distinguishable from a
+                    // hover in a still image. This item is a padded, `min-h-11` block — the same
+                    // shape `Link`'s `standalone` variant is — so its press gets that variant's
+                    // own treatment: a `surface-sunken` fill that only exists on press
+                    // (`active:rounded-control` keeps the rounding out of the rest/hover box,
+                    // where it would otherwise round corners with nothing painted behind them).
+                    'hover:text-link-hover active:text-link-hover active:bg-surface-sunken active:rounded-control visited:text-link-visited',
                     focusRing,
                   )}
                 >
@@ -689,7 +718,15 @@ export function PrivacyNotice({
               className={cx(
                 'inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-6 font-sans text-md font-semibold text-text-primary md:w-auto',
                 'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                'hover:bg-surface-sunken active:bg-surface-sunken',
+                // Fourth-pass review remediation (FR-037): hover and active painted the identical
+                // `surface-sunken` fill. This control is styled exactly like `Button`'s
+                // `secondary` variant (same resting recipe: `bg-surface`, `border-border-strong`),
+                // so it gets that variant's own fix: active steps to `background`, the ramp's
+                // other attenuated rung, a token already measured against `text-primary`
+                // (README's contrast table) and safe here because the permanent
+                // `border-border-strong` boundary delineates the box regardless of what fills it
+                // (`Button/index.tsx`'s own comment for `secondary`).
+                'hover:bg-surface-sunken active:bg-background',
                 focusRing,
               )}
             >

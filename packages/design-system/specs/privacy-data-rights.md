@@ -129,7 +129,8 @@ interface AccountErasurePanelProps {
 
 type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight, opening the dialog
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
+  // re-mint once it already has (`dialogHasOpened` tells the two apart, `AccountErasurePanel/index.tsx`)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so

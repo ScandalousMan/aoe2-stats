@@ -87,7 +87,9 @@ export const Default: Story = {
 }
 
 // structural-tier.md §10 "hover"/"active": a row highlights only when the whole row is a real
-// link. Both a linked and a non-linked row sit in the same table so the difference is visible.
+// link. This story shows the two kinds of row side by side — at rest they are pixel-identical by
+// design (`--default` above is the same table with no linked rows at all); `RowLinkHover` below is
+// the story that actually demonstrates the difference.
 export const RowLinks: Story = {
   render: () => (
     <Table
@@ -281,8 +283,9 @@ export const RowLinkHover: Story = {
   },
 }
 
-// §10 "active — a row link's press paints `surface-sunken` with the row's rule retained." Held
-// down rather than released so the capture shows the pressed frame.
+// §10 "active — a row link's press keeps the hover fill and adds a rule down the row's
+// inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037). Held down
+// rather than released so the capture shows the pressed frame.
 export const RowLinkActive: Story = {
   render: () => (
     <Table

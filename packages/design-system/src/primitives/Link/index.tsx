@@ -61,9 +61,22 @@ const focusRing =
 // `standalone`'s own press feedback: `surface-sunken` behind the link's box, `rounded-control` —
 // "nav links" is one of `radius.json`'s own named `control`-role call sites. `inline` gets no fill
 // at all: "painting a wash behind three words inside a paragraph breaks the line and the press is a
-// frame the reader never sees" (§9 "active").
+// frame the reader never sees" (§9 "active"). Fourth-pass review remediation (FR-037): `inline`'s
+// hover and active used to render byte-identical — same ink (`ink` above), same underline
+// thickness, no fill either side — so a press was not distinguishable from a hover in a still
+// image, and the spec's old excuse for that ("FR-038 permits a difference a spec states") was
+// wrong: FR-038 governs consistency *between* controls, and has no bearing on whether one
+// control's own two states are told apart, which is FR-037's job and which FR-037 states with no
+// escape clause. `active:underline-offset-4` (rest and hover both sit at `underline-offset-2`
+// inside `underline` above) gives `inline` a second, non-fill, non-reflowing signal instead: the
+// line drops away from the text on press, the same "the underline itself moves" idiom §9's hover
+// already uses for thickness, extended to position because thickness is already spent
+// distinguishing hover from rest. `underline-offset-4` is a bare Tailwind step, doubling
+// `underline-offset-2`, reached the same way `decoration-1`/`decoration-2` already are (comment
+// above `underline`): no `border.json` token names an underline offset, so this is the nearest
+// bare utility in the closed set, not an invented value.
 const variantClasses: Record<LinkVariant, string> = {
-  inline: '',
+  inline: 'active:underline-offset-4',
   standalone:
     'inline-flex items-center gap-2 rounded-control py-3 type-body text-md active:bg-surface-sunken',
 }

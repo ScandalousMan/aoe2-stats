@@ -423,6 +423,13 @@ export function ProfileSummary({
             <Menu
               variant="actions"
               triggerLabel="Manage"
+              // This trigger sits at the panel's inline end, so a `start`-anchored popover runs to
+              // the last column at 768 and 1280 and clips its items' trailing slot — where the
+              // `Spinner` for an in-flight unlink or primary change renders. That is how
+              // `UnlinkInFlight` came to be indistinguishable from an ordinary disabled item at
+              // exactly the two widths a reviewer opens by default (`shared-primitives.md#Menu`,
+              // Responsive).
+              align="end"
               items={manageItems}
               errorItemId={manageError ? 'unlink' : null}
               errorMessage={manageError}

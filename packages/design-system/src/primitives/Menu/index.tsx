@@ -8,6 +8,15 @@ import { Spinner } from '../../lib/Spinner'
 
 export type MenuVariant = 'selection' | 'actions'
 
+/** Which inline edge the popover (desktop/tablet, `md` and up) anchors to, relative to its
+ * trigger. `start` (default) hugs the trigger's inline-start edge, growing toward the inline end —
+ * correct when the trigger has room to its inline-end side. `end` hugs the inline-end edge instead
+ * and grows toward the inline start, for a trigger that itself sits at (or near) its own
+ * container's inline end: at `end-0` the surface never runs past the viewport's inline-end edge the
+ * way `start-0` does there (remediation, M7 — shared-primitives.md#Menu, "Responsive"). Below `md`
+ * this has no effect: the popover is always a full-width bottom sheet regardless of `align`. */
+export type MenuAlign = 'start' | 'end'
+
 export interface MenuItem {
   id: string
   label: ReactNode
@@ -43,6 +52,8 @@ export interface MenuProps {
    * open. */
   errorItemId?: string | null
   errorMessage?: ReactNode
+  /** See `MenuAlign`. Defaults to `start`. */
+  align?: MenuAlign
   className?: string
 }
 
@@ -58,6 +69,7 @@ export function Menu({
   footerItem,
   errorItemId,
   errorMessage,
+  align = 'start',
   className,
 }: MenuProps) {
   const [open, setOpen] = useState(false)
@@ -194,7 +206,12 @@ export function Menu({
                   // `elevationUtilityBlocks`, README's Elevation section), never an arbitrary
                   // `max-h-[80vh]` bracket.
                   'fixed inset-x-0 bottom-0 max-h-sheet overflow-y-auto rounded-b-none'
-                : 'absolute left-0 mt-2 min-w-64 max-w-sm',
+                : // M7 remediation: `align="end"` anchors to the trigger's inline-end edge
+                  // (`end-0`) instead of its inline-start one (`start-0`, the pre-existing and
+                  // still-default behaviour) — see `MenuAlign` above and shared-primitives.md#Menu,
+                  // "Responsive". `min-w-64 max-w-sm` bounds the surface's own width either way;
+                  // only which edge it grows from changes.
+                  cx('absolute mt-2 min-w-64 max-w-sm', align === 'end' ? 'end-0' : 'start-0'),
             )}
           >
             {items.map((item, index) => (

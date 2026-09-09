@@ -175,7 +175,14 @@ Tone is a claim about the world, not about volume:
 
 **States** — **default** as above. **hover / active** — none; the root is not interactive. Actions
 inside it have their own. **focus-visible** — when the callout receives programmatic focus (see
-sign-in-screen), the heading takes `tabindex="-1"` and shows the standard focus ring.
+sign-in-screen), the heading takes `tabindex="-1"` and paints no ring of its own — corrected by
+remediation, B5 (fourth-pass adversarial review); this used to say "shows the standard focus ring,"
+which was never true (Chromium's user-agent default outline painted instead, in no token file) and
+is the wrong target regardless: a `tabindex="-1"` heading is never reached by a reader's own Tab
+press, only by a caller's one-off `.focus()` call (`sign-in-screen.md` §8) to draw assistive
+technology's attention to an outcome that just appeared — the same shape and the same reasoning as
+`Dialog`'s heading below, "its focus is for the accessible-name announcement, not a visible
+indicator." `outline-none` on the heading is what makes that true rather than aspirational.
 **disabled** — none; a callout is never disabled. **loading** — none; a callout describes a settled
 outcome. Anything still resolving is a `Skeleton`. **error** — `danger` is that state.
 **empty** — a callout with no heading and no body renders **nothing at all**, not an empty bordered
@@ -398,6 +405,20 @@ line `space-1`; separator margin-block `space-2`.
 **Responsive** — below `md`, the menu presents as a bottom sheet anchored to the viewport edge, full
 width, with `overlay` behind it, so items stay within thumb reach. From `md` up, a popover anchored
 to the trigger, flipping to the block-start side when it would overflow.
+
+**Inline axis (M7 remediation, fourth-pass adversarial review).** The block-axis rule above says
+nothing about the other axis, and the gap was real: a popover anchored `start-0` (the trigger's
+inline-start edge) with no collision handling runs past the viewport's inline-end edge whenever the
+trigger itself sits near that edge of its own container — measured on `ProfileSummary`'s Manage
+trigger at 768 and 1280, where the surface ran to column 1279 of 1280 and 767 of 768, with the
+trailing-slot `Spinner` an `unlink-in-flight` item paints (`MenuItemRow`, above) past the cut at
+both widths. `align` (`MenuAlign` — `'start'` default, `'end'`) is the caller-set fix: a trigger a
+caller knows sits at its own container's inline end passes `align="end"`, and the popover anchors
+`end-0` instead, growing back toward the inline start rather than off the far edge. This is a static
+per-trigger declaration a caller who knows their own layout makes, not a runtime viewport
+measurement. A caller whose trigger's own inline-end position is not fixed relative to its container
+(the common case, and every trigger in this package except a right-anchored one) leaves `align` at
+its default.
 
 **Accessibility** — trigger `aria-haspopup="menu"` and `aria-expanded`; surface `role="menu"`, items
 `role="menuitemradio"` in the `selection` variant with `aria-checked` on the current one, otherwise

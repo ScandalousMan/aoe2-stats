@@ -39,6 +39,18 @@ describe('Callout', () => {
     expect(screen.getByRole('heading', { name: 'Failed' })).toHaveAttribute('tabindex', '-1')
   })
 
+  // B5 remediation (fourth-pass adversarial review): the heading used to declare no outline class
+  // at all, so Chromium's user-agent default outline painted on mount instead — the same defect as
+  // `Dialog`'s heading, and a colour that exists in no token file. The spec used to claim the
+  // opposite of `Dialog`'s ("shows the standard focus ring"), which was equally untrue: no
+  // `focus-ring` token painted either. `outline-none` matches this component's corrected spec
+  // sentence (shared-primitives.md#Callout, "focus-visible") — the same reasoning `Dialog`'s
+  // heading already carries.
+  it('the heading suppresses its outline rather than painting the browser default', () => {
+    render(<Callout tone="danger" heading="Failed" />)
+    expect(screen.getByRole('heading', { name: 'Failed' }).className).toMatch(/\boutline-none\b/)
+  })
+
   it('renders actions in an action row when supplied', () => {
     render(
       <Callout tone="info" heading="Explained" actions={<button type="button">Try again</button>}>

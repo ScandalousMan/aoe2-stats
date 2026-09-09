@@ -241,8 +241,19 @@ export function Table<Row>({
                     // T560 (FR-038): this is the same row-link category `MatchRow`,
                     // `PlayerResultRow` and `FavouritesList` already give a transition and a
                     // reduced-motion resting frame to — this row snapped instantly with neither.
+                    // Fourth-pass review remediation (FR-037): hover and active used to paint the
+                    // identical `surface-sunken` fill, so a press was not distinguishable from a
+                    // hover in a still image. `background` is not a safe second rung here the way
+                    // it is for `Button` — a `Table` frequently sits directly on the page, and a
+                    // row filled with the page's own colour would vanish the same way a `Button`
+                    // `ghost` would (`Button/index.tsx`'s own comment). `border-l-2
+                    // border-l-transparent` reserves a rule down the row's inline-start edge at
+                    // rest, at zero visible cost, and `active:border-l-border-strong` solidifies it
+                    // on press only — the identical technique `Menu`'s own items already ship for
+                    // their own `active` state (`Menu/index.tsx`), so a row's press is a line that
+                    // appears, not a fill that darkens twice.
                     href &&
-                      'transition-colors duration-120 ease-standard motion-reduce:duration-0 hover:bg-surface-sunken active:bg-surface-sunken',
+                      'border-l-2 border-l-transparent transition-colors duration-120 ease-standard motion-reduce:duration-0 hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
                   )}
                 >
                   <th

@@ -303,7 +303,12 @@ export function ErasedScreen({ homeHref }: { homeHref: string }) {
           href={homeHref}
           className={cx(
             'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-            'hover:text-link-hover active:text-link-hover',
+            // Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with
+            // no other signal, so a press was not distinguishable from a hover in a still image.
+            // `active:underline-offset-4` gives press its own frame without a fill — the same fix
+            // now shared with `Link`'s `inline` variant, `Footer`, `PrivacyNotice` and
+            // `ThirdPartyObjectionForm`'s own copies of this pattern.
+            'hover:text-link-hover active:text-link-hover active:underline-offset-4',
             focusRing,
           )}
         >

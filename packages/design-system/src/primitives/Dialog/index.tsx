@@ -103,7 +103,13 @@ export function Dialog({
           id={headingId}
           ref={headingRef}
           tabIndex={-1}
-          className="font-display text-xl font-semibold text-text-primary"
+          // outline-none: this heading is `tabIndex={-1}` — never a real Tab destination — and
+          // is focused programmatically on mount purely so assistive technology announces the
+          // accessible name; without this the browser's user-agent default outline paints anyway
+          // (Chromium's dual-tone `rgb(16,16,16)`/`rgb(255,255,255)` ring, in no token file and
+          // never measured against `surface`), contradicting shared-primitives.md#Dialog's own
+          // "the heading paints no ring of its own" (remediation, B5).
+          className="font-display text-xl font-semibold text-text-primary outline-none"
         >
           {heading}
         </h2>

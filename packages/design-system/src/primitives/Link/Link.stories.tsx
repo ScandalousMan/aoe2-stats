@@ -118,8 +118,9 @@ export const ActiveStandalone: Story = {
 }
 
 // §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
-// words inside a paragraph breaks the line." The difference from `ActiveStandalone` above is
-// stated rather than smoothed over (FR-038).
+// words inside a paragraph breaks the line — but the underline drops to `underline-offset-4`",
+// distinguishing this frame from `Hover` above without one (fourth-pass review remediation,
+// FR-037).
 export const ActiveInline: Story = {
   render: (args) => (
     <p className="type-body max-w-measure text-md text-text-primary">

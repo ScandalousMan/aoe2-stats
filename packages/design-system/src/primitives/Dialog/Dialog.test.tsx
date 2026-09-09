@@ -27,6 +27,17 @@ describe('Dialog', () => {
     expect(screen.getByRole('heading', { name: 'Turn off replay archival?' })).toHaveFocus()
   })
 
+  // B5 remediation (fourth-pass adversarial review): the heading used to declare no outline class
+  // at all, so Chromium's user-agent default outline painted on mount instead — visible as ~1412px
+  // of `rgb(16,16,16)` plus ~707px of `rgb(255,255,255)` around the heading in the baselines, in a
+  // colour that exists in no token file and contradicting this component's own spec, "the heading
+  // paints no ring of its own." `outline-none` is what makes that sentence true.
+  it('the heading suppresses its outline rather than painting the browser default', () => {
+    renderDialog()
+    const heading = screen.getByRole('heading', { name: 'Turn off replay archival?' })
+    expect(heading.className).toMatch(/\boutline-none\b/)
+  })
+
   it('renders the body content between the heading and the actions', () => {
     renderDialog()
     expect(screen.getByText('Turning this off stops future captures.')).toBeInTheDocument()

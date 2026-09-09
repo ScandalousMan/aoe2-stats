@@ -401,7 +401,15 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
         // both. `motion-reduce:duration-0` closes the gap against README rule 5, present on every
         // other transition in the system but missing here.
         'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-        'hover:bg-surface-sunken active:bg-surface-sunken',
+        // Fourth-pass review remediation (FR-037): hover and active painted the identical
+        // `surface-sunken` fill, so a press was not distinguishable from a hover in a still image.
+        // `border-l-2` overrides only the inline-start edge of the card's own `border`, kept
+        // `border-l-transparent` at rest and hover so it costs nothing visually until press, then
+        // `active:border-l-border-strong` solidifies it — the same technique `Table`'s row link
+        // and `Menu`'s items now share (`Table/index.tsx`, `Menu/index.tsx`), so a press adds a
+        // line rather than repeating the hover's fill.
+        'border-l-2 border-l-transparent',
+        'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
         focusRing,
         className,
       )}

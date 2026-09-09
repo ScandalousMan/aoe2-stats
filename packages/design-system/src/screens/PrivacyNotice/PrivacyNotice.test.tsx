@@ -242,6 +242,24 @@ describe('PrivacyNotice — contents navigation', () => {
   })
 })
 
+// B5 remediation (fourth-pass adversarial review): every `SectionHeading`, including
+// "How to reach us" (the `#how-to-reach-us` target the "Restrict processing" rights item's inline
+// link points at), used to declare bare `outline-none` with no replacement — unlike `Dialog`'s and
+// `Callout`'s headings, this one is a real Tab/click destination (`scrollAndFocus` moves focus here
+// from a genuine `<a href="#...">` a keyboard user activates), so a reader following that link used
+// to land somewhere with no visible indicator at all.
+describe('PrivacyNotice — section heading focus visibility', () => {
+  it('every section heading keeps the token focus ring rather than only suppressing the browser default', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const heading = screen.getByRole('heading', { name: 'How to reach us' })
+    expect(heading).toHaveAttribute('tabindex', '-1')
+    expect(heading.className).toMatch(/\boutline-none\b/)
+    expect(heading.className).toMatch(/\bfocus-visible:outline-ring\b/)
+    expect(heading.className).toMatch(/\bfocus-visible:outline-offset-ring\b/)
+    expect(heading.className).toMatch(/\bfocus-visible:outline-focus-ring\b/)
+  })
+})
+
 describe('PrivacyNotice — last-updated formatting', () => {
   it('renders the date unambiguously, never DD/MM/YYYY or MM/DD/YYYY', () => {
     render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)

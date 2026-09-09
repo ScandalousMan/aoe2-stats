@@ -532,13 +532,20 @@ export const RatingEntryHoverNotApplicable: Story = {
 // §5 "disabled — the primary profile's own 'Make primary' item is absent, not disabled... While a
 // primary change is in flight, every menu item is `aria-disabled` and the target item shows the
 // `Menu` loading state."
+// Remediation (the same defect `UnlinkInFlight` below was already fixed for): `primaryChangeInFlight`
+// drives the "Make primary" item inside the **Manage** menu (`manageItems`, index.tsx), not the
+// profile switcher — `openSwitcher` opened the wrong surface. Worse, "Make primary" only exists
+// when `viewedProfile.isPrimary` is false (index.tsx's `manageItems`) — this story's own fixture
+// used the module-level `viewedProfile`, whose `isPrimary` is `true`, which removes the item this
+// story exists to show entirely. `openManage` opens the right menu, and the non-primary fixture
+// `Selection` above already uses is what makes the item exist to load.
 export const PrimaryChangeInFlight: Story = {
   tags: ['visual-full-page'],
-  play: openSwitcher,
+  play: openManage,
   args: {
     subject: 'self',
     authenticated: true,
-    viewedProfile,
+    viewedProfile: { ...viewedProfile, id: 'p2', alias: 'aoe2alt', isPrimary: false },
     linkedProfiles,
     entries,
     freshnessLine: 'Measured 3 minutes ago',

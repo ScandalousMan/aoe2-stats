@@ -645,10 +645,15 @@ link.
 - **focus-visible** — `outline-ring` at `outline-offset-ring` in `focus-ring`, around the whole link
   box, on top of whatever the hover paint is. Never removed on pointer interaction (FR-050).
 - **active** — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box, the
-  same press feedback every other control in the system gives (FR-038). `inline`: the hover paint,
-  with **no** fill — painting a wash behind three words inside a paragraph breaks the line and the
-  press is a frame the reader never sees. The difference is stated rather than smoothed over,
-  because FR-038 permits a difference a spec states and forbids one it does not.
+  same press feedback every other control in the system gives. `inline`: the hover paint, with **no**
+  fill — painting a wash behind three words inside a paragraph breaks the line and the press is a
+  frame the reader never sees — but the underline drops to `underline-offset-4` (rest and hover both
+  sit at `underline-offset-2`, above), so `inline`'s own hover and press still render as two distinct
+  frames rather than one repeated. **The two variants differing from each other is what FR-038's
+  escape clause is for** — a stated difference between two variants of one control. It is not licence
+  for a variant's own hover and active to render as the same still image: that is FR-037's question,
+  FR-037 has no escape clause, and citing FR-038 for it (this spec's own wording, before the
+  fourth-pass review found it wrong) was answering the wrong requirement.
 - **disabled** — **a link is never disabled.** A destination the reader may not reach renders as
   `Text` with a sentence saying why. A greyed-out anchor is a promise with no way to collect on it,
   and it is still in the tab order in half the implementations that ship it.
@@ -670,8 +675,11 @@ story README already specifies, not a story of real anchors.
 
 **Tokens used** — colour `link`, `link-hover`, `link-visited`, `focus-ring`, `surface-sunken`
 (`standalone` press only). Border widths `border.hairline` (rest underline), `border.ring` (hover
-underline), `border.ring` / `border.ring-offset` (focus ring). Typography: inherited for `inline`,
-`type-body` at `text-md` for `standalone`. Motion `duration.fast`, `ease-standard`. Elevation `none`.
+underline), `border.ring` / `border.ring-offset` (focus ring). `inline`'s own press adds no colour
+token: `underline-offset-4`, a bare Tailwind step (rest and hover sit at `underline-offset-2`) rather
+than a token name, for the same reason `decoration-1`/`decoration-2` already are one (no
+`border.json` value names an underline offset). Typography: inherited for `inline`, `type-body` at
+`text-md` for `standalone`. Motion `duration.fast`, `ease-standard`. Elevation `none`.
 Contrast: the twelve `link` / `link-hover` / `link-visited` rows in the README table, on all four
 surfaces, in both themes — referenced, not restated. Light `link` on `surface-sunken` is the
 tightest normal-text pair in the whole system and is the one a `standalone` link's own press state
@@ -702,6 +710,9 @@ why this is an anchor and not a click handler.
       and the underline is still present under it.
 - [ ] The `standalone` press capture shows a fill behind the link's box; the `inline` press capture
       shows no fill.
+- [ ] The `inline` hover and press captures share the same ink and the same underline thickness, but
+      the press capture's underline sits visibly lower — overlay the two and the underline's position
+      is the only difference (FR-037).
 - [ ] The external-link story shows the mark after the label, on the same line, never wrapping alone
       onto the next line.
 - [ ] A `standalone` link's tappable box measures at least 44px in both axes at 375 — measurable from
@@ -780,8 +791,18 @@ container, **the table's own scroll region scrolls horizontally and the page doe
   Column headers never highlight (nothing here sorts today).
 - **focus-visible** — the scroll region shows the standard ring when it is focused for scrolling; a
   focusable element inside a cell shows its own ring, offset so the frame does not clip it.
-- **active** — a row link's press paints `surface-sunken` with the row's rule retained. The table
-  itself has no active state.
+- **active** — a row link's press keeps the hover fill (`surface-sunken`) and adds a rule down the
+  row's inline-start edge, in `border-strong`, `border.ring` (2px) wide — reserved transparent at
+  rest so it costs no width until it solidifies on press. Repainting the same fill a press already
+  carries answers nothing (FR-037: two states of one component must be distinguishable by more than
+  colour, in a still image, and this fourth-pass review found `Table`'s row doing exactly that); a
+  second surface rung was tried first and rejected — `background`, the ramp's only other attenuated
+  step, is what a `Table` frequently sits directly on (a page, or a `Panel` at `surface`, either of
+  which can coincide with it), so a `background`-filled press could vanish the same way a `Button`
+  `ghost` would on the page it renders on (`Button/index.tsx`'s own comment). A line that appears is
+  legible regardless of what is behind the row; a fill is not. `Menu`'s own items already ship the
+  identical technique for their own `active` state (`Menu/index.tsx`), so this is not a new idiom,
+  only this row's own missing use of one. The table itself has no active state.
 - **disabled** — never. A table whose data is stale says so in a `Callout` above it; a greyed table
   is unreadable and still on screen.
 - **loading** — caption and header row render immediately; the body holds skeleton rows of the same
@@ -804,10 +825,12 @@ container, **the table's own scroll region scrolls horizontally and the page doe
 
 **Tokens used** — colour `surface` (the region's fill), `border` (the frame and every row rule),
 `text-primary` (data), `text-secondary` (column labels, caption when visible), `surface-sunken` (row
-link hover and press), `focus-ring` (the region's ring). Typography `type-numeric`, `type-machine`,
-`type-body` per §3 for `dense`; `type-body` / `type-supporting` for `prose`. Radius `rounded-panel`
-on the region. Border widths `border.hairline`, `border.ring`, `border.ring-offset`. Elevation
-`none`. Motion `duration.fast` / `ease-standard` for a row link's hover fill; nothing else moves.
+link hover and press), `border-strong` (row link active only, the inline-start edge rule),
+`focus-ring` (the region's ring). Typography `type-numeric`, `type-machine`, `type-body` per §3 for
+`dense`; `type-body` / `type-supporting` for `prose`. Radius `rounded-panel` on the region. Border
+widths `border.hairline`, `border.ring` (the frame, the focus ring, and now also a row link's active
+edge), `border.ring-offset`. Elevation `none`. Motion `duration.fast` / `ease-standard` for a row
+link's hover fill and its active edge colour; nothing else moves.
 
 **Spacing** — cell block padding `space-3` at `dense`, `space-4` at `prose` (§3). Cell inline
 padding `space-4` between columns, `space-4` from the frame on both edges. An icon-and-text pairing
@@ -843,6 +866,8 @@ modifier-clicks work. Contrast: `text-primary` and `text-secondary` on `surface`
       `ErrorState` spanning the body.
 - [ ] In the row-link hover capture, exactly one row is filled and the row rules are still visible
       through the fill.
+- [ ] The row-link hover and active captures share the same fill, but the active capture also shows
+      a solid rule down that row's inline-start edge that the hover capture does not (FR-037).
 - [ ] A `dense` and a `prose` table in one frame have visibly different row heights.
 
 ---

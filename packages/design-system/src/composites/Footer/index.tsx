@@ -26,9 +26,15 @@ export const affiliationNote =
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
 
+// Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
+// signal, so a press was not distinguishable from a hover in a still image.
+// `active:underline-offset-4` gives press its own frame without a fill (this is an inline link
+// inside the disclaimer's own text flow — the same reasoning `Link`'s `inline` variant states for
+// withholding a fill, `Link/index.tsx`) — the identical fix now shared with `Link`, `PrivacyNotice`,
+// `ThirdPartyObjectionForm` and `AccountErasurePanel`'s own copies of this pattern.
 const linkClasses = cx(
   'py-2 font-sans text-sm text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover active:text-link-hover',
+  'hover:text-link-hover active:text-link-hover active:underline-offset-4',
   focusRing,
 )
 

@@ -58,7 +58,17 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
         // `Table`'s identical row-link category (a keyboard `Enter` triggers `:active` with no
         // pointer ever hovering). `motion-reduce:duration-0` closes the README rule 5 gap.
         'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-        'hover:bg-surface-sunken active:bg-surface-sunken',
+        // Fourth-pass review remediation (FR-037): hover and active painted the identical
+        // `surface-sunken` fill, so a press was not distinguishable from a hover in a still
+        // image. `border-l-2 border-l-transparent` reserves the inline-start edge at rest, at zero
+        // visible cost — `md:border-x-0` above zeroes it from `md` up, and an `active:`-scoped
+        // pseudo-class selector outranks a plain responsive one on specificity alone, so the press
+        // override below still applies at every width regardless. `active:border-l-2
+        // active:border-l-border-strong` bundles width and colour into that one higher-specificity
+        // rule rather than relying on the reservation to have won the tie, and matches the
+        // technique `Table` and `MatchRow` now share (`Table/index.tsx`, `MatchRow/index.tsx`).
+        'border-l-2 border-l-transparent',
+        'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-2 active:border-l-border-strong',
         focusRing,
         className,
       )}

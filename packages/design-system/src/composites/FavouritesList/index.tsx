@@ -252,7 +252,14 @@ function FavouriteRow({
           // triggers `:active` with no pointer ever hovering). `motion-reduce:duration-0` closes
           // the README rule 5 gap.
           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-          'hover:bg-surface-sunken active:bg-surface-sunken',
+          // Fourth-pass review remediation (FR-037): hover and active painted the identical
+          // `surface-sunken` fill, so a press was not distinguishable from a hover in a still
+          // image. `border-l-2 border-l-transparent` reserves the inline-start edge at rest, at
+          // zero visible cost (this `<a>` carries no other border, so nothing to conflict with),
+          // and `active:border-l-border-strong` solidifies it on press only — the technique
+          // `Table`, `MatchRow` and `PlayerResultRow` now all share.
+          'border-l-2 border-l-transparent',
+          'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
           'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
         )}
       >
