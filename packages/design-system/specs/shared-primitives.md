@@ -56,6 +56,23 @@ identical to its rest has not told the user it responded.
 `danger-active` token, and inventing one is forbidden. Its hover deepens by swapping the fill to
 `surface-sunken` and keeping `danger` for label and boundary.
 
+`secondary`, `ghost` and `destructive` step through the surface ramp's two attenuated rungs, one
+per state, rather than the one rung repeated at both (remediation, FR-037: two states of a control
+must be distinguishable in a still image, not merely painted with the same class twice). **Hover
+deepens to `surface-sunken`**, the ramp's darkest surface and always darker than whatever the button
+sits on. **Active moves to `background`**, the ramp's other attenuated step — a different token from
+hover's, already measured in the README contrast table (`text-primary` / `danger` on `background`
+and on `surface-sunken` are both asserted rows) — so a screenshot of the two states is never
+byte-identical. `background` cannot serve as the _hover_ fill instead: several `ghost` buttons render
+directly on a `bg-background` page (`Page`'s `actions` slot — `DashboardContainer`'s "Search
+players" / "Sign out") and `ghost` carries no boundary until `active`, so a `background`-filled hover
+would be invisible there; `surface-sunken` never is, because nothing it can sit on is darker than it.
+`ghost` also gains its `border-strong` boundary only at `active`, never `hover`, so pressing adds a
+shape signal — a border appearing — on top of the fill change; `secondary` carries `border-strong` at
+every state (it is part of its resting anatomy, so repeating it at `active` was a dead declaration
+and is removed); `destructive` carries `border-danger` at every state instead of swapping to the
+neutral `border-strong` on press, so a pressed destructive button never reads as merely neutral.
+
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
 — commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
@@ -78,8 +95,11 @@ extended to 44px by padding rather than by a transparent overlay.
   colour only, no lift, no scale.
 - **focus-visible** — `outline-2 outline-offset-2` in `focus-ring` (gap DS-4), on top of whatever
   the hover state is. Never removed on mouse click; never replaced by a fill change alone.
-- **active** — `primary`: `accent-active`. Others: `surface-sunken` with boundary `border-strong`.
-  No translate, no shadow change.
+- **active** — `primary`: `accent-active`. `secondary` / `ghost` / `destructive`: fill `background`
+  — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
+  the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
+  `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`
+  keeps `border-danger`, never swapping to a neutral boundary. No translate, no shadow change.
 - **disabled** — fill `surface-sunken`, label `text-disabled`, boundary `border`, cursor default,
   `disabled` attribute set. A disabled button must be accompanied by visible text saying why, in
   `text-secondary`; a button that is grey with no explanation is a dead end.
@@ -102,9 +122,9 @@ extended to 44px by padding rather than by a transparent overlay.
   could apply to).
 
 **Tokens** — colour `accent`, `accent-hover`, `accent-active`, `accent-contrast`, `surface`,
-`surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`, `text-disabled`,
-`danger`, `focus-ring`. Radius `md`. Font family `sans`, size `sm` / `md`, weight `semibold`.
-Motion `duration.fast`, `easing.standard`. Elevation `none` — buttons do not float.
+`background`, `surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`,
+`text-disabled`, `danger`, `focus-ring`. Radius `md`. Font family `sans`, size `sm` / `md`, weight
+`semibold`. Motion `duration.fast`, `easing.standard`. Elevation `none` — buttons do not float.
 
 **Spacing** — icon-to-label `space-2`. Sibling buttons `space-3` apart.
 
@@ -120,9 +140,12 @@ and must be verified, not assumed.
 **Acceptance** — exactly one `primary` per screenshot — a token-correct screen that painted two
 controls `accent` still fails this criterion, because the reader cannot tell which action the view
 recommends (FR-063); focus ring visible and 2px offset from the edge on the keyboard-focused button;
-the `primary` button's hover fill is visibly darker than its resting fill and its active fill darker
-again, so the default, hover and active screenshots are three distinguishable frames; loading button
-shows a spinner and the same width as at rest; disabled button has visible explanatory text near it.
+the default, hover and active screenshots are three distinguishable frames for **every** variant —
+`primary`'s hover fill is visibly darker than its resting fill and its active fill darker again;
+`secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and active fill (`background`)
+are two different, already-measured tokens, and `ghost`'s active additionally draws a boundary its
+hover does not — loading button shows a spinner and the same width as at rest; disabled button has
+visible explanatory text near it.
 
 ---
 

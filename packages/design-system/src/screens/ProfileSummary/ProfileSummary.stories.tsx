@@ -451,9 +451,31 @@ async function openSwitcher({ canvasElement }: { canvasElement: HTMLElement }) {
   await canvas.findByRole('menu')
 }
 
+// The **other** `Menu` on this screen (`triggerLabel="Manage"`, index.tsx) — the one
+// `unlinkInFlight`/`primaryChangeInFlight` items actually live in (`manageItems`, index.tsx). A
+// story depicting one of those two states must open this menu, not the profile switcher opened by
+// `openSwitcher` above: the switcher's own items know nothing of `unlinkInFlight`.
+async function openManage({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button', { name: 'Manage' })
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  await canvas.findByRole('menu')
+}
+
 export const SwitcherFocusVisibleAndOpen: Story = {
   tags: ['visual-full-page'],
   play: openSwitcher,
+  // `openSwitcher`'s own `Enter` press already moves DOM focus to the checked item (`Menu`'s own
+  // `itemRefs.current[activeIndex]?.focus()`, index.tsx) — `viewedProfile` here is `p1`/`aoe2guy`,
+  // the item `linkedProfiles` marks checked — but this story's name promises a real `:focus-visible`
+  // ring, which only `tests/visual/stories.spec.ts`'s own forced pseudo-class (never a story's own
+  // synthetic `play()`) reliably paints (see that file's `VisualForceState` comment). Named the same
+  // way `Button.stories.tsx`'s `Hover`/`Active`/`FocusVisible` and `Menu.stories.tsx`'s own
+  // `focus-visible` stories already are.
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' },
+  },
   args: {
     subject: 'self',
     authenticated: true,
@@ -527,7 +549,11 @@ export const PrimaryChangeInFlight: Story = {
 // §5 "disabled — ... The unlink action is disabled only while an unlink is in flight."
 export const UnlinkInFlight: Story = {
   tags: ['visual-full-page'],
-  play: openSwitcher,
+  // Remediation: `unlinkInFlight` drives the "Unlink this profile" item inside the **Manage**
+  // menu, not the profile switcher — `openSwitcher` opened the wrong surface, so this story
+  // captured a switcher frame with nothing loading in it. `openManage` opens the menu the item
+  // actually lives in.
+  play: openManage,
   args: {
     subject: 'self',
     authenticated: true,

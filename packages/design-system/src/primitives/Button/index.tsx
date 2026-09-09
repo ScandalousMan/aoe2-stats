@@ -39,15 +39,31 @@ const sizeClasses: Record<ButtonSize, string> = {
 // collapsed onto one another. `destructive` never fills with `danger`: there is no `danger-hover`
 // or `danger-active` token and inventing one is forbidden, so its hover/active deepen the neutral
 // fill instead and keep `danger` for label and boundary.
+//
+// `secondary` / `ghost` / `destructive` step through the surface ramp's two attenuated rungs
+// rather than one repeated twice (third-pass review remediation, FR-037): hover deepens to
+// `surface-sunken`, the ramp's darkest surface, and active moves to `background`, the ramp's
+// other attenuated step — a different, already-measured token (README's contrast table:
+// `text-primary`/`danger` on `background` and on `surface-sunken` are both asserted), so pressing
+// renders visibly differently from hovering rather than repainting the same pixels. `background`
+// cannot be used for *hover* instead — several ghost buttons render directly on a `bg-background` page
+// (`Page`'s `actions` slot, e.g. `DashboardContainer`'s "Search players" / "Sign out") and `ghost`
+// carries no boundary until `active`, so a `background`-filled hover would be invisible there;
+// `surface-sunken` never is, because it is darker than every surface it can sit on. `ghost` also
+// gains its `border-strong` boundary only at `active`, never at `hover`, so pressing adds a shape
+// signal on top of the fill change. `secondary` keeps its `border-strong` boundary at every state
+// (rest already declares it, so repeating it at `active` was dead weight — removed); `destructive`
+// keeps `border-danger` at every state instead of the neutral `border-strong` it used to swap to
+// on press, so a pressed destructive button never reads as merely neutral.
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent',
   secondary:
-    'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
+    'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-background',
   ghost:
-    'bg-transparent text-text-primary border border-transparent hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
+    'bg-transparent text-text-primary border border-transparent hover:bg-surface-sunken active:bg-background active:border-border-strong',
   destructive:
-    'bg-surface text-danger border border-danger hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
+    'bg-surface text-danger border border-danger hover:bg-surface-sunken active:bg-background',
 }
 
 const focusRing =
