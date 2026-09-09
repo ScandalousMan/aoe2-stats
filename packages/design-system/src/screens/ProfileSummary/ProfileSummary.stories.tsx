@@ -191,10 +191,16 @@ async function pinFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
 // 375 is the one width where the flag can be pushed onto the switcher trigger's line (T457) —
 // the defect was invisible at the suite's default desktop width. Every story is now captured at
 // 375px as a matter of course (T504), so `visual-full-page` is the only tag this needs.
+// Remediation (fifth-pass review, B1): `play: hoverFlagOpen` opens the tooltip for real (the
+// synthetic `userEvent.hover` still reaches `Tooltip`'s own listener), but never sets Chromium's
+// actual `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has
+// settled, matched by the flag's own accessible name (`role: 'button'` alone would be ambiguous
+// here: the profile switcher trigger is also a button in this frame).
 export const BoardFlagHoverRevealed: Story = {
   name: 'Flag hover — country name in a tooltip above the flag (004 §13.9)',
   tags: ['visual-full-page'],
   play: hoverFlagOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
   args: {
     subject: 'self',
     authenticated: true,
@@ -238,10 +244,15 @@ export const BoardFlagPinned: Story = {
 // not just its instance: the switcher trigger's alias truncates rather than pushing the flag onto
 // its own line, so the flag stays on the name line and its upward tooltip still lands clear of the
 // switcher trigger and the alias, exactly as it does for a short alias.
+// Remediation (fifth-pass review, B1 sweep): the same gap as `BoardFlagHoverRevealed` above — a
+// `Hover`-named story with a `play()` that never set the real `:hover` pseudo-class. Not in the
+// review's own named list, found by sweeping every `Hover`/`Active`/`FocusVisible`-named story in
+// scope for a missing `visualForceState` rather than trusting that list.
 export const BoardLongAliasFlagHoverRevealed: Story = {
   name: 'Flag hover, long alias — the fix holds when the alias is 19 characters, not 7 (004 §13.8, T457)',
   tags: ['visual-full-page'],
   play: hoverFlagOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
   args: {
     subject: 'self',
     authenticated: true,

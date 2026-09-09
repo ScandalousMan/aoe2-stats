@@ -73,6 +73,22 @@ every state (it is part of its resting anatomy, so repeating it at `active` was 
 and is removed); `destructive` carries `border-danger` at every state instead of swapping to the
 neutral `border-strong` on press, so a pressed destructive button never reads as merely neutral.
 
+**FR-037 has two halves, and the paragraph above only argued one of them (fifth-pass review, M2).**
+"Never byte-identical" — the still-image half — was true the moment `hover` and `active` landed on
+different tokens, and stayed true. **"More than colour"** is the other half, and until this
+remediation `secondary` and `destructive` had not met it: both states differed only by which fill
+was painted, with no shape riding alongside the way `ghost`'s appearing border already does.
+`secondary` and `destructive` now each gain **`active:outline-2 active:outline-offset-0
+active:outline-<their own boundary token>`** — `border-strong` for `secondary`, `danger` for
+`destructive` — flush against the permanent border they already carry at every state, reading as
+that frame thickening on press. `outline`, not a border-width change: both variants' boxes have no
+spare padding reserved to absorb a wider border without growing, and `outline` never participates
+in layout (the same property the focus ring below already rides, for the same reflow-free reason),
+so this is safe regardless of what a caller's own layout does with the button's box. `ghost`'s own
+technique (`border-transparent` reserved at rest, painted at `active`) does not fit `secondary` or
+`destructive` unmodified — their border is already painted at rest, so there is no transparent
+state to promote; `outline` is the shape signal available to a control that is already bordered.
+
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
 — commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
@@ -99,7 +115,10 @@ extended to 44px by padding rather than by a transparent overlay.
   — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
   the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
   `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`
-  keeps `border-danger`, never swapping to a neutral boundary. No translate, no shadow change.
+  keeps `border-danger`, never swapping to a neutral boundary. **`secondary` and `destructive` also
+  gain an `outline-2 outline-offset-0` ring, flush against their own boundary token
+  (`border-strong` / `danger`) — the non-colour half of FR-037 (above), the fill change alone
+  never satisfied.** No translate, no shadow change.
 - **disabled** — fill `surface-sunken`, label `text-disabled`, boundary `border`, cursor default,
   `disabled` attribute set. A disabled button must be accompanied by visible text saying why, in
   `text-secondary`; a button that is grey with no explanation is a dead end.
@@ -182,7 +201,14 @@ is the wrong target regardless: a `tabindex="-1"` heading is never reached by a 
 press, only by a caller's one-off `.focus()` call (`sign-in-screen.md` §8) to draw assistive
 technology's attention to an outcome that just appeared — the same shape and the same reasoning as
 `Dialog`'s heading below, "its focus is for the accessible-name announcement, not a visible
-indicator." `outline-none` on the heading is what makes that true rather than aspirational.
+indicator." `outline-none` on the heading is what makes that true rather than aspirational. **The
+heading's own frame therefore has no visual form for this state** (remediation, fifth-pass review
+M1 — the pre-existing `FocusVisible` story forced focus onto the heading and stopped there, six
+baselines with zero focus-ring pixels standing in for a state with nothing to show). Where a caller
+supplies `actions`, the story demonstrates the state the same way `Dialog`'s own `FocusVisible` does
+— focus forced onto the first action, a real `Button` carrying a real ring — rather than the bare
+heading; a callout with no actions has no next stop of its own to demonstrate and this state stays
+undocumented in a still image for that shape, correctly, since there is nothing to show.
 **disabled** — none; a callout is never disabled. **loading** — none; a callout describes a settled
 outcome. Anything still resolving is a `Skeleton`. **error** — `danger` is that state.
 **empty** — a callout with no heading and no body renders **nothing at all**, not an empty bordered

@@ -376,7 +376,8 @@ The eight states are `tooltip.md` §4's, applied here. The three §4 declared ab
 - **hover** — the pointer over the flag opens the tooltip after `motion.duration.normal`; it closes
   `motion.duration.fast` after the pointer has left **both** the flag and the surface. The flag
   itself does not brighten, scale, lift or tint: the tooltip appearing is the entire hover
-  affordance, and a national flag is not re-rendered to acknowledge a cursor.
+  affordance, and a national flag is not re-rendered to acknowledge a cursor. This is hover only —
+  **active, immediately below, is not the same claim.**
 - **focus-visible** — **the flag is a tab stop.** Reaching it by Tab opens the tooltip **immediately,
   with no delay**, and the trigger shows the one uniform focus ring (`outline-2 outline-offset-2` in
   `focus-ring`, gap DS-4) around the button's box, unclipped, in both themes. **The tooltip appearing
@@ -384,7 +385,15 @@ The eight states are `tooltip.md` §4's, applied here. The three §4 declared ab
   not `:focus` is what stops a mouse click from stranding a tooltip open after the pointer has gone.
 - **active** — pressing (click, Enter, Space or tap) pins the tooltip open until an explicit dismiss;
   Escape dismisses it and leaves focus on the flag. On touch this is the only route (§11.3), which is
-  why it is specified rather than left to the implementation.
+  why it is specified rather than left to the implementation. **Unlike hover, the trigger's own
+  boundary does change here**: `tooltip.md` §4 active's `border-2` boundary — transparent at rest,
+  `border-strong` for as long as the tooltip is pinned — is inherited unmodified through this
+  composite, since `CountryFlag` never re-implements `Tooltip`'s trigger, only supplies its child
+  (§11.2's anatomy). This is the still-image distinction FR-037 requires between hover-revealed and
+  pinned (remediation, fifth-pass review B1: before this, the two states rendered byte-identical —
+  the tooltip open was the entire frame either way, and "the tooltip appearing is the entire hover
+  affordance" above had drifted from describing hover specifically to describing every reveal, which
+  it does not).
 
 **disabled** — never, and now for a second reason on top of §4's: a `disabled` button is neither
 focusable nor hoverable, so disabling this one would make the country unreachable rather than merely
@@ -435,12 +444,19 @@ of default captures verifies none of them and passes anyway.
 
 - [ ] **No story shows a country name as text beside a flag.** In the default story the flag stands
       alone and the frame contains no country word anywhere.
-- [ ] The **hover story** shows the country name in a tooltip above the flag, in both themes.
+- [ ] The **hover story** shows the country name in a tooltip above the flag, in both themes, with
+      the flag's trigger boundary in its rest (transparent) state.
 - [ ] The **keyboard-focus story** shows the tooltip open **and** the focus ring visible and
       unclipped around the flag's button box, in the same frame, in both themes. A frame with one and
       not the other fails this criterion.
-- [ ] The **pinned (pressed) story** shows the tooltip open with no pointer over the flag and no
-      focus ring — the touch route.
+- [ ] The **pinned (pressed) story** shows the tooltip open with no focus ring, and the flag's
+      trigger boundary painted `border-strong` — the touch route's own still-image evidence
+      (`tooltip.md` §4 active, inherited unmodified, §11.6). (Remediation, fifth-pass review B1: the
+      earlier wording asked for "no pointer over the flag," which a still image cannot show and this
+      criterion could therefore never fail; this is what the frame actually shows and can fail.)
+- [ ] Overlaying the hover-open and pinned frames, the tooltip sits in the same position in both;
+      they differ only in the flag's trigger boundary — transparent (hover) versus `border-strong`
+      (pinned) — and the absence of a focus ring in either.
 - [ ] The **after-Escape story** shows no tooltip and a still-visibly-focused flag.
 - [ ] The open tooltip sits **above** the flag, is opaque, and covers no figure in the frame.
 - [ ] Overlaying the closed and open default stories, every element sits in the identical position —

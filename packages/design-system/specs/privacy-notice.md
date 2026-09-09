@@ -528,8 +528,19 @@ every link and on the objection button. Following a `Contents` entry moves focus
 `<h2>`, which carries `tabindex="-1"` for that purpose — a jump that moves the viewport without
 moving focus leaves a keyboard user at the top of a nine-section document.
 
-**active** — links render in `link-hover` while pressed (there is deliberately no `link-active`;
-`link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
+**active** — ink stays `link-hover` throughout (there is deliberately no `link-active`; `link-hover`
+serves both — `color-tokens.md` §11.3), and each link adds the second signal its own shape owes
+(fourth-pass review remediation, FR-037: a shared `link-hover` fill with nothing else left hover and
+press as one still image; this passage itself described the pre-fix behaviour through a fifth-pass
+review, finding B2). Inline links — the explanation's prose links and `ContactBlock`'s contact
+route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own treatment
+(`inlineLinkClasses`, `index.tsx`); no fill, because a wash behind a few words inside a paragraph
+breaks the line. `Contents` entries are a padded, `min-h-11` block — `Link`'s `standalone` shape —
+so they take that variant's own press: a `surface-sunken` fill that exists only on press
+(`active:bg-surface-sunken active:rounded-control`). `ObjectionCallToAction` is styled like
+`Button/secondary` and takes that variant's own fix: the fill steps to `background`, the ramp's
+other attenuated rung, bounded by the control's own permanent `border-strong` edge regardless of
+what fills it. Nothing translates or scales.
 
 **disabled** — **nothing in this component is ever disabled.** A right that is described and then
 greyed out has been withdrawn without saying so. If a target route is unavailable, the link is still

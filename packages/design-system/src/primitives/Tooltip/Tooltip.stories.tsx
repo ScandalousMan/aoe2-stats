@@ -70,9 +70,18 @@ export const Default: Story = {
   },
 }
 
+// Remediation (fifth-pass review, B1): `play: hoverOpen` above opens the tooltip for real — the
+// synthetic `userEvent.hover` still reaches the component's own `onMouseEnter` listener — but it
+// never sets Chromium's actual `:hover` pseudo-class (`tests/visual/stories.spec.ts`'s own
+// `VisualForceState` comment), so without this the trigger's rest-vs-pinned boundary (index.tsx,
+// §4 active) had no real hover frame driving it either way. `visualForceState` runs after `play()`
+// has settled and drives a genuine, CDP-level hover on the same element — the same two-mechanism
+// shape `Menu.stories.tsx`'s own `Hover` story already uses (`play` opens the structure,
+// `visualForceState` paints the real pseudo-class on top of it).
 export const HoverRevealed: Story = {
   tags: ['visual-full-page'],
   play: hoverOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
   args: {
     content: 'France',
     qualifier: 'Country:',

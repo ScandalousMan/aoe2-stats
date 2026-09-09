@@ -5,8 +5,10 @@
 the session**, reachable from the privacy notice (`PrivacyNotice` §4.7's `ObjectionCallToAction`) and
 from the footer (T098).
 **Requirements**: FR-039 (a way for a non-user in archived matches to object, and pseudonymisation of
-their identifiers on request without corrupting match records). FR-038 (non-users are never publicly
-exposed or indexed — this screen holds no listing of anyone). Constitution IX and X.
+their identifiers on request without corrupting match records). 001 FR-038 (non-users are never
+publicly exposed or indexed — this screen holds no listing of anyone; qualified with its owning
+feature because 005's own FR-038 is a different requirement, interactive-feedback consistency —
+`structural-tier.md`'s header). Constitution IX and X.
 **Tier**: screen (`src/screens/`).
 **Surface class**: `prose` (README's "Surface density" section) — continuous reading text, ending in
 one form; the explanation renders in `type-body` at `text-md` with `space-4` between paragraphs,
@@ -79,14 +81,14 @@ form must not grow a name field, a contact field or a message box; there is no c
 collecting a reply address would be collecting data we cannot use, from the exact people this screen
 exists to collect less about.
 
-**This screen lists nobody (FR-038).** It has no search, no "is this you?" preview, no profile lookup
+**This screen lists nobody (001 FR-038).** It has no search, no "is this you?" preview, no profile lookup
 that would render a person's alias back to them. It takes a profile id the reader already has and
 records an objection against it; it never turns that id into a displayed profile, because doing so
 would publicly expose the non-user this feature exists to protect.
 
 **Known friction, flagged for T095 and the reviewer, not solved here.** A non-user must supply their
 numeric `profile_id`, which the API is keyed on (router) — the form cannot offer a name search, since
-that is a session-bound feature and would itself list people (FR-038). `HelpText` (§4.2) says where the
+that is a session-bound feature and would itself list people (001 FR-038). `HelpText` (§4.2) says where the
 id is visible. If product later wants a gentler path in, that is a new decision with its own spec; this
 component stays faithful to the one input the endpoint accepts rather than inventing a lookup it has no
 endpoint for.
@@ -212,14 +214,23 @@ objection.** _Nothing was recorded. Try again when you are ready._ — with the 
 **default** — `idle`: heading, the full explanation, then the form with an empty field and the enabled
 submit button. No failure callout, no confirmation.
 
-**hover** — the privacy-notice link (`accent-hover`, underline stays) and the submit button (per
-`Button`). No other part responds to a pointer.
+**hover** — the privacy-notice link (`link-hover`, underline stays) and the submit button (per
+`Button`). No other part responds to a pointer. (Corrected here: this line named `accent-hover`,
+which this control has never painted — `inlineLinkClasses` reads `link`/`link-hover` throughout,
+`color-tokens.md` §11.6's own retirement of `accent`/`accent-hover` as an inline-link ink. Caught by
+the fifth-pass review, finding B2.)
 
 **focus-visible** — the standard ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on the
 input, the submit button and the privacy-notice link, in both themes. The input additionally shows a
 focus boundary distinct from its resting boundary so a keyboard user sees where they are.
 
-**active** — the link renders `accent-active` while pressed; the button per `Button`. Nothing scales.
+**active** — the link's ink stays `link-hover` (there is deliberately no `link-active`; `link-hover`
+serves both — `color-tokens.md` §11.3) and the underline steps to `underline-offset-4`, `Link`'s
+`inline` variant's own treatment (`inlineLinkClasses`, `index.tsx`) — the fourth-pass review's
+fix for a shared fill answering nothing (FR-037). The button is per `Button`. Nothing scales.
+(Corrected here: this line named `accent-active`, a token this control has never painted, and did
+not name the underline signal the code already carries — the same B2 finding as the `hover` line
+above.)
 
 **disabled** — **the submit button is never disabled.** Validation happens on submit, not by greying
 the button, so a non-user is never faced with a dead control and no explanation of why. Pressing submit

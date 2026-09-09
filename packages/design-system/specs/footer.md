@@ -103,8 +103,14 @@ repository, this component is the same disclosure rendered where a visitor actua
   underneath the permanent underline. Nothing else in this component responds to a pointer.
 - **focus-visible** — the standard ring (`outline-2 outline-offset-2`, gap DS-4) on each link that
   is present. The disclaimer and the affiliation note are not focusable; they are not controls.
-- **active** — links render `link-hover` while pressed (there is deliberately no `link-active`;
-  T522's `link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
+- **active** — ink stays `link-hover` (there is deliberately no `link-active`; T522's `link-hover`
+  serves both — `color-tokens.md` §11.3), and the underline steps to `underline-offset-4` — the same
+  fix `Link`'s `inline` variant carries (`structural-tier.md` §9 "active"), because a shared
+  `link-hover` fill with no second signal left hover and press as one still image (fourth-pass
+  review remediation, FR-037; this passage itself described the pre-fix behaviour through a
+  fifth-pass review, finding B2, which is why it now names the second signal rather than only the
+  ink). Nothing translates or scales, and nothing fills — a wash behind an inline word breaks the
+  disclaimer's own text flow.
 - **disabled** — not applicable. A link is either rendered (its href is present) or absent; there
   is no dimmed, unusable middle state for a footer link. Rendering a dead link when a route does
   not yet exist would be worse than omitting it, and omission is what the optional props already do.

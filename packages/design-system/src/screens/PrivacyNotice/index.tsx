@@ -726,7 +726,13 @@ export function PrivacyNotice({
                 // (README's contrast table) and safe here because the permanent
                 // `border-border-strong` boundary delineates the box regardless of what fills it
                 // (`Button/index.tsx`'s own comment for `secondary`).
-                'hover:bg-surface-sunken active:bg-background',
+                //
+                // Fifth-pass review remediation (M2): the fill swap alone was still colour-only —
+                // `Button`'s `secondary` variant carries the identical gap, fixed the same way
+                // there: `active:outline-2 active:outline-offset-0 active:outline-border-strong`,
+                // flush against the permanent border, non-colour (a second frame appearing, not a
+                // hue shift) and reflow-free (`outline` never participates in layout).
+                'hover:bg-surface-sunken active:bg-background active:outline-2 active:outline-offset-0 active:outline-border-strong',
                 focusRing,
               )}
             >

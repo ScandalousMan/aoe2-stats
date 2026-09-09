@@ -900,3 +900,45 @@ subject is this package, so the fact is filed beside it).
    render a component tree, scan it with `axe-core`, fail on any `landmark-unique` violation —
    written once and reused across component test files, rather than by hand-writing a guard per
    composition the way the two existing ones were. **Owner: T579. Fix by 2026-09-15.**
+
+## Duplicated logic and story-content gap register
+
+**Open as of 2026-09-09** (fifth-pass adversarial review). Two Low findings that are each a fact
+about this package's own source rather than about a component, filed here for the same reason the
+two registers above are: the subject is the package itself, so a future task changing either fact
+needs this row updated, which is why it is not folded into a spec written once.
+
+1. **The WCAG 2.2 contrast-ratio formula (`srgbToLinear` / `relativeLuminance` / `contrastRatio`)
+   exists as three separate implementations**, all under `packages/design-system/` except the last:
+   `.storybook/foundations/Colour.stories.tsx:61-77`; `tokens/build-tokens.test.mjs:20-37`; and
+   `tests/visual/focus-ring.spec.ts:234-241` — the first two present as of the phase this register's
+   sibling sections describe, the third added during this phase (driving both themes through the
+   focus-ring's own colour math). Each carries a comment arguing it is not a duplicated
+   _measurement_ — `Colour.stories.tsx` derives its ratios live from the same generated token rather
+   than transcribing a number, and `focus-ring.spec.ts` computes from a `getComputedStyle`
+   `rgb(...)` string rather than the `#rrggbb` hex the other two read, so reusing either existing
+   helper would mean converting one input format into the other just to call it — and each of those
+   three arguments is true on its own terms. What none of them changes is that the _formula itself_
+   — the sRGB-to-linear piecewise function, the relative-luminance weights, the contrast-ratio
+   arithmetic — is written out by hand three times rather than once: a correction to any one of the
+   three constants (the `0.03928` breakpoint, the `2.4` gamma, the `0.2126`/`0.7152`/`0.0722`
+   weights, the `0.05` WCAG offset) has to be found and applied in all three files to stay correct,
+   and nothing here fails a build if only two of the three are updated. CLAUDE.md's law is that a
+   fact written twice goes stale in one copy; a formula is the same hazard as a number under that
+   law. The fix is a single shared module (e.g. `packages/design-system/tokens/contrast.mjs`,
+   exporting the hex-based and the `{r,g,b}`-based entry points `Colour.stories.tsx` and
+   `build-tokens.test.mjs`/`focus-ring.spec.ts` respectively need) that all three import, which is
+   documentation-adjacent tooling work outside this remediation's touch-scope (`.storybook/`,
+   `tokens/` and `tests/` are all out of bounds for a docs-only pass). **Owner: T580. Fix by
+   2026-09-23.**
+2. **`FavouritesList.stories.tsx`'s `Default` (lines 45-47) and `RealisticList` (lines 101-103) carry
+   byte-identical `args`** — both `{ entries: [rated, neverRanked, staleStanding] }` — so T566's
+   "realistic composition" story for this component (FR-043, SC-012) produces six baselines (both
+   themes, all three widths) that are pixel-identical to `Default`'s own six and verifies nothing
+   `Default` does not already cover. This is a story-content gap, not a documentation one: the fix
+   is giving `RealisticList` its own, genuinely realistic roster (`apps/web`'s `/favourites` route
+   is the shape `RealisticList`'s own comment cites as the target — a mixed roster wider than the three
+   fixtures `Default` already uses, e.g. more entries, a longer alias, a clan tag, a stale standing
+   further out of date) rather than reusing `Default`'s exact fixture set, which is source work under
+   `packages/design-system/src/` and therefore also outside this remediation's touch-scope. **Owner:
+   T581. Fix by 2026-09-16.**

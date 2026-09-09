@@ -55,15 +55,30 @@ const sizeClasses: Record<ButtonSize, string> = {
 // (rest already declares it, so repeating it at `active` was dead weight — removed); `destructive`
 // keeps `border-danger` at every state instead of the neutral `border-strong` it used to swap to
 // on press, so a pressed destructive button never reads as merely neutral.
+// Remediation (fifth-pass review M2): `secondary` and `destructive` used to stop at the fill swap
+// above — the same two-rung `surface-sunken`/`background` step `ghost` also takes, but with no
+// shape change riding alongside it the way `ghost`'s `active:border-border-strong` gives that
+// variant. `quickstart.md`'s own standard ("a non-colour signal … rather than a second fill, which
+// is what the requirement's 'more than colour' actually asks") was applied to `ghost` and left
+// unapplied one line away in the same object literal. Both already carry a border at rest, so
+// `ghost`'s technique (transparent-to-painted) does not fit unmodified — an `outline`, not a border-
+// width change, is what `active:outline-2 active:outline-offset-0` gives them instead: flush against
+// the existing 1px border, in the same neutral token that border already carries (`border-strong` /
+// `danger`), reading as the frame thickening on press. `outline` never participates in layout (the
+// same property the focus ring above already rides, precisely because it cannot reflow), so this is
+// safe at every width without the reservation dance `border` would need — verified: `outline-2`'s
+// own width is added only while `active:` matches, and an outline never changes a box's rendered
+// size or its neighbours' position, unlike a border-width change would on a box with no spare
+// padding to absorb it.
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent',
   secondary:
-    'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-background',
+    'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-background active:outline-2 active:outline-offset-0 active:outline-border-strong',
   ghost:
     'bg-transparent text-text-primary border border-transparent hover:bg-surface-sunken active:bg-background active:border-border-strong',
   destructive:
-    'bg-surface text-danger border border-danger hover:bg-surface-sunken active:bg-background',
+    'bg-surface text-danger border border-danger hover:bg-surface-sunken active:bg-background active:outline-2 active:outline-offset-0 active:outline-danger',
 }
 
 const focusRing =

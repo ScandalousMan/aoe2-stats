@@ -215,6 +215,20 @@ asked the three questions. This is a mixed verdict, not a pass.
    superseded by a rebase before landing; only the surviving commit is citable, which is why neither
    is named by hash here.)
 
+   **Correction, fifth-pass review, 2026-09-09.** Checked against the current, checkmark-fixed
+   tree, `Menu/Selection` and `Menu/ProfileSwitcher` are **not** a duplicate pair: they differ at
+   1280 (a label, bounding box `(41,40)-(205,42)`). The pair that genuinely is byte-identical today
+   is `Selection` == `SheetBelowMd`, and that one is benign and already honestly documented rather
+   than a defect: `SheetBelowMd`'s `globals.viewport` pin (`Menu.stories.tsx`) is cosmetic to the
+   browsable Storybook only, the same mechanism `MatchRow.stories.tsx:305-307` and
+   `.storybook/preview.tsx:15` both say so of; the visual suite's own width axis is what actually
+   governs a capture's dimensions, driven by `tests/visual/stories.spec.ts:193`
+   (`page.setViewportSize`, with only `globals=theme:` in the URL it builds — no viewport global).
+   `Selection` and `SheetBelowMd` carry identical `args`, so whichever width the suite captures them
+   at, the two render identically by construction, not by a bug; the pin only changes what a
+   developer sees browsing the story by hand. Recorded here so a sixth review pass does not have to
+   re-derive it.
+
 Two of the three fixes above landed only after this run named them, and Q1's accessibility half is
 still open. What remains — no `docs` entries in the build, docgen off so no prop tables, no
 component stating its purpose in a sentence, no story stating which `sr-only` naming shape it
@@ -425,7 +439,14 @@ has not been exercised by any CI run either.
    per composition.
 8. **Every component spec answers every state in the closed vocabulary, verified mechanically.**
    **Met.** `spec-completeness.mjs` exit 0: "41 component directories … answers all 9 sections and
-   all 10 states" (above), and the check is wired into CI (T571).
+   all 10 states" (above), and the check is wired into CI (T571). **What "met" does not cover**: the
+   check is lexical — it verifies a state is _answered_, not that the answer is _true_ against the
+   component it describes. It cannot catch a spec that confidently describes behaviour the code does
+   not have, which is exactly what the fifth-pass review's finding B2 was: six specs answered
+   `active` in full, passed this check, and still asserted the pre-fix behaviour a code change had
+   already retired (see "Reviewer gates" below, round 5). A green run here is evidence the closed
+   vocabulary is covered, not evidence any one answer is correct — that is what a review, not this
+   script, is for.
 9. **Every component has stories for variants, applicable states, a realistic composition,
    responsive behaviour, accessibility behaviour; every story deterministic.** **Met for coverage
    and structure, not re-verified for determinism this session.** `story-baselines.mjs` confirms
@@ -499,11 +520,25 @@ claim): every one of the fourteen pairs now hashes differently. Rows and inline 
 non-colour signal (a reserved left border painted on press; an underline-offset shift) rather than a
 second fill, which is what the requirement's "more than colour" actually asks for.
 
-**FR-037 now holds against every instance a review has found**, verified independently. This is not
-the same claim as "no instance remains" — four rounds each found what the previous round's fix did
-not cover, and a fifth review pass over this exact commit is what decides whether that pattern has
-stopped. Do not read "holds against every found instance" as "APPROVE"; read the "Reviewer gates"
-section for the actual verdict history.
+**Updated again 2026-09-09, after the fifth review round.** The fifth pass found two more things of
+the same shape: **B2** — the fourth pass's code fix had landed but only two of its eleven call
+sites' specs were corrected to match, so six specs (`footer.md`, `privacy-notice.md`,
+`third-party-objection.md`, `favourites-list.md`, `player-search.md`, `match-history.md`) still
+asserted the pre-fix, colour-only behaviour even though the code no longer did — and **three
+components with no `hover:`/`active:` class at all** (`Tooltip`, `CountryFlag`,
+`ProfileSummary`'s flag render), which every prior round's grep for a repeated fill missed because
+there was no class to repeat: hover and pressed render as byte-identical images by omission, not by
+a shared token. The six spec passages are corrected in the same change that records this update (see
+"Reviewer gates" below, round 5); the three components are being fixed by a concurrent change not
+yet confirmed landed as of this sentence.
+
+**FR-037 now holds against every instance a review has found through round four**, verified
+independently, and the six specs above are now accurate against the code that already existed. This
+is not the same claim as "no instance remains" — five rounds each found what the previous round's
+fix or its spec did not cover, and a sixth review pass, once the concurrent `Tooltip`/`CountryFlag`/
+`ProfileSummary` fix has actually landed, is what decides whether the pattern has stopped this time.
+Do not read either sentence above as "APPROVE"; read the "Reviewer gates" section for the actual
+verdict history.
 
 ### Named success criteria
 
@@ -546,8 +581,9 @@ section for the actual verdict history.
   partly answered (found the component, missed the accessibility half), Q2 and Q3 failed at run
   time and pass against the tree as it stands today after fixes. Not re-run this session; carried
   forward as recorded.
-- **SC-013** (every spec answers every state, verified mechanically): **holds.**
-  `spec-completeness.mjs` exit 0, wired into CI (T571).
+- **SC-013** (every spec answers every state, verified mechanically): **holds, with the same limit
+  named at production-readiness item 8 above** — `spec-completeness.mjs` exit 0, wired into CI
+  (T571), verifies every state is answered, not that the answer is true.
 - **SC-014** (a composition repeated past the promotion threshold is promoted or the refusal is
   recorded): **holds.** `GOVERNANCE.md`'s promotion-threshold record: the page wrapper, ten
   occurrences, promoted.
@@ -589,7 +625,7 @@ at all.
 `docs/risks.md`'s "visual-reviewer returns a reasoned FAIL" item still stays unticked below: the
 verdict was a PASS, and that item asks for a reasoned FAIL specifically.
 
-**General `reviewer`**: run four times as of this update, **REJECT all four**, each round's findings
+**General `reviewer`**: run five times as of this update, **REJECT all five**, each round's findings
 remediated in the commits that follow it:
 
 1. `b161d2f` — the tree was red (`tier-deps.mjs` failing on `Page` importing `MatchList`), eleven
@@ -611,12 +647,34 @@ remediated in the commits that follow it:
    worked at 375 because `Menu`'s popover had no inline-axis collision handling; `ProfileSummary`'s
    `PrimaryChangeInFlight` was `UnlinkInFlight`'s sibling and had been left behind again. Remediated
    in `bc3849f`.
+5. Findings against the tree at `dd3041d`: **B2 (blocking)** — round 4's code fix (the
+   reserved-border / underline-offset technique) landed in eleven files, but only two of the specs
+   describing those call sites were corrected (`structural-tier.md`'s `Table` and `Link` sections);
+   six more still asserted the pre-fix, colour-only behaviour — `footer.md`, `privacy-notice.md`
+   (three call sites), `third-party-objection.md` (which also named two wrong tokens,
+   `accent-active` and `accent-hover`, retired from inline links by T522), `favourites-list.md`,
+   `player-search.md` and `match-history.md` — the identical failure mode round 4 itself was named
+   for, one layer up: a fix landing in the code without its spec passages following it. **M4** —
+   this section and the FR-037 note above it would go stale the moment a sibling change landed,
+   with nothing forcing either back into agreement. **Three further live FR-037 gaps** — `Tooltip`,
+   `CountryFlag` and `ProfileSummary`'s flag render hover and pressed as byte-identical images,
+   carrying no `hover:`/`active:` class at all, so they matched none of round 4's greps — found and,
+   as of this entry, being fixed by a change concurrent with this one, not yet confirmed landed. A
+   corrected record, not a defect: this file's own scenario-9 note that `Menu/Selection`,
+   `Menu/ProfileSwitcher` and `Menu/FocusVisible` render pixel-identically was itself wrong (see the
+   FR-037 note's own correction below). Remediated in the same change that lands this documentation
+   pass: the six spec passages, the two wrong token names and this section's own accuracy are
+   corrected together; the three additional components are tracked as open against the concurrent
+   fix, not asserted closed here.
 
-**A fifth pass, against the current tree, is what this update exists to request.** Production-
-readiness item 15's second half and the general "the general reviewer approves" clause of T577
-itself are recorded **REJECT x4, remediated, re-review outstanding** — not approved. Four rounds
-each finding what the previous round's fix did not cover is itself evidence worth weighing: either
-the fifth pass finds the pattern has stopped, or it has not, and only running it settles which.
+**A sixth pass, against the tree this remediation lands on, is what settles whether the pattern has
+finally stopped.** Production-readiness item 15's second half and the general "the general reviewer
+approves" clause of T577 itself are recorded **REJECT x5, remediated, re-review outstanding** — not
+approved. Five rounds each finding what the previous round's fix did not cover is itself evidence
+worth weighing: either the sixth pass finds nothing left of this shape, or it does not, and only
+running it settles which. Read this note as of its own date — 2026-09-09 — and re-derive nothing
+from it once a sixth pass has actually run; that pass's own entry, appended above rather than
+overwriting this one, is what carries forward.
 
 ### `docs/risks.md` front-end items
 

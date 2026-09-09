@@ -169,7 +169,16 @@ information dead end — is carried forward verbatim in §12.3.
   `capture-state-badge.md` §6). `DownloadAction`: per `Button`.
 - **focus-visible** — `MatchRow`: standard ring on the row's own link wrapper, inset so it never
   crops the outcome text or a numeral. `DownloadAction`: per `Button`.
-- **active** — `MatchRow`: per link; `DownloadAction`: per `Button`.
+- **active** — `MatchRow` keeps the `surface-sunken` hover fill and reserves its inline-start edge at
+  rest (`border-l-2 border-l-transparent`, `index.tsx`), solidifying to `border-strong` only on
+  press (`active:border-l-border-strong`) — the same reserved-border technique `Table` and
+  `PlayerResultRow` share for their own row links, and distinct from either of `Link`'s two
+  treatments (`structural-tier.md` §9): `MatchRow` is a row, not a `Link`, and neither of that
+  component's own presses — the `standalone` fill or the `inline` underline shift — is what a row
+  actually paints. This passage previously read "per link", pointing at `Link`'s spec for a shape
+  `MatchRow` does not use, which is what let the pre-fix, colour-only behaviour survive undetected
+  through two review rounds (fourth-pass review remediation, FR-037; caught here by the fifth-pass
+  review, finding B2). `DownloadAction`: per `Button`.
 - **disabled** — `DownloadAction` has no disabled form: while `capture_status != "stored"` it is
   **absent**, not disabled, following `profile-summary.md`'s own rule for the primary profile's
   "Make primary" item — `CaptureStateBadge` already explains why in that case, and a greyed-out

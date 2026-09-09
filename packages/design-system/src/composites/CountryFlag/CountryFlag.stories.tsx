@@ -74,10 +74,15 @@ export const BothSizes: Story = {
 }
 
 // §11.9 — the hover story: the country name in a tooltip above the flag.
+// Remediation (fifth-pass review, B1): `play: hoverOpen` opens the tooltip for real (the synthetic
+// `userEvent.hover` still reaches `Tooltip`'s own listener), but never sets Chromium's actual
+// `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has settled,
+// the same two-mechanism shape `Tooltip.stories.tsx`'s own `HoverRevealed` now uses.
 export const FlagHoverRevealed: Story = {
   name: 'Hover — the country name opens in a tooltip above the flag',
   tags: ['visual-full-page'],
   play: hoverOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 

@@ -174,6 +174,14 @@ export const Empty: Story = {
 // pointer click." Forced here by focusing the `<main>` landmark directly, the same route a real
 // skip link takes.
 export const FocusVisible: Story = {
+  // A `play()` calling `.focus()` sets DOM focus but not the `:focus-visible` pseudo-class, so this
+  // story captured the same frame as `Default` until the suite forced the state for it — the defect
+  // T565's whole sweep shipped and five review rounds kept finding one more instance of. The forced
+  // state is the capture; the `play()` below stays because it asserts the landmark is reachable at
+  // all, which is a different claim from what the ring looks like.
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'main' },
+  },
   render: (args) => (
     <Page {...args}>
       <SamplePanel title="Recent matches">Three matches this week.</SamplePanel>

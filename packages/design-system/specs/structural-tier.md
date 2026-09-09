@@ -649,10 +649,10 @@ link.
   fill — painting a wash behind three words inside a paragraph breaks the line and the press is a
   frame the reader never sees — but the underline drops to `underline-offset-4` (rest and hover both
   sit at `underline-offset-2`, above), so `inline`'s own hover and press still render as two distinct
-  frames rather than one repeated. **The two variants differing from each other is what FR-038's
+  frames rather than one repeated. **The two variants differing from each other is what 005 FR-038's
   escape clause is for** — a stated difference between two variants of one control. It is not licence
   for a variant's own hover and active to render as the same still image: that is FR-037's question,
-  FR-037 has no escape clause, and citing FR-038 for it (this spec's own wording, before the
+  FR-037 has no escape clause, and citing 005 FR-038 for it (this spec's own wording, before the
   fourth-pass review found it wrong) was answering the wrong requirement.
 - **disabled** — **a link is never disabled.** A destination the reader may not reach renders as
   `Text` with a sentence saying why. A greyed-out anchor is a promise with no way to collect on it,
@@ -888,7 +888,7 @@ Field
 ```
 
 **Variants and sizes** — no variants. Two sizes, matched to `Button`'s so a field and its submit
-button sit on one line at the same height (FR-038): `md` — control height `space-10`, pointer-only;
+button sit on one line at the same height (005 FR-038): `md` — control height `space-10`, pointer-only;
 `lg` — control height `space-12` (48px, clearing 44px), used at every width where touch is expected.
 A field reachable on a touch viewport renders at `lg`.
 
@@ -1131,7 +1131,7 @@ a `Panel` or a `Section` body. Text bounded to `max-w-measure`.
 
 **Responsive** — identical at all three widths; the stripe stays on the inline-start edge at every
 one. The action is full width below `md` and intrinsic from `md`, matching `Button`'s own responsive
-rule (FR-038). The technical detail wraps rather than truncating: a half-copied error code is worse
+rule (005 FR-038). The technical detail wraps rather than truncating: a half-copied error code is worse
 than a long one.
 
 **Accessibility** — `role="alert"` when the error **replaces content after an interaction**, so it is

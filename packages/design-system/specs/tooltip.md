@@ -134,8 +134,17 @@ them.
   opens with no delay and **stays open until an explicit dismiss** (below), independent of the
   pointer. This is the only route a touch user has, since touch produces no hover and generally no
   `:focus-visible`, and without it the fact is unreachable on the viewport where the trigger is
-  hardest to read. The trigger shows its own pressed treatment (its `Button` state); the surface does
-  not move, scale or change on press.
+  hardest to read. **The trigger shows its own pressed treatment: a `border-2` boundary, transparent
+  and reserved at rest, painted `border-strong` for as long as `pinned` is true** (remediation,
+  fifth-pass review B1 — this used to say "its `Button` state," which was never true: the trigger is
+  a bare `<button>`, not a `Button`, and carried no pressed treatment at all, so hover-revealed and
+  pinned rendered byte-identically). Symmetric on all four sides rather than `Menu`'s
+  inline-start-only reservation — that technique answers a left-aligned row, where the reserved edge
+  sits at the text's own start; this trigger centres its child, and a one-sided reservation would
+  have shifted it. Reserved as a plain width, not the `:active` pseudo-class `Button`'s own presses
+  ride on: pin outlives the mouse button being held down (above), so it is a persisted boolean, and
+  the paint follows that boolean rather than a CSS state Chromium would drop the moment the pointer
+  lifts. The surface does not move, scale or change on press.
 
   **The three open sources are independent and OR together.** The tooltip is open while hover, focus
   or pin is true, and closes when the last one ends. Pressing a trigger that is already open by hover
@@ -179,7 +188,9 @@ text and over figures while it is open, and a translucent one renders text on te
 1px hairline, decorative per README's own rule for that token — the surface's meaning is its words,
 so its boundary carries none), `text-primary` (the content), `focus-ring` (the trigger's ring, on
 whatever background the caller paints; `ProfileSummary`'s root is `bg-background`, so the measured
-pair there is `focus-ring` on `background`).
+pair there is `focus-ring` on `background`), `border-strong` (the trigger's pinned boundary, §4
+active — reserved `transparent` at rest, painted `border-strong` only while pinned; the same token
+`Button`'s `ghost` variant and `Menu`'s row items already press with).
 
 `text-primary` on `surface-raised` is 14.5 light / 12.0 dark in README's table — the same pair
 `Callout` body text rides on, and the widest margin available in this system. It is chosen over
@@ -303,14 +314,22 @@ shaped against.
 
 **The reveal, on both routes**
 
-- [ ] **The hover story** shows the surface open with the pointer over the trigger, in both themes.
+- [ ] **The hover story** shows the surface open, with the trigger's boundary in its rest state —
+      `border-2`, reserved but drawn `transparent` — in both themes. (Remediation, fifth-pass review
+      B1: the earlier wording asked for "the pointer over the trigger," which a still image cannot
+      show and which no capture here could ever fail — replaced with the one thing this frame does
+      show and this criterion can therefore actually fail: the un-pinned trigger.)
 - [ ] **The keyboard-focus story** shows the surface open with the trigger reached by Tab — and the
       trigger's **focus ring is visible and unclipped in the same frame**. A frame with the tooltip
       open and no ring on the trigger fails this criterion.
 - [ ] The hover-open and focus-open frames show the **same surface in the same position** —
       overlaying them differs only in the trigger's focus ring.
-- [ ] **The pinned (pressed) story** shows the surface open with no pointer over the trigger and no
-      focus ring — the touch route.
+- [ ] **The pinned (pressed) story** shows the surface open with no focus ring, and the trigger's
+      pressed boundary — `border-strong`, the same `border-2` width already reserved at rest —
+      painted around it. (Remediation, fifth-pass review B1: the earlier wording asked for "no
+      pointer over the trigger," equally unrenderable and equally unfalsifiable; this is the still
+      image's own evidence for the touch route, and the one mark that made this story byte-identical
+      to the hover-open one before §4 active existed.)
 
 **The dismiss**
 

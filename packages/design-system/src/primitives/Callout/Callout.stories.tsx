@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { within } from 'storybook/test'
 import { Button } from '../Button'
 import { Callout } from './index'
 
@@ -66,20 +65,25 @@ export const Empty: Story = {
   ),
 }
 
-// shared-primitives.md §Callout "focus-visible": "when the callout receives programmatic focus
-// (see sign-in-screen), the heading takes `tabindex=\"-1\"` and shows the standard focus ring" —
-// forced here the same way a caller does it on mount, by focusing the heading directly rather than
-// by tabbing (its `tabIndex={-1}` keeps it out of the normal tab sequence on purpose).
+// shared-primitives.md §Callout "focus-visible": the heading is `tabindex="-1"` and paints
+// `outline-none` — its focus is for the accessible-name announcement, not a visible indicator
+// (the same shape `Dialog`'s heading owns). Remediation (fifth-pass review M1): this story used to
+// force focus onto the heading and stop there, which shows nothing — six baselines with zero
+// focus-ring pixels, standing in for a state that has no visual form of its own. Repointed the same
+// way `Dialog`'s own `FocusVisible` story was: `visualForceState` drives real focus onto the next
+// stop after the heading, `primaryAction` here (rendered first in the action row, `index.tsx`'s own
+// order) — a real `Button`, carrying a real ring, and a real "what happens when you tab past this
+// heading" answer rather than a frame that documents nothing.
 export const FocusVisible: Story = {
   args: {
     tone: 'info',
     heading: 'This Steam account has no Age of Empires II profile yet',
     children:
       'Your sign-in worked. The game creates a profile the first time you play a match online.',
+    actions: <Button variant="primary">Try again</Button>,
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    canvas.getByRole('heading').focus()
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Try again' },
   },
 }
 

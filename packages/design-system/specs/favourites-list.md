@@ -105,11 +105,21 @@ which are `FavouriteToggle`'s (`favourite-toggle.md` §5).
 **default** — `Heading` above the list of `FavouriteRow`s, newest favourited first, each with its
 standing and a trailing remove control.
 
-**hover / focus-visible / active** — `ProfileLink`: whole-block hover fill `surface-sunken`, focus ring
+**hover / focus-visible** — `ProfileLink`: whole-block hover fill `surface-sunken`, focus ring
 on the link wrapper inset so it never crops the standing's digits (`player-search.md` and
 `profile-summary.md`'s identical rule for figures). `RemoveControl`: `FavouriteToggle`'s own
-hover/focus/active. The two never share a hover: the informative block lighting up and the remove
+hover/focus. The two never share a hover: the informative block lighting up and the remove
 button lighting up are different affordances and read as such.
+
+**active** — `ProfileLink` keeps the `surface-sunken` hover fill and reserves its inline-start edge
+at rest (`border-l-2 border-l-transparent`, `index.tsx`), solidifying to `border-strong` only on
+press (`active:border-l-border-strong`) — the same reserved-border technique `Table`, `MatchRow` and
+`PlayerResultRow` all share for their own row links. Repainting the hover fill alone answered
+nothing (fourth-pass review remediation, FR-037: two states of one component must be distinguishable
+by more than colour, in a still image); this passage itself still described the pre-fix,
+colour-only behaviour — folded into the hover/focus-visible rule above as if it were the same
+signal — until the fifth-pass review caught it, finding B2. `RemoveControl` keeps
+`FavouriteToggle`'s own active.
 
 **disabled** — the list has no disabled form. `RemoveControl` is disabled only transiently while its
 own `DELETE` is in flight (`FavouriteToggle` §loading); removing is never blocked by the favourites
