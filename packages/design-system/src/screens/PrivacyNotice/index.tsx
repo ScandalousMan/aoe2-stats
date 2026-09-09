@@ -727,12 +727,19 @@ export function PrivacyNotice({
                 // `border-border-strong` boundary delineates the box regardless of what fills it
                 // (`Button/index.tsx`'s own comment for `secondary`).
                 //
-                // Fifth-pass review remediation (M2): the fill swap alone was still colour-only —
-                // `Button`'s `secondary` variant carries the identical gap, fixed the same way
-                // there: `active:outline-2 active:outline-offset-0 active:outline-border-strong`,
-                // flush against the permanent border, non-colour (a second frame appearing, not a
-                // hue shift) and reflow-free (`outline` never participates in layout).
-                'hover:bg-surface-sunken active:bg-background active:outline-2 active:outline-offset-0 active:outline-border-strong',
+                // Fifth-pass review remediation (M2), corrected sixth-pass: the fill swap alone was
+                // still colour-only — `Button`'s `secondary` variant carries the identical gap, and
+                // this anchor copied that variant's fifth-pass fix verbatim, including its defect:
+                // `active:outline-2` never painted, because this anchor's own `focusRing` (below)
+                // composes `outline-none`, and `tailwind.css`'s restoration of `--tw-outline-style`
+                // fires only under `:focus-visible` — `:active` left it `none`, so the outline
+                // resolved to `outline-style: none` at runtime (`Button/index.tsx`'s own comment
+                // records the trap). Corrected the same way there: `active:ring-2
+                // active:ring-border-strong`, Tailwind's box-shadow-backed `ring` utility, which
+                // never reads `--tw-outline-style` and, like `outline`, never participates in
+                // layout — flush against the permanent border, non-colour (a second frame
+                // appearing, not a hue shift) and reflow-free.
+                'hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
                 focusRing,
               )}
             >

@@ -78,16 +78,28 @@ neutral `border-strong` on press, so a pressed destructive button never reads as
 different tokens, and stayed true. **"More than colour"** is the other half, and until this
 remediation `secondary` and `destructive` had not met it: both states differed only by which fill
 was painted, with no shape riding alongside the way `ghost`'s appearing border already does.
-`secondary` and `destructive` now each gain **`active:outline-2 active:outline-offset-0
-active:outline-<their own boundary token>`** — `border-strong` for `secondary`, `danger` for
-`destructive` — flush against the permanent border they already carry at every state, reading as
-that frame thickening on press. `outline`, not a border-width change: both variants' boxes have no
-spare padding reserved to absorb a wider border without growing, and `outline` never participates
-in layout (the same property the focus ring below already rides, for the same reflow-free reason),
-so this is safe regardless of what a caller's own layout does with the button's box. `ghost`'s own
-technique (`border-transparent` reserved at rest, painted at `active`) does not fit `secondary` or
-`destructive` unmodified — their border is already painted at rest, so there is no transparent
-state to promote; `outline` is the shape signal available to a control that is already bordered.
+
+The fifth-pass fix reached for `active:outline-2 active:outline-offset-0
+active:outline-<their own boundary token>`, reasoning that `outline` never participates in layout
+so it would be safe on a box with no spare padding to absorb a wider border. **That fix never
+painted anything (sixth-pass review, B1).** Every `Button` variant's focus ring composes
+`outline-none`, and `packages/design-system/tokens/tailwind.css`'s T096 fix restores the shared
+`--tw-outline-style` custom property only under `:focus-visible` — `:active` left it `none`
+forever, and `outline-2`/`outline-offset-0` only _read_ that property, never set it. The class
+compiled to a real rule that resolved to `outline-style: none` at runtime: dead CSS, confirmed by
+compiling the package's own preset with tailwindcss 4.3.3 and reading the emitted declaration.
+
+**Corrected, sixth-pass review: `active:ring-2 active:ring-<their own boundary token>`** —
+`border-strong` for `secondary`, `danger` for `destructive` — Tailwind's box-shadow-backed `ring`
+utility, which reads and writes only its own `--tw-ring-*` custom properties and never touches
+`--tw-outline-style`, so it cannot fall into the trap above. `box-shadow`, like `outline`, never
+participates in layout, so this keeps the original reflow-free reasoning while actually painting:
+with `--tw-ring-offset-width` at its 0px default, the shadow sits flush against the permanent
+border either variant already carries at every state, reading as that frame thickening on press.
+`ghost`'s own technique (`border-transparent` reserved at rest, painted at `active`) does not fit
+`secondary` or `destructive` unmodified — their border is already painted at rest, so there is no
+transparent state to promote; a box-shadow ring is the shape signal available to a control that is
+already bordered.
 
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
@@ -116,9 +128,11 @@ extended to 44px by padding rather than by a transparent overlay.
   the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
   `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`
   keeps `border-danger`, never swapping to a neutral boundary. **`secondary` and `destructive` also
-  gain an `outline-2 outline-offset-0` ring, flush against their own boundary token
+  gain an `active:ring-2` box-shadow ring, flush against their own boundary token
   (`border-strong` / `danger`) — the non-colour half of FR-037 (above), the fill change alone
-  never satisfied.** No translate, no shadow change.
+  never satisfied. (Not an `outline`: the fifth-pass fix used one and it never painted, because
+  every variant's focus ring composes `outline-none` and `tailwind.css` restores that property
+  only under `:focus-visible` — see the paragraph above.)** No translate, no layout change.
 - **disabled** — fill `surface-sunken`, label `text-disabled`, boundary `border`, cursor default,
   `disabled` attribute set. A disabled button must be accompanied by visible text saying why, in
   `text-secondary`; a button that is grey with no explanation is a dead end.

@@ -543,6 +543,32 @@ fix or its spec did not cover, and a sixth review pass, once the concurrent `Too
 Do not read either sentence above as "APPROVE"; read the "Reviewer gates" section for the actual
 verdict history.
 
+**Updated again 2026-09-09, after the sixth review round.** The `Tooltip`/`CountryFlag`/
+`ProfileSummary` fix named just above landed (`186acb71`) and was independently confirmed the same
+day: the three pairs hash differently now. But that same commit's own fix for **round five's M2
+finding** — `Button`'s `secondary`/`destructive` `active` state, and the two anchors that copied its
+technique (`PrivacyNotice`'s "Object to what is held about me", `DataExportPanel`'s download link) —
+did not. `active:outline-2 active:outline-offset-0 active:outline-<token>` never painted: every one
+of those elements composes `outline-none`, and `tailwind.css`'s T096 restoration of
+`--tw-outline-style` fires only under `:focus-visible`; `:active` left it `none` forever, so the
+added class resolved to `outline-style: none` at runtime — confirmed by compiling the package's own
+preset with tailwindcss 4.3.3 and reading the emitted declaration (`Button/index.tsx`'s own comment
+carries the compiled rule). **The informal check made at the time was not sufficient evidence and
+should not have been read as one**: commit `4a687f08`'s own message states "Button's
+secondary/destructive active differs from hover" as part of that round's verification, but
+`secondary`/`destructive`'s `active` fill had already differed from `hover`'s since the third-pass
+fix (`1ca55e7`), two rounds earlier — a hash-diff check confirmed _a_ difference, not _this_ one.
+Nothing could have caught it either way: the 213-baseline capture right after round five's fix
+(`413b8501`) touched no pressed non-primary `Button` baseline at all, because no story in the suite
+had ever captured one on its own account — `SecondaryActive`, `DestructiveActive` and `GhostActive`
+did not exist until this update. Corrected in the same change that records this paragraph:
+`active:ring-2 active:ring-<token>` at all three call sites (Tailwind's box-shadow-backed `ring`
+utility, which reads and writes only `--tw-ring-*` and never touches `--tw-outline-style`), and the
+three missing stories now exist. **The CSS is proven to paint** — compiled directly, not asserted —
+**but no capture has run against it yet**; that is the next step, dispatched after this lands, not
+part of this update. Until it does, read "FR-037 now holds… through round four" above as still true
+on its own terms, and round five's M2 half as reopened rather than closed.
+
 ### Named success criteria
 
 - **SC-001** (no off-scale value, no missing-token comment): **holds.** `token-scale.mjs` exit 0,
@@ -628,7 +654,7 @@ at all.
 `docs/risks.md`'s "visual-reviewer returns a reasoned FAIL" item still stays unticked below: the
 verdict was a PASS, and that item asks for a reasoned FAIL specifically.
 
-**General `reviewer`**: run five times as of this update, **REJECT all five**, each round's findings
+**General `reviewer`**: run six times as of this update, **REJECT all six**, each round's findings
 remediated in the commits that follow it:
 
 1. `b161d2f` — the tree was red (`tier-deps.mjs` failing on `Page` importing `MatchList`), eleven
@@ -672,15 +698,40 @@ remediated in the commits that follow it:
    pass: the six spec passages, the two wrong token names and this section's own accuracy are
    corrected together; the three additional components are tracked as open against the concurrent
    fix, not asserted closed here.
+6. Findings against the tree at `4a687f08`: **B1 (blocking)** — round five's own M2 fix for
+   `Button`'s `secondary`/`destructive` `active` state (`active:outline-2
+active:outline-offset-0 active:outline-<token>`) never painted. Every one of those elements
+   composes `outline-none`, and `tailwind.css`'s T096 restoration of `--tw-outline-style` fires only
+   under `:focus-visible`; `:active` left it `none` forever, so the class resolved to
+   `outline-style: none` at runtime — confirmed by compiling the package's own preset with
+   tailwindcss 4.3.3 and reading the emitted rule. The same dead idiom had been copied onto
+   `PrivacyNotice`'s "Object to what is held about me" anchor and `DataExportPanel`'s download
+   anchor. **The informal verification recorded for round five (commit `4a687f08`'s own message,
+   "Button's secondary/destructive active differs from hover") checked that two hashes differed, not
+   that this fix caused the difference** — they already differed, by the `background` fill swap the
+   third-pass fix (`1ca55e7`) landed two rounds earlier, present with or without the dead outline
+   classes; the 213-file capture right after round five's fix (`413b8501`) touched no pressed
+   non-primary `Button` baseline at all. **B2** — no story in the suite had ever captured a pressed
+   `secondary`/`destructive`/`ghost` `Button` on its own account (only as a side effect of
+   `composite-replayavailabilitylist`'s own story), so no baseline could have caught B1 regardless of
+   what the fix did. Remediated in the commit that lands this documentation update: the technique is
+   now `active:ring-2 active:ring-<token>` (Tailwind's box-shadow-backed `ring` utility, which never
+   reads `--tw-outline-style`), applied at all three call sites, and three new stories
+   (`SecondaryActive`, `DestructiveActive`, `GhostActive`) give every non-primary variant's press its
+   own baseline for the first time. The CSS is proven to paint by compiling it directly; the next
+   capture is what proves the baselines actually move — not yet run as of this entry.
 
-**A sixth pass, against the tree this remediation lands on, is what settles whether the pattern has
-finally stopped.** Production-readiness item 15's second half and the general "the general reviewer
-approves" clause of T577 itself are recorded **REJECT x5, remediated, re-review outstanding** — not
-approved. Five rounds each finding what the previous round's fix did not cover is itself evidence
-worth weighing: either the sixth pass finds nothing left of this shape, or it does not, and only
-running it settles which. Read this note as of its own date — 2026-09-09 — and re-derive nothing
-from it once a sixth pass has actually run; that pass's own entry, appended above rather than
-overwriting this one, is what carries forward.
+**The sixth pass ran, against `4a687f08`, and found B1/B2 above** — the pattern had not finally
+stopped; a sixth round found what the fifth round's own fix did not cover, the same shape every prior
+round found in the one before it. Production-readiness item 15's second half and the general "the
+general reviewer approves" clause of T577 itself are recorded **REJECT x6, remediated, re-review
+outstanding** — not approved. This remediation fixes B1/B2 and corrects the record passages the sixth
+pass named (`shared-primitives.md`, `Button/index.tsx`, this file); it does not yet carry a CI
+capture confirming the new `ring`-based press signal actually shows in a baseline in every theme and
+width the way the compiled-CSS proof says it does in isolation — that capture is the next step,
+dispatched after this lands. There is no seventh review round scheduled for this phase; this is its
+closing remediation. Read this note as of its own date — 2026-09-09 — and re-derive nothing from it
+once that capture has actually run.
 
 ### `docs/risks.md` front-end items
 

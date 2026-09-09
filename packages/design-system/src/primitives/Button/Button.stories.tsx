@@ -84,6 +84,40 @@ export const Active: Story = {
   parameters: { visualForceState: { state: 'active', role: 'button' } },
 }
 
+// Sixth-pass review remediation (B2): before this story, no baseline anywhere captured a pressed
+// non-primary `Button` on its own account — the only one in the whole suite was a side effect of
+// `composite-replayavailabilitylist`'s own story, which exercises `ReplayAvailabilityList`, not
+// `Button` directly. That is how the dead `active:outline-2` classes (see `index.tsx`'s own
+// comment for the trap) shipped as "verified": no test could fail from a change to
+// `variantClasses.secondary`, because no baseline captured it. This story, `DestructiveActive` and
+// `GhostActive` below are the proof — each must render a press visibly different from the same
+// variant's own resting frame (`Secondary`/`Destructive`/`Ghost` above), a `box-shadow` ring
+// (`active:ring-2 active:ring-border-strong` for `secondary`) flush against the permanent border.
+export const SecondaryActive: Story = {
+  args: { variant: 'secondary', children: 'Cancel' },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+
+// Sixth-pass review remediation (B2): `destructive`'s own pressed frame — `active:ring-2
+// active:ring-danger`, the same box-shadow-backed technique as `SecondaryActive`, in the boundary
+// token this variant already carries at every state (`border-danger`).
+export const DestructiveActive: Story = {
+  args: { variant: 'destructive', children: 'Unlink this profile' },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+
+// Sixth-pass review remediation (B2): `ghost`'s own pressed frame. Unlike `secondary`/
+// `destructive`, `ghost`'s active technique was never the defect B1 found — it starts from
+// `border-transparent` at rest and paints `border-border-strong` only at `active` (the same
+// reserve-then-paint technique `Menu`/`Table`/`MatchRow`/`PlayerResultRow`/`FavouritesList` use),
+// a real `border` the whole time, never an `outline`. This story exists for the same reason the
+// other two do: FR-042 asks a named story per variant per applicable state, and none of `ghost`'s
+// three states had one of its own before this remediation either.
+export const GhostActive: Story = {
+  args: { variant: 'ghost', children: 'Manage' },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+
 // §Button "error": "the button has no error state of its own. The failure renders in a `Callout`
 // beside or above it and the button returns to `default` and to being pressable" — shown here
 // rather than only described, so the answer is a picture rather than a sentence to trust.

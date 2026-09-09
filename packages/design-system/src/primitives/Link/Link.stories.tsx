@@ -44,11 +44,14 @@ export const StandaloneExternal: Story = {
   },
 }
 
-// §9's hover acceptance criterion: the hover capture differs from the rest capture in *two* ways
-// — the ink and the underline thickness (FR-037), captured by hovering the link below with the
-// pointer (`tests/visual/stories.spec.ts` drives the real `:hover` state; this story exists so
-// there is something to drive).
-export const RestAndHover: Story = {
+// §9's hover acceptance criterion: the hover capture (the separate `Hover` story below, which
+// carries the real `visualForceState` `tests/visual/stories.spec.ts` drives) differs from this
+// story's own rest frame in *two* ways — the ink and the underline thickness (FR-037). Renamed
+// from `RestAndHover` (sixth-pass review, M2): this story carries no `visualForceState` of its own,
+// so its six baselines are rest frames only, never a real `:hover` capture — the caption below is
+// for a human browsing Storybook by hand, not for the automated suite, which the story's former
+// name and comment both implied it drove.
+export const Rest: Story = {
   render: (args) => (
     <div className="flex flex-col gap-1">
       <p className="type-supporting text-sm text-text-secondary">
@@ -95,7 +98,7 @@ export const Empty: Story = {
 }
 
 // structural-tier.md §9 "hover — ink `link-hover`, underline thickens to `border.ring`." Its own
-// named story rather than only `RestAndHover`'s invitation above. `tests/visual/stories.spec.ts`
+// named story rather than only `Rest`'s invitation above. `tests/visual/stories.spec.ts`
 // drives the real `:hover` from Playwright once this story has settled (see that file's own
 // `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
 // pseudo-class ignores.

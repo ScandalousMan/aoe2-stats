@@ -942,3 +942,76 @@ needs this row updated, which is why it is not folded into a spec written once.
    further out of date) rather than reusing `Default`'s exact fixture set, which is source work under
    `packages/design-system/src/` and therefore also outside this remediation's touch-scope. **Owner:
    T581. Fix by 2026-09-16.**
+
+## Contrast-signal and duplicate-baseline gap register
+
+**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2). Four findings
+the review judged real but not blocking against B1/B2 (the `Button` `active:outline` defect this
+same pass's remediation fixes) — filed here rather than folded into the fix, for the same reason the
+three registers above are: each is a fact about this package's current state that a future task can
+close on its own, not a defect this remediation's scope covers.
+
+1. **H1 — a focused `primary` `Button`'s ring can read at 1.00:1 against the surface behind it, not
+   only against its own fill.** `accent-contrast` (the ring colour DS-10 closed with, above) equals
+   `surface-raised` in the light theme and `background` in the dark theme; wherever the button's own
+   `accent` fill does not fully separate the ring from the page behind it, the ring-to-surface pair
+   can measure near 1:1 even though the ring clears 6.07:1 light / 8.07:1 dark against the fill it is
+   actually drawn on — the only pair `build-tokens.test.mjs` asserts today. DS-10's own reasoning
+   (`color-tokens.md` §5, T521's proof) — that a primary button's ring can only ever clear 3:1
+   against its fill, never against both the fill and `surface-raised` at once — is sound and this row
+   does not reopen it. What it notes instead: `Callout`'s `FocusVisible` story comment and
+   `shared-primitives.md` currently describe this ring as meeting the non-text contrast floor without
+   naming which adjacency that floor was measured against, which overstates what that story's frame
+   actually shows against the page behind it. Fix: extend `build-tokens.test.mjs` to assert the ring
+   against **both** adjacencies it can actually sit on in practice — the fill (already asserted) and
+   each surface the variant may render on (`surface-raised`, `background`) — so a future colour
+   change that widens this gap fails a test instead of shipping unnoticed, and correct the two
+   passages above to state which adjacency each is describing. **Owner: T582. Fix by 2026-09-20.**
+2. **M1 — a colour wash presented as the "non-colour" half of FR-037 is both the wrong category and,
+   in the dark theme, close to imperceptible.** `Link`'s `standalone` variant (`structural-tier.md`
+   §9's `active` bullet) and `PrivacyNotice`'s `Contents` entries (`privacy-notice.md`'s `active`
+   bullet, `index.tsx`'s `active:bg-surface-sunken`) both add a `surface-sunken` fill on press with
+   no other change, and `privacy-notice.md` names it "the second signal its own shape owes" — a wash
+   is a colour change, not the non-colour signal FR-037's "more than colour" half asks for (the
+   distinction `Button/index.tsx`'s own comment and `shared-primitives.md` draw for `secondary`/
+   `destructive`, this same remediation). Measured, the wash is also faint: `surface-sunken` against
+   the resting fill it replaces contrasts 1.18:1 in the light theme and **1.07:1 in the dark
+   theme** — both far under any floor this system asserts elsewhere, meaning `Link`'s
+   `ActiveStandalone` story and `PrivacyNotice`'s `Contents` press frame are technically distinct
+   still images (FR-037's literal "never byte-identical" half holds) but not observably distinct to
+   a reader, which is not what either half of FR-037 is for. Fix: give `standalone`'s press its own
+   non-colour signal the way `Button`'s bordered variants now have one (this remediation) — a
+   reserved-border or box-shadow ring, not a second, barely-visible fill — and correct
+   `structural-tier.md` §9 and `privacy-notice.md` to stop describing the current wash as the
+   non-colour signal. **Owner: T583. Fix by 2026-09-18.**
+3. **L1 — a story's own responsive-viewport pin or its own state/variant class can make its baseline
+   byte-identical to another story's, independent of whether the two document the same fact.**
+   General shape, not fully enumerated by this remediation (a full audit needs comparing baselines
+   pairwise across all 537 stories, out of this docs-only pass's scope): a story pinned to one
+   `globals.viewport` value can render identically to an unpinned story captured at the same width by
+   the visual suite's own width axis (the same benign mechanism `Menu`'s `Selection` /
+   `SheetBelowMd` pair is — see `quickstart.md`'s own correction of the fifth pass's Menu finding),
+   and a story asserting one state/variant combination can duplicate another's if the two classes it
+   sets happen to compose to the same resting frame. Fix: a script comparing every story's baseline
+   set against every other's by hash, flagging any pair not already named as a deliberate
+   equivalence class (the way `Menu.stories.tsx`'s own T569 comment names `Selection`/
+   `ProfileSwitcher`/`SheetBelowMd`), so a future duplicate is caught mechanically rather than by the
+   next adversarial review reading images by hand. **Owner: T584. Fix by 2026-09-23.**
+4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carry byte-identical `args`
+   (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`), confirmed by
+   reading the file, the same pattern as the `Menu` equivalence class above** — but the review that
+   found it reports the two are meant to demonstrate different things (`SignedIn` for the signed-in
+   scenario, `Selection` for the vocabulary state) and that `SiteHeader`'s selection mark itself, in
+   at least one of the widths this pair is captured at, lives inside a closed `Menu`/sheet rather
+   than the visible top-nav underline the 1280 frame shows — a claim this remediation has not
+   independently reproduced (it needs a browser, out of this task's scope) and records rather than
+   asserts. Fix: either give `Selection` `args` that actually differ from `SignedIn`'s (a second nav
+   item as current, say), or — if the two are genuinely one equivalence class the way `Menu`'s three
+   are — add the same kind of comment `Menu.stories.tsx:258-260` carries, naming it on purpose rather
+   than leaving a reader to wonder. **Owner: T585. Fix by 2026-09-23.**
+
+Also recorded, not registered here because each is a two-minute fix rather than an open gap:
+`Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
+register, because its own comment claimed the suite drives a real `:hover` for it and the story
+carries no `visualForceState` — its baselines are rest frames, and the name and comment said
+otherwise (sixth-pass review, M2).
