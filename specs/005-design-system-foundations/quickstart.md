@@ -215,19 +215,22 @@ asked the three questions. This is a mixed verdict, not a pass.
    superseded by a rebase before landing; only the surviving commit is citable, which is why neither
    is named by hash here.)
 
-   **Correction, fifth-pass review, 2026-09-09.** Checked against the current, checkmark-fixed
-   tree, `Menu/Selection` and `Menu/ProfileSwitcher` are **not** a duplicate pair: they differ at
-   1280 (a label, bounding box `(41,40)-(205,42)`). The pair that genuinely is byte-identical today
-   is `Selection` == `SheetBelowMd`, and that one is benign and already honestly documented rather
-   than a defect: `SheetBelowMd`'s `globals.viewport` pin (`Menu.stories.tsx`) is cosmetic to the
-   browsable Storybook only, the same mechanism `MatchRow.stories.tsx:305-307` and
-   `.storybook/preview.tsx:15` both say so of; the visual suite's own width axis is what actually
-   governs a capture's dimensions, driven by `tests/visual/stories.spec.ts:193`
-   (`page.setViewportSize`, with only `globals=theme:` in the URL it builds — no viewport global).
-   `Selection` and `SheetBelowMd` carry identical `args`, so whichever width the suite captures them
-   at, the two render identically by construction, not by a bug; the pin only changes what a
-   developer sees browsing the story by hand. Recorded here so a sixth review pass does not have to
-   re-derive it.
+   **Correction to the fifth-pass review's correction, verified directly, 2026-09-09.** The fifth
+   pass claimed `Menu/Selection` and `Menu/ProfileSwitcher` differ at 1280 (a label, bounding box
+   `(41,40)-(205,42)`). Checked against the current tree with `md5` rather than trusted: they do
+   **not** differ — `primitives-menu--selection-light-1280.png`,
+   `primitives-menu--profile-switcher-light-1280.png` and `primitives-menu--sheet-below-md-light-
+1280.png` all hash to `e5c30e6093588555b98ab585958f1adf`; only `primitives-menu--focus-visible-
+light-1280.png` differs (`959e1bbf…`). `Menu.stories.tsx:258-260`'s own T569 comment says why:
+   `Selection` was **added** with `ProfileSwitcher`'s identical `args`, deliberately, because a
+   reader browsing for "selection" or `visual-reviewer` mapping a capture to the vocabulary has
+   nothing to find under `ProfileSwitcher`'s consumer-scenario name — renaming `ProfileSwitcher`
+   instead would have changed its story id and orphaned its baseline. All three — `Selection`,
+   `ProfileSwitcher`, `SheetBelowMd` — are one honestly-documented equivalence class, not two. The
+   fifth pass's bbox measurement does not reproduce; this is the second time in this review chain a
+   reviewer's own cited measurement, not just a judgment, has been wrong (the fourth pass corrected
+   the third's evidence for an otherwise-correct `Dialog` conclusion the same way). Recorded here,
+   directly verified, so a sixth pass does not inherit the error a fourth time.
 
 Two of the three fixes above landed only after this run named them, and Q1's accessibility half is
 still open. What remains — no `docs` entries in the build, docgen off so no prop tables, no
@@ -660,9 +663,12 @@ remediated in the commits that follow it:
    `CountryFlag` and `ProfileSummary`'s flag render hover and pressed as byte-identical images,
    carrying no `hover:`/`active:` class at all, so they matched none of round 4's greps — found and,
    as of this entry, being fixed by a change concurrent with this one, not yet confirmed landed. A
-   corrected record, not a defect: this file's own scenario-9 note that `Menu/Selection`,
-   `Menu/ProfileSwitcher` and `Menu/FocusVisible` render pixel-identically was itself wrong (see the
-   FR-037 note's own correction below). Remediated in the same change that lands this documentation
+   corrected record, not a defect: the fifth pass itself claimed this file's scenario-9 note (that
+   `Menu/Selection`, `Menu/ProfileSwitcher` and `Menu/FocusVisible` render pixel-identically) was
+   wrong. Checked directly by `md5` rather than trusted forward: it was not wrong — `Selection` and
+   `ProfileSwitcher` genuinely are byte-identical, and the fifth pass's own cited bounding-box
+   evidence for the opposite does not reproduce against the tree. See the FR-037 note's correction
+   above, which corrects the correction. Remediated in the same change that lands this documentation
    pass: the six spec passages, the two wrong token names and this section's own accuracy are
    corrected together; the three additional components are tracked as open against the concurrent
    fix, not asserted closed here.
