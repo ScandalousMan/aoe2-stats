@@ -472,20 +472,38 @@ has not been exercised by any CI run either.
     independent third-pass review found — a stale `Field` baseline contradicting the very "48px vs
     40px" evidence this run itself cites, `ProfileSummary`'s `UnlinkInFlight` opening the wrong menu,
     and `Button`'s active state being identical to hover on three variants. The second half is not
-    met either: the general reviewer has returned REJECT twice, and the pass over the remediated tree
-    is outstanding. See "Reviewer gates" below.
+    met either: the general reviewer has returned REJECT four times as of this update, and the pass
+    over the remediated tree is outstanding. See "Reviewer gates" below.
 
 **FR-037** (not one of the fifteen numbered criteria above, and no named success criterion below
 covers it either — checked here because a third-pass adversarial review found it silently absent
 from both, finding M2c): "Two states of the same component MUST be distinguishable from one another
-by more than colour, and MUST be distinguishable in a still image." **Not met, as of this walk.**
-That same third-pass review is the source of all three breaches: `Button`'s `secondary`, `ghost` and
-`destructive` variants render an identical still image for `active` and `hover`; `ProfileSummary`'s
-`UnlinkInFlight` state renders the same still image as `SwitcherFocusVisibleAndOpen`; and
-`AccountErasurePanel`'s `minting` state renders the same still image as `confirming`. This entry
-records the state of the branch at the time of this walk, not a verdict on work this session did not
-see land: a sibling change is fixing all three now, and FR-037 moves to "met" only once that change's
-own baselines confirm each pair is a still-image difference, not before.
+by more than colour, and MUST be distinguishable in a still image."
+
+**Updated 2026-09-09, after the third and fourth review rounds' fixes both landed and were
+independently verified against the checked-in baselines, not narration.** The third pass named three
+breaches (`Button`'s `secondary`/`ghost`/`destructive` `active`==`hover`; `ProfileSummary`'s
+`UnlinkInFlight`==`SwitcherFocusVisibleAndOpen`; `AccountErasurePanel`'s `minting`==`confirming`);
+that fix landed and a capture confirmed all three pairs now hash differently. The **fourth** pass then
+found the same literal pattern — one surface token repeated at both `hover:` and `active:` — live in
+eleven more files, measured byte-identical against the same capture: `Table`, `Link`, `MatchRow`,
+`FavouritesList`, `PlayerResultRow`, `Footer`, `PrivacyNotice` (three call sites),
+`ThirdPartyObjectionForm`, `AccountErasurePanel`. Two specs (`structural-tier.md`) had stated the
+identity as deliberate design, citing FR-038's "a difference a spec states" clause — which governs
+consistency _between_ controls, not a control's own two states; FR-037 carries no such clause. That
+misreading is why the class went unnoticed through two review rounds.
+
+The class-wide fix landed in the commit after this walk was last touched and has since been
+independently verified, pair by pair, against the checked-in baselines (`md5`, not the fix's own
+claim): every one of the fourteen pairs now hashes differently. Rows and inline links moved to a
+non-colour signal (a reserved left border painted on press; an underline-offset shift) rather than a
+second fill, which is what the requirement's "more than colour" actually asks for.
+
+**FR-037 now holds against every instance a review has found**, verified independently. This is not
+the same claim as "no instance remains" — four rounds each found what the previous round's fix did
+not cover, and a fifth review pass over this exact commit is what decides whether that pattern has
+stopped. Do not read "holds against every found instance" as "APPROVE"; read the "Reviewer gates"
+section for the actual verdict history.
 
 ### Named success criteria
 
@@ -571,20 +589,34 @@ at all.
 `docs/risks.md`'s "visual-reviewer returns a reasoned FAIL" item still stays unticked below: the
 verdict was a PASS, and that item asks for a reasoned FAIL specifically.
 
-**General `reviewer`**: run twice, **REJECT both times**. The first pass's findings are recorded in
-`b161d2f`'s commit message ("An adversarial review rejected phase 6. Its first finding is the one
-that matters: the tree was red and had been for eleven commits" — `tier-deps.mjs` failing on
-`Page` importing `MatchList`, eleven state answers the completeness check had never actually
-checked per-component, `SearchBox`'s module-scoped clock freeze bleeding across stories, a
-320px-pinned story width, a duplicated accessible name, several `GOVERNANCE.md` citation errors,
-and the "no value changes in this phase" claim itself being false). The second pass's findings are
-in `2b8d05c` ("Second-pass review findings": `Dialog`'s focus trap excluding its own mount-focus
-target from the tabbable set, a `GOVERNANCE.md` date arithmetic error, an attribution note naming a
-capture "HEAD" one commit before it stopped being HEAD, and 375px living in two files). Both sets of
-findings were remediated in the commits that follow each (through `b6952d0`). **A third pass has
-not run.** Production-readiness item 15's second half and the general "the general reviewer
-approves" clause of T577 itself are recorded **REJECT x2, remediated, re-review outstanding** — not
-approved.
+**General `reviewer`**: run four times as of this update, **REJECT all four**, each round's findings
+remediated in the commits that follow it:
+
+1. `b161d2f` — the tree was red (`tier-deps.mjs` failing on `Page` importing `MatchList`), eleven
+   state answers the completeness check had never checked per-component, `SearchBox`'s module-scoped
+   clock freeze bleeding across stories, a 320px-pinned story width, a duplicated accessible name,
+   several `GOVERNANCE.md` citation errors, and "no value changes in this phase" being false.
+2. `2b8d05c` — `Dialog`'s focus trap excluding its own mount-focus target from the tabbable set, a
+   `GOVERNANCE.md` date arithmetic error, an attribution note naming a capture "HEAD" one commit
+   before it stopped being HEAD, and 375px living in two files.
+3. Findings against the tree at `eeec847`: `Field`'s size fix shipped without a recapture, so its
+   baselines still encoded the bug the fix closed; `ProfileSummary`'s `UnlinkInFlight` opened the
+   wrong menu; `Button`'s `secondary`/`ghost`/`destructive` active state was identical to hover.
+   Remediated in `1ca55e7`.
+4. Findings against the tree at `bc3849f`'s predecessor: the `Button` fix covered one component and
+   the identical `hover:X active:X` pattern was live in eleven more files (`structural-tier.md`
+   citing FR-038's escape clause for a shape FR-037 governs, which has none); `Dialog` and `Callout`
+   were painting Chromium's user-agent focus outline while two specs written in this same phase
+   described it in opposite, both-wrong directions; the `UnlinkInFlight` fix from round 3 only
+   worked at 375 because `Menu`'s popover had no inline-axis collision handling; `ProfileSummary`'s
+   `PrimaryChangeInFlight` was `UnlinkInFlight`'s sibling and had been left behind again. Remediated
+   in `bc3849f`.
+
+**A fifth pass, against the current tree, is what this update exists to request.** Production-
+readiness item 15's second half and the general "the general reviewer approves" clause of T577
+itself are recorded **REJECT x4, remediated, re-review outstanding** — not approved. Four rounds
+each finding what the previous round's fix did not cover is itself evidence worth weighing: either
+the fifth pass finds the pattern has stopped, or it has not, and only running it settles which.
 
 ### `docs/risks.md` front-end items
 
