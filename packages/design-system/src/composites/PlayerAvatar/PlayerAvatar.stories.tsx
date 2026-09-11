@@ -35,6 +35,8 @@ export const SizeSm: Story = {
   args: { avatarHash: FIXTURE_HASH, size: 'sm' },
 }
 
+// visual-equivalence: composite-playeravatar--loaded: size 'md' is this component's own default
+// (index.tsx's `size = 'md'`), so this renders identically to Loaded above.
 export const SizeMd: Story = {
   name: 'Size — md (64px, default, ProfileSummary board identity bar)',
   args: { avatarHash: FIXTURE_HASH, size: 'md' },
@@ -57,6 +59,9 @@ export const AbsentHash: Story = {
   args: { avatarHash: undefined },
 }
 
+// visual-equivalence: composite-playeravatar--absent-hash: player-avatar.md §4 "empty" — absent,
+// null, or blank after trimming all render "the same frame and fill, and nothing else" — so this
+// is byte-identical to AbsentHash above.
 export const NullHash: Story = {
   name: 'Empty — avatarHash null',
   args: { avatarHash: null },
@@ -64,6 +69,8 @@ export const NullHash: Story = {
 
 // §4 "error" — the hash resolves to a URL but the image fails to load or decode. `onError` removes
 // the `<img>`, leaving frame and fill: byte-identical to AbsentHash above.
+// visual-equivalence: composite-playeravatar--absent-hash: player-avatar.md §9's own acceptance
+// criterion requires the absent-hash and failed-hash stories to be pixel-identical, in both themes.
 export const FailedHash: Story = {
   name: 'Error — hash fails to load (must render identically to the empty story above)',
   args: { avatarHash: 'does-not-resolve-on-the-cdn' },

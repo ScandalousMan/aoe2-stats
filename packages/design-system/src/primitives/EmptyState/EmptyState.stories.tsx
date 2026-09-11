@@ -59,6 +59,10 @@ export const BesideALoadingRegion: Story = {
 
 // The caller defect this component exists to make impossible to ship silently: with neither a
 // heading nor an explanation, nothing renders at all — never a padded, bordered, wordless box.
+// visual-equivalence: primitives-errorstate--no-heading-renders-nothing: both stories share the
+// identical "Nothing renders below this line." wrapper markup and wrap a component that
+// structural-tier.md requires to render nothing (§12 "empty" here, §13 "empty" there), so the two
+// frames are byte-identical.
 export const NoContentRendersNothing: Story = {
   render: () => (
     <div>

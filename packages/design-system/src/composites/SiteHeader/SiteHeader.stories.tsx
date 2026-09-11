@@ -67,6 +67,10 @@ export const SignedOut: Story = {
   args: { items: [] },
 }
 
+// visual-equivalence: composite-siteheader--signed-in: args are identical
+// ({ items, currentPath: '/dashboard' }) and every story is captured at 375/768/1280 as a matter of
+// course (T504), so this story's own "375px" framing adds a Storybook-reader affordance, not a
+// captured fact distinct from SignedIn.
 export const SmallViewport: Story = {
   name: '375px — Brand alone on the first row, items wrap beneath it (§8)',
   args: { items, currentPath: '/dashboard' },

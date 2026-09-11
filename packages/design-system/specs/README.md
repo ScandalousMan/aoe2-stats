@@ -1051,8 +1051,8 @@ which is why it is not folded into a spec written once.
 ## Contrast-signal and duplicate-baseline gap register
 
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2); **row 1 closed
-2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 4 closed 2026-09-11 (T585)**, row 3
-remains open (owner T584, below). Four findings the review judged
+2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584)**, **row 4
+closed 2026-09-11 (T585)** — all four rows now closed. Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1120,18 +1120,81 @@ on its own, not a defect this remediation's scope covers.
    this component's DOM order) both move a baseline for this fix — regenerated from CI in a follow-up
    commit, per this package's own no-local-Chromium discipline. **Owner: T583. Closed 2026-09-11.**
 3. **L1 — a story's own responsive-viewport pin or its own state/variant class can make its baseline
-   byte-identical to another story's, independent of whether the two document the same fact.**
-   General shape, not fully enumerated by this remediation (a full audit needs comparing baselines
-   pairwise across all 537 stories, out of this docs-only pass's scope): a story pinned to one
-   `globals.viewport` value can render identically to an unpinned story captured at the same width by
-   the visual suite's own width axis (the same benign mechanism `Menu`'s `Selection` /
-   `SheetBelowMd` pair is — see `quickstart.md`'s own correction of the fifth pass's Menu finding),
-   and a story asserting one state/variant combination can duplicate another's if the two classes it
-   sets happen to compose to the same resting frame. Fix: a script comparing every story's baseline
-   set against every other's by hash, flagging any pair not already named as a deliberate
-   equivalence class (the way `Menu.stories.tsx`'s own T569 comment names `Selection`/
-   `ProfileSwitcher`/`SheetBelowMd`), so a future duplicate is caught mechanically rather than by the
-   next adversarial review reading images by hand. **Owner: T584. Fix by 2026-09-23.**
+   byte-identical to another story's, independent of whether the two document the same fact —
+   closed.** `scripts/checks/story-baselines-duplicates.mjs` (T584) does the full pairwise audit the
+   fifth/sixth-pass remediations could not (out of a docs-only pass's scope): every story's own
+   six-capture set ({light, dark} x {375, 768, 1280}), hashed and compared against every other's,
+   across the whole tree — 540 stories, zero unmapped either direction. It found **25 full-set
+   (six-of-six) matches** and **8 partial matches** (one width or theme differing, the ordinary shape
+   responsive collapse produces — reported by the check, never failed): `Dialog`'s
+   `FocusVisible`/`KeyboardFocusOrderAndTrap` and `ProfileSummary`'s `Board`/`BoardMobile` and
+   `Board`/`BoardRatingsCardsBelowLg` (5/6 each); `UploadControl`'s
+   `RealSelectionThenSuccess`/`Succeeded`, `ProfileSummary`'s `BoardMobile`/`BoardRatingsCardsBelowLg`,
+   and the `Menu` `ProfileSwitcher`/`Selection`/`SheetBelowMd` trio, pairwise (4/6 each) — that trio is
+   exactly the pair the fifth/sixth-pass remediations already named as a deliberate equivalence
+   (`Menu.stories.tsx`'s own T569 comment), but the audit itself only ever _requires_ an account of a
+   **full** match; a partial one is not converted to the check's own `visual-equivalence` marker
+   syntax, so T569's prose comment is left as it was, not force-fit into a mechanism whose own
+   validity check would otherwise flag it as covering a pair that is not (quite) currently identical.
+   Each of the 25 full matches is either a genuine, deliberate equivalence — documented with a
+   `// visual-equivalence: <story-id>: <reason>` comment the check parses and validates (stale if the
+   pair ever stops matching) — or a real gap, tracked as a dated debt entry in
+   `scripts/visual/story-baseline-duplicates-debt.json` rather than laundered as deliberate:
+
+   - **Deliberate (24 groups, one `visual-equivalence` marker graph each):**
+     - A `reviewWidthNarrow`/`globals.viewport` pin (or a bare "375/mobile/small-viewport" name with
+       no pin at all) overridden by the visual suite's own 375/768/1280 capture axis (T504) —
+       `AnalysisTimeline` `Published`/`StackedColumnsBelowMd`; `FavouritesList` `Default`/
+       `StackedBelowMd`; `ReplayAvailabilityList` `RealisticMatch`/`StackedRowsBelowMd`; `MatchRow`
+       `ListPopulated`/`ListCardsBelowXl`; `SiteHeader` `SignedIn`/`SmallViewport`; `UploadControl`
+       `FileChosen`/`FileChosenMobile`; `PrivacyNotice` `Default`/`MobileViewport`.
+     - A `size="md"` story equalling its component's own default size (`index.tsx`'s `size = 'md'`)
+       — `CivilisationIcon`, `MapThumbnail`, `PlayerAvatar` `Default`/`Loaded` vs. `SizeMd`.
+     - A spec-mandated pixel-identical error/empty pair (`onError` removing an image, its frame and
+       any dependent surface together, leaving the same empty render as the uncovered case) —
+       `CivilisationIcon` `FailedImage`/`UncoveredCivilisation` (civilisation-icon.md §4);
+       `CountryFlag` `FailedImage`/`UncoveredCountry` (country-flag.md §11.4); `MapThumbnail`
+       `FailedImage`/`UncoveredMap` (map-thumbnail.md §4); `PlayerAvatar` `AbsentHash`/`FailedHash`/
+       `NullHash` (player-avatar.md §4 "empty" and §9's own acceptance criterion);
+       `PlayerColourSwatch` `NotRecorded`/`OutOfRange` (player-colour-swatch.md §4).
+     - A composite that renders as its wrapped primitive alone, with no visible extra markup —
+       `CaptureStateBadge` `Archived`/`StillCatchableNoDeadline` equalling `Badge`'s own `Success`/
+       `Warning` stories (capture-state-badge.md §2's own "two elements, never more", no
+       `SecondaryLine` in either case).
+     - A "renders nothing" case shared verbatim across component files: the payload renders `null`,
+       and the demonstrating stories share the identical "Nothing renders below this line —" wrapper
+       markup — `CaptureStateBadge` `Empty` / `CountryFlag` `NoCountryAtAll` / `PlayerColourSwatch`
+       `BlankPlayerName` (three components, one shared affordance); `EmptyState`
+       `NoContentRendersNothing` / `ErrorState` `NoHeadingRendersNothing` (structural-tier.md §12/§13,
+       each independently "empty ... renders nothing").
+     - A prop distinction that is invisible in the rendered frame, per the component's own contract
+       — `MatchRow` `ListOtherSubjectPopulated`/`ListPopulated`: `subject="other"` changes only the
+       `<table>`'s `captionHidden` (sr-only) caption and the `<ul>`'s `aria-label`, both invisible
+       (match-history.md §11.3/§11.6); `PlayerResultRow` `NoUnverifiedSteamClaimKnown`/
+       `SourceBacked`: `index.tsx`'s `!= null` check renders an explicit `null` exactly like the
+       omitted (`undefined`) field `SourceBacked`'s own fixture already carries (player-search.md
+       §4a); `FavouriteToggle` `Marked`/`MarkedAtLimit`: §5's own "bounded" paragraph — `atLimit`
+       only affects the unmarked→add direction, "a favourited profile is never blocked by the bound";
+       `Tooltip` `Blank`/`Loading`: both hit the component's one `isBlank` branch by design (§4
+       "loading"); `Tooltip` `Default`/`DismissedAfterBlur`: §10's own acceptance criterion asks only
+       for "no surface anywhere in the frame" after a blur dismiss, which the untouched resting frame
+       already satisfies; `DataExportPanel` `Empty`/`Idle`: the story's own name already says
+       "identical rendering to Idle" (privacy-data-rights.md §5 "empty").
+   - **Suspect (1 group, tracked as debt, not laundered as deliberate):**
+     `MapThumbnail`'s `Loading` and `PlayerAvatar`'s `Loading` render byte-identical, but not for a
+     reason either story's name claims. `MapThumbnail`'s own render pairs a block `Skeleton` with a
+     `Skeleton variant="text" className="w-24"` meant to depict the map name loading beside it, but
+     `Skeleton`'s `text` branch (`packages/design-system/src/primitives/Skeleton/index.tsx`) never
+     applies the caller's `className` to size the line — confirmed independently reproducing on
+     `CivilisationIcon`'s own `Loading` story, which pairs a `Skeleton` the same way — so the second
+     skeleton renders at an indeterminate width and is invisible in the captured frame, leaving only
+     the one block skeleton `PlayerAvatar`'s `Loading` also shows (which never had a second skeleton
+     by design — its own render has no accompanying text). Recorded in
+     `scripts/visual/story-baseline-duplicates-debt.json`: found 2026-09-11, **fix by 2026-09-25**.
+     Not fixed by this task (T584's own scope is the check and the register, not this defect).
+
+   **Owner: T584. Closed 2026-09-11.**
+
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
    review reported two things; each is handled on its own:

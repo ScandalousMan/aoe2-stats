@@ -170,7 +170,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -193,7 +193,7 @@ jobs:
       # a skip exists only so a developer without Postgres running locally is not blocked.
       - run: uv run pytest -q
         env:
-          PYTEST_DISABLE_NETWORK: "1"
+          PYTEST_DISABLE_NETWORK: '1'
 
   web:
     name: Web — types, lint, unit tests, built stylesheet, routing
@@ -268,6 +268,14 @@ jobs:
       # failure mode (a stale suppression the scan no longer reports) needs Playwright's results
       # and belongs to T507's scan in the `visual` job instead.
       - run: node scripts/checks/a11y-allowlist.mjs
+      # T584: row 3 (L1) of packages/design-system/specs/README.md's "Contrast-signal and
+      # duplicate-baseline gap register" — a story's own responsive-viewport pin or its own
+      # state/variant class can make its captured baseline set byte-identical to another story's,
+      # independent of whether the two document the same fact. Reads committed baselines and story
+      # source only, no Storybook build, same as the other static checks above; its own `node --test`
+      # suite (real temp-dir fixtures, not the live tree) runs immediately after.
+      - run: node scripts/checks/story-baselines-duplicates.mjs
+      - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
 
   visual:
     name: Visual regression — affected stories and the built application
@@ -353,7 +361,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

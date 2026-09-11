@@ -156,6 +156,9 @@ export const RealisticList: Story = {
 // the narrow shape with the declared `reviewWidthNarrow` viewport via `globals.viewport` (see
 // `MatchRow.stories.tsx`'s identical rationale for why a declared option rather than a Storybook
 // device preset) — `RealisticList` above already reads at the wide, one-line shape.
+// visual-equivalence: composite-favouriteslist--default: the reviewWidthNarrow viewport pin is
+// overridden by the visual suite's own 375/768/1280 capture axis (T504), and the entries are
+// identical to Default's, so all six baselines match.
 export const StackedBelowMd: Story = {
   name: 'Stacked card below md, one line from it (§8)',
   globals: { viewport: { value: 'reviewWidthNarrow' } },

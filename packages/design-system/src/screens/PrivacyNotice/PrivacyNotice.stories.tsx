@@ -76,6 +76,10 @@ export const WithProcessingRegisterLink: Story = {
 // captured at 375px as a matter of course (T504), so this story needs no tag to reach that width.
 // §10's acceptance criterion is "at 375 no horizontal scrollbar… in any section, including both
 // tables"; this is the story that can actually catch a regression of it.
+// visual-equivalence: screens-privacynotice--default: args are identical
+// ({ lastUpdated: '2026-08-30', hrefs }) and every story is captured at 375px as a matter of course
+// (T504, per this story's own comment above), so this story adds a Storybook-reader affordance, not
+// a captured fact distinct from Default.
 export const MobileViewport: Story = {
   name: '375px viewport — §4.4 storage tables stack, no horizontal overflow',
   args: { lastUpdated: '2026-08-30', hrefs },

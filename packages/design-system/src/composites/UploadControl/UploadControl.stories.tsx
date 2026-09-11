@@ -113,6 +113,10 @@ export const UploadingValidating: Story = {
 // story needs no tag to reach that width — it exists for its own name, not to opt into a capture.
 // `file-chosen`'s seeded file (index.tsx) already carries a realistic long name, so no extra
 // fixture is needed.
+// visual-equivalence: composite-uploadcontrol--file-chosen: args are identical
+// ({ gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' }) and every story is captured
+// at 375px as a matter of course (T504, per this story's own comment above), so this story adds a
+// Storybook-reader affordance, not a captured fact distinct from FileChosen.
 export const FileChosenMobile: Story = {
   name: '375px viewport — a long file name wraps instead of being cut to a stub',
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' },

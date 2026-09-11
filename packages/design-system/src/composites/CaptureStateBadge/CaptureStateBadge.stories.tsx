@@ -42,6 +42,9 @@ function inFromNow(ms: number): string {
 }
 
 // The user-facing label for `stored` — never "Safe" (capture-state-badge.md §3).
+// visual-equivalence: primitives-badge--success: `stored` carries no SecondaryLine (§3's own
+// table), so this composite renders as `Badge` alone (label "Archived", tone `success`) — anatomy
+// §2's own "two elements, never more" — byte-identical to `Badge`'s own Success story.
 export const Archived: Story = {
   args: { captureStatus: 'stored' },
 }
@@ -63,6 +66,9 @@ export const StillCatchableWindowClosing: Story = {
   args: { captureStatus: 'pending', captureDeadlineAt: inFromNow(-5 * 60_000) },
 }
 
+// visual-equivalence: primitives-badge--warning: a null deadline makes `secondaryLineFor` return no
+// SecondaryLine, so this composite renders as `Badge` alone (label "Still catchable", tone
+// `warning`) — byte-identical to `Badge`'s own Warning story.
 export const StillCatchableNoDeadline: Story = {
   name: 'Still catchable — no deadline yet (should not happen, never trusted blindly)',
   args: { captureStatus: 'pending', captureDeadlineAt: null },
@@ -132,6 +138,11 @@ export const Loading: Story = {
 
 // §6 "empty": no `ReplayCapture` row exists yet — renders nothing. Rendered inside a labelled
 // wrapper so the empty result is visibly confirmable rather than an indistinguishable blank canvas.
+// visual-equivalence: composite-countryflag--no-country-at-all: both wrap a component that renders
+// null in the identical "Nothing renders below this line —" dashed-panel affordance, copied
+// verbatim across the two story files.
+// visual-equivalence: composite-playercolourswatch--blank-player-name: same shared wrapper markup
+// as CountryFlag's NoCountryAtAll above, wrapping a different component that also renders null.
 export const Empty: Story = {
   render: () => (
     <div className="rounded-panel border border-dashed border-border p-4 font-sans text-xs text-text-secondary">

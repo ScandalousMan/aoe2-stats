@@ -1,0 +1,8 @@
+[
+  {
+    "storyIds": ["composite-mapthumbnail--loading", "composite-playeravatar--loading"],
+    "found": "2026-09-11",
+    "fixOwed": "MapThumbnail's Loading story pairs a block Skeleton with a `Skeleton variant=\"text\" className=\"w-24\"` meant to depict the map name loading beside it, but Skeleton's `text` branch (packages/design-system/src/primitives/Skeleton/index.tsx) never applies the caller's `className` to size the line — confirmed independently reproducing on CivilisationIcon's own Loading story, which uses the same pairing — so the second skeleton renders at an indeterminate width and is invisible in the captured frame, making MapThumbnail's Loading baseline pixel-identical to PlayerAvatar's, which never had a second skeleton by design. Fix `Skeleton`'s `text` variant to size itself from the caller's `className` (or add an explicit width prop) so MapThumbnail's Loading baseline actually shows both parts of its own anatomy.",
+    "fixBy": "2026-09-25"
+  }
+]

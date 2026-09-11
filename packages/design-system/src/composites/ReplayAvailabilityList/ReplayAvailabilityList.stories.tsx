@@ -253,6 +253,9 @@ export const RealisticMatch: Story = {
 // `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
 // rationale for why a declared option rather than a Storybook device preset) — `RealisticMatch`
 // above already reads at the wide, one-line shape.
+// visual-equivalence: composite-replayavailabilitylist--realistic-match: the reviewWidthNarrow
+// viewport pin is overridden by the visual suite's own 375/768/1280 capture axis (T504), and the
+// rows are identical to RealisticMatch's, so all six baselines match.
 export const StackedRowsBelowMd: Story = {
   name: 'Stacked row below md, one line from it (§9)',
   globals: { viewport: { value: 'reviewWidthNarrow' } },

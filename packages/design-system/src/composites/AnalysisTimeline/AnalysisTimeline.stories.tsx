@@ -162,6 +162,10 @@ export const LoadFailed: Story = {
 // with the declared `reviewWidthNarrow` viewport via `globals.viewport` (see
 // `MatchRow.stories.tsx`'s identical rationale for why a declared option rather than a Storybook
 // device preset) — `Published` above already reads at the wide, two-column shape.
+// visual-equivalence: composite-analysistimeline--published: the reviewWidthNarrow viewport pin is
+// overridden by the visual suite's own 375/768/1280 capture axis (T504), and the args are identical
+// to Published's, so all six baselines match — README "Contrast-signal and duplicate-baseline gap
+// register" row 3/L1.
 export const StackedColumnsBelowMd: Story = {
   name: 'Participant columns stacked below md, two-column grid from it (§8)',
   globals: { viewport: { value: 'reviewWidthNarrow' } },

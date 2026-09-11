@@ -139,6 +139,9 @@ export const UncoveredCountry: Story = {
 // §11.4 — `flagUrl` resolved but the image fails to load/decode. Must be pixel-identical to
 // UncoveredCountry above: the onError handler removes the image, its frame and its tooltip
 // together.
+// visual-equivalence: composite-countryflag--uncovered-country: country-flag.md §11.4 requires this
+// pixel-identical to UncoveredCountry — onError removes the image, its frame and its tooltip
+// together.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',
   args: { flagUrl: '/game-assets/flags/does-not-exist.svg', countryName: 'Kiribati' },
