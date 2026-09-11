@@ -1050,7 +1050,7 @@ which is why it is not folded into a spec written once.
 
 ## Contrast-signal and duplicate-baseline gap register
 
-**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2); **row 1 closed
+**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2; rows 5-6 added 2026-09-11 while verifying the closures above); **row 1 closed
 2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584)**, **row 4
 closed 2026-09-11 (T585)** — all four rows now closed. Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
@@ -1222,6 +1222,34 @@ data'`) and green after. Baselines regenerated from CI in a follow-up commit, pe
      evidence available to it does not support the claim. Recorded, not dismissed: if it reproduces
      later against the now-distinct `Selection` baseline, that is a new finding, not evidence this
      closure got wrong. **Owner: T585. Closed 2026-09-11.**
+
+5. **H2 — `DataExportPanel`'s download link signals press with a ring that cannot be seen, and no
+   story captures the state — open.** The link fills with `accent` and draws its press ring outward:
+   `active:ring-2 active:ring-offset-2 active:ring-offset-transparent active:ring-accent-contrast`
+   (`src/screens/DataExportPanel/index.tsx`). A transparent offset puts that ring on the surface
+   behind the link, and the link renders inside a `success` `Callout`, whose fill is
+   `bg-surface-raised` (`src/primitives/Callout/index.tsx`). `accent-contrast` **is**
+   `surface-raised` in the light theme, so the ring measures 1.00:1 there and 1.24:1 in the dark
+   theme: the non-colour half of FR-037 is painted where it cannot be seen. This is H1's mechanism
+   in the press state, found on 2026-09-11 while verifying T586's regeneration, and T586 fixed only
+   the focus ring. Nothing captures it either: no story focuses or presses this link, and
+   `DataExportPanel.stories.tsx`'s `HoverFocusActiveNotApplicable` says its states are "already
+   covered by their own components' stories", which is untrue — the link is a local anchor, not a
+   `Button`. So T586's own change to this link moved no baseline and is guarded only by
+   `tokens/accent-contrast-ring.test.mjs`. The story coverage is **T587**; the ring itself is part of
+   the decision below. **Fix by 2026-09-25.**
+6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
+   open, needs a design decision.** `Button`'s `primary` steps `accent` → `accent-hover` →
+   `accent-active` and adds no shape, mark, border or position at any step (`Button/index.tsx`), and
+   `DataExportPanel`'s download link follows it. Measured with `tokens/contrast.mjs`: 1.26:1
+   rest→hover and 1.28:1 hover→press in the light theme, 1.25:1 and 1.57:1 in the dark. FR-037 asks
+   for "more than colour", and this register's own bar (above) says a difference carried by a hue
+   shift alone is not reviewable from a still image; whether a luminance step of this size satisfies
+   it has never been decided, and six adversarial passes closed `secondary`, `ghost`, `destructive`,
+   `Link` and `PrivacyNotice` without asking it of the most prominent control in the system. The
+   same question governs what replaces row 5's invisible ring, and FR-038 requires both controls to
+   answer it the same way. Not a defect this register may close on its own: `product-designer` owns
+   the signal's shape. **Owner: T588. Fix by 2026-09-25.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
