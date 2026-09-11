@@ -979,34 +979,49 @@ written once (T575's amendment: the subject is this package, so the fact is file
 
 ## Duplicated logic and story-content gap register
 
-**Open as of 2026-09-09** (fifth-pass adversarial review). Two Low findings that are each a fact
-about this package's own source rather than about a component, filed here for the same reason the
-two registers above are: the subject is the package itself, so a future task changing either fact
-needs this row updated, which is why it is not folded into a spec written once.
+**Open as of 2026-09-09** (fifth-pass adversarial review); **row 1 closed 2026-09-11 (T580)**, row 2
+still open. Two Low findings that are each a fact about this package's own source rather than about
+a component, filed here for the same reason the two registers above are: the subject is the package
+itself, so a future task changing either fact needs this row updated, which is why it is not folded
+into a spec written once.
 
 1. **The WCAG 2.2 contrast-ratio formula (`srgbToLinear` / `relativeLuminance` / `contrastRatio`)
-   exists as three separate implementations**, all under `packages/design-system/` except the last:
-   `.storybook/foundations/Colour.stories.tsx:61-77`; `tokens/build-tokens.test.mjs:20-37`; and
-   `tests/visual/focus-ring.spec.ts:234-241` — the first two present as of the phase this register's
-   sibling sections describe, the third added during this phase (driving both themes through the
-   focus-ring's own colour math). Each carries a comment arguing it is not a duplicated
+   existed as three separate implementations — closed.** All under `packages/design-system/` except
+   the last: `.storybook/foundations/Colour.stories.tsx:61-77`; `tokens/build-tokens.test.mjs:20-37`;
+   and `tests/visual/focus-ring.spec.ts:234-241` — the first two present as of the phase this
+   register's sibling sections describe, the third added during this phase (driving both themes
+   through the focus-ring's own colour math). Each carried a comment arguing it was not a duplicated
    _measurement_ — `Colour.stories.tsx` derives its ratios live from the same generated token rather
-   than transcribing a number, and `focus-ring.spec.ts` computes from a `getComputedStyle`
+   than transcribing a number, and `focus-ring.spec.ts` computed from a `getComputedStyle`
    `rgb(...)` string rather than the `#rrggbb` hex the other two read, so reusing either existing
-   helper would mean converting one input format into the other just to call it — and each of those
-   three arguments is true on its own terms. What none of them changes is that the _formula itself_
-   — the sRGB-to-linear piecewise function, the relative-luminance weights, the contrast-ratio
-   arithmetic — is written out by hand three times rather than once: a correction to any one of the
-   three constants (the `0.03928` breakpoint, the `2.4` gamma, the `0.2126`/`0.7152`/`0.0722`
-   weights, the `0.05` WCAG offset) has to be found and applied in all three files to stay correct,
-   and nothing here fails a build if only two of the three are updated. CLAUDE.md's law is that a
-   fact written twice goes stale in one copy; a formula is the same hazard as a number under that
-   law. The fix is a single shared module (e.g. `packages/design-system/tokens/contrast.mjs`,
-   exporting the hex-based and the `{r,g,b}`-based entry points `Colour.stories.tsx` and
-   `build-tokens.test.mjs`/`focus-ring.spec.ts` respectively need) that all three import, which is
-   documentation-adjacent tooling work outside this remediation's touch-scope (`.storybook/`,
-   `tokens/` and `tests/` are all out of bounds for a docs-only pass). **Owner: T580. Fix by
-   2026-09-23.**
+   helper would have meant converting one input format into the other just to call it — and each of
+   those three arguments was true on its own terms. What none of them changed is that the _formula
+   itself_ — the sRGB-to-linear piecewise function, the relative-luminance weights, the
+   contrast-ratio arithmetic — was written out by hand three times rather than once: a correction to
+   any one of the three constants (the `0.03928` breakpoint, the `2.4` gamma, the
+   `0.2126`/`0.7152`/`0.0722` weights, the `0.05` WCAG offset) had to be found and applied in all
+   three files to stay correct, and nothing failed a build if only two of the three were updated.
+   CLAUDE.md's law is that a fact written twice goes stale in one copy; a formula is the same hazard
+   as a number under that law. Closed by extracting the one shared module,
+   `packages/design-system/tokens/contrast.mjs` (paired with `contrast.d.mts` so the TypeScript call
+   site gets a real type, the same split `scripts/visual/review-widths.mjs`/`.d.mts` already uses),
+   exporting `contrastRatioHex` (the entry point `Colour.stories.tsx` and `build-tokens.test.mjs`
+   call) and `contrastRatioRgb` (the entry point `focus-ring.spec.ts` calls, after its own
+   `parseRgb` — kept local, since parsing a live `getComputedStyle` string is that call site's own
+   I/O, not part of the formula) — and importing it from all three. `contrast.test.mjs` (run by the
+   same `node --test tokens/*.test.mjs` `build-tokens.test.mjs` already is) asserts the formula
+   against known reference values (`#000000`/`#ffffff` = 21:1, a colour against itself = 1:1,
+   `#767676`/`#ffffff` ≈ 4.54:1, symmetry, and hex/`{r,g,b}` agreement), confirms every contrast
+   assertion `build-tokens.test.mjs` already made still passes unchanged, and adds a recurrence
+   guard — a scan of `packages/`, `tests/`, `scripts/` and `apps/` for the `12.92` divisor together
+   with the `1.055` gamma denominator outside `contrast.mjs` — so a fourth hand-written copy fails a
+   build instead of waiting for a seventh adversarial pass to notice it. The `0.03928` linearisation
+   threshold (the older of two values WCAG has published for this breakpoint; current text uses
+   `0.04045`) is kept
+   as-is rather than "corrected" during the extraction, with a comment in `contrast.mjs` recording
+   why: for an 8-bit integer channel the two thresholds agree at every representable input, and a
+   changed constant would have made "no contrast ratio moved" unprovable for an extraction. **Closed
+   by T580, 2026-09-11.**
 2. **`FavouritesList.stories.tsx`'s `Default` (lines 45-47) and `RealisticList` (lines 101-103) carry
    byte-identical `args`** — both `{ entries: [rated, neverRanked, staleStanding] }` — so T566's
    "realistic composition" story for this component (FR-043, SC-012) produces six baselines (both

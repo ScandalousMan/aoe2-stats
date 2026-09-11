@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Section, Text } from '../../src'
 import { cx } from '../../src/lib/cx'
 import color from '../../tokens/color.json'
+import { contrastRatioHex } from '../../tokens/contrast.mjs'
 
 // T572 remediation (scenario 9). The reuse test in the `design-system` skill — "does an existing
 // token already satisfy this need?" — has to be answerable here, before a component is written,
@@ -53,32 +54,14 @@ function findSurface(key: SurfaceKey) {
 
 // --- Contrast, derived live -----------------------------------------------------------------
 // The same WCAG 2.2 relative-luminance formula `tokens/build-tokens.test.mjs` computes the
-// measured-pairs table with, reproduced here so this page can answer "is this pair legible?" from
+// measured-pairs table with — since T580, the one shared implementation in `tokens/contrast.mjs`,
+// rather than a second hand-written copy — so this page can answer "is this pair legible?" from
 // the two token values it is already painting, rather than sending the reader to
 // `specs/README.md`'s table for the number. This is a derivation of the generated token, not a
 // second copy of a measurement: nothing here is hand-typed, and an edit to `color.json` changes
 // what every ratio below reads on its next render.
-function srgbToLinear(channel: number) {
-  const c = channel / 255
-  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-}
-
-function relativeLuminance(hex: string) {
-  const value = hex.replace('#', '')
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16))
-  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b)
-}
-
-function contrastRatio(hexA: string, hexB: string) {
-  const lA = relativeLuminance(hexA)
-  const lB = relativeLuminance(hexB)
-  const lighter = Math.max(lA, lB)
-  const darker = Math.min(lA, lB)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
 function formatRatio(hexA: string, hexB: string) {
-  return `${contrastRatio(hexA, hexB).toFixed(2)}:1`
+  return `${contrastRatioHex(hexA, hexB).toFixed(2)}:1`
 }
 
 function Hex({ children }: { children: string }) {

@@ -23,9 +23,12 @@
 // 16 controls below, each run in both themes — 32 cases.
 //
 // T506 also adds the assertion this file never had: the ring must clear WCAG 1.4.11's non-text
-// contrast floor (3:1) against the surface it is actually painted on, not an assumed one. See the
-// `relativeLuminance`/`contrastRatio` pair below for the formula and why it is a second, small
-// implementation rather than a shared import.
+// contrast floor (3:1) against the surface it is actually painted on, not an assumed one. Since
+// T580 (closing the "Duplicated logic and story-content gap register" row this formula used to
+// own), the formula itself is `packages/design-system/tokens/contrast.mjs`'s `contrastRatioRgb`,
+// imported below — this file keeps only `parseRgb`, converting a live `getComputedStyle`
+// `rgb(...)`/`rgba(...)` string into the `{ r, g, b }` shape that entry point takes, because that
+// parsing is this call site's own I/O, not part of the shared formula.
 //
 // That assertion found a real defect on two of the sixteen controls (gap DS-10): `Button`
 // `primary` and `DataExportPanel`'s download link both filled with `accent` and rang with
@@ -40,6 +43,16 @@
 // updated accordingly and DS-10 is closed, so the two cases that used to carry a `test.fail()`
 // escape hatch (`knownContrastFailure`) now assert like every other control in this file.
 import { test, expect, type Locator, type Page } from '@playwright/test'
+// An `.mjs` imported from a spec Playwright transpiles to CommonJS is the exact shape
+// `scripts/visual/a11y-scan.cjs`'s header warns against: its `.mjs` predecessor failed to load on
+// CI only (0a400c4e). This one is deliberately `.mjs` anyway, because `.cjs` is not available to
+// it: `Colour.stories.tsx` also imports the module, and Vite does not transform a local CommonJS
+// file. Verified on CI before landing, 2026-09-11 (T580): Node 20.20.2 and Playwright 1.62.1 list
+// all 32 tests in this file with the import in place (`playwright test --list`, run 34639323369).
+// It runs only when Playwright is spawned over the whole `testDir` — every nightly `visual-full`
+// run, but on a pull request only when the diff affects a story (`run.mjs --changed`
+// short-circuits otherwise) — so a regression can land on a PR that never loads this file.
+import { contrastRatioRgb } from '../../packages/design-system/tokens/contrast.mjs'
 
 interface Control {
   /** A free-form label, not a closed enum: the set below is derived from source (see the header
@@ -223,34 +236,12 @@ const controls: readonly Control[] = [
 
 const themes = ['light', 'dark'] as const
 
-// --- WCAG 2.2 relative luminance / contrast ratio. The same formula
-// `packages/design-system/tokens/build-tokens.test.mjs` computes from token hex strings — but that
-// function takes `#rrggbb` straight out of `color.json`, and everything available here is a
-// `getComputedStyle` `rgb(...)`/`rgba(...)` string read out of a live, rendered page. Reusing the
-// hex-based helper would mean converting one string format into the other just to call it, so this
-// is a second, small implementation of the same public formula (WCAG 2.2 §1.4.11 references the
-// same relative luminance definition as §1.4.3), not a duplicated measurement — no number here is
-// copied from that file; both compute the same thing from different inputs.
-function srgbToLinear(channel: number): number {
-  const c = channel / 255
-  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-}
-
-function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }): number {
-  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b)
-}
-
-function contrastRatio(
-  a: { r: number; g: number; b: number },
-  b: { r: number; g: number; b: number },
-): number {
-  const lA = relativeLuminance(a)
-  const lB = relativeLuminance(b)
-  const lighter = Math.max(lA, lB)
-  const darker = Math.min(lA, lB)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
+// --- WCAG 2.2 relative luminance / contrast ratio. Since T580, the same shared implementation
+// `packages/design-system/tokens/contrast.mjs` exports — `contrastRatioRgb`, imported above —
+// which `packages/design-system/tokens/build-tokens.test.mjs` also calls (through its hex-based
+// entry point). Everything available here is a `getComputedStyle` `rgb(...)`/`rgba(...)` string
+// read out of a live, rendered page, not a `#rrggbb` hex, so this file keeps its own `parseRgb`
+// below — parsing that string stays this call site's own I/O, not part of the shared formula.
 function parseRgb(color: string): { r: number; g: number; b: number } {
   const match = color.match(/rgba?\(([^)]+)\)/)
   if (!match) throw new Error(`unparseable colour from getComputedStyle: "${color}"`)
@@ -334,7 +325,7 @@ for (const { level, storyId, locate, reach } of controls) {
         throw new Error('no ancestor of the focused element paints a non-transparent background')
       })
 
-      const ratio = contrastRatio(parseRgb(outline.color), parseRgb(backgroundColor))
+      const ratio = contrastRatioRgb(parseRgb(outline.color), parseRgb(backgroundColor))
       expect(
         ratio,
         `${level} (${theme}): the focus ring (${outline.color}) is ${ratio.toFixed(2)}:1 against ` +
