@@ -1051,8 +1051,8 @@ which is why it is not folded into a spec written once.
 ## Contrast-signal and duplicate-baseline gap register
 
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2); **row 1 closed
-2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, rows 3–4 remain open (owners T584–T585,
-below). Four findings the review judged
+2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 4 closed 2026-09-11 (T585)**, row 3
+remains open (owner T584, below). Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1132,18 +1132,33 @@ on its own, not a defect this remediation's scope covers.
    equivalence class (the way `Menu.stories.tsx`'s own T569 comment names `Selection`/
    `ProfileSwitcher`/`SheetBelowMd`), so a future duplicate is caught mechanically rather than by the
    next adversarial review reading images by hand. **Owner: T584. Fix by 2026-09-23.**
-4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carry byte-identical `args`
-   (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`), confirmed by
-   reading the file, the same pattern as the `Menu` equivalence class above** — but the review that
-   found it reports the two are meant to demonstrate different things (`SignedIn` for the signed-in
-   scenario, `Selection` for the vocabulary state) and that `SiteHeader`'s selection mark itself, in
-   at least one of the widths this pair is captured at, lives inside a closed `Menu`/sheet rather
-   than the visible top-nav underline the 1280 frame shows — a claim this remediation has not
-   independently reproduced (it needs a browser, out of this task's scope) and records rather than
-   asserts. Fix: either give `Selection` `args` that actually differ from `SignedIn`'s (a second nav
-   item as current, say), or — if the two are genuinely one equivalence class the way `Menu`'s three
-   are — add the same kind of comment `Menu.stories.tsx:258-260` carries, naming it on purpose rather
-   than leaving a reader to wonder. **Owner: T585. Fix by 2026-09-23.**
+4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
+   (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
+   review reported two things; each is handled on its own:
+   - **The duplicate `args` — not accepted, fixed.** `Selection` now marks `My data` (§3a's _last_
+     item, `currentPath: '/privacy'`) current rather than `Dashboard`, so its `args` differ from both
+     `SignedIn`'s (`Dashboard` current) and `CurrentIsNestedRoute`'s (`Matches` current, via the
+     nested-route rule) — three stories, three distinct current items, none reachable from another by
+     `args` alone. That also exercises something neither of the other two shows: the current-route
+     rule and weight change sitting on the row's own last item rather than its first or second. The
+     story's rewritten comment states this directly, replacing the old one that (correctly, at the
+     time) said the duplication was deliberate. `SiteHeader.test.tsx` composes all three stories
+     (`composeStories`, the portable-stories API `story-a11y.test.tsx` already uses) and asserts their
+     `aria-current="page"` items differ pairwise — failed against the pre-fix `Selection` (two
+     assertions red, `expected 'Dashboard' not to be 'Dashboard'` and `expected 'Dashboard' to be 'My
+data'`) and green after. Baselines regenerated from CI in a follow-up commit, per this package's
+     own no-local-Chromium discipline.
+   - **The second claim — the selection mark rendering inside a closed `Menu`/sheet at some captured
+     width — checked against the checked-in baselines and not reproduced.** Method: md5 of
+     `composite-siteheader--selection` against `composite-siteheader--no-current-item` and
+     `composite-siteheader--current-is-nested-route`, per width (375/768/1280) and theme (both
+     `signedIn`/`selection` were also byte-identical to each other at all six, confirming the
+     duplicate above). The pair differs at every one of the six captures, 375 included, so the current
+     item's underline is visible below the `md` breakpoint, not hidden behind a closed disclosure —
+     this remediation still cannot drive a browser to confirm the frame directly, but the file-level
+     evidence available to it does not support the claim. Recorded, not dismissed: if it reproduces
+     later against the now-distinct `Selection` baseline, that is a new finding, not evidence this
+     closure got wrong. **Owner: T585. Closed 2026-09-11.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

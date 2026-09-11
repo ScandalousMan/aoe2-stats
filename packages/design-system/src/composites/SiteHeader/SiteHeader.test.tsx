@@ -1,8 +1,16 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { composeStories, setProjectAnnotations } from '@storybook/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import preview from '../../../.storybook/preview'
 import { THEME_STORAGE_KEY } from '../../theme'
 import { SiteHeader, type SiteHeaderNavItem } from './index'
+import * as SiteHeaderStories from './SiteHeader.stories'
+
+// T579's `src/test/story-a11y.test.tsx` established this pattern: `composeStories` (the
+// portable-stories API) plus `setProjectAnnotations` so a composed story renders exactly as it does
+// inside Storybook, with no second, hand-maintained render path to drift from the first.
+setProjectAnnotations([preview])
 
 // site-header.md §11: what a static story capture cannot see — Tab order, aria-current, the
 // current-route rule and the click/modified-click contract — asserted here instead.
@@ -343,5 +351,44 @@ describe('SiteHeader — ThemeControl (site-header.md §ThemeControl, FR-014)', 
   it('renders regardless of whether `items` is empty — it is never conditional like PrimaryNav', () => {
     render(<SiteHeader items={[]} />)
     expect(screen.getByRole('button', { name: /Theme: System/ })).toBeInTheDocument()
+  })
+})
+
+// README.md's "Contrast-signal and duplicate-baseline gap register" row 4/L2 (T585): `Selection`
+// used to carry `args` byte-identical to `SignedIn`'s, so its baseline was a duplicate rather than
+// an independent demonstration of the selection vocabulary entry. Composed through the same
+// portable-stories API `story-a11y.test.tsx` uses, so this pins the real story `args` — not a
+// second, hand-written copy of them that could drift from what Storybook actually renders.
+const { Selection, SignedIn, CurrentIsNestedRoute } = composeStories(SiteHeaderStories)
+
+/** The label of the one link carrying `aria-current="page"` inside a rendered story, or `null` if
+ * none does — mirrors the "exactly one item current" assertions above, scoped to one story's own
+ * container so two stories rendered side by side in the same test never see each other's links. */
+function currentItemLabel(container: HTMLElement): string | null {
+  const current = within(container)
+    .getAllByRole('link')
+    .find((link) => link.getAttribute('aria-current') === 'page')
+  return current?.textContent ?? null
+}
+
+describe('SiteHeader stories — Selection (README row 4/L2, T585)', () => {
+  it('marks a different item current than SignedIn', () => {
+    const { container: selectionContainer } = render(<Selection />)
+    const { container: signedInContainer } = render(<SignedIn />)
+
+    expect(currentItemLabel(selectionContainer)).not.toBeNull()
+    expect(currentItemLabel(selectionContainer)).not.toBe(currentItemLabel(signedInContainer))
+  })
+
+  it('marks a different item current than CurrentIsNestedRoute', () => {
+    const { container: selectionContainer } = render(<Selection />)
+    const { container: nestedContainer } = render(<CurrentIsNestedRoute />)
+
+    expect(currentItemLabel(selectionContainer)).not.toBe(currentItemLabel(nestedContainer))
+  })
+
+  it('marks the last item — My data — current, distinctly from either of the above', () => {
+    const { container } = render(<Selection />)
+    expect(currentItemLabel(container)).toBe('My data')
   })
 })
