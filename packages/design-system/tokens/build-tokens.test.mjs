@@ -99,12 +99,26 @@ test('every themed family declares the same key set in both themes', () => {
 // these pairs were asserted against a real but unused background, rather than the one the
 // component actually paints — see the "Real rendered pairs" block below.
 
-test('accent-contrast clears AA normal text (4.5:1) on accent, accent-hover and accent-active, in both themes — DS-1, the primary button fill and (T521, color-tokens.md §5) its own inward focus ring', () => {
+test('accent-contrast clears AA normal text (4.5:1) on accent, accent-hover and accent-active, in both themes — DS-1, the primary button fill and, on both the inner and outer side of its own inward focus ring, the same fill (T582/T586)', () => {
   // `accent-contrast` is no longer only the primary button's label ink: since DS-10's resolution
   // (color-tokens.md §5), it is also the ring `Button`'s `primary` variant and
-  // `DataExportPanel`'s download link draw with `-outline-offset-2`, because `focus-ring` cannot
-  // clear 3:1 against a fill dark enough to be legible as text (§5's proof). So this pair now owes
-  // its floor at rest, on hover and on press, in both themes, not just in light.
+  // `DataExportPanel`'s download link draw, because `focus-ring` cannot clear 3:1 against a fill
+  // dark enough to be legible as text (§5's proof). T586 moved that ring to `-outline-offset-4`
+  // (from DS-10's original, flush-with-the-edge `-outline-offset-2`) so a band of the `accent` fill
+  // separates the ring from the control's edge on every side — both of the ring's adjacencies, inner
+  // and outer, are this same fill, never the page surface behind the control. This test is the
+  // contrast half of that guarantee: the fill clears the floor at rest, on hover and on press, in
+  // both themes — the only pair the ring is ever drawn against, so the only pair this file asserts.
+  // It does not, and must not, assert the ring against any page surface: that pair is no longer
+  // drawn, and a passing assertion for an undrawn pair would be the same false claim in the other
+  // direction (README's gap register, H1).
+  //
+  // A contrast test cannot see *where* the ring sits on the control, only whether the colour pair it
+  // names clears its floor — if the geometry regressed back to flush-with-the-edge, this test would
+  // keep passing while the ring's outer side was once again the page surface at 1.00-1.42:1, the
+  // defect T586 fixed. `accent-contrast-ring.test.mjs` is what guards the geometry that makes this
+  // test's premise true: the two are a pair by construction — this one proves the fill pair clears
+  // its floor, the other proves the fill pair is the one actually drawn on every side.
   for (const theme of ['light', 'dark']) {
     const {
       accent,

@@ -121,8 +121,14 @@ extended to 44px by padding rather than by a transparent overlay.
 - **hover** — `primary`: fill `accent-hover`, in both themes. `secondary` / `ghost` /
   `destructive`: fill `surface-sunken`. Transition `motion.duration.fast` with `easing.standard`;
   colour only, no lift, no scale.
-- **focus-visible** — `outline-2 outline-offset-2` in `focus-ring` (gap DS-4), on top of whatever
-  the hover state is. Never removed on mouse click; never replaced by a fill change alone.
+- **focus-visible** — `secondary` / `ghost` / `destructive`: `outline-2 outline-offset-2` in
+  `focus-ring` (gap DS-4), clearing 3:1 against whatever page surface the button renders on.
+  `primary`: `outline-2 -outline-offset-4` in `accent-contrast` instead (DS-10, `color-tokens.md`
+  §5) — inward far enough that a band of the `accent` fill separates the ring from the button's own
+  edge on every side (T586), so both of the ring's adjacencies are that fill, never the page surface
+  behind the button: 6.07:1 light / 8.07:1 dark at rest (higher on hover and press,
+  `build-tokens.test.mjs`). Either way, on top of whatever the hover state is; never removed on
+  mouse click; never replaced by a fill change alone.
 - **active** — `primary`: `accent-active`. `secondary` / `ghost` / `destructive`: fill `background`
   — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
   the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
@@ -172,8 +178,12 @@ and must be verified, not assumed.
 
 **Acceptance** — exactly one `primary` per screenshot — a token-correct screen that painted two
 controls `accent` still fails this criterion, because the reader cannot tell which action the view
-recommends (FR-063); focus ring visible and 2px offset from the edge on the keyboard-focused button;
-the default, hover and active screenshots are three distinguishable frames for **every** variant —
+recommends (FR-063); on `secondary` / `ghost` / `destructive`, the focus ring is visible 2px outside
+the button's own edge and clears 3:1 against the page surface behind it; on `primary`, the ring is
+`accent-contrast`, sitting 4px inward of the button's own edge (`-outline-offset-4`, T586) with a
+2px band of `accent` fill on either side of it, so it reads against that fill (6.07:1 light /
+8.07:1 dark) and never against the page surface, which its geometry keeps it from ever touching; the
+default, hover and active screenshots are three distinguishable frames for **every** variant —
 `primary`'s hover fill is visibly darker than its resting fill and its active fill darker again;
 `secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and active fill (`background`)
 are two different, already-measured tokens, and `ghost`'s active additionally draws a boundary its

@@ -182,8 +182,12 @@ drag-over boundary/fill while a file is dragged over it (a `focus-ring`-toned in
 sits behind that fill — there is none in this component.
 
 **focus-visible** — the standard ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on the
-`Choose file` control, the `Remove` button, `SubmitButton` and the `Refresh` button, in both themes.
-The ring is never clipped by the `DropZone` boundary.
+`Choose file` control, the `Remove` button and the `Refresh` button, in both themes — each clears
+3:1 against the page surface behind it. `SubmitButton` is `Button/primary` (§1) and rings inward in
+`accent-contrast` instead (`-outline-offset-4`, T586, `color-tokens.md` §5): a band of `accent`
+fill separates the ring from the button's own edge on every side, so it reads against that fill
+(6.07:1 light / 8.07:1 dark, §6's `accent-contrast` on `accent` row), never against the page surface
+behind it, which the ring never touches. The ring is never clipped by the `DropZone` boundary.
 
 **active** — pressed states per `Button`; the `DropZone` on a valid drag-over shows its active boundary
 tone. Nothing scales.

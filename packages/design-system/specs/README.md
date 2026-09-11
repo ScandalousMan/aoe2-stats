@@ -713,13 +713,26 @@ darker ring: **`focus-ring` now declares only the four page surfaces, and an `ac
 rings inward in `accent-contrast` instead** — the ink it already carries, which clears 6.07:1 light /
 8.07:1 dark on its own fill, 7.65 / 10.06 on hover and 9.78 / 6.39 on press. `Button`'s `primary`
 variant and `DataExportPanel`'s download link were the only two call sites (`focus-visible:outline-2
-focus-visible:-outline-offset-2 focus-visible:outline-accent-contrast`, replacing
+focus-visible:-outline-offset-4 focus-visible:outline-accent-contrast`, replacing
 `outline-focus-ring`); the other fourteen `outline-focus-ring` declarations in the package are
 untouched, and every one of them now clears 3:1 with 5.37–8.05 of margin against whichever page
 surface it actually paints on (the measured contrast table above). The gap closes because the pair
 it named stops being drawn, the same mechanism FR-005 asks for generally — not because a colour got
 darker. `tests/visual/focus-ring.spec.ts`'s `knownContrastFailure` field and the `test.fail()` it
 drove are removed from the two entries that carried it; both now assert like every other control.
+
+**Corrected 2026-09-11 (T582), found while closing H1 below.** DS-10 itself shipped both call sites
+at `-outline-offset-2`, not `-outline-offset-4` as stated above — the offset this row now states is
+T586's, not the one DS-10 actually closed with. `-outline-offset-2` on a 2px-wide ring fills exactly
+the outermost two pixels of the border box, flush with the control's edge, so the ring's outer side
+sat on the page at 1.00–1.42:1 (H1, below) rather than on the `accent` fill this row's own contrast
+numbers describe. T586 (commit `a3050c30`) moved both rings to `-outline-offset-4`, leaving a 2px
+band of `accent` fill between the ring and the edge on every side, which is what the class string
+above now correctly states. The numbers this row cites (6.07:1 light / 8.07:1 dark on the fill, and
+the rest of DS-10's reasoning) were never wrong — only the geometry that decided which adjacency the
+ring's _other_ side landed on was, and this note is left here rather than silently changing the
+class string in place, so a reader comparing this row against `git log` does not find a fact that
+was never true.
 
 **A rounding correction, T526.** Re-measuring the whole table from `color.json`'s shipped hexes
 (rather than transcribing `color-tokens.md`'s stated numbers) turned up two places where the
@@ -1037,28 +1050,39 @@ which is why it is not folded into a spec written once.
 
 ## Contrast-signal and duplicate-baseline gap register
 
-**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2). Four findings
-the review judged real but not blocking against B1/B2 (the `Button` `active:outline` defect this
-same pass's remediation fixes) — filed here rather than folded into the fix, for the same reason the
-three registers above are: each is a fact about this package's current state that a future task can
-close on its own, not a defect this remediation's scope covers.
+**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2); **row 1 closed
+2026-09-11 (T582)**, rows 2–4 remain open (owners T583–T585, below). Four findings the review judged
+real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
+remediation fixes) — filed here rather than folded into the fix, for the same reason the three
+registers above are: each is a fact about this package's current state that a future task can close
+on its own, not a defect this remediation's scope covers.
 
-1. **H1 — a focused `primary` `Button`'s ring can read at 1.00:1 against the surface behind it, not
-   only against its own fill.** `accent-contrast` (the ring colour DS-10 closed with, above) equals
-   `surface-raised` in the light theme and `background` in the dark theme; wherever the button's own
-   `accent` fill does not fully separate the ring from the page behind it, the ring-to-surface pair
-   can measure near 1:1 even though the ring clears 6.07:1 light / 8.07:1 dark against the fill it is
-   actually drawn on — the only pair `build-tokens.test.mjs` asserts today. DS-10's own reasoning
-   (`color-tokens.md` §5, T521's proof) — that a primary button's ring can only ever clear 3:1
-   against its fill, never against both the fill and `surface-raised` at once — is sound and this row
-   does not reopen it. What it notes instead: `Callout`'s `FocusVisible` story comment and
-   `shared-primitives.md` currently describe this ring as meeting the non-text contrast floor without
-   naming which adjacency that floor was measured against, which overstates what that story's frame
-   actually shows against the page behind it. Fix: extend `build-tokens.test.mjs` to assert the ring
-   against **both** adjacencies it can actually sit on in practice — the fill (already asserted) and
-   each surface the variant may render on (`surface-raised`, `background`) — so a future colour
-   change that widens this gap fails a test instead of shipping unnoticed, and correct the two
-   passages above to state which adjacency each is describing. **Owner: T582. Fix by 2026-09-20.**
+1. **H1 — a focused `primary` `Button`'s ring read at 1.00–1.42:1 against the surface behind it,
+   flush with the control's edge — closed.** `accent-contrast` (the ring colour DS-10 closed with,
+   above) equals `surface-raised` in the light theme and `background` in the dark theme; DS-10's
+   ring shipped at `-outline-offset-2` on a 2px-wide ring, which paints exactly the outermost two
+   pixels of the border box — flush with the edge, so the ring's outer side sat on the page itself
+   rather than on the `accent` fill, even though the ring clears 6.07:1 light / 8.07:1 dark against
+   that fill, the only pair `build-tokens.test.mjs` asserted at the time. This was not the
+   fill-vs-surface trade-off DS-10's own reasoning accepted (`color-tokens.md` §5): §5 rings the
+   control **inward** precisely "so that both of its adjacent colours are the accent fill," and a
+   ring flush with the edge does not do that — it was a geometry defect in the two call sites, not a
+   pair §5 ever agreed to draw. `Callout`'s `FocusVisible` story comment and `shared-primitives.md`
+   also described this ring without naming which adjacency any contrast number was measured against,
+   compounding the gap with a passage a reader could not check against the geometry themselves.
+   **Not accepted — fixed.** The user decided to make §5 true rather than widen its acceptance: T586
+   (commit `a3050c30`) moved both rings to `-outline-offset-4`, leaving a 2px band of `accent` fill
+   between the ring and the control's edge on every side, so both of the ring's adjacencies are now
+   the fill §5 always meant, guarded against regressing by
+   `packages/design-system/tokens/accent-contrast-ring.test.mjs`'s geometry assertion. T582 then did
+   the row's remaining work now that the pair being asserted had changed: renamed and re-commented
+   `build-tokens.test.mjs`'s existing accent-contrast assertion to say it covers both of the ring's
+   sides and why it depends on the geometry test rather than adding a ring-vs-surface assertion — that
+   pair is no longer drawn, and asserting an undrawn pair would be the same false claim in the other
+   direction — and corrected every passage across `shared-primitives.md`, `privacy-data-rights.md`,
+   `manual-upload.md` and `archival-control.md` that named this ring's old `-outline-offset-2` or
+   left its adjacency unstated, including this register's own DS-10 closure narrative above, which
+   still cited the pre-T586 offset. **Owner: T582. Closed 2026-09-11.**
 2. **M1 — a colour wash presented as the "non-colour" half of FR-037 is both the wrong category and,
    in the dark theme, close to imperceptible.** `Link`'s `standalone` variant (`structural-tier.md`
    §9's `active` bullet) and `PrivacyNotice`'s `Contents` entries (`privacy-notice.md`'s `active`
