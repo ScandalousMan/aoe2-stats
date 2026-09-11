@@ -3,7 +3,8 @@ import { Callout } from '../../primitives/Callout'
 import { FavouriteToggle } from './index'
 
 const meta: Meta<typeof FavouriteToggle> = {
-  title: 'Composite/FavouriteToggle',
+  id: 'composite-favouritetoggle',
+  title: 'Composites/Search & favourites/FavouriteToggle',
   component: FavouriteToggle,
 }
 
@@ -84,6 +85,49 @@ export const RequestFailedError: Story = {
         heading="We could not update your favourites. Try again."
         headingLevel={3}
       />
+    </div>
+  ),
+}
+
+// favourite-toggle.md §5 "hover / focus-visible / active — owned entirely by `Button/ghost`... In
+// the bounded/disabled case there is no hover." Forced here on the enabled control, from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+export const Hover: Story = {
+  args: { favourited: false, authenticated: true },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const FocusVisible: Story = {
+  args: { favourited: false, authenticated: true },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+}
+
+export const Active: Story = {
+  args: { favourited: false, authenticated: true },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+
+// §5 "empty — not applicable... a toggle with no label is invalid, the same as `Button`. Every
+// state above renders a label; there is no zero-content form of this control."
+export const EmptyNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A toggle with no label is invalid, the same as `Button` — every state renders a label, so
+      there is no zero-content form of this control to show.
+    </p>
+  ),
+}
+
+// A realistic combined story: beside a third party's profile heading, its actual seam
+// (`PlayerProfileContainer.tsx` wires this into `ProfileSummary`'s own `favouriteToggle` slot, at
+// `size="lg"` per §11.1 point 3), never rendered as an isolated specimen.
+export const RealisticProfileHeader: Story = {
+  name: 'Realistic composition — beside a third-party profile heading (PlayerProfileContainer)',
+  render: () => (
+    <div className="flex items-center gap-3">
+      <h1 className="type-display text-2xl font-semibold text-text-primary">rival_ace</h1>
+      <FavouriteToggle favourited={false} authenticated size="lg" />
     </div>
   ),
 }

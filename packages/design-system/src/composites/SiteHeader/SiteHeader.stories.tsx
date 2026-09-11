@@ -4,7 +4,8 @@ import { THEME_STORAGE_KEY } from '../../theme'
 import { SiteHeader, type SiteHeaderNavItem } from './index'
 
 const meta: Meta<typeof SiteHeader> = {
-  title: 'Composite/SiteHeader',
+  id: 'composite-siteheader',
+  title: 'Composites/Site chrome/SiteHeader',
   component: SiteHeader,
 }
 
@@ -23,6 +24,17 @@ const items: SiteHeaderNavItem[] = [
 
 export const SignedIn: Story = {
   name: 'signed in — Dashboard is current',
+  args: { items, currentPath: '/dashboard' },
+}
+
+// FR-034/FR-037 (T569 residual 2): a story literally named for the *selection* vocabulary entry —
+// the persistent underline strip plus the `font-semibold` weight change on the current item
+// (`aria-current="page"`), both of which survive as a still image, per README's own worked example
+// for this exact component. `SignedIn` above already shows the same frame but is named for its
+// scenario, not the state, so a reader browsing for "selection" or `visual-reviewer` mapping a
+// capture to the vocabulary has nothing to find. Added rather than renaming `SignedIn`: renaming an
+// export changes its story id and orphans the checked-in baseline.
+export const Selection: Story = {
   args: { items, currentPath: '/dashboard' },
 }
 
@@ -113,5 +125,68 @@ export const ThemeControlSetToDark: Story = {
     },
   ],
   play: openThemeControl,
+  args: { items, currentPath: '/dashboard' },
+}
+
+// site-header.md §5 "hover — the item's box fills `surface-sunken` and its label moves to
+// `text-primary`... No underline on hover." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+export const Hover: Story = {
+  args: { items, currentPath: '/dashboard' },
+  parameters: { visualForceState: { state: 'hover', role: 'link', name: 'Matches' } },
+}
+
+// §5 "focus-visible — named explicitly, because this is the state a later reviewer will assume
+// was covered... the one documented ring... drawn outside the item's box, on top of whatever the
+// hover state is."
+export const FocusVisible: Story = {
+  args: { items, currentPath: '/dashboard' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link', name: 'Matches' } },
+}
+
+// §5 "active — fill `surface-sunken` with a 1px `border-strong` boundary drawn inside the box...
+// label `text-primary`."
+export const Active: Story = {
+  args: { items, currentPath: '/dashboard' },
+  parameters: { visualForceState: { state: 'active', role: 'link', name: 'Matches' } },
+}
+
+// §5 "disabled — never, for any part"; "loading — none, and specifically no skeleton row"; "error
+// — none of its own. This component makes no request and awaits nothing." Grouped as one story:
+// all three share the same reasoning (a build-time-known item set with no request of its own).
+// §8 "No hamburger, and this is a decision, not an omission" (T569 residual 2): `PrimaryNav`
+// itself never collapses behind a disclosure at any viewport — it wraps onto further rows instead
+// (`LongLabels` above) — so it plausibly reads as a candidate for the *expansion* vocabulary entry
+// and needs its own explicit refusal rather than a silent omission. `ThemeControl`'s own `Menu`
+// does carry expansion, but that state belongs to `Menu` (see `Menu.stories.tsx`'s `Expansion` /
+// `ClosedTrigger`) — `SiteHeader` only mounts it, the same way `DisabledLoadingErrorNotApplicable`
+// below already separates what this component owns from what its children answer for themselves.
+export const ExpansionNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        `PrimaryNav` never collapses behind a hamburger or any other disclosure — wrapping onto
+        further rows at 375 is the whole answer (§8). `ThemeControl`'s own `Menu` does carry the
+        expansion state, but that state is `Menu`'s to answer, not this component's — `SiteHeader`
+        only mounts it.
+      </p>
+      <SiteHeader {...args} />
+    </div>
+  ),
+  args: { items, currentPath: '/dashboard' },
+}
+
+export const DisabledLoadingErrorNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        No part of this header is ever disabled — a destination either exists as a link or is
+        omitted from `items`. There is no loading state (the session resolves before this component
+        paints) and no error state of its own (this component makes no request).
+      </p>
+      <SiteHeader {...args} />
+    </div>
+  ),
   args: { items, currentPath: '/dashboard' },
 }

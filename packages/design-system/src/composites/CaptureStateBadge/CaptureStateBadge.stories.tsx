@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { CaptureStateBadge } from './index'
 
 const meta: Meta<typeof CaptureStateBadge> = {
-  title: 'Composite/CaptureStateBadge',
+  id: 'composite-capturestatebadge',
+  title: 'Composites/Match & game data/CaptureStateBadge',
   component: CaptureStateBadge,
 }
 
@@ -106,9 +108,19 @@ export const DetailContextCountdown: Story = {
   args: { captureStatus: 'pending', captureDeadlineAt: inFromNow(6 * DAY_MS), variant: 'detail' },
 }
 
-// §6 "loading": a Skeleton matching the pill's own footprint, never a placeholder tone.
+// §6 "loading": a Skeleton matching the pill's own footprint, never a placeholder tone. `Skeleton`
+// stays invisible for the first `duration.normal` (200ms, `useDelayedVisible`) so a fast-resolving
+// load never flashes a pulse — a `setTimeout`, not a wall clock, but a clock all the same (T568,
+// FR-047). Waiting here for the pulse to exist, rather than screenshotting whatever frame
+// Storybook happened to reach first, is what makes this baseline the same no matter how long
+// mounting this particular story took.
 export const Loading: Story = {
   args: { loading: true },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // §6 "empty": no `ReplayCapture` row exists yet — renders nothing. Rendered inside a labelled
@@ -153,5 +165,19 @@ export const AllFourStates: Story = {
         <CaptureStateBadge captureStatus="quarantined" />
       </li>
     </ul>
+  ),
+}
+
+// capture-state-badge.md §6 "hover / focus-visible / active — none... disabled — not applicable,
+// for the same reason. Nothing about a match's capture state is decided by clicking its badge."
+export const HoverFocusActiveDisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A capture-state badge is not interactive: no hover, focus, active or disabled rendering.
+        Nothing about a match's capture state is decided by clicking its badge.
+      </p>
+      <CaptureStateBadge captureStatus="stored" />
+    </div>
   ),
 }

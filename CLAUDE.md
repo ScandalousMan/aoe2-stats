@@ -44,9 +44,17 @@ starts lying.
 | `specs/NNN-*/`    | **One change.** What that feature must do, its plan, its data model, its contracts. Written once, then a historical record of what was decided and why.             | Frozen at merge.                                                              |
 | `.claude/skills/` | **Judgment.** The rules, the traps, what not to do. Loaded into an agent's context on demand, so kept short.                                                        | Living, but points at `docs/` for every number.                               |
 
-The test: _does this need updating when the world changes?_ If yes it belongs in `docs/`. If it
-describes one change, it belongs in `specs/`. If it tells someone how to behave, it belongs in a
-skill.
+The test: _does this need updating when the world changes?_ If yes, ask whose world: a living fact
+whose subject is a package in this repository is filed with that package, next to what recomputes
+it, not in `docs/` — the measured contrast table and the gap register in
+`packages/design-system/specs/README.md` change when someone edits
+`packages/design-system/tokens/color.json`, an event entirely inside this repo, so they stay beside
+the package. Only a fact whose subject is the outside world belongs in `docs/`. The distinction is
+the fact's subject, not whether it is living. If it describes one change, it belongs in `specs/`. If
+it tells someone how to behave, it belongs in a skill. Whichever home, a living fact is trustworthy
+only because a test asserts it rather than because someone re-read it: `docs/` leans on the nightly
+contract tests, and a package-local fact needs its own — the contrast table is asserted by
+`packages/design-system/tokens/build-tokens.test.mjs`.
 
 **Never copy a measurement between them.** A number that exists in two files will be wrong in one of
 them. Skills and specs reference `docs/`; they do not restate it. Repeating a _constraint_ where it
@@ -73,11 +81,11 @@ conflict. Load the `git-workflow` skill first; it carries the ordering and the c
 
 **Interrupt for exactly three things, and say which one it is:**
 
-| | Example |
-| --- | --- |
-| **Validation** — irreversible, outward-facing, or destroys evidence | force-pushing over someone else's work, dropping production data |
-| **Information** — only the user has it | a credential, a value from a console, which of two real-world facts holds |
-| **Arbitration** — the code cannot settle it | which design to keep, whether to accept a risk, what a requirement should say |
+|                                                                     | Example                                                                       |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Validation** — irreversible, outward-facing, or destroys evidence | force-pushing over someone else's work, dropping production data              |
+| **Information** — only the user has it                              | a credential, a value from a console, which of two real-world facts holds     |
+| **Arbitration** — the code cannot settle it                         | which design to keep, whether to accept a risk, what a requirement should say |
 
 Anything else: decide it, and say what you decided. "Should I proceed?" is a delay with a question
 mark on it.
@@ -96,7 +104,7 @@ they lead the message.
 
 - **`/clear`** when the next work shares nothing with what is above it — a finished phase, a pivot,
   a long session about to start something unrelated. Say it even if it ends the session. If the task
-  at hand *needs* the session's history as evidence, say that and put the `/clear` after it.
+  at hand _needs_ the session's history as evidence, say that and put the `/clear` after it.
 - **The next spec-kit command** — `/speckit-analyze` before merging artifact changes,
   `/speckit-constitution` when an amendment's follow-ups land, `/speckit-implement` scoped to a
   phase. These carry model routing and gates that doing the work conversationally skips silently.
@@ -107,7 +115,7 @@ The commit unit is **the smallest set of tasks that was ever simultaneously gree
 are one commit each. A parallel batch is one commit: agents sharing a working tree interleave in the
 same files, and splitting that afterwards invents commits that never existed as a working state.
 
-That granularity only exists at the moment it exists. Commit when a task hands back, *before*
+That granularity only exists at the moment it exists. Commit when a task hands back, _before_
 dispatching the next one — a batch launched over an uncommitted predecessor absorbs it permanently.
 
 Never commit a red tree, and two ways that has actually failed (2026-08-27, both now gated by

@@ -119,6 +119,30 @@ describe('ProfileSummary', () => {
     expect(screen.getByRole('menuitem', { name: 'Link another Steam account' })).toBeInTheDocument()
   })
 
+  it('the checked switcher item is marked "Current" even when it is not the primary profile', async () => {
+    // T569 residual 1: before the fix, `badge` was only set from `isPrimary`, so a checked item
+    // that was not also primary carried no still-image mark at all — a colour-only `aria-checked`
+    // difference `visual-reviewer` cannot see in a screenshot.
+    const user = userEvent.setup()
+    render(
+      <ProfileSummary
+        authenticated
+        viewedProfile={{ ...viewedProfile, id: 'p2', alias: 'aoe2alt', isPrimary: false }}
+        linkedProfiles={linkedProfiles}
+        entries={entries}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /switch profile/ }))
+    const current = screen.getByRole('menuitemradio', { name: /aoe2alt/ })
+    expect(current).toHaveAttribute('aria-checked', 'true')
+    expect(current).toHaveTextContent('Current')
+    expect(current).not.toHaveTextContent('Primary')
+    const primary = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    expect(primary).toHaveAttribute('aria-checked', 'false')
+    expect(primary).toHaveTextContent('Primary')
+    expect(primary).not.toHaveTextContent('Current')
+  })
+
   it('the switcher still renders a "Link another Steam account" item with a single linked profile', async () => {
     const user = userEvent.setup()
     render(

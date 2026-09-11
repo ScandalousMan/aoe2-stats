@@ -5,6 +5,10 @@
 from `ArchivalControl`'s `PrivacyNoticeLink` and from the footer (T098a)
 **Requirements**: FR-041 (the notice itself), and it discloses FR-006, FR-016, FR-034 to FR-040,
 FR-042, FR-045; 003's FR-004b, FR-010, FR-017, FR-027 to FR-029. Constitution IX and X.
+**Tier**: screen (`src/screens/`).
+**Surface class**: `prose` (README's "Surface density" section) — the longest continuous reading
+text in the product, `space-4` between paragraphs and `space-8`/`space-12` between sections, the
+class's own paragraph and section rhythm (§7).
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Callout`, `Button`.
 **Sources of truth this copy is derived from, and must not contradict**:
 `docs/privacy/processing-register.md` (categories, bases, retention, recipients, the balancing
@@ -524,8 +528,19 @@ every link and on the objection button. Following a `Contents` entry moves focus
 `<h2>`, which carries `tabindex="-1"` for that purpose — a jump that moves the viewport without
 moving focus leaves a keyboard user at the top of a nine-section document.
 
-**active** — links render in `link-hover` while pressed (there is deliberately no `link-active`;
-`link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
+**active** — ink stays `link-hover` throughout (there is deliberately no `link-active`; `link-hover`
+serves both — `color-tokens.md` §11.3), and each link adds the second signal its own shape owes
+(fourth-pass review remediation, FR-037: a shared `link-hover` fill with nothing else left hover and
+press as one still image; this passage itself described the pre-fix behaviour through a fifth-pass
+review, finding B2). Inline links — the explanation's prose links and `ContactBlock`'s contact
+route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own treatment
+(`inlineLinkClasses`, `index.tsx`); no fill, because a wash behind a few words inside a paragraph
+breaks the line. `Contents` entries are a padded, `min-h-11` block — `Link`'s `standalone` shape —
+so they take that variant's own press: a `surface-sunken` fill that exists only on press
+(`active:bg-surface-sunken active:rounded-control`). `ObjectionCallToAction` is styled like
+`Button/secondary` and takes that variant's own fix: the fill steps to `background`, the ramp's
+other attenuated rung, bounded by the control's own permanent `border-strong` edge regardless of
+what fills it. Nothing translates or scales.
 
 **disabled** — **nothing in this component is ever disabled.** A right that is described and then
 greyed out has been withdrawn without saying so. If a target route is unavailable, the link is still
@@ -552,6 +567,13 @@ at the top of a legal document reads as a paragraph that failed to load. `proces
 and non-empty in the type: an empty list is a call-site defect, not a state, and the component must
 not paper over it by silently substituting a default it was not given — a storage section that
 renders with no processors would be claiming nobody touches the data.
+
+**selection** — not applicable. `Contents` is a list of in-page links, not a set with a current
+member; no entry marks itself as the one being read.
+
+**expansion** — not applicable, and by rule (§5's own "no accordion, no 'read more', no truncation
+with an expander anywhere in this component at any viewport"). Every section is always fully
+rendered.
 
 ## 6. Tokens used
 
@@ -718,3 +740,7 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
 - [ ] The objection button is present in the non-user section in every story, including those
       rendered as if signed in.
 - [ ] At 200% zoom, no text overlaps and no line is cut off.
+- [ ] The gap between one `Section` and the next (`space-12`) is visibly larger than the gap between
+      two paragraphs inside a `Section` (`space-4`) — a token-correct document that used one rhythm
+      for both would read as a single undifferentiated block rather than nine subjects, and fails
+      this criterion (FR-063).

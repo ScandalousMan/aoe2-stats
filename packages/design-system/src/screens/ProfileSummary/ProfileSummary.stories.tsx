@@ -5,7 +5,8 @@ import { ProfileSummary } from './index'
 import type { RatingEntryData } from './index'
 
 const meta: Meta<typeof ProfileSummary> = {
-  title: 'Screens/ProfileSummary',
+  id: 'screens-profilesummary',
+  title: 'Screens/Profile & capture/ProfileSummary',
   component: ProfileSummary,
 }
 
@@ -108,6 +109,24 @@ export const Board: Story = {
   },
 }
 
+// FR-044: `index.tsx`'s own `isTable = useBreakpoint('lg')` — ratings render as cards below `lg`
+// (1024) and as a `<table>` from it. Pinned toward the narrow shape with the declared
+// `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
+// rationale for why a declared option rather than a Storybook device preset) — `Board` above
+// already reads at the wide, table shape.
+export const BoardRatingsCardsBelowLg: Story = {
+  name: 'Ratings as cards below lg, a table from it',
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
 // T457 remediation (004 spec §13.3/§13.8) — the resting (tooltip-closed) `Board` frame at 375,
 // where the defect actually lived: the flag must stay on the name line beside the switcher
 // trigger, not wrap beneath it, and the identity bar must not force the page wider than the
@@ -172,10 +191,16 @@ async function pinFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
 // 375 is the one width where the flag can be pushed onto the switcher trigger's line (T457) —
 // the defect was invisible at the suite's default desktop width. Every story is now captured at
 // 375px as a matter of course (T504), so `visual-full-page` is the only tag this needs.
+// Remediation (fifth-pass review, B1): `play: hoverFlagOpen` opens the tooltip for real (the
+// synthetic `userEvent.hover` still reaches `Tooltip`'s own listener), but never sets Chromium's
+// actual `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has
+// settled, matched by the flag's own accessible name (`role: 'button'` alone would be ambiguous
+// here: the profile switcher trigger is also a button in this frame).
 export const BoardFlagHoverRevealed: Story = {
   name: 'Flag hover — country name in a tooltip above the flag (004 §13.9)',
   tags: ['visual-full-page'],
   play: hoverFlagOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
   args: {
     subject: 'self',
     authenticated: true,
@@ -219,10 +244,15 @@ export const BoardFlagPinned: Story = {
 // not just its instance: the switcher trigger's alias truncates rather than pushing the flag onto
 // its own line, so the flag stays on the name line and its upward tooltip still lands clear of the
 // switcher trigger and the alias, exactly as it does for a short alias.
+// Remediation (fifth-pass review, B1 sweep): the same gap as `BoardFlagHoverRevealed` above — a
+// `Hover`-named story with a `play()` that never set the real `:hover` pseudo-class. Not in the
+// review's own named list, found by sweeping every `Hover`/`Active`/`FocusVisible`-named story in
+// scope for a missing `visualForceState` rather than trusting that list.
 export const BoardLongAliasFlagHoverRevealed: Story = {
   name: 'Flag hover, long alias — the fix holds when the alias is 19 characters, not 7 (004 §13.8, T457)',
   tags: ['visual-full-page'],
   play: hoverFlagOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
   args: {
     subject: 'self',
     authenticated: true,
@@ -344,11 +374,21 @@ export const Unauthenticated: Story = {
   },
 }
 
+// `status: 'loading'` renders `Skeleton`, which stays invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: {
     authenticated: true,
     entries: [],
     status: 'loading',
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
   },
 }
 
@@ -402,5 +442,143 @@ export const CompactVariant: Story = {
     viewedProfile,
     linkedProfiles,
     entries,
+  },
+}
+
+// profile-summary.md §5 "hover — switcher trigger and menu items per `Menu`. A `RatingEntry` is
+// not interactive in this feature... and therefore has no hover affordance." / "focus-visible —
+// standard ring on the trigger, on menu items, and on the ghost actions." / "active — per `Button`
+// and `Menu`." The switcher's own hover/focus/active are `Menu`'s stories (`ProfileSwitcher`); this
+// opens it here by keyboard, the same technique `SiteHeader`'s `ThemeControl` stories use, and
+// calls out the one part that has none of its own.
+async function openSwitcher({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  // Matched by the trigger's own accessible name suffix (`${headingAlias}, switch profile`,
+  // index.tsx) rather than a hardcoded alias, so this helper still finds the trigger in a story
+  // whose `viewedProfile` is not `aoe2guy` (the `Selection` story below views `aoe2alt`).
+  const trigger = canvas.getByRole('button', { name: /switch profile$/ })
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  await canvas.findByRole('menu')
+}
+
+// The **other** `Menu` on this screen (`triggerLabel="Manage"`, index.tsx) — the one
+// `unlinkInFlight`/`primaryChangeInFlight` items actually live in (`manageItems`, index.tsx). A
+// story depicting one of those two states must open this menu, not the profile switcher opened by
+// `openSwitcher` above: the switcher's own items know nothing of `unlinkInFlight`.
+async function openManage({ canvasElement }: { canvasElement: HTMLElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button', { name: 'Manage' })
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  await canvas.findByRole('menu')
+}
+
+export const SwitcherFocusVisibleAndOpen: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  // `openSwitcher`'s own `Enter` press already moves DOM focus to the checked item (`Menu`'s own
+  // `itemRefs.current[activeIndex]?.focus()`, index.tsx) — `viewedProfile` here is `p1`/`aoe2guy`,
+  // the item `linkedProfiles` marks checked — but this story's name promises a real `:focus-visible`
+  // ring, which only `tests/visual/stories.spec.ts`'s own forced pseudo-class (never a story's own
+  // synthetic `play()`) reliably paints (see that file's `VisualForceState` comment). Named the same
+  // way `Button.stories.tsx`'s `Hover`/`Active`/`FocusVisible` and `Menu.stories.tsx`'s own
+  // `focus-visible` stories already are.
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' },
+  },
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// FR-034/FR-037, T569 residual 1 and 2: a story named for the *selection* vocabulary entry, and
+// deliberately the case `SwitcherFocusVisibleAndOpen` above cannot exercise — there, the viewed
+// profile (`aoe2guy`) is also the primary one, so the checked item's `<Badge>Current</Badge>` and
+// the primary item's `<Badge variant="accent">Primary</Badge>` would land on the same row and the
+// defect (no mark at all for a checked-but-not-primary item) stayed invisible. Here `viewedProfile`
+// is `aoe2alt`, non-primary, so this frame is the still-image proof that the checked profile now
+// carries its own mark independent of `isPrimary` — the same `Menu`/`selection` idiom `SiteHeader`'s
+// `ThemeControl` already ships (`shared-primitives.md#Menu`'s "the checked item is marked by text
+// or a `Badge`, not by colour alone").
+export const Selection: Story = {
+  tags: ['visual-full-page'],
+  play: openSwitcher,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: { ...viewedProfile, id: 'p2', alias: 'aoe2alt', isPrimary: false },
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+export const RatingEntryHoverNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A `RatingEntry` is not interactive in this feature — rating history is a later route — so it
+        has no hover affordance of its own. The switcher trigger and its menu items carry theirs,
+        per `Menu`.
+      </p>
+      <ProfileSummary {...args} />
+    </div>
+  ),
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+  },
+}
+
+// §5 "disabled — the primary profile's own 'Make primary' item is absent, not disabled... While a
+// primary change is in flight, every menu item is `aria-disabled` and the target item shows the
+// `Menu` loading state."
+// Remediation (the same defect `UnlinkInFlight` below was already fixed for): `primaryChangeInFlight`
+// drives the "Make primary" item inside the **Manage** menu (`manageItems`, index.tsx), not the
+// profile switcher — `openSwitcher` opened the wrong surface. Worse, "Make primary" only exists
+// when `viewedProfile.isPrimary` is false (index.tsx's `manageItems`) — this story's own fixture
+// used the module-level `viewedProfile`, whose `isPrimary` is `true`, which removes the item this
+// story exists to show entirely. `openManage` opens the right menu, and the non-primary fixture
+// `Selection` above already uses is what makes the item exist to load.
+export const PrimaryChangeInFlight: Story = {
+  tags: ['visual-full-page'],
+  play: openManage,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile: { ...viewedProfile, id: 'p2', alias: 'aoe2alt', isPrimary: false },
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+    primaryChangeInFlight: true,
+  },
+}
+
+// §5 "disabled — ... The unlink action is disabled only while an unlink is in flight."
+export const UnlinkInFlight: Story = {
+  tags: ['visual-full-page'],
+  // Remediation: `unlinkInFlight` drives the "Unlink this profile" item inside the **Manage**
+  // menu, not the profile switcher — `openSwitcher` opened the wrong surface, so this story
+  // captured a switcher frame with nothing loading in it. `openManage` opens the menu the item
+  // actually lives in.
+  play: openManage,
+  args: {
+    subject: 'self',
+    authenticated: true,
+    viewedProfile,
+    linkedProfiles,
+    entries,
+    freshnessLine: 'Measured 3 minutes ago',
+    unlinkInFlight: true,
   },
 }

@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { MatchList, MatchRow } from './index'
 import type { MatchRowData, MatchRowParticipant } from './index'
 
 const meta: Meta<typeof MatchRow> = {
-  title: 'Composite/MatchRow',
+  id: 'composite-matchrow',
+  title: 'Composites/Match & game data/MatchRow',
   component: MatchRow,
 }
 
@@ -240,9 +242,19 @@ export const ListPopulated: Story = {
   render: () => <MatchList matches={populated} />,
 }
 
+// `status="loading"` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const ListLoading: Story = {
   name: 'MatchList — loading (5 skeleton rows, no row count reflow against the populated story)',
   render: () => <MatchList status="loading" />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const ListError: Story = {
@@ -283,4 +295,66 @@ export const ListOtherSubjectPopulated: Story = {
 export const ListOtherSubjectEmpty: Story = {
   name: 'MatchList — subject="other", empty ("<alias> has no matches in their history yet.")',
   render: () => <MatchList status="empty" subject="other" subjectAlias="aoe2villain" />,
+}
+
+// FR-044: `MatchList` reads the same `xl` breakpoint `useBreakpoint('xl')` names in `index.tsx`'s
+// own doc comment (§8) — below it every match is its own card list item, at or above it a real
+// `<table>`. Pinned to `reviewWidthNarrow`, the one custom viewport `.storybook/preview.tsx`
+// declares at `specs/README.md` rule 7's narrowest review width — never a literal pixel value here,
+// and never one of Storybook's own device presets either, none of which sits at that width. This
+// pin serves the browsable Storybook only: the visual regression suite's own width axis
+// (`scripts/visual/run.mjs`'s `WIDTHS`) is what actually governs a baseline's dimensions, and it
+// overrides whatever viewport a story pins. `ListPopulated` above already reads at the wide, table
+// shape in the ordinary case; this is the one story that pins toward the shape none of this file's
+// others force. Pinned through `globals.viewport`, not `parameters.viewport.defaultViewport`:
+// Storybook 10 folded the old `@storybook/addon-viewport` into core (`storybook/viewport`), and its
+// per-story API is the `globals` shape — `parameters.viewport.defaultViewport` was never wired to
+// anything in this version and silently did nothing, including here and in `Link.stories.tsx`'s
+// `TouchFootprint`.
+export const ListCardsBelowXl: Story = {
+  name: 'MatchList — cards below xl, a real <table> from it (§8)',
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
+  render: () => <MatchList matches={populated} />,
+}
+
+// match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
+// including `CaptureStateBadge` — has its own hover." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+export const Hover: Story = {
+  render: () => <MatchRow match={base} />,
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' } },
+}
+
+// §5 "focus-visible — standard ring on the row's own link wrapper, inset so it never crops the
+// outcome text or a numeral."
+export const FocusVisible: Story = {
+  render: () => <MatchRow match={base} />,
+  parameters: {
+    visualForceState: { state: 'focus-visible', selector: 'a[href="/matches/1001"]' },
+  },
+}
+
+// §5 "active — per link" (`Link`'s own `standalone` press paint).
+export const Active: Story = {
+  render: () => <MatchRow match={base} />,
+  parameters: { visualForceState: { state: 'active', selector: 'a[href="/matches/1001"]' } },
+}
+
+// §5 "disabled — `DownloadAction` has no disabled form: while `capture_status != \"stored\"` it is
+// absent, not disabled... a greyed-out button repeating 'you can't do this yet' next to a badge
+// that already said so is noise." `MatchRow` itself carries no `DownloadAction`; this documents
+// the rule for the row's own capture badge, which `MatchDetailPanel`'s stories show applied to the
+// real download control.
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A row is never disabled, and its download control has no disabled form either — while a
+        match is not yet stored, the control is absent, not greyed out, because the capture badge
+        beside it already explains why.
+      </p>
+      <MatchRow match={base} />
+    </div>
+  ),
 }

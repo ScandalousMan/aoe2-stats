@@ -4,6 +4,10 @@
 **Feature**: 001, US1 and US5 — consumed by `apps/web/src/features/profile/` (T037, rewired by
 T407) and the privacy route
 **Requirements**: FR-006 (the identity statement), FR-034, FR-035, FR-041. Constitution IX (4.0.0).
+**Tier**: screen (`src/screens/`).
+**Surface class**: `prose` (README's "Surface density" section) — the identity statement and basis
+statement are continuous reading text, `space-3` between the statements in one block and `space-8`
+between the two subjects, the class's own paragraph and section rhythm.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Button`, `Callout`, `Skeleton`.
 
 **Amended 2026-08-27 (T406) — rebuilt from `ConsentStep`, constitution IX 4.0.0.** IX no longer
@@ -56,10 +60,10 @@ accordion, not in a tooltip, not behind "Learn more", not below the fold on a ph
 smaller or lighter type than the basis statement. FR-006 says "stated plainly"; anatomy is how that
 becomes checkable, and none of it changed when the consent gate did.
 
-## 3. States and props
+## 3. Variants and sizes, states and props
 
-One variant, no size split, no dialog. The state vocabulary is now the same shape everywhere it is
-used, so there is nothing left for a `variant` prop to select.
+**Variants and sizes** — one variant, no size split, no dialog. The state vocabulary is now the same
+shape everywhere it is used, so there is nothing left for a `variant` prop to select.
 
 `state: 'archiving' | 'objected'` — the only two facts `archival_objected_at` can mean
 (`contracts/http-api.md`'s `GET /api/me`). There is no third, "unanswered", state: a user who has
@@ -213,6 +217,13 @@ third "nothing yet" fact for an empty state to represent. (Whether a linked prof
 replays yet is `ProfileSummary`'s empty state, `profile-summary.md`'s own §5 — a fact about the
 archive's contents, not about whether archiving is running.)
 
+**selection** — not applicable. `state` is a fact about the account, not a choice among visible
+items; there is no set for one member to be marked current within.
+
+**expansion** — not applicable, and by rule rather than oversight: §4.1 bans placing any of the four
+identity statements "behind a disclosure, a tooltip, a `title` attribute, a scroll-to-reveal or a
+'Learn more'." Nothing in this component collapses.
+
 ## 6. Tokens used
 
 Colour: `surface` (section), `surface-raised` (identity statement block and callouts), `border`
@@ -339,3 +350,7 @@ needs one).
 - [ ] Focus ring visible and unclipped on the switch button in both themes.
 - [ ] The identity block and the basis statement carry no shadow and read as passages of text, not
       as cards competing with `StatusRegion` for attention.
+- [ ] The section heading is visibly larger and heavier than `StatementHeading`/`BasisHeading`, which
+      are in turn heavier than the prose beneath them — a token-correct frame that gave a subheading
+      the section heading's own size would blur the two "what this block is about" cues into one,
+      and fails this criterion (FR-063).

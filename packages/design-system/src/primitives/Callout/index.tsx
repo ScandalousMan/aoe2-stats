@@ -65,7 +65,14 @@ export function Callout({
         id={headingId}
         ref={headingRef}
         tabIndex={-1}
-        className={cx('font-sans text-md font-semibold', headingColor)}
+        // outline-none: same reasoning as `Dialog`'s heading (shared-primitives.md#Dialog) — this
+        // heading is `tabIndex={-1}`, never reached by a real Tab, and a consumer moves focus here
+        // programmatically (sign-in-screen.md §8) purely so assistive technology announces the
+        // outcome; without this the browser's user-agent default outline paints anyway, a
+        // theme-invariant colour in no token file, contradicting this component's own former claim
+        // of "the standard focus ring" (remediation, B5 — see shared-primitives.md#Callout,
+        // "focus-visible").
+        className={cx('font-sans text-md font-semibold outline-none', headingColor)}
       >
         {heading}
       </Heading>

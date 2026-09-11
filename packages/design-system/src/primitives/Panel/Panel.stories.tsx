@@ -1,10 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { Button } from '../Button'
 import { Skeleton } from '../Skeleton'
+import { Table } from '../Table'
+import type { TableColumn } from '../Table'
 import { Panel } from './index'
 
 const meta: Meta<typeof Panel> = {
-  title: 'Primitives/Panel',
+  id: 'primitives-panel',
+  title: 'Primitives/Layout & structure/Panel',
   component: Panel,
   args: {
     density: 'dense',
@@ -79,6 +83,11 @@ export const WithFooter: Story = {
   render: (args) => <Panel {...args}>Three matches this week.</Panel>,
 }
 
+// `Skeleton` stays invisible for the first `duration.normal` (200ms, `useDelayedVisible`) so a
+// fast-resolving load never flashes a pulse — a `setTimeout`, not a wall clock, but a clock all
+// the same (T568, FR-047). Waiting here for the pulse to exist, rather than screenshotting
+// whatever frame Storybook happened to reach first, is what makes this baseline the same no
+// matter how long mounting this particular story took.
 export const Loading: Story = {
   args: {
     loading: true,
@@ -88,6 +97,11 @@ export const Loading: Story = {
       <Skeleton variant="text" lines={3} />
     </Panel>
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const Empty: Story = {
@@ -139,6 +153,99 @@ export const Nested: Story = {
       <Panel density="dense" heading="Player 1">
         18 villagers, 4 military units lost.
       </Panel>
+    </Panel>
+  ),
+}
+
+// structural-tier.md §7 "hover — none. A `Panel` is never itself interactive... focus-visible —
+// none of its own; it is not focusable... active — none, for the same reason as hover."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <Panel {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A panel is never itself interactive: no hover fill, no lift, no pointer cursor, and it is
+        not focusable. A call site that needs a clickable card puts a real link inside the panel
+        spanning its content, and that link owns its own hover, focus and active states.
+      </p>
+    </Panel>
+  ),
+}
+
+// A realistic combined story: the shape `Panel`'s own `heading`/`footer` fixtures above imply —
+// "Recent matches", "3 of 12 shown" — with a real `Table` of plausible match content inside it,
+// rather than the one-line specimens every story above uses.
+interface RealisticMatch {
+  gameId: string
+  opponent: string
+  rating: number
+  ratingChange: number
+  when: string
+}
+
+const realisticMatchRows: RealisticMatch[] = [
+  {
+    gameId: 'g-1',
+    opponent: 'RedBull_Barley',
+    rating: 1876,
+    ratingChange: 24,
+    when: '3 hours ago',
+  },
+  { gameId: 'g-2', opponent: 'TheViper_fan99', rating: 1852, ratingChange: -12, when: 'yesterday' },
+  { gameId: 'g-3', opponent: 'aoe2villain', rating: 1864, ratingChange: 16, when: '2 days ago' },
+]
+
+const realisticMatchColumns: [TableColumn<RealisticMatch>, ...TableColumn<RealisticMatch>[]] = [
+  { key: 'opponent', header: 'Opponent', render: (row) => row.opponent },
+  { key: 'rating', header: 'Rating', align: 'numeric', render: (row) => row.rating },
+  {
+    key: 'ratingChange',
+    header: 'Change',
+    align: 'numeric',
+    render: (row) => (row.ratingChange >= 0 ? `+${row.ratingChange}` : String(row.ratingChange)),
+  },
+  { key: 'when', header: 'When', render: (row) => row.when },
+]
+
+export const RealisticMatchTable: Story = {
+  name: 'Realistic composition — a real Table of recent matches',
+  // The caption text deliberately does not repeat `heading` verbatim. `Panel`'s own `<section>`
+  // (labelled by its heading) and `Table`'s scroll region (structural-tier.md §10, "a labelled,
+  // focusable `role=\"region\"`", labelled by its caption) are two independent landmarks, and axe's
+  // `landmark-unique` correctly flags two of them sharing one accessible name — confirmed by
+  // reproducing it with the caption at the identical string and watching it clear once the text
+  // diverges. `captionHidden` only says the caption is visually redundant next to `heading`
+  // (structural-tier.md §9); it never licenses giving the table's own landmark the exact same name
+  // as the one already naming its ancestor. Naming the specific fact this table's region adds —
+  // how much of it is showing — both keeps the caption non-redundant with the heading and
+  // gives a screen-reader user tabbing straight into the scrollable region something the heading
+  // alone did not already tell them.
+  render: () => (
+    <Panel
+      density="dense"
+      heading="Recent matches"
+      footer={<span className="type-supporting text-sm text-text-secondary">3 of 47 shown</span>}
+    >
+      <Table
+        caption="3 of 47 recent matches"
+        captionHidden
+        columns={realisticMatchColumns}
+        rows={realisticMatchRows}
+        getRowKey={(row) => row.gameId}
+        getRowHref={(row) => `/matches/${row.gameId}`}
+      />
+    </Panel>
+  ),
+}
+
+// §7 "disabled — never. A panel whose content is unavailable says so in words; a greyed-out
+// bordered box is a dead end with a frame around it."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <Panel {...args}>
+      <p className="type-supporting text-sm text-text-secondary">
+        A panel is never disabled — content that is unavailable says so in words instead of a
+        greyed-out frame.
+      </p>
     </Panel>
   ),
 }

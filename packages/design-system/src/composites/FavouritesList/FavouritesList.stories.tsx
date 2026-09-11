@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import type { FavouriteEntryData } from './index'
 import { FavouritesList } from './index'
 
 const meta: Meta<typeof FavouritesList> = {
-  title: 'Composite/FavouritesList',
+  id: 'composite-favouriteslist',
+  title: 'Composites/Search & favourites/FavouritesList',
   component: FavouritesList,
 }
 
@@ -57,8 +59,18 @@ export const UnrefreshableStanding: Story = {
   args: { entries: [staleStanding] },
 }
 
+// `loading: true` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: { loading: true, loadingRowCount: 3 },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const LoadFailed: Story = {
@@ -88,4 +100,50 @@ export const SignedOut: Story = {
 // actually renders.
 export const RealisticList: Story = {
   args: { entries: [rated, neverRanked, staleStanding] },
+}
+
+// FR-044: `FavouriteRow`'s own doc comment (§8) names `md` as the breakpoint — a stacked
+// full-width card below it, one line with a right-aligned remove control from it. Pinned toward
+// the narrow shape with the declared `reviewWidthNarrow` viewport via `globals.viewport` (see
+// `MatchRow.stories.tsx`'s identical rationale for why a declared option rather than a Storybook
+// device preset) — `RealisticList` above already reads at the wide, one-line shape.
+export const StackedBelowMd: Story = {
+  name: 'Stacked card below md, one line from it (§8)',
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
+  args: { entries: [rated, neverRanked, staleStanding] },
+}
+
+// favourites-list.md §5 "hover / focus-visible / active — `ProfileLink`: whole-block hover fill
+// `surface-sunken`... `RemoveControl`: `FavouriteToggle`'s own hover/focus/active. The two never
+// share a hover." Forced from Playwright in `tests/visual/stories.spec.ts` (see that file's own
+// `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which the CSS
+// pseudo-class ignores.
+export const Hover: Story = {
+  args: { entries: [rated] },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/players/1"]' } },
+}
+
+export const FocusVisible: Story = {
+  args: { entries: [rated] },
+  parameters: { visualForceState: { state: 'focus-visible', selector: 'a[href="/players/1"]' } },
+}
+
+export const Active: Story = {
+  args: { entries: [rated] },
+  parameters: { visualForceState: { state: 'active', selector: 'a[href="/players/1"]' } },
+}
+
+// §5 "disabled — the list has no disabled form. `RemoveControl` is disabled only transiently
+// while its own `DELETE` is in flight."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The list itself has no disabled form. Its remove control disables only transiently while its
+        own removal request is in flight — see `FavouriteToggle`'s own loading story.
+      </p>
+      <FavouritesList {...args} />
+    </div>
+  ),
+  args: { entries: [rated] },
 }

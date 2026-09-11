@@ -413,9 +413,13 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
       </h3>
       {isTable ? (
         <Table<ParticipantData>
-          // The same words reach a screen reader (§9's existing caption rule, extended by §12.3):
-          // nesting `TeamResultMarker`'s own text inside the caption is enough, since a caption's
-          // accessible name is the concatenation of its descendants' text.
+          // structural-tier.md §10 "A hidden caption must say something the heading above it does
+          // not": the `<h3>` above and this table's `<section>` are two landmarks, and a caption
+          // that only repeats the heading's words gives them the same accessible name — a
+          // `landmark-unique` failure whether or not the caption is visible. So the caption keeps
+          // the heading's own words (team name and result, for the reader who lands on the table
+          // before the heading) and adds what the heading never says: what the table holds, one
+          // row per player, and its columns' contents.
           caption={
             <>
               {team.name}
@@ -425,6 +429,10 @@ function TeamGroup({ team }: { team: TeamGroupData }) {
                   — <TeamResultMarker kind={resultKind} />
                 </>
               )}
+              {/* A text node follows an element here (`TeamResultMarker`'s own `<span>`), so the
+               * accessible-name computation inserts its own separating space at that boundary —
+               * this string supplies none of its own, and reads correctly either way. */}
+              — each player's civilisation, result and rating
             </>
           }
           captionHidden

@@ -123,6 +123,45 @@ describe('Menu', () => {
     expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
   })
 
+  // T572 scenario 9 remediation (defect 1): shared-primitives.md#Menu's "selection" state used to
+  // rely entirely on a caller-supplied `badge` to be distinguishable in a still image; a screen
+  // reader given only the built Storybook could not tell a checked item's ring (the focus ring)
+  // from an actual selection mark, and no `badge` at all reads identically to unchecked. The fix is
+  // an intrinsic, always-rendered leading glyph — visible when checked, `invisible` (space
+  // reserved, not painted) otherwise — so the still-image difference exists with zero caller input.
+  it('marks a checked selection item with an intrinsic glyph, distinct from the focus ring and from any caller-supplied badge', async () => {
+    const user = userEvent.setup()
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+    const checked = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    const unchecked = screen.getByRole('menuitemradio', { name: /aoe2alt/ })
+    const checkedGlyph = checked.querySelector('svg[aria-hidden="true"]')
+    const uncheckedGlyph = unchecked.querySelector('svg[aria-hidden="true"]')
+    expect(checkedGlyph).not.toBeNull()
+    expect(uncheckedGlyph).not.toBeNull()
+    // Both items reserve the identical glyph slot (so labels stay aligned); only the checked one
+    // is actually painted — neither relies on the focus ring, which only one item can carry at a
+    // time and which is a separate outline, not part of this glyph at all.
+    expect(checkedGlyph?.getAttribute('class')).not.toMatch(/\binvisible\b/)
+    expect(uncheckedGlyph?.getAttribute('class')).toMatch(/\binvisible\b/)
+  })
+
+  // `actions` items never carry a checked concept (aria-checked is only meaningful on
+  // `menuitemradio`), so the glyph slot this test guards above must not appear there at all.
+  it('never renders the selection glyph slot on an actions-variant item', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[{ id: 'unlink', label: 'Unlink this profile' }]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const item = screen.getByRole('menuitem', { name: 'Unlink this profile' })
+    expect(item.querySelector('svg[aria-hidden="true"]')).toBeNull()
+  })
+
   it('opens on click and marks the checked item with role=menuitemradio and aria-checked', async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
@@ -308,6 +347,59 @@ describe('Menu', () => {
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
     expect(trigger.className).toMatch(/\bmin-h-12\b/)
     expect(trigger.className).not.toMatch(/\bh-10\b/)
+  })
+
+  // Same shape as `MatchRow.test.tsx`'s own helper (`mockMatchMediaAt`): jsdom has no layout
+  // engine, so `useBreakpoint('md')` — and therefore the popover-vs-sheet branch this test needs —
+  // reads `window.matchMedia` directly rather than a real viewport width.
+  function mockMatchMediaAt(widthPx: number): () => void {
+    const original = window.matchMedia
+    window.matchMedia = (query: string) => {
+      const minWidthMatch = /min-width:\s*(\d+)px/.exec(query)
+      const threshold = minWidthMatch ? Number(minWidthMatch[1]) : Infinity
+      return {
+        matches: widthPx >= threshold,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      } as MediaQueryList
+    }
+    return () => {
+      window.matchMedia = original
+    }
+  }
+
+  // M7 remediation (fourth-pass adversarial review): the popover used to anchor `left-0`
+  // unconditionally, which ran the surface past the viewport's inline-end edge whenever the
+  // trigger itself sat near that edge of its own container (measured on `ProfileSummary`'s Manage
+  // trigger at 768/1280: the surface ran to column 1279 of 1280 and 767 of 768). `align="end"`
+  // anchors to the trigger's inline-end edge instead, so the surface grows back toward the inline
+  // start rather than off the far one — verified here by class presence, the only thing jsdom's
+  // missing layout engine can assert about positioning. Only reachable from `md` up: below it the
+  // menu is always the full-width sheet, where `align` has no effect.
+  it('anchors the popover to the trigger\'s inline-start edge by default, and to the inline end when align="end"', async () => {
+    const restore = mockMatchMediaAt(1280)
+    try {
+      const user = userEvent.setup()
+      const { rerender } = render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+      await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+      const defaultSurface = screen.getByRole('menu')
+      expect(defaultSurface.className).toMatch(/\bstart-0\b/)
+      expect(defaultSurface.className).not.toMatch(/\bend-0\b/)
+
+      await user.keyboard('{Escape}')
+      rerender(<Menu variant="selection" triggerLabel="aoe2guy" items={items} align="end" />)
+      await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+      const endSurface = screen.getByRole('menu')
+      expect(endSurface.className).toMatch(/\bend-0\b/)
+      expect(endSurface.className).not.toMatch(/\bstart-0\b/)
+    } finally {
+      restore()
+    }
   })
 
   it('the trigger really measures at least 44px tall', () => {

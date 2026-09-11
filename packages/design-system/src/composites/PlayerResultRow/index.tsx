@@ -53,12 +53,31 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       onClick={createRowLinkClickHandler(result.href, onNavigate)}
       className={cx(
         'flex flex-col gap-1 rounded-panel border border-border bg-surface p-4',
-        'md:rounded-none md:border-x-0 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
+        // Remediation (fifth-pass review M3): `md:border-x-0` used to zero the inline-start
+        // reservation below outright from `md` up, so at 768/1280 the press border had nothing
+        // reserved to paint over — it appeared *from zero width*, growing the row by 2px and
+        // shifting the alias/clan group on press, the opposite of what "reserves the inline-start
+        // edge at rest, at zero visible cost" (below) claims. `md:border-l-2` restores exactly the
+        // inline-start width `border-x-0` removed (Tailwind resolves a same-breakpoint axis-vs-side
+        // conflict in the side utility's favour regardless of source order — the same guarantee
+        // `border-x-4 border-l-2` documents), so the reservation survives the responsive reset and
+        // only the *other* three sides actually go to zero here.
+        'md:rounded-none md:border-x-0 md:border-l-2 md:border-t-0 md:border-b md:bg-transparent md:px-0 md:py-3',
         // T560 (FR-038): `active` paints the same fill as `hover`, matching `MatchRow` and
         // `Table`'s identical row-link category (a keyboard `Enter` triggers `:active` with no
         // pointer ever hovering). `motion-reduce:duration-0` closes the README rule 5 gap.
         'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-        'hover:bg-surface-sunken active:bg-surface-sunken',
+        // Fourth-pass review remediation (FR-037): hover and active painted the identical
+        // `surface-sunken` fill, so a press was not distinguishable from a hover in a still
+        // image. `border-l-2 border-l-transparent` reserves the inline-start edge at rest, at zero
+        // visible cost, and the `md:border-l-2` above keeps that reservation's *width* constant at
+        // every viewport — so `active:border-l-border-strong` only ever needs to repaint the
+        // colour, never (re)introduce the width, and never reflows. (Fifth-pass review M3: this
+        // used to also carry `active:border-l-2`, redundant below `md` and actively wrong at
+        // `md`+, where it was the one class fighting `md:border-x-0` back to a width — removed now
+        // that the width is reserved unconditionally instead.)
+        'border-l-2 border-l-transparent',
+        'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
         focusRing,
         className,
       )}

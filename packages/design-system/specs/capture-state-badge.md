@@ -5,6 +5,9 @@
 ([`match-history.md`](./match-history.md)), themselves consumed by
 `apps/web/src/routes/matches.index.tsx` (T075) and `apps/web/src/routes/matches.$gameId.tsx` (T076)
 **Requirements**: FR-019, FR-026, FR-027. SC-010.
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — a pill and an optional line of text, not a surface
+with a density of its own to classify.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `Badge` (grows four tone variants
 here, see §3), `Skeleton`.
 
@@ -156,6 +159,9 @@ error / empty) applies to the whole component, not to be confused with the four 
   is `pending`/`downloading` but `captureDeadlineAt` is `null` (should not happen per `data-model.md`
   — "every discovered match acquires one at discovery time" — but never trusted blindly): render the
   "Still catchable" pill with no `SecondaryLine`, never a countdown built from a missing value.
+- **selection** — not applicable; a capture-state pill is not a set member.
+- **expansion** — not applicable; the pill never reveals a second surface. The full sentence in
+  `detail`'s `SecondaryLine` is a variant choice (§4), not a disclosure the reader triggers.
 
 ## 7. The countdown (`SecondaryLine` for "Still catchable")
 
@@ -229,3 +235,7 @@ at every viewport.
 - [ ] Loading story: a `Skeleton` matches the pill's footprint, no reflow against the loaded story.
 - [ ] Empty story (no capture row yet): nothing renders where the badge would sit — confirmed by
       overlaying the empty and loaded screenshots and seeing no leftover placeholder.
+- [ ] The pill's label (`xs`, `semibold`, `wide` tracking) reads as legibly as the row's other text
+      at the same size, not fainter — a token-correct pill painted in a low-emphasis tone that still
+      cleared 4.5:1 could still read as an afterthought beside a `text-primary` alias, and a story
+      placing the pill beside a name must show both at equal first-glance legibility (FR-063).

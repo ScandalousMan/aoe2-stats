@@ -6,6 +6,9 @@
 **Requirements**: none of 001's functional requirements name it; the obligation is constitutional.
 Constitution X: "The Microsoft 'Game Content Usage Rules' disclaimer appears in the README and in
 the site footer." Constitution VI: "A component without a Storybook story does not exist."
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — chrome on `background`, not a content surface with
+a row height or reading measure of its own to classify.
 **Depends on**: nothing — this component defines its own markup rather than composing
 `shared-primitives.md`, because a footer link is a plain inline `<a>` (the same shape
 `archival-control.md`'s `PrivacyNoticeLink` already uses), not a `Button`.
@@ -100,8 +103,14 @@ repository, this component is the same disclosure rendered where a visitor actua
   underneath the permanent underline. Nothing else in this component responds to a pointer.
 - **focus-visible** — the standard ring (`outline-2 outline-offset-2`, gap DS-4) on each link that
   is present. The disclaimer and the affiliation note are not focusable; they are not controls.
-- **active** — links render `link-hover` while pressed (there is deliberately no `link-active`;
-  T522's `link-hover` serves both — `color-tokens.md` §11.3). Nothing translates or scales.
+- **active** — ink stays `link-hover` (there is deliberately no `link-active`; T522's `link-hover`
+  serves both — `color-tokens.md` §11.3), and the underline steps to `underline-offset-4` — the same
+  fix `Link`'s `inline` variant carries (`structural-tier.md` §9 "active"), because a shared
+  `link-hover` fill with no second signal left hover and press as one still image (fourth-pass
+  review remediation, FR-037; this passage itself described the pre-fix behaviour through a
+  fifth-pass review, finding B2, which is why it now names the second signal rather than only the
+  ink). Nothing translates or scales, and nothing fills — a wash behind an inline word breaks the
+  disclaimer's own text flow.
 - **disabled** — not applicable. A link is either rendered (its href is present) or absent; there
   is no dimmed, unusable middle state for a footer link. Rendering a dead link when a route does
   not yet exist would be worse than omitting it, and omission is what the optional props already do.
@@ -112,6 +121,9 @@ repository, this component is the same disclosure rendered where a visitor actua
 - **empty** — `LinkRow` itself: renders nothing when neither href prop is supplied, rather than an
   empty row with a visible gap where two links would have been. `Disclaimer` and `AffiliationNote`
   are never empty — they carry no prop that could make them so.
+- **selection** — not applicable; the footer has no set of items for one to be current within.
+- **expansion** — not applicable; nothing here collapses or reveals a second surface — every link
+  either renders or is omitted (§5 empty), which is presence, not disclosure.
 
 ## 6. Tokens used
 
@@ -187,3 +199,7 @@ contrast table (light 5.5, dark comfortable); `link` on `background` is asserted
 - [ ] At 375px, no horizontal scrolling and no clipped text in any story.
 - [ ] The focus ring is visible and unclipped on each rendered link, in both themes.
 - [ ] No game asset, icon, portrait or logo anywhere in the frame — text only.
+- [ ] The two links are visibly distinguishable from `Disclaimer`/`AffiliationNote` by ink and
+      underline, not merely by position — a token-correct footer that gave a link the same
+      `text-secondary` ink and no underline would leave a reader unable to tell prose from a control,
+      and fails this criterion (FR-063).

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { Button } from '../Button'
 import { EmptyState } from '../EmptyState'
 import { ErrorState } from '../ErrorState'
@@ -66,7 +67,8 @@ const columns: [TableColumn<MatchRow>, ...TableColumn<MatchRow>[]] = [
 ]
 
 const meta: Meta<typeof Table<MatchRow>> = {
-  title: 'Primitives/Table',
+  id: 'primitives-table',
+  title: 'Primitives/Layout & structure/Table',
   component: Table,
 }
 
@@ -85,7 +87,9 @@ export const Default: Story = {
 }
 
 // structural-tier.md §10 "hover"/"active": a row highlights only when the whole row is a real
-// link. Both a linked and a non-linked row sit in the same table so the difference is visible.
+// link. This story shows the two kinds of row side by side — at rest they are pixel-identical by
+// design (`--default` above is the same table with no linked rows at all); `RowLinkHover` below is
+// the story that actually demonstrates the difference.
 export const RowLinks: Story = {
   render: () => (
     <Table
@@ -113,6 +117,11 @@ export const CaptionHidden: Story = {
   ),
 }
 
+// `status="loading"` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   render: () => (
     <Table
@@ -124,6 +133,11 @@ export const Loading: Story = {
       skeletonRowCount={4}
     />
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const ErrorStatus: Story = {
@@ -243,6 +257,80 @@ export const Overflow: Story = {
       <Table
         caption="Recent matches"
         columns={wideColumns}
+        rows={matches}
+        getRowKey={(row) => row.gameId}
+      />
+    </div>
+  ),
+}
+
+// structural-tier.md §10 "hover — a row highlights with `surface-sunken` only when the whole row
+// is a real link." `tests/visual/stories.spec.ts` drives the real `:hover` on the row's own anchor
+// from Playwright once this story has settled (see that file's own `VisualForceState` comment) — a
+// `play()` here could only dispatch a synthetic event, which the pseudo-class ignores.
+export const RowLinkHover: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', name: 'RedBull_Barley' },
+  },
+}
+
+// §10 "active — a row link's press keeps the hover fill and adds a rule down the row's
+// inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037). Held down
+// rather than released so the capture shows the pressed frame.
+export const RowLinkActive: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' },
+  },
+}
+
+// §10 "focus-visible — the scroll region shows the standard ring when it is focused for
+// scrolling; a focusable element inside a cell shows its own ring, offset so the frame does not
+// clip it." Shown here on the region itself, named by its own caption (`index.tsx`'s
+// `aria-labelledby={captionId}`).
+export const FocusVisible: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+    />
+  ),
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'region', name: 'Recent matches' },
+  },
+}
+
+// §10 "disabled — never. A table whose data is stale says so in a `Callout` above it; a greyed
+// table is unreadable and still on screen."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A table is never disabled — data that is stale says so in a `Callout` above it, never in a
+        greyed-out, still-readable table.
+      </p>
+      <Table
+        caption="Recent matches"
+        columns={columns}
         rows={matches}
         getRowKey={(row) => row.gameId}
       />

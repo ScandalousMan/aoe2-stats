@@ -16,6 +16,10 @@ footprint.
 which is what keeps the design system asset-agnostic and its unit tests free of binary fixtures
 (plan.md, Structure Decision).
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — an inline mark-plus-text pair, not a surface with a
+density of its own.
+
 ## 1. Purpose
 
 Let a reader tell which civilisation a player played at a glance, from the game's own mark shown
@@ -101,6 +105,8 @@ smaller size and never shrinks responsively (§7).
     — `apps/web/src/features/matches/format.ts`'s existing wording, never a new phrase for the same
     gap — **and suppress the mark**. An emblem this component cannot name is a picture standing in
     for a fact, which is exactly README rule 4's failure mode.
+- **selection** — not applicable; a civilisation mark is not a set member.
+- **expansion** — not applicable; the pair never reveals a second surface.
 
 ## 5. Tokens used
 
@@ -190,3 +196,6 @@ That is the whole spacing surface. The pair adds no outer margin; the caller's o
 - [ ] The loading story's skeleton pair (block + text) overlays the default story with no reflow of
       the name's position.
 - [ ] The blank-name story renders "Unknown civilisation" and **no mark**, in both themes.
+- [ ] The mark and its name sit centred against each other on the row's own line box, not aligned to
+      the text's baseline — a token-correct pairing that matched the mark to the text's baseline
+      instead would sit visibly low against the name beside it, and fails this criterion (FR-063).

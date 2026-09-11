@@ -4,20 +4,37 @@
 (T543–T548; the directory is `primitives/` after T540's tier move, never `components/`).
 **Feature**: 005, US2.
 **Requirements**: FR-008, FR-012, FR-013, FR-018, FR-019, FR-020, FR-021, FR-022, FR-023, FR-024,
-FR-025, FR-026, FR-028, FR-029, FR-035, FR-037, FR-038, FR-050, FR-053, FR-054, FR-055, FR-056,
-FR-059, FR-063. SC-003, SC-004, SC-009, SC-013.
+FR-025, FR-026, FR-028, FR-029, FR-034, FR-035, FR-036, FR-037, FR-038, FR-050, FR-053, FR-054,
+FR-055, FR-056, FR-059, FR-063. SC-003, SC-004, SC-009, SC-013.
 **Contract**: [`specs/005-design-system-foundations/contracts/structural-tier.md`](../../../specs/005-design-system-foundations/contracts/structural-tier.md)
 fixes what each primitive **owns** and what it **forbids its caller**. This file is the visual
 specification of the same nine — anatomy, states, tokens, spacing, responsive behaviour,
 accessibility and the acceptance criteria `visual-reviewer` judges against. Where the two touch, the
 contract decides ownership and this file decides appearance; neither restates the other.
 **Depends on**: [`README.md`](./README.md) — the measured contrast table (referenced by pair, never
-by number), the elevation meanings, the iconography contract, the two surface classes and the eight
+by number), the elevation meanings, the iconography contract, the two surface classes and the nine
 standing rules. [`tokens/space.json`](../tokens/space.json) — the `rhythm` group §2 assigns.
 [`contracts/token-families.md`](../../../specs/005-design-system-foundations/contracts/token-families.md)
 §2 — the utility vocabulary a primitive may write, and nothing else.
-**Tier**: all nine are **primitives**. None carries domain knowledge, none imports a composite or a
-screen, and none imports from `apps/` (FR-028, FR-029, enforced by `scripts/checks/tier-deps.mjs`).
+
+**Tier and surface class, per component** (T570) — a tier and a surface class are each a property of
+a component, and a file naming nine of them declares nine, not one line for the file. All nine share
+one tier; only `Panel` and `Table` own a surface to classify:
+
+| Component    | Tier                                     | Surface class                                                                        |
+| ------------ | ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `Page`       | primitive (`src/primitives/Page/`)       | neither `dense` nor `prose` — draws no filled surface of its own (§3)                |
+| `Section`    | primitive (`src/primitives/Section/`)    | neither `dense` nor `prose` — same reason                                            |
+| `Panel`      | primitive (`src/primitives/Panel/`)      | `dense` or `prose`, by its own `density` prop (§3) — the caller picks exactly one    |
+| `Text`       | primitive (`src/primitives/Text/`)       | neither `dense` nor `prose` — ink, not a surface (§3)                                |
+| `Link`       | primitive (`src/primitives/Link/`)       | neither `dense` nor `prose` — same reason                                            |
+| `Table`      | primitive (`src/primitives/Table/`)      | `dense` or `prose`, by its own `density` prop (§3) — the caller picks exactly one    |
+| `Field`      | primitive (`src/primitives/Field/`)      | neither `dense` nor `prose` — inherits the class of whatever surface it sits on (§3) |
+| `EmptyState` | primitive (`src/primitives/EmptyState/`) | neither `dense` nor `prose` — same reason                                            |
+| `ErrorState` | primitive (`src/primitives/ErrorState/`) | neither `dense` nor `prose` — same reason                                            |
+
+None carries domain knowledge, none imports a composite or a screen, and none imports from `apps/`
+(FR-028, FR-029, enforced by `scripts/checks/tier-deps.mjs`).
 **Asset origin** (README rule 3): **none — not one of the nine renders an asset.** No icon, no
 portrait, no screenshot, no bitmap of any kind: the structural tier draws boxes, rules and text from
 tokens. `Link`'s external mark (§9) is an inline path drawn from `currentColor`, original to this
@@ -36,13 +53,13 @@ Three facts are shared by all nine and are stated **once**, in §2, §3 and §4,
 number written twice goes stale in one copy, and the rhythm rule in particular exists precisely
 because the same relationship was expressed three different ways in seven files.
 
-**The state vocabulary in force when this file was written is the eight**: default, hover,
-focus-visible, active, disabled, loading, error, empty. Every primitive below answers all eight,
-including the refusals. T569 extends the vocabulary to ten by adding **selection** and **expansion**;
-none of these nine implements either today — no primitive here is selectable and none collapses —
-so when T569 lands, its amendment to this file is nine answers of "inapplicable, and here is what
-happens instead", not a redesign. Recorded now so the next reader does not mistake the omission for
-an oversight.
+**The state vocabulary is the ten entries `README.md` names**: default, hover, focus-visible, active,
+disabled, loading, error, empty, selection, expansion (T569). Every primitive below answers all ten,
+including the refusals. None of these nine implements selection or expansion today — no primitive
+here is selectable and none collapses — so each primitive's answer to those two (§5–§13) is
+"inapplicable, and here is what happens instead," not a new behaviour: a state is documented because
+it is real, never built because the vocabulary lists it (FR-036). Recorded here so the next reader
+does not mistake the uniform refusal for nine oversights.
 
 **Hover, focus-visible and active are not decidable from a static story capture.** The suite
 screenshots stories at rest; it cannot force a pointer or a focus ring. Every criterion below that
@@ -235,6 +252,13 @@ legibility, which outranks uniformity (README rule 1).
   the header is what keeps a failed route from looking like the wrong route.
 - **empty** — a `Page` with a header and no sections renders the header plus one `EmptyState`. A
   padded, bordered, wordless column is the defect FR-023 names.
+- **selection** — inapplicable. A `Page` is the whole route; there is no set of pages for one to be
+  "current" within. The current route is `SiteHeader`'s own selection state (`site-header.md`), not
+  `Page`'s.
+- **expansion** — inapplicable. A `Page` never collapses or reveals a second surface; navigating to a
+  route replaces it wholesale. A route that needs to show or hide a surface without navigating away
+  composes `Menu` (`shared-primitives.md`) inside its `Section`s, rather than `Page` growing a state
+  for it.
 
 **Tokens used** — colour `background` (the page fill), `text-primary` (title), `text-secondary`
 (description), `focus-ring` (the landmark's ring). Width `size.page` / `size.panel` / `size.measure`.
@@ -328,6 +352,12 @@ level the way a hand-passed one can.
   never removes the rest of the page.
 - **empty** — the heading is retained, the body is replaced by one `EmptyState` with its sentence. A
   heading followed by nothing is the second most common form of the blank-region defect.
+- **selection** — inapplicable. A `Section` is not a member of a set another component tracks; two
+  sections on one page are independent regions, never mutually exclusive.
+- **expansion** — inapplicable, and this is the refusal that answers a real question: nothing here
+  makes a `Section` collapsible. A page needing an accordion of sections is describing a different
+  composite, one this tier does not build because the vocabulary now names the shape (FR-036) — it
+  is built the day a call site needs it, not before.
 
 **Tokens used** — colour `text-primary` (heading), `text-secondary` (description). Typography
 `type-display` at `text-2xl` (`h2`) / `text-xl` (`h3`), weight `semibold`, `tracking-tight` on `h2`;
@@ -428,6 +458,12 @@ enough, and which is what the parchment-and-rule character asks for anyway.
   `EmptyState`. With **no children at all**: the panel renders nothing — no frame, no padding. The
   distinction matters, and it is `Callout`'s precedent applied: an empty bordered box is a defect,
   but a region the caller deliberately marked empty needs its words.
+- **selection** — inapplicable. A `Panel` is a bounded surface, not a set member; a caller choosing
+  among several panels does that choosing in `Menu` or in the composite arranging them, never in
+  `Panel` itself.
+- **expansion** — inapplicable. `Panel` has no collapsed form; it renders its full content or, per
+  its own loading/error/empty states above, a placeholder occupying the same frame. A collapsible
+  panel is a composite's decision, not this primitive's.
 
 **Tokens used** — colour `surface`, `surface-raised` (nested once), `border` (the hairline),
 `text-primary` (heading and body), `text-secondary` (description and footer), `surface-sunken` (only
@@ -470,6 +506,10 @@ which is the readability obligation the width token exists to carry.
       area only, and the panel's own border does not change.
 - [ ] Corner radius is identical across every panel in the frame, and identical to every other panel
       in the system — a panel that looks softer or sharper than its neighbour fails (FR-013).
+- [ ] A panel's header, when present, sits visibly closer to its own body than to whatever sits above
+      the panel — a token-correct panel that used the between-components step for header-to-body
+      instead of the smaller step §3 assigns would read as two floating blocks rather than one
+      bounded unit, and fails this criterion (FR-063).
 
 ---
 
@@ -523,6 +563,11 @@ unresolved value visibly distinct from a measured one even for a caller who neve
   recovery path.
 - **empty** — `Text` with no children renders nothing, not an element occupying a line box. An empty
   paragraph is invisible in a screenshot and visible in the rhythm, which is the worst combination.
+- **selection** — inapplicable. `Text` carries no notion of being the current member of a set; the
+  browser's own text-selection (`::selection`) is a different mechanism and is outside this contract.
+- **expansion** — inapplicable. `Text` never truncates or reveals more of itself (no line-clamp
+  prop, above); a "read more" disclosure is a composite's decision built from `Text` and a `Button`,
+  not a behaviour `Text` owns.
 
 **Tokens used** — typography roles `type-display`, `type-body`, `type-supporting`, `type-numeric`,
 `type-machine`, `type-identifier`; sizes `text-xs` … `text-3xl`; weights `normal` / `semibold`;
@@ -600,10 +645,15 @@ link.
 - **focus-visible** — `outline-ring` at `outline-offset-ring` in `focus-ring`, around the whole link
   box, on top of whatever the hover paint is. Never removed on pointer interaction (FR-050).
 - **active** — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box, the
-  same press feedback every other control in the system gives (FR-038). `inline`: the hover paint,
-  with **no** fill — painting a wash behind three words inside a paragraph breaks the line and the
-  press is a frame the reader never sees. The difference is stated rather than smoothed over,
-  because FR-038 permits a difference a spec states and forbids one it does not.
+  same press feedback every other control in the system gives. `inline`: the hover paint, with **no**
+  fill — painting a wash behind three words inside a paragraph breaks the line and the press is a
+  frame the reader never sees — but the underline drops to `underline-offset-4` (rest and hover both
+  sit at `underline-offset-2`, above), so `inline`'s own hover and press still render as two distinct
+  frames rather than one repeated. **The two variants differing from each other is what 005 FR-038's
+  escape clause is for** — a stated difference between two variants of one control. It is not licence
+  for a variant's own hover and active to render as the same still image: that is FR-037's question,
+  FR-037 has no escape clause, and citing 005 FR-038 for it (this spec's own wording, before the
+  fourth-pass review found it wrong) was answering the wrong requirement.
 - **disabled** — **a link is never disabled.** A destination the reader may not reach renders as
   `Text` with a sentence saying why. A greyed-out anchor is a promise with no way to collect on it,
   and it is still in the tab order in half the implementations that ship it.
@@ -612,6 +662,12 @@ link.
 - **error** — none of its own. A navigation that fails lands on a route that renders `ErrorState`.
 - **empty** — a `Link` with no text renders nothing. **An icon-only link is forbidden** in this tier
   (README's iconography contract): the mark is never the thing that is named.
+- **selection** — inapplicable. A `Link` navigates; it does not mark itself current within a set. The
+  current-route mark belongs to whatever navigation renders it (`SiteHeader`'s underline,
+  `site-header.md`), never to a bare `Link`.
+- **expansion** — inapplicable, and the boundary is deliberate: a control that toggles a panel
+  instead of navigating is not a `Link` — it is the anti-pattern this component's own anatomy already
+  forbids ("never a div, never a button that navigates"). A `Link` always leaves; it never discloses.
 
 **Visited** — ink `link-visited`, underline unchanged. It cannot be observed in a real render —
 browsers restrict `:visited` and report the unvisited colour — so its criterion is the token-swatch
@@ -619,8 +675,11 @@ story README already specifies, not a story of real anchors.
 
 **Tokens used** — colour `link`, `link-hover`, `link-visited`, `focus-ring`, `surface-sunken`
 (`standalone` press only). Border widths `border.hairline` (rest underline), `border.ring` (hover
-underline), `border.ring` / `border.ring-offset` (focus ring). Typography: inherited for `inline`,
-`type-body` at `text-md` for `standalone`. Motion `duration.fast`, `ease-standard`. Elevation `none`.
+underline), `border.ring` / `border.ring-offset` (focus ring). `inline`'s own press adds no colour
+token: `underline-offset-4`, a bare Tailwind step (rest and hover sit at `underline-offset-2`) rather
+than a token name, for the same reason `decoration-1`/`decoration-2` already are one (no
+`border.json` value names an underline offset). Typography: inherited for `inline`, `type-body` at
+`text-md` for `standalone`. Motion `duration.fast`, `ease-standard`. Elevation `none`.
 Contrast: the twelve `link` / `link-hover` / `link-visited` rows in the README table, on all four
 surfaces, in both themes — referenced, not restated. Light `link` on `surface-sunken` is the
 tightest normal-text pair in the whole system and is the one a `standalone` link's own press state
@@ -651,6 +710,9 @@ why this is an anchor and not a click handler.
       and the underline is still present under it.
 - [ ] The `standalone` press capture shows a fill behind the link's box; the `inline` press capture
       shows no fill.
+- [ ] The `inline` hover and press captures share the same ink and the same underline thickness, but
+      the press capture's underline sits visibly lower — overlay the two and the underline's position
+      is the only difference (FR-037).
 - [ ] The external-link story shows the mark after the label, on the same line, never wrapping alone
       onto the next line.
 - [ ] A `standalone` link's tappable box measures at least 44px in both axes at 375 — measurable from
@@ -679,6 +741,14 @@ Table
       ├─ <tbody>           rows; each row's identity cell is <th scope="row">
       └─ <tfoot> optional  a totals or summary row
 ```
+
+**A hidden caption must say something the heading above it does not.** Hiding the caption (the
+anatomy above) is permitted only when a heading already names the table — it is not permission to
+give the caption the same words as that heading. A `Panel` composing a `Table` labels its own
+landmark from its heading (§7); the table's scroll region labels itself from the caption (below).
+Two landmarks with one accessible name is a `landmark-unique` failure whether or not the caption is
+visible, so the hidden caption must add what the heading omits (what the table holds, its scope, its
+unit — not that it is a table) rather than repeat the heading verbatim.
 
 **Variants and sizes** — no variants. One prop: `density`, `dense` (default) or `prose`, whose row
 padding and body typography are §3's. Column alignment is declared per column as `text` or `numeric`
@@ -721,8 +791,18 @@ container, **the table's own scroll region scrolls horizontally and the page doe
   Column headers never highlight (nothing here sorts today).
 - **focus-visible** — the scroll region shows the standard ring when it is focused for scrolling; a
   focusable element inside a cell shows its own ring, offset so the frame does not clip it.
-- **active** — a row link's press paints `surface-sunken` with the row's rule retained. The table
-  itself has no active state.
+- **active** — a row link's press keeps the hover fill (`surface-sunken`) and adds a rule down the
+  row's inline-start edge, in `border-strong`, `border.ring` (2px) wide — reserved transparent at
+  rest so it costs no width until it solidifies on press. Repainting the same fill a press already
+  carries answers nothing (FR-037: two states of one component must be distinguishable by more than
+  colour, in a still image, and this fourth-pass review found `Table`'s row doing exactly that); a
+  second surface rung was tried first and rejected — `background`, the ramp's only other attenuated
+  step, is what a `Table` frequently sits directly on (a page, or a `Panel` at `surface`, either of
+  which can coincide with it), so a `background`-filled press could vanish the same way a `Button`
+  `ghost` would on the page it renders on (`Button/index.tsx`'s own comment). A line that appears is
+  legible regardless of what is behind the row; a fill is not. `Menu`'s own items already ship the
+  identical technique for their own `active` state (`Menu/index.tsx`), so this is not a new idiom,
+  only this row's own missing use of one. The table itself has no active state.
 - **disabled** — never. A table whose data is stale says so in a `Callout` above it; a greyed table
   is unreadable and still on screen.
 - **loading** — caption and header row render immediately; the body holds skeleton rows of the same
@@ -736,13 +816,21 @@ container, **the table's own scroll region scrolls horizontally and the page doe
 - **empty** — caption and header row are retained; the body is one cell spanning every column,
   containing one `EmptyState` with its sentence. A table that renders its header over nothing, with
   no words, is the defect FR-023 names.
+- **selection** — inapplicable today. No row in a `Table` marks itself as the current one; a caller
+  needing that marks the identity cell with visible text or a `Badge`, composed at the call site,
+  because `Table` itself has no row-selection prop.
+- **expansion** — inapplicable. There is no expandable row and no `<details>` inside a cell; a row
+  that reveals more detail on click navigates to a detail screen instead (the shipping pattern,
+  `match-history.md`'s `MatchRow` → `MatchDetailPanel`), which is a navigation, not an expansion.
 
 **Tokens used** — colour `surface` (the region's fill), `border` (the frame and every row rule),
 `text-primary` (data), `text-secondary` (column labels, caption when visible), `surface-sunken` (row
-link hover and press), `focus-ring` (the region's ring). Typography `type-numeric`, `type-machine`,
-`type-body` per §3 for `dense`; `type-body` / `type-supporting` for `prose`. Radius `rounded-panel`
-on the region. Border widths `border.hairline`, `border.ring`, `border.ring-offset`. Elevation
-`none`. Motion `duration.fast` / `ease-standard` for a row link's hover fill; nothing else moves.
+link hover and press), `border-strong` (row link active only, the inline-start edge rule),
+`focus-ring` (the region's ring). Typography `type-numeric`, `type-machine`, `type-body` per §3 for
+`dense`; `type-body` / `type-supporting` for `prose`. Radius `rounded-panel` on the region. Border
+widths `border.hairline`, `border.ring` (the frame, the focus ring, and now also a row link's active
+edge), `border.ring-offset`. Elevation `none`. Motion `duration.fast` / `ease-standard` for a row
+link's hover fill and its active edge colour; nothing else moves.
 
 **Spacing** — cell block padding `space-3` at `dense`, `space-4` at `prose` (§3). Cell inline
 padding `space-4` between columns, `space-4` from the frame on both edges. An icon-and-text pairing
@@ -778,6 +866,8 @@ modifier-clicks work. Contrast: `text-primary` and `text-secondary` on `surface`
       `ErrorState` spanning the body.
 - [ ] In the row-link hover capture, exactly one row is filled and the row rules are still visible
       through the fill.
+- [ ] The row-link hover and active captures share the same fill, but the active capture also shows
+      a solid rule down that row's inline-start edge that the hover capture does not (FR-037).
 - [ ] A `dense` and a `prose` table in one frame have visibly different row heights.
 
 ---
@@ -798,7 +888,7 @@ Field
 ```
 
 **Variants and sizes** — no variants. Two sizes, matched to `Button`'s so a field and its submit
-button sit on one line at the same height (FR-038): `md` — control height `space-10`, pointer-only;
+button sit on one line at the same height (005 FR-038): `md` — control height `space-10`, pointer-only;
 `lg` — control height `space-12` (48px, clearing 44px), used at every width where touch is expected.
 A field reachable on a touch viewport renders at `lg`.
 
@@ -836,6 +926,12 @@ case. It is not a way to make a form look cleaner.
   its default paint; it errors on blur or on submit, never on first render. The control renders no
   placeholder text standing in for a label (a placeholder disappears the moment the reader types,
   which is the moment they need it).
+- **selection** — inapplicable to `Field` itself. A radio or checkbox group composes several
+  `Field`s, and the "selected" one is a property of that group, recorded in the composite that
+  assembles them, not in `Field`.
+- **expansion** — inapplicable. A `Field` never hides its own control; its hint and error either
+  render or do not (above), which is presence, not expansion — nothing here discloses a second
+  surface.
 
 **Tokens used** — colour `surface`, `surface-sunken`, `border`, `border-strong`, `danger`,
 `text-primary`, `text-secondary`, `text-disabled`, `focus-ring`. Radius `rounded-control` — the role
@@ -925,6 +1021,9 @@ it sits in a body cell spanning every column (§10).
   each; conflating them is the most common form of this defect.
 - **empty** — an `EmptyState` with no heading and no explanation renders **nothing at all**. There is
   no such thing as an empty empty state, and a wordless one is the blank region FR-023 forbids.
+- **selection** — inapplicable; an `EmptyState` is not a set member.
+- **expansion** — inapplicable. It has one size (above) and never grows to reveal more; it is already
+  showing everything it has to say.
 
 **Tokens used** — colour `text-primary` (heading), `text-secondary` (explanation). Typography
 `type-display` at `text-xl`, `type-body` at `text-md`. No fill, no border, no radius, no elevation,
@@ -957,6 +1056,9 @@ present, is a real `Button` or `Link` with a name that says what it does. Nothin
 - [ ] The no-content story renders nothing at all, not a padded blank box.
 - [ ] Inside a `Table`, the empty state sits under the retained column headers and spans the full
       table width.
+- [ ] The heading (`type-display` at `text-xl`) is visibly larger than the explanation beneath it
+      (`type-body` at `text-md`) — a token-correct `EmptyState` that gave both the same role would
+      read as one paragraph rather than a stated absence, and fails this criterion (FR-063).
 
 ---
 
@@ -1010,6 +1112,11 @@ absence of an action is silent.
 - **empty** — an `ErrorState` with no heading renders **nothing**, and that is a caller defect a
   story must show: a failure with no words is worse than a blank region, because the region at least
   does not claim to be an explanation.
+- **selection** — inapplicable; an `ErrorState` is not a set member.
+- **expansion** — inapplicable. `ErrorState` shows its full anatomy at once: there is no collapsed
+  form and no "show details" toggle. The optional `TechnicalDetail`, when present, is ordinary
+  visible text in the reading order, never hidden behind a disclosure the reader would have to
+  expand before they could select and copy it (accessibility, below).
 
 **Tokens used** — colour `danger` (stripe and heading), `text-primary` (explanation),
 `text-secondary` (technical detail). Typography `type-display` at `text-xl`, `type-body` at
@@ -1024,7 +1131,7 @@ a `Panel` or a `Section` body. Text bounded to `max-w-measure`.
 
 **Responsive** — identical at all three widths; the stripe stays on the inline-start edge at every
 one. The action is full width below `md` and intrinsic from `md`, matching `Button`'s own responsive
-rule (FR-038). The technical detail wraps rather than truncating: a half-copied error code is worse
+rule (005 FR-038). The technical detail wraps rather than truncating: a half-copied error code is worse
 than a long one.
 
 **Accessibility** — `role="alert"` when the error **replaces content after an interaction**, so it is
@@ -1097,9 +1204,8 @@ realistic compositions FR-043 requires).
   consumer it breaks in one change. Where this file names a prop (`density`, `width`, `role`,
   `align`, `recovery`), it is naming the **concept** the primitive must expose; if T557 renames one,
   the rename lands here too rather than leaving two vocabularies alive.
-- **Selection and expansion.** T569 extends the closed vocabulary to ten. None of the nine implements
-  either today (§0); when the vocabulary grows, this file gains nine answers, not nine features
-  (FR-036: a state is never implemented because the vocabulary lists it).
-- **The index row.** `README.md`'s spec index needs a row for this file. T540 already rewrites all 24
-  rows of that table's "Component directory" column for the tier move, so the row is added there
-  rather than in two separate edits to the same table.
+- **Selection and expansion.** T569 extended the closed vocabulary to ten; T570 answers both for all
+  nine primitives here (§5–§13), each "inapplicable, and here is what happens instead" — a state is
+  documented because it is real, never built because the vocabulary lists it (FR-036).
+- **The index row.** T570 adds this file's row to `README.md`'s spec index, alongside the correction
+  to `shared-primitives.md`'s own row (`Dialog` was missing from it).

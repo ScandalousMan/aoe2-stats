@@ -6,32 +6,45 @@ component carries a hard-coded style value.
 
 ## Index
 
-| Spec                                                     | Component directory                                                 | Feature                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------- |
-| [`shared-primitives.md`](./shared-primitives.md)         | `src/primitives/{Button,Callout,Badge,Skeleton,Menu,StatValue}/`    | 001                          |
-| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/screens/SignInScreen/`                                         | 001, US1                     |
-| [`archival-control.md`](./archival-control.md)           | `src/screens/ArchivalControl/`                                      | 001, US1/US5                 |
-| [`profile-summary.md`](./profile-summary.md)             | `src/screens/ProfileSummary/`                                       | 001, US1; 003, US1; 004, US2 |
-| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/composites/CaptureStateBadge/` (grows `Badge`'s tone variants) | 001, US3                     |
-| [`match-history.md`](./match-history.md)                 | `src/composites/MatchRow/`, `src/composites/MatchDetailPanel/`      | 001, US3; 003, US2; 004, US1 |
-| [`manual-upload.md`](./manual-upload.md)                 | `src/composites/UploadControl/`                                     | 001, US4                     |
-| [`privacy-notice.md`](./privacy-notice.md)               | `src/screens/PrivacyNotice/`                                        | 001, US5                     |
-| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/screens/DataExportPanel/`, `src/screens/AccountErasurePanel/`  | 001, US5                     |
-| [`third-party-objection.md`](./third-party-objection.md) | `src/screens/ThirdPartyObjectionForm/`                              | 001, US5                     |
-| [`footer.md`](./footer.md)                               | `src/composites/Footer/`                                            | 001, US5                     |
-| [`player-search.md`](./player-search.md)                 | `src/composites/SearchBox/`, `src/composites/PlayerResultRow/`      | 003, US1                     |
-| [`replay-availability.md`](./replay-availability.md)     | `src/composites/ReplayAvailabilityList/`                            | 003, US3                     |
-| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/composites/FavouriteToggle/`                                   | 003, US5                     |
-| [`favourites-list.md`](./favourites-list.md)             | `src/composites/FavouritesList/`                                    | 003, US5                     |
-| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/composites/AnalysisTimeline/`                                  | 003, US4                     |
-| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)          | 004                          |
-| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/composites/CivilisationIcon/`                                  | 004, US1                     |
-| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/composites/MapThumbnail/`                                      | 004, US1                     |
-| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/composites/PlayerColourSwatch/`                                | 004, US1                     |
-| [`country-flag.md`](./country-flag.md)                   | `src/composites/CountryFlag/`                                       | 004, US2; 004, Phase 8       |
-| [`player-avatar.md`](./player-avatar.md)                 | `src/composites/PlayerAvatar/`                                      | 004, US2                     |
-| [`site-header.md`](./site-header.md)                     | `src/composites/SiteHeader/`                                        | 004, US3                     |
-| [`tooltip.md`](./tooltip.md)                             | `src/primitives/Tooltip/`                                           | 004, Phase 8                 |
+| Spec                                                     | Component directory                                                                | Feature                      |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------- |
+| [`shared-primitives.md`](./shared-primitives.md)         | `src/primitives/{Button,Callout,Badge,Skeleton,Menu,Dialog,StatValue}/`            | 001                          |
+| [`structural-tier.md`](./structural-tier.md)             | `src/primitives/{Page,Section,Panel,Text,Link,Table,Field,EmptyState,ErrorState}/` | 005, US2                     |
+| [`sign-in-screen.md`](./sign-in-screen.md)               | `src/screens/SignInScreen/`                                                        | 001, US1                     |
+| [`archival-control.md`](./archival-control.md)           | `src/screens/ArchivalControl/`                                                     | 001, US1/US5                 |
+| [`profile-summary.md`](./profile-summary.md)             | `src/screens/ProfileSummary/`                                                      | 001, US1; 003, US1; 004, US2 |
+| [`capture-state-badge.md`](./capture-state-badge.md)     | `src/composites/CaptureStateBadge/` (grows `Badge`'s tone variants)                | 001, US3                     |
+| [`match-history.md`](./match-history.md)                 | `src/composites/MatchRow/`, `src/composites/MatchDetailPanel/`                     | 001, US3; 003, US2; 004, US1 |
+| [`manual-upload.md`](./manual-upload.md)                 | `src/composites/UploadControl/`                                                    | 001, US4                     |
+| [`privacy-notice.md`](./privacy-notice.md)               | `src/screens/PrivacyNotice/`                                                       | 001, US5                     |
+| [`privacy-data-rights.md`](./privacy-data-rights.md)     | `src/screens/DataExportPanel/`, `src/screens/AccountErasurePanel/`                 | 001, US5                     |
+| [`third-party-objection.md`](./third-party-objection.md) | `src/screens/ThirdPartyObjectionForm/`                                             | 001, US5                     |
+| [`footer.md`](./footer.md)                               | `src/composites/Footer/`                                                           | 001, US5                     |
+| [`player-search.md`](./player-search.md)                 | `src/composites/SearchBox/`, `src/composites/PlayerResultRow/`                     | 003, US1                     |
+| [`replay-availability.md`](./replay-availability.md)     | `src/composites/ReplayAvailabilityList/`                                           | 003, US3                     |
+| [`favourite-toggle.md`](./favourite-toggle.md)           | `src/composites/FavouriteToggle/`                                                  | 003, US5                     |
+| [`favourites-list.md`](./favourites-list.md)             | `src/composites/FavouritesList/`                                                   | 003, US5                     |
+| [`analysis-timeline.md`](./analysis-timeline.md)         | `src/composites/AnalysisTimeline/`                                                 | 003, US4                     |
+| [`game-asset-tokens.md`](./game-asset-tokens.md)         | player-colour + icon-size tokens (no component; `tokens/`)                         | 004                          |
+| [`civilisation-icon.md`](./civilisation-icon.md)         | `src/composites/CivilisationIcon/`                                                 | 004, US1                     |
+| [`map-thumbnail.md`](./map-thumbnail.md)                 | `src/composites/MapThumbnail/`                                                     | 004, US1                     |
+| [`player-colour-swatch.md`](./player-colour-swatch.md)   | `src/composites/PlayerColourSwatch/`                                               | 004, US1                     |
+| [`country-flag.md`](./country-flag.md)                   | `src/composites/CountryFlag/`                                                      | 004, US2; 004, Phase 8       |
+| [`player-avatar.md`](./player-avatar.md)                 | `src/composites/PlayerAvatar/`                                                     | 004, US2                     |
+| [`site-header.md`](./site-header.md)                     | `src/composites/SiteHeader/`                                                       | 004, US3                     |
+| [`tooltip.md`](./tooltip.md)                             | `src/primitives/Tooltip/`                                                          | 004, Phase 8                 |
+
+**Two corrections landed with T570.** `structural-tier.md` (T540–T548, feature 005 US2) had no row
+here — its own §15 named the gap and this closes it. `shared-primitives.md`'s row was missing
+`Dialog`, which has specified that file's seventh component since feature 001; the directory column
+above now names all seven. `GOVERNANCE.md` and the three token decision records
+(`game-asset-tokens.md`, `color-tokens.md`, `typography-tokens.md`) are deliberately absent from this
+table: the first is a procedure document and the latter three specify tokens, not a component —
+`game-asset-tokens.md` already said so in its own row above, and the newer two follow the same rule
+without needing a row that would only ever say "no component" again. This index is the set T570
+amended and T571's completeness check enumerates: every row above other than `game-asset-tokens.md`
+names one or more components whose spec must answer the closed state vocabulary in full and declare
+a tier and a surface class.
 
 ## Every spec has nine sections
 
@@ -40,8 +53,42 @@ Visual acceptance criteria. A spec missing one is incomplete, and "this componen
 state" is a design bug, not an exemption.
 
 The state vocabulary is closed: **default, hover, focus-visible, active, disabled, loading, error,
-empty**. Every spec answers all eight, even when the answer is "this part is never disabled;
-disabling it would be wrong, and here is what happens instead".
+empty, selection, expansion**. Every spec answers all ten, even when the answer is "this part is
+never disabled; disabling it would be wrong, and here is what happens instead".
+
+**Selection and expansion (FR-034, T569) join the vocabulary here because several components
+already ship them and none named them.** The original eight describe a single control's own
+resting, interaction and lifecycle states; these two describe a relationship between a component
+and the set or surface it governs, which is a different shape and was going unrecorded rather than
+absent. **Selection** is a component holding one current member of a set: `SiteHeader`'s primary
+navigation marks the current route with `aria-current="page"`, a persistent underline strip (`<span
+aria-hidden="true">` filled `bg-accent` when current, `bg-transparent` and reserving the same height
+otherwise) and a font-weight change (`font-semibold` against `font-medium`)
+(`src/composites/SiteHeader/index.tsx`), and `Menu`'s `selection` variant marks the current item with
+`role="menuitemradio"` and `aria-checked`, consumed by `SiteHeader`'s `ThemeControl` — which pairs the
+checked option with a `<Badge>Current</Badge>` — and by `ProfileSummary`'s profile switcher
+(`src/primitives/Menu/index.tsx`, `src/composites/SiteHeader/index.tsx`,
+`src/screens/ProfileSummary/index.tsx`). **Expansion** is a disclosure that reveals or hides a surface
+without navigating away from it: `Menu`'s own trigger carries `aria-expanded` on the button that opens
+and closes its panel (`src/primitives/Menu/index.tsx`) — the one shipping case; no accordion and no
+`<details>`/`<summary>` exists in the package today, and naming expansion here is not licence to add
+one — a state is documented because it is real, never built because the vocabulary lists it (FR-036).
+
+**Two states of one component must be distinguishable from one another by more than colour, and
+that distinction must survive as a still image (FR-037).** Rule 4 below already forbids colour as
+the only carrier of meaning; the still-image half is what the first half was silent on and is the
+reason the vocabulary is reviewable by `visual-reviewer` at all — that agent compares screenshots,
+never a live page, so a difference that exists only while a pointer hovers, only mid-animation, or
+only in a hue shift is not reviewable by it, closed vocabulary or not. What satisfies it is a shape,
+a mark, a weight, a position, a border or an icon that a screenshot still shows once whatever
+produced it has stopped changing: `SiteHeader`'s current-route underline is a strip that is present
+or transparent at a height reserved either way, never a colour swap alone, and `Menu`'s `ThemeControl`
+consumer pairs its checked option with a text badge rather than a tint. `Menu`'s own open panel —
+drawn beside the trigger, or absent entirely — is the still-image evidence for expansion: the two
+states differ in what exists on the page, not merely in how it is painted. A spec that answers
+selection or expansion with a hue change and nothing else has not answered it (T570 amends the
+existing 23 specs against this vocabulary; this paragraph is the bar each amendment is checked
+against).
 
 ## Rules that apply to every spec here
 
@@ -761,3 +808,210 @@ pair — `text-primary` on `surface`, the fill and heading ink `Dialog` (`src/co
 actually paints — is already measured in the table above (research D9). This reasoning is recorded
 here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
 by stripping its alpha and breaking the scrim it draws.
+
+## Storybook documentation gap register
+
+**Open as of 2026-09-07 (T572).** This register holds what quickstart.md scenario 9 found still
+missing from the built Storybook after the fixes it also triggered landed, so the gap is filed
+where a future reader of the package meets it rather than only in the frozen record of the run that
+found it (`specs/005-design-system-foundations/quickstart.md`, "Scenario 9 — Result"). The
+distinction is CLAUDE.md's: a fact about this package's Storybook build needs updating whenever a
+future task changes that build, so it stays here rather than in a spec, which is written once. This
+phase deliberately does not close any of the four rows below; each names what a follow-up task
+would do, who has to act and by when, and why closing it matters, so the next reader can act without
+re-running the scenario.
+
+**FR-040 is not met at the end of Phase 6, and neither is production-readiness item 10.** spec.md's
+FR-040 requires Storybook to be sufficient to understand the system without reading the application
+source; the four rows below are the specific ways it is not, as of this register's date. T563, T565
+and T566 close everything FR-040 asked of story coverage and composition realism, which is why they
+stay ticked in `tasks.md` — the remaining gap is documentation infrastructure (autodocs, docgen, a
+purpose line, a naming-contract statement), not missing coverage, and T578 below is what closes it.
+
+A human reader, given the built Storybook and no repository access, could reliably answer _what
+does X look like when Y_ (Foundations → Colour computes every ratio live and captions every tile
+with its surface; `SearchBox`'s rate-limited story and `Menu`'s corrected selection mark were both
+named as models) but could only guess at _which X, and why_. The four rows below are what stands
+between the two.
+
+1. **Zero `docs` entries in the build.** All 536 entries in the built Storybook are `type: "story"`;
+   there is no autodocs page and no MDX page for a single component. A reader has no page to land on
+   that describes a component rather than one of its states. Closing this needs Storybook's autodocs
+   turned on per component (or an MDX page per component directory) in
+   `packages/design-system/.storybook/`, which is out of this phase's scope. **Owner: T578. Fix by
+   2026-09-21.**
+2. **No prop documentation.** The Controls panel shows a prop's name and its control widget only —
+   no type column, no description — because docgen is off. The reader reconstructed
+   `PlayerColourSwatch`'s valid `colorId` range from a _story name_, not from a documented prop. This
+   closes together with row 1: turning on docgen (`react-docgen-typescript` or the Storybook
+   equivalent) is what populates both the type/description columns and an autodocs page's prop
+   table from the same source, a component's own TypeScript props, so the fact is written once.
+   **Owner: T578. Fix by 2026-09-21.**
+3. **No component states its purpose in a sentence.** Not one of the 41 components under
+   `packages/design-system/src/` opens with a line saying what it is for. The reader named this the
+   single highest-value gap and the direct cause of Q1's difficulty in the scenario 9 run: finding
+   `PlayerColourSwatch` by need depended entirely on the navigation grouping (T564), because no
+   component page itself confirmed the need it served once found. A purpose line is a per-component
+   authoring task, one sentence per `*.stories.tsx`'s default export or an MDX/autodocs page's
+   opening paragraph (see row 1); it is not a token or a mechanical check, which is why it is
+   recorded as a register row rather than turned into one. **Owner: T578. Fix by 2026-09-21.**
+4. **No component states which `sr-only` naming shape it follows.** Foundations → Iconography
+   states the rule an icon-carried meaning must satisfy (FR-011: an icon is never the only carrier of
+   a meaning), but no component story links to that page or claims conformance with it, so a reader
+   cannot tell from the built Storybook alone that `PlayerColourSwatch`'s colour-blind redundancy
+   exists at all — it is `sr-only` text, invisible in a rendered story and undiscoverable without
+   the DOM. Closing this needs each component that carries a redundant accessible name to say so and
+   link the rule it follows, most naturally beside the purpose line in row 3 once that exists.
+   **Owner: T578. Fix by 2026-09-21.**
+
+Two smaller findings from the same run are already fixed and are not repeated here as open rows:
+`SearchBox`'s two stories both numbered "empty 2 of 3" is corrected, and `Menu/KeyboardNavigation`'s
+resting frame now documents something rather than showing a closed menu. Two findings are recorded
+but deliberately not rows above because neither blocks an answer, only convenience: story ids do not
+follow the sidebar path (`composite-playercolourswatch` vs `primitives-menu`), so a URL is not
+guessable from the tree; and Storybook's built-in search is name-matching only, so `colourblind` and
+`accessible` return nothing and `contrast` returns a false positive on the words "contract
+violation" — a full-text search would need indexing every story's rendered content and captions,
+which no tool here does today.
+
+## Accessibility mechanism gap register
+
+**Open as of 2026-09-08** (third-pass adversarial review, finding M2a). This register holds a
+standing property of this package's own tooling — where an accessibility check runs, and where it
+does not — the same distinction CLAUDE.md draws for the Storybook documentation gap register above:
+a fact about this package's own check coverage needs updating whenever a future task changes that
+coverage, so it is filed here rather than in a spec, which is written once (T575's amendment: the
+subject is this package, so the fact is filed beside it).
+
+1. **`axe-core` runs only inside `tests/visual/stories.spec.ts` (~line 317), which needs a built
+   Storybook and a real browser — CI only, never at the point a component is authored.**
+   `scripts/checks/a11y-allowlist.mjs` printing "empty — nothing to validate" proves no _known_
+   violation is currently suppressed; it says nothing about _when_ the scan that would catch a new
+   one runs, and today the answer is: after the PR is open, not while the component is written. The
+   two `landmark-unique` guards that exist —
+   `packages/design-system/src/primitives/Panel/Panel.test.tsx` (~lines 121-131) and
+   `packages/design-system/src/composites/MatchDetailPanel/MatchDetailPanel.test.tsx` (~line 283)
+   — are hand-written DOM assertions pinned to the two compositions that were caught, not a check
+   for the class: a third component that gives a hidden caption the same accessible name as its
+   ancestor heading is guarded by neither. This defect class has shipped three separate times within
+   this one phase, caught by CI's axe pass each time and never at write-time — two point-fixes have
+   not stopped a third, and there is no reason a fourth would fare differently. The fix is cheap:
+   `axe-core` is already a dependency, and the gap is closed by one generic vitest assertion —
+   render a component tree, scan it with `axe-core`, fail on any `landmark-unique` violation —
+   written once and reused across component test files, rather than by hand-writing a guard per
+   composition the way the two existing ones were. **Owner: T579. Fix by 2026-09-15.**
+
+## Duplicated logic and story-content gap register
+
+**Open as of 2026-09-09** (fifth-pass adversarial review). Two Low findings that are each a fact
+about this package's own source rather than about a component, filed here for the same reason the
+two registers above are: the subject is the package itself, so a future task changing either fact
+needs this row updated, which is why it is not folded into a spec written once.
+
+1. **The WCAG 2.2 contrast-ratio formula (`srgbToLinear` / `relativeLuminance` / `contrastRatio`)
+   exists as three separate implementations**, all under `packages/design-system/` except the last:
+   `.storybook/foundations/Colour.stories.tsx:61-77`; `tokens/build-tokens.test.mjs:20-37`; and
+   `tests/visual/focus-ring.spec.ts:234-241` — the first two present as of the phase this register's
+   sibling sections describe, the third added during this phase (driving both themes through the
+   focus-ring's own colour math). Each carries a comment arguing it is not a duplicated
+   _measurement_ — `Colour.stories.tsx` derives its ratios live from the same generated token rather
+   than transcribing a number, and `focus-ring.spec.ts` computes from a `getComputedStyle`
+   `rgb(...)` string rather than the `#rrggbb` hex the other two read, so reusing either existing
+   helper would mean converting one input format into the other just to call it — and each of those
+   three arguments is true on its own terms. What none of them changes is that the _formula itself_
+   — the sRGB-to-linear piecewise function, the relative-luminance weights, the contrast-ratio
+   arithmetic — is written out by hand three times rather than once: a correction to any one of the
+   three constants (the `0.03928` breakpoint, the `2.4` gamma, the `0.2126`/`0.7152`/`0.0722`
+   weights, the `0.05` WCAG offset) has to be found and applied in all three files to stay correct,
+   and nothing here fails a build if only two of the three are updated. CLAUDE.md's law is that a
+   fact written twice goes stale in one copy; a formula is the same hazard as a number under that
+   law. The fix is a single shared module (e.g. `packages/design-system/tokens/contrast.mjs`,
+   exporting the hex-based and the `{r,g,b}`-based entry points `Colour.stories.tsx` and
+   `build-tokens.test.mjs`/`focus-ring.spec.ts` respectively need) that all three import, which is
+   documentation-adjacent tooling work outside this remediation's touch-scope (`.storybook/`,
+   `tokens/` and `tests/` are all out of bounds for a docs-only pass). **Owner: T580. Fix by
+   2026-09-23.**
+2. **`FavouritesList.stories.tsx`'s `Default` (lines 45-47) and `RealisticList` (lines 101-103) carry
+   byte-identical `args`** — both `{ entries: [rated, neverRanked, staleStanding] }` — so T566's
+   "realistic composition" story for this component (FR-043, SC-012) produces six baselines (both
+   themes, all three widths) that are pixel-identical to `Default`'s own six and verifies nothing
+   `Default` does not already cover. This is a story-content gap, not a documentation one: the fix
+   is giving `RealisticList` its own, genuinely realistic roster (`apps/web`'s `/favourites` route
+   is the shape `RealisticList`'s own comment cites as the target — a mixed roster wider than the three
+   fixtures `Default` already uses, e.g. more entries, a longer alias, a clan tag, a stale standing
+   further out of date) rather than reusing `Default`'s exact fixture set, which is source work under
+   `packages/design-system/src/` and therefore also outside this remediation's touch-scope. **Owner:
+   T581. Fix by 2026-09-16.**
+
+## Contrast-signal and duplicate-baseline gap register
+
+**Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2). Four findings
+the review judged real but not blocking against B1/B2 (the `Button` `active:outline` defect this
+same pass's remediation fixes) — filed here rather than folded into the fix, for the same reason the
+three registers above are: each is a fact about this package's current state that a future task can
+close on its own, not a defect this remediation's scope covers.
+
+1. **H1 — a focused `primary` `Button`'s ring can read at 1.00:1 against the surface behind it, not
+   only against its own fill.** `accent-contrast` (the ring colour DS-10 closed with, above) equals
+   `surface-raised` in the light theme and `background` in the dark theme; wherever the button's own
+   `accent` fill does not fully separate the ring from the page behind it, the ring-to-surface pair
+   can measure near 1:1 even though the ring clears 6.07:1 light / 8.07:1 dark against the fill it is
+   actually drawn on — the only pair `build-tokens.test.mjs` asserts today. DS-10's own reasoning
+   (`color-tokens.md` §5, T521's proof) — that a primary button's ring can only ever clear 3:1
+   against its fill, never against both the fill and `surface-raised` at once — is sound and this row
+   does not reopen it. What it notes instead: `Callout`'s `FocusVisible` story comment and
+   `shared-primitives.md` currently describe this ring as meeting the non-text contrast floor without
+   naming which adjacency that floor was measured against, which overstates what that story's frame
+   actually shows against the page behind it. Fix: extend `build-tokens.test.mjs` to assert the ring
+   against **both** adjacencies it can actually sit on in practice — the fill (already asserted) and
+   each surface the variant may render on (`surface-raised`, `background`) — so a future colour
+   change that widens this gap fails a test instead of shipping unnoticed, and correct the two
+   passages above to state which adjacency each is describing. **Owner: T582. Fix by 2026-09-20.**
+2. **M1 — a colour wash presented as the "non-colour" half of FR-037 is both the wrong category and,
+   in the dark theme, close to imperceptible.** `Link`'s `standalone` variant (`structural-tier.md`
+   §9's `active` bullet) and `PrivacyNotice`'s `Contents` entries (`privacy-notice.md`'s `active`
+   bullet, `index.tsx`'s `active:bg-surface-sunken`) both add a `surface-sunken` fill on press with
+   no other change, and `privacy-notice.md` names it "the second signal its own shape owes" — a wash
+   is a colour change, not the non-colour signal FR-037's "more than colour" half asks for (the
+   distinction `Button/index.tsx`'s own comment and `shared-primitives.md` draw for `secondary`/
+   `destructive`, this same remediation). Measured, the wash is also faint: `surface-sunken` against
+   the resting fill it replaces contrasts 1.18:1 in the light theme and **1.07:1 in the dark
+   theme** — both far under any floor this system asserts elsewhere, meaning `Link`'s
+   `ActiveStandalone` story and `PrivacyNotice`'s `Contents` press frame are technically distinct
+   still images (FR-037's literal "never byte-identical" half holds) but not observably distinct to
+   a reader, which is not what either half of FR-037 is for. Fix: give `standalone`'s press its own
+   non-colour signal the way `Button`'s bordered variants now have one (this remediation) — a
+   reserved-border or box-shadow ring, not a second, barely-visible fill — and correct
+   `structural-tier.md` §9 and `privacy-notice.md` to stop describing the current wash as the
+   non-colour signal. **Owner: T583. Fix by 2026-09-18.**
+3. **L1 — a story's own responsive-viewport pin or its own state/variant class can make its baseline
+   byte-identical to another story's, independent of whether the two document the same fact.**
+   General shape, not fully enumerated by this remediation (a full audit needs comparing baselines
+   pairwise across all 537 stories, out of this docs-only pass's scope): a story pinned to one
+   `globals.viewport` value can render identically to an unpinned story captured at the same width by
+   the visual suite's own width axis (the same benign mechanism `Menu`'s `Selection` /
+   `SheetBelowMd` pair is — see `quickstart.md`'s own correction of the fifth pass's Menu finding),
+   and a story asserting one state/variant combination can duplicate another's if the two classes it
+   sets happen to compose to the same resting frame. Fix: a script comparing every story's baseline
+   set against every other's by hash, flagging any pair not already named as a deliberate
+   equivalence class (the way `Menu.stories.tsx`'s own T569 comment names `Selection`/
+   `ProfileSwitcher`/`SheetBelowMd`), so a future duplicate is caught mechanically rather than by the
+   next adversarial review reading images by hand. **Owner: T584. Fix by 2026-09-23.**
+4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carry byte-identical `args`
+   (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`), confirmed by
+   reading the file, the same pattern as the `Menu` equivalence class above** — but the review that
+   found it reports the two are meant to demonstrate different things (`SignedIn` for the signed-in
+   scenario, `Selection` for the vocabulary state) and that `SiteHeader`'s selection mark itself, in
+   at least one of the widths this pair is captured at, lives inside a closed `Menu`/sheet rather
+   than the visible top-nav underline the 1280 frame shows — a claim this remediation has not
+   independently reproduced (it needs a browser, out of this task's scope) and records rather than
+   asserts. Fix: either give `Selection` `args` that actually differ from `SignedIn`'s (a second nav
+   item as current, say), or — if the two are genuinely one equivalence class the way `Menu`'s three
+   are — add the same kind of comment `Menu.stories.tsx:258-260` carries, naming it on purpose rather
+   than leaving a reader to wonder. **Owner: T585. Fix by 2026-09-23.**
+
+Also recorded, not registered here because each is a two-minute fix rather than an open gap:
+`Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
+register, because its own comment claimed the suite drives a real `:hover` for it and the story
+carries no `visualForceState` — its baselines are rest frames, and the name and comment said
+otherwise (sixth-pass review, M2).

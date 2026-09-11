@@ -22,6 +22,10 @@ and the Game Content Usage Rules reasoning does not apply — but the pack carri
 because the check walks every directory under `packages/game-assets/`. **This component never imports
 a flag.** It receives a URL as a prop, exactly as `CivilisationIcon` and `MapThumbnail` do.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — an inline mark (plain text, or a tooltip trigger
+from §11), not a surface with a density of its own.
+
 ## 1. Purpose
 
 Show which country a player plays from, as the flag a reader recognises without reading, beside the
@@ -132,6 +136,13 @@ shrinks responsively (§7).
     rather than one that lost it. This is FR-008's "omit it cleanly", and it is the same mechanism
     `PlayerColourSwatch` §2a uses for a blank `playerName`: the component itself refuses to render
     half of a pair.
+- **selection** — not applicable; a country mark is not a set member.
+- **expansion** — not applicable, and the boundary matters after §11: revealing the country name on
+  hover/focus/press (§11) is the imagery-naming exception README rule 4 already carves out for a
+  `Tooltip` trigger, not the vocabulary's **expansion** state — that state names a disclosure that
+  reveals or hides a _surface_ beside its trigger (`Menu`'s own panel, `shared-primitives.md`), and a
+  tooltip's text bubble is not a second surface in that sense (`tooltip.md`'s own states answer this
+  the same way).
 
 ## 5. Tokens used
 
@@ -365,7 +376,8 @@ The eight states are `tooltip.md` §4's, applied here. The three §4 declared ab
 - **hover** — the pointer over the flag opens the tooltip after `motion.duration.normal`; it closes
   `motion.duration.fast` after the pointer has left **both** the flag and the surface. The flag
   itself does not brighten, scale, lift or tint: the tooltip appearing is the entire hover
-  affordance, and a national flag is not re-rendered to acknowledge a cursor.
+  affordance, and a national flag is not re-rendered to acknowledge a cursor. This is hover only —
+  **active, immediately below, is not the same claim.**
 - **focus-visible** — **the flag is a tab stop.** Reaching it by Tab opens the tooltip **immediately,
   with no delay**, and the trigger shows the one uniform focus ring (`outline-2 outline-offset-2` in
   `focus-ring`, gap DS-4) around the button's box, unclipped, in both themes. **The tooltip appearing
@@ -373,7 +385,15 @@ The eight states are `tooltip.md` §4's, applied here. The three §4 declared ab
   not `:focus` is what stops a mouse click from stranding a tooltip open after the pointer has gone.
 - **active** — pressing (click, Enter, Space or tap) pins the tooltip open until an explicit dismiss;
   Escape dismisses it and leaves focus on the flag. On touch this is the only route (§11.3), which is
-  why it is specified rather than left to the implementation.
+  why it is specified rather than left to the implementation. **Unlike hover, the trigger's own
+  boundary does change here**: `tooltip.md` §4 active's `border-2` boundary — transparent at rest,
+  `border-strong` for as long as the tooltip is pinned — is inherited unmodified through this
+  composite, since `CountryFlag` never re-implements `Tooltip`'s trigger, only supplies its child
+  (§11.2's anatomy). This is the still-image distinction FR-037 requires between hover-revealed and
+  pinned (remediation, fifth-pass review B1: before this, the two states rendered byte-identical —
+  the tooltip open was the entire frame either way, and "the tooltip appearing is the entire hover
+  affordance" above had drifted from describing hover specifically to describing every reveal, which
+  it does not).
 
 **disabled** — never, and now for a second reason on top of §4's: a `disabled` button is neither
 focusable nor hoverable, so disabling this one would make the country unreachable rather than merely
@@ -424,12 +444,19 @@ of default captures verifies none of them and passes anyway.
 
 - [ ] **No story shows a country name as text beside a flag.** In the default story the flag stands
       alone and the frame contains no country word anywhere.
-- [ ] The **hover story** shows the country name in a tooltip above the flag, in both themes.
+- [ ] The **hover story** shows the country name in a tooltip above the flag, in both themes, with
+      the flag's trigger boundary in its rest (transparent) state.
 - [ ] The **keyboard-focus story** shows the tooltip open **and** the focus ring visible and
       unclipped around the flag's button box, in the same frame, in both themes. A frame with one and
       not the other fails this criterion.
-- [ ] The **pinned (pressed) story** shows the tooltip open with no pointer over the flag and no
-      focus ring — the touch route.
+- [ ] The **pinned (pressed) story** shows the tooltip open with no focus ring, and the flag's
+      trigger boundary painted `border-strong` — the touch route's own still-image evidence
+      (`tooltip.md` §4 active, inherited unmodified, §11.6). (Remediation, fifth-pass review B1: the
+      earlier wording asked for "no pointer over the flag," which a still image cannot show and this
+      criterion could therefore never fail; this is what the frame actually shows and can fail.)
+- [ ] Overlaying the hover-open and pinned frames, the tooltip sits in the same position in both;
+      they differ only in the flag's trigger boundary — transparent (hover) versus `border-strong`
+      (pinned) — and the absence of a focus ring in either.
 - [ ] The **after-Escape story** shows no tooltip and a still-visibly-focused flag.
 - [ ] The open tooltip sits **above** the flag, is opaque, and covers no figure in the frame.
 - [ ] Overlaying the closed and open default stories, every element sits in the identical position —
@@ -444,3 +471,7 @@ of default captures verifies none of them and passes anyway.
 - [ ] No story shows a two-letter country code anywhere — **including inside a tooltip** (§2a,
       SC-002).
 - [ ] No caret, arrow, dotted underline or "?" affix appears on or near the flag in any story.
+- [ ] The visible flag stays at its `icon-sm`/`icon-md` token size inside the 44px trigger box, never
+      stretched to fill it — a token-correct trigger that grew the flag itself to the hit area's own
+      size would make the flag compete with the alias beside it for visual weight, and fails this
+      criterion (FR-063).

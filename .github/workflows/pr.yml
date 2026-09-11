@@ -238,6 +238,17 @@ jobs:
       # home for the same fact. Needs no build, same as token-scale.mjs above, so it costs
       # nothing to run beside the other static source checks.
       - run: node scripts/checks/tier-deps.mjs
+      # T571: FR-035/SC-013 — a spec under packages/design-system/specs/ that omits one of the
+      # nine mandated sections, leaves an entry in the ten-state vocabulary unanswered, or (per
+      # component, for the four files README.md's Index maps to more than one) declares no tier or
+      # no surface class, fails here rather than depending on a reviewer re-reading 27 files on
+      # every pull request. Reads its three vocabularies from README.md itself rather than a
+      # second, hardcoded copy — see that script's own header. Needs no build, same as
+      # token-scale.mjs above; its own `node --test` suite (fixture-only, proven against small
+      # violating fixtures rather than the live specs directory — see that file's own header)
+      # runs immediately after, for the same reason token-scale.mjs's does.
+      - run: node scripts/checks/spec-completeness.mjs
+      - run: node --test scripts/checks/spec-completeness.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

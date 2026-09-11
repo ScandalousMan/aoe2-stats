@@ -3,7 +3,8 @@ import { fireEvent, userEvent, within } from 'storybook/test'
 import { UploadControl } from './index'
 
 const meta: Meta<typeof UploadControl> = {
-  title: 'Composite/UploadControl',
+  id: 'composite-uploadcontrol',
+  title: 'Composites/Uploads/UploadControl',
   component: UploadControl,
 }
 
@@ -124,4 +125,33 @@ export const RealSelectionThenSuccess: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Upload and archive' }))
     await canvas.findByText('Archived from your upload.')
   },
+}
+
+// manual-upload.md §5 "focus-visible — the standard ring... on the `Choose file` control, the
+// `Remove` button, `SubmitButton` and the `Refresh` button, in both themes." Forced from
+// Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
+// a `play()` here could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+export const FocusVisible: Story = {
+  name: 'focus-visible — the standard ring on the "Choose file" control',
+  args: { gameId: 42, onUpload: noopOnUpload, initialState: 'idle' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Choose file' } },
+}
+
+// §5 "disabled — there is no resting disabled control. `SubmitButton` does not exist until a file
+// is chosen... The only disable is transient: during `uploading`, ... all disable so the file
+// cannot change under an in-flight request." The transient case is `Uploading` above; this names
+// the resting half of the rule.
+export const DisabledRestingNotApplicable: Story = {
+  name: 'disabled (resting) — not applicable; the submit button withholds itself instead',
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        There is no resting disabled control here — `SubmitButton` does not exist until a file is
+        chosen, so it is never rendered as a dead grey button waiting for one. The only disable is
+        transient, during `uploading` (see that story), so nothing can change under an in-flight
+        request.
+      </p>
+      <UploadControl gameId={42} onUpload={noopOnUpload} initialState="idle" />
+    </div>
+  ),
 }

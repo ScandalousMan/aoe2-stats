@@ -1,7 +1,7 @@
 # Shared primitives
 
 The three screen specs in this directory (`sign-in-screen`, `archival-control`, `profile-summary`) all
-lean on the same six small components. They are specified once here so the three screens agree and
+lean on the same small set of components. They are specified once here so the three screens agree and
 so no implementer has to invent a resting colour at eleven at night.
 
 Each primitive below carries the nine sections in compressed form. Where a primitive grows a variant
@@ -9,6 +9,22 @@ a later feature needs, it earns its own file and this section becomes a stub poi
 
 Read [`README.md`](./README.md) first: the contrast table and the token gap register are shared, and
 nothing below restates them.
+
+**This file specifies seven components, not six** — `Dialog` (§ below) has lived here since feature
+001 (`dbc094c`, "extract a shared Dialog primitive from the two dialogs duplicating it") and
+`README.md`'s index row for this file omitted it; that row is corrected as part of this amendment
+(T570). A tier is a property of a component, and a file naming seven of them declares seven, not one
+line for the file:
+
+| Component   | Tier                                    | Surface class                                                                                                                        |
+| ----------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Button`    | primitive (`src/primitives/Button/`)    | neither `dense` nor `prose` — a control draws inside whatever `Panel`, `Table` or `Field` contains it; it owns no surface of its own |
+| `Callout`   | primitive (`src/primitives/Callout/`)   | neither `dense` nor `prose` — same reason                                                                                            |
+| `Badge`     | primitive (`src/primitives/Badge/`)     | neither `dense` nor `prose` — same reason                                                                                            |
+| `Skeleton`  | primitive (`src/primitives/Skeleton/`)  | neither `dense` nor `prose` — same reason                                                                                            |
+| `Menu`      | primitive (`src/primitives/Menu/`)      | neither `dense` nor `prose` — its popover is `overlay`-elevated chrome, not a content surface (README's "Surface density" section)   |
+| `Dialog`    | primitive (`src/primitives/Dialog/`)    | neither `dense` nor `prose` — same reason, at `modal`                                                                                |
+| `StatValue` | primitive (`src/primitives/StatValue/`) | neither `dense` nor `prose` — same reason                                                                                            |
 
 ---
 
@@ -40,6 +56,51 @@ identical to its rest has not told the user it responded.
 `danger-active` token, and inventing one is forbidden. Its hover deepens by swapping the fill to
 `surface-sunken` and keeping `danger` for label and boundary.
 
+`secondary`, `ghost` and `destructive` step through the surface ramp's two attenuated rungs, one
+per state, rather than the one rung repeated at both (remediation, FR-037: two states of a control
+must be distinguishable in a still image, not merely painted with the same class twice). **Hover
+deepens to `surface-sunken`**, the ramp's darkest surface and always darker than whatever the button
+sits on. **Active moves to `background`**, the ramp's other attenuated step — a different token from
+hover's, already measured in the README contrast table (`text-primary` / `danger` on `background`
+and on `surface-sunken` are both asserted rows) — so a screenshot of the two states is never
+byte-identical. `background` cannot serve as the _hover_ fill instead: several `ghost` buttons render
+directly on a `bg-background` page (`Page`'s `actions` slot — `DashboardContainer`'s "Search
+players" / "Sign out") and `ghost` carries no boundary until `active`, so a `background`-filled hover
+would be invisible there; `surface-sunken` never is, because nothing it can sit on is darker than it.
+`ghost` also gains its `border-strong` boundary only at `active`, never `hover`, so pressing adds a
+shape signal — a border appearing — on top of the fill change; `secondary` carries `border-strong` at
+every state (it is part of its resting anatomy, so repeating it at `active` was a dead declaration
+and is removed); `destructive` carries `border-danger` at every state instead of swapping to the
+neutral `border-strong` on press, so a pressed destructive button never reads as merely neutral.
+
+**FR-037 has two halves, and the paragraph above only argued one of them (fifth-pass review, M2).**
+"Never byte-identical" — the still-image half — was true the moment `hover` and `active` landed on
+different tokens, and stayed true. **"More than colour"** is the other half, and until this
+remediation `secondary` and `destructive` had not met it: both states differed only by which fill
+was painted, with no shape riding alongside the way `ghost`'s appearing border already does.
+
+The fifth-pass fix reached for `active:outline-2 active:outline-offset-0
+active:outline-<their own boundary token>`, reasoning that `outline` never participates in layout
+so it would be safe on a box with no spare padding to absorb a wider border. **That fix never
+painted anything (sixth-pass review, B1).** Every `Button` variant's focus ring composes
+`outline-none`, and `packages/design-system/tokens/tailwind.css`'s T096 fix restores the shared
+`--tw-outline-style` custom property only under `:focus-visible` — `:active` left it `none`
+forever, and `outline-2`/`outline-offset-0` only _read_ that property, never set it. The class
+compiled to a real rule that resolved to `outline-style: none` at runtime: dead CSS, confirmed by
+compiling the package's own preset with tailwindcss 4.3.3 and reading the emitted declaration.
+
+**Corrected, sixth-pass review: `active:ring-2 active:ring-<their own boundary token>`** —
+`border-strong` for `secondary`, `danger` for `destructive` — Tailwind's box-shadow-backed `ring`
+utility, which reads and writes only its own `--tw-ring-*` custom properties and never touches
+`--tw-outline-style`, so it cannot fall into the trap above. `box-shadow`, like `outline`, never
+participates in layout, so this keeps the original reflow-free reasoning while actually painting:
+with `--tw-ring-offset-width` at its 0px default, the shadow sits flush against the permanent
+border either variant already carries at every state, reading as that frame thickening on press.
+`ghost`'s own technique (`border-transparent` reserved at rest, painted at `active`) does not fit
+`secondary` or `destructive` unmodified — their border is already painted at rest, so there is no
+transparent state to promote; a box-shadow ring is the shape signal available to a control that is
+already bordered.
+
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
 — commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
@@ -62,8 +123,16 @@ extended to 44px by padding rather than by a transparent overlay.
   colour only, no lift, no scale.
 - **focus-visible** — `outline-2 outline-offset-2` in `focus-ring` (gap DS-4), on top of whatever
   the hover state is. Never removed on mouse click; never replaced by a fill change alone.
-- **active** — `primary`: `accent-active`. Others: `surface-sunken` with boundary `border-strong`.
-  No translate, no shadow change.
+- **active** — `primary`: `accent-active`. `secondary` / `ghost` / `destructive`: fill `background`
+  — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
+  the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
+  `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`
+  keeps `border-danger`, never swapping to a neutral boundary. **`secondary` and `destructive` also
+  gain an `active:ring-2` box-shadow ring, flush against their own boundary token
+  (`border-strong` / `danger`) — the non-colour half of FR-037 (above), the fill change alone
+  never satisfied. (Not an `outline`: the fifth-pass fix used one and it never painted, because
+  every variant's focus ring composes `outline-none` and `tailwind.css` restores that property
+  only under `:focus-visible` — see the paragraph above.)** No translate, no layout change.
 - **disabled** — fill `surface-sunken`, label `text-disabled`, boundary `border`, cursor default,
   `disabled` attribute set. A disabled button must be accompanied by visible text saying why, in
   `text-secondary`; a button that is grey with no explanation is a dead end.
@@ -76,11 +145,19 @@ extended to 44px by padding rather than by a transparent overlay.
   after a failure is the most common way a retry becomes unreachable.
 - **empty** — not applicable: a button with no label is invalid. An icon-only button carries
   `aria-label` and is forbidden on the primary path of every screen in this feature.
+- **selection** — not applicable. A `Button` is an action, not a set member; a control that marks
+  one of several choices as current is `Menu`'s `selection` variant (below), never a row of buttons
+  standing in for it.
+- **expansion** — not applicable to `Button` itself. A button that opens a popover (`Menu`'s
+  trigger) or a modal (`Dialog`'s opener) carries `aria-expanded`/`aria-haspopup`, but that attribute
+  is part of the _trigger contract_ those components define, not a state `Button` owns on its own
+  (FR-036 — a state is documented where it is real, not built into every component the vocabulary
+  could apply to).
 
 **Tokens** — colour `accent`, `accent-hover`, `accent-active`, `accent-contrast`, `surface`,
-`surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`, `text-disabled`,
-`danger`, `focus-ring`. Radius `md`. Font family `sans`, size `sm` / `md`, weight `semibold`.
-Motion `duration.fast`, `easing.standard`. Elevation `none` — buttons do not float.
+`background`, `surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`,
+`text-disabled`, `danger`, `focus-ring`. Radius `md`. Font family `sans`, size `sm` / `md`, weight
+`semibold`. Motion `duration.fast`, `easing.standard`. Elevation `none` — buttons do not float.
 
 **Spacing** — icon-to-label `space-2`. Sibling buttons `space-3` apart.
 
@@ -93,11 +170,15 @@ a click handler). Space and Enter activate. Touch target ≥ 44px. Label contras
 table; `accent-contrast` on `accent` in the light theme is the tightest pair `primary` depends on
 and must be verified, not assumed.
 
-**Acceptance** — exactly one `primary` per screenshot; focus ring visible and 2px offset from the
-edge on the keyboard-focused button; the `primary` button's hover fill is visibly darker than its
-resting fill and its active fill darker again, so the default, hover and active screenshots are
-three distinguishable frames; loading button shows a spinner and the same width as at rest; disabled
-button has visible explanatory text near it.
+**Acceptance** — exactly one `primary` per screenshot — a token-correct screen that painted two
+controls `accent` still fails this criterion, because the reader cannot tell which action the view
+recommends (FR-063); focus ring visible and 2px offset from the edge on the keyboard-focused button;
+the default, hover and active screenshots are three distinguishable frames for **every** variant —
+`primary`'s hover fill is visibly darker than its resting fill and its active fill darker again;
+`secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and active fill (`background`)
+are two different, already-measured tokens, and `ghost`'s active additionally draws a boundary its
+hover does not — loading button shows a spinner and the same width as at rest; disabled button has
+visible explanatory text near it.
 
 ---
 
@@ -127,11 +208,28 @@ Tone is a claim about the world, not about volume:
 
 **States** — **default** as above. **hover / active** — none; the root is not interactive. Actions
 inside it have their own. **focus-visible** — when the callout receives programmatic focus (see
-sign-in-screen), the heading takes `tabindex="-1"` and shows the standard focus ring.
+sign-in-screen), the heading takes `tabindex="-1"` and paints no ring of its own — corrected by
+remediation, B5 (fourth-pass adversarial review); this used to say "shows the standard focus ring,"
+which was never true (Chromium's user-agent default outline painted instead, in no token file) and
+is the wrong target regardless: a `tabindex="-1"` heading is never reached by a reader's own Tab
+press, only by a caller's one-off `.focus()` call (`sign-in-screen.md` §8) to draw assistive
+technology's attention to an outcome that just appeared — the same shape and the same reasoning as
+`Dialog`'s heading below, "its focus is for the accessible-name announcement, not a visible
+indicator." `outline-none` on the heading is what makes that true rather than aspirational. **The
+heading's own frame therefore has no visual form for this state** (remediation, fifth-pass review
+M1 — the pre-existing `FocusVisible` story forced focus onto the heading and stopped there, six
+baselines with zero focus-ring pixels standing in for a state with nothing to show). Where a caller
+supplies `actions`, the story demonstrates the state the same way `Dialog`'s own `FocusVisible` does
+— focus forced onto the first action, a real `Button` carrying a real ring — rather than the bare
+heading; a callout with no actions has no next stop of its own to demonstrate and this state stays
+undocumented in a still image for that shape, correctly, since there is nothing to show.
 **disabled** — none; a callout is never disabled. **loading** — none; a callout describes a settled
 outcome. Anything still resolving is a `Skeleton`. **error** — `danger` is that state.
 **empty** — a callout with no heading and no body renders **nothing at all**, not an empty bordered
 box. This is the state that ships by accident, so the acceptance criteria test for it.
+**selection** — not applicable; a callout is not a set member. **expansion** — not applicable; the
+optional dismiss control removes the callout, it does not reveal a second surface, which is a
+different shape from `Menu`'s trigger (below).
 
 **Tokens** — colour `surface-raised` (fill), `info` / `success` / `warning` / `danger` (stripe and
 heading), `text-primary` (body), `text-secondary` (any timestamp or footnote), `border`. Radius
@@ -149,7 +247,9 @@ heading), `text-primary` (body), `text-secondary` (any timestamp or footnote), `
 
 **Acceptance** — tone stripe visible on the inline-start edge; body text is the primary text colour
 in both themes; no icon substitutes for the heading; an empty callout is absent from the screenshot
-rather than present and blank.
+rather than present and blank; the heading (`semibold`) is visibly heavier than the body (`normal`)
+even though both share a surface — a token-correct callout that gave both the same weight would read
+as one undifferentiated paragraph and fails this criterion (FR-063).
 
 ---
 
@@ -166,10 +266,17 @@ is why the light theme uses the darker token, and this is the one place `accent`
 **Sizes** — one: height `space-5`, padding-inline `space-2`, font-size `xs`, weight `semibold`,
 tracking `wide`, radius `full`.
 
-**States** — **default** only. No hover, no active, no focus: a badge is not interactive and must
-never be the control that changes the state it names. **disabled / loading** — none; during a state
-change the badge is replaced by a `Skeleton` of the same footprint. **error** — none.
-**empty** — a badge with no label renders nothing.
+**States** — **default** only. **hover / focus-visible / active** — none: a badge is not
+interactive and must never be the control that changes the state it names. **disabled / loading** —
+none; during a state change the badge is replaced by a `Skeleton` of the same footprint.
+**error** — none.
+**empty** — a badge with no label renders nothing. **selection** — not applicable to `Badge` on its
+own: a selection state's still-image mark is `Menu`'s own intrinsic checkmark glyph
+(`shared-primitives.md#Menu`, T572), not `Badge`. A `Badge` beside a checked item (`Menu`'s
+`selection` variant, `ProfileSummary`'s profile switcher) is an _additional_ signal carrying a
+different, caller-chosen fact (`Current`, `Primary`) — never the selection mark itself, and never
+the thing that is itself selected. **expansion** — not applicable; a badge never reveals a second
+surface.
 
 **Tokens** — `surface-sunken`, `surface-raised`, `border`, `text-secondary`, `accent`,
 `accent-active`. Radius `full`. Font size `xs`, weight `semibold`, tracking `wide`.
@@ -180,7 +287,9 @@ change the badge is replaced by a `Skeleton` of the same footprint. **error** �
 communicated by colour or shape alone.
 
 **Acceptance** — the badge reads as a word at 375px without truncation; it is never the only
-difference between two rows in a screenshot.
+difference between two rows in a screenshot; its `semibold` weight and `wide` tracking keep it
+legible at `xs` beside `sm` body text in the same row — a token-correct badge that dropped to
+`normal` weight would blur into the surrounding text and fails this criterion (FR-063).
 
 **Tone variants (US3, `capture-state-badge.md`)** — `Badge` grows four more variants,
 `success` / `warning` / `danger` / `info`, each a `surface-raised` fill with a tone-coloured label
@@ -212,8 +321,22 @@ this survey.
 
 **Sizes** — derived from the content, never chosen freely.
 
-**States** — **loading** is the only state; the component exists for it. It has no hover, focus,
-active, disabled or error state. **empty** — a skeleton with a zero count renders nothing.
+**States** — **loading** is the only real state; the component exists for it, and everything below
+answers what happens instead of each of the others rather than leaving it unbuilt (FR-036).
+**default** — not applicable: before `duration.normal` (200 ms) has elapsed nothing renders at all
+(see the Duration rule below); once it has, the component goes straight to `loading` rather than
+resting anywhere first, because it has no appearance independent of loading.
+**hover / focus-visible / active** — not applicable: `Skeleton`'s blocks carry `aria-hidden` and sit
+outside the tab order, so none can ever receive a pointer, keyboard or press event; the pulse keeps
+running unchanged regardless of where the pointer or focus is.
+**disabled** — not applicable: `Skeleton` is never an interactive control to disable; instead it
+just holds its footprint until the content it stands in for replaces it.
+**error** — not applicable to `Skeleton` itself: the caller's region owns the failure, and after the
+10 s stall named in the Duration rule below it replaces the skeleton with a `danger` `Callout` and a
+retry, rather than the skeleton ever painting an error appearance of its own.
+**empty** — a skeleton with a zero count renders nothing. **selection / expansion** — not
+applicable; a skeleton stands in for content that has neither state yet, and it never carries one
+that content it replaces would not also have.
 **Duration rule:** do not render before 200 ms (`motion.duration.normal`) have elapsed — a skeleton
 that flashes is worse than a brief blank. After 10 s, the caller replaces it with a `danger`
 `Callout` and a retry; a skeleton that pulses forever is a hang wearing a costume.
@@ -232,7 +355,10 @@ spec section above records which component owns that single region for every com
 pulse stops on its resting frame.
 
 **Acceptance** — skeleton footprint matches the loaded content within a couple of pixels, so the
-before/after screenshots show no reflow; no text and no zero-placeholder appears inside a skeleton.
+before/after screenshots show no reflow; no text and no zero-placeholder appears inside a skeleton;
+in a multi-line `text` skeleton, consecutive lines vary in width (60–90%) rather than repeating one
+width — a token-correct skeleton that used a single fixed width for every line reads as a decorative
+block rather than the shape of a paragraph, and fails this criterion (FR-063).
 
 ---
 
@@ -240,8 +366,10 @@ before/after screenshots show no reflow; no text and no zero-placeholder appears
 
 **Purpose** — offer a short, known set of choices from a trigger, without leaving the page.
 
-**Anatomy** — trigger button / popover surface / group label(s) / items (each: label, optional
-secondary line, optional trailing `Badge`, optional trailing item-action) / separator / footer item.
+**Anatomy** — trigger button / popover surface / group label(s) / items (each: optional leading
+selection glyph — `selection` variant only, present in every such item's markup, painted only when
+checked — label, optional secondary line, optional trailing `Badge`, optional trailing item-action) /
+separator / footer item.
 
 **Variants** — `selection` (choosing one of a set; the current one is marked) and `actions` (each
 item does something). The profile switcher is `selection` with an `actions` footer.
@@ -272,6 +400,40 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
   (a sibling, mounted for the whole popover's lifetime).
 - **empty** — a menu with no items does not open; the trigger is `aria-disabled` with a reason. A
   menu that opens onto nothing is a dead end and reads as a bug.
+- **selection** — the `selection` variant's shipping mechanism for the vocabulary's **selection**
+  state (T569/T570, README's "Selection and expansion"; revised T572): the current item carries
+  `role="menuitemradio"` and `aria-checked="true"`, and `Menu` itself paints the still-image mark for
+  that state on every `selection`-variant item, regardless of what a caller supplies — a leading
+  checkmark glyph, present when `checked` and holding the same, invisible-but-reserved width when
+  not: a shape difference, never a fill or ink change alone. This mark lives in the primitive rather
+  than in a caller-supplied slot because a caller cannot be trusted to supply it: T570 first shipped
+  it as the `badge` slot's own content, "`Menu` itself does not decide what that slot contains," and
+  T572 scenario 9 — a reader given only the built Storybook — found the predictable consequence:
+  `Menu`'s own `Empty` and `ActionsWithDisabledItem` stories carry no badge at all, neither variant
+  enforced one, and a checked item with no badge was pixel-identical to an unchecked one. That is
+  T556's rule for a different component, applying here without exception: a decision a caller may
+  not be trusted to write has to live somewhere that is not a caller. "Paint the selection mark"
+  turned out to be exactly that kind of decision, not a wording choice a consumer should own.
+
+  The `badge` slot each item may still carry (arbitrary content, the caller's own choice) is now an
+  _additional_, optional signal, not the selection mark itself: it carries a different fact from
+  "this is the checked item" — the identical, deliberate choice two consumers make is a plain
+  `<Badge>Current</Badge>` rather than `variant="accent"`, at the item's _trailing_ edge, opposite
+  the leading glyph so the two never occupy the same pixels: `SiteHeader`'s `ThemeControl` and
+  `ProfileSummary`'s profile switcher (`site-header.md`, `profile-summary.md`). `accent` stays
+  reserved for a different fact in both consumers (the item that is also _primary_ elsewhere in the
+  product, e.g. a `Primary` profile); the checked-but-not-primary item is marked `Current` without
+  borrowing `accent`'s meaning, which is what keeps the two facts distinguishable when both can be
+  true of different items in the same list. `Menu`'s own stories (`ProfileSwitcher`, `Selection`)
+  demonstrate the trailing slot with a plain, unstyled placeholder rather than a `Badge`, precisely
+  because its wording is each consumer's decision — the leading glyph beside it is not a decision
+  either consumer makes, or needs to.
+
+- **expansion** — the trigger's own `aria-expanded`/`aria-haspopup="menu"` toggle is this package's
+  one shipping case of the vocabulary's **expansion** state. The still-image evidence is not the
+  trigger's own paint (which does not change) but what exists on the page: the popover panel is
+  drawn beside the trigger when expanded, and is absent entirely when collapsed — never present but
+  merely dimmed or scaled to zero.
 
 **Tokens** — `surface-raised`, `surface-sunken`, `border`, `border-strong`, `text-primary`,
 `text-secondary`, `text-disabled`, `focus-ring`, `overlay` (backdrop, mobile sheet only). Radius
@@ -284,6 +446,20 @@ line `space-1`; separator margin-block `space-2`.
 width, with `overlay` behind it, so items stay within thumb reach. From `md` up, a popover anchored
 to the trigger, flipping to the block-start side when it would overflow.
 
+**Inline axis (M7 remediation, fourth-pass adversarial review).** The block-axis rule above says
+nothing about the other axis, and the gap was real: a popover anchored `start-0` (the trigger's
+inline-start edge) with no collision handling runs past the viewport's inline-end edge whenever the
+trigger itself sits near that edge of its own container — measured on `ProfileSummary`'s Manage
+trigger at 768 and 1280, where the surface ran to column 1279 of 1280 and 767 of 768, with the
+trailing-slot `Spinner` an `unlink-in-flight` item paints (`MenuItemRow`, above) past the cut at
+both widths. `align` (`MenuAlign` — `'start'` default, `'end'`) is the caller-set fix: a trigger a
+caller knows sits at its own container's inline end passes `align="end"`, and the popover anchors
+`end-0` instead, growing back toward the inline start rather than off the far edge. This is a static
+per-trigger declaration a caller who knows their own layout makes, not a runtime viewport
+measurement. A caller whose trigger's own inline-end position is not fixed relative to its container
+(the common case, and every trigger in this package except a right-anchored one) leaves `align` at
+its default.
+
 **Accessibility** — trigger `aria-haspopup="menu"` and `aria-expanded`; surface `role="menu"`, items
 `role="menuitemradio"` in the `selection` variant with `aria-checked` on the current one, otherwise
 `role="menuitem"`. Keyboard: Enter / Space / ArrowDown open with the first (or checked) item
@@ -292,8 +468,16 @@ trigger; Tab closes and moves on. Focus is trapped only in the mobile sheet vari
 44px tall.
 
 **Acceptance** — at 375px the menu is a full-width sheet with every row at least 44px tall; the
-checked item is marked by text or a `Badge`, not by colour alone; focus ring visible on the focused
-item; the trigger regains focus after Escape.
+checked item is marked by its own leading checkmark glyph — present whether or not a caller supplies
+a `badge` — never by colour alone, so the checked and unchecked rows in the same screenshot are two
+visibly different shapes, not merely two different hues; a `badge` slot, where a consumer supplies
+one, adds a second, independent signal beside that glyph (`<Badge>Current</Badge>` in `SiteHeader`
+and `ProfileSummary`, a plain placeholder in `Menu`'s own stories) rather than standing in for it;
+focus ring visible on the
+focused item; the trigger regains focus after Escape; an item's label and its optional secondary
+line are visibly distinguishable by size and colour (`type-body` in `text-primary` against a smaller
+line in `text-secondary`) — a token-correct item that set both to the same size and ink would read
+as one run-on line and fails this criterion (FR-063).
 
 ---
 
@@ -316,12 +500,35 @@ slot, exactly two actions — rather than generalised further than either consum
 
 - **default** — backdrop `overlay`, surface `surface`, elevation `modal`, radius `xl` (`t-xl` on the
   sheet's top corners only below `md`, all four corners from `md` up).
+- **focus-visible** — real, but its mount-time frame is not the one the still-image obligation
+  (FR-037) is met with: opening the dialog moves focus straight to the heading (`tabIndex={-1}`) on
+  mount, and the heading paints no ring of its own — its focus is for the accessible-name
+  announcement, not a visible indicator — so that frame is byte-identical to `default` and
+  documents nothing. The `FocusVisible` story instead forces the state a real Tab from the heading
+  reaches next (`tests/visual/stories.spec.ts`'s `visualForceState`, driving Playwright's actual
+  keyboard rather than a synthetic event neither Chromium's `:focus-visible` nor its own would
+  match): focus on `primaryAction`, rendered first in the action row. That is the one visually
+  distinct frame this state has to show, and it is a real stop on the trap's own path, not a
+  fabricated one — Tab from there reaches `secondaryAction` and wraps from the last action back to
+  the first without ever escaping to the page behind the backdrop, the one trap FR-049 permits and
+  the trap this dialog owns rather than delegating. The visible ring at every step of that trap
+  paints on whichever `Button` currently holds focus, per that component's own `focus-visible`
+  answer above.
 - **loading** — the action in flight sets `loading` and `loadingLabel` on its own `Button`; the
   other action disables via its own `disabled` rather than a dialog-wide flag, so a caller can
   disable one without the other.
 - **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
-- **empty / hover / active** — not applicable; a dialog with no actions is a malformed call site,
-  and hover/active belong to the `Button`s inside it, not to the dialog itself.
+- **empty / hover / active / disabled** — not applicable; a dialog with no actions is a malformed
+  call site, and hover, active and disabled all belong to the `Button`s inside it — each one's own
+  `disabled` prop, as `loading` above already uses to disable one action without the other — not to
+  the dialog itself, which has no resting/pressed/disabled distinction independent of its actions.
+- **selection** — not applicable; a dialog is not a set member.
+- **expansion** — not applicable, and deliberately not the vocabulary's shipping case for this
+  shape: a `Dialog` is open or closed by a caller-held boolean, not by an `aria-expanded` toggle on a
+  trigger it owns, and it blocks the rest of the page rather than sitting beside it. `Menu`'s trigger
+  (above) is where this package's one `aria-expanded` disclosure lives; `Dialog`'s open/closed switch
+  is a different, mutually-exclusive-with-the-page shape and is fully covered by its own `default`
+  state and the caller's `open` prop.
 
 **Tokens** — `overlay` (backdrop), `surface` (fill), `text-primary` / `text-secondary` (heading /
 body), `focus-ring`. Radius `xl`. Elevation `modal`.
@@ -342,7 +549,10 @@ is about position and default styling, not about who owns Escape: Escape always 
 
 **Acceptance** — heading is focused and announced on open; Escape reaches the secondary action's
 `onClick` and never the primary's; Tab cycles between exactly the dialog's own focusable elements
-and never escapes to the page behind the backdrop; both actions render at least 44px tall.
+and never escapes to the page behind the backdrop; both actions render at least 44px tall; the
+heading is visibly the most prominent text in the frame, larger and heavier than the body — a
+token-correct dialog whose heading used the body's own type role would leave the reader unsure what
+decision they are being asked to make, and fails this criterion (FR-063).
 
 ---
 
@@ -391,6 +601,10 @@ component the whole product is judged on.
     is not repeated a second time beneath the value in this one case;
   - absent both, a generic, always-true default ("No data yet") renders — never a fabricated
     specific claim.
+- **selection** — not applicable; a value is not a set member.
+- **expansion** — not applicable; `StatValue` never truncates or reveals more of itself. A value that
+  needs a longer explanation composes a `Tooltip` beside it (`tooltip.md`), which is that
+  component's contract, not a state `StatValue` owns.
 
 **Tokens** — `text-primary`, `text-secondary`, `success`, `danger`, `surface`, `surface-sunken`.
 Font family `mono` for the value and any digit compared vertically, `sans` for labels and for the
@@ -433,4 +647,6 @@ no gradient, texture or border passes behind a value; deltas show a sign charact
 genuine zero delta ("+0"), which renders as data and is never suppressed; no `0` appears where data
 has not loaded; an empty value states why in words, in `text-secondary`, never a zero and never a
 punctuation mark; a region of stacked or tabled values announces "busy" once while loading, never
-once per value.
+once per value; the value is visibly the most prominent element in its row — larger and heavier than
+its own label — a token-correct `StatValue` that gave the label the value's own weight would compete
+with the number for the first read, and fails this criterion (FR-063).

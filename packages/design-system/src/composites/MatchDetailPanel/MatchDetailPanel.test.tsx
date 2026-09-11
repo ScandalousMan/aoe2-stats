@@ -279,6 +279,33 @@ describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
     restore()
   })
+
+  // Regression guard for structural-tier.md §10's `landmark-unique` rule: "A hidden caption must
+  // say something the heading above it does not... Two landmarks with one accessible name is a
+  // `landmark-unique` failure whether or not the caption is visible." `TeamGroup`'s own
+  // `<section aria-labelledby>` landmark and its nested `Table`'s `role="region"` (named from its
+  // `captionHidden` caption) are exactly the two landmarks that rule is about. An earlier version
+  // of this test (2026-09-06) pinned the two names staying apart only because the heading's "—"
+  // separator is `aria-hidden` while the caption's own "—" was real text — an accident of markup
+  // that happened to differ, not the caption adding anything the heading did not already say. This
+  // asserts the actual contract: the table's caption carries words the heading never does (what
+  // the table holds, not merely a spacing difference in how the heading's own words are punctuated).
+  it("gives a team's nested Table region an accessible name that adds what its section heading omits", () => {
+    const restore = mockMatchMediaAt(1280)
+    render(<MatchDetailPanel match={match} />)
+    const sectionLandmark = screen.getByRole('region', { name: 'Team 1 Won' })
+    const tableRegion = screen.getByRole('region', {
+      name: "Team 1 — Won — each player's civilisation, result and rating",
+    })
+    expect(sectionLandmark.tagName).toBe('SECTION')
+    expect(tableRegion.tagName).toBe('DIV')
+    expect(sectionLandmark).not.toBe(tableRegion)
+    // The contract itself: the table region's name is not merely the heading's own words
+    // reformatted — it names the table's columns, which the heading never mentions at all.
+    expect(tableRegion).toHaveAccessibleName(/civilisation/)
+    expect(sectionLandmark).not.toHaveAccessibleName(/civilisation/)
+    restore()
+  })
 })
 
 // T074b: every button reachable on a touch viewport must clear the 44px floor
@@ -620,15 +647,23 @@ describe('MatchDetailPanel — §12.5: imagery, colour and rating (004, US1, T43
     expect(screen.queryByText(fullText('906 (-15)'))).not.toBeInTheDocument()
   })
 
-  it('renders "Won"/"Lost" per TeamGroup heading, never colour alone, and joins the same words into the caption', () => {
+  it('renders "Won"/"Lost" per TeamGroup heading, never colour alone, and names the same result in the caption plus what the heading omits', () => {
     const restore = mockMatchMediaAt(1280)
     render(<MatchDetailPanel match={imageryMatch} />)
     const heading = screen.getByRole('heading', { level: 3, name: /Team 1/ })
     expect(within(heading).getByText('Won')).toHaveClass('text-success')
     const losingHeading = screen.getByRole('heading', { level: 3, name: /Team 2/ })
     expect(within(losingHeading).getByText('Lost')).toHaveClass('text-danger')
-    expect(screen.getByRole('table', { name: 'Team 1 — Won' })).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'Team 2 — Lost' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('table', {
+        name: "Team 1 — Won — each player's civilisation, result and rating",
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('table', {
+        name: "Team 2 — Lost — each player's civilisation, result and rating",
+      }),
+    ).toBeInTheDocument()
     restore()
   })
 

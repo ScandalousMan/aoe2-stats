@@ -29,6 +29,14 @@ player-colour and `icon` token families. **The 1280 layout of both components ad
 on** [`structural-tier.md`](./structural-tier.md) — `Table` (T558): both the match list and
 `ParticipantsTable` compose it rather than rendering a `<table>` of their own.
 
+**Tier and surface class, per component** — a tier is a property of a component, and this file names
+two:
+
+| Component          | Tier                                           | Surface class                                                                                                             |
+| ------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `MatchRow`         | composite (`src/composites/MatchRow/`)         | `dense` (README's "Surface density" section) — `space-3` row padding at 1280 (§7), the same class `Table` assigns it      |
+| `MatchDetailPanel` | composite (`src/composites/MatchDetailPanel/`) | `dense` — `ParticipantsTable`'s row padding is the same `space-3` (§7); the header above it is chrome, not a second class |
+
 ## 1. Purpose
 
 `MatchRow`: let a user scan their recent matches and tell, for each one, what happened and whether
@@ -161,7 +169,16 @@ information dead end — is carried forward verbatim in §12.3.
   `capture-state-badge.md` §6). `DownloadAction`: per `Button`.
 - **focus-visible** — `MatchRow`: standard ring on the row's own link wrapper, inset so it never
   crops the outcome text or a numeral. `DownloadAction`: per `Button`.
-- **active** — `MatchRow`: per link; `DownloadAction`: per `Button`.
+- **active** — `MatchRow` keeps the `surface-sunken` hover fill and reserves its inline-start edge at
+  rest (`border-l-2 border-l-transparent`, `index.tsx`), solidifying to `border-strong` only on
+  press (`active:border-l-border-strong`) — the same reserved-border technique `Table` and
+  `PlayerResultRow` share for their own row links, and distinct from either of `Link`'s two
+  treatments (`structural-tier.md` §9): `MatchRow` is a row, not a `Link`, and neither of that
+  component's own presses — the `standalone` fill or the `inline` underline shift — is what a row
+  actually paints. This passage previously read "per link", pointing at `Link`'s spec for a shape
+  `MatchRow` does not use, which is what let the pre-fix, colour-only behaviour survive undetected
+  through two review rounds (fourth-pass review remediation, FR-037; caught here by the fifth-pass
+  review, finding B2). `DownloadAction`: per `Button`.
 - **disabled** — `DownloadAction` has no disabled form: while `capture_status != "stored"` it is
   **absent**, not disabled, following `profile-summary.md`'s own rule for the primary profile's
   "Make primary" item — `CaptureStateBadge` already explains why in that case, and a greyed-out
@@ -200,6 +217,13 @@ matches/{game_id}` no longer has an ownership scope to leak (T327) — "no such 
     remaining cause of this `404`, and the copy is kept verbatim because it was already truthful for
     that cause; the sentence above is left in place, rather than rewritten, so the next reader finds
     why it never distinguished a case that no longer exists, not only that it still does not.
+- **selection** — not applicable to either component. A row in the match list is not marked current
+  within a set, and `MatchDetailPanel` opens one match at a time; there is no "which one is selected"
+  fact either component tracks.
+- **expansion** — not applicable. `MatchRow`'s "and N others" (§4/§12.3) navigates to
+  `MatchDetailPanel` rather than expanding in place — a click changes the route, not the row's own
+  disclosure state — and `ParticipantsTable` shows every participant at once (FR-011), with nothing
+  collapsed behind a toggle.
 
 ## 6. Tokens used
 
@@ -314,6 +338,10 @@ imagery to the card layout; the structure, the breakpoints and the one-DOM rule 
 - [ ] A story seeded with `outcome: 'unknown'` renders the literal word "Unknown" in `text-secondary`
       — never "Win", never "Loss", and never the `success`/`danger` colour (§2a). A story seeded with
       every row unknown (the all-unresolved-result match) renders no row implying a win or a loss.
+- [ ] `Outcome` (`semibold`) and `RatingChange` (`StatValue/inline`, `mono`) are visibly heavier than
+      the row's other fields at the same `sm` size — a token-correct row that gave map and
+      civilisation the same weight would leave a reader scanning eight matches before finding a
+      single result or rating, and fails this criterion (FR-063).
 
 **Detail**
 
@@ -327,6 +355,10 @@ imagery to the card layout; the structure, the breakpoints and the one-DOM rule 
 - [ ] Converting either component's screenshot to greyscale leaves outcome, rating change and capture
       state all still legible from text alone — the unknown-outcome story's "Unknown" reads as
       distinct from "Win"/"Loss" by wording alone, with no colour to lean on (§2a).
+- [ ] The panel heading (`xl`) is visibly larger than the `ParticipantsTable`'s column labels
+      (`text-secondary`, `sm`) — a token-correct panel that sized both the same would leave a reader
+      unsure which text is the match's own identity and which is a column's, and fails this criterion
+      (FR-063).
 
 ---
 

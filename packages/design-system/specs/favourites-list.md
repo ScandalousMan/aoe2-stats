@@ -13,6 +13,10 @@ per-entry remove control **is** `FavouriteToggle`, not a second one-off button.
 reinvented. [`player-search.md`](./player-search.md) — the "absent, not blank-filled" discipline for a
 field a row cannot supply.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: `dense` (README's "Surface density" section) — `space-3` row padding from 768
+(§7), the same class `MatchRow` and `PlayerResultRow` use.
+
 ## 1. Purpose
 
 Let a signed-in user find the players they care about again from one place, without searching — each
@@ -101,11 +105,21 @@ which are `FavouriteToggle`'s (`favourite-toggle.md` §5).
 **default** — `Heading` above the list of `FavouriteRow`s, newest favourited first, each with its
 standing and a trailing remove control.
 
-**hover / focus-visible / active** — `ProfileLink`: whole-block hover fill `surface-sunken`, focus ring
+**hover / focus-visible** — `ProfileLink`: whole-block hover fill `surface-sunken`, focus ring
 on the link wrapper inset so it never crops the standing's digits (`player-search.md` and
 `profile-summary.md`'s identical rule for figures). `RemoveControl`: `FavouriteToggle`'s own
-hover/focus/active. The two never share a hover: the informative block lighting up and the remove
+hover/focus. The two never share a hover: the informative block lighting up and the remove
 button lighting up are different affordances and read as such.
+
+**active** — `ProfileLink` keeps the `surface-sunken` hover fill and reserves its inline-start edge
+at rest (`border-l-2 border-l-transparent`, `index.tsx`), solidifying to `border-strong` only on
+press (`active:border-l-border-strong`) — the same reserved-border technique `Table`, `MatchRow` and
+`PlayerResultRow` all share for their own row links. Repainting the hover fill alone answered
+nothing (fourth-pass review remediation, FR-037: two states of one component must be distinguishable
+by more than colour, in a still image); this passage itself still described the pre-fix,
+colour-only behaviour — folded into the hover/focus-visible rule above as if it were the same
+signal — until the fifth-pass review caught it, finding B2. `RemoveControl` keeps
+`FavouriteToggle`'s own active.
 
 **disabled** — the list has no disabled form. `RemoveControl` is disabled only transiently while its
 own `DELETE` is in flight (`FavouriteToggle` §loading); removing is never blocked by the favourites
@@ -144,6 +158,12 @@ session exists.
 Under the closed-beta allowlist this route is currently reached only by signed-in users
 (spec.md Assumptions), so this state is not yet reachable in production; it is specified in full because
 US5 scenario 5 is written against it and it must exist the moment the allowlist is lifted.
+
+**selection** — not applicable; no row marks itself current within the list, and the list has no
+concept of "the one being read".
+
+**expansion** — not applicable; every row's fields (§4) either render or are absent (never
+blank-filled), which is presence, not disclosure.
 
 ## 6. Tokens used
 
@@ -258,3 +278,7 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
       distinguishable by heading and body copy alone, and every standing figure still legible.
 - [ ] No avatar, clan crest or flag illustration in any frame — only text and, at most, a free-licensed
       `aria-hidden` country glyph.
+- [ ] The standing value (`lg`, `mono`, `semibold`) is visibly heavier than the alias beside it
+      (`sm`, `semibold` but smaller) — a token-correct row that sized both the same would leave the
+      one comparable figure this list exists to show no easier to scan than the name beside it, and
+      fails this criterion (FR-063).

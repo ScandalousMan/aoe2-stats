@@ -3,7 +3,8 @@ import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { Tooltip } from './index'
 
 const meta: Meta<typeof Tooltip> = {
-  title: 'Primitives/Tooltip',
+  id: 'primitives-tooltip',
+  title: 'Primitives/Feedback & status/Tooltip',
   component: Tooltip,
 }
 
@@ -69,9 +70,18 @@ export const Default: Story = {
   },
 }
 
+// Remediation (fifth-pass review, B1): `play: hoverOpen` above opens the tooltip for real — the
+// synthetic `userEvent.hover` still reaches the component's own `onMouseEnter` listener — but it
+// never sets Chromium's actual `:hover` pseudo-class (`tests/visual/stories.spec.ts`'s own
+// `VisualForceState` comment), so without this the trigger's rest-vs-pinned boundary (index.tsx,
+// §4 active) had no real hover frame driving it either way. `visualForceState` runs after `play()`
+// has settled and drives a genuine, CDP-level hover on the same element — the same two-mechanism
+// shape `Menu.stories.tsx`'s own `Hover` story already uses (`play` opens the structure,
+// `visualForceState` paints the real pseudo-class on top of it).
 export const HoverRevealed: Story = {
   tags: ['visual-full-page'],
   play: hoverOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
   args: {
     content: 'France',
     qualifier: 'Country:',
@@ -234,6 +244,86 @@ export const AboveAFigure: Story = {
 export const Blank: Story = {
   args: {
     content: '   ',
+    children: <FlagIcon />,
+  },
+}
+
+// §4 "loading — the content has not arrived: the tooltip does not exist yet... The trigger renders
+// as a plain, non-interactive element with no tab stop until content exists." Rendered the same
+// way `Blank` is (both hit the component's one `isBlank` branch), because there is genuinely no
+// third rendering: content that has not arrived and content that resolved to blank are
+// indistinguishable to this component by design — it never guesses which case it is in.
+export const Loading: Story = {
+  args: {
+    content: undefined,
+    children: <FlagIcon />,
+  },
+}
+
+// §4 "error — none of its own. Content that failed to resolve is content that is absent, and
+// absent content is the empty state below. A tooltip never reports its own failure."
+export const ErrorNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A tooltip never reports its own failure — content that failed to resolve is content that is
+        absent, which renders exactly like `Blank`/`Loading` above: the trigger's child alone.
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: undefined,
+    children: <FlagIcon />,
+  },
+}
+
+// §4 "disabled — the trigger is never the `disabled` attribute... A caller with a non-actionable
+// trigger uses `aria-disabled=\"true\"`, keeps the tab stop." There is no `disabled` prop on this
+// component to force: the wrapping `<button>` this component renders never carries the `disabled`
+// attribute by construction, in every story on this page, which is the rule holding rather than a
+// toggle to demonstrate.
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This component has no `disabled` prop: its own trigger button never carries the `disabled`
+        attribute, in any story on this page. A caller with a non-actionable trigger uses
+        `aria-disabled="true"` on the element it wraps instead, which keeps the tab stop and the
+        tooltip working as specified.
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: 'France',
+    qualifier: 'Country:',
+    children: <FlagIcon />,
+  },
+}
+
+// T569 residual 2: `Tooltip` reveals and hides a surface without navigating away, which is the
+// README's own definition of *expansion* — but its mechanism is deliberately not that state.
+// `Menu`'s expansion is a persistent toggle: a `<button aria-expanded>` whose panel stays open
+// until dismissed. `Tooltip` has no `aria-expanded` anywhere in this spec (§accessibility): it is
+// hover-, focus- and press-driven, ephemeral, and already fully answered by the `hover`,
+// `focus-visible` and `active` states above (`HoverRevealed`, `KeyboardFocusRevealed`, `Pinned`).
+// Naming it *expansion* as well would be the same fact counted twice under two vocabulary entries.
+export const ExpansionNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This component's reveal is not the *expansion* vocabulary entry: there is no `aria-expanded`
+        toggle here, only the hover/focus-visible/active states above, and the surface is ephemeral
+        rather than a persistent panel. `Menu`'s trigger is the one shipping *expansion* case
+        (`Menu.stories.tsx`'s `Expansion` / `ClosedTrigger`).
+      </p>
+      <Tooltip {...args} />
+    </div>
+  ),
+  args: {
+    content: 'France',
+    qualifier: 'Country:',
     children: <FlagIcon />,
   },
 }

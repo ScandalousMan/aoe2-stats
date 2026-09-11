@@ -182,10 +182,12 @@
 }
 
 @utility border-hairline {
+  border-style: var(--tw-border-style);
   border-width: var(--ds-border-hairline);
 }
 
 @utility outline-ring {
+  outline-style: var(--tw-outline-style);
   outline-width: var(--ds-border-ring);
 }
 

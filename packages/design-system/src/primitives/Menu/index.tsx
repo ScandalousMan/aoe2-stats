@@ -8,6 +8,15 @@ import { Spinner } from '../../lib/Spinner'
 
 export type MenuVariant = 'selection' | 'actions'
 
+/** Which inline edge the popover (desktop/tablet, `md` and up) anchors to, relative to its
+ * trigger. `start` (default) hugs the trigger's inline-start edge, growing toward the inline end —
+ * correct when the trigger has room to its inline-end side. `end` hugs the inline-end edge instead
+ * and grows toward the inline start, for a trigger that itself sits at (or near) its own
+ * container's inline end: at `end-0` the surface never runs past the viewport's inline-end edge the
+ * way `start-0` does there (remediation, M7 — shared-primitives.md#Menu, "Responsive"). Below `md`
+ * this has no effect: the popover is always a full-width bottom sheet regardless of `align`. */
+export type MenuAlign = 'start' | 'end'
+
 export interface MenuItem {
   id: string
   label: ReactNode
@@ -43,6 +52,8 @@ export interface MenuProps {
    * open. */
   errorItemId?: string | null
   errorMessage?: ReactNode
+  /** See `MenuAlign`. Defaults to `start`. */
+  align?: MenuAlign
   className?: string
 }
 
@@ -58,6 +69,7 @@ export function Menu({
   footerItem,
   errorItemId,
   errorMessage,
+  align = 'start',
   className,
 }: MenuProps) {
   const [open, setOpen] = useState(false)
@@ -194,7 +206,12 @@ export function Menu({
                   // `elevationUtilityBlocks`, README's Elevation section), never an arbitrary
                   // `max-h-[80vh]` bracket.
                   'fixed inset-x-0 bottom-0 max-h-sheet overflow-y-auto rounded-b-none'
-                : 'absolute left-0 mt-2 min-w-64 max-w-sm',
+                : // M7 remediation: `align="end"` anchors to the trigger's inline-end edge
+                  // (`end-0`) instead of its inline-start one (`start-0`, the pre-existing and
+                  // still-default behaviour) — see `MenuAlign` above and shared-primitives.md#Menu,
+                  // "Responsive". `min-w-64 max-w-sm` bounds the surface's own width either way;
+                  // only which edge it grows from changes.
+                  cx('absolute mt-2 min-w-64 max-w-sm', align === 'end' ? 'end-0' : 'start-0'),
             )}
           >
             {items.map((item, index) => (
@@ -249,6 +266,48 @@ export function Menu({
         </>
       )}
     </div>
+  )
+}
+
+// T572 scenario 9 remediation (defect 1): shared-primitives.md#Menu's "selection" state, as T570
+// left it, made the checked item's still-image mark entirely the caller's `badge` slot — "`Menu`
+// itself does not decide what that slot contains." That is now the wrong shape: a reader given only
+// the built Storybook could not tell `Menu/Selection`, `Menu/Profile Switcher` and
+// `Menu/Focus Visible` apart (`ImageChops.difference(...).getbbox() is None` for both pairs), because
+// the one thing that actually changes row to row — `aria-checked` — painted nothing of its own; the
+// blue ring any of those three shows is the *focus* ring, not a selection mark, and a caller who
+// forgets to supply a badge (`Menu`'s own `Empty`/`ActionsWithDisabledItem` stories carry no badge
+// at all, and neither variant enforces one) ships a selected row indistinguishable from an
+// unselected one. This is exactly the "a decision a caller may not write has to live somewhere that
+// is not a caller" shape T556 already named for a different component — so the mark now lives here,
+// unconditionally, for every `selection`-variant item regardless of whether a caller also supplies a
+// trailing badge.
+//
+// A leading checkmark glyph, not a fill or ink change (README rule 4, and FR-037's still-image
+// rule): a shape that is present or invisible, reserving the same width either way — the identical
+// technique `SiteHeader`'s current-route underline already uses for the same reason
+// (`src/composites/SiteHeader/index.tsx`) — so every item's label stays aligned whether or not that
+// item is the checked one, and a still image shows the shape itself, not merely a hue. Positioned at
+// the item's *leading* edge, opposite the trailing `badge`/`Spinner` slot, so it cannot occupy the
+// same pixels as a caller-supplied `<Badge>Current</Badge>` (`ProfileSummary`'s profile switcher,
+// `SiteHeader`'s `ThemeControl`) — the two coexist as two different signals (a shape versus a word)
+// rather than one duplicating the other. A generic checkmark, not a game asset (README rule 3: no
+// licence record needed — this is an original, geometric glyph, the same class of mark
+// `FavouriteToggle`'s `StateGlyph` already is).
+function SelectionGlyph({ checked }: { checked: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={cx('icon-sm shrink-0', checked ? undefined : 'invisible')}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8.5 6.5 12 13 4.5" />
+    </svg>
   )
 }
 
@@ -307,13 +366,16 @@ function MenuItemRow({
             : 'text-text-primary hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
         )}
       >
-        <span className="flex flex-col">
-          <span>{item.label}</span>
-          {(item.secondaryLine || (item.disabled && item.disabledReason)) && (
-            <span className="text-xs text-text-secondary">
-              {item.disabled ? item.disabledReason : item.secondaryLine}
-            </span>
-          )}
+        <span className="flex items-center gap-3">
+          {variant === 'selection' && <SelectionGlyph checked={Boolean(item.checked)} />}
+          <span className="flex flex-col">
+            <span>{item.label}</span>
+            {(item.secondaryLine || (item.disabled && item.disabledReason)) && (
+              <span className="text-xs text-text-secondary">
+                {item.disabled ? item.disabledReason : item.secondaryLine}
+              </span>
+            )}
+          </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {item.badge}

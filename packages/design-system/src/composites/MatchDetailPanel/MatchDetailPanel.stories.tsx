@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import { MatchDetailPanel } from './index'
 import type { MatchDetailData } from './index'
 
 const meta: Meta<typeof MatchDetailPanel> = {
-  title: 'Composite/MatchDetailPanel',
+  id: 'composite-matchdetailpanel',
+  title: 'Composites/Match & game data/MatchDetailPanel',
   component: MatchDetailPanel,
 }
 
@@ -484,8 +486,18 @@ export const DownloadFailed: Story = {
   args: { match: baseMatch, downloadState: 'error' },
 }
 
+// `status: 'loading'` renders `Skeleton`, which stays invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: { status: 'loading' },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 export const LoadFailed: Story = {
@@ -496,4 +508,19 @@ export const LoadFailed: Story = {
 export const NotFound: Story = {
   name: "Not found — unknown or not the caller's own, indistinguishable (FR-045)",
   args: { status: 'not-found' },
+}
+
+// match-history.md §5 "hover / focus-visible / active... `DownloadAction`: per `Button`." The
+// panel itself is not a link and carries no hover, focus or active rendering of its own — only its
+// `DownloadAction` button does, already covered by `Button`'s own stories.
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The panel itself is not a link or a control: no hover, focus or active rendering of its own.
+        Its `DownloadAction` button carries its own, per `Button`'s stories.
+      </p>
+      <MatchDetailPanel {...args} match={baseMatch} />
+    </div>
+  ),
 }

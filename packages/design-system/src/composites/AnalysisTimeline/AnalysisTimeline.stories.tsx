@@ -1,10 +1,23 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import type { AnalysisTeamGroupData } from './index'
 import { AnalysisTimeline } from './index'
 
 const meta: Meta<typeof AnalysisTimeline> = {
-  title: 'Composite/AnalysisTimeline',
+  id: 'composite-analysistimeline',
+  title: 'Composites/Match & game data/AnalysisTimeline',
   component: AnalysisTimeline,
+}
+
+// `queued`/`running` and `loading` all render `Skeleton`, which stays invisible for the first
+// `duration.normal` (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse —
+// a `setTimeout`, not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the
+// pulse to exist, rather than screenshotting whatever frame Storybook happened to reach first, is
+// what makes each baseline the same no matter how long mounting that particular story took.
+async function waitForPulse({ canvasElement }: { canvasElement: HTMLElement }) {
+  await waitFor(() => {
+    expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+  })
 }
 
 export default meta
@@ -104,10 +117,12 @@ export const UnresolvedIdentifiers: Story = {
 
 export const Queued: Story = {
   args: { state: 'queued' },
+  play: waitForPulse,
 }
 
 export const Running: Story = {
   args: { state: 'running' },
+  play: waitForPulse,
 }
 
 export const Failed: Story = {
@@ -127,9 +142,61 @@ export const Refused: Story = {
 
 export const Loading: Story = {
   args: { loading: true },
+  play: waitForPulse,
 }
 
 export const LoadFailed: Story = {
   name: 'Error — the match-detail response itself failed to load (§5)',
   args: { error: true },
+}
+
+// FR-044: `ParticipantColumns`'s own doc comment (§8) names `md` as the breakpoint — every column
+// stacks full-width below it, two side by side (same team) from it. Pinned toward the narrow shape
+// with the declared `reviewWidthNarrow` viewport via `globals.viewport` (see
+// `MatchRow.stories.tsx`'s identical rationale for why a declared option rather than a Storybook
+// device preset) — `Published` above already reads at the wide, two-column shape.
+export const StackedColumnsBelowMd: Story = {
+  name: 'Participant columns stacked below md, two-column grid from it (§8)',
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
+  args: { state: 'published', teams, ...engineProps },
+}
+
+// analysis-timeline.md §5 "hover / focus-visible / active — none on `Heading`, `EngineProvenance`,
+// or any list row; all are static text. `Button`s ... follow `Button`'s own states."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        The heading, the engine provenance line and every list row are static text — no hover, focus
+        or active rendering of their own. The `Recompute` and "Try requesting analysis" buttons
+        follow `Button`'s own states.
+      </p>
+      <AnalysisTimeline {...args} />
+    </div>
+  ),
+  args: { state: 'published', teams, ...engineProps },
+}
+
+// §5 "disabled — neither `Button` has a disabled form. `Recompute` is offered only while
+// `stale: true` (never rendered and disabled otherwise)... 'Try requesting analysis' is never
+// disabled while shown."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      Neither button here has a disabled form — `Recompute` is offered only while the result is
+      stale (absent otherwise, never disabled), and "Try requesting analysis" is never disabled
+      while shown.
+    </p>
+  ),
+}
+
+// §5 "empty — not applicable in the sense this vocabulary usually means it: there is no
+// participant list that can be legitimately empty once `state` is `published`."
+export const EmptyNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      There is no participant list that can be legitimately empty once a match is published — a real
+      match's timeline is never empty, so this component has no empty rendering to show.
+    </p>
+  ),
 }

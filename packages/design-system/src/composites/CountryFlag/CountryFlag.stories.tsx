@@ -3,7 +3,8 @@ import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { CountryFlag } from './index'
 
 const meta: Meta<typeof CountryFlag> = {
-  title: 'Composite/CountryFlag',
+  id: 'composite-countryflag',
+  title: 'Composites/Player identity/CountryFlag',
   component: CountryFlag,
 }
 
@@ -73,10 +74,15 @@ export const BothSizes: Story = {
 }
 
 // §11.9 — the hover story: the country name in a tooltip above the flag.
+// Remediation (fifth-pass review, B1): `play: hoverOpen` opens the tooltip for real (the synthetic
+// `userEvent.hover` still reaches `Tooltip`'s own listener), but never sets Chromium's actual
+// `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has settled,
+// the same two-mechanism shape `Tooltip.stories.tsx`'s own `HoverRevealed` now uses.
 export const FlagHoverRevealed: Story = {
   name: 'Hover — the country name opens in a tooltip above the flag',
   tags: ['visual-full-page'],
   play: hoverOpen,
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
@@ -161,5 +167,32 @@ export const CombinedList: Story = {
       </li>
       <li>Nothing renders on the next line — {<CountryFlag countryName="" />}</li>
     </ul>
+  ),
+}
+
+// country-flag.md §11.6 "disabled — never... a `disabled` button is neither focusable nor
+// hoverable, so disabling this one would make the country unreachable rather than merely dim."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        This control is never disabled — a disabled button is neither focusable nor hoverable, so
+        disabling it would make the country unreachable rather than merely dim.
+      </p>
+      <CountryFlag flagUrl={FRANCE_URL} countryName="France" />
+    </div>
+  ),
+}
+
+// §4 "loading — the component has no loading state of its own and the caller renders no skeleton
+// in its place... Whether a country exists at all is not known until the data arrives."
+export const LoadingNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      This component has no loading state of its own, and the caller renders no skeleton in its
+      place — whether a country exists at all is not known until the data arrives, so
+      `ProfileSummary`'s identity-bar skeleton covers this position as part of the alias line
+      instead.
+    </p>
   ),
 }

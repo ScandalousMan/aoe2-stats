@@ -8,6 +8,13 @@ SC-002, SC-002a.
 [`profile-summary.md`](./profile-summary.md) — `CountryLabel`'s own convention (text, optional
 non-carrying flag glyph) is reused rather than reinvented.
 
+**Tier and surface class, per component**:
+
+| Component         | Tier                                          | Surface class                                                                                                      |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SearchBox`       | composite (`src/composites/SearchBox/`)       | neither `dense` nor `prose` — a labelled field plus a live region, not a surface with a density of its own         |
+| `PlayerResultRow` | composite (`src/composites/PlayerResultRow/`) | `dense` (README's "Surface density" section) — `space-3` row padding from 768 (§7), the same class `MatchRow` uses |
+
 ## 1. Purpose
 
 `SearchBox`: let a user find any player by a partial, wrongly-cased name and reach their profile
@@ -197,14 +204,37 @@ changes") undersells it in the other direction less than `danger`'s ("something 
    `degraded: true` — a request that never completed is not the same claim as one that completed with
    a reduced answer, and the two must never share a `Callout` tone or a sentence.
 
-**hover / focus-visible / active** — `Input`: standard text-input interaction, focus ring per DS-4.
+**hover / focus-visible** — `Input`: standard text-input interaction, focus ring per DS-4.
 `PlayerResultRow`: whole-row hover fill `surface-sunken`, exactly `match-history.md`'s own
 `MatchRow` rule (nothing inside the row — including `Standing` — has its own hover); focus ring on the
 row's own link wrapper, inset so it never crops `Standing`'s digits, following `profile-summary.md`'s
 identical rule for rating figures.
 
+**active** — `Input`: standard text-input interaction. `PlayerResultRow` keeps the `surface-sunken`
+hover fill and reserves its inline-start edge at rest, at a constant width across every viewport
+(`border-l-2 border-l-transparent`, plus `md:border-l-2` restoring the width `md:border-x-0` would
+otherwise zero from `md` up — `index.tsx`), solidifying to `border-strong` on press
+(`active:border-l-border-strong`, colour only: the width is reserved unconditionally, so a press
+never grows the row or shifts the alias/clan group beside it) — the same reserved-border technique
+`Table` and `MatchRow` share for their own row links. (Fifth-pass review, finding M3: an earlier
+version of this fix re-asserted the width at `active:` too, `active:border-l-2
+active:border-l-border-strong`, which was the one thing fighting `md:border-x-0` back to a width at
+`md`+ and produced a 2px reflow on press; the unconditional reservation above replaced it and this
+passage is corrected to match.) Repainting the hover fill alone, with no border reservation at all,
+answered nothing (fourth-pass review remediation, FR-037: two states of one component must be
+distinguishable by more than colour, in a still image); this passage itself still described that
+pre-fix, colour-only behaviour — folded into the hover/focus-visible rule above as if it were the
+same signal — until the fifth-pass review caught it, finding B2.
+
 **disabled** — `Input` only, and only during the rate-limited countdown above; there is no other
 disabled condition for either component.
+
+**selection** — not applicable to either component. A result row is not marked current within the
+list; the reader leaves the list by following the row's own link rather than by selecting it in
+place.
+
+**expansion** — not applicable. Neither component collapses or reveals a second surface; every field
+a row carries (§4) either renders or is absent, which is presence, not disclosure.
 
 ## 6. Tokens used
 
@@ -332,3 +362,7 @@ criterion, restated here because it applies identically.
       `danger`) still distinguishable by heading text and body copy alone.
 - [ ] No avatar, clan crest or flag illustration in any frame — only text and, at most, a free-licensed
       `aria-hidden` country glyph.
+- [ ] The alias (`semibold`) is visibly heavier than the clan tag, country and standing beside it
+      (`normal`) — a token-correct row that gave every field the alias's own weight would leave two
+      near-identical names no easier to tell apart than before, defeating the reason this row exists,
+      and fails this criterion (FR-063).

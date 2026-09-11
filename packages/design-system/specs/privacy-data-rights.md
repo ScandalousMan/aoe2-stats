@@ -41,6 +41,13 @@ chain in `privacy-notice.md`'s own header governs the order. This file restates 
 list (what happens to your data) and the irreversibility; it does not restate legal-basis prose, whose
 one home is the notice.
 
+**Tier and surface class, per component**:
+
+| Component             | Tier                                        | Surface class                                                                                                                     |
+| --------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DataExportPanel`     | screen (`src/screens/DataExportPanel/`)     | `prose` (README's "Surface density" section) — the contents statement is continuous reading text, `space-3`/`space-6` rhythm (§7) |
+| `AccountErasurePanel` | screen (`src/screens/AccountErasurePanel/`) | `prose` — the two consequence groups are read as paragraphs, not scanned as table rows                                            |
+
 ---
 
 ## 1. Purpose
@@ -122,7 +129,8 @@ interface AccountErasurePanelProps {
 
 type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight, opening the dialog
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
+  // re-mint once it already has (`dialogHasOpened` tells the two apart, `AccountErasurePanel/index.tsx`)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
@@ -304,6 +312,15 @@ there is deliberately no "your past exports" list to be empty, because the API h
 `AccountErasurePanel`: not applicable — it is a single irreversible action, not a collection; there is
 no "nothing yet" fact for an empty state to represent, and this is stated rather than omitted.
 
+**selection** — not applicable to either component; neither has a set of items for one to be marked
+current within.
+
+**expansion** — not applicable to either component's own page content: the contents statement and
+both consequence groups are always fully rendered (§2, §4), never behind a disclosure.
+`ConfirmDialog` is a modal (`Dialog`'s own contract, `shared-primitives.md`), not a disclosure that
+reveals a surface beside its trigger — it blocks the rest of the page, which `Dialog`'s own spec
+already distinguishes from the vocabulary's expansion state.
+
 ## 6. Tokens used
 
 Colour: `surface` (both sections, and the page prose the links sit on), `surface-raised`
@@ -417,6 +434,9 @@ links — their forward action is always a `Button`, never a link inside coloure
 - [ ] The `failed` frame shows a danger callout with a retry action, and the request button is enabled
       again.
 - [ ] No "your previous exports" list appears in any frame.
+- [ ] The heading is visibly heavier than the contents statement beneath it — a token-correct panel
+      that gave the paragraph the heading's own weight would leave a reader unsure where the section
+      starts, and fails this criterion (FR-063).
 
 **Erasure — the wording that is the point of the task**
 
@@ -449,3 +469,6 @@ links — their forward action is always a `Button`, never a link inside coloure
 - [ ] Focus ring visible and unclipped on the erase button, on the acknowledgement checkbox, on the
       confirm and cancel actions, and on the download link, in both themes.
 - [ ] No game artwork, logo, portrait or in-game font in any frame.
+- [ ] "There is no undo" (`medium`) is visibly heavier than the sentence around it (`normal`) — a
+      token-correct lede that gave the whole sentence one weight would let the one clause that must
+      not be missed blend into the rest, and fails this criterion (FR-063).

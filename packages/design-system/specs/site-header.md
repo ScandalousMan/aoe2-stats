@@ -6,6 +6,9 @@ beside the `Footer` that is already mounted there, so it renders on every route.
 **Requirements**: FR-009 (a header with primary navigation on every page, footer intact), FR-013
 (tokens only, a story, visual regression), FR-014 (both themes reachable, an explicit override
 remembered — §ThemeControl, T535). Constitution VI, VII.
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — chrome on `surface`, not a content surface with a
+density of its own.
 **Depends on**: [`README.md`](./README.md) — the measured contrast table and the gap register, which
 this spec references and never restates. [`footer.md`](./footer.md) — the other half of the site
 chrome; the two are specified to agree on inline padding, on link behaviour and on "chrome is the
@@ -14,7 +17,8 @@ quietest thing on the page". `src/lib/rowLink.ts` — the existing SPA navigatio
 `useTheme`, T534) — owned locally by §ThemeControl rather than required of every host of this
 component (see that section for why). `src/primitives/Menu/` — the `selection` variant this
 control reuses rather than inventing a second "choose one of a few named things" pattern; see
-`shared-primitives.md#Menu`. `src/primitives/Badge/` — the checked item's non-colour marker.
+`shared-primitives.md#Menu`. `src/primitives/Badge/` — the checked item's additional, caller-chosen
+signal beside `Menu`'s own intrinsic selection mark (T572).
 **Asset origin** (README rule 3): **none.** This component renders no image of any kind — no logo,
 no crest, no emblem, no civilisation mark, no flag. The brand is a text wordmark set in the
 `display` family. There is nothing here for the licence gate to record, and §10 has a criterion
@@ -121,9 +125,11 @@ that hole: the reader can always choose "System" again.
 **What it is.** A `Menu` in its `selection` variant (`shared-primitives.md#Menu`) — the pattern this
 package already uses for "choose one of a few named things" (`ProfileSummary`'s profile switcher) —
 rather than a bespoke segmented control or a second roving-radiogroup implementation. Its three
-items are `System`, `Light` and `Dark`; the checked one carries a `Badge` reading "Current" in
-addition to `aria-checked`, per `Menu`'s own acceptance bar that the checked item is marked by text
-or a `Badge`, never by colour alone. The trigger's own label states the active state in words —
+items are `System`, `Light` and `Dark`; the checked one carries `Menu`'s own intrinsic checkmark
+glyph plus a `Badge` reading "Current" in addition to `aria-checked`, per `Menu`'s own acceptance bar
+that the checked item is marked by its own glyph, never by colour alone — the `Badge` is this
+consumer's additional, textual signal beside that mark, not a substitute for it. The trigger's own
+label states the active state in words —
 `Theme: System`, `Theme: Light` or `Theme: Dark` — with a trailing `aria-hidden` "▾", the same
 disclosure glyph `ProfileSummary`'s switcher trigger already uses, so no icon is drawn and §Asset
 origin's "no image of any kind" holds for this control too.
@@ -151,10 +157,12 @@ beside `Brand` on the header's first row rather than beneath it with the wrapped
 never competes with nav wrapping for width; at 768 and 1280 it occupies what §2c calls out as the
 reserved inline-end space.
 
-**One variant and one size, at every viewport.** A header that changes shape per route is chrome a
-reader cannot rely on finding twice, and the whole value of this component is that it is identical
-everywhere. What changes between routes is which item is marked current (§4), and what changes with
-the viewport is arrangement, never composition (§8).
+## 3. Variants and sizes
+
+**Variants** — one, and one size, at every viewport. A header that changes shape per route is
+chrome a reader cannot rely on finding twice, and the whole value of this component is that it is
+identical everywhere. What changes between routes is which item is marked current (§4), and what
+changes with the viewport is arrangement, never composition (§8).
 
 ### 3a. The canonical item set for 004
 
@@ -210,8 +218,8 @@ depend on:
 
 ## 5. States
 
-The closed vocabulary, all eight. Unless said otherwise, a state belongs to a `NavItem`; `Brand` and
-`SkipLink` are called out where they differ.
+The closed vocabulary, all ten (T569). Unless said otherwise, a state belongs to a `NavItem`;
+`Brand` and `SkipLink` are called out where they differ.
 
 - **default** — header on `surface` with a `border` hairline at its block-end. Items at rest:
   transparent box, label `text-secondary`, `sans`, size `sm`, weight `medium`, no underline. The
@@ -269,6 +277,20 @@ The closed vocabulary, all eight. Unless said otherwise, a state belongs to a `N
     a page you are not on is worse than one that claims nothing, and this is a routine state, not an
     edge case — the profile and match-detail routes are in it all day.
 
+- **selection** — **specified, and this component is the vocabulary's other shipping case beside
+  `Menu` itself (T569/T570, README's "Selection and expansion").** `PrimaryNav`'s current-route
+  marking (§4) is a `NavItem` holding the current member of the nav's own set: the 2px `accent`
+  rule, the weight/colour change and `aria-current="page"` together, never a colour change alone —
+  exactly the still-image mark the vocabulary requires. `ThemeControl` is the same state a second
+  way, entirely through `Menu`'s own `selection` variant (§2d): the checked theme item carries
+  `aria-checked`, `Menu`'s own intrinsic checkmark glyph — the mark the primitive itself guarantees
+  (T572) — and, additionally, a `<Badge>Current</Badge>`.
+- **expansion** — not applicable to `SiteHeader` itself. `ThemeControl`'s trigger carries
+  `aria-expanded` and opens a popover, but that is `Menu`'s own contract
+  (`shared-primitives.md#Menu`), consumed here unchanged; `SiteHeader` adds no expansion behaviour of
+  its own, and `PrimaryNav` never collapses behind a disclosure (§8's "no hamburger" decision is
+  exactly the refusal to add one).
+
 `ThemeControl`'s own states — default, hover, focus-visible, active, disabled, loading, error,
 empty, for its trigger and its items — are `Menu`'s, unchanged by this composition
 (`shared-primitives.md#Menu`); the only thing specific to this control is which of its three items
@@ -317,8 +339,10 @@ alongside the one `profile-summary.md` §12.8 already owes.
 
 `ThemeControl` (§2d) draws no colour pair of its own: its trigger and its items are `Menu`'s
 existing `surface-raised` / `surface-sunken` / `border` / `text-primary` / `focus-ring` set
-(`shared-primitives.md#Menu`), and its checked marker is `Badge`'s existing `neutral` variant
-(`surface-sunken` fill, `text-secondary` label) — both already measured. No new pair, no new token.
+(`shared-primitives.md#Menu`). Its checked marker is `Menu`'s own intrinsic checkmark glyph, painted
+in `currentColor` from that same `text-primary` set — no new token — and its additional
+`<Badge>Current</Badge>` reuses `Badge`'s existing `neutral` variant (`surface-sunken` fill,
+`text-secondary` label). Both already measured. No new pair, no new token.
 
 ## 7. Spacing
 
@@ -402,22 +426,29 @@ above.
   with three `role="menuitemradio"` items and `aria-checked` on exactly one, `Menu`'s existing
   contract (`shared-primitives.md#Menu`) applied here with no change: Enter/Space/ArrowDown open it
   with the checked item focused, ArrowUp/ArrowDown move between the three with wrap, Escape closes
-  and returns focus to the trigger. The checked item is additionally marked by a `Badge` reading
+  and returns focus to the trigger. The checked item is marked by `Menu`'s own leading checkmark
+  glyph — present regardless of what this consumer supplies — and additionally by a `Badge` reading
   "Current", so a sighted reader who cannot distinguish the checked state by `aria-checked` alone
   (announced only to assistive technology) still sees which of the three is active without relying
-  on colour. Reachable in the header's own tab order, after every `NavItem` — Tab order is
+  on colour, in the shape of the glyph as well as in the badge's own words. Reachable in the
+  header's own tab order, after every `NavItem` — Tab order is
   `SkipLink`, `Brand`, every `NavItem` in DOM order (unchanged from above), then `ThemeControl`'s
   trigger.
 
 ## 10. Visual acceptance criteria
 
-Stories live under **`Composite/SiteHeader`** (T540, research D13: `chrome` collapses into
-`composites` — `SiteHeader` and `Footer` are domain composites that happen to be mounted once, and a
-fourth tier for "mounted by the root layout" would be a location rather than a dependency rule). This
-resolves the inconsistency this section used to record: `Footer` was already at `Composite/Footer`
-and `SiteHeader` previously sat apart at `Chrome/SiteHeader` (the id quickstart scenario 6 named);
-the rename moves every `chrome-siteheader--*` baseline to `composite-siteheader--*` (T540, repainted
-by T550). Every criterion below is judged in **both themes**; the small-viewport stories carry the
+Stories live under **`Composites/Site chrome/SiteHeader`** (T540, research D13: `chrome` collapses
+into `composites` — `SiteHeader` and `Footer` are domain composites that happen to be mounted once,
+and a fourth tier for "mounted by the root layout" would be a location rather than a dependency
+rule). This resolves the inconsistency this section used to record: `Footer` was already at
+`Composites/Footer` and `SiteHeader` previously sat apart at `Chrome/SiteHeader` (the id quickstart
+scenario 6 named); the rename moved every `chrome-siteheader--*` baseline to `composite-siteheader--*`
+(T540, repainted by T550). **Amended (T564, T570)**: the navigation gained one further level, `Site
+chrome`, so a reader browsing by need finds `SiteHeader` and `Footer` grouped under the same heading
+rather than only sharing a tier; the **story id stays `composite-siteheader`**
+(`SiteHeader.stories.tsx`'s own `id` field, set independently of `title`), so no baseline filename
+moved a second time. Every criterion below is judged in **both themes**; the small-viewport stories
+carry the
 `visual-mobile` tag, without which the whole of §8's 375 arrangement is invisible to the suite
 (`scripts/visual/run.mjs`).
 
@@ -428,7 +459,11 @@ Required stories: `SignedIn` (five items, `/dashboard` current), `CurrentIsNeste
 `ThemeControlSetToDark` (§2d — each opens the menu via `play()`; the light/dark stories seed the
 stored override through a `loader` rather than a live click, so the capture never fights the
 `theme:<light|dark>` global the rest of this suite's matrix depends on — see the stories file's own
-comment for why a live click there would repaint the page's own theme attribute).
+comment for why a live click there would repaint the page's own theme attribute), `Selection`
+(named for the vocabulary entry rather than the scenario — the same frame `SignedIn` already shows,
+added rather than renaming it so the checked-in baseline is not orphaned) and
+`ExpansionNotApplicable` (states in the frame that `PrimaryNav` never collapses behind a disclosure
+and that `ThemeControl`'s own expansion state belongs to `Menu`, not to this component).
 
 - [ ] The wordmark "aoe2-stats" is present in every story, as text.
 - [ ] **No image of any kind appears in any frame** — no logo, crest, emblem, shield, civilisation
@@ -463,14 +498,18 @@ comment for why a live click there would repaint the page's own theme attribute)
 - [ ] `ThemeControl` is present, closed, in every non-`ThemeControl*` story — its trigger reads
       "Theme: System" in every one of them, since none seeds a stored override.
 - [ ] `ThemeControlFollowingSystem`: the open menu shows exactly one checked item, "System", marked
-      by both `aria-checked` (not visible in a screenshot, but its `Badge` is) and the "Current"
-      `Badge` — never "Light" or "Dark" checked by default.
+      by `aria-checked` (not visible in a screenshot), `Menu`'s own leading checkmark glyph, and the
+      additional "Current" `Badge` — never "Light" or "Dark" checked by default.
 - [ ] `ThemeControlSetToLight` / `ThemeControlSetToDark`: the trigger reads "Theme: Light" /
       "Theme: Dark" and the matching item, not "System", carries the `Badge`. Counting `Badge`s in
       the open surface gives 1, on the item the story names, in both of these stories' own light and
       dark captures alike (§2d — an explicit override is not the page's ambient theme).
 - [ ] At 375, `ThemeControl`'s trigger sits beside `Brand` on the first row, never beneath it with
       the wrapped nav items, in every story that has both.
+- [ ] The wordmark (`display`, `lg`, `semibold`) is visibly more prominent than any nav item label
+      (`sans`, `sm`) — a token-correct header that sized a nav item as large as the wordmark would
+      make a destination compete with the brand for the first read, and fails this criterion
+      (FR-063).
 
 ## 11. What a screenshot cannot see, and what covers it instead
 
@@ -498,5 +537,6 @@ it was forgotten. T441 owes both of the following:
   each of the three calls through to `useTheme()`'s real `setOverride`/`clearOverride` (observed via
   `localStorage` and `document.documentElement.dataset.theme`, since neither `useTheme` nor `Menu` is
   mocked, matching how `ThemeProvider.test.tsx` itself asserts); the checked item carries the
-  "Current" `Badge`, not colour alone; and the control is keyboard-operable end to end — Enter opens
-  it with the checked item focused, ArrowDown moves to the next, Enter selects it.
+  "Current" `Badge` alongside `Menu`'s own checkmark glyph, neither one alone; and the control is
+  keyboard-operable end to end — Enter opens it with the checked item focused, ArrowDown moves to
+  the next, Enter selects it.

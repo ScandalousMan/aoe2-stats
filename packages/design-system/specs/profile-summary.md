@@ -14,6 +14,9 @@ and **§12 carries 004's FR-007, FR-008, FR-008a and FR-013, and SC-002** — ea
 `004` throughout this file to keep them apart from 001's own FR-008/FR-004/FR-007/FR-045 above, and
 from each other: all three features number a requirement `FR-008`, and 003 and 004 both have an
 `FR-008a` about different things. **§13 carries 004's amended FR-008 and FR-013.**
+**Tier**: screen (`src/screens/`).
+**Surface class**: `dense` (README's "Surface density" section) — the rating board is rows of
+measured values, `space-3` row padding at `lg` (the desktop table), the same rhythm `MatchRow` uses.
 **Depends on**: [`shared-primitives.md`](./shared-primitives.md) — `StatValue`, `Menu`, `Badge`,
 `Button`, `Callout`, `Skeleton`. §11 also depends on
 [`player-search.md`](./player-search.md)'s `PlayerSearchResult` shape for `alias_observed_at`. §12
@@ -77,6 +80,21 @@ assembled.
 **Exactly one profile is primary.** The `Badge/accent` reading "Primary" appears on exactly one
 menu item. Making another primary is an explicit action ("Make primary"), never a side effect of
 viewing one.
+
+**The currently-viewed profile is a separate fact from the primary one, and is marked differently
+(T569/T570, README's "Selection and expansion"; T572).** The switcher is `Menu`'s `selection`
+variant (`shared-primitives.md`): the item matching the profile on screen carries
+`role="menuitemradio"` and `aria-checked="true"`, and `Menu` itself paints that state's still-image
+mark — a leading checkmark glyph, never a fill, tint or border change alone
+(`shared-primitives.md#Menu`). Its own `<Badge>Current</Badge>` beside its alias is an additional,
+independent signal, not the selection mark itself: it exists so the fact reads in the label as well
+as in the shape, but the mark `Menu` guarantees does not depend on it being supplied. `accent` stays
+reserved for `Primary`: a profile can be
+primary and not currently viewed, currently viewed and not primary, both, or neither, and the two
+badges — `Badge/accent` "Primary" and the plain `Badge` "Current" — can appear on the same item or on
+two different ones without either borrowing the other's meaning. This is what keeps "which account
+did I make primary" and "which account am I looking at" answerable independently from a single
+screenshot of the open switcher.
 
 **Viewing is not the same as promoting.** Selecting a profile in the switcher changes what this page
 shows for the session; it writes nothing. While a non-primary profile is being viewed,
@@ -152,6 +170,17 @@ Do not paint before 200 ms. After 10 s, fall through to the error state.
    rating still renders; a missing rank never suppresses a known rating.
 3. _One linked profile only_: not an empty state of the board but of the switcher — see §4. The
    trigger renders normally.
+
+**selection** — specified: the switcher's own `selection` variant (§4) marks the profile currently
+on screen with `aria-checked` and `Menu`'s own intrinsic checkmark glyph (T572); its
+`<Badge>Current</Badge>`, independent of the `Primary` badge, is an additional signal beside that
+mark, not the mark itself. This is the vocabulary's selection state (T569); nothing else in this
+component is a set member.
+
+**expansion** — inapplicable. The switcher's own popover open/closed toggle is `Menu`'s contract
+(`shared-primitives.md`), not a state `ProfileSummary` owns; nothing in this component's own anatomy
+collapses or discloses a second surface (§13.5's tooltip is `CountryFlag`'s and `Tooltip`'s
+contract, consumed here, not this component's own expansion state).
 
 ## 6. Tokens used
 
@@ -238,7 +267,12 @@ breakpoint.
   `role="menuitemradio"` with `aria-checked` on the viewed profile, arrow-key roving, Escape closes
   and returns focus to the trigger. Items are ≥ 44px tall. The trigger's accessible name includes
   the word "profile" so it is not announced as a bare alias.
-- The "Primary" state is carried by the badge's **text**, never by colour or position alone.
+- The viewed profile's `aria-checked="true"` is paired with `Menu`'s own intrinsic checkmark glyph,
+  the still-image mark the accessibility-tree state agrees with (T569/T570; T572); a visible
+  `<Badge>Current</Badge>` on the same item is an additional signal, not a substitute for it.
+- The "Primary" state is carried by the badge's **text**, never by colour or position alone, and the
+  "Current" state is carried by its own, separate badge — the two never merge into one label even
+  when both are true of the same item.
 - Deltas carry a sign character in the accessible name ("+12", "−8"), not a rotated arrow.
   Wins/losses are printed as text ("142 W · 118 L") beside the proportion bar; the bar is
   `aria-hidden` and adds nothing that is not already readable.
@@ -268,6 +302,9 @@ breakpoint.
 - [ ] The switcher trigger shows the viewed profile's alias as readable text plus a chevron — not an
       icon-only or "⋯" control — and is visible without scrolling at 375, 768 and 1280.
 - [ ] The open switcher shows exactly one "Primary" badge across all items.
+- [ ] The open switcher shows exactly one `<Badge>Current</Badge>`, on the item matching the profile
+      on screen — on a different item from "Primary" in one story and on the same item in another,
+      confirming the two badges are independent and never merge into one label.
 - [ ] Each switcher item is at least 44px tall; at 375 the switcher is a full-width bottom sheet.
 - [ ] The open switcher contains a "Link another Steam account" item, including in the
       single-profile screenshot.
@@ -277,7 +314,9 @@ breakpoint.
 
 **Numbers**
 
-- [ ] Ratings are the largest text in the component and are set in the monospaced family.
+- [ ] Ratings are the largest text in the component and are set in the monospaced family — a
+      token-correct board that gave the leaderboard name the rating's own size would compete with
+      the number for the first read, and fails this criterion (FR-063).
 - [ ] Stacked ratings, ranks and records align digit-for-digit vertically in the same screenshot.
 - [ ] No gradient, texture, parchment grain, glow or border passes behind or across any figure.
 - [ ] Every delta shows an explicit + or − character.

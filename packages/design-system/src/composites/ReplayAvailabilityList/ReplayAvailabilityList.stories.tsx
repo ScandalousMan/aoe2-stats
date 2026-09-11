@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, waitFor } from 'storybook/test'
 import type { ReplayAvailabilityRowData } from './index'
 import { ReplayAvailabilityList } from './index'
 
 const meta: Meta<typeof ReplayAvailabilityList> = {
-  title: 'Composite/ReplayAvailabilityList',
+  id: 'composite-replayavailabilitylist',
+  title: 'Composites/Match & game data/ReplayAvailabilityList',
   component: ReplayAvailabilityList,
 }
 
@@ -151,8 +153,18 @@ export const EveryRowUnobtainable: Story = {
 
 // §5 "loading": before the match detail response arrives — skeleton row count (2) matches the
 // smallest known participant count, at the row's own footprint.
+// `loading: true` renders `Skeleton` rows, which stay invisible for the first `duration.normal`
+// (200ms, `useDelayedVisible`) so a fast-resolving load never flashes a pulse — a `setTimeout`,
+// not a wall clock, but a clock all the same (T568, FR-047). Waiting here for the pulse to exist,
+// rather than screenshotting whatever frame Storybook happened to reach first, is what makes this
+// baseline the same no matter how long mounting this particular story took.
 export const Loading: Story = {
   args: { loading: true },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[class*="animate-pulse"]')).not.toBeNull()
+    })
+  },
 }
 
 // §5 "error" — request could not be started at all: the row returns to default (button still
@@ -226,4 +238,59 @@ const realisticRows: ReplayAvailabilityRowData[] = [
 
 export const RealisticMatch: Story = {
   args: { rows: realisticRows },
+}
+
+// FR-044: `ReplayAvailabilityRow`'s own doc comment (§9) names `md` as the breakpoint — the whole
+// row stacks below it, one line with an intrinsic-width, right-aligned `DownloadAction` from it
+// (unchanged again at `xl`, per the same comment). Pinned toward the narrow shape with the declared
+// `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
+// rationale for why a declared option rather than a Storybook device preset) — `RealisticMatch`
+// above already reads at the wide, one-line shape.
+export const StackedRowsBelowMd: Story = {
+  name: 'Stacked row below md, one line from it (§9)',
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
+  args: { rows: realisticRows },
+}
+
+// replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per
+// `Badge`'s own rule... `DownloadAction`: per `Button`." Forced from Playwright in
+// `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+export const Hover: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Download' } },
+}
+
+export const FocusVisible: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Download' } },
+}
+
+export const Active: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
+  },
+  parameters: { visualForceState: { state: 'active', role: 'button', name: 'Download' } },
+}
+
+// §5 "disabled — `DownloadAction` has no disabled form... for `expired` and `never_recorded` it is
+// absent, not disabled." Already demonstrated by `Expired`/`NeverRecorded` above; named here so
+// the state has its own entry in the sidebar.
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        `DownloadAction` has no disabled form — for `expired` and `never_recorded` rows it is
+        absent, not greyed out, because the badge and secondary line already say why.
+      </p>
+      <ReplayAvailabilityList {...args} />
+    </div>
+  ),
+  args: {
+    rows: [{ id: '1', alias: 'GL.TheViper', availability: 'expired' }],
+  },
 }

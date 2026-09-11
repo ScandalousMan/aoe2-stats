@@ -269,6 +269,25 @@ export function Tooltip({
         onKeyDown={handleTriggerKeyDown}
         className={cx(
           'inline-flex cursor-default items-center justify-center bg-transparent p-1',
+          // Remediation (fifth-pass review, B1): pinned (§4 active) used to render byte-identical
+          // to hover-revealed — nothing on this trigger painted anything of its own; the tooltip
+          // being open was the whole frame either way. `border-2 border-transparent` reserves a
+          // symmetric boundary at rest (all four sides, not `Menu`'s inline-start-only technique —
+          // that convention belongs to a left-aligned row, where the reserved edge already sits at
+          // the text's own start; this trigger centres its child instead, and `Button`'s `ghost`
+          // variant is the closer sibling: a small, roughly-square control with no border until
+          // pressed). Symmetric reservation is what keeps the child centred identically with or
+          // without the border — border-box sizing plus a fixed `minWidth`/`minHeight` means a
+          // reservation on all four sides shifts nothing (algebraically: centring within a
+          // fixed-total box is invariant to how much of that total is border versus padding),
+          // unlike a one-sided reservation, which would have skewed this centred trigger the way
+          // `border-l-*` never does for a left-aligned row. `pinned` is a persisted React boolean
+          // (§4 active stays open after the mouse button is released), not the CSS `:active`
+          // pseudo-class Button's own press states ride on, so the paint is a plain conditional
+          // class rather than an `active:` variant — the same reason `isOpen` below is also a JS
+          // conditional and not a pseudo-class. tooltip.md §4 active / §10.
+          'border-2',
+          pinned ? 'border-border-strong' : 'border-transparent',
           'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
         )}
         style={{ minWidth: iconTokens.xl, minHeight: iconTokens.xl }}

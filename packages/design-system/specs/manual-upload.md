@@ -34,6 +34,10 @@ there is no shared form-field primitive, and a file input is not the input eithe
   unlikely to help" for `unavailable`). This component renders the **action**, not the reason, and must
   not restate or contradict that line — see §2.
 
+**Tier**: composite (`src/composites/`).
+**Surface class**: neither `dense` nor `prose` — a form section inside `MatchDetailPanel`'s own
+panel, not a surface with a row height or reading measure of its own to classify.
+
 ## 1. Purpose
 
 Let a user rescue a match whose replay automatic capture never got, by adding the file from their own
@@ -208,6 +212,11 @@ the `Choose file` control and the drag target are all present with no file chose
 collection here to be otherwise empty, and no "nothing yet" beyond "no file picked", which `idle`
 already is.
 
+**selection** — not applicable; this component has no set of items for one to be current within.
+
+**expansion** — not applicable. `FileChip` and `OutcomeRegion` either render or do not (presence, not
+disclosure); nothing here collapses to be revealed later.
+
 **succeeded** (outcome) — `OutcomeRegion/success` per §4.4; the picker and `SubmitButton` collapse. The
 control does **not** synthesise a download link itself: on success the caller re-reads the match, its
 `capture_status` is now `stored`, and `MatchDetailPanel` renders `DownloadAction` in the slot this
@@ -357,3 +366,7 @@ file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit
       `Refresh`, in both themes.
 - [ ] The drop zone and callouts carry no shadow; the drop zone reads as a bordered well, not a floating
       card competing with the panel's match data.
+- [ ] The heading (`md`, `semibold`) is visibly heavier than the explanation beneath it (`md`,
+      `normal`) even though both share a size — a token-correct section that gave both the same
+      weight would read as one run-on sentence rather than a labelled section, and fails this
+      criterion (FR-063).

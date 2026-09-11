@@ -3,7 +3,8 @@ import { Button } from '../Button'
 import { Callout } from './index'
 
 const meta: Meta<typeof Callout> = {
-  title: 'Primitives/Callout',
+  id: 'primitives-callout',
+  title: 'Primitives/Feedback & status/Callout',
   component: Callout,
 }
 
@@ -61,5 +62,71 @@ export const Empty: Story = {
       </p>
       <Callout tone="info" heading="" />
     </div>
+  ),
+}
+
+// shared-primitives.md §Callout "focus-visible": the heading is `tabindex="-1"` and paints
+// `outline-none` — its focus is for the accessible-name announcement, not a visible indicator
+// (the same shape `Dialog`'s heading owns). Remediation (fifth-pass review M1): this story used to
+// force focus onto the heading and stop there, which shows nothing — six baselines with zero
+// focus-ring pixels, standing in for a state that has no visual form of its own. Repointed the same
+// way `Dialog`'s own `FocusVisible` story was: `visualForceState` drives real focus onto the next
+// stop after the heading, `primaryAction` here (rendered first in the action row, `index.tsx`'s own
+// order) — a real `Button`, carrying a real ring, and a real "what happens when you tab past this
+// heading" answer rather than a frame that documents nothing.
+export const FocusVisible: Story = {
+  args: {
+    tone: 'info',
+    heading: 'This Steam account has no Age of Empires II profile yet',
+    children:
+      'Your sign-in worked. The game creates a profile the first time you play a match online.',
+    actions: <Button variant="primary">Try again</Button>,
+  },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Try again' },
+  },
+}
+
+// §Callout "hover / active — none; the root is not interactive. Actions inside it have their own."
+export const HoverActiveNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A callout's own root is never interactive — no hover fill, no press feedback. The action
+        buttons inside one carry their own hover and active states.
+      </p>
+      <Callout
+        tone="info"
+        heading="This Steam account has no Age of Empires II profile yet"
+        actions={<Button variant="primary">Try again</Button>}
+      >
+        Your sign-in worked. The game creates a profile the first time you play a match online.
+      </Callout>
+    </div>
+  ),
+}
+
+// §Callout "disabled — none; a callout is never disabled."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        A callout is never disabled — there is no dimmed or inert rendering of this component.
+      </p>
+      <Callout tone="info" heading="This Steam account has no Age of Empires II profile yet">
+        Your sign-in worked. The game creates a profile the first time you play a match online.
+      </Callout>
+    </div>
+  ),
+}
+
+// §Callout "loading — none; a callout describes a settled outcome. Anything still resolving is a
+// `Skeleton`."
+export const LoadingNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A callout describes a settled outcome. While the outcome is still resolving, the caller
+      renders a `Skeleton` instead — a callout never appears mid-resolution.
+    </p>
   ),
 }

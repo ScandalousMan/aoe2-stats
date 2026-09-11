@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Link } from './index'
 
 const meta: Meta<typeof Link> = {
-  title: 'Primitives/Link',
+  id: 'primitives-link',
+  title: 'Primitives/Typography/Link',
   component: Link,
   args: {
     href: '/players/1807091',
@@ -43,11 +44,14 @@ export const StandaloneExternal: Story = {
   },
 }
 
-// §9's hover acceptance criterion: the hover capture differs from the rest capture in *two* ways
-// — the ink and the underline thickness (FR-037), captured by hovering the link below with the
-// pointer (`tests/visual/stories.spec.ts` drives the real `:hover` state; this story exists so
-// there is something to drive).
-export const RestAndHover: Story = {
+// §9's hover acceptance criterion: the hover capture (the separate `Hover` story below, which
+// carries the real `visualForceState` `tests/visual/stories.spec.ts` drives) differs from this
+// story's own rest frame in *two* ways — the ink and the underline thickness (FR-037). Renamed
+// from `RestAndHover` (sixth-pass review, M2): this story carries no `visualForceState` of its own,
+// so its six baselines are rest frames only, never a real `:hover` capture — the caption below is
+// for a human browsing Storybook by hand, not for the automated suite, which the story's former
+// name and comment both implied it drove.
+export const Rest: Story = {
   render: (args) => (
     <div className="flex flex-col gap-1">
       <p className="type-supporting text-sm text-text-secondary">
@@ -72,12 +76,13 @@ export const TokenSwatch: Story = {
   ),
 }
 
-// A `standalone` link's tappable box must measure at least 44px in both axes at 375 (§9).
+// A `standalone` link's tappable box must measure at least 44px in both axes at the narrow review
+// width (§9). Pinned to `reviewWidthNarrow` (`.storybook/preview.tsx`, see `MatchRow.stories.tsx`'s
+// identical rationale for why a declared option rather than a Storybook device preset) — this pin
+// serves the browsable Storybook only; the visual suite's own `WIDTHS` axis governs a baseline.
 export const TouchFootprint: Story = {
   args: { variant: 'standalone', children: 'Export match history' },
-  parameters: {
-    viewport: { defaultViewport: 'mobile1' },
-  },
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
 }
 
 // §9 "empty": no text renders nothing — an icon-only link is forbidden in this tier.
@@ -88,6 +93,69 @@ export const Empty: Story = {
         The link below has no text and renders nothing.
       </p>
       <Link href="/players/1807091">{''}</Link>
+    </div>
+  ),
+}
+
+// structural-tier.md §9 "hover — ink `link-hover`, underline thickens to `border.ring`." Its own
+// named story rather than only `Rest`'s invitation above. `tests/visual/stories.spec.ts`
+// drives the real `:hover` from Playwright once this story has settled (see that file's own
+// `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
+// pseudo-class ignores.
+export const Hover: Story = {
+  args: { variant: 'standalone' },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+}
+
+// §9 "focus-visible — `outline-ring`... around the whole link box, on top of whatever the hover
+// paint is. Never removed on pointer interaction."
+export const FocusVisible: Story = {
+  args: { variant: 'standalone' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+}
+
+// §9 "active — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box."
+export const ActiveStandalone: Story = {
+  args: { variant: 'standalone' },
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
+}
+
+// §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
+// words inside a paragraph breaks the line — but the underline drops to `underline-offset-4`",
+// distinguishing this frame from `Hover` above without one (fourth-pass review remediation,
+// FR-037).
+export const ActiveInline: Story = {
+  render: (args) => (
+    <p className="type-body max-w-measure text-md text-text-primary">
+      Every match this profile has played is listed below. To link a different account,{' '}
+      <Link {...args}>view its profile</Link> and choose "Link this account" instead.
+    </p>
+  ),
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
+}
+
+// §9 "disabled — a link is never disabled. A destination the reader may not reach renders as
+// `Text` with a sentence saying why."
+export const DisabledNotApplicable: Story = {
+  render: () => (
+    <p className="type-body text-md text-text-primary">
+      This replay is past Microsoft's 31-day retention window, so nothing can retrieve it — a
+      greyed-out link would be a promise this product could not keep.
+    </p>
+  ),
+}
+
+// §9 "loading — none... error — none of its own. A navigation that fails lands on a route that
+// renders `ErrorState`."
+export const LoadingErrorNotApplicable: Story = {
+  render: () => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        Navigation is the browser's own: a link never shows a loading spinner (that is a `Button`'s
+        job), and it carries no error state of its own — a navigation that fails lands on a route
+        that renders `ErrorState`.
+      </p>
+      <Link href="/players/1807091">View profile</Link>
     </div>
   ),
 }

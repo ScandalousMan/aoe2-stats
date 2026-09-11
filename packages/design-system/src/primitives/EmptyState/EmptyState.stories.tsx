@@ -3,7 +3,8 @@ import { Button } from '../Button'
 import { EmptyState } from './index'
 
 const meta: Meta<typeof EmptyState> = {
-  title: 'Primitives/EmptyState',
+  id: 'primitives-emptystate',
+  title: 'Primitives/Feedback & status/EmptyState',
   component: EmptyState,
   args: {
     heading: 'No matches yet',
@@ -57,5 +58,44 @@ export const NoContentRendersNothing: Story = {
       <p className="mb-2 font-sans text-xs text-text-secondary">Nothing renders below this line.</p>
       <EmptyState heading="" explanation="" />
     </div>
+  ),
+}
+
+// structural-tier.md §12 "hover / focus-visible / active — none of its own; the action inside it
+// carries `Button`'s."
+export const HoverFocusActiveNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        An empty state has no hover, focus or active rendering of its own — the action inside it,
+        when there is one, carries `Button`'s.
+      </p>
+      <EmptyState {...args} />
+    </div>
+  ),
+}
+
+// §12 "disabled — never. An empty state that cannot be acted on is an empty state with no action
+// prop, not a greyed-out one."
+export const DisabledNotApplicable: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-2">
+      <p className="type-supporting text-sm text-text-secondary">
+        An empty state is never disabled — one that cannot be acted on simply omits the `action`
+        prop rather than showing a greyed-out one.
+      </p>
+      <EmptyState {...args} />
+    </div>
+  ),
+}
+
+// §12 "error — not applicable. A region that failed renders `ErrorState`, never 'no results'.
+// 'Nothing here' and 'we could not find out' are different facts."
+export const ErrorNotApplicable: Story = {
+  render: () => (
+    <p className="type-supporting text-sm text-text-secondary">
+      A region that failed renders `ErrorState`, never this component — "nothing here" and "we could
+      not find out" are different facts a reader acts on differently.
+    </p>
   ),
 }

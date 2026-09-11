@@ -8,7 +8,8 @@ import { Dialog } from '../../primitives/Dialog'
 
 export type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight, opening the dialog
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
+  // re-mint once it already has (`dialogHasOpened` tells the two apart, below)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
@@ -44,6 +45,16 @@ export function AccountErasurePanel({
   const [state, setState] = useState<ErasureUiState>(initialState)
   const [confirmationToken, setConfirmationToken] = useState<string | undefined>(undefined)
   const [acknowledged, setAcknowledged] = useState(false)
+  // §5's `minting` names two different moments the same state value covers: the very first mint,
+  // triggered by `EraseButton` before `ConfirmDialog` has ever opened ("minting shows the
+  // `EraseButton` busy while the token is fetched" — before the dialog exists to hold anything
+  // busy itself), and the silent re-mint §4.4 describes, fired from inside an already-open dialog
+  // when a stale token expired. Both are `state === 'minting'`; this flag is what tells them
+  // apart without a second state value the vocabulary does not need. `initialState === 'minting'`
+  // (the `Minting` story) starts `false` — the pre-dialog case — deliberately: no story ever needs
+  // to open straight into the re-mint frame, which only exists as a transient step inside a
+  // real `handleConfirm` retry.
+  const [dialogHasOpened, setDialogHasOpened] = useState(false)
 
   // Guards every `.then()`/`.catch()` below against setting state once this panel has unmounted
   // — the terminal `erased` transition, in particular, can race an unmount the caller (route)
@@ -56,8 +67,11 @@ export function AccountErasurePanel({
     [],
   )
 
+  // The dialog is open for `minting` only once it has already opened once this cycle (the
+  // in-dialog re-mint above) — the very first `minting`, fired from `EraseButton` on the page
+  // itself, renders that button busy instead (below) and does not open `ConfirmDialog` early.
   const dialogOpen =
-    state === 'minting' ||
+    (state === 'minting' && dialogHasOpened) ||
     state === 'confirming' ||
     state === 'erasing' ||
     state === 'confirmation-expired' ||
@@ -69,10 +83,16 @@ export function AccountErasurePanel({
       .then(({ confirmationToken: token }) => {
         if (!mountedRef.current) return
         setConfirmationToken(token)
+        setDialogHasOpened(true)
         setState('confirming')
       })
       .catch(() => {
         if (!mountedRef.current) return
+        // `failed` is also a `dialogOpen` state (unconditionally, above); it must open the
+        // dialog here even though this is the very first mint and it never reached `confirming`,
+        // because `DialogFailure` (§4.4/§5) is what tells the reader the mint itself failed — the
+        // one `failed`/`confirmation-expired` case not reached through an already-open dialog.
+        setDialogHasOpened(true)
         setState('failed')
       })
   }
@@ -81,6 +101,7 @@ export function AccountErasurePanel({
     setState('idle')
     setConfirmationToken(undefined)
     setAcknowledged(false)
+    setDialogHasOpened(false)
   }
 
   function performErase(token: string) {
@@ -185,7 +206,19 @@ export function AccountErasurePanel({
       </div>
 
       <div className="mt-8">
-        <Button variant="destructive" size="lg" onClick={openDialog}>
+        {/* §5 "loading — ... minting shows the EraseButton busy while the token is fetched" —
+         * only the very first mint, before ConfirmDialog has ever opened (`dialogOpen`'s own
+         * comment above); the disabled-state paragraph's "the EraseButton on the page is always
+         * live" names the *disabled* state, a different category `Button`'s `loading` does not
+         * fall into. No loading label is given for this frame anywhere in §4.3/§4.4's normative
+         * copy, so none is supplied — `Button`'s own rule for an omitted one applies: the resting
+         * label stays, with the spinner beside it. */}
+        <Button
+          variant="destructive"
+          size="lg"
+          onClick={openDialog}
+          loading={state === 'minting' && !dialogHasOpened}
+        >
           Erase my account
         </Button>
       </div>
@@ -270,7 +303,12 @@ export function ErasedScreen({ homeHref }: { homeHref: string }) {
           href={homeHref}
           className={cx(
             'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-            'hover:text-link-hover active:text-link-hover',
+            // Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with
+            // no other signal, so a press was not distinguishable from a hover in a still image.
+            // `active:underline-offset-4` gives press its own frame without a fill — the same fix
+            // now shared with `Link`'s `inline` variant, `Footer`, `PrivacyNotice` and
+            // `ThirdPartyObjectionForm`'s own copies of this pattern.
+            'hover:text-link-hover active:text-link-hover active:underline-offset-4',
             focusRing,
           )}
         >
