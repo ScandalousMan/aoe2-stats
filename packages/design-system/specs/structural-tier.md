@@ -644,16 +644,26 @@ link.
   thickness switches instantly, because an animating underline is motion carrying a state change.
 - **focus-visible** — `outline-ring` at `outline-offset-ring` in `focus-ring`, around the whole link
   box, on top of whatever the hover paint is. Never removed on pointer interaction (FR-050).
-- **active** — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box, the
-  same press feedback every other control in the system gives. `inline`: the hover paint, with **no**
-  fill — painting a wash behind three words inside a paragraph breaks the line and the press is a
-  frame the reader never sees — but the underline drops to `underline-offset-4` (rest and hover both
-  sit at `underline-offset-2`, above), so `inline`'s own hover and press still render as two distinct
-  frames rather than one repeated. **The two variants differing from each other is what 005 FR-038's
-  escape clause is for** — a stated difference between two variants of one control. It is not licence
-  for a variant's own hover and active to render as the same still image: that is FR-037's question,
-  FR-037 has no escape clause, and citing 005 FR-038 for it (this spec's own wording, before the
-  fourth-pass review found it wrong) was answering the wrong requirement.
+- **active** — `standalone`: the hover paint, a `surface-sunken` fill behind the link's box, and a
+  `border.ring`-width `border-strong` box-shadow ring flush with the box's edge — the ring, not the
+  fill, is the non-colour signal FR-037's "more than colour" half asks for (sixth-pass review
+  remediation, row 2 (M1) of `README.md`'s contrast-signal gap register: the fill alone used to
+  stand in for that signal and measured only 1.18:1 light / 1.07:1 dark against the fill it
+  replaces, near-imperceptible in the dark theme even as a plain colour difference). The ring is the
+  same box-shadow-backed idiom `Button`'s `secondary`/`destructive` variants ring with
+  (`Button/index.tsx`'s own comment: an `active:outline-*` utility never paints on an element that
+  composes `outline-none` for its own focus ring, because `tailwind.css` restores
+  `--tw-outline-style` only under `:focus-visible`; `ring` paints through `box-shadow`, a different
+  property, so it is unaffected and a keyboard `Enter` shows both the ring and the focus outline at
+  once rather than one clobbering the other). `inline`: the hover paint, with **no** fill or ring —
+  painting a wash behind three words inside a paragraph breaks the line and the press is a frame the
+  reader never sees — but the underline drops to `underline-offset-4` (rest and hover both sit at
+  `underline-offset-2`, above), so `inline`'s own hover and press still render as two distinct frames
+  rather than one repeated. **The two variants differing from each other is what 005 FR-038's escape
+  clause is for** — a stated difference between two variants of one control. It is not licence for a
+  variant's own hover and active to render as the same still image: that is FR-037's question, FR-037
+  has no escape clause, and citing 005 FR-038 for it (this spec's own wording, before the fourth-pass
+  review found it wrong) was answering the wrong requirement.
 - **disabled** — **a link is never disabled.** A destination the reader may not reach renders as
   `Text` with a sentence saying why. A greyed-out anchor is a promise with no way to collect on it,
   and it is still in the tab order in half the implementations that ship it.
@@ -674,16 +684,21 @@ browsers restrict `:visited` and report the unvisited colour — so its criterio
 story README already specifies, not a story of real anchors.
 
 **Tokens used** — colour `link`, `link-hover`, `link-visited`, `focus-ring`, `surface-sunken`
-(`standalone` press only). Border widths `border.hairline` (rest underline), `border.ring` (hover
-underline), `border.ring` / `border.ring-offset` (focus ring). `inline`'s own press adds no colour
-token: `underline-offset-4`, a bare Tailwind step (rest and hover sit at `underline-offset-2`) rather
-than a token name, for the same reason `decoration-1`/`decoration-2` already are one (no
-`border.json` value names an underline offset). Typography: inherited for `inline`, `type-body` at
-`text-md` for `standalone`. Motion `duration.fast`, `ease-standard`. Elevation `none`.
+(`standalone` press fill), `border-strong` (`standalone` press ring). Border widths `border.hairline`
+(rest underline), `border.ring` (hover underline, and the `standalone` press ring's width) /
+`border.ring-offset` (focus ring). `inline`'s own press adds no colour token: `underline-offset-4`, a
+bare Tailwind step (rest and hover sit at `underline-offset-2`) rather than a token name, for the
+same reason `decoration-1`/`decoration-2` already are one (no `border.json` value names an underline
+offset). Typography: inherited for `inline`, `type-body` at `text-md` for `standalone`. Motion
+`duration.fast`, `ease-standard`. Elevation `none`.
 Contrast: the twelve `link` / `link-hover` / `link-visited` rows in the README table, on all four
 surfaces, in both themes — referenced, not restated. Light `link` on `surface-sunken` is the
 tightest normal-text pair in the whole system and is the one a `standalone` link's own press state
-paints, so it is the pair to watch first when either token moves.
+paints, so it is the pair to watch first when either token moves. The `standalone` press ring reads
+`border-strong`, which the README table's four `border-strong` rows clear the 3:1 non-text floor
+against on every surface this package measures, in both themes — `standalone` has no one fixed
+placement, so every measured surface has to clear rather than only the one it happens to render on
+today.
 
 **Spacing** — a `standalone` link's hit area reaches 44px by its own padding (`space-3` block
 padding against `text-md`), never by an overlay. Sibling standalone links sit `space-3` apart. An
@@ -708,8 +723,8 @@ why this is an anchor and not a click handler.
       underline is visibly thicker.
 - [ ] The focus capture shows a ring around the whole link box, offset from the text, in both themes,
       and the underline is still present under it.
-- [ ] The `standalone` press capture shows a fill behind the link's box; the `inline` press capture
-      shows no fill.
+- [ ] The `standalone` press capture shows a fill and a ring behind and around the link's box; the
+      `inline` press capture shows neither.
 - [ ] The `inline` hover and press captures share the same ink and the same underline thickness, but
       the press capture's underline sits visibly lower — overlay the two and the underline's position
       is the only difference (FR-037).

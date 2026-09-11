@@ -490,7 +490,21 @@ export function PrivacyNotice({
                     // own treatment: a `surface-sunken` fill that only exists on press
                     // (`active:rounded-control` keeps the rounding out of the rest/hover box,
                     // where it would otherwise round corners with nothing painted behind them).
-                    'hover:text-link-hover active:text-link-hover active:bg-surface-sunken active:rounded-control visited:text-link-visited',
+                    //
+                    // Sixth-pass review remediation (M1), row 2 of `specs/README.md`'s
+                    // contrast-signal gap register: the `surface-sunken` fill above was the only
+                    // signal, and measured 1.18:1 light / 1.07:1 dark against the fill it
+                    // replaces — a colour change, not the non-colour half FR-037 asks for, and
+                    // this file's own earlier comment named it "the second signal its own shape
+                    // owes" as though a wash alone were that signal. `active:ring-2
+                    // active:ring-border-strong` is the real one: the same box-shadow-backed
+                    // `ring` idiom this component's own `ObjectionCallToAction` anchor already
+                    // carries below (its comment records why `ring`, not `outline`, is what
+                    // actually paints on `:active`), and `border-strong` clears the 3:1 non-text
+                    // floor against `background` — what `Page` paints behind this `<nav>` — in
+                    // both themes (README's contrast table). The fill stays: FR-037 asks for a
+                    // non-colour signal, not a ban on an accompanying one.
+                    'hover:text-link-hover active:text-link-hover active:bg-surface-sunken active:ring-2 active:ring-border-strong active:rounded-control visited:text-link-visited',
                     focusRing,
                   )}
                 >

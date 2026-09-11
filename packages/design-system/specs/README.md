@@ -1051,7 +1051,8 @@ which is why it is not folded into a spec written once.
 ## Contrast-signal and duplicate-baseline gap register
 
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2); **row 1 closed
-2026-09-11 (T582)**, rows 2–4 remain open (owners T583–T585, below). Four findings the review judged
+2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, rows 3–4 remain open (owners T584–T585,
+below). Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1084,22 +1085,40 @@ on its own, not a defect this remediation's scope covers.
    left its adjacency unstated, including this register's own DS-10 closure narrative above, which
    still cited the pre-T586 offset. **Owner: T582. Closed 2026-09-11.**
 2. **M1 — a colour wash presented as the "non-colour" half of FR-037 is both the wrong category and,
-   in the dark theme, close to imperceptible.** `Link`'s `standalone` variant (`structural-tier.md`
-   §9's `active` bullet) and `PrivacyNotice`'s `Contents` entries (`privacy-notice.md`'s `active`
-   bullet, `index.tsx`'s `active:bg-surface-sunken`) both add a `surface-sunken` fill on press with
-   no other change, and `privacy-notice.md` names it "the second signal its own shape owes" — a wash
-   is a colour change, not the non-colour signal FR-037's "more than colour" half asks for (the
-   distinction `Button/index.tsx`'s own comment and `shared-primitives.md` draw for `secondary`/
-   `destructive`, this same remediation). Measured, the wash is also faint: `surface-sunken` against
-   the resting fill it replaces contrasts 1.18:1 in the light theme and **1.07:1 in the dark
-   theme** — both far under any floor this system asserts elsewhere, meaning `Link`'s
-   `ActiveStandalone` story and `PrivacyNotice`'s `Contents` press frame are technically distinct
-   still images (FR-037's literal "never byte-identical" half holds) but not observably distinct to
-   a reader, which is not what either half of FR-037 is for. Fix: give `standalone`'s press its own
-   non-colour signal the way `Button`'s bordered variants now have one (this remediation) — a
-   reserved-border or box-shadow ring, not a second, barely-visible fill — and correct
-   `structural-tier.md` §9 and `privacy-notice.md` to stop describing the current wash as the
-   non-colour signal. **Owner: T583. Fix by 2026-09-18.**
+   in the dark theme, close to imperceptible — closed.** `Link`'s `standalone` variant
+   (`structural-tier.md` §9's `active` bullet) and `PrivacyNotice`'s `Contents` entries
+   (`privacy-notice.md`'s `active` bullet, `index.tsx`'s `active:bg-surface-sunken`) both added a
+   `surface-sunken` fill on press with no other change, and `privacy-notice.md` named it "the second
+   signal its own shape owes" — a wash is a colour change, not the non-colour signal FR-037's "more
+   than colour" half asks for (the distinction `Button/index.tsx`'s own comment and
+   `shared-primitives.md` draw for `secondary`/`destructive`, the fifth/sixth-pass remediation row 1
+   above closed). Measured, the wash was also faint: `surface-sunken` against the resting fill it
+   replaces contrasts 1.18:1 in the light theme and **1.07:1 in the dark theme** — both far under any
+   floor this system asserts elsewhere, meaning `Link`'s `ActiveStandalone` story and
+   `PrivacyNotice`'s `Contents` press frame were technically distinct still images (FR-037's literal
+   "never byte-identical" half held) but not observably distinct to a reader, which is not what
+   either half of FR-037 is for. **Not accepted — fixed.** Both call sites now carry
+   `active:ring-2 active:ring-border-strong` beside the kept `surface-sunken` fill: the same
+   box-shadow-backed `ring` idiom `Button`'s `secondary`/`destructive` variants and
+   `PrivacyNotice`'s own `ObjectionCallToAction` anchor already carry, proven (not merely assumed)
+   to paint by compiling `tokens/tailwind.css` with `@tailwindcss/vite` and reading the emitted
+   rule: `.active\:ring-2:active` resolves to a real `box-shadow` declaration and
+   `.active\:ring-border-strong:active` sets `--tw-ring-color: var(--ds-color-border-strong)` — the
+   same trap `Button/index.tsx`'s comment records for `active:outline-*` does not apply here because
+   `ring` never touches `--tw-outline-style`. `border-strong` clears the 3:1 non-text floor against
+   every surface the README contrast table measures it on, in both themes, so it holds regardless of
+   which surface a `standalone` link — which has no one fixed placement today — ends up rendering on,
+   and against `background` specifically, what `Page` paints behind `PrivacyNotice`'s `Contents` nav.
+   No new contrast row was needed: all four `border-strong` rows already existed. `structural-tier.md`
+   §9 and `privacy-notice.md` now name the ring, not the fill, as the non-colour signal.
+   `Link.test.tsx` and `PrivacyNotice.test.tsx` assert the ring class is present and that
+   `active:outline` is never relied on alone (both failed against the pre-fix tree, pasted in the
+   task's own record); `Link`'s `inline` variant is asserted to never gain the ring, pinning FR-037's
+   boundary rather than asserting "every link rings". `Link`'s `ActiveStandalone` story (a lone
+   `standalone` link, no `nth` needed) and `PrivacyNotice`'s `Active` story (`nth: 0`, confirmed by a
+   vitest `getAllByRole('link')` render to resolve to the first `Contents` entry, `#who-we-are`, in
+   this component's DOM order) both move a baseline for this fix — regenerated from CI in a follow-up
+   commit, per this package's own no-local-Chromium discipline. **Owner: T583. Closed 2026-09-11.**
 3. **L1 — a story's own responsive-viewport pin or its own state/variant class can make its baseline
    byte-identical to another story's, independent of whether the two document the same fact.**
    General shape, not fully enumerated by this remediation (a full audit needs comparing baselines

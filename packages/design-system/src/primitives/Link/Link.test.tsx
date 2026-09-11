@@ -65,6 +65,32 @@ describe('Link', () => {
     expect(link.className).toMatch(/active:bg-surface-sunken/)
   })
 
+  // Sixth-pass review remediation (M1), row 2 of `specs/README.md`'s contrast-signal gap
+  // register: the fill above used to be `standalone`'s only press signal — a colour change, not
+  // the non-colour half FR-037's "more than colour" asks for. `ring` (box-shadow) is a different
+  // CSS property from the `outline` the focus ring uses, so both a real `:active:focus-visible`
+  // combination and this class-level assertion coexist without either masking the other.
+  it('standalone variant carries a non-colour press signal — a ring — never relying on active:outline alone (FR-037)', () => {
+    render(
+      <Link href="/players/1807091" variant="standalone">
+        View profile
+      </Link>,
+    )
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bactive:ring-2\b/)
+    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+    expect(link.className).not.toMatch(/\bactive:outline/)
+  })
+
+  // `inline` keeps its own non-colour signal (the underline-offset drop, asserted above) and must
+  // not gain the ring: this pins the boundary rather than asserting "every link rings".
+  it('inline variant never carries the standalone ring', () => {
+    render(<Link href="/players/1807091">View profile</Link>)
+    const link = screen.getByRole('link')
+    expect(link.className).not.toMatch(/active:ring-2/)
+    expect(link.className).not.toMatch(/active:ring-border-strong/)
+  })
+
   it('a link is never disabled — there is no disabled prop', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     expect(screen.getByRole('link')).not.toHaveAttribute('disabled')
