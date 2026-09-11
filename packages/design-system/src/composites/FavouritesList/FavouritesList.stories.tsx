@@ -104,9 +104,51 @@ export const SignedOut: Story = {
 }
 
 // A realistic combined story: a mixed roster, the shape `apps/web`'s /favourites route (T349)
-// actually renders.
+// actually renders — six favourites, not `Default`'s three, so this exercises what a short list
+// cannot (T581, closing the fifth-pass gap-register row: `Default` and this story used to carry
+// byte-identical args, producing baselines that verified nothing of its own):
+// - row rhythm and the `space-3`/`gap-3` list padding (favourites-list.md §7) at six rows rather
+//   than three, both at the 375 stacked-card width and the wide one-line width `RealisticList`
+//   itself renders at;
+// - wrapping, not truncation, on a long alias + clan pair at 375 — favourites-list.md §8: "No
+//   field truncates or ellipsises … a half-visible alias defeats the point of a bookmark list."
+//   `longAlias` below is the case that rule exists for;
+// - a rating `delta` in both directions (`StatValue`'s sign glyph, §6 "success/danger … a rating
+//   delta's sign"), which neither `Default` nor any other roster in this file carries;
+// - one entry mid-removal (`removing: true`) beside entries that are not — `FavouriteToggle`'s
+//   own loading spinner (§5 "disabled … RemoveControl is disabled only transiently while its own
+//   DELETE is in flight") shown in the realistic context of a longer list, not in isolation.
+const longAlias: FavouriteEntryData = {
+  profileId: '4',
+  href: '/players/4',
+  alias: 'TheMongolianEmpireBuilder',
+  clan: 'LEGACY',
+  country: 'Mongolia',
+  standing: { label: 'Rating', value: '1988', unit: '#341', delta: { value: 24 } },
+}
+
+const risingRated: FavouriteEntryData = {
+  profileId: '5',
+  href: '/players/5',
+  alias: 'rival_ace',
+  country: 'South Korea',
+  standing: { label: 'Rating', value: '1842', unit: '#214', delta: { value: 12 } },
+}
+
+const fallingRatedRemoving: FavouriteEntryData = {
+  profileId: '6',
+  href: '/players/6',
+  alias: 'Nili_Warrior',
+  clan: 'HAI',
+  country: 'Netherlands',
+  standing: { label: 'Rating', value: '1605', unit: '#1203', delta: { value: -8 } },
+  removing: true,
+}
+
 export const RealisticList: Story = {
-  args: { entries: [rated, neverRanked, staleStanding] },
+  args: {
+    entries: [rated, longAlias, neverRanked, risingRated, staleStanding, fallingRatedRemoving],
+  },
 }
 
 // FR-044: `FavouriteRow`'s own doc comment (§8) names `md` as the breakpoint — a stacked

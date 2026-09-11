@@ -979,11 +979,11 @@ written once (T575's amendment: the subject is this package, so the fact is file
 
 ## Duplicated logic and story-content gap register
 
-**Open as of 2026-09-09** (fifth-pass adversarial review); **row 1 closed 2026-09-11 (T580)**, row 2
-still open. Two Low findings that are each a fact about this package's own source rather than about
-a component, filed here for the same reason the two registers above are: the subject is the package
-itself, so a future task changing either fact needs this row updated, which is why it is not folded
-into a spec written once.
+**Open as of 2026-09-09** (fifth-pass adversarial review); **both rows closed** — row 1 2026-09-11
+(T580), row 2 2026-09-11 (T581). Two Low findings that are each a fact about this package's own
+source rather than about a component, filed here for the same reason the two registers above are:
+the subject is the package itself, so a future task changing either fact needs this row updated,
+which is why it is not folded into a spec written once.
 
 1. **The WCAG 2.2 contrast-ratio formula (`srgbToLinear` / `relativeLuminance` / `contrastRatio`)
    existed as three separate implementations — closed.** All under `packages/design-system/` except
@@ -1022,17 +1022,18 @@ into a spec written once.
    why: for an 8-bit integer channel the two thresholds agree at every representable input, and a
    changed constant would have made "no contrast ratio moved" unprovable for an extraction. **Closed
    by T580, 2026-09-11.**
-2. **`FavouritesList.stories.tsx`'s `Default` (lines 45-47) and `RealisticList` (lines 101-103) carry
-   byte-identical `args`** — both `{ entries: [rated, neverRanked, staleStanding] }` — so T566's
-   "realistic composition" story for this component (FR-043, SC-012) produces six baselines (both
-   themes, all three widths) that are pixel-identical to `Default`'s own six and verifies nothing
-   `Default` does not already cover. This is a story-content gap, not a documentation one: the fix
-   is giving `RealisticList` its own, genuinely realistic roster (`apps/web`'s `/favourites` route
-   is the shape `RealisticList`'s own comment cites as the target — a mixed roster wider than the three
-   fixtures `Default` already uses, e.g. more entries, a longer alias, a clan tag, a stale standing
-   further out of date) rather than reusing `Default`'s exact fixture set, which is source work under
-   `packages/design-system/src/` and therefore also outside this remediation's touch-scope. **Owner:
-   T581. Fix by 2026-09-16.**
+2. **`FavouritesList.stories.tsx`'s `Default` (lines 45-47) and `RealisticList` (lines 101-103) carried
+   byte-identical `args` — closed.** Both used to read
+   `{ entries: [rated, neverRanked, staleStanding] }`, so T566's "realistic composition" story for
+   this component (FR-043, SC-012) produced six baselines (both themes, all three widths)
+   pixel-identical to `Default`'s own six and verified nothing `Default` did not already cover.
+   `RealisticList` now carries its own six-entry
+   roster — the shape `apps/web`'s `/favourites` route actually renders, per its own comment — mixing
+   a long alias + clan pair that wraps rather than truncates (favourites-list.md §8), a rating
+   `delta` in both directions, and one entry `removing: true`, none of which `Default` or any other
+   story in the file exercises. `Default`'s three fixtures and its own six baselines are unchanged.
+   **Closed by T581, 2026-09-11**; `RealisticList`'s six new baselines are regenerated from CI's
+   Linux renderer in a follow-up commit on this branch — not yet moved as of this commit.
 
 ## Contrast-signal and duplicate-baseline gap register
 
