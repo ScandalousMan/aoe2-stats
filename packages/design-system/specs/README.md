@@ -933,12 +933,12 @@ which no tool here does today.
 
 ## Accessibility mechanism gap register
 
-**Open as of 2026-09-08** (third-pass adversarial review, finding M2a). This register holds a
-standing property of this package's own tooling — where an accessibility check runs, and where it
-does not — the same distinction CLAUDE.md draws for the Storybook documentation gap register above:
-a fact about this package's own check coverage needs updating whenever a future task changes that
-coverage, so it is filed here rather than in a spec, which is written once (T575's amendment: the
-subject is this package, so the fact is filed beside it).
+**Closed 2026-09-11 (T579), owed since 2026-09-08** (third-pass adversarial review, finding M2a).
+This register holds a standing property of this package's own tooling — where an accessibility
+check runs, and where it does not — the same distinction CLAUDE.md draws for the Storybook
+documentation gap register above: a fact about this package's own check coverage needs updating
+whenever a future task changes that coverage, so it is filed here rather than in a spec, which is
+written once (T575's amendment: the subject is this package, so the fact is filed beside it).
 
 1. **`axe-core` runs only inside `tests/visual/stories.spec.ts` (~line 317), which needs a built
    Storybook and a real browser — CI only, never at the point a component is authored.**
@@ -956,7 +956,26 @@ subject is this package, so the fact is filed beside it).
    `axe-core` is already a dependency, and the gap is closed by one generic vitest assertion —
    render a component tree, scan it with `axe-core`, fail on any `landmark-unique` violation —
    written once and reused across component test files, rather than by hand-writing a guard per
-   composition the way the two existing ones were. **Owner: T579. Fix by 2026-09-15.**
+   composition the way the two existing ones were. **Closed by T579, 2026-09-11.**
+   `expectNoLandmarkUniqueViolations` (`packages/design-system/src/test/axe.ts`) is that one
+   assertion — `axe-core` scoped to the `landmark-unique` rule alone, because jsdom has no layout
+   engine and every rendering-dependent rule (`color-contrast` foremost) would give a false result
+   under it. `Panel.test.tsx` and `MatchDetailPanel.test.tsx`'s own hand-written guards now call
+   it instead of re-deriving uniqueness from a `screen.getByRole` name lookup, and a second file,
+   `packages/design-system/src/test/story-a11y.test.tsx`, renders every story of every component
+   through Storybook's own portable-stories API (`composeStories`, `@storybook/react`, added as a
+   direct devDependency of this package — resolvable transitively before only through
+   `@storybook/react-vite`, which pnpm's strict `node_modules` does not expose to a sibling
+   package) against the shared project annotations in `.storybook/preview.tsx`, and calls the
+   helper on every story of every component — the "no one has to opt in" property the two
+   point-fixes this row named did not have. "Every" is asserted, not assumed: the sweep fails if
+   the set of story files it composed differs from the set of component directories (derived from
+   a second, independent glob over each directory's `index.tsx`), or if any story file composes no
+   story, so a broken glob cannot report green over zero stories. None needed excluding: every
+   component already had a working jsdom render (a `*.test.tsx` exists for each), and the defect
+   class this row is about lives in a component's static composition, never behind a story's own
+   `play` function, which the sweep does not invoke. It scans `baseElement`, not `container`, so a
+   future portal is covered too. The full sweep runs in under three seconds.
 
 ## Duplicated logic and story-content gap register
 

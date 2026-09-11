@@ -4,6 +4,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MatchDetailPanel } from './index'
 import type { MatchDetailData } from './index'
+import { expectNoLandmarkUniqueViolations } from '../../test/axe'
 
 // jsdom has no layout engine (vitest.config.ts): `getBoundingClientRect` always returns 0 here, so
 // the touch-target assertions below cannot render a real box and measure it. The next best thing —
@@ -280,30 +281,37 @@ describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history
     restore()
   })
 
-  // Regression guard for structural-tier.md §10's `landmark-unique` rule: "A hidden caption must
-  // say something the heading above it does not... Two landmarks with one accessible name is a
-  // `landmark-unique` failure whether or not the caption is visible." `TeamGroup`'s own
-  // `<section aria-labelledby>` landmark and its nested `Table`'s `role="region"` (named from its
-  // `captionHidden` caption) are exactly the two landmarks that rule is about. An earlier version
-  // of this test (2026-09-06) pinned the two names staying apart only because the heading's "—"
-  // separator is `aria-hidden` while the caption's own "—" was real text — an accident of markup
-  // that happened to differ, not the caption adding anything the heading did not already say. This
-  // asserts the actual contract: the table's caption carries words the heading never does (what
-  // the table holds, not merely a spacing difference in how the heading's own words are punctuated).
-  it("gives a team's nested Table region an accessible name that adds what its section heading omits", () => {
+  // structural-tier.md §10's `landmark-unique` rule: "A hidden caption must say something the
+  // heading above it does not... Two landmarks with one accessible name is a `landmark-unique`
+  // failure whether or not the caption is visible." `TeamGroup`'s own `<section aria-labelledby>`
+  // landmark and its nested `Table`'s `role="region"` (named from its `captionHidden` caption) are
+  // exactly the two landmarks that rule is about. T579 replaces the hand-written landmark-unique
+  // guard this test used to carry (asserting the two names never collide, via `screen.getByRole`)
+  // with the shared axe scan (`src/test/axe.ts`) every component test file and the all-stories
+  // sweep (`src/test/story-a11y.test.tsx`) now reuse — the mechanism the register row asked to
+  // stop re-deriving by hand per composition. The content half of the contract — that the table's
+  // caption carries words the heading never does, not merely an accident of how the heading's own
+  // "—" separator happens to be punctuated (the 2026-09-06 regression this test also guards) —
+  // stays, because axe's `landmark-unique` proves the two names differ, not that the difference is
+  // meaningful.
+  // `baseElement`, not `container` (review remediation, 2026-09-11): neither component here uses
+  // a portal today, so the two are equivalent for this render, but scanning `baseElement`
+  // (`document.body`) rather than the render's own wrapper `<div>` is what stays correct if that
+  // ever changes.
+  it("gives a team's nested Table region an accessible name that adds what its section heading omits", async () => {
     const restore = mockMatchMediaAt(1280)
-    render(<MatchDetailPanel match={match} />)
+    const { baseElement } = render(<MatchDetailPanel match={match} />)
     const sectionLandmark = screen.getByRole('region', { name: 'Team 1 Won' })
     const tableRegion = screen.getByRole('region', {
       name: "Team 1 — Won — each player's civilisation, result and rating",
     })
     expect(sectionLandmark.tagName).toBe('SECTION')
     expect(tableRegion.tagName).toBe('DIV')
-    expect(sectionLandmark).not.toBe(tableRegion)
-    // The contract itself: the table region's name is not merely the heading's own words
+    // The content contract: the table region's name is not merely the heading's own words
     // reformatted — it names the table's columns, which the heading never mentions at all.
     expect(tableRegion).toHaveAccessibleName(/civilisation/)
     expect(sectionLandmark).not.toHaveAccessibleName(/civilisation/)
+    await expectNoLandmarkUniqueViolations(baseElement)
     restore()
   })
 })
