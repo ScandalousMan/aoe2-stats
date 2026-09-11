@@ -5,6 +5,13 @@ const meta: Meta<typeof Footer> = {
   id: 'composite-footer',
   title: 'Composites/Site chrome/Footer',
   component: Footer,
+  parameters: {
+    docs: {
+      description: {
+        component: `Carries, on every page, the required Game Content Usage Rules attribution and the two ways a person not signed in can reach their own rights over their data.`,
+      },
+    },
+  },
 }
 
 export default meta

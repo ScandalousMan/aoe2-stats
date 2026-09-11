@@ -7,6 +7,13 @@ const meta: Meta<typeof ReplayAvailabilityList> = {
   id: 'composite-replayavailabilitylist',
   title: 'Composites/Match & game data/ReplayAvailabilityList',
   component: ReplayAvailabilityList,
+  parameters: {
+    docs: {
+      description: {
+        component: `States, per participant, whether their recorded game can be had right now, and never lets an unobtainable one be rendered as a button that then fails.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -811,58 +811,115 @@ by stripping its alpha and breaking the scrim it draws.
 
 ## Storybook documentation gap register
 
-**Open as of 2026-09-07 (T572).** This register holds what quickstart.md scenario 9 found still
-missing from the built Storybook after the fixes it also triggered landed, so the gap is filed
-where a future reader of the package meets it rather than only in the frozen record of the run that
-found it (`specs/005-design-system-foundations/quickstart.md`, "Scenario 9 — Result"). The
-distinction is CLAUDE.md's: a fact about this package's Storybook build needs updating whenever a
-future task changes that build, so it stays here rather than in a spec, which is written once. This
-phase deliberately does not close any of the four rows below; each names what a follow-up task
-would do, who has to act and by when, and why closing it matters, so the next reader can act without
-re-running the scenario.
+**All four rows closed 2026-09-11 (T578), owed since 2026-09-07 (T572).** This register held what
+quickstart.md scenario 9 found still missing from the built Storybook after the fixes it also
+triggered landed. The gap is filed where a future reader of the package meets it rather than only
+in the frozen record of the run that found it
+(`specs/005-design-system-foundations/quickstart.md`, "Scenario 9 — Result"). The distinction is
+CLAUDE.md's: a fact about this package's Storybook build needs updating whenever a future task
+changes that build, so it stays here rather than in a spec, which is written once — this is why the
+four rows below stay as a dated record of what was closed and how, rather than being deleted once
+fixed.
 
-**FR-040 is not met at the end of Phase 6, and neither is production-readiness item 10.** spec.md's
-FR-040 requires Storybook to be sufficient to understand the system without reading the application
-source; the four rows below are the specific ways it is not, as of this register's date. T563, T565
-and T566 close everything FR-040 asked of story coverage and composition realism, which is why they
-stay ticked in `tasks.md` — the remaining gap is documentation infrastructure (autodocs, docgen, a
-purpose line, a naming-contract statement), not missing coverage, and T578 below is what closes it.
+**FR-040 and production-readiness item 10 are now met.** spec.md's FR-040 requires Storybook to be
+sufficient to understand the system without reading the application source; the four rows below were
+the specific ways it was not, as of the register's 2026-09-07 date. T563, T565 and T566 had already
+closed everything FR-040 asked of story coverage and composition realism (why they stay ticked in
+`tasks.md`); the remaining gap was documentation infrastructure — autodocs, docgen, a purpose line, a
+naming-contract statement — and T578 is what closes it.
 
-A human reader, given the built Storybook and no repository access, could reliably answer _what
-does X look like when Y_ (Foundations → Colour computes every ratio live and captions every tile
-with its surface; `SearchBox`'s rate-limited story and `Menu`'s corrected selection mark were both
-named as models) but could only guess at _which X, and why_. The four rows below are what stands
-between the two.
+A human reader, given the built Storybook and no repository access, could already reliably answer
+_what does X look like when Y_ (Foundations → Colour computes every ratio live and captions every
+tile with its surface; `SearchBox`'s rate-limited story and `Menu`'s corrected selection mark were
+both named as models). The four rows below are what used to leave them guessing at _which X, and
+why_, and are now answered by every component's own autodocs page.
 
-1. **Zero `docs` entries in the build.** All 536 entries in the built Storybook are `type: "story"`;
-   there is no autodocs page and no MDX page for a single component. A reader has no page to land on
-   that describes a component rather than one of its states. Closing this needs Storybook's autodocs
-   turned on per component (or an MDX page per component directory) in
-   `packages/design-system/.storybook/`, which is out of this phase's scope. **Owner: T578. Fix by
-   2026-09-21.**
-2. **No prop documentation.** The Controls panel shows a prop's name and its control widget only —
-   no type column, no description — because docgen is off. The reader reconstructed
-   `PlayerColourSwatch`'s valid `colorId` range from a _story name_, not from a documented prop. This
-   closes together with row 1: turning on docgen (`react-docgen-typescript` or the Storybook
-   equivalent) is what populates both the type/description columns and an autodocs page's prop
-   table from the same source, a component's own TypeScript props, so the fact is written once.
-   **Owner: T578. Fix by 2026-09-21.**
-3. **No component states its purpose in a sentence.** Not one of the 41 components under
-   `packages/design-system/src/` opens with a line saying what it is for. The reader named this the
-   single highest-value gap and the direct cause of Q1's difficulty in the scenario 9 run: finding
-   `PlayerColourSwatch` by need depended entirely on the navigation grouping (T564), because no
-   component page itself confirmed the need it served once found. A purpose line is a per-component
-   authoring task, one sentence per `*.stories.tsx`'s default export or an MDX/autodocs page's
-   opening paragraph (see row 1); it is not a token or a mechanical check, which is why it is
-   recorded as a register row rather than turned into one. **Owner: T578. Fix by 2026-09-21.**
-4. **No component states which `sr-only` naming shape it follows.** Foundations → Iconography
-   states the rule an icon-carried meaning must satisfy (FR-011: an icon is never the only carrier of
-   a meaning), but no component story links to that page or claims conformance with it, so a reader
-   cannot tell from the built Storybook alone that `PlayerColourSwatch`'s colour-blind redundancy
-   exists at all — it is `sr-only` text, invisible in a rendered story and undiscoverable without
-   the DOM. Closing this needs each component that carries a redundant accessible name to say so and
-   link the rule it follows, most naturally beside the purpose line in row 3 once that exists.
-   **Owner: T578. Fix by 2026-09-21.**
+**Verifiability, not belief.** `scripts/checks/story-docs.mjs` (wired into CI's `web` job) makes
+rows 3 and 4 living facts asserted by a test rather than by re-reading this register: it fails on a
+component directory with no story file, a story file whose meta carries no non-empty
+`parameters.docs.description.component` purpose line, a component named in the script's own
+`SR_ONLY_NAMING_SHAPE_COMPONENTS` map whose purpose line carries no real markdown link to Foundations
+→ Iconography's docs page (the bare word "Iconography" does not count — fixed in the remediation
+below), or a component directory whose own source contains the literal text `sr-only` without being
+classified in exactly one of `SR_ONLY_NAMING_SHAPE_COMPONENTS` or the new `SR_ONLY_SOLE_NAME_COMPONENTS`
+map — and a classified component whose source no longer contains `sr-only` fails too, the same lie in
+the other direction. Rows 1 and 2 are configuration facts about `.storybook/` rather than a
+per-component one, so no per-component check applies to them; they are instead provable by
+inspecting the build directly.
+`storybook-static/index.json` after `pnpm --filter design-system build-storybook` carries 48
+`type: "docs"` entries (41 components plus the 7 Foundations pages) where it carried zero before,
+and a built component chunk's own `__docgenInfo` (e.g. `Link`'s) now carries real per-prop types
+(`LinkVariant`'s `"inline" | "standalone"` union) and JSDoc descriptions (`external`'s prop comment)
+rather than an empty `description: ''` — proof the Controls panel and the autodocs prop table both
+derive from the component's own TypeScript, not merely that a page exists.
+
+1. **Zero `docs` entries in the build — closed.** All 536 entries used to be `type: "story"`; there
+   was no autodocs page and no MDX page for a single component. Closed by adding `tags: ['autodocs']`
+   to `.storybook/preview.tsx`'s project-level annotations (not `main.ts` — main.ts's own `tags` field
+   is silent at the per-story level; proven while closing this row) and registering
+   `@storybook/addon-docs` in `.storybook/main.ts`'s `addons` array, without which the tag alone still
+   builds zero `docs` entries. A story may still opt out per file with `tags: ['!autodocs']`; none
+   does. **Closed by T578, 2026-09-11.**
+2. **No prop documentation — closed.** The Controls panel used to show a prop's name and its control
+   widget only, no type column, no description, because docgen was off. Closed by setting
+   `.storybook/main.ts`'s `typescript.reactDocgen` to `'react-docgen-typescript'` — the
+   `@joshwooding/vite-plugin-react-docgen-typescript` docgen, already a transitive dependency of
+   `@storybook/react-vite`, needing no new package — in place of the framework's own default
+   (Babel-based `'react-docgen'`, which reads a prop's shape but not its JSDoc description or a
+   separately declared `interface Props`'s literal unions). Row 1's autodocs page and the Controls
+   panel now derive their prop table from the same source, a component's own TypeScript types, so
+   the fact is written once. **Closed by T578, 2026-09-11.**
+3. **No component states its purpose in a sentence — closed.** Not one of the 41 components under
+   `packages/design-system/src/` used to open with a line saying what it was for — the reader had
+   named this the single highest-value gap and the direct cause of Q1's difficulty in the scenario 9
+   run: finding `PlayerColourSwatch` by need depended entirely on the navigation grouping (T564),
+   because no component page itself confirmed the need it served once found. Closed by adding one
+   sentence per component to `parameters.docs.description.component` in every `*.stories.tsx`'s
+   default export, drawn from that component's own spec's Purpose section rather than invented —
+   `PlayerColourSwatch`'s now reads "Shows which in-game colour a player used, as a chip beside their
+   name, so a reader can tie a name in the list to the colour they saw in the game." `story-docs.mjs`
+   (above) keeps this mechanically checked rather than merely authored once. **Closed by T578,
+   2026-09-11.**
+4. **No component states which `sr-only` naming shape it follows — closed, corrected during
+   remediation.** Foundations → Iconography states the rule an icon-carried meaning must satisfy
+   (FR-011: an icon is never the only carrier of a meaning), but no component story linked to that
+   page or claimed conformance with it, so a reader could not tell from the built Storybook alone
+   that `PlayerColourSwatch`'s colour-blind redundancy existed at all — it is `sr-only` text,
+   invisible in a rendered story and undiscoverable without the DOM. Closed by auditing every
+   `sr-only` occurrence in each component's own (non-story, non-test) source under
+   `packages/design-system/src` (ten hits) and appending a naming-shape sentence, linking
+   `?path=/docs/foundations-iconography--docs`, to the three whose `sr-only` text is genuinely
+   redundant — a fact painted non-textually and restated in a permanent `sr-only` span, rather than
+   the _sole_ source of a name:
+   - `PlayerColourSwatch` — a `sr-only` text alternative for the colour-only signal it paints.
+   - `Link` — a `sr-only` span folded into the anchor's own accessible name, beside its decorative
+     `external` icon.
+   - `MatchRow` — a `sr-only` absolute date backing up a mouse-only `title` tooltip (FR-039).
+
+   The other seven `sr-only` hits are each the _sole_ source of a name or an announcement for
+   something else, not a restatement of a fact painted a second way: `Field`'s conditionally hidden
+   `<label>`, `Page`'s hidden `<h1>`, `Section`'s hidden heading, `Table`'s hidden caption (all "hide
+   the one name that exists, don't duplicate it"), `SiteHeader`'s skip-navigation link (a
+   keyboard-only affordance, not a name), `Menu`'s `aria-live` announcement region (a live update,
+   not a name), and **`Tooltip`**, whose `qualifier` prop prepends `sr-only` text to the trigger's
+   own accessible name (§8 of `tooltip.md`) rather than restating a fact painted a second way.
+
+   **`CountryFlag` is deliberately not in the redundant list**, corrected during this row's own
+   remediation: its purpose line still documents the same shape ("the icon reveals a name that would
+   otherwise not exist", `Tooltip`'s `relation="label"`, `country-flag.md` §11) and still carries the
+   Iconography link, but its own `index.tsx` contains no literal `sr-only` text — the `sr-only` span
+   in its rendered output belongs to `Tooltip`, which it composes. The original version of this row
+   listed `CountryFlag` and not `Tooltip`, trusted by a one-time hand-audit; `story-docs.mjs`'s own
+   source-scan (added in the remediation below) proved the two were swapped, because it checks one
+   directory's own files, not a composed render tree.
+
+   `story-docs.mjs`'s `SR_ONLY_NAMING_SHAPE_COMPONENTS` (3 entries) and `SR_ONLY_SOLE_NAME_COMPONENTS`
+   (7 entries) maps carry this same classification and reasoning in code, checked against every
+   component directory that exists — a new `sr-only` occurrence shipping unclassified, or a listed
+   component that stops using `sr-only`, both fail the check by naming the component. **Closed by
+   T578, 2026-09-11; the classification and the link-vs-word check corrected the same day after
+   independent review found the check accepted an unlinked mention and never re-derived the
+   classification from source.**
 
 Two smaller findings from the same run are already fixed and are not repeated here as open rows:
 `SearchBox`'s two stories both numbered "empty 2 of 3" is corrected, and `Menu/KeyboardNavigation`'s

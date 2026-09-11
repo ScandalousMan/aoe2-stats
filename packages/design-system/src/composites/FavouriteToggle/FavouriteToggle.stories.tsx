@@ -6,6 +6,13 @@ const meta: Meta<typeof FavouriteToggle> = {
   id: 'composite-favouritetoggle',
   title: 'Composites/Search & favourites/FavouriteToggle',
   component: FavouriteToggle,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user mark any player as a favourite, or unmark them, from that player's profile in one gesture.`,
+      },
+    },
+  },
 }
 
 export default meta

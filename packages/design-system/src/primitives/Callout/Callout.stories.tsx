@@ -6,6 +6,13 @@ const meta: Meta<typeof Callout> = {
   id: 'primitives-callout',
   title: 'Primitives/Feedback & status/Callout',
   component: Callout,
+  parameters: {
+    docs: {
+      description: {
+        component: `Explains an outcome the user did not ask for, and offers the way forward, in place rather than in a toast that disappears.`,
+      },
+    },
+  },
 }
 
 export default meta

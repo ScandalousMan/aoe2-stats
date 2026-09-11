@@ -6,6 +6,13 @@ const meta: Meta<typeof ArchivalControl> = {
   id: 'screens-archivalcontrol',
   title: 'Screens/Profile & capture/ArchivalControl',
   component: ArchivalControl,
+  parameters: {
+    docs: {
+      description: {
+        component: `Tells the user, in one place, that replays are archived by default and why, and gives them the one control that stops or resumes it.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -7,6 +7,13 @@ const meta: Meta<typeof Dialog> = {
   id: 'primitives-dialog',
   title: 'Primitives/Forms/Dialog',
   component: Dialog,
+  parameters: {
+    docs: {
+      description: {
+        component: `Forces a decision on a single consequential action before it happens, blocking the rest of the page until it is made.`,
+      },
+    },
+  },
 }
 
 export default meta

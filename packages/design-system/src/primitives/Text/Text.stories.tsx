@@ -5,6 +5,13 @@ const meta: Meta<typeof Text> = {
   id: 'primitives-text',
   title: 'Primitives/Typography/Text',
   component: Text,
+  parameters: {
+    docs: {
+      description: {
+        component: `Puts every piece of text in the system on a named typographic role, so a font change moves a decision rather than breaking an alignment.`,
+      },
+    },
+  },
   args: {
     role: 'body',
     children: 'Every match this profile has played, most recent first.',

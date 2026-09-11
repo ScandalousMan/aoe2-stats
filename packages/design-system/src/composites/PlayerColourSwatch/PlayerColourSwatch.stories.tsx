@@ -5,6 +5,13 @@ const meta: Meta<typeof PlayerColourSwatch> = {
   id: 'composite-playercolourswatch',
   title: 'Composites/Player identity/PlayerColourSwatch',
   component: PlayerColourSwatch,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows which in-game colour a player used, as a chip beside their name, so a reader can tie a name in the list to the colour they saw in the game. Its colour chip is never the only carrier of a player's colour: a permanent \`sr-only\` span states the colour by name, the same rule [Foundations → Iconography](?path=/docs/foundations-iconography--docs) states for an icon — "never the only carrier of a meaning" (FR-011) — applied here to a colour swatch rather than a glyph.`,
+      },
+    },
+  },
 }
 
 export default meta

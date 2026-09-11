@@ -7,6 +7,13 @@ const meta: Meta<typeof FavouritesList> = {
   id: 'composite-favouriteslist',
   title: 'Composites/Search & favourites/FavouritesList',
   component: FavouritesList,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user find the players they care about again from one place, without searching.`,
+      },
+    },
+  },
 }
 
 export default meta

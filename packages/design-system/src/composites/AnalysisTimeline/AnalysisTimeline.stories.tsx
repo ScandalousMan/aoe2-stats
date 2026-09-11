@@ -7,6 +7,13 @@ const meta: Meta<typeof AnalysisTimeline> = {
   id: 'composite-analysistimeline',
   title: 'Composites/Match & game data/AnalysisTimeline',
   component: AnalysisTimeline,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows, per participant, what they built, trained, researched and ordered, and when, once a match has been analysed.`,
+      },
+    },
+  },
 }
 
 // `queued`/`running` and `loading` all render `Skeleton`, which stays invisible for the first

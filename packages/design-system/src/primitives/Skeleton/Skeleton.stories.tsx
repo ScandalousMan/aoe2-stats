@@ -6,6 +6,13 @@ const meta: Meta<typeof Skeleton> = {
   id: 'primitives-skeleton',
   title: 'Primitives/Feedback & status/Skeleton',
   component: Skeleton,
+  parameters: {
+    docs: {
+      description: {
+        component: `Holds the shape of content that is arriving, so nothing jumps when it lands.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -13,10 +13,28 @@ const config: StorybookConfig = {
   addons: [
     // Accessibility checks against every story, for checklist point 5 in the design-system skill.
     '@storybook/addon-a11y',
+    // T578 (FR-040, row 1 of `specs/README.md`'s Storybook documentation gap register): autodocs
+    // needs this addon registered to generate a `docs`-type entry at all — `tags: ['autodocs']`
+    // below is silent without it (proven while closing this row: the tag alone built 540 `story`
+    // entries and zero `docs` ones). Not part of `essentials` in this Storybook major, so it is
+    // named explicitly rather than assumed bundled.
+    '@storybook/addon-docs',
   ],
   framework: {
     name: '@storybook/react-vite',
     options: {},
+  },
+  // The `react-vite` framework's own default (`'react-docgen'`) is the Babel-based scanner: it
+  // reads prop *shapes* but not a `interface Props` declared in a separate type import, and it
+  // carries no per-prop JSDoc description through to the Controls panel. `'react-docgen-typescript'`
+  // (`@joshwooding/vite-plugin-react-docgen-typescript`, already a transitive dependency of
+  // `@storybook/react-vite` — no new package needed) reads the real TypeScript prop types, so a
+  // union like `LinkVariant`'s `'inline' | 'standalone'` renders as that literal union in both the
+  // Controls panel and the autodocs prop table, and a prop's own JSDoc comment (e.g. `LinkProps`'s
+  // `external`) becomes that prop's description in both places — one source, the component's own
+  // types, feeding both surfaces (closes row 2 of the register above).
+  typescript: {
+    reactDocgen: 'react-docgen-typescript',
   },
   core: {
     disableTelemetry: true,

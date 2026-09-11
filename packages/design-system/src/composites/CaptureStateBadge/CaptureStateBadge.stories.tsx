@@ -6,6 +6,13 @@ const meta: Meta<typeof CaptureStateBadge> = {
   id: 'composite-capturestatebadge',
   title: 'Composites/Match & game data/CaptureStateBadge',
   component: CaptureStateBadge,
+  parameters: {
+    docs: {
+      description: {
+        component: `Tells the user, per match, what will happen to their replay, in one word plus one further sentence.`,
+      },
+    },
+  },
 }
 
 export default meta

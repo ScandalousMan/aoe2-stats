@@ -6,6 +6,13 @@ const meta: Meta<typeof Button> = {
   id: 'primitives-button',
   title: 'Primitives/Forms/Button',
   component: Button,
+  parameters: {
+    docs: {
+      description: {
+        component: `Commits the user to an action, with visual weight matching how consequential and how recommended it is.`,
+      },
+    },
+  },
   args: {
     children: 'Continue with Steam',
   },

@@ -10,6 +10,13 @@ const meta: Meta<typeof Section> = {
   id: 'primitives-section',
   title: 'Primitives/Layout & structure/Section',
   component: Section,
+  parameters: {
+    docs: {
+      description: {
+        component: `Groups one idea's worth of a page under a heading and owns the space between the components inside it.`,
+      },
+    },
+  },
   args: {
     heading: 'Recent matches',
   },

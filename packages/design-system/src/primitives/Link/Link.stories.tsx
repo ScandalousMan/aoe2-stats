@@ -5,6 +5,13 @@ const meta: Meta<typeof Link> = {
   id: 'primitives-link',
   title: 'Primitives/Typography/Link',
   component: Link,
+  parameters: {
+    docs: {
+      description: {
+        component: `Takes the reader somewhere else, and is recognisable as doing so without the reader having to hover to find out. When \`external\`, the drawn arrow mark is \`aria-hidden\` and a \`sr-only\` span carries "(opens in a new tab)" as part of the link's own accessible name — [Foundations → Iconography](?path=/docs/foundations-iconography--docs)'s second accessible-naming shape, "the control's own accessible name covers the icon", with the name attached as text rather than as an \`aria-label\`.`,
+      },
+    },
+  },
   args: {
     href: '/players/1807091',
     children: 'View profile',

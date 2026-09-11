@@ -70,6 +70,13 @@ const meta: Meta<typeof Table<MatchRow>> = {
   id: 'primitives-table',
   title: 'Primitives/Layout & structure/Table',
   component: Table,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a reader compare rows of measured values by eye, quickly, with the digits lined up and nothing decorative between them.`,
+      },
+    },
+  },
 }
 
 export default meta

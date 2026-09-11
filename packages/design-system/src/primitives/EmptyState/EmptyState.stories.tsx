@@ -6,6 +6,13 @@ const meta: Meta<typeof EmptyState> = {
   id: 'primitives-emptystate',
   title: 'Primitives/Feedback & status/EmptyState',
   component: EmptyState,
+  parameters: {
+    docs: {
+      description: {
+        component: `Says why a region has nothing in it, and offers the action that would fill it.`,
+      },
+    },
+  },
   args: {
     heading: 'No matches yet',
     explanation:

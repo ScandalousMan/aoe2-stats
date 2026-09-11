@@ -6,6 +6,13 @@ const meta: Meta<typeof StatValue> = {
   id: 'primitives-statvalue',
   title: 'Primitives/Feedback & status/StatValue',
   component: StatValue,
+  parameters: {
+    docs: {
+      description: {
+        component: `Presents one number so it can be read, compared and trusted at a glance.`,
+      },
+    },
+  },
 }
 
 export default meta

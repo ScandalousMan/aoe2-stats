@@ -7,6 +7,13 @@ const meta: Meta<typeof MatchRow> = {
   id: 'composite-matchrow',
   title: 'Composites/Match & game data/MatchRow',
   component: MatchRow,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a user scan their recent matches and tell, for each one, what happened and whether its replay is safe, without opening it. Its relative-time text also carries a permanent \`sr-only\` absolute date, so the fact a mouse-only \`title\` tooltip reveals is never lost to a keyboard or touch reader — the same always-present-in-the-tree rule [Foundations → Iconography](?path=/docs/foundations-iconography--docs) states for a hover-revealed icon name (FR-039).`,
+      },
+    },
+  },
 }
 
 export default meta

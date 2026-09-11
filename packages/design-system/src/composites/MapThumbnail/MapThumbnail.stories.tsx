@@ -7,6 +7,13 @@ const meta: Meta<typeof MapThumbnail> = {
   id: 'composite-mapthumbnail',
   title: 'Composites/Match & game data/MapThumbnail',
   component: MapThumbnail,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows which map a match was played on, as the minimap a player recognises instantly, beside the map's name.`,
+      },
+    },
+  },
 }
 
 export default meta

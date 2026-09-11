@@ -7,6 +7,13 @@ const meta: Meta<typeof CivilisationIcon> = {
   id: 'composite-civilisationicon',
   title: 'Composites/Match & game data/CivilisationIcon',
   component: CivilisationIcon,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a reader tell which civilisation a player played at a glance, from the game's own mark shown beside the civilisation's name.`,
+      },
+    },
+  },
 }
 
 export default meta

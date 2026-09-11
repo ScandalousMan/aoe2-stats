@@ -9,6 +9,13 @@ const meta: Meta<typeof SearchBox> = {
   id: 'composite-searchbox',
   title: 'Composites/Search & favourites/SearchBox',
   component: SearchBox,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a user find any player by a partial, wrongly-cased name and reach their profile without ever knowing a numeric identifier.`,
+      },
+    },
+  },
 }
 
 export default meta

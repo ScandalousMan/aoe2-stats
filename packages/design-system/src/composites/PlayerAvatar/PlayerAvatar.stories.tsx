@@ -7,6 +7,13 @@ const meta: Meta<typeof PlayerAvatar> = {
   id: 'composite-playeravatar',
   title: 'Composites/Player identity/PlayerAvatar',
   component: PlayerAvatar,
+  parameters: {
+    docs: {
+      description: {
+        component: `Puts a face at the top of a profile, so a page about a person opens with that person rather than with a numeric identifier.`,
+      },
+    },
+  },
 }
 
 export default meta

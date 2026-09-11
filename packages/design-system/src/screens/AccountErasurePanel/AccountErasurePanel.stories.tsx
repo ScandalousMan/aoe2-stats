@@ -5,6 +5,13 @@ const meta: Meta<typeof AccountErasurePanel> = {
   id: 'screens-accounterasurepanel',
   title: 'Screens/Account & privacy/AccountErasurePanel',
   component: AccountErasurePanel,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user permanently destroy their account and everything attached to it, understanding before they confirm what survives.`,
+      },
+    },
+  },
 }
 
 export default meta

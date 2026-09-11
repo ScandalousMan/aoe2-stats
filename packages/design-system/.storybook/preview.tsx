@@ -41,6 +41,16 @@ const withThemeAndSurface: Decorator = (Story, context) => {
 }
 
 const preview: Preview = {
+  // T578 (FR-040, row 1 of `specs/README.md`'s "Storybook documentation gap register"). The
+  // autodocs tag has to be set here, on the preview's own project-level annotations, to reach
+  // every story by default — setting it in `.storybook/main.ts` instead is silent: that file has
+  // no runtime effect on a story's own `tags` array, only `preview.tsx`'s (and each story's own
+  // meta) do. Confirmed by building Storybook before and after moving it here: zero `docs`-type
+  // entries in `storybook-static/index.json` with it in `main.ts`, 41 with it here — one per
+  // component directory, since `@storybook/addon-docs` (registered in `main.ts`) is what turns the
+  // tag into an actual autodocs page rather than a no-op. A story may still opt out per file with
+  // `tags: ['!autodocs']`; none does today.
+  tags: ['autodocs'],
   parameters: {
     controls: {
       matchers: {

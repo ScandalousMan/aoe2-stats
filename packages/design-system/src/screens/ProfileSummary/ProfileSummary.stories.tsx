@@ -8,6 +8,13 @@ const meta: Meta<typeof ProfileSummary> = {
   id: 'screens-profilesummary',
   title: 'Screens/Profile & capture/ProfileSummary',
   component: ProfileSummary,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows who the user is on the leaderboards — rating, rank and win/loss on every board they play — and makes their other linked profiles reachable in one gesture.`,
+      },
+    },
+  },
 }
 
 export default meta

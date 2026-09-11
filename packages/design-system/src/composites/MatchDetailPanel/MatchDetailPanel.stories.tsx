@@ -7,6 +7,13 @@ const meta: Meta<typeof MatchDetailPanel> = {
   id: 'composite-matchdetailpanel',
   title: 'Composites/Match & game data/MatchDetailPanel',
   component: MatchDetailPanel,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows everything about one match, every participant, and the one action a stored replay is for: downloading it.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -7,6 +7,13 @@ const meta: Meta<typeof SiteHeader> = {
   id: 'composite-siteheader',
   title: 'Composites/Site chrome/SiteHeader',
   component: SiteHeader,
+  parameters: {
+    docs: {
+      description: {
+        component: `Gives a visitor, on every page, the short list of places this product can take them, and shows which of those places they are currently in.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -5,6 +5,13 @@ const meta: Meta<typeof PrivacyNotice> = {
   id: 'screens-privacynotice',
   title: 'Screens/Account & privacy/PrivacyNotice',
   component: PrivacyNotice,
+  parameters: {
+    docs: {
+      description: {
+        component: `Tells a person everything this service holds about them, where it came from, on what legal basis, for how long, and the exact control that stops, exports or erases it.`,
+      },
+    },
+  },
 }
 
 export default meta

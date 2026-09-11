@@ -6,6 +6,13 @@ const meta: Meta<typeof SignInScreen> = {
   id: 'screens-signinscreen',
   title: 'Screens/Account & privacy/SignInScreen',
   component: SignInScreen,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a visitor prove they own a Steam account and reach their own Age of Empires II figures without typing an identifier.`,
+      },
+    },
+  },
   args: {
     onContinueWithSteam: () => {},
   },

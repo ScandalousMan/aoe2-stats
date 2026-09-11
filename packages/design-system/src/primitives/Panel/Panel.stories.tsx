@@ -10,6 +10,13 @@ const meta: Meta<typeof Panel> = {
   id: 'primitives-panel',
   title: 'Primitives/Layout & structure/Panel',
   component: Panel,
+  parameters: {
+    docs: {
+      description: {
+        component: `Bounds a block of related content on its own surface, so a reader can tell where one unit of information ends and the next begins.`,
+      },
+    },
+  },
   args: {
     density: 'dense',
     heading: 'Recent matches',

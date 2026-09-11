@@ -6,6 +6,13 @@ const meta: Meta<typeof UploadControl> = {
   id: 'composite-uploadcontrol',
   title: 'Composites/Uploads/UploadControl',
   component: UploadControl,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a user rescue a match whose replay automatic capture never got, by adding the file from their own machine.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -6,6 +6,13 @@ const meta: Meta<typeof Tooltip> = {
   id: 'primitives-tooltip',
   title: 'Primitives/Feedback & status/Tooltip',
   component: Tooltip,
+  parameters: {
+    docs: {
+      description: {
+        component: `Gives one small, non-essential fact a home that costs no horizontal space in a dense row, revealed on hover, keyboard focus and tap alike.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -6,6 +6,13 @@ const meta: Meta<typeof Menu> = {
   id: 'primitives-menu',
   title: 'Primitives/Forms/Menu',
   component: Menu,
+  parameters: {
+    docs: {
+      description: {
+        component: `Offers a short, known set of choices from a trigger, without leaving the page.`,
+      },
+    },
+  },
 }
 
 export default meta

@@ -249,6 +249,15 @@ jobs:
       # runs immediately after, for the same reason token-scale.mjs's does.
       - run: node scripts/checks/spec-completeness.mjs
       - run: node --test scripts/checks/spec-completeness.test.mjs
+      # T578: FR-040, rows 3 and 4 of packages/design-system/specs/README.md's "Storybook
+      # documentation gap register" — a component directory with no story file, a story file whose
+      # meta carries no one-sentence `docs.description.component` purpose line, or a component that
+      # carries a redundant accessible name (SR_ONLY_NAMING_SHAPE_COMPONENTS in the script itself)
+      # whose purpose line does not name the shape and link Foundations → Iconography, fails here
+      # rather than depending on a reviewer re-reading 41 story files. Needs no build, same as the
+      # other static source checks above; its own `node --test` suite runs immediately after.
+      - run: node scripts/checks/story-docs.mjs
+      - run: node --test scripts/checks/story-docs.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

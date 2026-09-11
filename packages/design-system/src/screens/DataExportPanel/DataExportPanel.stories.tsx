@@ -6,6 +6,13 @@ const meta: Meta<typeof DataExportPanel> = {
   id: 'screens-dataexportpanel',
   title: 'Screens/Account & privacy/DataExportPanel',
   component: DataExportPanel,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user take a complete copy of everything this service holds about them, in one archive, and download it.`,
+      },
+    },
+  },
 }
 
 export default meta

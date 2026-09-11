@@ -6,6 +6,13 @@ const meta: Meta<typeof PlayerResultRow> = {
   id: 'composite-playerresultrow',
   title: 'Composites/Player identity/PlayerResultRow',
   component: PlayerResultRow,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets two players who share or nearly share a name be told apart at a glance.`,
+      },
+    },
+  },
 }
 
 export default meta
