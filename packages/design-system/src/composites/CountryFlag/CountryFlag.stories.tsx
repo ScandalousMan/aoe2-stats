@@ -55,8 +55,11 @@ async function dismissAfterEscape({ canvasElement }: { canvasElement: HTMLElemen
 }
 
 // §11.9 — default: the flag stands alone, no country word anywhere in the frame.
+// T591: clipped to the flag button — its own footprint is a small fraction of the whole-page
+// frame the old `visual-full-page` capture used, structurally invisible to the duplicate check at
+// that scale (story-baseline-duplicates-debt.json, closed by this clip).
 export const Default: Story = {
-  tags: ['visual-full-page'],
+  parameters: { visualCaptureClip: { parts: [{ role: 'button' }], pad: '2' } },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
@@ -85,35 +88,53 @@ export const BothSizes: Story = {
 // `userEvent.hover` still reaches `Tooltip`'s own listener), but never sets Chromium's actual
 // `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has settled,
 // the same two-mechanism shape `Tooltip.stories.tsx`'s own `HoverRevealed` now uses.
+// T591: all three of this group clip to the flag button plus the tooltip surface it opens — the
+// ringed/ringless difference between them is a couple of pixels around a button in the hundreds
+// wide when captured full-page, invisible to the duplicate check at that scale.
+const REVEALED_CLIP = {
+  parts: [{ role: 'button' }, { selector: '[role="tooltip"]' }],
+  pad: '2',
+} as const
+
 export const FlagHoverRevealed: Story = {
   name: 'Hover — the country name opens in a tooltip above the flag',
-  tags: ['visual-full-page'],
   play: hoverOpen,
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: REVEALED_CLIP,
+  },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
 // §11.9 — the keyboard-focus story: the tooltip open AND the focus ring visible, in the same frame.
 export const FlagKeyboardFocusRevealed: Story = {
   name: 'Keyboard focus — tooltip open and focus ring visible together',
-  tags: ['visual-full-page'],
   play: focusOpen,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: REVEALED_CLIP,
+  },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
 // §11.9 — the pinned (pressed) story: the touch route, no pointer, no focus ring.
 export const FlagPinned: Story = {
   name: 'Pinned (pressed) — the touch route, no pointer, no focus ring',
-  tags: ['visual-full-page'],
   play: pinOpen,
+  parameters: { visualCaptureClip: REVEALED_CLIP },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 
 // §11.9 — after Escape: no tooltip, the flag still visibly focused.
+// T591: clipped to the flag button, and forced to `focus-visible` — the same "small control, big
+// page" gap Default/FlagDismissedAfterEscape shared, closed the same way as entry 0.
 export const FlagDismissedAfterEscape: Story = {
   name: 'After Escape — no tooltip, flag still visibly focused',
-  tags: ['visual-full-page'],
   play: dismissAfterEscape,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: { parts: [{ role: 'button' }], pad: '2' },
+  },
   args: { flagUrl: FRANCE_URL, countryName: 'France' },
 }
 

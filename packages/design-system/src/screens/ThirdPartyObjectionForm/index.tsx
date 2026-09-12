@@ -34,9 +34,16 @@ const focusRing =
 // `active:underline-offset-4` gives press its own frame without a fill — the same fix now shared
 // with `Link`'s `inline` variant, `Footer`, `PrivacyNotice` and `AccountErasurePanel`'s own copies
 // of this pattern.
+// T591: this copy was missing the underline-thickness half of `Link`'s own `inline` recipe
+// (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2`,
+// `primitives/Link/index.tsx`'s `underline` constant) — hover and active still shared the
+// underline's own weight, one of the two signals `structural-tier.md` §9 "hover" ("two signals,
+// one of which is not colour") documents for every link in this product. Found and fixed
+// alongside the identical omission in `PrivacyNotice` and `AccountErasurePanel` (T591's own
+// instruction: all three or none).
 const inlineLinkClasses = cx(
-  'text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover active:text-link-hover active:underline-offset-4',
+  'text-link underline decoration-1 underline-offset-2 transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:text-link-hover hover:decoration-2 active:text-link-hover active:decoration-2 active:underline-offset-4',
   focusRing,
 )
 

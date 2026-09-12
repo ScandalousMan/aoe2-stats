@@ -79,8 +79,15 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
         // used to also carry `active:border-l-2`, redundant below `md` and actively wrong at
         // `md`+, where it was the one class fighting `md:border-x-0` back to a width — removed now
         // that the width is reserved unconditionally instead.)
+        // T591: the inline-start rule alone was still too weak a mark for the duplicate check to
+        // tell press apart from hover at this row's size (story-baseline-duplicates-debt.json) —
+        // press now additionally draws a full inset boundary, `ring-2 ring-inset
+        // ring-border-strong`, on top of the fill and the inline-start rule, the same "a press is a
+        // boundary" signal `Button` `secondary`/`destructive` and `Link` `standalone` already carry
+        // (T583).
         'border-l-2 border-l-transparent',
         'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
+        'active:ring-2 active:ring-inset active:ring-border-strong',
         focusRing,
         className,
       )}

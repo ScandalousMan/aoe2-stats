@@ -90,21 +90,35 @@ export const MobileViewport: Story = {
 // Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
 // a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores. `nth: 0`
 // picks the first link the same way `getAllByRole(...)[0]` used to.
+// T591: this group clips to the first link — the hover/focus/active signal on one inline link is
+// a small mark on the whole document's frame, invisible to the duplicate check at that scale
+// (story-baseline-duplicates-debt.json).
+const FIRST_LINK_CLIP = { parts: [{ role: 'link', nth: 0 }], pad: '2' } as const
+
 export const Hover: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_CLIP,
+  },
 }
 
 // §5 "focus-visible — the standard ring... on every link and on the objection button."
 export const FocusVisible: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_CLIP,
+  },
 }
 
 // §5 "active — links render in `link-hover` while pressed... Nothing translates or scales."
 export const Active: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
-  parameters: { visualForceState: { state: 'active', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_CLIP,
+  },
 }
 
 // §5 "disabled — nothing in this component is ever disabled. A right that is described and then

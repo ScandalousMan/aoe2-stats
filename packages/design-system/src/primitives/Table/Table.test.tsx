@@ -123,6 +123,26 @@ describe('Table', () => {
     expect(linkedRow?.className).toMatch(/\bactive:bg-surface-sunken\b/)
   })
 
+  // T591 (FR-037, structural-tier.md §10 "active"): the row's own `border-l-*` press mark never
+  // actually painted — a browser does not render `border-left`/`border-right` on a `<tr>` at all —
+  // so the fix moves the boundary to the stretched link's own `::after`, a `ring` (box-shadow), not
+  // a table border, which paints reliably regardless of the table's border model.
+  it("adds a full inset boundary ring to the row link's stretched ::after on press", () => {
+    render(
+      <Table
+        caption="Recent matches"
+        columns={columns}
+        rows={rows}
+        getRowKey={(r) => r.id}
+        getRowHref={(row) => `/matches/${row.id}`}
+      />,
+    )
+    const link = screen.getAllByRole('link')[0]
+    expect(link.className).toMatch(/\bactive:after:ring-2\b/)
+    expect(link.className).toMatch(/\bactive:after:ring-inset\b/)
+    expect(link.className).toMatch(/\bactive:after:ring-border-strong\b/)
+  })
+
   it('intercepts a plain left click on the row link into onNavigate', () => {
     const onNavigate = vi.fn()
     render(

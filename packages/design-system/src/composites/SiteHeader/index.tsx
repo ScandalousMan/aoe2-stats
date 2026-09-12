@@ -216,7 +216,11 @@ export function SiteHeader({
                           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                           focusRing,
                           'hover:bg-surface-sunken hover:text-text-primary',
-                          'active:border-border-strong active:bg-surface-sunken active:text-text-primary',
+                          // T591: press moves the fill to `bg-background` (`Button` `ghost`'s own
+                          // recipe) instead of repeating hover's `surface-sunken` — the boundary
+                          // alone was too weak a mark for the duplicate check to tell apart from
+                          // hover at this control's size (story-baseline-duplicates-debt.json).
+                          'active:border-border-strong active:bg-background active:text-text-primary',
                           isCurrent
                             ? 'font-semibold text-text-primary'
                             : 'font-medium text-text-secondary',

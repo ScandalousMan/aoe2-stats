@@ -66,11 +66,15 @@ async function pinOpen({ canvasElement }: { canvasElement: HTMLElement }) {
   await waitFor(() => expect(trigger).not.toHaveFocus())
 }
 
-// `visual-full-page` (scripts/visual/run.mjs): the surface is absolutely positioned against the
-// trigger's own box, which does not grow to contain it — a screenshot clipped to the story root
-// never reaches it.
+// T591: clipped to the trigger button rather than captured full-page — the surface is absolutely
+// positioned against the trigger's own box (which does not grow to contain it, hence the clip
+// rather than the story root), but the trigger's own state signal is a small fraction of a
+// full-page frame, invisible to the duplicate check at that scale
+// (story-baseline-duplicates-debt.json, closed by this clip).
+const TRIGGER_CLIP = { parts: [{ role: 'button' }], pad: '2' } as const
+
 export const Default: Story = {
-  tags: ['visual-full-page'],
+  parameters: { visualCaptureClip: TRIGGER_CLIP },
   args: {
     content: 'France',
     children: <FlagIcon />,
@@ -85,10 +89,20 @@ export const Default: Story = {
 // has settled and drives a genuine, CDP-level hover on the same element — the same two-mechanism
 // shape `Menu.stories.tsx`'s own `Hover` story already uses (`play` opens the structure,
 // `visualForceState` paints the real pseudo-class on top of it).
+// T591: this group clips to the trigger button plus the tooltip surface it opens — the
+// ringed/ringless difference between them is a couple of pixels around a button in the hundreds
+// wide when captured full-page, invisible to the duplicate check at that scale.
+const REVEALED_CLIP = {
+  parts: [{ role: 'button' }, { selector: '[role="tooltip"]' }],
+  pad: '2',
+} as const
+
 export const HoverRevealed: Story = {
-  tags: ['visual-full-page'],
   play: hoverOpen,
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: REVEALED_CLIP,
+  },
   args: {
     content: 'France',
     qualifier: 'Country:',
@@ -97,8 +111,11 @@ export const HoverRevealed: Story = {
 }
 
 export const KeyboardFocusRevealed: Story = {
-  tags: ['visual-full-page'],
   play: focusOpen,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: REVEALED_CLIP,
+  },
   args: {
     content: 'France',
     qualifier: 'Country:',
@@ -109,8 +126,8 @@ export const KeyboardFocusRevealed: Story = {
 // §4 active — the only route a touch user has, so it is its own story rather than an appendix to
 // the hover one: the frame must show the surface with no pointer on the trigger and no focus ring.
 export const Pinned: Story = {
-  tags: ['visual-full-page'],
   play: pinOpen,
+  parameters: { visualCaptureClip: REVEALED_CLIP },
   args: {
     content: 'France',
     qualifier: 'Country:',
@@ -138,8 +155,11 @@ async function dismissAfterBlur({ canvasElement }: { canvasElement: HTMLElement 
 }
 
 export const DismissedAfterEscape: Story = {
-  tags: ['visual-full-page'],
   play: dismissAfterEscape,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: TRIGGER_CLIP,
+  },
   args: {
     content: 'France',
     qualifier: 'Country:',
@@ -152,8 +172,8 @@ export const DismissedAfterEscape: Story = {
 // the trigger, leaving no ring either, so the resting frame matches Default's own untouched trigger
 // exactly.
 export const DismissedAfterBlur: Story = {
-  tags: ['visual-full-page'],
   play: dismissAfterBlur,
+  parameters: { visualCaptureClip: TRIGGER_CLIP },
   args: {
     content: 'France',
     qualifier: 'Country:',

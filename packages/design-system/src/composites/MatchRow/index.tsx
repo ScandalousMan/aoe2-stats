@@ -412,8 +412,15 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
         // `active:border-l-border-strong` solidifies it — the same technique `Table`'s row link
         // and `Menu`'s items now share (`Table/index.tsx`, `Menu/index.tsx`), so a press adds a
         // line rather than repeating the hover's fill.
+        // T591: that inline-start rule alone was still too weak a mark for the duplicate check to
+        // tell press apart from hover at this card's size (story-baseline-duplicates-debt.json) —
+        // press now additionally draws a full inset boundary, `ring-2 ring-inset
+        // ring-border-strong`, on top of the fill and the inline-start rule, the same "a press is a
+        // boundary" signal `Button` `secondary`/`destructive` and `Link` `standalone` already carry
+        // (T583).
         'border-l-2 border-l-transparent',
         'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
+        'active:ring-2 active:ring-inset active:ring-border-strong',
         focusRing,
         className,
       )}

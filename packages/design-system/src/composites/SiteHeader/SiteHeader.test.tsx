@@ -175,6 +175,19 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
     }
   })
 
+  // T591: press now moves the fill to `bg-background` (`Button` `ghost`'s own recipe) instead of
+  // repeating hover's `surface-sunken` — the boundary alone was too weak a mark for the duplicate
+  // check to tell apart from hover at this control's size (story-baseline-duplicates-debt.json).
+  it('every item carries an active fill distinct from its hover fill, plus the documented boundary', () => {
+    render(<SiteHeader items={items} currentPath="/dashboard" />)
+    for (const item of items) {
+      const className = screen.getByRole('link', { name: item.label }).className
+      expect(className).toMatch(/active:bg-background/)
+      expect(className).not.toMatch(/active:bg-surface-sunken/)
+      expect(className).toMatch(/active:border-border-strong/)
+    }
+  })
+
   it('SkipLink and Brand also carry the documented focus-visible ring', () => {
     render(<SiteHeader items={[]} />)
     expect(screen.getByRole('link', { name: 'Skip to content' }).className).toMatch(

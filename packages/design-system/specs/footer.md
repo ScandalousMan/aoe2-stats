@@ -101,16 +101,20 @@ repository, this component is the same disclosure rendered where a visitor actua
   disclaimer does not have a "loading" phase.
 - **hover** — `PrivacyNoticeLink` and `ObjectionLink` only: colour moves to `link-hover`
   underneath the permanent underline. Nothing else in this component responds to a pointer.
-- **focus-visible** — the standard ring (`outline-2 outline-offset-2`, gap DS-4) on each link that
-  is present. The disclaimer and the affiliation note are not focusable; they are not controls.
-- **active** — ink stays `link-hover` (there is deliberately no `link-active`; T522's `link-hover`
-  serves both — `color-tokens.md` §11.3), and the underline steps to `underline-offset-4` — the same
-  fix `Link`'s `inline` variant carries (`structural-tier.md` §9 "active"), because a shared
-  `link-hover` fill with no second signal left hover and press as one still image (fourth-pass
-  review remediation, FR-037; this passage itself described the pre-fix behaviour through a
-  fifth-pass review, finding B2, which is why it now names the second signal rather than only the
-  ink). Nothing translates or scales, and nothing fills — a wash behind an inline word breaks the
-  disclaimer's own text flow.
+- **focus-visible** — the standard ring (`outline-ring outline-offset-ring`, gap DS-4) on each link
+  that is present. The disclaimer and the affiliation note are not focusable; they are not controls.
+- **active** — T591: `PrivacyNoticeLink` and `ObjectionLink` are now the `Link` primitive itself
+  (`variant="standalone"`, `index.tsx`), not a local copy of its recipe — each renders on its own
+  row, not inside a paragraph's running text, so `Link` `standalone`'s own treatment applies exactly
+  (`structural-tier.md` §9 "active"): the hover fill (`link-hover` ink) plus `active:bg-surface-sunken
+active:ring-2 active:ring-border-strong`, the full inset boundary that made hover and press
+  distinguishable in a still image everywhere else this recipe ships (T583). This passage previously
+  described a local copy (`active:underline-offset-4`, no fill, "nothing here fills — a wash behind
+  an inline word breaks the disclaimer's own text flow") — correct reasoning for an inline link
+  inside running prose, which is what `Link`'s `inline` variant remains for, but a description these
+  two links never actually matched: they were always their own row, not inline text, and their
+  local copy's weaker signal is exactly what `story-baseline-duplicates-debt.json` found
+  indistinguishable from hover.
 - **disabled** — not applicable. A link is either rendered (its href is present) or absent; there
   is no dimmed, unusable middle state for a footer link. Rendering a dead link when a route does
   not yet exist would be worse than omitting it, and omission is what the optional props already do.
@@ -133,13 +137,18 @@ reads as chrome rather than as a card), `border` (the top rule separating it fro
 this the one signal that says it is a link, and it declares `background` and is measured there,
 which retires the earlier avoidance of an `accent`-on-`background` pair: `link` is not `accent`,
 and the pair is now measured rather than untested), `link-hover` (hover and active — there is no
-`link-active`; `color-tokens.md` §11.3), `focus-ring`. The link expresses its quietness with size
-(`sm`), which it already carried, rather than by withholding the link colour.
+`link-active`; `color-tokens.md` §11.3), `surface-sunken` and `border-strong` (T591: the `Link`
+`standalone` press fill and its boundary ring), `focus-ring`. The link expressed its quietness with
+size (`sm`) before T591; it now renders at `standalone`'s own `text-md` (below), so its quietness is
+the link colour alone, the same tokens every other `standalone` link in the product relies on.
 
-Font: family `sans` throughout. Size `sm` for `Disclaimer` and `AffiliationNote` — small enough to
+Font: family `sans` throughout for `Disclaimer` and `AffiliationNote`, size `sm` — small enough to
 read as chrome, never smaller, because a disclaimer nobody can read does not satisfy the obligation
-it exists for; `sm` for both links, matching. Weight `normal` throughout; nothing in this component
-is emphasised over anything else in it.
+it exists for. T591: `PrivacyNoticeLink`/`ObjectionLink` are now the `Link` primitive's own
+`standalone` variant (`type-body` at `text-md`, `index.tsx`), not a local `sm` copy — one size
+larger than the disclaimer text beside it, the same size every other `standalone` link in this
+product renders at. Weight `normal` throughout; nothing in this component is emphasised over
+anything else in it.
 
 Radius: none — a footer has no rounded surface of its own.
 Elevation: `none` — chrome sits flush with the page, it does not float above it.

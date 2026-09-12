@@ -52,9 +52,19 @@ export const Preparing: Story = {
   },
 }
 
+// `Ready`, `ReadyFocusVisible` and `ReadyActive` share one `visualCaptureClip` (README's standing
+// rule: a state whose signal is smaller than ~1% of its frame is captured clipped to the control
+// that carries it) so the three stay each other's verification — the panel's own full-page frame
+// is over a hundred times the download link's footprint, which is exactly what made
+// `ready`/`ready-focus-visible` an undocumented full-set match the first time these stories were
+// captured (found 2026-09-12, T587/T588's baseline regeneration): the inward focus ring and the
+// underline signal are both real (T586, T588) but neither survives a whole-panel diff ratio.
+const downloadLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
+
 export const Ready: Story = {
   name: 'ready — success callout, download link and expiry note',
   args: { ...noopHandlers, initialState: 'ready' },
+  parameters: { visualCaptureClip: downloadLinkClip },
 }
 
 // §5 "hover / focus-visible / active": `DownloadLink`'s standard ring rings inward instead
@@ -65,7 +75,10 @@ export const Ready: Story = {
 export const ReadyFocusVisible: Story = {
   name: 'ready — focus-visible on the download link',
   args: { ...noopHandlers, initialState: 'ready' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: downloadLinkClip,
+  },
 }
 
 // §5 "`DownloadLink`'s own hover and press are not colour alone" (T588): pressed, the label's own
@@ -75,7 +88,10 @@ export const ReadyFocusVisible: Story = {
 export const ReadyActive: Story = {
   name: 'ready — active (pressed) on the download link',
   args: { ...noopHandlers, initialState: 'ready' },
-  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: downloadLinkClip,
+  },
 }
 
 export const Failed: Story = {

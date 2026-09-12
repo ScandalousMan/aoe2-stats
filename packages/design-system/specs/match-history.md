@@ -178,7 +178,13 @@ information dead end — is carried forward verbatim in §12.3.
   actually paints. This passage previously read "per link", pointing at `Link`'s spec for a shape
   `MatchRow` does not use, which is what let the pre-fix, colour-only behaviour survive undetected
   through two review rounds (fourth-pass review remediation, FR-037; caught here by the fifth-pass
-  review, finding B2). `DownloadAction`: per `Button`.
+  review, finding B2). T591: that inline-start rule alone was still too weak a mark for the
+  duplicate check to tell press apart from hover at this card's size
+  (`story-baseline-duplicates-debt.json`) — press now additionally draws a full inset boundary,
+  `active:ring-2 active:ring-inset active:ring-border-strong`, on top of the fill and the
+  inline-start rule, the same "a press is a boundary" signal `Button`
+  `secondary`/`destructive` and `Link` `standalone` already carry (T583). `DownloadAction`: per
+  `Button`.
 - **disabled** — `DownloadAction` has no disabled form: while `capture_status != "stored"` it is
   **absent**, not disabled, following `profile-summary.md`'s own rule for the primary profile's
   "Make primary" item — `CaptureStateBadge` already explains why in that case, and a greyed-out

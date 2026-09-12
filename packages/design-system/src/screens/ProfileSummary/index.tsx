@@ -289,7 +289,10 @@ export function ProfileSummary({
              * outright, at any alias length: the switcher trigger's alias (`min-w-0 truncate`
              * below) absorbs the width deficit instead, and the flag (`shrink-0` on its own
              * wrapper) never gives up its 44px box to make room. */}
-            <div className="flex min-w-0 flex-nowrap items-center gap-3">
+            <div
+              data-visual-region="name-line"
+              className="flex min-w-0 flex-nowrap items-center gap-3"
+            >
               {/* `subject="other"` never shows the switcher — a third party's own linked profiles
                * are never this component's business (003 spec §11.1.1, FR-009). */}
               {isSelf && authenticated && viewedProfile && (

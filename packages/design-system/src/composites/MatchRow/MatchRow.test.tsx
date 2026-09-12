@@ -104,6 +104,17 @@ describe('MatchRow', () => {
     expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
   })
 
+  // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
+  // hover to the visual suite at this card's size (story-baseline-duplicates-debt.json) — press
+  // now additionally draws a full inset boundary ring, on top of both.
+  it('adds a full inset boundary ring to the active state', () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bactive:ring-2\b/)
+    expect(link.className).toMatch(/\bactive:ring-inset\b/)
+    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+  })
+
   it('shows "Win"/"Loss" as text, never colour alone', () => {
     const { rerender } = render(<MatchRow match={match} />)
     expect(screen.getByText('Win')).toBeInTheDocument()

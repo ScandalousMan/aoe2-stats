@@ -78,14 +78,20 @@ describe('Footer — LinkRow (footer.md §2, ×0..1, each entry independent)', (
   })
 })
 
-describe('Footer — link hover/focus/active consistency (T560, FR-038)', () => {
+// T591: these two links are now the `Link` primitive itself (`variant="standalone"`), not a local
+// copy of its recipe (`linkClasses`/`focusRing`, T560's now-deleted remediation) — `linkClasses`'s
+// own `active:underline-offset-4` was still too weak a mark for the duplicate check to tell apart
+// from hover at this row's size (story-baseline-duplicates-debt.json); `standalone`'s own
+// `active:bg-surface-sunken active:ring-2 active:ring-border-strong` (T583) is the real fix, and
+// rendering the primitive directly means Footer can never again drift out of sync with it.
+describe('Footer — link hover/focus/active consistency (T591, FR-037/FR-038)', () => {
   // footer.md §5 already documented a focus ring and a `duration.fast`/`easing.standard`
   // transition for these two links — the same treatment every other inline link in the product
   // (`ThirdPartyObjectionForm`, `AccountErasurePanel`, `PrivacyNotice`) already carries. Neither
   // was actually built, which also meant these two links had no visible focus indicator at all
   // (FR-050). A class-name match alone would not prove the ring reaches a real Tab stop, so this
   // reaches the link by keyboard first.
-  it('is a real Tab stop and matches the inline-link focus, transition and active treatment', async () => {
+  it('is a real Tab stop and matches the standalone-link focus, transition and active treatment', async () => {
     const user = userEvent.setup()
     render(<Footer privacyNoticeHref="/privacy-notice" objectionHref="/object" />)
     const link = screen.getByRole('link', { name: 'Read the privacy notice' })
@@ -93,13 +99,16 @@ describe('Footer — link hover/focus/active consistency (T560, FR-038)', () => 
     await user.tab()
     expect(link).toHaveFocus()
 
-    expect(link.className).toMatch(/focus-visible:outline-2/)
+    expect(link.className).toMatch(/focus-visible:outline-ring/)
     expect(link.className).toMatch(/focus-visible:outline-focus-ring/)
     expect(link.className).toMatch(/\btransition-colors\b/)
     expect(link.className).toMatch(/\bduration-120\b/)
     expect(link.className).toMatch(/\bmotion-reduce:duration-0\b/)
     expect(link.className).toMatch(/\bhover:text-link-hover\b/)
     expect(link.className).toMatch(/\bactive:text-link-hover\b/)
+    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(link.className).toMatch(/\bactive:ring-2\b/)
+    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
   })
 })
 

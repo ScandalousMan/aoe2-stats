@@ -162,6 +162,17 @@ describe('ErasedScreen — the terminal state', () => {
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/privacy-notice')
   })
+
+  // T591 (structural-tier.md §9 "hover" — "two signals, one of which is not colour"): this
+  // inline link's own class copy was missing the underline-thickness half of `Link`'s `inline`
+  // recipe.
+  it('thickens the underline on hover and on press, matching every other inline link', () => {
+    render(<ErasedScreen homeHref="/privacy-notice" />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bdecoration-1\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+  })
 })
 
 // Guards against a regression `act()` would otherwise mask: unmounting mid-flight must not warn

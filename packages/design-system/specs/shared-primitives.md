@@ -416,7 +416,12 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
 - **hover** — item fill `surface-sunken`. `motion.duration.fast`.
 - **focus-visible** — the focused item shows the standard focus ring inset within its bounds. Focus
   follows the roving item, never both trigger and item.
-- **active** — item fill `surface-sunken` with boundary `border-strong` on the inline-start edge.
+- **active** — item fill `background` (`Button` `ghost`'s own press fill — a plain repeat of
+  `hover`'s `surface-sunken` was indistinguishable from hover to the visual suite,
+  story-baseline-duplicates-debt.json, T591) with boundary `border-strong` on the inline-start
+  edge. The trigger button follows `Button` `secondary`'s own active recipe in full
+  (`bg-background`, `ring-2 ring-border-strong`), matching its resting/hover recipe already
+  documented as that variant's own (T560).
 - **disabled** — a disabled item keeps focus (`aria-disabled="true"`, not the `disabled`
   attribute), shows `text-disabled`, and carries a reason on its secondary line.
 - **loading** — an item whose action is in flight shows a spinner in its trailing slot and sets

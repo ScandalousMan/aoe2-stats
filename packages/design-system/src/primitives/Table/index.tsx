@@ -247,11 +247,16 @@ export function Table<Row>({
                     // it is for `Button` — a `Table` frequently sits directly on the page, and a
                     // row filled with the page's own colour would vanish the same way a `Button`
                     // `ghost` would (`Button/index.tsx`'s own comment). `border-l-2
-                    // border-l-transparent` reserves a rule down the row's inline-start edge at
-                    // rest, at zero visible cost, and `active:border-l-border-strong` solidifies it
-                    // on press only — the identical technique `Menu`'s own items already ship for
-                    // their own `active` state (`Menu/index.tsx`), so a row's press is a line that
-                    // appears, not a fill that darkens twice.
+                    // border-l-transparent`/`active:border-l-border-strong` were meant to solidify a
+                    // rule down the row's inline-start edge on press, the identical technique
+                    // `Menu`'s own items ship for their own `active` state — but a browser does not
+                    // render `border-left`/`border-right` on a `<tr>` at all (no independent left/
+                    // right edge on a table-row box, `border-collapse` or not), so this never
+                    // actually painted; the duplicate check's story-baseline-duplicates-debt.json
+                    // entry is exactly this silent gap. T591: the real boundary lives on the
+                    // stretched link's own `::after` below instead (a `ring`, not a table border),
+                    // which does paint. The `border-l-*` classes stay only for the width they
+                    // reserve at rest — nothing today reads them as a signal.
                     href &&
                       'border-l-2 border-l-transparent transition-colors duration-120 ease-standard motion-reduce:duration-0 hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
                   )}
@@ -266,10 +271,20 @@ export function Table<Row>({
                       // `after:absolute after:inset-0` against the row's own `relative` — the
                       // standard "one link, whole row clickable" technique this design system
                       // already ships in `MatchRow`, kept exactly one focus stop per row.
+                      // T591: the row's own press boundary cannot live on `<tr>` — this table is
+                      // `border-collapse` (below), which the row-level `border-l-*` above never
+                      // reliably paints against, so `active`/`hover` shared one fill with no boundary
+                      // ever actually visible, indistinguishable to the duplicate check
+                      // (story-baseline-duplicates-debt.json). The stretched link's own `::after`
+                      // is an absolutely positioned pseudo-element, no part of the table's border
+                      // model, so its `ring` (box-shadow, not a table border) paints reliably.
                       <a
                         href={href}
                         onClick={createRowLinkClickHandler(href, onNavigate)}
-                        className={cx('static after:absolute after:inset-0', focusRing)}
+                        className={cx(
+                          'static after:absolute after:inset-0 active:after:ring-2 active:after:ring-inset active:after:ring-border-strong',
+                          focusRing,
+                        )}
                       >
                         {identityColumn.render(row)}
                       </a>

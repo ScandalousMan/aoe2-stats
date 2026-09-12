@@ -1399,6 +1399,38 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
 
    **Owner: T584. Closed 2026-09-11; reopened and re-closed 2026-09-12.**
 
+   **The 20 debt entries the size/dimension filter above found (T584's own list, immediately
+   above) were addressed in the same task that opened them, 2026-09-12 — T591.** Each was one of
+   two shapes, decided per entry, never laundered as the other: a component's own state signal was
+   genuinely missing and is fixed in its source (`FavouritesList`, `Footer`, `MatchRow`,
+   `PlayerResultRow`, `SiteHeader`, `Menu`'s trigger/item/footer item, `Table`'s row link — every one
+   a press that repainted the same fill as hover with no second signal, now a full inset boundary
+   `ring` on top of it, the same "a press is a boundary" idiom `Button`
+   `secondary`/`destructive` and `Link` `standalone` already carry); or the signal exists but the
+   frame was too large for the comparator to see it, and the story is scoped to the control that
+   carries it instead of the whole page or the whole `#storybook-root` box (`CountryFlag`,
+   `Tooltip`, `Menu`'s focus/keyboard stories, `PlayerColourSwatch`, `PrivacyNotice`,
+   `ProfileSummary`'s name-line and its embedded `BoardFlag`, `ThirdPartyObjectionForm`,
+   `UploadControl`'s `FocusVisible`) — the harness gained a second story parameter for this,
+   `visualCaptureClip`, sibling to `visualForceState`: `parts` (one or more `selector`/`role`+`name`
+   locators, unioned) and `pad` (a spacing-scale step name, never a px literal), clipping the
+   capture to that union inflated by the pad, `tests/visual/stories.spec.ts`. **The standing rule
+   this row leaves behind: a story that names a state whose signal is smaller than roughly 1% of
+   its own frame is captured clipped to the control that carries it, via `visualCaptureClip`, rather
+   than left to a whole-page or whole-root capture that cannot resolve it.** One entry's own wording
+   was corrected in the same pass rather than carried forward: `UploadControl`'s
+   `FocusVisible`/`Idle` debt text claimed the ring should show "across the Remove/SubmitButton/
+   Refresh controls", but that story's own `initialState: 'idle'` renders none of those three — the
+   real gap was only the trigger's own ring being too small a mark on the whole component's frame.
+   Every one of the 20 debt entries stays in `scripts/visual/story-baseline-duplicates-debt.json`,
+   each now carrying a `fixApplied` field naming what changed, rather than being deleted here: this
+   check reads the baseline bytes on disk, which a source or story edit alone does not move, and
+   deleting an entry the check still finds as a live full match would fail it before the next CI
+   baseline regeneration lands (the same reasoning the `MapThumbnail`/`PlayerAvatar` `Loading` entry
+   above already established for one entry at a time — this closes 20 the same way, not
+   differently). A follow-up baseline-regeneration commit removes all 20 once the check confirms
+   each group is genuinely no longer a match. **Owner: T591. Closed 2026-09-12.**
+
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
    review reported two things; each is handled on its own:
