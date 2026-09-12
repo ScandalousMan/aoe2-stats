@@ -792,3 +792,53 @@ due 2026-09-25): the download link's press ring is painted outward in `accent-co
 `Callout`'s `surface-raised` fill, where it measures 1.00:1 light and 1.24:1 dark; and an
 `accent`-filled control separates rest, hover and press by fill luminance alone, which FR-037 has
 never been asked about for this control. `product-designer` owns the second.
+
+**`visual-reviewer`, run 2026-09-12 (second pass) — the eighteen components PR #77 touched.** The
+run above predated T587–T592, which changed a component's rendering in fifteen source files and,
+in three more, only what a story captures — `CountryFlag`, `PlayerColourSwatch` and `UploadControl`.
+Eighteen is the union, and the number to check a per-component verdict against. Three reviews, same
+method as the first pass and for the same reason — the committed CI baselines are the authoritative
+rendering, a locally captured one differs from them by around 2% of pixels, and a subagent that
+builds Storybook and drives Chromium here is killed by a 600s watchdog:
+
+| Scope                                                                                                                         | Verdict                           | What was judged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`, `DataExportPanel`                                                                                                   | **PASS** (1/2), **PARTIAL** (1/2) | T588's label underline — thickness on hover, position on press — is legible as a still image and colour-independent wherever a baseline depicts it: `Button`'s at all six axes (`primitives-button--hover-*`, `--active-*`, `variant: 'primary'`), `DataExportPanel`'s **press only**. T586's inward ring with the `accent` band on both sides; T587's three new variant focus baselines; the `Ready*` clips measured at 231x60px, with no remnant of the deleted outward press ring. **`DataExportPanel` is PARTIAL, corrected after the fact**: this row first claimed the hover half for it too, and no baseline depicts that link hovered — there is no `ReadyHover` story. Its hover verdict is owed, T593. |
+| `FavouritesList`, `Footer`, `MatchRow`, `PlayerResultRow`, `SiteHeader`, `SearchBox`, `Menu`, `Table`                         | **PASS** (8/8)                    | each component's press state against hover and rest in both themes, judged against its own spec rather than the register's summary of its neighbours — which is how this pass found that summary covering four of eight (see below). `SearchBox` is in this group by T589's `outline-offset` rename only, rendering-identical, and has no `active` story: `player-search.md` §5 gives its `Input` standard text-input interaction, and T591's press fix landed on `PlayerResultRow`.                                                                                                                                                                                                                             |
+| `CountryFlag`, `PlayerColourSwatch`, `UploadControl`, `Tooltip`, `PrivacyNotice`, `ProfileSummary`, `ThirdPartyObjectionForm` | **PASS** (7/7)                    | that each `visualCaptureClip` encloses the control and that the state is distinguishable inside it by shape rather than colour — the reveal family (hover, keyboard focus, pinned, dismissed-after-escape) tells itself apart by ring and surface presence on `Tooltip`, on `CountryFlag` which consumes it, and on `ProfileSummary`'s embedded `BoardFlag`. Nine story files carry a clip; these seven hold seven of them — `Menu`'s and `DataExportPanel`'s are judged in the rows above.                                                                                                                                                                                                                      |
+| `AccountErasurePanel`                                                                                                         | **NO VERDICT** — see T593         | Reviewed in the third group and initially returned PASS on its `Erased` baseline. **Withdrawn** on `reviewer`'s finding: this component carries no clip and no state story at all, so nothing captured the state T591 changed in it, and a method that judges committed baselines cannot return a verdict on a state no baseline captures. Registered as a gap, owner **T593**.                                                                                                                                                                                                                                                                                                                                  |
+
+**The method's limit, stated because this pass hit it.** Judging committed CI baselines is the right
+call for everything a baseline depicts, and it is silent by construction on anything no baseline
+depicts — which is not a PASS. There are two instances, and the second was
+found only because `reviewer` read this paragraph against the table above it: `AccountErasurePanel`,
+whose changed states have no story at all, and `DataExportPanel`'s own hover, which row 1 above
+claimed as legible at six axes on a frame that does not exist. Both are the shape of register row 5
+(H2), where the first pass's FAIL was also an absent capture rather than a wrong render. A component
+whose changed state has no story is a finding, the verdict to return is no verdict, and a verdict
+already written has to be re-derived against this rule rather than left standing — which is what the
+PARTIAL in row 1 is.
+
+**The register's T591 paragraph generalised four components onto eight, and this pass plus
+`reviewer` corrected it rather than accepting it.** It said every component it fixed now carries "a
+full inset boundary `ring`". Read against the eight sources there are three idioms — a press-only
+inset ring (`FavouritesList`, `MatchRow`, `PlayerResultRow`, `Table`), an outward ring (`Menu`'s
+trigger, `Footer` via `Link` `standalone`, and the `Button` variants the sentence cited as its own
+idiom), and a `border-strong` edge that already existed plus a fill move (`SiteHeader`, `Menu`'s
+items and footer item, where T591 changed the fill and not the boundary). What the eight really share
+is that a press differs from hover by a boundary **and** a fill, never by fill alone.
+`packages/design-system/specs/README.md` now says that instead.
+
+**Production-readiness item 15 is not closed, and neither half is.** The `visual-reviewer` half was
+claimed on 18 PASS verdicts; it is 16 whole verdicts plus one partial, with `AccountErasurePanel`
+owed a story before it can have a verdict at all and `DataExportPanel` owed its hover frame — both
+T593. The second half, the general `reviewer`'s approval, is a REJECT as of
+2026-09-12 — the findings are this section and the register edits above, plus a shallow-clone defect
+in `.github/workflows/baselines.yml` that would have failed the regeneration workflow on any run that
+moved no baseline. Item 15 stays unticked, now with both halves' status stated rather than one
+asserted.
+
+**`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
+stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
+both FAIL-shaped findings were absent captures. That item is earned by a real deviation being caught,
+not by the agent having been run often enough.

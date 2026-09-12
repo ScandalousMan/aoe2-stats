@@ -18,7 +18,7 @@ rides on the story axis rather than being duplicated.
 
 **The two sets do not currently agree.** 25 stories have no baseline — `Tooltip`'s thirteen were
 never committed at all — and 3 baselines name stories that no longer exist. Phase 1 reconciles them
-at the existing axes *before* expanding, because multiplying an unreconciled set by six multiplies
+at the existing axes _before_ expanding, because multiplying an unreconciled set by six multiplies
 the discrepancy, and a set-equality check then keeps them reconciled as its own step in the `visual` job,
 ahead of the diff-scoped run, where diff scoping cannot outrun it (the `web` job never builds the
 Storybook index it reads).
@@ -33,7 +33,7 @@ amending FR-061, so that "verified" has one meaning. The prohibition is enforced
 broken: `scripts/visual/run.mjs` emits the complete axis set for every story it selects and exposes
 no flag that removes one.
 
-This does not weaken constitution VII. The *selection* is still the affected stories — CI stays a
+This does not weaken constitution VII. The _selection_ is still the affected stories — CI stays a
 court — and each selected story is now captured across the axes the review protocol always claimed.
 
 ## Mechanism
@@ -48,6 +48,19 @@ Already proven in this repository, so nothing is invented.
 - **Settle**: unchanged. The suite waits for Storybook's own render phase to reach `completed`,
   `finished` or `errored`, which is what makes a first capture of a story with an interaction
   deterministic. This logic is load-bearing and is not touched.
+- **Frame** (added 2026-09-12, T591): what a capture encloses is not an axis either, and it is not
+  always the whole frame. A story may declare `visualCaptureClip` — `parts` (one or more
+  `selector`/`role`+`name` locators, unioned) and `pad` (a spacing-scale step name, never a px
+  literal) — and `tests/visual/stories.spec.ts` clips that story's six captures to that union
+  inflated by the pad. It changes the frame, never the axis set: a clipped story is still captured
+  in both themes at all three widths, so nothing here weakens "scoping is by story, never by axis"
+  above. It exists because a signal smaller than the comparator's own tolerance is invisible to it
+  on a large frame — a press ring on one row of a full page can move fewer pixels than
+  `playwright.config.ts`'s `maxDiffPixelRatio` allows, which makes the capture prove nothing about
+  the state the story is named for. **The standing rule, and its measurements, live with the
+  package**: `packages/design-system/specs/README.md`'s "Contrast-signal and duplicate-baseline gap
+  register", where `scripts/checks/story-baselines-duplicates.mjs` is what catches a violation. This
+  contract states only that the mechanism exists and what it may not do.
 
 `visual-mobile` is retired — every story is captured at every width now, so a per-story tag saying
 "also capture this one narrow" has nothing left to say. `visual-full-page` **stays**: it names a
@@ -74,16 +87,16 @@ The screenshot is not the only gate, and for the three phases that repaint every
 useful one — a diff carries no information when every pixel is expected to move. These are what
 carry those phases.
 
-| Check                                   | Fails when                                                                             |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `packages/design-system/tokens/build-tokens.test.mjs`          | a colour edit drops a measured pair below its floor, or a theme's key set diverges     |
-| `scripts/checks/token-scale.mjs`        | an arbitrary value, a raw literal or a hand-written `var(--ds-*)` reaches a component  |
-| `scripts/checks/tier-deps.mjs`          | a primitive imports a composite, or anything in the package imports from `apps/`       |
-| the axe scan, inside the story loop     | a story has an accessibility violation not in the dated allowlist                      |
-| the spec completeness check             | a component spec leaves a state in the closed vocabulary unanswered                    |
-| the story/baseline set-equality check   | a story has no baseline, or a baseline names no story                                  |
-| the landmark check                      | a route renders anything other than exactly one main landmark                          |
-| `tsc -b`                                | a shared type drifts between the design system and the application                     |
+| Check                                                 | Fails when                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `packages/design-system/tokens/build-tokens.test.mjs` | a colour edit drops a measured pair below its floor, or a theme's key set diverges    |
+| `scripts/checks/token-scale.mjs`                      | an arbitrary value, a raw literal or a hand-written `var(--ds-*)` reaches a component |
+| `scripts/checks/tier-deps.mjs`                        | a primitive imports a composite, or anything in the package imports from `apps/`      |
+| the axe scan, inside the story loop                   | a story has an accessibility violation not in the dated allowlist                     |
+| the spec completeness check                           | a component spec leaves a state in the closed vocabulary unanswered                   |
+| the story/baseline set-equality check                 | a story has no baseline, or a baseline names no story                                 |
+| the landmark check                                    | a route renders anything other than exactly one main landmark                         |
+| `tsc -b`                                              | a shared type drifts between the design system and the application                    |
 
 `tsc -b` is listed because the application's own unit runner is transpile-only: it is the only thing
 in the workspace that catches a type drift across the two packages.

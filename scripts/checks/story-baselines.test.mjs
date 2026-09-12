@@ -12,6 +12,9 @@ import {
   loadAppRouteBaselineNames,
   findOrphanBaselines,
   findIncompleteStories,
+  findCountDrift,
+  EXPECTED_STORY_COUNT,
+  EXPECTED_BASELINE_COUNT,
   BASELINE_NAME_RE,
 } from './story-baselines.mjs'
 
@@ -131,4 +134,43 @@ test('findIncompleteStories is silent once all six units exist', () => {
     ),
   )
   assert.deepEqual(findIncompleteStories(new Set([id]), baselineSet), [])
+})
+
+// The counts README.md's "The baseline set, as it stands" publishes. Both directions are asserted:
+// a check that only ever passed would not tell anyone whether it can fail.
+test('findCountDrift is silent when both published counts still hold', () => {
+  assert.deepEqual(
+    findCountDrift({
+      storyCount: EXPECTED_STORY_COUNT,
+      baselineCount: EXPECTED_BASELINE_COUNT,
+    }),
+    [],
+  )
+})
+
+test('findCountDrift names a story added without the README section moving with it', () => {
+  const drifted = findCountDrift({
+    storyCount: EXPECTED_STORY_COUNT + 1,
+    baselineCount: EXPECTED_BASELINE_COUNT + 6,
+  })
+  assert.equal(drifted.length, 2)
+  // The literals, not a shape: `expected -> actual` in that order is the whole value of the message,
+  // and a pattern that accepts two numbers would pass with the two swapped.
+  assert.equal(drifted[0], `stories: ${EXPECTED_STORY_COUNT} -> ${EXPECTED_STORY_COUNT + 1}`)
+  assert.equal(
+    drifted[1],
+    `baseline files: ${EXPECTED_BASELINE_COUNT} -> ${EXPECTED_BASELINE_COUNT + 6}`,
+  )
+})
+
+test('findCountDrift catches a baseline count that moved on its own', () => {
+  // The shape set equality cannot see on its own: the story set is unchanged, so every story still
+  // has its six captures, while a file count that no longer matches means an exempt app-route
+  // capture was added or dropped.
+  const drifted = findCountDrift({
+    storyCount: EXPECTED_STORY_COUNT,
+    baselineCount: EXPECTED_BASELINE_COUNT - 2,
+  })
+  assert.equal(drifted.length, 1)
+  assert.match(drifted[0], /^baseline files: /)
 })
