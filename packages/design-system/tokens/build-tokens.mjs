@@ -387,6 +387,11 @@ const WIDTH_STYLE_COMPANIONS = {
 // carries the sign (`-4px` vs `2px`), so the generator needs no direction-specific branch here; the
 // negative literal is what makes the emitted utility's name (`outline-offset-ring-inset`) carry the
 // direction instead of a caller writing Tailwind's own `-` prefix over a positive token.
+//
+// `ring-offset-inset-flush` (T589, DS-11, admitted the same post-hoc way) is a second inward
+// offset on the same `outline-offset` property, distinct from `ring-offset-inset` in magnitude and
+// in the geometric condition it satisfies (border.json's own `$comment` states both) — not a
+// rename or a replacement of it.
 function borderUtilityBlocks() {
   if (!border) return []
   const utilities = [
@@ -394,6 +399,7 @@ function borderUtilityBlocks() {
     ['ring', 'outline-ring', 'outline-width'],
     ['ring-offset', 'outline-offset-ring', 'outline-offset'],
     ['ring-offset-inset', 'outline-offset-ring-inset', 'outline-offset'],
+    ['ring-offset-inset-flush', 'outline-offset-ring-inset-flush', 'outline-offset'],
   ]
   return utilities
     .filter(([key]) => key in border)

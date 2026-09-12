@@ -28,8 +28,10 @@ export interface AccountErasurePanelProps {
   className?: string
 }
 
+// T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this ring
+// shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
 /** FR-037: irreversible account erasure, gated by a real two-step confirmation — a `GET` mints a
  * short-lived token, then a `Dialog` with a required "I understand" checkbox gates the destructive

@@ -260,7 +260,9 @@ function FavouriteRow({
           // `Table`, `MatchRow` and `PlayerResultRow` now all share.
           'border-l-2 border-l-transparent',
           'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
-          'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+          // T589 (DS-11): `outline-offset-ring-inset-flush` (`border.json`, -2px) names the same
+          // inward offset this row shipped as a bare `-outline-offset-2` literal.
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring',
         )}
       >
         <span className="flex flex-wrap items-baseline gap-2">

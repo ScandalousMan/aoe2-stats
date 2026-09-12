@@ -33,8 +33,10 @@ export interface SiteHeaderProps {
 // The wordmark's text is not a prop (§2a) — a caller that could override it could also break it.
 const WORDMARK = 'aoe2-stats'
 
+// T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this ring
+// shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
 /** A destination is real only when both `label` and `href` are non-blank (§5 "error": a call-site
  * defect omits the item rather than rendering a dead link — the same choice `Footer` makes for an

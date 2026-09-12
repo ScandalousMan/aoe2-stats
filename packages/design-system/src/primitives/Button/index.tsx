@@ -117,8 +117,10 @@ const variantClasses: Record<ButtonVariant, string> = {
     'bg-surface text-danger border border-danger hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-danger',
 }
 
+// T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this ring
+// shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
 // `primary` cannot ring with `focus-ring`: the ring must clear 3:1 against both `surface-raised`
 // and `accent` (its own fill) at once, and no single colour can bridge a near-white page and a

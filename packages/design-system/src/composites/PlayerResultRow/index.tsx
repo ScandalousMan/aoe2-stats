@@ -37,8 +37,11 @@ export interface PlayerResultRowProps {
   className?: string
 }
 
+// T589 (DS-11): the inward offset is `outline-offset-ring-inset-flush` (`border.json`'s
+// `ring-offset-inset-flush`, -2px), the same rendered offset this row shipped as a bare
+// `-outline-offset-2` literal.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring'
 
 /** One search result. The whole row is a single link (§2, §9) — everything inside, including
  * `Standing`, is non-interactive text with no hover of its own; the row itself owns the hover fill,

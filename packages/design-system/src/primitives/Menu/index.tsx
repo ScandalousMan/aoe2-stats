@@ -162,7 +162,7 @@ export function Menu({
           // `secondary` variant (`bg-surface`, `border-border-strong`) but had none of its
           // active/reduced-motion behaviour — same category, now the same response.
           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-          'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
           isEmpty
             ? 'cursor-default text-text-disabled'
             : 'text-text-primary hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
@@ -255,7 +255,7 @@ export function Menu({
                     // reduced-motion resting frame, neither of which it had.
                     'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                     'hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
-                    'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                    'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
                   )}
                 >
                   {footerItem.label}
@@ -360,7 +360,9 @@ function MenuItemRow({
           // the label when it turns solid on press. `motion-reduce:duration-0` closes README
           // rule 5's gap, present on every other transition in the system but missing here.
           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-          'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+          // T589 (DS-11): `outline-offset-ring-inset-flush` (`border.json`, -2px) names the same
+          // inward offset this row shipped as a bare `-outline-offset-2` literal.
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring',
           item.disabled || item.loading
             ? 'cursor-default text-text-disabled'
             : 'text-text-primary hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',

@@ -100,8 +100,12 @@ export interface MatchRowProps {
   className?: string
 }
 
+// T589 (DS-11): the inward offset is `outline-offset-ring-inset-flush` (`border.json`'s
+// `ring-offset-inset-flush`, -2px), not the bare `-outline-offset-2` literal this row shipped
+// with — same rendered offset, now a named token rather than a value invisible to
+// `scripts/checks/token-scale.mjs`.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring'
 
 // match-history.md §2a: "Win"/"Loss" assert a fact this service has; "Unknown" (`text-secondary`,
 // never `success`/`danger`) is the one state that does not, and reads as a gap by wording alone —

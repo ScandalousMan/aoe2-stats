@@ -23,8 +23,10 @@ export const affiliationNote =
 // `PrivacyNotice` already give every inline link in the product — footer.md §5 already documents a
 // focus ring and a `duration.fast`/`easing.standard` transition for these two links, and neither
 // was actually built. Same category, same behaviour.
+// T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this ring
+// shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
 // Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
 // signal, so a press was not distinguishable from a hover in a still image.

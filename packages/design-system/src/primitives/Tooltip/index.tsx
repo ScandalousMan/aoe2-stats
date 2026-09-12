@@ -288,7 +288,9 @@ export function Tooltip({
           // conditional and not a pseudo-class. tooltip.md §4 active / §10.
           'border-2',
           pinned ? 'border-border-strong' : 'border-transparent',
-          'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+          // T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this
+          // ring shipped as a bare `outline-offset-2` literal — same rendered offset.
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
         )}
         style={{ minWidth: iconTokens.xl, minHeight: iconTokens.xl }}
       >

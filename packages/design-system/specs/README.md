@@ -609,8 +609,8 @@ reads.
 
 ## Token gap register
 
-**DS-11 open as of 2026-09-12** (adversarial review finding S4); the six gaps this feature already
-closed, below, remain closed. This section holds open token decisions when they
+**DS-11 closed 2026-09-12 (T589)**, found the same day by adversarial review finding S4; the six
+gaps this feature already closed, below, remain closed. This section holds open token decisions when they
 exist — what is missing, what a component does until it exists, and who has to act — and an
 implementer who finds themselves needing a value not covered by the standing rules above or the
 utility vocabulary in `contracts/token-families.md` stops and asks `product-designer`; they do not
@@ -823,29 +823,36 @@ actually paints — is already measured in the table above (research D9). This r
 here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
 by stripping its alpha and breaking the scrim it draws.
 
-**Open — DS-11, found 2026-09-12 (adversarial review finding S4), fix by 2026-09-26.**
-`border.json`'s `ring-offset` names only the positive 2px focus-ring offset; the negative form a
-genuinely inward, non-`ring-offset-inset` ring needs has no member of its own. Four call sites still
-write a bare, untokenised `-outline-offset-2` — `MatchRow`
-(`src/composites/MatchRow/index.tsx:104`), `FavouritesList`
-(`src/composites/FavouritesList/index.tsx:263`), `PlayerResultRow`
-(`src/composites/PlayerResultRow/index.tsx:41`) and one of `Menu`'s three focus rings
-(`src/primitives/Menu/index.tsx:363`) — the same class of breach `-outline-offset-4` was in before
-T586 admitted `ring-offset-inset` to name it. Nothing catches it today:
-`scripts/checks/token-scale.mjs` (~lines 197-202) is structurally blind to the whole
-`outline-offset-N` Tailwind namespace, the identical blindness that let `-outline-offset-4` ship
-unnoticed the first time. `border.json`'s own `$comment` now says so in place, rather than the
-family's amended language implying it already names everything that ships (adversarial review
-finding S4, corrected in the same pass this row was opened). Until closed, this row is the
-authoritative account of the gap; a component spec that mentions these four rings should point here
-rather than restate the list. **Noted 2026-09-12 (T588), not fixed here:** the checker's
-blindness is not limited to `outline-offset-N` — `Button`'s and `DataExportPanel`'s new
-`decoration-2`/`underline-offset-2`/`underline-offset-4` classes (Contrast-signal gap register, row
-6/H3, below) sit in the same untokenised, bare-Tailwind-utility shape, for the same reason
-`Link`'s own decoration/underline-offset classes already do. Left as a note against this row rather
-than a new id or a fix: T589's own scope is `outline-offset`, and widening the checker to the
-decoration-thickness/offset namespace as well is a decision for whoever closes T589, not something
-this task invents in passing. **Owner: T589 (to be opened).**
+**Closed — DS-11 (T589, 2026-09-12).** `border.json`'s `ring-offset` named only the positive 2px
+focus-ring offset; the negative form a genuinely inward, non-`ring-offset-inset` ring needs had no
+member of its own. Four call sites wrote a bare, untokenised `-outline-offset-2` — `MatchRow`
+(`src/composites/MatchRow/index.tsx`), `FavouritesList`
+(`src/composites/FavouritesList/index.tsx`), `PlayerResultRow`
+(`src/composites/PlayerResultRow/index.tsx`) and one of `Menu`'s three focus rings
+(`src/primitives/Menu/index.tsx`) — the same class of breach `-outline-offset-4` was in before T586
+admitted `ring-offset-inset` to name it. `border.json` now admits `ring-offset-inset-flush` (-2px,
+GOVERNANCE.md's token admission Record), a second, distinct inward offset — magnitude equal to,
+not exceeding, the ring's own width, because this ring is the ordinary `focus-ring` role against a
+row's or menu item's own surface, never `accent-contrast` against an `accent` fill, so
+`ring-offset-inset`'s "strictly exceed the width" condition does not apply here. All four call
+sites now write `outline-offset-ring-inset-flush`, guarded by the new
+`tokens/focus-ring-inset-flush.test.mjs` (mirroring `accent-contrast-ring.test.mjs`'s whole-tree
+scan). The other half of this row — `scripts/checks/token-scale.mjs` being structurally blind to
+the whole `outline-offset-N` Tailwind namespace — is also closed: the checker now fails a bare
+`outline-offset-<N>` of either sign anywhere in a scanned string. Closing the namespace, not only
+the four sites this row named, surfaced ten further call sites already carrying the bare _positive_
+`outline-offset-2` (`Footer`, `SiteHeader`, `SearchBox`, `ThirdPartyObjectionForm`, `PrivacyNotice`,
+`AccountErasurePanel`, `Tooltip`, `Button`'s outward variant, and two of `Menu`'s three rings) that
+would otherwise have failed the moment the check learned the shape; all ten now write the
+already-admitted `outline-offset-ring` (T514) instead, a mechanical, render-identical rename with
+no new token needed. **Left open, not this row's scope (T588's 2026-09-12 note, restated so it is
+not lost with the row it was attached to):** the checker's blindness is not limited to
+`outline-offset-N` — `Button`'s and `DataExportPanel`'s `decoration-2`/`underline-offset-2`/
+`underline-offset-4` classes (Contrast-signal gap register, row 6/H3, below) sit in the same
+untokenised, bare-Tailwind-utility shape, for the same reason `Link`'s own decoration/
+underline-offset classes already do. T589's own scope was `outline-offset`; widening the checker to
+the decoration-thickness/offset namespace as well is a decision for whoever opens the row that
+covers it, not something this closure invents in passing.
 
 ## Storybook documentation gap register
 
@@ -1446,12 +1453,13 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    and `DataExportPanel.test.tsx` assert the classes; `shared-primitives.md` and
    `privacy-data-rights.md` name the mechanism). **Not caught by `scripts/checks/token-scale.mjs`:**
    `decoration-2`, `underline-offset-2` and `underline-offset-4` are bare Tailwind utilities in the
-   decoration-thickness/offset namespace, the same kind of namespace the checker is structurally
-   blind to that DS-11 (Token gap register, above) already names for `outline-offset` — reached the
-   same way `Link`'s own `decoration-1`/`decoration-2`/`underline-offset-4` are (`Link/index.tsx`'s
-   own comment): the nearest bare utility in the closed set, because no `border.json` token names a
-   decoration thickness or an underline offset. Left as a note here rather than folded into DS-11's
-   own fix, which is T589's scope, not this row's. **Owner: T588. Closed 2026-09-12.**
+   decoration-thickness/offset namespace, the same kind of namespace the checker was structurally
+   blind to that DS-11 (Token gap register, above, closed by T589 for `outline-offset` only) named —
+   reached the same way `Link`'s own `decoration-1`/`decoration-2`/`underline-offset-4` are
+   (`Link/index.tsx`'s own comment): the nearest bare utility in the closed set, because no
+   `border.json` token names a decoration thickness or an underline offset. Left as a note here
+   rather than folded into DS-11's own fix, which was T589's scope, not this row's. **Owner: T588.
+   Closed 2026-09-12.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
