@@ -69,10 +69,16 @@ export const SignedOut: Story = {
 
 // visual-equivalence: composite-siteheader--signed-in: args are identical
 // ({ items, currentPath: '/dashboard' }) and every story is captured at 375/768/1280 as a matter of
-// course (T504), so this story's own "375px" framing adds a Storybook-reader affordance, not a
-// captured fact distinct from SignedIn.
+// course (T504), so the `reviewWidthNarrow` pin below exists only for the Storybook reader browsing
+// this story directly — it changes nothing about the six captured baselines, which the visual suite's
+// own width axis still overrides (`scripts/visual/run.mjs`'s `WIDTHS`, `MatchRow.stories.tsx`'s
+// `ListCardsBelowXl` explains the same override), so they stay identical to SignedIn's.
 export const SmallViewport: Story = {
   name: '375px — Brand alone on the first row, items wrap beneath it (§8)',
+  // Pinned to the one custom viewport `.storybook/preview.tsx` declares at `REVIEW_WIDTHS[0]` (375,
+  // §8's own width) — without it, a reader opening this story sees whatever width the toolbar last
+  // left it at, not the 375 arrangement the name asserts.
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { items, currentPath: '/dashboard' },
 }
 
@@ -88,6 +94,9 @@ const longLabelItems: SiteHeaderNavItem[] = [
 
 export const LongLabels: Story = {
   name: '375px — the longest plausible item set, wrapping onto further rows, nothing truncated',
+  // Same defect and same fix as `SmallViewport` above: the name asserts 375 but nothing pinned the
+  // story there for a Storybook reader. Cosmetic only — see `SmallViewport`'s own comment.
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { items: longLabelItems, currentPath: '/dashboard' },
 }
 

@@ -276,6 +276,19 @@ jobs:
       # suite (real temp-dir fixtures, not the live tree) runs immediately after.
       - run: node scripts/checks/story-baselines-duplicates.mjs
       - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
+      # T580 follow-up (adversarial review of #74): `tests/visual/focus-ring.spec.ts` imports
+      # `packages/design-system/tokens/contrast.mjs`'s `contrastRatioRgb` — an `.mjs` module loaded
+      # from a spec that Playwright transpiles to CommonJS, the exact shape that broke CI in
+      # 0a400c4e, where `scripts/visual/a11y-scan.mjs` had to become `.cjs` for the same reason.
+      # `.cjs` is not available here: `packages/design-system/.storybook/foundations/Colour.stories.tsx`
+      # also imports `contrast.mjs`, and Vite will not serve a local CommonJS file to it. The
+      # `visual` job below only loads this spec file when `scripts/visual/run.mjs --changed` selects
+      # an affected story, so a Node or Playwright bump can land green on the very pull request that
+      # bumps it and break only the nightly run instead. `--list` fully imports the spec module
+      # (the same thing that made this import valid evidence before) without launching a browser or
+      # needing a Storybook build, so this step catches that regression on every pull request that
+      # reaches this job — do not remove it as redundant with `visual`'s own run of the spec.
+      - run: pnpm exec playwright test --list tests/visual/focus-ring.spec.ts
 
   visual:
     name: Visual regression — affected stories and the built application

@@ -476,10 +476,11 @@ fail as an ink, which would break every `text-accent` call site and change what 
   `accent` fill — not zero pixels of it — separates the ring from the control's edge on every side. An
   offset equal to the width (`-outline-offset-2` on a 2px-wide ring) paints exactly the outermost two
   pixels of the border box: flush with the edge, its outer side touching the page rather than the
-  fill. `Button` `primary` and `DataExportPanel`'s download link ring at `-outline-offset-4` on
-  `outline-2` to satisfy this — a different offset from the four row components named above, which
-  clear the page surfaces they ring on and so are unaffected by this condition and keep
-  `-outline-offset-2`; the shape ("inward") is the same, the magnitude is not.
+  fill. `Button` `primary` and `DataExportPanel`'s download link ring at `outline-offset-ring-inset`
+  (`border.json`'s `ring-offset-inset`, `-4px`) on `outline-2` to satisfy this — a different offset
+  from the four row components named above, which clear the page surfaces they ring on and so are
+  unaffected by this condition and keep `-outline-offset-2`; the shape ("inward") is the same, the
+  magnitude is not.
 - DS-10 then ceases to exist because the pair ceases to be drawn. That is exactly the mechanism FR-005
   asks for: a role declares its surfaces, and `accent` is not one of `focus-ring`'s.
 
@@ -488,10 +489,10 @@ implementer applies the hexes and leaves `Button`'s `primary` and `DataExportPan
 ringing with `outline-focus-ring outline-offset-2`, DS-10 survives the re-derivation. Two class
 strings change:
 
-| File                                                           | From                                                                   | To                                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `packages/design-system/src/primitives/Button/index.tsx`       | `primary` shares the shared `outline-focus-ring outline-offset-2` ring | `primary` overrides to `outline-accent-contrast -outline-offset-4` |
-| `packages/design-system/src/screens/DataExportPanel/index.tsx` | `focus-visible:outline-focus-ring` + `outline-offset-2`                | `focus-visible:outline-accent-contrast` + `-outline-offset-4`      |
+| File                                                           | From                                                                   | To                                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `packages/design-system/src/primitives/Button/index.tsx`       | `primary` shares the shared `outline-focus-ring outline-offset-2` ring | `primary` overrides to `outline-accent-contrast outline-offset-ring-inset` |
+| `packages/design-system/src/screens/DataExportPanel/index.tsx` | `focus-visible:outline-focus-ring` + `outline-offset-2`                | `focus-visible:outline-accent-contrast` + `outline-offset-ring-inset`      |
 
 **2026-09-11 (T586):** the first implementation of the row above used `-outline-offset-2` — an offset
 equal to the ring's `outline-2` width, which paints exactly the outermost two pixels of the border
@@ -499,8 +500,14 @@ box and puts the ring flush with the control's edge rather than inside it. Measu
 `tokens/contrast.mjs`: `accent-contrast` against the four page surfaces (the ring's outer side, at
 that offset) is 1.00–1.42:1 in both themes — light `accent-contrast` equals light `surface-raised`'s
 hex, dark `accent-contrast` equals dark `background`'s hex — the same invisible-on-the-page defect
-this section exists to prevent. Corrected to `-outline-offset-4`, stated above and guarded by
-`tokens/accent-contrast-ring.test.mjs`.
+this section exists to prevent. Corrected to the bare literal `-outline-offset-4`, stated above and
+guarded by `tokens/accent-contrast-ring.test.mjs`.
+
+**2026-09-12:** that bare `-outline-offset-4` literal itself was the next defect — a value with no
+token behind it, invisible to `scripts/checks/token-scale.mjs`'s bracket/px-rem-ms scan because it
+carries no unit suffix. Admitted as `ring-offset-inset` in `border.json` (GOVERNANCE.md's token
+admission Record) and consumed as the named utility `outline-offset-ring-inset`, above and at both
+call sites — the rendered `outline-offset: -4px` is unchanged; only the class name is.
 
 **The other rings are unaffected.** The package's non-test source carries **fourteen**
 `outline-focus-ring` declarations. Twelve are untouched. The thirteenth is `Button`'s shared ring,

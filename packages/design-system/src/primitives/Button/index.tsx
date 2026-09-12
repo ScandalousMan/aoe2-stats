@@ -111,16 +111,18 @@ const focusRing =
 //
 // T586: `-outline-offset-2` on a 2px-wide ring paints exactly the outermost two pixels of the
 // border box — flush with the edge, so the ring's outer side sat on the page (1.00-1.42:1, the
-// same invisible-on-the-page defect §5 exists to prevent, in a new direction). `-outline-offset-4`
-// moves the ring's inner edge 4px in, leaving a 2px band of `accent` fill (offset magnitude minus
-// the 2px width) between the ring and the edge on every side, so both of its adjacent colours
-// really are the fill. Checked against `md`, this variant's smallest rendered size (`h-10 px-4
-// text-sm`): the ring's inner edge sits 4px inside the border box, far short of the 16px
-// horizontal padding around the label, so it never comes near the text. Guarded by
-// tokens/accent-contrast-ring.test.mjs, since no contrast test can see this — the pair it draws
-// clears 3:1 regardless of where the ring sits.
+// same invisible-on-the-page defect §5 exists to prevent, in a new direction). The inward
+// `outline-offset-ring-inset` (`-4px`, `border.json`'s `ring-offset-inset`, admitted in
+// GOVERNANCE.md's token admission Record after this offset shipped as a bare `-outline-offset-4`
+// literal — the same rendered value, now named) moves the ring's inner edge 4px in, leaving a 2px
+// band of `accent` fill (offset magnitude minus the 2px width) between the ring and the edge on
+// every side, so both of its adjacent colours really are the fill. Checked against `md`, this
+// variant's smallest rendered size (`h-10 px-4 text-sm`): the ring's inner edge sits 4px inside
+// the border box, far short of the 16px horizontal padding around the label, so it never comes
+// near the text. Guarded by tokens/accent-contrast-ring.test.mjs, since no contrast test can see
+// this — the pair it draws clears 3:1 regardless of where the ring sits.
 const primaryFocusRing =
-  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-accent-contrast'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast'
 
 const base = cx(
   'inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold',

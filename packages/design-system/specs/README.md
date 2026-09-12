@@ -1180,18 +1180,33 @@ on its own, not a defect this remediation's scope covers.
        for "no surface anywhere in the frame" after a blur dismiss, which the untouched resting frame
        already satisfies; `DataExportPanel` `Empty`/`Idle`: the story's own name already says
        "identical rendering to Idle" (privacy-data-rights.md §5 "empty").
-   - **Suspect (1 group, tracked as debt, not laundered as deliberate):**
-     `MapThumbnail`'s `Loading` and `PlayerAvatar`'s `Loading` render byte-identical, but not for a
+   - **Suspect (1 group, tracked as debt, then fixed):**
+     `MapThumbnail`'s `Loading` and `PlayerAvatar`'s `Loading` rendered byte-identical, but not for a
      reason either story's name claims. `MapThumbnail`'s own render pairs a block `Skeleton` with a
      `Skeleton variant="text" className="w-24"` meant to depict the map name loading beside it, but
      `Skeleton`'s `text` branch (`packages/design-system/src/primitives/Skeleton/index.tsx`) never
-     applies the caller's `className` to size the line — confirmed independently reproducing on
+     applied the caller's `className` to size the line — confirmed independently reproducing on
      `CivilisationIcon`'s own `Loading` story, which pairs a `Skeleton` the same way — so the second
-     skeleton renders at an indeterminate width and is invisible in the captured frame, leaving only
-     the one block skeleton `PlayerAvatar`'s `Loading` also shows (which never had a second skeleton
-     by design — its own render has no accompanying text). Recorded in
-     `scripts/visual/story-baseline-duplicates-debt.json`: found 2026-09-11, **fix by 2026-09-25**.
-     Not fixed by this task (T584's own scope is the check and the register, not this defect).
+     skeleton rendered at an indeterminate width and was invisible in the captured frame, leaving
+     only the one block skeleton `PlayerAvatar`'s `Loading` also shows (which never had a second
+     skeleton by design — its own render has no accompanying text). Recorded, at the time this row
+     closed, in `scripts/visual/story-baseline-duplicates-debt.json`: found 2026-09-11, fix by
+     2026-09-25 — not fixed by T584 itself, whose own scope was the check and the register, not this
+     defect. **Fixed 2026-09-12**: the `text` branch now carries the caller's `className` on the
+     flex-column wrapper it returns, not on each line — the per-line widths (`textLineWidths`) vary
+     60–90% of that footprint on purpose (the `lines` doc comment above), so applying `className` to
+     every line instead would have flattened that variance rather than sizing the stack, and the
+     `block` branch, which already applied it, was left untouched. `Skeleton.test.tsx` gained "carries
+     the caller className on the text variant, sizing its footprint" (failed against the pre-fix tree:
+     `Received: flex flex-col gap-2`, no `w-24`) and its contrast, "carries the caller className on
+     the block variant (contrast: already worked)", which already passed. The debt entry itself
+     stays in `scripts/visual/story-baseline-duplicates-debt.json` until this package's baselines are
+     next recaptured from CI: the check reads the PNGs on disk, and `composite-mapthumbnail--loading`
+     / `composite-civilisationicon--loading` are still the old, indeterminate-width captures as of
+     this commit, so the group is still a full six-of-six match and the entry is not yet stale —
+     removing it here would fail the check's "undocumented full match" case against baselines this
+     commit cannot move. A follow-up commit regenerates those baselines from CI and removes the debt
+     entry in the same commit, once the group is genuinely no longer a match.
 
    **Owner: T584. Closed 2026-09-11.**
 

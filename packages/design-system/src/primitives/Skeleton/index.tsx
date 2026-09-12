@@ -32,8 +32,12 @@ export function Skeleton({ variant = 'block', lines = 1, className }: SkeletonPr
   if (!visible || lines <= 0) return null
 
   if (variant === 'text') {
+    // The caller's className sizes the stack's footprint (typically a width), not each line: the
+    // per-line widths below vary 60–90% *of that footprint* on purpose (see the `lines` doc
+    // comment above), so applying className to every line instead would flatten that variance and
+    // erase the caller's intent in the same motion.
     return (
-      <div aria-hidden="true" className="flex flex-col gap-2">
+      <div aria-hidden="true" className={cx('flex flex-col gap-2', className)}>
         {Array.from({ length: lines }, (_, index) => (
           <div
             key={index}
