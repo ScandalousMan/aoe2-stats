@@ -25,6 +25,17 @@
 //
 // Width and inward-offset magnitude are read from `border.json` itself, not hard-coded here, so
 // this guard cannot silently drift from the token it is checking against.
+//
+// What neither guard above sees, registered rather than silently assumed complete (adversarial
+// review finding S8, 2026-09-12; packages/design-system/specs/README.md's Accessibility mechanism
+// gap register carries the open row, owner T590 (to be opened)): a state-variant fill override —
+// `hover:bg-*` or `focus-visible:bg-*` changing the fill in the very state the ring paints, which
+// neither `checkRingGeometry` nor `checkFillAssumptionFindings` inspects; a background image or
+// gradient painted over `bg-accent` instead of a solid override, which `BG_CLIP_RE` and
+// `PAINTED_BORDER_COLOR_RE` do not recognise as changing the fill; and an `apps/web` caller passing
+// `bg-clip-padding` (or any other fill-defeating class) through `Button`'s merged `className` prop
+// — this scan is lexical and reads only `packages/design-system/src`, never a call site outside
+// this package.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

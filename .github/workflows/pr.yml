@@ -62,6 +62,27 @@ jobs:
               - 'scripts/checks/*.mjs'
               - 'scripts/visual/**'
               - 'tests/visual/**'
+              # Adversarial review finding S6, 2026-09-12: this workflow file defines the `web` job's
+              # own steps — among them the `pnpm exec playwright test --list
+              # tests/visual/focus-ring.spec.ts` step above, whose comment claims it "can land green
+              # on the very pull request that bumps it" a Node or Playwright version. `node-version:`
+              # for that job lives here, in this file, not under any path already listed above, so a
+              # pull request that bumped it — or changed any other part of what `web`/`visual` run —
+              # used to change neither job's `if` output at all. Same reasoning as the
+              # `scripts/checks/*.mjs` entry above: an edit that changes what a job does must be able
+              # to trigger that job, or its own correctness is verified by nothing.
+              #
+              # Named narrowly (this one file, not `.github/**`) rather than added to every filter
+              # below, so an edit to `migrations.yml`-equivalent GitHub configuration this feature has
+              # none of, or to a hypothetical future workflow file, does not also pull in `web` and
+              # `visual`. `paths-filter` still matches at file granularity, not job granularity,
+              # inside this one file: an edit that touches only the `python`, `config`, `migrations`,
+              # `asset-packs`, `specs` or `secrets` job below (none of which reads `node-version` or
+              # runs a Node toolchain) now also triggers `web` and `visual`, which is a real,
+              # accepted cost — there is no filter granularity finer than "this file changed" to avoid
+              # it, and paying it beats the alternative this row fixes: those two jobs never running
+              # against changes to the very file that defines them.
+              - '.github/workflows/pr.yml'
             design:
               - 'packages/design-system/**'
             migrations:

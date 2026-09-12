@@ -10,8 +10,12 @@ export interface SkeletonProps {
   /** `text` only: number of lines. Widths vary 60–90% per line so a stack of lines does not read
    * as a single grey rectangle. */
   lines?: number
-  /** Sizes the footprint with token-backed Tailwind width/height utilities (`w-16`, `h-10`, …),
-   * supplied by the caller so the skeleton matches the content it stands in for. */
+  /** Sizes the footprint with token-backed Tailwind width utilities (`w-16`, …), supplied by the
+   * caller so the skeleton matches the content it stands in for. On `block`/`number` this also
+   * takes a height utility (`h-10`, …): the whole element is the footprint. On `text` it does not:
+   * each line's height is the fixed `h-4` below, set by line count rather than by the caller, so a
+   * height utility here would size the wrapper without changing what any line renders — pass width
+   * only for `text`. */
   className?: string
 }
 
@@ -32,10 +36,20 @@ export function Skeleton({ variant = 'block', lines = 1, className }: SkeletonPr
   if (!visible || lines <= 0) return null
 
   if (variant === 'text') {
-    // The caller's className sizes the stack's footprint (typically a width), not each line: the
-    // per-line widths below vary 60–90% *of that footprint* on purpose (see the `lines` doc
-    // comment above), so applying className to every line instead would flatten that variance and
-    // erase the caller's intent in the same motion.
+    // The caller's className sizes the stack's footprint (a width), not each line, applied here on
+    // the wrapper rather than per line. Every `lines={n}` call site in this package today passes
+    // `n === 1` when it passes a className at all (`SignInScreen`'s three-line skeleton passes
+    // none), so no shipped caller distinguishes the two placements — with one line, sizing the
+    // wrapper or the line is the same rectangle. The reason for choosing the wrapper is structural,
+    // not evidenced by a call site: `textLineWidths` are Tailwind fraction utilities
+    // (`w-11/12`, …), which resolve as a percentage of the nearest sized ancestor — putting the
+    // caller's fixed width on the wrapper is what makes that percentage the caller's footprint
+    // rather than the line's own, unrelated box. Moving className onto each line would make its
+    // fixed width win outright on every line, collapsing the 60–90% variance the `lines` doc
+    // comment above describes. If a multi-line, class-sized caller is ever added, this is the
+    // question that decides the placement, not a preference: whether `textLineWidths`' entries stay
+    // fractional (wrapper) or become their own fixed widths (per line, and the variance would need
+    // to be re-derived some other way).
     return (
       <div aria-hidden="true" className={cx('flex flex-col gap-2', className)}>
         {Array.from({ length: lines }, (_, index) => (

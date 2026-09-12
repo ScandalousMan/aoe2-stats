@@ -49,9 +49,20 @@
 // file: if a story's baseline drifted enough that swapping it for another story's would make the
 // *actual visual suite* report a difference, the two are not a duplicate and never were; below that
 // ratio, a reader could not fail this suite by mixing the two up, which is exactly the "this baseline
-// verifies nothing" property a register row exists to catch. Measured against the real tree, the
-// ratio cleanly separates the two cases above: every noise-only pair moved by at most 0.065% of a
-// unit's pixels; the one genuine fix moved 1.1-4.0% — comfortably on either side of 1%.
+// verifies nothing" property a register row exists to catch. The two cases the 2026-09-12
+// regeneration itself produced sit far apart (every noise-only pair moved by at most 0.065% of a
+// unit's pixels; the one genuine fix moved 1.1-4.0%) — but that gap is a property of those two
+// specific events, not a property of the threshold in general. A second remediation (2026-09-12,
+// this same file) fixed a separate defect (see `isSizeDimensionCandidate` below) that had kept this
+// check from ever decoding most of the tree, and decoding the rest shows a continuum straddling 1%,
+// not two well-separated clusters: `Menu` `FocusVisible`/`ProfileSwitcher` (a documented full match,
+// 0.99%) sits closer to `ThirdPartyObjectionForm` `Failed`/`RateLimited` (not a match, 1.02%) and
+// `Footer` `BothLinks`/`FocusVisible` (not a match, 1.04%) than either sits to the noise-only or
+// clearly-distinct pairs each one's own regeneration produced. A reader who sees this check fail or
+// pass with a ratio near 1% cannot infer "barely over, so probably still noise" or "barely under, so
+// surely the same rendering" from the ratio's distance to the line alone — `DUPLICATE_MAX_DIFF_RATIO`
+// is this suite's own operating decision (the same one `playwright.config.ts` makes for a single
+// capture's `toHaveScreenshot`), not a boundary the real tree's own pixel deltas happen to avoid.
 //
 // Exact hash equality (`md5OfFile`, unchanged) is still the fast path — most of a story's six units
 // are still byte-for-byte identical even when noise touches one or two, and no decode is needed to
@@ -60,9 +71,27 @@
 // literally count differing pixels, and neither resolves from this file's own location in any case:
 // `@playwright/test` bundles both internally but exports neither, and pnpm's strict `node_modules`
 // means a transitive dependency of a sibling package is not resolvable here regardless, T579's own
-// lesson). Full pairwise decoding of the whole tree is never attempted: a pair sharing zero of its
-// six units by hash is not a candidate this check spends a decode on (see `isPixelDiffCandidate`
-// below for why that restriction loses nothing found in the real tree).
+// lesson).
+//
+// Full pairwise decoding of the whole tree (~540 stories, ~145,530 pairs) is still never attempted —
+// but an earlier version of this file restricted a decode to a pair already sharing at least one
+// byte-identical unit, on the claim ("2026-09-12, this task", now corrected) that a pair sharing none
+// never turned out to be a real match in the real tree. That claim was false: a rest/hover/press/
+// focus pair typically shares *zero* of its six units by hash (every one of the six captured frames
+// carries the state change) and can still be indistinguishable *to this suite* at every one of them
+// — `PrivacyNotice` `Active`/`Hover` (0 of 6 hashes equal, every unit 0.23-0.43% apart) is exactly
+// the shape the old restriction was structurally blind to, and this check now reports it as a debt
+// entry rather than silently missing it. `isSizeDimensionCandidate` below replaces that restriction:
+// it costs nothing per pair beyond a `stat` and the PNG's own 24-byte header (already on disk, no
+// decode), and does not require any unit to already match by hash — only that every one of the six
+// units has the same pixel dimensions and a compressed file size within `SIZE_PROXIMITY_TOLERANCE`
+// of its counterpart. It is a heuristic, not a proof (a pair whose compressed size happens to move
+// more than the tolerance despite near-identical pixels — text-content-driven DEFLATE differences,
+// invisible at the `stat` level — is never offered as a decode candidate), but `computeFullMatchGroups`
+// below still verifies every reported group's own edges directly once candidates are unioned, so a
+// direct edge the size filter missed is still caught the moment two of its members are joined through
+// a third the filter did catch, and a group where that never happens fails loudly (see the
+// "transitivity violation" bullet below) rather than being silently reported as valid.
 //
 // What fails, precisely:
 //   - a full-set match with no marker connecting all its members and no debt entry naming its exact
@@ -79,6 +108,10 @@
 //     a failure, not a silent zero.
 //   - a baseline file whose derived story id names no story this check's own source scan found (an
 //     "unmapped baseline") — a moved or renamed component whose old baselines were never cleaned up.
+//   - a promoted full-match group whose own members are not all pairwise indistinguishable
+//     ("transitivity violation" — the ratio tolerance is not itself transitive: two valid pairwise
+//     promotions can union a third pair whose own direct edge exceeds the threshold, so every group
+//     `computeFullMatchGroups` reports is verified pairwise, not trusted from connectivity alone).
 //
 // Story-id derivation needs no Storybook build (`story-baselines.mjs`'s own check does, which is why
 // this lives beside it rather than inside its build-dependent job): every `*.stories.tsx` file
@@ -98,7 +131,15 @@
 //         marker and debt entry stays true of the current tree, and at least one story was found —
 //         1 otherwise, naming the exact defect.
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  statSync,
+} from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PNG } from 'pngjs'
@@ -132,13 +173,60 @@ const MARKER_RE = /^\s*\/\/\s*visual-equivalence:\s*([a-z0-9][a-z0-9-]*)\s*:\s*(
 // exempted entirely via `loadAppRouteBaselineNames`).
 export const DUPLICATE_MAX_DIFF_RATIO = 0.01
 
-// A partial match (see `findPartialMatches`) is only worth a pixel decode when at least one of its
-// six units is already byte-identical. Two genuinely unrelated stories overwhelmingly share zero
-// exact units — the real tree has none — so restricting the (expensive) pixel comparison to pairs
-// `findPartialMatches` already flagged keeps this check from decoding anywhere near its ~3262
-// baselines: only the handful of units a handful of near-duplicate candidates actually disagree on.
-function isPixelDiffCandidate(matches) {
-  return matches >= 1 && matches <= 5
+// The size-proximity tolerance `isSizeDimensionCandidate` gates a decode on — see this file's header
+// for the full story of why a cheap size/dimension filter replaces the old matches-count one.
+// Measured against the real tree: every rest/hover/press/focus duplicate this fix actually found
+// sits at or under 2.66% (`UploadControl` `FocusVisible`/`Idle`, the largest of them), so 0.03 leaves
+// headroom above that without widening the candidate set enough to slow the check down meaningfully
+// (208 candidate pairs on this run, of 145,530 total — see `runCheck`'s own printed line for the
+// current number).
+export const SIZE_PROXIMITY_TOLERANCE = 0.03
+
+// One PNG's width and height, read from its own IHDR chunk (bytes 16-23) without decoding a single
+// pixel — the signature (8 bytes) plus the IHDR chunk's length and type (8 bytes) precede it, so 24
+// bytes read from the front of the file is always enough. Used only for the cheap candidate filter
+// below; `decodePng` (via `pngjs`) is still what actually inflates a unit's pixels.
+export function readPngDimensions(filePath) {
+  const fd = openSync(filePath, 'r')
+  try {
+    const header = Buffer.alloc(24)
+    readSync(fd, header, 0, 24, 0)
+    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) }
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// Every {theme,width} unit's on-disk byte size and pixel dimensions for one story, in the same fixed
+// order `storyUnitHashes` uses — or `null` for any unit whose file is missing, the same completeness
+// rule `storyUnitHashes` follows. Costs one `stat` and a 24-byte read per unit, never a full decode.
+export function storyUnitSizeDims(storyId, screenshotsDir) {
+  const units = []
+  for (const theme of THEMES) {
+    for (const width of WIDTHS) {
+      const filePath = path.join(screenshotsDir, `${storyId}-${theme}-${width}.png`)
+      if (!existsSync(filePath)) return null
+      const { size } = statSync(filePath)
+      units.push({ size, ...readPngDimensions(filePath) })
+    }
+  }
+  return units
+}
+
+// The cheap, honest replacement for the old matches-count restriction (see this file's header for
+// why that one was wrong): a pair is worth a pixel decode when every one of their six units shares
+// the same pixel dimensions and a compressed file size within `tolerance` of its counterpart's — no
+// unit needs to already hash-equal, so a pair sharing zero of its six units by hash (every
+// rest/hover/press/focus pair in the tree) is no longer structurally excluded.
+export function isSizeDimensionCandidate(unitsA, unitsB, tolerance = SIZE_PROXIMITY_TOLERANCE) {
+  for (let unit = 0; unit < unitsA.length; unit += 1) {
+    const a = unitsA[unit]
+    const b = unitsB[unit]
+    if (a.width !== b.width || a.height !== b.height) return false
+    const denom = Math.max(a.size, b.size)
+    if (denom > 0 && Math.abs(a.size - b.size) / denom > tolerance) return false
+  }
+  return true
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -470,15 +558,21 @@ export function storiesAreIndistinguishable(
 
 // The tolerant full-match groups this check actually enforces: every exact byte-identical group
 // `findFullMatchGroups` already found (transitively valid — byte equality is an equivalence
-// relation), plus every partial-match candidate (`isPixelDiffCandidate`) promoted by a real,
-// independent pixel decode of just its differing units. `findPartialMatches` already enumerates
-// every pair in the tree, so a group of three or more is never inferred by transitivity from two of
-// its edges — each pairwise promotion below is checked on its own.
+// relation), plus every pair `isSizeDimensionCandidate` flags as worth a decode, promoted by a real,
+// independent pixel decode of just its differing units. A byte-identical group is trusted by
+// transitivity (equality is an equivalence relation); a promoted group is not — the ratio tolerance
+// this check applies is not itself transitive (A~B and B~C within tolerance does not imply A~C is),
+// so every group this function returns is verified pairwise, directly, before being reported, rather
+// than trusted from union-find connectivity alone. A group whose own A-C edge exceeds `threshold`
+// even though the A-B and B-C promotions that connected it both held is a "transitivity violation"
+// (`cliqueViolations` below) — `runCheck` fails the whole check on one rather than silently reporting
+// a group some of whose members are not actually indistinguishable from each other.
 export function computeFullMatchGroups({
   hashKeyByStoryId,
   screenshotsDir,
   threshold = DUPLICATE_MAX_DIFF_RATIO,
   getPixelDiffRatio = pixelDiffRatio,
+  sizeProximityTolerance = SIZE_PROXIMITY_TOLERANCE,
 }) {
   const ids = [...hashKeyByStoryId.keys()]
   const uf = createUnionFind(ids)
@@ -487,19 +581,28 @@ export function computeFullMatchGroups({
     for (let i = 1; i < group.length; i += 1) uf.union(group[0], group[i])
   }
 
+  const sortedIds = [...ids].sort()
+  const unitsById = new Map(sortedIds.map((id) => [id, storyUnitSizeDims(id, screenshotsDir)]))
+  const isIndistinguishable = (a, b) =>
+    storiesAreIndistinguishable(a, b, {
+      hashKeyByStoryId,
+      screenshotsDir,
+      threshold,
+      getPixelDiffRatio,
+    })
+
   const promotedPairs = []
-  for (const { a, b, matches } of findPartialMatches(hashKeyByStoryId)) {
-    if (!isPixelDiffCandidate(matches)) continue
-    if (
-      storiesAreIndistinguishable(a, b, {
-        hashKeyByStoryId,
-        screenshotsDir,
-        threshold,
-        getPixelDiffRatio,
-      })
-    ) {
-      uf.union(a, b)
-      promotedPairs.push({ a, b })
+  for (let i = 0; i < sortedIds.length; i += 1) {
+    const a = sortedIds[i]
+    const unitsA = unitsById.get(a)
+    for (let j = i + 1; j < sortedIds.length; j += 1) {
+      const b = sortedIds[j]
+      if (hashKeyByStoryId.get(a) === hashKeyByStoryId.get(b)) continue // already unioned above
+      if (!isSizeDimensionCandidate(unitsA, unitsById.get(b), sizeProximityTolerance)) continue
+      if (isIndistinguishable(a, b)) {
+        uf.union(a, b)
+        promotedPairs.push({ a, b })
+      }
     }
   }
 
@@ -514,7 +617,23 @@ export function computeFullMatchGroups({
     .map((group) => group.sort())
     .sort((a, b) => a[0].localeCompare(b[0]))
 
-  return { groups, promotedPairs }
+  // S5: a promoted group is only ever built through pairwise unions, which propagate through a
+  // shared member even along an edge this function never directly checked (see
+  // `isSizeDimensionCandidate`'s own header for why a direct edge can be missed by the cheap filter
+  // and still be caught this way) — so every group above is re-verified as a true clique here,
+  // directly, rather than trusted from connectivity alone.
+  const cliqueViolations = []
+  for (const group of groups) {
+    for (let i = 0; i < group.length; i += 1) {
+      for (let j = i + 1; j < group.length; j += 1) {
+        if (!isIndistinguishable(group[i], group[j])) {
+          cliqueViolations.push({ group, a: group[i], b: group[j] })
+        }
+      }
+    }
+  }
+
+  return { groups, promotedPairs, cliqueViolations }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -752,10 +871,22 @@ export function runCheck({
   }
 
   const hashKeyByStoryId = computeHashKeys(storyIdsWithBaselines, screenshotsDir)
-  const { groups: fullMatchGroups, promotedPairs } = computeFullMatchGroups({
+  const {
+    groups: fullMatchGroups,
+    promotedPairs,
+    cliqueViolations,
+  } = computeFullMatchGroups({
     hashKeyByStoryId,
     screenshotsDir,
   })
+  for (const { group, a, b } of cliqueViolations) {
+    findings.push(
+      `transitivity violation: ${group.join(' = ')} was promoted as one full-match group, but ` +
+        `${a} and ${b} exceed this check's own tolerance on their own direct edge — the ratio ` +
+        'tolerance is not transitive, so a group must hold on every pairwise edge, not only enough ' +
+        'of them to connect its members.',
+    )
+  }
   const promotedPairKeys = new Set(promotedPairs.map(({ a, b }) => `${a} ${b}`))
   // Reported as full matches above instead — a pair `computeFullMatchGroups` already promoted (both
   // endpoints within this check's own pixel-diff tolerance) is not also a "partial, never failed"

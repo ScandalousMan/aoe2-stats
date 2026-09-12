@@ -350,6 +350,105 @@ test('storiesAreIndistinguishable: a handful of differing pixels on one unit sti
   }
 })
 
+// Writes six real, decodable 10x10 PNGs for `storyId` (unlike `writeBaselineSet`'s opaque byte
+// strings), all with the same `flipPixels` (see `makeSolidPng`) — used to build a pair that shares
+// *zero* of its six units by hash (S1's own fixture, below): two stories where every one of their six
+// baselines differs from its counterpart's, by construction, the same shape a real rest/hover/press/
+// focus pair takes (every captured frame carries the state change).
+function writeSolidBaselineSet(screenshotsDir, storyId, flipPixels) {
+  for (const theme of ['light', 'dark']) {
+    for (const width of [375, 768, 1280]) {
+      writeFileSync(
+        path.join(screenshotsDir, `${storyId}-${theme}-${width}.png`),
+        makeSolidPng(flipPixels),
+      )
+    }
+  }
+}
+
+// S1 (sixth-pass adversarial review): the old `isPixelDiffCandidate(matches)` only ever decoded a
+// pair that already shared at least one byte-identical unit — a claim (this file's own header, before
+// this fix) that the real tree has no pair worth decoding otherwise. That was false: a
+// rest/hover/press/focus pair typically differs on *every* one of its six units (the state change
+// touches every captured frame), so `matches` is 0 and the old restriction never even looked at the
+// pixels. This fixture pins exactly that shape — pinned directly against `computeFullMatchGroups`,
+// not only through `runCheck`, so a future regression of the candidate filter fails here first.
+test('computeFullMatchGroups (S1 fix): a pair sharing no identical unit is still promoted when every unit is within tolerance', () => {
+  const dir = makeFixtureDir()
+  try {
+    const screenshotsDir = path.join(dir, '__screenshots__')
+    mkdirSync(screenshotsDir, { recursive: true })
+    // `Rest`'s six units are all unflipped; `Hover`'s are all flipped by one pixel (a ratio of 0.01,
+    // exactly `DUPLICATE_MAX_DIFF_RATIO`) — every one of the six units hashes differently between the
+    // two stories, so `matches` (the old gate's own input) is 0 for every pair below.
+    writeSolidBaselineSet(screenshotsDir, 'composite-widget--rest', 0)
+    writeSolidBaselineSet(screenshotsDir, 'composite-widget--hover', 1)
+
+    const hashKeyByStoryId = computeHashKeys(
+      new Set(['composite-widget--rest', 'composite-widget--hover']),
+      screenshotsDir,
+    )
+
+    // Ground truth the old gate was blind to: no partial (1-5 of 6) match exists — the pair shares
+    // *zero* units by hash, so `isPixelDiffCandidate`'s own `matches >= 1` would already exclude it
+    // before ever reaching a decode.
+    assert.deepEqual(
+      findPartialMatches(hashKeyByStoryId),
+      [],
+      'ground truth: this pair shares zero of its six units by hash',
+    )
+
+    // Against the pre-fix implementation (git history: `isPixelDiffCandidate(matches)` gating
+    // `findPartialMatches`'s own output) this assertion fails — `groups` is `[]`, since a pair
+    // `findPartialMatches` never reports (0 matches) is never offered to `storiesAreIndistinguishable`
+    // at all, regardless of how close its pixels actually are. Green only because
+    // `isSizeDimensionCandidate` below no longer requires an already-matching unit.
+    const { groups, cliqueViolations } = computeFullMatchGroups({
+      hashKeyByStoryId,
+      screenshotsDir,
+    })
+    assert.deepEqual(groups, [['composite-widget--hover', 'composite-widget--rest']])
+    assert.deepEqual(cliqueViolations, [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// The same fixture through the full `runCheck` pipeline (story file, baselines, no marker or debt
+// entry) — proves the S1 fix actually surfaces as the check's own "undocumented full match" finding,
+// not only as a `computeFullMatchGroups` return value.
+test('end-to-end (S1 fix): a rest/hover pair sharing no identical unit is reported as an undocumented full match', () => {
+  const rootDir = makeFixtureDir()
+  try {
+    const srcDir = path.join(rootDir, 'src')
+    const screenshotsDir = path.join(rootDir, '__screenshots__')
+    mkdirSync(screenshotsDir, { recursive: true })
+
+    writeStoryFile(
+      srcDir,
+      'Widget',
+      'composite-widget',
+      `const meta = { id: 'composite-widget' }\nexport default meta\n\nexport const Rest: Story = {}\nexport const Hover: Story = {}\n`,
+    )
+    writeSolidBaselineSet(screenshotsDir, 'composite-widget--rest', 0)
+    writeSolidBaselineSet(screenshotsDir, 'composite-widget--hover', 1)
+
+    const { findings, exitCode } = runCheck({
+      srcDirs: [srcDir],
+      screenshotsDir,
+      debtJsonPath: noSuchPath(rootDir, 'debt.json'),
+      appRoutesSpecPath: noSuchPath(rootDir, 'app-routes.spec.ts'),
+    })
+    console.log('S1 fix, end-to-end — findings:', findings)
+    // Against the pre-fix implementation this pair is never even offered as a promotion candidate
+    // (see the unit test above), so `exitCode` is 0 and `findings` is `[]` there — red before the fix.
+    assert.equal(exitCode, 1)
+    assert.ok(findings.some((f) => f.includes('undocumented full-set match')))
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true })
+  }
+})
+
 test('end-to-end: an undocumented full match fails', () => {
   const rootDir = makeFixtureDir()
   try {

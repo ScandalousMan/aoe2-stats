@@ -609,7 +609,8 @@ reads.
 
 ## Token gap register
 
-**No gap is open as of 2026-09-05 (T529).** This section holds open token decisions when they
+**DS-11 open as of 2026-09-12** (adversarial review finding S4); the six gaps this feature already
+closed, below, remain closed. This section holds open token decisions when they
 exist — what is missing, what a component does until it exists, and who has to act — and an
 implementer who finds themselves needing a value not covered by the standing rules above or the
 utility vocabulary in `contracts/token-families.md` stops and asks `product-designer`; they do not
@@ -822,6 +823,23 @@ actually paints — is already measured in the table above (research D9). This r
 here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
 by stripping its alpha and breaking the scrim it draws.
 
+**Open — DS-11, found 2026-09-12 (adversarial review finding S4), fix by 2026-09-26.**
+`border.json`'s `ring-offset` names only the positive 2px focus-ring offset; the negative form a
+genuinely inward, non-`ring-offset-inset` ring needs has no member of its own. Four call sites still
+write a bare, untokenised `-outline-offset-2` — `MatchRow`
+(`src/composites/MatchRow/index.tsx:104`), `FavouritesList`
+(`src/composites/FavouritesList/index.tsx:263`), `PlayerResultRow`
+(`src/composites/PlayerResultRow/index.tsx:41`) and one of `Menu`'s three focus rings
+(`src/primitives/Menu/index.tsx:363`) — the same class of breach `-outline-offset-4` was in before
+T586 admitted `ring-offset-inset` to name it. Nothing catches it today:
+`scripts/checks/token-scale.mjs` (~lines 197-202) is structurally blind to the whole
+`outline-offset-N` Tailwind namespace, the identical blindness that let `-outline-offset-4` ship
+unnoticed the first time. `border.json`'s own `$comment` now says so in place, rather than the
+family's amended language implying it already names everything that ships (adversarial review
+finding S4, corrected in the same pass this row was opened). Until closed, this row is the
+authoritative account of the gap; a component spec that mentions these four rings should point here
+rather than restate the list. **Owner: T589 (to be opened).**
+
 ## Storybook documentation gap register
 
 **All four rows closed 2026-09-11 (T578), owed since 2026-09-07 (T572).** This register held what
@@ -946,8 +964,9 @@ which no tool here does today.
 
 ## Accessibility mechanism gap register
 
-**Closed 2026-09-11 (T579), owed since 2026-09-08** (third-pass adversarial review, finding M2a).
-This register holds a standing property of this package's own tooling — where an accessibility
+**Row 1 closed 2026-09-11 (T579), owed since 2026-09-08** (third-pass adversarial review, finding
+M2a); **row 2 open as of 2026-09-12** (adversarial review finding S8). This register holds a
+standing property of this package's own tooling — where an accessibility
 check runs, and where it does not — the same distinction CLAUDE.md draws for the Storybook
 documentation gap register above: a fact about this package's own check coverage needs updating
 whenever a future task changes that coverage, so it is filed here rather than in a spec, which is
@@ -989,6 +1008,20 @@ written once (T575's amendment: the subject is this package, so the fact is file
    class this row is about lives in a component's static composition, never behind a story's own
    `play` function, which the sweep does not invoke. It scans `baseElement`, not `container`, so a
    future portal is covered too. The full sweep runs in under three seconds.
+
+2. **`accent-contrast-ring.test.mjs`'s two guards (T586) do not see every way an accent-contrast
+   ring can stop being drawn on the fill it depends on — open, found 2026-09-12 (adversarial review
+   finding S8), fix by 2026-09-26.** The file catches a `bg-clip-*` override and a painted border on
+   an accent-contrast-ringed control (`checkFillAssumptionFindings`), but not: a state-variant fill
+   override — `hover:bg-*` or `focus-visible:bg-*` changing the fill in the very state the ring
+   paints, the state DS-10's contrast numbers assume is showing; a background image or gradient
+   painted over `bg-accent` instead of a solid override, which neither `BG_CLIP_RE` nor
+   `PAINTED_BORDER_COLOR_RE` recognises as changing the fill; or an `apps/web` caller passing
+   `bg-clip-padding` (or any other fill-defeating class) through `Button`'s merged `className` prop
+   — the scan is lexical and reads only `packages/design-system/src`, never a call site outside this
+   package. The test file's own header now names these three blind spots in place (adversarial
+   review finding S8, corrected in the same pass this row was opened), so a reader does not mistake
+   two passing guards for a complete one. **Owner: T590 (to be opened).**
 
 ## Duplicated logic and story-content gap register
 
@@ -1051,7 +1084,8 @@ which is why it is not folded into a spec written once.
 ## Contrast-signal and duplicate-baseline gap register
 
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2; rows 5-6 added 2026-09-11 while verifying the closures above); **row 1 closed
-2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584)**, **row 4
+2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584), reopened
+and re-closed 2026-09-12 by a second adversarial review of the same remediation**, **row 4
 closed 2026-09-11 (T585)** — all four rows now closed. Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
@@ -1258,7 +1292,73 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
      with an import error, since neither `pixelDiffRatio` nor `DUPLICATE_MAX_DIFF_RATIO` existed to
      import).
 
-   **Owner: T584. Closed 2026-09-11.**
+   **A second adversarial review of this same remediation (2026-09-12) found and fixed two further
+   defects in the check itself, plus one overstated claim, all in the pixel-tolerance work above —
+   reopened and re-closed the same day.**
+   - **`isPixelDiffCandidate` required a pair to already share at least one byte-identical unit
+     before ever decoding it, on the claim (this file's own text above, at the time) that the real
+     tree has no pair worth decoding otherwise — not accepted, fixed.** A rest/hover/press/focus pair
+     typically shares _zero_ of its six units by hash (every one of the six captured frames carries
+     the state change), so the restriction excluded exactly the shape this register exists to catch.
+     `isSizeDimensionCandidate` (`SIZE_PROXIMITY_TOLERANCE`, 0.03) replaces it: a cheap filter — same
+     pixel dimensions plus a compressed file size within 3%, a `stat` and a 24-byte PNG header, no
+     unit needs to already match — that finds **20 further full-match groups** (37 individual
+     pair-edges) the byte-sharing restriction structurally could not reach. Every one is a
+     rest/hover/press/focus pair or an otherwise-meant-to-differ pair, never laundered as deliberate:
+     `PrivacyNotice` `Active`/`Hover`, `SiteHeader` `Active`/`Hover`, `Menu` `Active`/`Hover`,
+     `MatchRow` `Active`/`Hover`, `Footer` `Active`/`Hover`, `FavouritesList` `Active`/`Hover`,
+     `PlayerResultRow` `Active`/`Hover`, `Table` `RowLinkActive`/`RowLinkHover`, `UploadControl`
+     `FocusVisible`/`Idle`, `ThirdPartyObjectionForm` `Active`/`Hover` and `FocusVisible`/`Idle`;
+     `PrivacyNotice`'s `FocusVisible` and `Menu`'s `FocusVisible`/`KeyboardNavigation` folding into
+     the existing `Default`/`MobileViewport` and `ProfileSwitcher`/`Selection`/`SheetBelowMd` marker
+     groups respectively (each promised a visible ring or a different focused row that the whole-page
+     capture does not resolve); `CountryFlag`'s `Default`/`FlagDismissedAfterEscape` and its own
+     hover/keyboard-focus/pinned reveal trio, and the identical shape in `Tooltip` and in
+     `ProfileSummary`'s embedded `BoardFlag`; `ProfileSummary`'s `NoCountry` folding into the
+     `Board`/`BoardMobile`/`BoardRatingsCardsBelowLg` trio (the flag and its label are absent by
+     design, 004 FR-008, but too small a fraction of a full-page capture to move its ratio); and
+     `PlayerColourSwatch`'s `Blue`/`SizeSm`/`SizeXs` (different colours, names and chip sizes,
+     indistinguishable only because the whole-page capture cannot resolve a chip this small). Each is
+     a dated debt entry in `scripts/visual/story-baseline-duplicates-debt.json` (found 2026-09-12, fix
+     by 2026-09-26) naming what should differ and does not, not a `visual-equivalence` marker.
+     `story-baselines-duplicates.test.mjs` gained a fixture pinning the fix directly — a pair sharing
+     none of its six units by hash, each one within tolerance — failed against the pre-fix
+     implementation (`groups: []`: a pair `findPartialMatches` never reports as partial is never
+     offered to a decode at all under the old restriction) and green after. The check's own runtime
+     moved from well under a second to roughly 16 seconds against the real tree (208 candidate pairs
+     of 145,530 decoded) — the cost of actually looking; still fast enough to run on every change.
+   - **This file's and the check's own header's claim that noise and a real change "separate ... by
+     three orders of magnitude" overstated what the 2026-09-12 regeneration's own two data points
+     support, once generalised past them — not accepted, corrected.** That gap was real for the two
+     specific cases it measured (the noise-only pairs above, and `MapThumbnail`/`PlayerAvatar`
+     `Loading`'s genuine fix); it is not a property of the threshold in general. Decoding the fuller
+     candidate set above shows pairs sitting on a continuum straddling 1%, not in two well-separated
+     clusters — a documented full match and an undocumented non-match can sit within a hundredth of a
+     percentage point of each other on opposite sides of the line. `DUPLICATE_MAX_DIFF_RATIO` (0.01)
+     is this suite's own operating decision, the same one `playwright.config.ts` makes for a single
+     capture, not a boundary the real tree's own pixel deltas happen to avoid; a future reader seeing
+     this check fail or pass within a percentage point of the line should not infer which side is
+     "really" noise from the ratio's distance to 1% alone. The check's own header carries the
+     corrected reasoning and the near-threshold pairs measured.
+   - **A promoted three-or-more-member group was trusted from union-find connectivity rather than
+     verified as a true clique — latent, not an active defect, fixed before it could become one.** The
+     ratio tolerance this check applies is not itself transitive (A~~B and B~~C within tolerance does
+     not imply A~C is), so two valid pairwise promotions could in principle union a group whose own
+     direct A-C edge exceeds the threshold — three stories asserted indistinguishable when only two
+     pairs of them actually are. Measured against the real tree, including the new groups above
+     (several of which unify through a shared member rather than every pairwise edge the cheap filter
+     directly found), every reported group's own edges hold directly today — no violation exists —
+     but `computeFullMatchGroups` now re-verifies every group as a full clique before returning it
+     rather than assuming connectivity implies it, and fails the check outright ("transitivity
+     violation") the moment one ever does not, rather than silently reporting a group that is not
+     actually one fact.
+   - **A marker on a pair the size/dimension filter did not directly reach validated while a debt
+     entry on the same pair failed as stale — resolved as a consequence of the fix above, verified
+     rather than assumed.** `evaluateMarkers` and `findStaleDebtEntries` both run against the same
+     `computeFullMatchGroups` output as of this fix, so a pair either mechanism can see, the other now
+     can too; no remaining asymmetry.
+
+   **Owner: T584. Closed 2026-09-11; reopened and re-closed 2026-09-12.**
 
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
