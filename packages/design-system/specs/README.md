@@ -1423,7 +1423,15 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
    `PlayerResultRow`, `SiteHeader`, `Menu`'s trigger/item/footer item, `Table`'s row link — every one
    a press that repainted the same fill as hover with no second signal, now a full inset boundary
    `ring` on top of it, the same "a press is a boundary" idiom `Button`
-   `secondary`/`destructive` and `Link` `standalone` already carry); or the signal exists but the
+   `secondary`/`destructive` and `Link` `standalone` already carry — **with one exception this
+   sentence used to flatten, corrected 2026-09-12 after `visual-reviewer` read the captures**:
+   `Menu`'s _items_ and footer item already carried a boundary, T560's 2px `border-strong` on the
+   inline-start edge, which `shared-primitives.md`'s own Menu `active` entry specifies rather than a
+   four-sided ring, and which the capture shows. What T591 changed there is the _fill_ — from
+   repeating hover's `surface-sunken` to `bg-background` — because a boundary that thin was, on its
+   own, the mark the duplicate check could not tell from hover. Only `Menu`'s trigger takes the full
+   `ring` this sentence describes. A component's press signal is its own spec's, not this
+   paragraph's generalisation of its neighbours'); or the signal exists but the
    frame was too large for the comparator to see it, and the story is scoped to the control that
    carries it instead of the whole page or the whole `#storybook-root` box (`CountryFlag`,
    `Tooltip`, `Menu`'s focus/keyboard stories, `PlayerColourSwatch`, `PrivacyNotice`,
