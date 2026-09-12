@@ -750,3 +750,45 @@ instructions:
   axis) rather than something this walk's scenarios demonstrate, and re-verifying a PR's own CI
   scoping needs a live PR run, which is also where this walk found the branch's actual CI state to
   be unconfirmed on the current commit (see above) — left untouched rather than ticked on inference.
+
+## Addendum — what closed after the walk above (2026-09-11/12, PR #74)
+
+The walk above is a record of 2026-09-08 and is left as it was written. This addendum says what has
+since changed, so a reader does not act on a status that has moved.
+
+**Closed since.** T578 closed production-readiness item 10 and FR-040 (Storybook autodocs, real
+TypeScript docgen, a purpose line per component, the `sr-only` naming shapes linked to Foundations →
+Iconography, all enforced by `scripts/checks/story-docs.mjs`). T579 closed item 7 (`axe-core`'s
+`landmark-unique` rule now runs in vitest over every story through `composeStories`, so the defect
+class is caught where a component is authored, not only in CI). T580 through T586 closed every row
+of the three gap registers named in the walk.
+
+**Two statements in the walk are no longer true**, both because the thing they describe was fixed.
+`spec_lint.py --feature specs/005-design-system-foundations` exits clean on this branch (the three
+findings it reported were the `path-roots` and `env-declared` false positives, since reworded). CI is
+green on PR #74's head: every job, including "Specs — cross-artifact lint" and the visual regression
+over the baselines regenerated in `ba20f074`.
+
+**`visual-reviewer`, run 2026-09-12 — the first invocation in this feature's history.** Four
+components, judged against the CI-rendered baselines rather than a locally driven browser, because
+those baselines are the authoritative rendering and were regenerated after every change under
+review:
+
+| Component         | Verdict  | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`          | PASS     | `primitives-button--focus-visible-{light,dark}-{375,768,1280}`: the `accent-contrast` ring is drawn inside the fill with a band of `accent` between it and the control's edge on every side, in both themes — the geometry `color-tokens.md` §5 always asked for and T586 made true. Press signals of `secondary`, `destructive` and `ghost` unchanged.                                                                                                                                       |
+| `Link`            | PASS     | `primitives-link--active-standalone-*`: the press ring reads as a boundary at all six captures, including the dark theme where the old wash measured 1.07:1. The boundary case holds: `--active-inline-*` shows no ring, only its underline offset, so the ring did not leak into the variant that must not have it.                                                                                                                                                                          |
+| `PrivacyNotice`   | PASS     | `screens-privacynotice--active-*`: the forced press lands on the first `Contents` entry, the ring is visible at all three widths in both themes, and the list does not reflow — item 2 sits at the same vertical offset as in `--default`.                                                                                                                                                                                                                                                    |
+| `DataExportPanel` | **FAIL** | Not a rendering defect: no baseline captures the download link's focus or press at all, so T586's change to that link is evidenced by no image. `HoverFocusActiveNotApplicable` renders `initialState: 'idle'`, where the link is not even on screen, and its claim that these states are "covered by their own components' stories" is false — the link is a local anchor, not a `Button`. Registered as row 5 (H2) of the register in `packages/design-system/specs/README.md`, owner T587. |
+
+**Production-readiness item 15 therefore stays open**, and now for a stated reason rather than for
+lack of a run: three of four components pass, one cannot be evidenced by the captured set, and the
+general `reviewer` has not yet approved this branch. The same pass widened T587: `Button`'s
+`FocusVisible` story hard-codes `variant: 'primary'`, so the outward `focus-ring` that `secondary`,
+`ghost` and `destructive` keep is evidenced by a code read and by no baseline.
+
+**Two findings were opened rather than fixed** (rows 5 and 6 of that register, T587 and T588, both
+due 2026-09-25): the download link's press ring is painted outward in `accent-contrast` onto the
+`Callout`'s `surface-raised` fill, where it measures 1.00:1 light and 1.24:1 dark; and an
+`accent`-filled control separates rest, hover and press by fill luminance alone, which FR-037 has
+never been asked about for this control. `product-designer` owns the second.
