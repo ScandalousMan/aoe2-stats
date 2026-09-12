@@ -154,8 +154,13 @@ test('findCountDrift names a story added without the README section moving with 
     baselineCount: EXPECTED_BASELINE_COUNT + 6,
   })
   assert.equal(drifted.length, 2)
-  assert.match(drifted[0], /^stories: \d+ -> \d+$/)
-  assert.match(drifted[1], /^baseline files: \d+ -> \d+$/)
+  // The literals, not a shape: `expected -> actual` in that order is the whole value of the message,
+  // and a pattern that accepts two numbers would pass with the two swapped.
+  assert.equal(drifted[0], `stories: ${EXPECTED_STORY_COUNT} -> ${EXPECTED_STORY_COUNT + 1}`)
+  assert.equal(
+    drifted[1],
+    `baseline files: ${EXPECTED_BASELINE_COUNT} -> ${EXPECTED_BASELINE_COUNT + 6}`,
+  )
 })
 
 test('findCountDrift catches a baseline count that moved on its own', () => {

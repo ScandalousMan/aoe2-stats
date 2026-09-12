@@ -1450,9 +1450,17 @@ from CI` commits on this branch moved 79 of the tree's stories' baselines (see "
      a four-sided ring — and moved the same fill the same way. In both, the boundary alone was the
      mark the duplicate check could not tell from hover; the fill is what made the pair separable.
 
-   A component's press signal is its own spec's, and this paragraph may summarise the eight only in
-   the shape they actually share: a press differs from hover by a boundary **and** a fill, never by
-   fill alone); or the signal exists but the
+   A component's press signal is its own spec's. The only thing true of all eight is that **a press
+   differs from hover by at least one non-colour signal, and which one is that component's own
+   spec's decision** — four differ by a boundary alone, four by a boundary and a fill. An earlier
+   attempt at this sentence said "a boundary **and** a fill, never by fill alone" and was false for
+   the first four in a way worth recording rather than quietly deleting: their press deliberately
+   paints hover's own fill, because a keyboard `Enter` fires `:active` with no pointer ever having
+   hovered (T560, FR-038, stated in `FavouritesList/index.tsx`'s own comment for all four). A
+   row-link's press must be legible **without** a fill change, so a rule demanding one would have
+   forbidden the design FR-038 requires. That is the trap this paragraph has now fallen into twice:
+   a summary written from the components in front of you, asserted over the ones you did not
+   reread); or the signal exists but the
    frame was too large for the comparator to see it, and the story is scoped to the control that
    carries it instead of the whole page or the whole `#storybook-root` box (`CountryFlag`,
    `Tooltip`, `Menu`'s focus/keyboard stories, `PlayerColourSwatch`, `PrivacyNotice`,
@@ -1549,7 +1557,19 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    `Button`'s `FocusVisible` hard-coded `variant: 'primary'`, so the outward `focus-ring` the other
    three variants keep was evidenced by a code read and no baseline —
    `SecondaryFocusVisible`, `GhostFocusVisible` and `DestructiveFocusVisible` are that evidence.
-   **Owner: T587. Closed 2026-09-12.**
+
+   **The capture half is two of three, found 2026-09-12 by `reviewer` re-reading this closure.** T588
+   gave that anchor a hover signal as well as a press one — `hover:underline hover:decoration-2
+hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataExportPanel/index.tsx`
+   — and there is no `ReadyHover` story and no `screens-dataexportpanel--ready-hover-*` baseline. So
+   the corrected `HoverFocusActiveNotApplicable` still defers a state the link owns, in the smaller
+   shape this row was opened for: it names `ReadyFocusVisible` and `ReadyActive` as the link's
+   coverage and is silent about hover. This row is **not** closed on capture; the missing frame and
+   the wording are tracked with `AccountErasurePanel`'s identical gap as row 7 (H4) below, because
+   they are one defect in two components and fixing one alone is how this register keeps reopening.
+   **Owner: T593 (the hover frame and the wording). Decision and the focus/press frames closed
+   2026-09-12 (T586, T588, T587).**
+
 6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
    closed.** `Button`'s `primary` stepped `accent` → `accent-hover` → `accent-active` and added no
    shape, mark, border or position at any step (`Button/index.tsx`), and `DataExportPanel`'s
@@ -1586,8 +1606,21 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    rather than folded into DS-11's own fix, which was T589's scope, not this row's. **Owner: T588.
    Closed 2026-09-12.**
 
-7. **H4 — `AccountErasurePanel`'s `ErasedScreen` link had its hover and press signal changed with
-   nothing capturing either, and the component's own story says those states are not its own — open.**
+7. **H4 — two local anchors had a state signal changed with nothing capturing it, and each
+   component's own `*NotApplicable` story defers a state it in fact owns — open, both of them.**
+   These are one defect in two components; the first sweep found one, which is why this row names
+   both and why T593 covers both. `reviewer` checked the other thirteen source files #77 touched: the
+   rest are either rendering-identical T589 offset renames or a real state change with a story behind
+   it, and these two are the only `*NotApplicable` stories deferring a state they own.
+
+   **`DataExportPanel`'s download link — the hover frame, and the wording (row 5's remainder).** T588
+   gave the link `hover:underline hover:decoration-2 hover:underline-offset-2` alongside its press
+   change; `ReadyFocusVisible` and `ReadyActive` were added for focus and press, and no `ReadyHover`
+   was. `HoverFocusActiveNotApplicable` names those two as the link's coverage and says nothing of
+   hover. **Owed**: a `ReadyHover` under the same `visualCaptureClip` the other `Ready*` stories
+   share, and that story's wording corrected to name all three states.
+
+   **`AccountErasurePanel`'s `ErasedScreen` link — no state capture at all.**
    T591 gave that anchor the underline recipe its two siblings got in the same task
    (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2 active:underline-offset-4`,
    `src/screens/AccountErasurePanel/index.tsx`), under its own instruction of "all three or none".
@@ -1601,8 +1634,9 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    `visual-reviewer` PASS that had to be withdrawn: a method that judges committed baselines is silent
    on a state no baseline depicts, and silence is not a pass. **Owed**: a clipped `Hover`,
    `FocusVisible` and `Active` over `ErasedScreen`'s link, the same shape its two siblings carry, and
-   `HoverFocusActiveNotApplicable` reworded to say what it really defers to. **Owner: T593. Fix by
-   2026-09-26.**
+   `HoverFocusActiveNotApplicable` reworded to say what it really defers to.
+
+   **Owner: T593, both components. Fix by 2026-09-26.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

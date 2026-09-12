@@ -229,7 +229,7 @@ function main() {
     baselineCount: baselineFiles.length,
   })
   if (drifted.length > 0) {
-    log('story-baselines: the counts this package publishes have moved:')
+    log('the counts this package publishes have moved:')
     for (const drift of drifted) log(`  - ${drift}`)
     log(
       'if that is deliberate, update EXPECTED_STORY_COUNT / EXPECTED_BASELINE_COUNT above AND ' +

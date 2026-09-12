@@ -180,6 +180,9 @@ jobs:
           EOF
           )"
           git push
+          # Written after the push, not before it: the flag means "a regeneration commit exists on
+          # the remote", which is the condition the reporting step below actually depends on.
+          echo "committed=true" >> "$GITHUB_OUTPUT"
 
       # The reading the comment above owes, run where the commit it explains is made rather than
       # left to whoever remembers the script exists: `HEAD` against its own parent is exactly the
@@ -193,9 +196,12 @@ jobs:
       # shallow boundary and `HEAD^` is not in the object store at all — `git diff HEAD^ HEAD` exits
       # 128 with "bad revision", which the script surfaces as a usage error and which would turn a
       # correct no-op run red. When a commit was made, `HEAD^` is the boundary commit itself, which
-      # is present, so the diff resolves. (`pr.yml`'s `visual` job is the precedent for the other
+      # is present, so the diff resolves. The polarity is deliberate: the gate opens only on an
+      # explicit `committed=true`, so a future early return added to that shell block without an
+      # `echo` of its own skips this step rather than silently restoring the shallow-clone failure.
+      # (`pr.yml`'s `visual` job is the precedent for the other
       # way out, `fetch-depth: 0`; it is not taken here because this job's whole subject is
       # `__screenshots__`, whose full history is the expensive thing to fetch.)
       - name: Report what actually moved
-        if: steps.commit.outputs.committed != 'false'
+        if: steps.commit.outputs.committed == 'true'
         run: node scripts/checks/baseline-regeneration-diff.mjs
