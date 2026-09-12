@@ -46,6 +46,22 @@ amended and T571's completeness check enumerates: every row above other than `ga
 names one or more components whose spec must answer the closed state vocabulary in full and declare
 a tier and a surface class.
 
+## The baseline set, as it stands
+
+**545 stories, 3,292 baseline PNGs** under `__screenshots__/`: 3,270 story captures — every story at
+{light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
+stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
+trustworthy for one reason only: `scripts/checks/story-baselines.mjs` asserts it on every pull
+request, as set equality between the built Storybook index and the files on disk, and prints exactly
+these numbers. Read it from the check rather than from any prose, this paragraph included.
+
+It is not the 1,794 captures over 299 stories feature 005's own
+[verification matrix](../../../specs/005-design-system-foundations/contracts/verification-matrix.md)
+sized: that was the count at design time, and the feature's own work — the state stories the closed
+state vocabulary requires of every component, and the clipped state stories the register below ends
+with — added the rest. A frozen forecast and a measured fact are different claims; neither is
+corrected by editing the other.
+
 ## Every spec has nine sections
 
 Purpose, Anatomy, Variants and sizes, States, Tokens used, Spacing, Responsive, Accessibility,
@@ -1123,9 +1139,10 @@ which is why it is not folded into a spec written once.
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2; rows 5-6 added 2026-09-11 while verifying the closures above); **row 1 closed
 2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584), reopened
 and re-closed 2026-09-12 by a second adversarial review of the same remediation**, **row 4
-closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)** — row 5's decision half is answered
-by row 6's closure; its own capture half (the story coverage, and the frame proving the deleted
-ring is gone) is still open, tracked as **T587**. Four findings the review judged
+closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**, **row 5 closed 2026-09-12 (T587)** —
+row 5's decision half was answered by row 6's closure, and its own capture half (the story coverage,
+and the frame proving the deleted ring is gone) closed after it, deliberately in that order so the
+frame shows the current control. **Every row of this register is closed.** Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1428,8 +1445,13 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
    deleting an entry the check still finds as a live full match would fail it before the next CI
    baseline regeneration lands (the same reasoning the `MapThumbnail`/`PlayerAvatar` `Loading` entry
    above already established for one entry at a time — this closes 20 the same way, not
-   differently). A follow-up baseline-regeneration commit removes all 20 once the check confirms
-   each group is genuinely no longer a match. **Owner: T591. Closed 2026-09-12.**
+   differently). **That follow-up landed the same day**: the regeneration commit `680a642d` moved
+   the baselines the source and story edits above could not, and the next
+   commit (`9b4cb9d8`) emptied `scripts/visual/story-baseline-duplicates-debt.json` to `[]` — which
+   is itself the confirmation, not a separate claim, because
+   `scripts/checks/story-baselines-duplicates.mjs` fails on any full match that has neither a marker
+   nor an unexpired debt entry: the file is empty and the check is green, so none of the 20 groups is
+   a full match any more. **Owner: T591. Closed 2026-09-12.**
 
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
@@ -1460,7 +1482,7 @@ data'`) and green after. Baselines regenerated from CI in a follow-up commit, pe
      closure got wrong. **Owner: T585. Closed 2026-09-11.**
 
 5. **H2 — `DataExportPanel`'s download link signals press with a ring that cannot be seen, and no
-   story captures the state — decision closed by row 6, capture still open.** The link fills with
+   story captures the state — closed.** The link fills with
    `accent` and drew its press ring outward: `active:ring-2 active:ring-offset-2
 active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataExportPanel/index.tsx`).
    A transparent offset put that ring on the surface behind the link, and the link renders inside a
@@ -1477,9 +1499,22 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    link now carries the same label-underline signal `Button`'s `primary` variant does (row 6,
    below), guarded by `DataExportPanel.test.tsx`'s new assertions that the underline classes are
    present and the deleted ring classes are not. The story coverage — a real focus-visible and a real
-   press frame over this link, proving the underline where the invisible ring used to be — is still
-   open as **T587**, which lands after this closure so its frame shows the current control rather
-   than the one this row found. **Owner: T587 (capture only). Fix by 2026-09-25.**
+   press frame over this link, proving the underline where the invisible ring used to be — was left
+   open as **T587**, landing after this closure so its frame shows the current control rather
+   than the one this row found. **The capture half landed 2026-09-12 (T587).** `ReadyFocusVisible`
+   and `ReadyActive` (`DataExportPanel.stories.tsx`) drive a real `:focus-visible` and a real press
+   over the download link, both sharing `Ready`'s `visualCaptureClip` on the link itself — the
+   standing rule the T591 paragraph above leaves behind, applied here because the underline that
+   replaced the deleted ring is a mark on one anchor inside a whole-screen frame. The story that
+   made the false claim was corrected rather than deleted:
+   `HoverFocusActiveNotApplicable` now says which of the two interactive elements it really defers to
+   (`RequestButton`, an unmodified `Button`) and points at the two stories above for the link's own
+   coverage. Also widened by the same `visual-reviewer` pass that opened this row
+   ([quickstart.md](../../../specs/005-design-system-foundations/quickstart.md)'s addendum):
+   `Button`'s `FocusVisible` hard-coded `variant: 'primary'`, so the outward `focus-ring` the other
+   three variants keep was evidenced by a code read and no baseline —
+   `SecondaryFocusVisible`, `GhostFocusVisible` and `DestructiveFocusVisible` are that evidence.
+   **Owner: T587. Closed 2026-09-12.**
 6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
    closed.** `Button`'s `primary` stepped `accent` → `accent-hover` → `accent-active` and added no
    shape, mark, border or position at any step (`Button/index.tsx`), and `DataExportPanel`'s

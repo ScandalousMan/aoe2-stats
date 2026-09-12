@@ -178,3 +178,15 @@ jobs:
           EOF
           )"
           git push
+
+      # The reading the comment above owes, run where the commit it explains is made rather than left
+      # to whoever remembers the script exists: `HEAD` against its own parent is exactly the shape
+      # `baseline-regeneration-diff.mjs` defaults to. It is a reporting tool and always exits 0, so
+      # `if: success()` (the default) is enough — there is no count of moved captures that fails this
+      # workflow, and its output is the reviewer's index into a commit that rewrites every selected
+      # capture by design. Left unconditional rather than gated on the step above having committed:
+      # when no baseline differed, `HEAD` is not a regeneration commit and the script reports zero
+      # rewritten captures and still exits 0 (verified against a non-regeneration `HEAD`), which is
+      # the right reading of that run rather than an error to be skipped around.
+      - name: Report what actually moved
+        run: node scripts/checks/baseline-regeneration-diff.mjs
