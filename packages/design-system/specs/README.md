@@ -51,9 +51,12 @@ a tier and a surface class.
 **545 stories, 3,292 baseline PNGs** under `__screenshots__/`: 3,270 story captures — every story at
 {light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
 stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
-trustworthy for one reason only: `scripts/checks/story-baselines.mjs` asserts it on every pull
-request, as set equality between the built Storybook index and the files on disk, and prints exactly
-these numbers. Read it from the check rather than from any prose, this paragraph included.
+trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers** on
+every pull request, against `EXPECTED_STORY_COUNT` and `EXPECTED_BASELINE_COUNT` in its own source,
+and fails naming this section when either moves. That assertion is separate from the set equality the
+same check performs between the built Storybook index and the files on disk, and it has to be: set
+equality alone stays green when a story is added, because the new story does have its six captures —
+which is exactly how this paragraph would go stale without anyone touching it.
 
 It is not the 1,794 captures over 299 stories feature 005's own
 [verification matrix](../../../specs/005-design-system-foundations/contracts/verification-matrix.md)
@@ -1142,7 +1145,8 @@ and re-closed 2026-09-12 by a second adversarial review of the same remediation*
 closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**, **row 5 closed 2026-09-12 (T587)** —
 row 5's decision half was answered by row 6's closure, and its own capture half (the story coverage,
 and the frame proving the deleted ring is gone) closed after it, deliberately in that order so the
-frame shows the current control. **Every row of this register is closed.** Four findings the review judged
+frame shows the current control. **Rows 1–6 are closed; row 7 (H4) was opened 2026-09-12 by
+`reviewer`, reviewing the closures, and is open.** Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1214,7 +1218,9 @@ on its own, not a defect this remediation's scope covers.
    closed.** `scripts/checks/story-baselines-duplicates.mjs` (T584) does the full pairwise audit the
    fifth/sixth-pass remediations could not (out of a docs-only pass's scope): every story's own
    six-capture set ({light, dark} x {375, 768, 1280}), hashed and compared against every other's,
-   across the whole tree — 540 stories, zero unmapped either direction. It found **25 full-set
+   across the whole tree — every story then in the tree, zero unmapped either direction (540 at the
+   time; the current figure and the check that asserts it are "The baseline set, as it stands" above,
+   which is the one place it is stated). It found **25 full-set
    (six-of-six) matches** and **8 partial matches** (one width or theme differing, the ordinary shape
    responsive collapse produces — reported by the check, never failed): `Dialog`'s
    `FocusVisible`/`KeyboardFocusOrderAndTrap` and `ProfileSummary`'s `Board`/`BoardMobile` and
@@ -1300,7 +1306,8 @@ on its own, not a defect this remediation's scope covers.
 
    **Regenerated baselines exposed a defect in the check itself, 2026-09-12 (this task) — fixed, and
    the promised follow-up above landed in the same commit.** Two `chore(visual): regenerate baselines
-from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines by nothing but
+from CI` commits on this branch moved 79 of the tree's stories' baselines (see "The baseline set, as
+   it stands" above for the count, stated once and asserted) by nothing but
    anti-aliasing noise (a handful of pixels each, a channel delta in the single digits), and that
    noise alone flipped three groups' classification under the check's original byte-identity
    comparison: `CivilisationIcon` `FailedImage`/`UncoveredCivilisation` and `PlayerAvatar`
@@ -1423,15 +1430,29 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
    `PlayerResultRow`, `SiteHeader`, `Menu`'s trigger/item/footer item, `Table`'s row link — every one
    a press that repainted the same fill as hover with no second signal, now a full inset boundary
    `ring` on top of it, the same "a press is a boundary" idiom `Button`
-   `secondary`/`destructive` and `Link` `standalone` already carry — **with one exception this
-   sentence used to flatten, corrected 2026-09-12 after `visual-reviewer` read the captures**:
-   `Menu`'s _items_ and footer item already carried a boundary, T560's 2px `border-strong` on the
-   inline-start edge, which `shared-primitives.md`'s own Menu `active` entry specifies rather than a
-   four-sided ring, and which the capture shows. What T591 changed there is the _fill_ — from
-   repeating hover's `surface-sunken` to `bg-background` — because a boundary that thin was, on its
-   own, the mark the duplicate check could not tell from hover. Only `Menu`'s trigger takes the full
-   `ring` this sentence describes. A component's press signal is its own spec's, not this
-   paragraph's generalisation of its neighbours'); or the signal exists but the
+   `secondary`/`destructive` and `Link` `standalone` already carry — **and that clause was a
+   generalisation of four components onto eight, corrected 2026-09-12 after `visual-reviewer` read
+   the captures and `reviewer` read the eight sources. Three idioms, not one, and the boundary is
+   not always what T591 changed:**
+   - **A press-only inset `ring` over the hover fill**, which is what the sentence above described:
+     `FavouritesList`, `MatchRow`, `PlayerResultRow` (`active:ring-inset`) and `Table`'s row link
+     (`active:after:ring-inset` on a pseudo-element, because a `<tr>` cannot carry the ring itself).
+     These four are the sentence's real subjects.
+   - **An outward `ring`**, no `ring-inset`: `Menu`'s trigger, and `Footer`, which draws no press
+     state of its own and delegates to `Link` `standalone`. This is also what the two components the
+     sentence cites as its idiom — `Button` `secondary` and `destructive` — actually carry, so the
+     citation was right about the recipe and wrong about the geometry.
+   - **A `border-strong` edge that already existed, plus a fill move**, which is where T591's change
+     was the fill and not the boundary: `SiteHeader`'s nav item keeps its four-sided
+     `active:border-border-strong` and moved its press fill off hover's `surface-sunken` to
+     `bg-background`; `Menu`'s _items_ and footer item keep T560's 2px `border-strong` on the
+     inline-start edge — which `shared-primitives.md`'s own Menu `active` entry specifies rather than
+     a four-sided ring — and moved the same fill the same way. In both, the boundary alone was the
+     mark the duplicate check could not tell from hover; the fill is what made the pair separable.
+
+   A component's press signal is its own spec's, and this paragraph may summarise the eight only in
+   the shape they actually share: a press differs from hover by a boundary **and** a fill, never by
+   fill alone); or the signal exists but the
    frame was too large for the comparator to see it, and the story is scoped to the control that
    carries it instead of the whole page or the whole `#storybook-root` box (`CountryFlag`,
    `Tooltip`, `Menu`'s focus/keyboard stories, `PlayerColourSwatch`, `PrivacyNotice`,
@@ -1453,13 +1474,19 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
    deleting an entry the check still finds as a live full match would fail it before the next CI
    baseline regeneration lands (the same reasoning the `MapThumbnail`/`PlayerAvatar` `Loading` entry
    above already established for one entry at a time — this closes 20 the same way, not
-   differently). **That follow-up landed the same day**: the regeneration commit `680a642d` moved
-   the baselines the source and story edits above could not, and the next
-   commit (`9b4cb9d8`) emptied `scripts/visual/story-baseline-duplicates-debt.json` to `[]` — which
-   is itself the confirmation, not a separate claim, because
-   `scripts/checks/story-baselines-duplicates.mjs` fails on any full match that has neither a marker
-   nor an unexpired debt entry: the file is empty and the check is green, so none of the 20 groups is
-   a full match any more. **Owner: T591. Closed 2026-09-12.**
+   differently). **That follow-up landed the same day**, inside the squash this feature's history
+   keeps it in — `c55850bb`, PR #77, which carries both the regeneration and the emptied
+   `scripts/visual/story-baseline-duplicates-debt.json`; the pre-squash SHAs are deliberately not
+   cited, because that branch is gone from the remote and a citation a fresh clone cannot resolve is
+   no better than the promise it replaced. **What the empty file proves, stated at its real
+   strength**: `scripts/checks/story-baselines-duplicates.mjs` fails on a full match carrying
+   _neither_ a marker _nor_ an unexpired debt entry, so an empty debt file plus a green check means
+   no group is an **undocumented** full match. It does not mean no group matches: the check still
+   reports 28 documented full-set groups, two of them inside the emptied entries' own groups and held
+   by equivalence markers, exactly as those entries' `fixApplied` notes said they would be. **And
+   the count was 21, not the twenty this row says above** — `git show <the pre-squash tree>` had 21
+   entries, every one found 2026-09-12; the "twenty" is an off-by-one carried from T591's own task
+   text and is corrected here rather than in the frozen task. **Owner: T591. Closed 2026-09-12.**
 
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
@@ -1558,6 +1585,24 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    `border.json` token names a decoration thickness or an underline offset. Left as a note here
    rather than folded into DS-11's own fix, which was T589's scope, not this row's. **Owner: T588.
    Closed 2026-09-12.**
+
+7. **H4 — `AccountErasurePanel`'s `ErasedScreen` link had its hover and press signal changed with
+   nothing capturing either, and the component's own story says those states are not its own — open.**
+   T591 gave that anchor the underline recipe its two siblings got in the same task
+   (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2 active:underline-offset-4`,
+   `src/screens/AccountErasurePanel/index.tsx`), under its own instruction of "all three or none".
+   The other two got the stories with it: `PrivacyNotice` and `ThirdPartyObjectionForm` each carry
+   `Hover`, `FocusVisible` and `Active` under a link clip. `AccountErasurePanel.stories.tsx` carries
+   none, and its `HoverFocusActiveNotApplicable` states that hover, focus and active "belong to the
+   buttons, the dialog's actions and the acknowledgement checkbox, each already covered by their own
+   components' stories" — which is false of this anchor, exactly as row 5 (H2) was false of
+   `DataExportPanel`'s download link, and false in the same way: a local anchor styled inside a screen
+   is covered by no other component's stories. Found 2026-09-12 by `reviewer`, on a
+   `visual-reviewer` PASS that had to be withdrawn: a method that judges committed baselines is silent
+   on a state no baseline depicts, and silence is not a pass. **Owed**: a clipped `Hover`,
+   `FocusVisible` and `Active` over `ErasedScreen`'s link, the same shape its two siblings carry, and
+   `HoverFocusActiveNotApplicable` reworded to say what it really defers to. **Owner: T593. Fix by
+   2026-09-26.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

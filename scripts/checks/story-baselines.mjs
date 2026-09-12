@@ -108,6 +108,32 @@ const WIDTHS = [375, 768, 1280]
 // does not match this shape at all (no recognised theme/width suffix) cannot name any story this
 // check knows about and is therefore an orphan by construction, same as a name that parses but
 // names no story in the index.
+// The counts `packages/design-system/specs/README.md`'s "The baseline set, as it stands" states as
+// this package's one living figure. They are asserted here, and not merely printed below, because
+// that section is prose: without a gate, adding a story keeps this check green (set equality still
+// holds — the story has its six captures) while the README silently becomes false, which is the one
+// failure mode `CLAUDE.md`'s filing rule names outright ("a living fact is trustworthy only because
+// a test asserts it rather than because someone re-read it"). This is the same tripwire
+// `build-tokens.test.mjs` is for that file's contrast table: a deliberate change bumps one number in
+// the same commit as the change, and an accidental one fails.
+export const EXPECTED_STORY_COUNT = 545
+export const EXPECTED_BASELINE_COUNT = 3292
+
+// Fails when either count has moved, naming the README section that has to move with it. Returns a
+// message rather than exiting so story-baselines.test.mjs can assert both directions.
+export function findCountDrift({
+  storyCount,
+  baselineCount,
+  expectedStories = EXPECTED_STORY_COUNT,
+  expectedBaselines = EXPECTED_BASELINE_COUNT,
+}) {
+  const drifted = []
+  if (storyCount !== expectedStories) drifted.push(`stories: ${expectedStories} -> ${storyCount}`)
+  if (baselineCount !== expectedBaselines)
+    drifted.push(`baseline files: ${expectedBaselines} -> ${baselineCount}`)
+  return drifted
+}
+
 export const BASELINE_NAME_RE = /^(.+)-(?:light|dark)-(?:375|768|1280)\.png$/
 
 // Every story's six {theme, width} units it does not already have.
@@ -194,6 +220,21 @@ function main() {
         'baselines are only ever captured on CI, never locally), or delete an orphan whose ' +
         'story was removed, renamed, or whose filename no longer matches the ' +
         '`<story-id>-<light|dark>-<375|768|1280>.png` shape.',
+    )
+    process.exit(1)
+  }
+
+  const drifted = findCountDrift({
+    storyCount: storyIds.size,
+    baselineCount: baselineFiles.length,
+  })
+  if (drifted.length > 0) {
+    log('story-baselines: the counts this package publishes have moved:')
+    for (const drift of drifted) log(`  - ${drift}`)
+    log(
+      'if that is deliberate, update EXPECTED_STORY_COUNT / EXPECTED_BASELINE_COUNT above AND ' +
+        '"The baseline set, as it stands" in packages/design-system/specs/README.md, in the same ' +
+        'commit — that section names these numbers and nothing else asserts them.',
     )
     process.exit(1)
   }

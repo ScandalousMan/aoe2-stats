@@ -297,12 +297,16 @@ jobs:
       # suite (real temp-dir fixtures, not the live tree) runs immediately after.
       - run: node scripts/checks/story-baselines-duplicates.mjs
       - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
-      # T592: `scripts/checks/baseline-regeneration-diff.mjs` is a reporting tool, never a gate — a
-      # regeneration legitimately moves anything the change it follows touched — so the script itself
-      # runs in `baselines.yml`, beside the commit it explains, and not here. Its own `node --test`
-      # suite runs here because nothing else would ever run it: it is fixture-only (paired PNGs in a
-      # temp dir), it shares the pngjs decode with the check above, and a reporting tool nobody gates
-      # on is exactly the kind that rots unnoticed.
+      # Two fixture-only suites whose own checks cannot run here, gathered rather than paired with
+      # them. `story-baselines.mjs` needs the built Storybook index and so runs in the `visual` job
+      # below; `baseline-regeneration-diff.mjs` is a reporting tool, never a gate — a regeneration
+      # legitimately moves anything the change it follows touched — and runs in `baselines.yml`,
+      # beside the commit it explains. Their suites need neither the build nor the real tree (a temp
+      # index, a temp baseline directory, paired PNGs in a temp dir), and running them here rather
+      # than after their checks keeps a regression in either check from being hidden behind an
+      # unrelated Storybook build failure. Both would otherwise run nowhere at all, which is what
+      # they did until 2026-09-12.
+      - run: node --test scripts/checks/story-baselines.test.mjs
       - run: node --test scripts/checks/baseline-regeneration-diff.test.mjs
       # T580 follow-up (adversarial review of #74): `tests/visual/focus-ring.spec.ts` imports
       # `packages/design-system/tokens/contrast.mjs`'s `contrastRatioRgb` — an `.mjs` module loaded
@@ -370,11 +374,6 @@ jobs:
       # not only the one that happens to select it — instead of surfacing only in nightly's
       # unscoped run, as one Playwright failure among many.
       - run: node scripts/checks/story-baselines.mjs
-      # Its own `node --test` suite, immediately after, the same pairing every check above carries:
-      # fixture-only (a temp index and a temp baseline directory), so it needs neither the Storybook
-      # build above nor the real tree, and a regression in the set-equality check itself would
-      # otherwise show up only as a missing failure.
-      - run: node --test scripts/checks/story-baselines.test.mjs
       # T108: `tests/visual/app-routes.spec.ts` serves this build (stubbing `/api/*` itself,
       # never `apps/api`) instead of screenshotting only the component library — the T107 defect
       # (every screen unstyled in production) never touched a Storybook story, so nothing above
