@@ -30,6 +30,40 @@
 // for, not a defect. Only a full six-of-six match, which no width or theme distinguishes, needs an
 // account of why.
 //
+// "Match" is a tolerance, not byte equality. The first baseline regeneration this check ever lived
+// through (2026-09-12, two `chore(visual): regenerate baselines from CI` commits on the same branch)
+// moved 79 of ~540 stories' baselines by nothing but anti-aliasing noise — a handful of pixels, a
+// channel delta in the single digits — and that noise alone flipped three groups' classification: two
+// markers (`CivilisationIcon` `FailedImage`/`UncoveredCivilisation`, `PlayerAvatar`
+// `SizeMd`/`Loaded`) went "stale" because one width's hash no longer matched, and would have flipped
+// back on the next regeneration that happened to land the other way — a check that oscillates with
+// the renderer's own noise is one people learn to ignore. A byte-identity comparison cannot tell that
+// noise apart from the one group that *did* get a real, deliberate fix in the same regeneration (the
+// `Skeleton` `text`-variant defect, `MapThumbnail`/`PlayerAvatar` `Loading`, which moved 1276-52768
+// pixels — three orders of magnitude more than the noise). So two captures count as a duplicate here
+// when they are indistinguishable *to this suite*: the fraction of differing pixels is at or under
+// `DUPLICATE_MAX_DIFF_RATIO` below, the same `maxDiffPixelRatio` `playwright.config.ts` already sets
+// for every story capture's own `toHaveScreenshot` (0.01 — the app-route full-page captures
+// `tests/visual/app-routes.spec.ts` raises to 0.05 do not apply here; they are exempted from this
+// check entirely via `loadAppRouteBaselineNames`, same as always). The number is not picked for this
+// file: if a story's baseline drifted enough that swapping it for another story's would make the
+// *actual visual suite* report a difference, the two are not a duplicate and never were; below that
+// ratio, a reader could not fail this suite by mixing the two up, which is exactly the "this baseline
+// verifies nothing" property a register row exists to catch. Measured against the real tree, the
+// ratio cleanly separates the two cases above: every noise-only pair moved by at most 0.065% of a
+// unit's pixels; the one genuine fix moved 1.1-4.0% — comfortably on either side of 1%.
+//
+// Exact hash equality (`md5OfFile`, unchanged) is still the fast path — most of a story's six units
+// are still byte-for-byte identical even when noise touches one or two, and no decode is needed to
+// know two identical hashes are indistinguishable. Only a differing hash triggers a pixel decode
+// (`pngjs`, the smallest already-viable dependency — `pixelmatch` and `sharp` are not needed to
+// literally count differing pixels, and neither resolves from this file's own location in any case:
+// `@playwright/test` bundles both internally but exports neither, and pnpm's strict `node_modules`
+// means a transitive dependency of a sibling package is not resolvable here regardless, T579's own
+// lesson). Full pairwise decoding of the whole tree is never attempted: a pair sharing zero of its
+// six units by hash is not a candidate this check spends a decode on (see `isPixelDiffCandidate`
+// below for why that restriction loses nothing found in the real tree).
+//
 // What fails, precisely:
 //   - a full-set match with no marker connecting all its members and no debt entry naming its exact
 //     set ("undocumented full match");
@@ -67,6 +101,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PNG } from 'pngjs'
 import { BASELINE_NAME_RE, loadAppRouteBaselineNames } from './story-baselines.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -89,6 +124,22 @@ const WIDTHS = [375, 768, 1280]
 const REQUIRED_DEBT_FIELDS = ['storyIds', 'found', 'fixOwed', 'fixBy']
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const MARKER_RE = /^\s*\/\/\s*visual-equivalence:\s*([a-z0-9][a-z0-9-]*)\s*:\s*(.*)$/
+
+// The tolerance "duplicate" is measured against — see this file's header for why a ratio rather than
+// byte equality, and why this number: it is `playwright.config.ts`'s own `maxDiffPixelRatio` for a
+// story capture's `toHaveScreenshot` (the app-route full-page override in `tests/visual/app-
+// routes.spec.ts`, 0.05, never applies to a baseline this check compares — those captures are
+// exempted entirely via `loadAppRouteBaselineNames`).
+export const DUPLICATE_MAX_DIFF_RATIO = 0.01
+
+// A partial match (see `findPartialMatches`) is only worth a pixel decode when at least one of its
+// six units is already byte-identical. Two genuinely unrelated stories overwhelmingly share zero
+// exact units — the real tree has none — so restricting the (expensive) pixel comparison to pairs
+// `findPartialMatches` already flagged keeps this check from decoding anywhere near its ~3262
+// baselines: only the handful of units a handful of near-duplicate candidates actually disagree on.
+function isPixelDiffCandidate(matches) {
+  return matches >= 1 && matches <= 5
+}
 
 // ---------------------------------------------------------------------------------------------
 // Story-id derivation (no Storybook build — see this file's own header).
@@ -337,6 +388,136 @@ export function findPartialMatches(hashKeyByStoryId) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Pixel-level tolerance (see this file's header for why a ratio, and why 0.01).
+// ---------------------------------------------------------------------------------------------
+
+// Decodes one baseline PNG into pngjs's raw RGBA buffer. `readFile` is injectable so a test can
+// decode an in-memory fixture instead of a real file on disk.
+export function decodePng(filePath, readFile = readFileSync) {
+  return PNG.sync.read(readFile(filePath))
+}
+
+// The fraction of pixels that differ between two same-dimensioned PNGs, comparing every channel (R,
+// G, B, A) for exact equality — a pixel counts as differing the moment any one channel does; the
+// *ratio* threshold callers apply to this result is what absorbs anti-aliasing noise, not a
+// per-pixel perceptual tolerance folded in here. Two baselines of different dimensions are never
+// indistinguishable regardless of ratio — 1 (maximal), not a division by two different totals. A
+// file pngjs cannot parse as a PNG at all (this file's own test fixtures use opaque byte strings for
+// units that are meant to differ, never a real image; a real corrupt capture would be a
+// `story-baselines.mjs` completeness concern, not this check's) is treated the same way: certainly
+// not indistinguishable from anything, rather than crashing the whole check over one bad decode.
+export function pixelDiffRatio(pathA, pathB, decode = decodePng) {
+  let a
+  let b
+  try {
+    a = decode(pathA)
+    b = decode(pathB)
+  } catch {
+    return 1
+  }
+  if (a.width !== b.width || a.height !== b.height) return 1
+  const total = a.width * a.height
+  let diff = 0
+  for (let i = 0; i < a.data.length; i += 4) {
+    if (
+      a.data[i] !== b.data[i] ||
+      a.data[i + 1] !== b.data[i + 1] ||
+      a.data[i + 2] !== b.data[i + 2] ||
+      a.data[i + 3] !== b.data[i + 3]
+    ) {
+      diff += 1
+    }
+  }
+  return diff / total
+}
+
+// One story's baseline file path for unit index 0-5, the same fixed {theme, width} order
+// `storyUnitHashes` iterates ({light,dark} x {375,768,1280}) and hash keys are joined in.
+export function unitFilePath(storyId, unitIndex, screenshotsDir) {
+  const theme = THEMES[Math.floor(unitIndex / WIDTHS.length)]
+  const width = WIDTHS[unitIndex % WIDTHS.length]
+  return path.join(screenshotsDir, `${storyId}-${theme}-${width}.png`)
+}
+
+// Two stories' full six-unit sets are indistinguishable to this suite when every unit either hashes
+// identically (the fast path — no decode) or differs by no more than `threshold` of its pixels. A
+// unit is only ever decoded when its hash already disagrees, so two stories sharing all six hashes
+// never touch `getPixelDiffRatio` at all.
+export function storiesAreIndistinguishable(
+  idA,
+  idB,
+  {
+    hashKeyByStoryId,
+    screenshotsDir,
+    threshold = DUPLICATE_MAX_DIFF_RATIO,
+    getPixelDiffRatio = pixelDiffRatio,
+  },
+) {
+  const keyA = hashKeyByStoryId.get(idA)
+  const keyB = hashKeyByStoryId.get(idB)
+  if (!keyA || !keyB) return false
+  if (keyA === keyB) return true
+  const unitsA = keyA.split(':')
+  const unitsB = keyB.split(':')
+  for (let unit = 0; unit < unitsA.length; unit += 1) {
+    if (unitsA[unit] === unitsB[unit]) continue
+    const pathA = unitFilePath(idA, unit, screenshotsDir)
+    const pathB = unitFilePath(idB, unit, screenshotsDir)
+    if (getPixelDiffRatio(pathA, pathB) > threshold) return false
+  }
+  return true
+}
+
+// The tolerant full-match groups this check actually enforces: every exact byte-identical group
+// `findFullMatchGroups` already found (transitively valid — byte equality is an equivalence
+// relation), plus every partial-match candidate (`isPixelDiffCandidate`) promoted by a real,
+// independent pixel decode of just its differing units. `findPartialMatches` already enumerates
+// every pair in the tree, so a group of three or more is never inferred by transitivity from two of
+// its edges — each pairwise promotion below is checked on its own.
+export function computeFullMatchGroups({
+  hashKeyByStoryId,
+  screenshotsDir,
+  threshold = DUPLICATE_MAX_DIFF_RATIO,
+  getPixelDiffRatio = pixelDiffRatio,
+}) {
+  const ids = [...hashKeyByStoryId.keys()]
+  const uf = createUnionFind(ids)
+
+  for (const group of findFullMatchGroups(hashKeyByStoryId)) {
+    for (let i = 1; i < group.length; i += 1) uf.union(group[0], group[i])
+  }
+
+  const promotedPairs = []
+  for (const { a, b, matches } of findPartialMatches(hashKeyByStoryId)) {
+    if (!isPixelDiffCandidate(matches)) continue
+    if (
+      storiesAreIndistinguishable(a, b, {
+        hashKeyByStoryId,
+        screenshotsDir,
+        threshold,
+        getPixelDiffRatio,
+      })
+    ) {
+      uf.union(a, b)
+      promotedPairs.push({ a, b })
+    }
+  }
+
+  const byRoot = new Map()
+  for (const id of ids) {
+    const root = uf.find(id)
+    if (!byRoot.has(root)) byRoot.set(root, [])
+    byRoot.get(root).push(id)
+  }
+  const groups = [...byRoot.values()]
+    .filter((group) => group.length > 1)
+    .map((group) => group.sort())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+
+  return { groups, promotedPairs }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Marker validation (union-find over `visual-equivalence` edges).
 // ---------------------------------------------------------------------------------------------
 
@@ -354,10 +535,28 @@ function createUnionFind(ids) {
   return { find, union }
 }
 
-// Splits every parsed marker into the valid ones (both endpoints currently share a hash key — a
-// real, current full-set match) and the findings a bad one produces: an empty reason, a target id
-// this tree has no story for, or a pair that is not (or no longer) a full-set match ("stale").
-export function evaluateMarkers({ markers, hashKeyByStoryId, knownStoryIds }) {
+// The default `isFullMatch` — exact hash-key equality, unchanged since before the pixel-tolerance
+// work above. `runCheck` overrides this with `storiesAreIndistinguishable` (the ratio-tolerant
+// definition, see this file's header); left as the default here so a caller that supplies only
+// `hashKeyByStoryId` (this file's own unit tests, which fabricate hash strings with no baseline
+// files behind them) never triggers a decode of a file that does not exist.
+function exactHashMatch(hashKeyByStoryId) {
+  return (a, b) => {
+    const keyA = hashKeyByStoryId.get(a)
+    const keyB = hashKeyByStoryId.get(b)
+    return Boolean(keyA) && Boolean(keyB) && keyA === keyB
+  }
+}
+
+// Splits every parsed marker into the valid ones (both endpoints currently a full match under
+// `isFullMatch`) and the findings a bad one produces: an empty reason, a target id this tree has no
+// story for, or a pair that is not (or no longer) a full match ("stale").
+export function evaluateMarkers({
+  markers,
+  hashKeyByStoryId,
+  knownStoryIds,
+  isFullMatch = exactHashMatch(hashKeyByStoryId),
+}) {
   const findings = []
   const validEdges = []
   for (const { sourceId, targetId, reason, filePath } of markers) {
@@ -371,9 +570,7 @@ export function evaluateMarkers({ markers, hashKeyByStoryId, knownStoryIds }) {
       findings.push(`${label} names \`${targetId}\`, which is not a story this tree derives.`)
       continue
     }
-    const sourceKey = hashKeyByStoryId.get(sourceId)
-    const targetKey = hashKeyByStoryId.get(targetId)
-    if (!sourceKey || !targetKey || sourceKey !== targetKey) {
+    if (!isFullMatch(sourceId, targetId)) {
       findings.push(
         `${label} — stale: \`${sourceId}\` and \`${targetId}\` are not currently a full-set ` +
           '(all six baselines) match. Either the marker is wrong, or a fix landed and it must be removed.',
@@ -409,8 +606,9 @@ export function evaluateFullMatchDocumentation({ fullMatchGroups, validEdges, de
 
     findings.push(
       `undocumented full-set match: ${group.join(' = ')} — every one of the six baselines is ` +
-        'byte-identical across all of these stories, but no `visual-equivalence` marker connects ' +
-        'all of them and no debt entry in ' +
+        "indistinguishable (byte-identical, or within this check's own pixel-diff tolerance — " +
+        "see this file's header) across all of these stories, but no `visual-equivalence` " +
+        'marker connects all of them and no debt entry in ' +
         `${path.relative(rootDir, defaultDebtJsonPath)} names this exact set. Add a marker (if this ` +
         'is deliberate — cite the mechanism or the spec) or a debt entry (if it is a real gap).',
     )
@@ -554,13 +752,24 @@ export function runCheck({
   }
 
   const hashKeyByStoryId = computeHashKeys(storyIdsWithBaselines, screenshotsDir)
-  const fullMatchGroups = findFullMatchGroups(hashKeyByStoryId)
-  const partialMatches = findPartialMatches(hashKeyByStoryId)
+  const { groups: fullMatchGroups, promotedPairs } = computeFullMatchGroups({
+    hashKeyByStoryId,
+    screenshotsDir,
+  })
+  const promotedPairKeys = new Set(promotedPairs.map(({ a, b }) => `${a} ${b}`))
+  // Reported as full matches above instead — a pair `computeFullMatchGroups` already promoted (both
+  // endpoints within this check's own pixel-diff tolerance) is not also a "partial, never failed"
+  // match; that label is for the ordinary responsive-collapse case, not one this check now requires
+  // an account of.
+  const partialMatches = findPartialMatches(hashKeyByStoryId).filter(
+    ({ a, b }) => !promotedPairKeys.has(`${a} ${b}`),
+  )
 
   const { validEdges, findings: markerFindings } = evaluateMarkers({
     markers,
     hashKeyByStoryId,
     knownStoryIds: storyIds,
+    isFullMatch: (a, b) => storiesAreIndistinguishable(a, b, { hashKeyByStoryId, screenshotsDir }),
   })
   findings.push(...markerFindings)
 

@@ -122,6 +122,10 @@ export const FileChosenMobile: Story = {
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' },
 }
 
+// visual-equivalence: composite-uploadcontrol--succeeded: this story exists to prove the real
+// selection-then-submit-then-success sequence (a play function `Succeeded`'s static `initialState`
+// prop cannot pin), not to depict an end frame distinct from it — it resolves to the same
+// `initialState: 'succeeded'` rendering `Succeeded` already shows.
 export const RealSelectionThenSuccess: Story = {
   name: 'a real file selection, submitted, resolving to succeeded',
   args: {

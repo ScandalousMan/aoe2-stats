@@ -1208,6 +1208,56 @@ on its own, not a defect this remediation's scope covers.
      commit cannot move. A follow-up commit regenerates those baselines from CI and removes the debt
      entry in the same commit, once the group is genuinely no longer a match.
 
+   **Regenerated baselines exposed a defect in the check itself, 2026-09-12 (this task) — fixed, and
+   the promised follow-up above landed in the same commit.** Two `chore(visual): regenerate baselines
+from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines by nothing but
+   anti-aliasing noise (a handful of pixels each, a channel delta in the single digits), and that
+   noise alone flipped three groups' classification under the check's original byte-identity
+   comparison: `CivilisationIcon` `FailedImage`/`UncoveredCivilisation` and `PlayerAvatar`
+   `SizeMd`/`Loaded` (both already marked deliberate, above) went "stale" because one width's hash no
+   longer matched a hair's-breadth mutation — 3 and 26 pixels respectively, out of six-figure pixel
+   counts — even though nothing about either pair actually changed; `MapThumbnail`/`PlayerAvatar`
+   `Loading` (the Suspect entry above) genuinely stopped matching, moving 1276-52768 pixels — three
+   orders of magnitude more — confirming the fix landed. A check that flags a marker "stale" every
+   time the renderer's own noise happens to land on the byte it hashed, indistinguishable from a real
+   fix, is one people learn to ignore. `scripts/checks/story-baselines-duplicates.mjs` now treats two
+   captures as a duplicate when they are indistinguishable _to the visual suite itself_ — the fraction
+   of differing pixels at or under `DUPLICATE_MAX_DIFF_RATIO` (0.01), `playwright.config.ts`'s own
+   `maxDiffPixelRatio` for a story capture — rather than requiring byte equality; the check's own
+   header carries the full reasoning and the pngjs-based implementation. Reconciled against the real
+   tree under this definition:
+   - The two falsely-stale markers above are valid again, with no story or comment change needed —
+     3px/119808 and 26px/40474 are both far under 1%.
+   - `MapThumbnail`/`PlayerAvatar` `Loading` no longer matches at all (every one of its six units now
+     exceeds the ratio by at least 10x), so the debt entry is removed from
+     `scripts/visual/story-baseline-duplicates-debt.json` — the fix this row already recorded as
+     "Fixed 2026-09-12" is now also reflected in the baselines the check reads, closing the loop the
+     paragraph above left open.
+   - Four groups the tolerance now reaches were previously counted among the "8 partial matches"
+     above and, being partial rather than full, needed no marker at the time — the same 0.01 ratio
+     that clears the noise above also clears these, all of them 3-26 pixels out of six-figure pixel
+     counts per differing unit, and each is a benign mechanism already established elsewhere in this
+     register or in the story file's own prose, now given the machine-readable marker: the `Menu`
+     `ProfileSwitcher`/`Selection`/`SheetBelowMd` trio (T569's own prose, quoted at the top of this
+     row, finally converted into the marker syntax now that it is a full rather than partial match);
+     `ProfileSummary` `Board`/`BoardMobile`/`BoardRatingsCardsBelowLg` (the same
+     `reviewWidthNarrow`-overridden-by-T504 mechanism as the first "Deliberate" bullet above, plus
+     `BoardMobile`'s args being verbatim `Board`'s, the same shape as `UploadControl`
+     `FileChosen`/`FileChosenMobile` in that same bullet); `UploadControl`
+     `RealSelectionThenSuccess`/`Succeeded` (the real upload sequence resolves to the same `succeeded`
+     state the static story already pins); `Dialog` `FocusVisible`/`KeyboardFocusOrderAndTrap` (both
+     stories' own comments already say the forced `:focus-visible` frame and the real Tab-driven
+     sequence's resting frame are "its still-image counterpart" of one another). Between them, the
+     `Menu` trio and the `ProfileSummary` trio each account for all three of their own pairwise
+     partial matches (a 3-member group has three edges), so all 8 of the original partial matches are
+     now covered by these 4 groups, none left over. The tree now has **28 full-set groups** (the
+     original 24 deliberate groups, unaffected by the dissolved Suspect entry, plus these 4) and **0**
+     partial matches. `scripts/checks/story-baselines-duplicates.test.mjs` gained a pixel-fixture test
+     pinning the tolerance directly (paired PNGs a handful of pixels apart count as
+     a duplicate, well-apart ones do not — failed against the pre-fix byte-identity implementation
+     with an import error, since neither `pixelDiffRatio` nor `DUPLICATE_MAX_DIFF_RATIO` existed to
+     import).
+
    **Owner: T584. Closed 2026-09-11.**
 
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`

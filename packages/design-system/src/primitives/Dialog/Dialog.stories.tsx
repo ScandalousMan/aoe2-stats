@@ -77,6 +77,10 @@ export const Error: Story = {
 // its own — via `tests/visual/stories.spec.ts`'s `visualForceState` (see that file's own comment):
 // the same real Tab a keyboard user takes next from the heading (`KeyboardFocusOrderAndTrap`
 // below asserts that transition functionally; this is its still-image counterpart).
+// visual-equivalence: primitives-dialog--keyboard-focus-order-and-trap: forces `:focus-visible`
+// synthetically onto `primaryAction` ("Turn it off"); `KeyboardFocusOrderAndTrap`'s own real
+// Tab-driven sequence below ends on that same button focused via a genuine keyboard Tab — the same
+// resting frame, per this comment's own point above ("this is its still-image counterpart").
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
   parameters: {

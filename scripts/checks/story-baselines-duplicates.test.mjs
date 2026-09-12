@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { PNG } from 'pngjs'
 import {
   kebabFromExportName,
   sanitizeTitleSegment,
@@ -24,6 +25,11 @@ import {
   findStaleDebtEntries,
   findFullMatchGroups,
   findPartialMatches,
+  computeHashKeys,
+  pixelDiffRatio,
+  storiesAreIndistinguishable,
+  computeFullMatchGroups,
+  DUPLICATE_MAX_DIFF_RATIO,
   runCheck,
 } from './story-baselines-duplicates.mjs'
 
@@ -241,6 +247,108 @@ function writeStoryFile(srcDir, componentName, metaId, source) {
 function noSuchPath(rootDir, name) {
   return path.join(rootDir, name)
 }
+
+// A real, decodable PNG buffer (unlike `writeBaselineSet`'s opaque `content` string, which
+// `pixelDiffRatio` cannot decode) — 10x10, solid white, with `mutate` given the chance to flip
+// individual pixels before it is encoded. `flipPixels` sets the red channel of the first `count`
+// pixels to 0, so `count` out of the image's 100 pixels differ from an unmutated twin — a ratio of
+// `count / 100`, chosen to land cleanly on either side of `DUPLICATE_MAX_DIFF_RATIO` (0.01).
+function makeSolidPng(flipPixels = 0) {
+  const width = 10
+  const height = 10
+  const png = new PNG({ width, height })
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = 255
+    png.data[i + 1] = 255
+    png.data[i + 2] = 255
+    png.data[i + 3] = 255
+  }
+  for (let p = 0; p < flipPixels; p += 1) {
+    png.data[p * 4] = 0
+  }
+  return PNG.sync.write(png)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pixel-level tolerance (see story-baselines-duplicates.mjs's own header for why a ratio, not byte
+// equality). These fixtures are real, decodable PNGs (`makeSolidPng`), not the opaque byte strings
+// `writeBaselineSet` uses elsewhere in this file — `pixelDiffRatio` decodes them for real.
+// ---------------------------------------------------------------------------------------------
+
+test('pixelDiffRatio: one differing pixel out of a 10x10 image is a ratio of 0.01, exactly DUPLICATE_MAX_DIFF_RATIO', () => {
+  const dir = makeFixtureDir()
+  try {
+    const basePath = path.join(dir, 'base.png')
+    const closePath = path.join(dir, 'close.png')
+    writeFileSync(basePath, makeSolidPng(0))
+    writeFileSync(closePath, makeSolidPng(1))
+    assert.equal(pixelDiffRatio(basePath, closePath), 0.01)
+    assert.ok(pixelDiffRatio(basePath, closePath) <= DUPLICATE_MAX_DIFF_RATIO)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pixelDiffRatio: half the pixels differing is a ratio of 0.5, well above DUPLICATE_MAX_DIFF_RATIO', () => {
+  const dir = makeFixtureDir()
+  try {
+    const basePath = path.join(dir, 'base.png')
+    const farPath = path.join(dir, 'far.png')
+    writeFileSync(basePath, makeSolidPng(0))
+    writeFileSync(farPath, makeSolidPng(50))
+    assert.equal(pixelDiffRatio(basePath, farPath), 0.5)
+    assert.ok(pixelDiffRatio(basePath, farPath) > DUPLICATE_MAX_DIFF_RATIO)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('storiesAreIndistinguishable: a handful of differing pixels on one unit still counts as a full match; well above the threshold does not', () => {
+  const dir = makeFixtureDir()
+  try {
+    const screenshotsDir = path.join(dir, '__screenshots__')
+    mkdirSync(screenshotsDir, { recursive: true })
+    // `a` and `b` share five of their six units byte-identically; the sixth (light-1280) differs by
+    // one pixel of 100 for `b`, and by 50 of 100 for `c` — the same noise-vs-defect split this
+    // file's own header measured on the real tree (25px noise vs. 1276-52768px genuine change).
+    for (const [suffix, content] of [
+      ['light-375', makeSolidPng(0)],
+      ['light-768', makeSolidPng(0)],
+      ['dark-375', makeSolidPng(0)],
+      ['dark-768', makeSolidPng(0)],
+      ['dark-1280', makeSolidPng(0)],
+    ]) {
+      writeFileSync(path.join(screenshotsDir, `composite-widget--a-${suffix}.png`), content)
+      writeFileSync(path.join(screenshotsDir, `composite-widget--b-${suffix}.png`), content)
+      writeFileSync(path.join(screenshotsDir, `composite-widget--c-${suffix}.png`), content)
+    }
+    writeFileSync(path.join(screenshotsDir, 'composite-widget--a-light-1280.png'), makeSolidPng(0))
+    writeFileSync(path.join(screenshotsDir, 'composite-widget--b-light-1280.png'), makeSolidPng(1))
+    writeFileSync(path.join(screenshotsDir, 'composite-widget--c-light-1280.png'), makeSolidPng(50))
+
+    const hashKeyByStoryId = computeHashKeys(
+      new Set(['composite-widget--a', 'composite-widget--b', 'composite-widget--c']),
+      screenshotsDir,
+    )
+
+    assert.equal(
+      storiesAreIndistinguishable('composite-widget--a', 'composite-widget--b', {
+        hashKeyByStoryId,
+        screenshotsDir,
+      }),
+      true,
+    )
+    assert.equal(
+      storiesAreIndistinguishable('composite-widget--a', 'composite-widget--c', {
+        hashKeyByStoryId,
+        screenshotsDir,
+      }),
+      false,
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 test('end-to-end: an undocumented full match fails', () => {
   const rootDir = makeFixtureDir()
