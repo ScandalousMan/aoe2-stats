@@ -118,6 +118,21 @@ jobs:
       # `--update-snapshots=all` — not `changed` or `missing` — is what makes every selected
       # capture provenanced by this run rather than inherited from whichever machine happened to
       # write it before.
+      #
+      # Challenged and kept, 2026-09-12 (user's decision). An adversarial review of PR #74 asked
+      # for `changed` on the grounds that `all` drowns a reviewer: the two regenerations on that
+      # branch rewrote 167 and 175 baselines, of which only 39 and 6 had changed by more than
+      # anti-aliasing noise, and a reviewer reading `git diff --stat` cannot tell which. The
+      # objection is real and the answer is not to weaken provenance, which is the one property
+      # this workflow exists to provide: with `changed`, a baseline's bytes may predate the run
+      # that claims them, and T505's proof stops being a `git` fact. Separating noise from a real
+      # move is a reading problem, and it is solved by decoding the pair rather than by trusting
+      # the file list — the two regenerations above were each reconciled that way before their
+      # commits were accepted (noise measured at or under 25 pixels with a single-digit channel
+      # delta; real moves from 1276 to 52768 pixels — three orders of magnitude apart, per
+      # capture). `scripts/checks/story-baselines-duplicates.mjs` already decodes PNGs this way
+      # for a different question; T592 owes the same reading as a script, so the next regeneration
+      # does not depend on someone writing it out by hand a third time.
       - name: Run the full matrix
         run: |
           VISUAL_STORIES_FILE="$RUNNER_TEMP/visual-stories.json" \
