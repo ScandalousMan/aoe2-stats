@@ -485,27 +485,31 @@ export function decodePng(filePath, readFile = readFileSync) {
   return PNG.sync.read(readFile(filePath))
 }
 
-// The fraction of pixels that differ between two same-dimensioned PNGs, comparing every channel (R,
-// G, B, A) for exact equality — a pixel counts as differing the moment any one channel does; the
-// *ratio* threshold callers apply to this result is what absorbs anti-aliasing noise, not a
-// per-pixel perceptual tolerance folded in here. Two baselines of different dimensions are never
-// indistinguishable regardless of ratio — 1 (maximal), not a division by two different totals. A
-// file pngjs cannot parse as a PNG at all (this file's own test fixtures use opaque byte strings for
-// units that are meant to differ, never a real image; a real corrupt capture would be a
-// `story-baselines.mjs` completeness concern, not this check's) is treated the same way: certainly
-// not indistinguishable from anything, rather than crashing the whole check over one bad decode.
-export function pixelDiffRatio(pathA, pathB, decode = decodePng) {
+// The raw differing-pixel count between two PNGs, comparing every channel (R, G, B, A) for exact
+// equality — a pixel counts as differing the moment any one channel does. `pixelDiffRatio` below is
+// this check's own consumer (a *ratio* threshold is what absorbs anti-aliasing noise here, not a
+// per-pixel perceptual tolerance folded into the count itself); T592's baseline-regeneration-
+// diff.mjs is the other, which needs the count itself (a regeneration's own noise/real-move split is
+// calibrated in raw pixels, not a ratio — see that file's header for why) and reuses this decode
+// rather than a second implementation of it, per that task's own instruction. `dimensionMismatch:
+// true` (an unparseable file, T592's own case for a filename `pngjs` cannot read as one of the pair,
+// or two dimensions that plainly differ) carries no `diffPixels`/`totalPixels` — two images that
+// cannot be compared pixel-for-pixel are never indistinguishable regardless of a caller's own
+// threshold, and no caller should read a count that was never computed.
+export function pixelDiffCount(pathA, pathB, decode = decodePng) {
   let a
   let b
   try {
     a = decode(pathA)
     b = decode(pathB)
   } catch {
-    return 1
+    return { dimensionMismatch: true, diffPixels: null, totalPixels: null }
   }
-  if (a.width !== b.width || a.height !== b.height) return 1
-  const total = a.width * a.height
-  let diff = 0
+  if (a.width !== b.width || a.height !== b.height) {
+    return { dimensionMismatch: true, diffPixels: null, totalPixels: null }
+  }
+  const totalPixels = a.width * a.height
+  let diffPixels = 0
   for (let i = 0; i < a.data.length; i += 4) {
     if (
       a.data[i] !== b.data[i] ||
@@ -513,10 +517,23 @@ export function pixelDiffRatio(pathA, pathB, decode = decodePng) {
       a.data[i + 2] !== b.data[i + 2] ||
       a.data[i + 3] !== b.data[i + 3]
     ) {
-      diff += 1
+      diffPixels += 1
     }
   }
-  return diff / total
+  return { dimensionMismatch: false, diffPixels, totalPixels }
+}
+
+// The fraction of pixels that differ between two same-dimensioned PNGs — the *ratio* threshold
+// callers apply to this result is what absorbs anti-aliasing noise, not a per-pixel perceptual
+// tolerance folded in here. Two baselines of different dimensions, or a file `pngjs` cannot parse as
+// a PNG at all (this file's own test fixtures use opaque byte strings for units that are meant to
+// differ, never a real image; a real corrupt capture would be a `story-baselines.mjs` completeness
+// concern, not this check's), are never indistinguishable regardless of ratio — 1 (maximal), not a
+// division by two different totals or a crash over one bad decode.
+export function pixelDiffRatio(pathA, pathB, decode = decodePng) {
+  const { dimensionMismatch, diffPixels, totalPixels } = pixelDiffCount(pathA, pathB, decode)
+  if (dimensionMismatch) return 1
+  return diffPixels / totalPixels
 }
 
 // One story's baseline file path for unit index 0-5, the same fixed {theme, width} order
