@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // T527: the mechanical check FR-062 and research D15 ask for. It reads every `.tsx` file under
-// `packages/design-system/src/` (components and `lib/`) and fails on three shapes:
+// `packages/design-system/src/` (components and `lib/`) and fails on four shapes:
 //   1. An arbitrary bracket value carrying a length, a colour, a duration or a shadow — a Tailwind
 //      utility of the form `<prefix>-[<value>]` where `<value>` is a length (em/rem/px/vh/vw/%), a
 //      colour (#hex, rgb(), rgba(), hsl()), or a duration/animation the utility vocabulary
@@ -12,6 +12,15 @@
 //      This is the check's signature clause (D15): the value is token-derived and still a defect,
 //      because it means the utility vocabulary has a hole a check hunting only for raw values would
 //      never find.
+//   4. A bare, unbracketed `outline-offset-<N>` Tailwind utility (either sign — `outline-offset-2`
+//      or `-outline-offset-2`) — T589, DS-11 (`packages/design-system/specs/README.md`'s token gap
+//      register). Rule 2's px/rem/ms scan never caught this shape because Tailwind's `outline-*`
+//      utilities carry no unit suffix of their own (`outline-offset-2` means 2px without ever
+//      writing `px`), so the whole `outline-offset-N` namespace was invisible to every rule above
+//      until this one. `border.json`'s `ring-offset`, `ring-offset-inset` and
+//      `ring-offset-inset-flush` name every magnitude this codebase ships in that namespace
+//      (`outline-offset-ring`, `outline-offset-ring-inset`, `outline-offset-ring-inset-flush`); a
+//      bare numeral has no excuse left.
 //
 // Allowlisted shapes — not values, each named here with why (no separate allowlist file exists;
 // unlike a11y-allowlist.mjs, these are shapes true everywhere in the codebase, not per-file
@@ -201,6 +210,13 @@ const DURATION_RE = /\d+(\.\d+)?(ms|s)\b/i
 const RAW_PX_REM_MS_RE = /\b\d+(\.\d+)?(px|rem|ms)\b/i
 const DS_VAR_RE = /var\(--ds-/
 
+// Rule 4 (T589, DS-11): a bare `outline-offset-<N>` Tailwind utility, either sign, anywhere in the
+// string — not only inside a bracket, the same reach `RAW_PX_REM_MS_RE` above has, because a stray
+// `-outline-offset-2` typed as a plain class token carries no bracket at all. The bracketed
+// arbitrary form (`outline-offset-[2px]`) is a different shape rule 1 already governs: this regex
+// requires a digit immediately after the hyphen, which a `[` never is, so the two never overlap.
+const OUTLINE_OFFSET_RE = /-?outline-offset-\d+(\.\d+)?\b/
+
 // A comma-separated list of bare CSS property names/keywords — letters and hyphens only, at least
 // one comma. `transition-[fill,opacity]`'s contract-named allowlisted shape.
 const PROPERTY_LIST_RE = /^[a-z-]+(,[a-z-]+)+$/i
@@ -300,6 +316,9 @@ export function checkStringLiteral(value) {
   }
   if (RAW_PX_REM_MS_RE.test(value)) {
     findings.push(`raw px/rem/ms literal: \`${value}\``)
+  }
+  if (OUTLINE_OFFSET_RE.test(value)) {
+    findings.push(`bare outline-offset-<N> literal, not a named width token: \`${value}\``)
   }
   for (const token of value.split(/\s+/).filter(Boolean)) {
     findings.push(...checkToken(token))

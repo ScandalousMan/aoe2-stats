@@ -1,4 +1,5 @@
 import { cx } from '../../lib/cx'
+import { Link } from '../../primitives/Link'
 
 // packages/design-system/specs/footer.md
 
@@ -19,29 +20,18 @@ export const disclaimer =
 export const affiliationNote =
   "This project is not affiliated with or endorsed by Microsoft or World's Edge."
 
-// T560 (FR-038): the same inline-link classes `ThirdPartyObjectionForm`, `AccountErasurePanel` and
-// `PrivacyNotice` already give every inline link in the product — footer.md §5 already documents a
-// focus ring and a `duration.fast`/`easing.standard` transition for these two links, and neither
-// was actually built. Same category, same behaviour.
-const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
-
-// Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
-// signal, so a press was not distinguishable from a hover in a still image.
-// `active:underline-offset-4` gives press its own frame without a fill (this is an inline link
-// inside the disclaimer's own text flow — the same reasoning `Link`'s `inline` variant states for
-// withholding a fill, `Link/index.tsx`) — the identical fix now shared with `Link`, `PrivacyNotice`,
-// `ThirdPartyObjectionForm` and `AccountErasurePanel`'s own copies of this pattern.
-const linkClasses = cx(
-  'py-2 font-sans text-sm text-link underline transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover active:text-link-hover active:underline-offset-4',
-  focusRing,
-)
-
 /** The Microsoft Game Content Usage Rules disclaimer (constitution X), mounted in the web shell by
  * T098a so it renders on every route. §5: this component has effectively one state — the
  * disclaimer and the affiliation note are never conditional; `LinkRow`'s two entries render
- * independently, only when their own href prop is supplied. */
+ * independently, only when their own href prop is supplied.
+ *
+ * T591: these two links used to be a hand-rolled `<a>` pair carrying their own copy of `Link`
+ * `standalone`'s ink/underline/focus-ring/active recipe (`linkClasses`/`focusRing`, T560's own
+ * remediation of the gap) — a plain `active:underline-offset-4` colour-adjacent signal that turned
+ * out too weak for the duplicate check to tell apart from hover at this row's size
+ * (story-baseline-duplicates-debt.json). Rendering the primitive directly instead of copying its
+ * recipe gets the fix (`standalone`'s own `active:bg-surface-sunken active:ring-2
+ * active:ring-border-strong`, T583) with no second copy to drift out of sync again. */
 export function Footer({ privacyNoticeHref, objectionHref, className }: FooterProps) {
   const hasLinks = Boolean(privacyNoticeHref || objectionHref)
 
@@ -52,14 +42,14 @@ export function Footer({ privacyNoticeHref, objectionHref, className }: FooterPr
       {hasLinks && (
         <div className="mt-4 flex flex-col gap-4 md:flex-row">
           {privacyNoticeHref && (
-            <a href={privacyNoticeHref} className={linkClasses}>
+            <Link href={privacyNoticeHref} variant="standalone">
               Read the privacy notice
-            </a>
+            </Link>
           )}
           {objectionHref && (
-            <a href={objectionHref} className={linkClasses}>
+            <Link href={objectionHref} variant="standalone">
               Object to what is held about me
-            </a>
+            </Link>
           )}
         </div>
       )}

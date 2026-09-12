@@ -304,4 +304,20 @@ describe('PrivacyNotice — the processing register link', () => {
     const link = screen.getByRole('link', { name: 'Read the public processing register' })
     expect(link).toHaveAttribute('href', '/register')
   })
+
+  // T591 (structural-tier.md §9 "hover" — "two signals, one of which is not colour"): this
+  // component's `InlineLink` class copy was missing the underline-thickness half of `Link`'s
+  // `inline` recipe.
+  it('thickens the underline on hover and on press, matching every other inline link', () => {
+    render(
+      <PrivacyNotice
+        lastUpdated="2026-08-30"
+        hrefs={{ ...hrefs, processingRegister: '/register' }}
+      />,
+    )
+    const link = screen.getByRole('link', { name: 'Read the public processing register' })
+    expect(link.className).toMatch(/\bdecoration-1\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+  })
 })

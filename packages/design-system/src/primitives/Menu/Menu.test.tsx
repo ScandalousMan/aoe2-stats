@@ -83,23 +83,29 @@ describe('Menu', () => {
   // T560 (FR-038): the trigger paints the same resting recipe as `Button`'s `secondary` variant
   // (`bg-surface`, `border-border-strong`) — same category, so it owes the same active feedback
   // and the same reduced-motion resting frame, neither of which it had before this task.
-  it('a non-empty trigger paints an active fill and border, and stops transitioning under reduced motion', () => {
+  // T591: the trigger's press now takes `Button` `secondary`'s own active recipe in full
+  // (`active:bg-background active:ring-2 active:ring-border-strong`) — a single fill swap to
+  // `surface-sunken` (identical to hover) was too weak a mark for the duplicate check to tell
+  // apart from hover at this control's size (story-baseline-duplicates-debt.json).
+  it('a non-empty trigger paints an active fill and boundary, and stops transitioning under reduced motion', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
-    expect(trigger.className).toMatch(/\bactive:bg-surface-sunken\b/)
-    expect(trigger.className).toMatch(/\bactive:border-border-strong\b/)
+    expect(trigger.className).toMatch(/\bactive:bg-background\b/)
+    expect(trigger.className).toMatch(/\bactive:ring-2\b/)
+    expect(trigger.className).toMatch(/\bactive:ring-border-strong\b/)
     expect(trigger.className).toMatch(/\bmotion-reduce:duration-0\b/)
   })
 
-  // shared-primitives.md#Menu "active — item fill `surface-sunken` with boundary `border-strong`
-  // on the inline-start edge" — documented, never built, until T560.
+  // shared-primitives.md#Menu "active — item fill `background` with boundary `border-strong` on
+  // the inline-start edge" — T591: the fill moved from `surface-sunken` (identical to hover) to
+  // `background` (`Button` `ghost`'s own active recipe), so hover and press are visibly distinct.
   it("paints a selection item's active state exactly as shared-primitives.md#Menu documents it", async () => {
     const user = userEvent.setup()
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
     const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
     expect(current.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(current.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(current.className).toMatch(/\bactive:bg-background\b/)
     expect(current.className).toMatch(/\bactive:border-l-border-strong\b/)
     expect(current.className).toMatch(/\bborder-l-transparent\b/)
     expect(current.className).toMatch(/\bmotion-reduce:duration-0\b/)
@@ -118,7 +124,7 @@ describe('Menu', () => {
     await user.click(screen.getByRole('button', { name: 'Manage' }))
     const footer = screen.getByRole('menuitem', { name: 'Add another' })
     expect(footer.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(footer.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(footer.className).toMatch(/\bactive:bg-background\b/)
     expect(footer.className).toMatch(/\bactive:border-l-border-strong\b/)
     expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
   })

@@ -37,8 +37,11 @@ export interface PlayerResultRowProps {
   className?: string
 }
 
+// T589 (DS-11): the inward offset is `outline-offset-ring-inset-flush` (`border.json`'s
+// `ring-offset-inset-flush`, -2px), the same rendered offset this row shipped as a bare
+// `-outline-offset-2` literal.
 const focusRing =
-  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring'
 
 /** One search result. The whole row is a single link (§2, §9) — everything inside, including
  * `Standing`, is non-interactive text with no hover of its own; the row itself owns the hover fill,
@@ -76,8 +79,15 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
         // used to also carry `active:border-l-2`, redundant below `md` and actively wrong at
         // `md`+, where it was the one class fighting `md:border-x-0` back to a width — removed now
         // that the width is reserved unconditionally instead.)
+        // T591: the inline-start rule alone was still too weak a mark for the duplicate check to
+        // tell press apart from hover at this row's size (story-baseline-duplicates-debt.json) —
+        // press now additionally draws a full inset boundary, `ring-2 ring-inset
+        // ring-border-strong`, on top of the fill and the inline-start rule, the same "a press is a
+        // boundary" signal `Button` `secondary`/`destructive` and `Link` `standalone` already carry
+        // (T583).
         'border-l-2 border-l-transparent',
         'hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong',
+        'active:ring-2 active:ring-inset active:ring-border-strong',
         focusRing,
         className,
       )}

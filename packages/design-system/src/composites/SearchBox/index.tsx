@@ -40,8 +40,10 @@ export interface SearchBoxProps {
   className?: string
 }
 
+// T589: `outline-offset-ring` (`border.json`'s `ring-offset`, 2px) names the offset this ring
+// shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const inputFocusRing =
-  'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring'
+  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
 const DEFAULT_DEBOUNCE_MS = 300
 // §5 "loading": never fewer skeleton rows than the previous result count already on screen.

@@ -73,4 +73,41 @@ describe('Button', () => {
     render(<Button>Continue with Steam</Button>)
     expect(screen.getByRole('button').className).toMatch(/focus-visible:outline-focus-ring/)
   })
+
+  // T588 (README's gap register, row 6/H3): `primary` used to distinguish rest, hover and press by
+  // fill luminance alone, which FR-037's "more than colour" half does not accept from a control
+  // this prominent. The label's own underline now carries the non-colour signal — thickness for
+  // hover, position for press — the same two axes `Link`'s own non-colour signal already uses.
+  it('primary carries a non-colour hover signal — the label underlines, thicker than rest (FR-037)', () => {
+    render(<Button variant="primary">Continue with Steam</Button>)
+    const button = screen.getByRole('button')
+    expect(button.className).toMatch(/\bhover:underline\b/)
+    expect(button.className).toMatch(/\bhover:decoration-2\b/)
+    expect(button.className).toMatch(/\bhover:underline-offset-2\b/)
+  })
+
+  it('primary carries a non-colour press signal — the underline drops position, never relying on the fill step alone (FR-037)', () => {
+    render(<Button variant="primary">Continue with Steam</Button>)
+    expect(screen.getByRole('button').className).toMatch(/\bactive:underline-offset-4\b/)
+  })
+
+  it('primary never shows the underline rule while disabled or loading', () => {
+    render(
+      <Button variant="primary" loading>
+        Continue with Steam
+      </Button>,
+    )
+    expect(screen.getByRole('button').className).toMatch(/\bdisabled:no-underline\b/)
+  })
+
+  // The underline signal is row 6's answer for `primary` alone — pinning the boundary rather than
+  // asserting "every variant underlines".
+  it('secondary, ghost and destructive never carry the primary underline signal', () => {
+    ;(['secondary', 'ghost', 'destructive'] as const).forEach((variant) => {
+      render(<Button variant={variant}>Continue with Steam</Button>)
+      const button = screen.getAllByRole('button').at(-1)
+      expect(button?.className).not.toMatch(/hover:underline\b/)
+      expect(button?.className).not.toMatch(/active:underline-offset-4/)
+    })
+  })
 })

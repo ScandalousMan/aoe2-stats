@@ -31,19 +31,19 @@ documented exception and the generator states it at the point it emits it.
 
 A component may write these and nothing else.
 
-| Concern                     | Utilities                                                                                         | Source                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------- |
-| Colour                      | `bg-*`, `text-*`, `border-*`, `outline-*` over semantic role names                                | `color.json`           |
-| Spacing                     | every Tailwind numeric utility, derived from the space multiplier                                 | `space.json`           |
-| Typography family and scale | `font-*`, `text-*`, `tracking-*`, `leading-*`                                                     | `font.json`            |
-| Typography role             | `type-display`, `type-body`, `type-supporting`, `type-numeric`, `type-machine`, `type-identifier` | `font.json` role group |
-| Radius                      | `rounded-*`                                                                                       | `radius.json`          |
-| Elevation                   | `shadow-*`                                                                                        | `elevation.json`       |
-| Motion                      | `duration-*`, `ease-*`, `animate-spin`, `animate-pulse`                                           | `motion.json`          |
-| Icon size                   | `icon-xs` … `icon-3xl`                                                                            | `icon.json`            |
-| Widths                      | `border-hairline`, `outline-ring`, `outline-offset-ring`, `outline-offset-ring-inset`             | `border.json`          |
-| Container widths            | `max-w-page`, `max-w-panel`, `max-w-measure`                                                      | `size.json`            |
-| Responsive                  | `sm:`, `md:`, `lg:`, `xl:`                                                                        | `breakpoint.json`      |
+| Concern                     | Utilities                                                                                                                | Source                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| Colour                      | `bg-*`, `text-*`, `border-*`, `outline-*` over semantic role names                                                       | `color.json`           |
+| Spacing                     | every Tailwind numeric utility, derived from the space multiplier                                                        | `space.json`           |
+| Typography family and scale | `font-*`, `text-*`, `tracking-*`, `leading-*`                                                                            | `font.json`            |
+| Typography role             | `type-display`, `type-body`, `type-supporting`, `type-numeric`, `type-machine`, `type-identifier`                        | `font.json` role group |
+| Radius                      | `rounded-*`                                                                                                              | `radius.json`          |
+| Elevation                   | `shadow-*`                                                                                                               | `elevation.json`       |
+| Motion                      | `duration-*`, `ease-*`, `animate-spin`, `animate-pulse`                                                                  | `motion.json`          |
+| Icon size                   | `icon-xs` … `icon-3xl`                                                                                                   | `icon.json`            |
+| Widths                      | `border-hairline`, `outline-ring`, `outline-offset-ring`, `outline-offset-ring-inset`, `outline-offset-ring-inset-flush` | `border.json`          |
+| Container widths            | `max-w-page`, `max-w-panel`, `max-w-measure`                                                                             | `size.json`            |
+| Responsive                  | `sm:`, `md:`, `lg:`, `xl:`                                                                                               | `breakpoint.json`      |
 
 **Forbidden, without exception**: an arbitrary bracket value carrying a length, a colour, a duration
 or a shadow; a raw hex, `px`, `rem` or `ms` literal; and a hand-written `var(--ds-*)` inside a class

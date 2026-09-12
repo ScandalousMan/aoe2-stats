@@ -61,6 +61,52 @@ test('a bare px/rem/ms literal fails outside any bracket', () => {
   assert.ok(findings.some((f) => f.includes('raw px/rem/ms literal')))
 })
 
+// T589 (DS-11): the outline-offset-N namespace carries no unit suffix of its own, so it was
+// invisible to the px/rem/ms rule above — this is the regression the checker fix closes, in both
+// the outward (positive) and inward (negative) direction.
+test('a bare, positive outline-offset-N literal fails, the DS-11 shape the px/rem/ms rule missed', () => {
+  const findings = checkStringLiteral(
+    'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+  )
+  assert.ok(
+    findings.some(
+      (f) => f.includes('bare outline-offset-<N> literal') && f.includes('outline-offset-2'),
+    ),
+  )
+})
+
+test('a bare, negative -outline-offset-N literal fails the same way', () => {
+  const findings = checkStringLiteral(
+    'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+  )
+  assert.ok(
+    findings.some(
+      (f) => f.includes('bare outline-offset-<N> literal') && f.includes('-outline-offset-2'),
+    ),
+  )
+})
+
+test('the named outline-offset-ring / outline-offset-ring-inset-flush utilities pass — only the bare numeral fails', () => {
+  assert.deepEqual(
+    checkStringLiteral(
+      'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
+    ),
+    [],
+  )
+  assert.deepEqual(
+    checkStringLiteral(
+      'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring',
+    ),
+    [],
+  )
+})
+
+test('the bracketed arbitrary form (outline-offset-[2px]) is rule 1\'s shape, not rule 4\'s, and still fails — via the bracket rule', () => {
+  const findings = checkStringLiteral('focus-visible:outline-offset-[2px]')
+  assert.ok(findings.some((f) => f.includes('arbitrary bracket value')))
+  assert.ok(!findings.some((f) => f.includes('bare outline-offset-<N> literal')))
+})
+
 test("a hand-written var(--ds-*) fails, the check's signature clause (D15)", () => {
   const findings = checkStringLiteral('h-[var(--ds-icon-2xl)] w-[var(--ds-icon-2xl)]')
   assert.ok(findings.some((f) => f.includes('hand-written var(--ds-*)')))
@@ -107,6 +153,30 @@ test('a clean file with only real utility classes passes', () => {
     `,
   )
   assert.deepEqual(findings, [])
+})
+
+test('checkFile FAILS on a fixture that writes a bare outline-offset-N literal (T589, DS-11)', () => {
+  const findings = checkFile(
+    'fixture.tsx',
+    `
+    export function Widget() {
+      return (
+        <div
+          tabIndex={0}
+          className="outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
+        />
+      )
+    }
+    `,
+  )
+  assert.ok(
+    findings.some(
+      (f) =>
+        f.message.includes('bare outline-offset-<N> literal') &&
+        f.message.includes('-outline-offset-2'),
+    ),
+    'expected the fixture\'s own bare -outline-offset-2 to be reported',
+  )
 })
 
 test('comments are never scanned, even when they mention a forbidden shape as history', () => {

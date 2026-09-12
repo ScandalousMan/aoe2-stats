@@ -179,11 +179,16 @@ export const Hover: Story = {
 // `:focus-visible` from Playwright afterward (see that file's own `VisualForceState` comment) —
 // a synthetic keyboard event here could open the menu (a real state change other listeners
 // receive) but not itself the pseudo-class.
+// T591: clipped to the open `[role="menu"]` surface — the focus ring on one row is a small mark on
+// a whole-page frame, invisible to the duplicate check at that scale
+// (story-baseline-duplicates-debt.json, closed by this clip).
+const MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
+
 export const FocusVisible: Story = {
-  tags: ['visual-full-page'],
   play: openMenu,
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2alt' },
+    visualCaptureClip: MENU_CLIP,
   },
   args: {
     variant: 'selection',
@@ -210,7 +215,14 @@ export const FocusVisible: Story = {
 // (first item) nor `Active` (a mouse press on the second item) already shows, so it is worth
 // capturing on its own.
 export const KeyboardNavigation: Story = {
-  tags: ['visual-full-page'],
+  parameters: {
+    visualForceState: {
+      state: 'focus-visible',
+      role: 'menuitem',
+      name: 'Link another Steam account',
+    },
+    visualCaptureClip: MENU_CLIP,
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const trigger = canvas.getByRole('button')

@@ -63,6 +63,16 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
     )
   })
 
+  // T591 (structural-tier.md §9 "hover" — "two signals, one of which is not colour"): this inline
+  // link's own class copy was missing the underline-thickness half of `Link`'s `inline` recipe.
+  it('thickens the underline on hover and on press, matching every other inline link', () => {
+    render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)
+    const link = screen.getByRole('link', { name: 'privacy notice' })
+    expect(link.className).toMatch(/\bdecoration-1\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+  })
+
   it('the recorded frame says "recorded" and that nothing has changed yet, with no email promise', async () => {
     const user = userEvent.setup()
     render(

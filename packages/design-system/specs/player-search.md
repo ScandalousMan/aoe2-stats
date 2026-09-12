@@ -224,7 +224,12 @@ passage is corrected to match.) Repainting the hover fill alone, with no border 
 answered nothing (fourth-pass review remediation, FR-037: two states of one component must be
 distinguishable by more than colour, in a still image); this passage itself still described that
 pre-fix, colour-only behaviour — folded into the hover/focus-visible rule above as if it were the
-same signal — until the fifth-pass review caught it, finding B2.
+same signal — until the fifth-pass review caught it, finding B2. T591: that inline-start rule alone
+was still too weak a mark for the duplicate check to tell press apart from hover at this row's size
+(`story-baseline-duplicates-debt.json`) — press now additionally draws a full inset boundary,
+`active:ring-2 active:ring-inset active:ring-border-strong`, on top of the fill and the inline-start
+rule, the same "a press is a boundary" signal `Button` `secondary`/`destructive` and `Link`
+`standalone` already carry (T583).
 
 **disabled** — `Input` only, and only during the rate-limited countdown above; there is no other
 disabled condition for either component.

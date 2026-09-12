@@ -248,10 +248,12 @@ The closed vocabulary, all ten (T569). Unless said otherwise, a state belongs to
   - `outline-none` at rest must not swallow the ring. This exact defect shipped once already across
     every primitive in this package (`tests/visual/focus-ring.spec.ts`); §11 is why it cannot ship
     here quietly.
-- **active** — fill `surface-sunken` with a 1px `border-strong` boundary drawn **inside** the box
+- **active** — fill `background` (`Button` `ghost`'s own press fill — T591: a plain repeat of
+  hover's `surface-sunken` was indistinguishable from hover to the visual suite,
+  story-baseline-duplicates-debt.json) with a 1px `border-strong` boundary drawn **inside** the box
   (reserved as a transparent boundary at rest, so the label never shifts by a pixel), label
-  `text-primary`. This is `Button`'s non-primary active treatment, unchanged, so rest, hover and
-  active are three distinguishable frames.
+  `text-primary`. This is `Button` `ghost`'s active treatment, so rest, hover and active are three
+  distinguishable frames.
 - **disabled** — **never, for any part.** A destination either exists and is a link, or it is not in
   `items`. There is no dimmed, unusable, "coming soon" entry: a greyed nav item is a dead end that
   invites a click it will not honour, and `footer.md` §5 settled the same question the same way for
@@ -301,9 +303,9 @@ reads as checked, which is §2d's mapping from `useTheme().override`, not a stat
 Colour: `surface` (the header's own fill), `border` (the block-end hairline — the README's own
 "decorative separators only" rule for that token is exactly this use), `text-secondary` (item labels
 at rest), `text-primary` (the current item, any hovered or active item, and the wordmark), `accent`
-(the current-route rule, §4), `surface-sunken` (hover and active fill), `border-strong` (the active
-boundary, and `SkipLink`'s boundary when it is visible), `surface-raised` (`SkipLink`'s fill),
-`focus-ring` (the one ring).
+(the current-route rule, §4), `surface-sunken` (hover fill), `background` (active fill, T591),
+`border-strong` (the active boundary, and `SkipLink`'s boundary when it is visible), `surface-raised`
+(`SkipLink`'s fill), `focus-ring` (the one ring).
 
 **Why the fill is `surface` and not `background`.** `footer.md` puts the footer on `background`, and
 symmetry would argue for the same here. The contrast table decides against it: every pair this

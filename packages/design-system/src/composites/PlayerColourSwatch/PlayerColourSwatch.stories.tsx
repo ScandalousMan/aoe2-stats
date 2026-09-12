@@ -17,18 +17,43 @@ const meta: Meta<typeof PlayerColourSwatch> = {
 export default meta
 type Story = StoryObj<typeof PlayerColourSwatch>
 
+// T591: `Blue`, `SizeXs` and `SizeSm` share this wrapper and clip — the colour/size difference
+// between them is a small mark (a chip in the tens of pixels) on a whole-page frame, invisible to
+// the duplicate check at that scale (story-baseline-duplicates-debt.json). Wrapping in a scope span
+// gives `visualCaptureClip` one stable selector to clip to, and keeps all three frames the same
+// shape so they stay comparable to each other.
+const SWATCH_CLIP = { parts: [{ selector: '[data-visual-scope]' }], pad: '2' } as const
+
 export const Blue: Story = {
   args: { colorId: 1, playerName: 'GL.TheViper' },
+  parameters: { visualCaptureClip: SWATCH_CLIP },
+  render: (args) => (
+    <span data-visual-scope className="inline-flex">
+      <PlayerColourSwatch {...args} />
+    </span>
+  ),
 }
 
 export const SizeXs: Story = {
   name: 'Size — xs (12px, default, MatchRow)',
   args: { colorId: 2, playerName: 'Hera', size: 'xs' },
+  parameters: { visualCaptureClip: SWATCH_CLIP },
+  render: (args) => (
+    <span data-visual-scope className="inline-flex">
+      <PlayerColourSwatch {...args} />
+    </span>
+  ),
 }
 
 export const SizeSm: Story = {
   name: 'Size — sm (16px, MatchDetailPanel participants table)',
   args: { colorId: 2, playerName: 'Hera', size: 'sm' },
+  parameters: { visualCaptureClip: SWATCH_CLIP },
+  render: (args) => (
+    <span data-visual-scope className="inline-flex">
+      <PlayerColourSwatch {...args} />
+    </span>
+  ),
 }
 
 // §9 acceptance — all eight colours, each beside a name, in one frame.

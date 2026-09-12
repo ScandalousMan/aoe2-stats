@@ -67,6 +67,20 @@ describe('FavouritesList', () => {
       expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
     })
 
+    // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
+    // hover to the visual suite at this row's size (story-baseline-duplicates-debt.json) — press
+    // now additionally draws a full inset `ring`, never an `outline` (an `active:outline-*` utility
+    // never paints on an element that also carries `focus-visible:outline-*`, `Button/index.tsx`'s
+    // own comment — a `ring`, box-shadow-based, coexists with it instead).
+    it("adds a full inset boundary ring to ProfileLink's active state, never an outline", () => {
+      render(<FavouritesList entries={[entries[0]]} />)
+      const row = screen.getAllByRole('listitem')[0]
+      const link = within(row).getByRole('link')
+      expect(link.className).toMatch(/\bactive:ring-2\b/)
+      expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+      expect(link.className).not.toMatch(/\bactive:outline\b/)
+    })
+
     it('shows a bracketed clan beside the alias when present, and none when absent', () => {
       render(<FavouritesList entries={entries} />)
       expect(screen.getByText('[GL]')).toBeInTheDocument()

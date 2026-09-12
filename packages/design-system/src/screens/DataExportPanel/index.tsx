@@ -152,28 +152,30 @@ export function DataExportPanel({
                 className={cx(
                   'inline-flex min-h-11 w-fit items-center justify-center rounded-control bg-accent px-6 font-sans text-md font-semibold text-accent-contrast',
                   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                  // Fifth-pass review remediation (M2), corrected sixth-pass: `hover`/`active`
-                  // used to be a pure fill swap (`accent-hover` / `accent-active`, the same
-                  // three-rung ramp `Button`'s `primary` variant already carries) with no shape
-                  // signal on top. The fifth-pass fix reached for `active:outline-2
-                  // active:outline-offset-2`, an outward ring meant to sit clear of the inward
-                  // focus ring below at the opposite offset — but it never painted: this anchor
-                  // composes `outline-none` too, and `tailwind.css`'s restoration of
-                  // `--tw-outline-style` fires only under `:focus-visible`, so the `:active` rule
-                  // resolved to `outline-style: none` at runtime (`Button/index.tsx`'s own comment
-                  // records the trap this repeats). Corrected the same way as `Button`'s bordered
-                  // variants: `active:ring-2 active:ring-offset-2 active:ring-offset-transparent
-                  // active:ring-accent-contrast` — Tailwind's box-shadow-backed `ring` utility,
-                  // which never reads `--tw-outline-style`. `ring-offset-transparent` keeps the
-                  // 2px gap see-through rather than painting a solid colour into it, so this anchor
-                  // never has to know what surface (`Callout`'s `surface-raised`, here) sits behind
-                  // it. `box-shadow`, like `outline`, never participates in layout, so this stays
-                  // reflow-free regardless of the surrounding `Callout`'s own layout — and because
-                  // it paints through a different CSS property than the focus ring's `outline`
-                  // below, a keyboard press (`:active` and `:focus-visible` matching at once) can
-                  // now actually show both at once, which two rules on the same `outline` property
-                  // never could.
-                  'hover:bg-accent-hover active:bg-accent-active active:ring-2 active:ring-offset-2 active:ring-offset-transparent active:ring-accent-contrast',
+                  // Fifth-pass review remediation (M2), corrected sixth-pass, superseded T588
+                  // (README's gap register, row 5/H2 and row 6/H3): `hover`/`active` used to be a
+                  // pure fill swap (`accent-hover` / `accent-active`) with an outward
+                  // `active:ring-2 active:ring-offset-2 active:ring-offset-transparent
+                  // active:ring-accent-contrast` on top. That ring painted — it never repeated the
+                  // dead-`outline` trap the comment above used to record — but a `ring-offset-2`
+                  // ring rendered inside `success` `Callout`'s `bg-surface-raised`, where
+                  // `accent-contrast` **is** `surface-raised` in the light theme: the ring measured
+                  // 1.00:1 there and 1.24:1 in the dark theme, invisible on the surface it actually
+                  // sat on, and no story drove `:active` to catch it (row 5). Removed rather than
+                  // repositioned: DS-10's proof that no colour clears 3:1 against both the page and
+                  // an accent fill at once (`specs/color-tokens.md` §5) applies to any ring drawn
+                  // on this control's edge, whatever colour it uses, so an outward ring here can
+                  // never be the fix. `product-designer`'s row-6 decision draws the non-colour
+                  // press signal inside the fill instead, in the label's own ink — see the
+                  // underline classes below, the same mechanism `Button`'s `primary` variant now
+                  // carries (`Button/index.tsx`'s own T588 comment). `text-accent-contrast` above
+                  // is this anchor's only ink at every state, so the underline needs no separate
+                  // decoration-colour utility — it follows `currentColor`. `disabled:no-underline`
+                  // is carried for parity with `Button`'s own class set even though a real `<a>`
+                  // never matches `:disabled` (there is no disabled prop on this link); it is dead
+                  // weight rather than a defect, the same way `Link`'s `visited:link-visited` is
+                  // unobservable in a real render but kept.
+                  'hover:bg-accent-hover active:bg-accent-active hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4 disabled:no-underline',
                   // Inward ring, in `accent-contrast` — this link fills with `accent`, and
                   // `focus-ring` cannot clear 3:1 against both the page and an accent fill at
                   // once (packages/design-system/specs/color-tokens.md §5, DS-10).

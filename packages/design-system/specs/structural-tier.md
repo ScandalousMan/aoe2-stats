@@ -806,18 +806,25 @@ container, **the table's own scroll region scrolls horizontally and the page doe
   Column headers never highlight (nothing here sorts today).
 - **focus-visible** — the scroll region shows the standard ring when it is focused for scrolling; a
   focusable element inside a cell shows its own ring, offset so the frame does not clip it.
-- **active** — a row link's press keeps the hover fill (`surface-sunken`) and adds a rule down the
-  row's inline-start edge, in `border-strong`, `border.ring` (2px) wide — reserved transparent at
-  rest so it costs no width until it solidifies on press. Repainting the same fill a press already
-  carries answers nothing (FR-037: two states of one component must be distinguishable by more than
-  colour, in a still image, and this fourth-pass review found `Table`'s row doing exactly that); a
-  second surface rung was tried first and rejected — `background`, the ramp's only other attenuated
-  step, is what a `Table` frequently sits directly on (a page, or a `Panel` at `surface`, either of
-  which can coincide with it), so a `background`-filled press could vanish the same way a `Button`
-  `ghost` would on the page it renders on (`Button/index.tsx`'s own comment). A line that appears is
-  legible regardless of what is behind the row; a fill is not. `Menu`'s own items already ship the
-  identical technique for their own `active` state (`Menu/index.tsx`), so this is not a new idiom,
-  only this row's own missing use of one. The table itself has no active state.
+- **active** — a row link's press keeps the hover fill (`surface-sunken`) and adds a boundary: a
+  full inset `ring-2 ring-border-strong` on the stretched link's own `::after`, `border.ring` (2px)
+  wide. Repainting the same fill a press already carries answers nothing (FR-037: two states of one
+  component must be distinguishable by more than colour, in a still image, and this fourth-pass
+  review found `Table`'s row doing exactly that); a second surface rung was tried first and
+  rejected — `background`, the ramp's only other attenuated step, is what a `Table` frequently sits
+  directly on (a page, or a `Panel` at `surface`, either of which can coincide with it), so a
+  `background`-filled press could vanish the same way a `Button` `ghost` would on the page it
+  renders on (`Button/index.tsx`'s own comment). The boundary was first tried as a `border-l-2
+border-l-transparent`/`active:border-l-border-strong` rule reserved down the row's inline-start
+  edge, the identical technique `Menu`'s own items ship for their own `active` state
+  (`Menu/index.tsx`) — but a browser does not render `border-left`/`border-right` on a `<tr>` at
+  all (no independent left/right edge on a table-row box, `border-collapse` or not, `index.tsx`'s
+  own comment), so it never actually painted, which is exactly why this state was found
+  indistinguishable from hover to the visual suite (T591,
+  `scripts/visual/story-baseline-duplicates-debt.json`). The ring lives on the stretched link's
+  `::after` instead — a box-shadow, not a table border, so it paints reliably regardless of the
+  table's own border model — and is inset so it never bleeds past the row's own edges into its
+  neighbour's separator. The table itself has no active state.
 - **disabled** — never. A table whose data is stale says so in a `Callout` above it; a greyed table
   is unreadable and still on screen.
 - **loading** — caption and header row render immediately; the body holds skeleton rows of the same
@@ -840,12 +847,13 @@ container, **the table's own scroll region scrolls horizontally and the page doe
 
 **Tokens used** — colour `surface` (the region's fill), `border` (the frame and every row rule),
 `text-primary` (data), `text-secondary` (column labels, caption when visible), `surface-sunken` (row
-link hover and press), `border-strong` (row link active only, the inline-start edge rule),
+link hover and press), `border-strong` (row link active only, the full inset boundary ring),
 `focus-ring` (the region's ring). Typography `type-numeric`, `type-machine`, `type-body` per §3 for
 `dense`; `type-body` / `type-supporting` for `prose`. Radius `rounded-panel` on the region. Border
 widths `border.hairline`, `border.ring` (the frame, the focus ring, and now also a row link's active
-edge), `border.ring-offset`. Elevation `none`. Motion `duration.fast` / `ease-standard` for a row
-link's hover fill and its active edge colour; nothing else moves.
+boundary), `border.ring-offset`. Elevation `none`. Motion `duration.fast` / `ease-standard` for a row
+link's hover fill; the active boundary is a `ring`, applied instantly on press with no transition of
+its own.
 
 **Spacing** — cell block padding `space-3` at `dense`, `space-4` at `prose` (§3). Cell inline
 padding `space-4` between columns, `space-4` from the frame on both edges. An icon-and-text pairing
@@ -882,7 +890,7 @@ modifier-clicks work. Contrast: `text-primary` and `text-secondary` on `surface`
 - [ ] In the row-link hover capture, exactly one row is filled and the row rules are still visible
       through the fill.
 - [ ] The row-link hover and active captures share the same fill, but the active capture also shows
-      a solid rule down that row's inline-start edge that the hover capture does not (FR-037).
+      a full inset `border-strong` ring around that row that the hover capture does not (FR-037).
 - [ ] A `dense` and a `prose` table in one frame have visibly different row heights.
 
 ---

@@ -105,7 +105,17 @@ const favouriteToggleStub = (
 // 004 spec §13.9 — the full-profile story: avatar leading, alias as the heading, the country flag
 // alone (no country word anywhere in the frame — the name lives in the flag's tooltip, T457), and
 // the numeric id demoted beneath in `text-secondary`.
+// T591: clipped to the name line (`[data-visual-region="name-line"]`, index.tsx) rather than the
+// whole board — the flag/no-flag difference this story and `NoCountry` exist to distinguish is a
+// small mark on a wide page frame, invisible to the duplicate check at that scale
+// (story-baseline-duplicates-debt.json, closed by this clip).
+const NAME_LINE_CLIP = {
+  parts: [{ selector: '[data-visual-region="name-line"]' }],
+  pad: '2',
+} as const
+
 export const Board: Story = {
+  parameters: { visualCaptureClip: NAME_LINE_CLIP },
   args: {
     subject: 'self',
     authenticated: true,
@@ -121,9 +131,13 @@ export const Board: Story = {
 // `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
 // rationale for why a declared option rather than a Storybook device preset) — `Board` above
 // already reads at the wide, table shape.
-// visual-equivalence: screens-profilesummary--board: the reviewWidthNarrow viewport pin is
+// visual-equivalence: screens-profilesummary--board-mobile: the reviewWidthNarrow viewport pin is
 // overridden by the visual suite's own 375/768/1280 capture axis (T504), and the args are identical
-// to Board's, so all six baselines match.
+// to BoardMobile's, so all six baselines match. (T591 clipped `Board` itself to the name line —
+// `NAME_LINE_CLIP` above — to make the flag/no-flag signal against `NoCountry` visible; that clip
+// does not apply here, because this story exists to show the ratings region's table-vs-cards shape,
+// which a name-line clip would crop away entirely, so `Board` left this equivalence class and
+// `BoardMobile` is the remaining match.)
 export const BoardRatingsCardsBelowLg: Story = {
   name: 'Ratings as cards below lg, a table from it',
   globals: { viewport: { value: 'reviewWidthNarrow' } },
@@ -142,9 +156,13 @@ export const BoardRatingsCardsBelowLg: Story = {
 // trigger, not wrap beneath it, and the identity bar must not force the page wider than the
 // viewport. Every story is now captured at 375px as a matter of course (T504), so no tag is
 // needed to reach that width.
-// visual-equivalence: screens-profilesummary--board: args are identical to Board's, and every story
-// is captured at 375px as a matter of course (T504, per this comment's own point above), so this
-// story adds a Storybook-reader affordance, not a captured fact distinct from Board.
+// visual-equivalence: screens-profilesummary--board-ratings-cards-below-lg: args are identical to
+// BoardRatingsCardsBelowLg's, and every story is captured at 375px as a matter of course (T504, per
+// this comment's own point above), so this story adds a Storybook-reader affordance, not a captured
+// fact distinct from BoardRatingsCardsBelowLg. (T591 clipped `Board` itself to the name line —
+// `NAME_LINE_CLIP` above — for the flag/no-flag signal against `NoCountry`; this story is not
+// clipped, because it exists to show the flag staying on the name line within the full 375 layout, so
+// `Board` left this equivalence class and `BoardRatingsCardsBelowLg` is the remaining match.)
 export const BoardMobile: Story = {
   name: 'Board at 375 — the flag stays on the name line, resting (004 §13.8, T457)',
   args: {
@@ -209,11 +227,21 @@ async function pinFlagOpen({ canvasElement }: { canvasElement: HTMLElement }) {
 // actual `:hover` pseudo-class — `visualForceState` drives that separately, after `play()` has
 // settled, matched by the flag's own accessible name (`role: 'button'` alone would be ambiguous
 // here: the profile switcher trigger is also a button in this frame).
+// T591: this group clips to the flag button plus the tooltip surface it opens — the ringed/
+// ringless difference between them is a couple of pixels around a 44px flag on a whole-board
+// full-page frame, invisible to the duplicate check at that scale.
+const BOARD_FLAG_REVEALED_CLIP = {
+  parts: [{ role: 'button', name: 'Country:' }, { selector: '[role="tooltip"]' }],
+  pad: '2',
+} as const
+
 export const BoardFlagHoverRevealed: Story = {
   name: 'Flag hover — country name in a tooltip above the flag (004 §13.9)',
-  tags: ['visual-full-page'],
   play: hoverFlagOpen,
-  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button', name: 'Country:' },
+    visualCaptureClip: BOARD_FLAG_REVEALED_CLIP,
+  },
   args: {
     subject: 'self',
     authenticated: true,
@@ -226,8 +254,11 @@ export const BoardFlagHoverRevealed: Story = {
 
 export const BoardFlagKeyboardFocusRevealed: Story = {
   name: 'Flag keyboard focus — tooltip open and focus ring together (004 §13.9)',
-  tags: ['visual-full-page'],
   play: focusFlagOpen,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Country:' },
+    visualCaptureClip: BOARD_FLAG_REVEALED_CLIP,
+  },
   args: {
     subject: 'self',
     authenticated: true,
@@ -240,8 +271,8 @@ export const BoardFlagKeyboardFocusRevealed: Story = {
 
 export const BoardFlagPinned: Story = {
   name: 'Flag pinned — the touch route, no pointer, no focus ring (004 §13.9)',
-  tags: ['visual-full-page'],
   play: pinFlagOpen,
+  parameters: { visualCaptureClip: BOARD_FLAG_REVEALED_CLIP },
   args: {
     subject: 'self',
     authenticated: true,
@@ -296,6 +327,7 @@ export const NoAlias: Story = {
 // closes up. No reserved gap, no em dash, no "Unknown country".
 export const NoCountry: Story = {
   name: 'No country — the flag and its label are both absent, cleanly (004 FR-008)',
+  parameters: { visualCaptureClip: NAME_LINE_CLIP },
   args: {
     subject: 'self',
     authenticated: true,

@@ -161,11 +161,15 @@ export function Menu({
           // T560 (FR-038): this trigger paints the same resting/border recipe as `Button`'s
           // `secondary` variant (`bg-surface`, `border-border-strong`) but had none of its
           // active/reduced-motion behaviour — same category, now the same response.
+          // T591: press now takes `Button` `secondary`'s own active recipe in full
+          // (`active:bg-background active:ring-2 active:ring-border-strong`) — a single fill swap
+          // to `surface-sunken` (identical to hover) was too weak a mark for the duplicate check to
+          // tell apart from hover at this control's size (story-baseline-duplicates-debt.json).
           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-          'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
           isEmpty
             ? 'cursor-default text-text-disabled'
-            : 'text-text-primary hover:bg-surface-sunken active:bg-surface-sunken active:border-border-strong',
+            : 'text-text-primary hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
         )}
       >
         {triggerLabel}
@@ -253,9 +257,13 @@ export function Menu({
                     // so it gets the same active state (shared-primitives.md#Menu "active" — fill
                     // plus a `border-strong` boundary on the inline-start edge) and the same
                     // reduced-motion resting frame, neither of which it had.
+                    // T591: press now moves the fill to `bg-background` (`Button` `ghost`'s own
+                    // recipe) instead of repeating hover's `surface-sunken` — the boundary alone was
+                    // too weak a mark for the duplicate check to tell apart from hover
+                    // (story-baseline-duplicates-debt.json).
                     'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                    'hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
-                    'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+                    'hover:bg-surface-sunken active:border-l-border-strong active:bg-background',
+                    'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
                   )}
                 >
                   {footerItem.label}
@@ -359,11 +367,16 @@ function MenuItemRow({
           // built. `border-l-transparent` at rest reserves the width so the border does not shift
           // the label when it turns solid on press. `motion-reduce:duration-0` closes README
           // rule 5's gap, present on every other transition in the system but missing here.
+          // T591: press now moves the fill to `bg-background` (`Button` `ghost`'s own recipe)
+          // instead of repeating hover's `surface-sunken` — the boundary alone was too weak a mark
+          // for the duplicate check to tell apart from hover (story-baseline-duplicates-debt.json).
           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-          'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+          // T589 (DS-11): `outline-offset-ring-inset-flush` (`border.json`, -2px) names the same
+          // inward offset this row shipped as a bare `-outline-offset-2` literal.
+          'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring',
           item.disabled || item.loading
             ? 'cursor-default text-text-disabled'
-            : 'text-text-primary hover:bg-surface-sunken active:border-l-border-strong active:bg-surface-sunken',
+            : 'text-text-primary hover:bg-surface-sunken active:border-l-border-strong active:bg-background',
         )}
       >
         <span className="flex items-center gap-3">

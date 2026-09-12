@@ -68,22 +68,30 @@ export const FieldError: Story = {
 // §5 "hover — the privacy-notice link... and the submit button (per `Button`)." Forced from
 // Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
 // a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// T591: this group clips to the privacy-notice link — the hover/press underline-thickness signal
+// is a small mark on the whole form's frame, invisible to the duplicate check at that scale
+// (story-baseline-duplicates-debt.json).
+const LINK_CLIP = { parts: [{ role: 'link' }], pad: '2' } as const
+
 export const Hover: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  parameters: { visualForceState: { state: 'hover', role: 'link' }, visualCaptureClip: LINK_CLIP },
 }
 
 // §5 "focus-visible — the standard ring... on the input, the submit button and the
 // privacy-notice link."
 export const FocusVisible: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: LINK_CLIP,
+  },
 }
 
 // §5 "active — the link renders `accent-active` while pressed; the button per `Button`."
 export const Active: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  parameters: { visualForceState: { state: 'active', role: 'link' }, visualCaptureClip: LINK_CLIP },
 }
 
 export const DisabledNotApplicable: Story = {

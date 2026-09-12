@@ -15,7 +15,7 @@
 // baselines.yml` used to, before this same file transport replaced its batching too).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test, expect, type Locator, type Page, type Route } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 // `.cjs`, not `.mjs` — see that file's header comment. An `.mjs` sibling imported from here used to
 // crash on CI (never locally): Playwright transpiles this spec to CommonJS, and a transpiled `.mjs`
@@ -151,6 +151,147 @@ async function readForceState(page: Page, storyId: string): Promise<VisualForceS
     const forced = render?.story?.parameters?.visualForceState
     return (forced ?? null) as VisualForceState | null
   }, storyId)
+}
+
+// T591 (FR-037's verification half): a story that names a state whose signal is smaller than
+// roughly 1% of its own frame — a 2px inline-start rule or a 1px boundary on a component sized in
+// the hundreds of pixels — is structurally invisible to `story-baselines-duplicates.mjs`'s own
+// tolerance regardless of whether the underlying CSS is correct. `visualCaptureClip`, a sibling
+// parameter to `visualForceState` above and read the same way, names the part(s) of the story worth
+// capturing instead of the whole `#storybook-root` box or the whole page, so the signal the story
+// exists to prove occupies enough of the frame for the comparator to see it. `pad` is a spacing-
+// scale step *name* (`space.json`'s own `scale` keys — '2' is `space.2`, 8px), resolved below from
+// the page's own `--ds-space-*` custom property rather than a hand-picked px literal, the same rule
+// every component source in this package already follows for a spacing value.
+interface VisualCaptureClipPart {
+  // Exactly one of `selector` or `role` locates the element, scoped within `#storybook-root` — see
+  // `VisualForceState`'s own comment above for why `role`/`name`/`nth` share that shape here too.
+  selector?: string
+  role?: string
+  name?: string
+  nth?: number
+}
+
+interface VisualCaptureClip {
+  // The clip rect is the union of every part's own `getBoundingClientRect()`, in page coordinates —
+  // more than one part lets a story clip to, say, a trigger button AND the popover it opens, which
+  // do not share a common ancestor smaller than the story root.
+  parts: VisualCaptureClipPart[]
+  // A `space.json` `scale` key, e.g. '2'. Defaults to '2' (`space.2`, 8px) when omitted.
+  pad?: string
+}
+
+// Reads the settled story's own `parameters.visualCaptureClip` — the same
+// `window.__STORYBOOK_PREVIEW__.storyRenders` lookup `readForceState` above already performs, asked
+// one more question. Returns `null` for every story that carries none, which is nearly all of them.
+async function readCaptureClip(page: Page, storyId: string): Promise<VisualCaptureClip | null> {
+  return page.evaluate((id: string) => {
+    const preview = (
+      window as unknown as {
+        __STORYBOOK_PREVIEW__?: {
+          storyRenders?: { id: string; story?: { parameters?: Record<string, unknown> } }[]
+        }
+      }
+    ).__STORYBOOK_PREVIEW__
+    const render = preview?.storyRenders?.find((r) => r.id === id)
+    const clip = render?.story?.parameters?.visualCaptureClip
+    return (clip ?? null) as VisualCaptureClip | null
+  }, storyId)
+}
+
+// One part's own box, located the same way `VisualForceState`'s `target` is located above — a
+// selector or a role(+name), scoped to `root`, with `nth` breaking a tie. Throws (never returns a
+// shrunken or empty clip) when the part matches zero or more-than-one element with no `nth` to
+// disambiguate: a silently wrong clip would hide the very signal this parameter exists to surface,
+// worse than the axe/render errors this file already lets propagate as a thrown test failure.
+async function locateClipPart(root: Locator, storyId: string, part: VisualCaptureClipPart) {
+  const role = part.role as Parameters<typeof root.getByRole>[0]
+  const located = part.selector
+    ? root.locator(part.selector)
+    : root.getByRole(role, part.name !== undefined ? { name: part.name } : undefined)
+  const scoped = typeof part.nth === 'number' ? located.nth(part.nth) : located
+  const count = await scoped.count()
+  if (count !== 1) {
+    throw new Error(
+      `visualCaptureClip: part ${JSON.stringify(part)} of story "${storyId}" matched ${count} ` +
+        'element(s) — expected exactly 1 (add "nth" to disambiguate a part that matches more than one).',
+    )
+  }
+  return scoped
+}
+
+// Resolves a `pad` step name to its px value from the page's own generated `--ds-space-*` custom
+// property, never a literal duplicated from `space.json` — the same var Tailwind's own utilities
+// (`p-3`, `gap-4`, ...) already resolve through. `space.json`'s `unit` is `rem`-based, so the
+// returned string can be `rem` or already `px` depending on the step; both are handled without
+// assuming which.
+async function resolvePadPx(page: Page, step: string): Promise<number> {
+  return page.evaluate((s: string) => {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue(`--ds-space-${s}`)
+      .trim()
+    if (!raw)
+      throw new Error(
+        `visualCaptureClip: unknown spacing token step "${s}" (--ds-space-${s} is unset).`,
+      )
+    const value = Number.parseFloat(raw)
+    if (Number.isNaN(value)) {
+      throw new Error(
+        `visualCaptureClip: could not parse "--ds-space-${s}" value "${raw}" as a number.`,
+      )
+    }
+    return raw.trim().endsWith('rem') ? value * 16 : value
+  }, step)
+}
+
+// The clip rect `expect(page).toHaveScreenshot` takes: the union of every part's own box (page
+// coordinates, via `getBoundingClientRect()` + the page's own scroll offsets), inflated by `padPx`
+// on every side, clamped to the page's own scrollable extent so the inflation can never request a
+// rect outside what Playwright can actually capture.
+async function resolveCaptureClip(
+  page: Page,
+  root: Locator,
+  storyId: string,
+  clip: VisualCaptureClip,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const padPx = await resolvePadPx(page, clip.pad ?? '2')
+
+  let union: { left: number; top: number; right: number; bottom: number } | null = null
+  for (const part of clip.parts) {
+    const located = await locateClipPart(root, storyId, part)
+    const box = await located.evaluate((el) => {
+      const rect = el.getBoundingClientRect()
+      return {
+        left: rect.left + window.scrollX,
+        top: rect.top + window.scrollY,
+        right: rect.right + window.scrollX,
+        bottom: rect.bottom + window.scrollY,
+      }
+    })
+    union = union
+      ? {
+          left: Math.min(union.left, box.left),
+          top: Math.min(union.top, box.top),
+          right: Math.max(union.right, box.right),
+          bottom: Math.max(union.bottom, box.bottom),
+        }
+      : box
+  }
+  if (!union) {
+    throw new Error(`visualCaptureClip: story "${storyId}" names no parts.`)
+  }
+
+  const pageExtent = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }))
+
+  const left = Math.max(0, union.left - padPx)
+  const top = Math.max(0, union.top - padPx)
+  const right = Math.min(pageExtent.width, union.right + padPx)
+  const bottom = Math.min(pageExtent.height, union.bottom + padPx)
+
+  return { x: left, y: top, width: right - left, height: bottom - top }
 }
 
 // `run.mjs` always sets `VISUAL_STORIES_FILE`; `tests/visual/app-routes.spec.ts` is Playwright's
@@ -364,7 +505,14 @@ for (const { id, theme, width, fullPage } of stories) {
     }
 
     const baselineName = `${id}-${theme}-${width}.png`
-    if (fullPage) {
+    // `visualCaptureClip` takes precedence over `fullPage` (T591): a story that carries both would
+    // mean its own `visual-full-page` tag was never removed when the clip was added — the clip is
+    // still the more specific, more correct capture, so it wins rather than the two silently racing.
+    const captureClip = await readCaptureClip(page, id)
+    if (captureClip) {
+      const clip = await resolveCaptureClip(page, root, id, captureClip)
+      await expect(page).toHaveScreenshot(baselineName, { fullPage: true, clip })
+    } else if (fullPage) {
       // The story's own subject (a fixed dialog, an open popover) paints outside the root
       // element's layout box, so a screenshot clipped to that element never shows it — this
       // captures the whole page instead.

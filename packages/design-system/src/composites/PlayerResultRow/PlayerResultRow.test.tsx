@@ -96,6 +96,17 @@ describe('PlayerResultRow', () => {
     expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
   })
 
+  // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
+  // hover to the visual suite at this row's size (story-baseline-duplicates-debt.json) — press
+  // now additionally draws a full inset boundary ring, on top of both.
+  it('adds a full inset boundary ring to the active state', () => {
+    render(<PlayerResultRow result={base} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bactive:ring-2\b/)
+    expect(link.className).toMatch(/\bactive:ring-inset\b/)
+    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+  })
+
   // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
   // labelled, and nothing may be built on it.
   describe('unverifiedSteamId (§4a)', () => {

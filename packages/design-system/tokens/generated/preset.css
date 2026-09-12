@@ -199,6 +199,10 @@
   outline-offset: var(--ds-border-ring-offset-inset);
 }
 
+@utility outline-offset-ring-inset-flush {
+  outline-offset: var(--ds-border-ring-offset-inset-flush);
+}
+
 @utility type-display {
   font-family: var(--ds-font-family-display);
 }

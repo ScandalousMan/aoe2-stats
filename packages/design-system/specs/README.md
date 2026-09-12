@@ -609,8 +609,8 @@ reads.
 
 ## Token gap register
 
-**DS-11 open as of 2026-09-12** (adversarial review finding S4); the six gaps this feature already
-closed, below, remain closed. This section holds open token decisions when they
+**DS-11 closed 2026-09-12 (T589)**, found the same day by adversarial review finding S4; the six
+gaps this feature already closed, below, remain closed. This section holds open token decisions when they
 exist — what is missing, what a component does until it exists, and who has to act — and an
 implementer who finds themselves needing a value not covered by the standing rules above or the
 utility vocabulary in `contracts/token-families.md` stops and asks `product-designer`; they do not
@@ -823,22 +823,36 @@ actually paints — is already measured in the table above (research D9). This r
 here beside the refusal so the next reader does not have to re-derive it, or, worse, "fix" `overlay`
 by stripping its alpha and breaking the scrim it draws.
 
-**Open — DS-11, found 2026-09-12 (adversarial review finding S4), fix by 2026-09-26.**
-`border.json`'s `ring-offset` names only the positive 2px focus-ring offset; the negative form a
-genuinely inward, non-`ring-offset-inset` ring needs has no member of its own. Four call sites still
-write a bare, untokenised `-outline-offset-2` — `MatchRow`
-(`src/composites/MatchRow/index.tsx:104`), `FavouritesList`
-(`src/composites/FavouritesList/index.tsx:263`), `PlayerResultRow`
-(`src/composites/PlayerResultRow/index.tsx:41`) and one of `Menu`'s three focus rings
-(`src/primitives/Menu/index.tsx:363`) — the same class of breach `-outline-offset-4` was in before
-T586 admitted `ring-offset-inset` to name it. Nothing catches it today:
-`scripts/checks/token-scale.mjs` (~lines 197-202) is structurally blind to the whole
-`outline-offset-N` Tailwind namespace, the identical blindness that let `-outline-offset-4` ship
-unnoticed the first time. `border.json`'s own `$comment` now says so in place, rather than the
-family's amended language implying it already names everything that ships (adversarial review
-finding S4, corrected in the same pass this row was opened). Until closed, this row is the
-authoritative account of the gap; a component spec that mentions these four rings should point here
-rather than restate the list. **Owner: T589 (to be opened).**
+**Closed — DS-11 (T589, 2026-09-12).** `border.json`'s `ring-offset` named only the positive 2px
+focus-ring offset; the negative form a genuinely inward, non-`ring-offset-inset` ring needs had no
+member of its own. Four call sites wrote a bare, untokenised `-outline-offset-2` — `MatchRow`
+(`src/composites/MatchRow/index.tsx`), `FavouritesList`
+(`src/composites/FavouritesList/index.tsx`), `PlayerResultRow`
+(`src/composites/PlayerResultRow/index.tsx`) and one of `Menu`'s three focus rings
+(`src/primitives/Menu/index.tsx`) — the same class of breach `-outline-offset-4` was in before T586
+admitted `ring-offset-inset` to name it. `border.json` now admits `ring-offset-inset-flush` (-2px,
+GOVERNANCE.md's token admission Record), a second, distinct inward offset — magnitude equal to,
+not exceeding, the ring's own width, because this ring is the ordinary `focus-ring` role against a
+row's or menu item's own surface, never `accent-contrast` against an `accent` fill, so
+`ring-offset-inset`'s "strictly exceed the width" condition does not apply here. All four call
+sites now write `outline-offset-ring-inset-flush`, guarded by the new
+`tokens/focus-ring-inset-flush.test.mjs` (mirroring `accent-contrast-ring.test.mjs`'s whole-tree
+scan). The other half of this row — `scripts/checks/token-scale.mjs` being structurally blind to
+the whole `outline-offset-N` Tailwind namespace — is also closed: the checker now fails a bare
+`outline-offset-<N>` of either sign anywhere in a scanned string. Closing the namespace, not only
+the four sites this row named, surfaced ten further call sites already carrying the bare _positive_
+`outline-offset-2` (`Footer`, `SiteHeader`, `SearchBox`, `ThirdPartyObjectionForm`, `PrivacyNotice`,
+`AccountErasurePanel`, `Tooltip`, `Button`'s outward variant, and two of `Menu`'s three rings) that
+would otherwise have failed the moment the check learned the shape; all ten now write the
+already-admitted `outline-offset-ring` (T514) instead, a mechanical, render-identical rename with
+no new token needed. **Left open, not this row's scope (T588's 2026-09-12 note, restated so it is
+not lost with the row it was attached to):** the checker's blindness is not limited to
+`outline-offset-N` — `Button`'s and `DataExportPanel`'s `decoration-2`/`underline-offset-2`/
+`underline-offset-4` classes (Contrast-signal gap register, row 6/H3, below) sit in the same
+untokenised, bare-Tailwind-utility shape, for the same reason `Link`'s own decoration/
+underline-offset classes already do. T589's own scope was `outline-offset`; widening the checker to
+the decoration-thickness/offset namespace as well is a decision for whoever opens the row that
+covers it, not something this closure invents in passing.
 
 ## Storybook documentation gap register
 
@@ -965,8 +979,8 @@ which no tool here does today.
 ## Accessibility mechanism gap register
 
 **Row 1 closed 2026-09-11 (T579), owed since 2026-09-08** (third-pass adversarial review, finding
-M2a); **row 2 open as of 2026-09-12** (adversarial review finding S8). This register holds a
-standing property of this package's own tooling — where an accessibility
+M2a); **row 2 closed 2026-09-12 (T590), open since 2026-09-12** (adversarial review finding S8).
+This register holds a standing property of this package's own tooling — where an accessibility
 check runs, and where it does not — the same distinction CLAUDE.md draws for the Storybook
 documentation gap register above: a fact about this package's own check coverage needs updating
 whenever a future task changes that coverage, so it is filed here rather than in a spec, which is
@@ -1010,18 +1024,41 @@ written once (T575's amendment: the subject is this package, so the fact is file
    future portal is covered too. The full sweep runs in under three seconds.
 
 2. **`accent-contrast-ring.test.mjs`'s two guards (T586) do not see every way an accent-contrast
-   ring can stop being drawn on the fill it depends on — open, found 2026-09-12 (adversarial review
-   finding S8), fix by 2026-09-26.** The file catches a `bg-clip-*` override and a painted border on
-   an accent-contrast-ringed control (`checkFillAssumptionFindings`), but not: a state-variant fill
+   ring can stop being drawn on the fill it depends on — found 2026-09-12 (adversarial review
+   finding S8).** The file caught a `bg-clip-*` override and a painted border on an
+   accent-contrast-ringed control (`checkFillAssumptionFindings`), but not: a state-variant fill
    override — `hover:bg-*` or `focus-visible:bg-*` changing the fill in the very state the ring
    paints, the state DS-10's contrast numbers assume is showing; a background image or gradient
    painted over `bg-accent` instead of a solid override, which neither `BG_CLIP_RE` nor
    `PAINTED_BORDER_COLOR_RE` recognises as changing the fill; or an `apps/web` caller passing
    `bg-clip-padding` (or any other fill-defeating class) through `Button`'s merged `className` prop
    — the scan is lexical and reads only `packages/design-system/src`, never a call site outside this
-   package. The test file's own header now names these three blind spots in place (adversarial
-   review finding S8, corrected in the same pass this row was opened), so a reader does not mistake
-   two passing guards for a complete one. **Owner: T590 (to be opened).**
+   package. **Closed 2026-09-12 (T590), two of three.** A third guard,
+   `checkStateFillAndImageFindings`, now catches the first two: a variant-prefixed `bg-<colour>`
+   utility beside a resting `bg-accent` fill is a finding unless the colour it repaints onto is one
+   of the three the accent ramp's own contrast proof already covers (`accent`, `accent-hover`,
+   `accent-active` — `build-tokens.test.mjs`), and a gradient or arbitrary background-image utility
+   beside `bg-accent` is a finding outright, prefixed or not, because it paints over
+   `background-color` rather than replacing it. Checked against `Button` primary's own
+   `hover:bg-accent-hover`/`active:bg-accent-active` (present before T588 and untouched by it): both
+   targets are on the ramp, so the new guard passes the real code and — proven by injecting the
+   regression and reverting it — would have failed had T588 swapped either to an unproven colour.
+   The new guard is grouped by `cx()` call rather than by single literal, because
+   `DataExportPanel`'s download link threads its resting fill and its `hover:`/`active:` overrides
+   through separate arguments of one `cx(...)` call — a same-literal scope, adequate for the first
+   two guards, would never see that real shape's overrides at all. The third blind spot, an
+   `apps/web` caller's `className` defeating the fill through `Button`'s merged prop, is
+   **deliberately deferred, not fixed here**: closing it needs either a second lexical pass over
+   `apps/web/src` for a fill-defeating class reaching a design-system call site (the same shape
+   `token-scale.mjs`'s own `apps/web` layout-class pass already uses, over a different tree and a
+   different property) or a runtime assertion inspecting resolved computed style, which needs a real
+   layout engine jsdom does not have. Writing either speculatively — before a real instance of this
+   defect has shipped — would blur this token-level test's boundary (the design system's own
+   contract) with call-site linting over application code, which is a separate, independently-run
+   check's job whenever it becomes a real defect, not this file's. Recorded rather than silently
+   dropped: `Button`'s `className` prop is merged last
+   (`packages/design-system/src/primitives/Button/index.tsx`'s `cx(..., className)`), so nothing in
+   this package stops a caller from winning the cascade today.
 
 ## Duplicated logic and story-content gap register
 
@@ -1086,7 +1123,9 @@ which is why it is not folded into a spec written once.
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2; rows 5-6 added 2026-09-11 while verifying the closures above); **row 1 closed
 2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584), reopened
 and re-closed 2026-09-12 by a second adversarial review of the same remediation**, **row 4
-closed 2026-09-11 (T585)** — all four rows now closed. Four findings the review judged
+closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)** — row 5's decision half is answered
+by row 6's closure; its own capture half (the story coverage, and the frame proving the deleted
+ring is gone) is still open, tracked as **T587**. Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1360,6 +1399,38 @@ from CI` commits on this branch moved 79 of the tree's ~540 stories' baselines b
 
    **Owner: T584. Closed 2026-09-11; reopened and re-closed 2026-09-12.**
 
+   **The 20 debt entries the size/dimension filter above found (T584's own list, immediately
+   above) were addressed in the same task that opened them, 2026-09-12 — T591.** Each was one of
+   two shapes, decided per entry, never laundered as the other: a component's own state signal was
+   genuinely missing and is fixed in its source (`FavouritesList`, `Footer`, `MatchRow`,
+   `PlayerResultRow`, `SiteHeader`, `Menu`'s trigger/item/footer item, `Table`'s row link — every one
+   a press that repainted the same fill as hover with no second signal, now a full inset boundary
+   `ring` on top of it, the same "a press is a boundary" idiom `Button`
+   `secondary`/`destructive` and `Link` `standalone` already carry); or the signal exists but the
+   frame was too large for the comparator to see it, and the story is scoped to the control that
+   carries it instead of the whole page or the whole `#storybook-root` box (`CountryFlag`,
+   `Tooltip`, `Menu`'s focus/keyboard stories, `PlayerColourSwatch`, `PrivacyNotice`,
+   `ProfileSummary`'s name-line and its embedded `BoardFlag`, `ThirdPartyObjectionForm`,
+   `UploadControl`'s `FocusVisible`) — the harness gained a second story parameter for this,
+   `visualCaptureClip`, sibling to `visualForceState`: `parts` (one or more `selector`/`role`+`name`
+   locators, unioned) and `pad` (a spacing-scale step name, never a px literal), clipping the
+   capture to that union inflated by the pad, `tests/visual/stories.spec.ts`. **The standing rule
+   this row leaves behind: a story that names a state whose signal is smaller than roughly 1% of
+   its own frame is captured clipped to the control that carries it, via `visualCaptureClip`, rather
+   than left to a whole-page or whole-root capture that cannot resolve it.** One entry's own wording
+   was corrected in the same pass rather than carried forward: `UploadControl`'s
+   `FocusVisible`/`Idle` debt text claimed the ring should show "across the Remove/SubmitButton/
+   Refresh controls", but that story's own `initialState: 'idle'` renders none of those three — the
+   real gap was only the trigger's own ring being too small a mark on the whole component's frame.
+   Every one of the 20 debt entries stays in `scripts/visual/story-baseline-duplicates-debt.json`,
+   each now carrying a `fixApplied` field naming what changed, rather than being deleted here: this
+   check reads the baseline bytes on disk, which a source or story edit alone does not move, and
+   deleting an entry the check still finds as a live full match would fail it before the next CI
+   baseline regeneration lands (the same reasoning the `MapThumbnail`/`PlayerAvatar` `Loading` entry
+   above already established for one entry at a time — this closes 20 the same way, not
+   differently). A follow-up baseline-regeneration commit removes all 20 once the check confirms
+   each group is genuinely no longer a match. **Owner: T591. Closed 2026-09-12.**
+
 4. **L2 — `SiteHeader`'s `Selection` and `SignedIn` stories carried byte-identical `args`
    (`SiteHeader.stories.tsx:25-38`, both `{ items, currentPath: '/dashboard' }`) — closed.** The
    review reported two things; each is handled on its own:
@@ -1389,32 +1460,61 @@ data'`) and green after. Baselines regenerated from CI in a follow-up commit, pe
      closure got wrong. **Owner: T585. Closed 2026-09-11.**
 
 5. **H2 — `DataExportPanel`'s download link signals press with a ring that cannot be seen, and no
-   story captures the state — open.** The link fills with `accent` and draws its press ring outward:
-   `active:ring-2 active:ring-offset-2 active:ring-offset-transparent active:ring-accent-contrast`
-   (`src/screens/DataExportPanel/index.tsx`). A transparent offset puts that ring on the surface
-   behind the link, and the link renders inside a `success` `Callout`, whose fill is
-   `bg-surface-raised` (`src/primitives/Callout/index.tsx`). `accent-contrast` **is**
-   `surface-raised` in the light theme, so the ring measures 1.00:1 there and 1.24:1 in the dark
-   theme: the non-colour half of FR-037 is painted where it cannot be seen. This is H1's mechanism
-   in the press state, found on 2026-09-11 while verifying T586's regeneration, and T586 fixed only
-   the focus ring. Nothing captures it either: no story focuses or presses this link, and
-   `DataExportPanel.stories.tsx`'s `HoverFocusActiveNotApplicable` says its states are "already
-   covered by their own components' stories", which is untrue — the link is a local anchor, not a
-   `Button`. So T586's own change to this link moved no baseline and is guarded only by
-   `tokens/accent-contrast-ring.test.mjs`. The story coverage is **T587**; the ring itself is part of
-   the decision below. **Fix by 2026-09-25.**
+   story captures the state — decision closed by row 6, capture still open.** The link fills with
+   `accent` and drew its press ring outward: `active:ring-2 active:ring-offset-2
+active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataExportPanel/index.tsx`).
+   A transparent offset put that ring on the surface behind the link, and the link renders inside a
+   `success` `Callout`, whose fill is `bg-surface-raised` (`src/primitives/Callout/index.tsx`).
+   `accent-contrast` **is** `surface-raised` in the light theme, so the ring measured 1.00:1 there
+   and 1.24:1 in the dark theme: the non-colour half of FR-037 was painted where it could not be
+   seen. This is H1's mechanism in the press state, found on 2026-09-11 while verifying T586's
+   regeneration, and T586 fixed only the focus ring. Nothing captured it either: no story focused or
+   pressed this link, and `DataExportPanel.stories.tsx`'s `HoverFocusActiveNotApplicable` says its
+   states are "already covered by their own components' stories", which is untrue — the link is a
+   local anchor, not a `Button`. **Deleted rather than repositioned (T588).** Row 6's decision
+   applies to any ring on an accent-filled control's edge, whatever colour it uses, so an outward
+   ring here could never have been the fix regardless of its offset; the ring is removed and the
+   link now carries the same label-underline signal `Button`'s `primary` variant does (row 6,
+   below), guarded by `DataExportPanel.test.tsx`'s new assertions that the underline classes are
+   present and the deleted ring classes are not. The story coverage — a real focus-visible and a real
+   press frame over this link, proving the underline where the invisible ring used to be — is still
+   open as **T587**, which lands after this closure so its frame shows the current control rather
+   than the one this row found. **Owner: T587 (capture only). Fix by 2026-09-25.**
 6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
-   open, needs a design decision.** `Button`'s `primary` steps `accent` → `accent-hover` →
-   `accent-active` and adds no shape, mark, border or position at any step (`Button/index.tsx`), and
-   `DataExportPanel`'s download link follows it. Measured with `tokens/contrast.mjs`: 1.26:1
-   rest→hover and 1.28:1 hover→press in the light theme, 1.25:1 and 1.57:1 in the dark. FR-037 asks
-   for "more than colour", and this register's own bar (above) says a difference carried by a hue
-   shift alone is not reviewable from a still image; whether a luminance step of this size satisfies
-   it has never been decided, and six adversarial passes closed `secondary`, `ghost`, `destructive`,
-   `Link` and `PrivacyNotice` without asking it of the most prominent control in the system. The
-   same question governs what replaces row 5's invisible ring, and FR-038 requires both controls to
-   answer it the same way. Not a defect this register may close on its own: `product-designer` owns
-   the signal's shape. **Owner: T588. Fix by 2026-09-25.**
+   closed.** `Button`'s `primary` stepped `accent` → `accent-hover` → `accent-active` and added no
+   shape, mark, border or position at any step (`Button/index.tsx`), and `DataExportPanel`'s
+   download link followed it. Measured with `tokens/contrast.mjs`: 1.26:1 rest→hover and 1.28:1
+   hover→press in the light theme, 1.25:1 and 1.57:1 in the dark. FR-037 asks for "more than
+   colour", and this register's own bar (above) says a difference carried by a hue shift alone is
+   not reviewable from a still image; whether a luminance step of this size satisfies it had never
+   been decided, and six adversarial passes closed `secondary`, `ghost`, `destructive`, `Link` and
+   `PrivacyNotice` without asking it of the most prominent control in the system. **Verdict:
+   luminance alone does not satisfy FR-037** — the measured steps above are 1.25–1.57:1, a
+   difference no still image carries, matching this register's own row-2 (M1) reasoning that a
+   colour-only signal this faint is not what either half of FR-037 asks for. **Mechanism, decided by
+   `product-designer`:** an `accent`-filled control may not distinguish rest, hover and press by
+   fill alone, and it may not ring outward for press either — DS-10's proof (`color-tokens.md` §5)
+   that no colour clears 3:1 against both the page and an accent fill at once applies to any ring
+   whose adjacencies are the page and an accent fill, whatever its colour, which is what governed
+   row 5's invisible ring as much as this row's fill steps (FR-038 binds both to the same answer).
+   The non-colour signal is drawn inside the fill instead, in `accent-contrast` — the label's own
+   ink at every state — and clear of the inward focus ring's edge band (T586): the label underlines
+   on hover (`decoration-2`, `underline-offset-2`) and drops to `underline-offset-4` on press,
+   thickness for hover and position for press, the same two axes `Link` already uses
+   (`structural-tier.md` §9). `Button`'s `primary` variant and `DataExportPanel`'s download link
+   both carry it now (`Button/index.tsx`, `src/screens/DataExportPanel/index.tsx`); every
+   `accent`-filled control added later follows this, and its press state is captured as its own
+   component-scoped story so the signal is larger than the comparator's tolerance (`Button.test.tsx`
+   and `DataExportPanel.test.tsx` assert the classes; `shared-primitives.md` and
+   `privacy-data-rights.md` name the mechanism). **Not caught by `scripts/checks/token-scale.mjs`:**
+   `decoration-2`, `underline-offset-2` and `underline-offset-4` are bare Tailwind utilities in the
+   decoration-thickness/offset namespace, the same kind of namespace the checker was structurally
+   blind to that DS-11 (Token gap register, above, closed by T589 for `outline-offset` only) named —
+   reached the same way `Link`'s own `decoration-1`/`decoration-2`/`underline-offset-4` are
+   (`Link/index.tsx`'s own comment): the nearest bare utility in the closed set, because no
+   `border.json` token names a decoration thickness or an underline offset. Left as a note here
+   rather than folded into DS-11's own fix, which was T589's scope, not this row's. **Owner: T588.
+   Closed 2026-09-12.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

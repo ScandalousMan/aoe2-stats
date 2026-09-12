@@ -146,10 +146,19 @@ export const RealSelectionThenSuccess: Story = {
 // `Remove` button, `SubmitButton` and the `Refresh` button, in both themes." Forced from
 // Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
 // a `play()` here could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// T591: clipped to the `Choose file` control — `initialState: 'idle'` renders no
+// `Remove`/`SubmitButton`/`Refresh` to ring, so the frame's only real signal is this one
+// control's own ring, a small mark on the whole component's frame otherwise (invisible to the
+// duplicate check at that scale, story-baseline-duplicates-debt.json). The ring's existence across
+// the other three controls, when they do render, is separately asserted by
+// `tests/visual/focus-ring.spec.ts` and `UploadControl.test.tsx`, not by this still image.
 export const FocusVisible: Story = {
   name: 'focus-visible — the standard ring on the "Choose file" control',
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Choose file' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Choose file' },
+    visualCaptureClip: { parts: [{ role: 'button', name: 'Choose file' }], pad: '2' },
+  },
 }
 
 // §5 "disabled — there is no resting disabled control. `SubmitButton` does not exist until a file

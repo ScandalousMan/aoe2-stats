@@ -84,6 +84,27 @@ export const FocusVisible: Story = {
   parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
 }
 
+// Widened 2026-09-12 (README's gap register row 5/H2, `visual-reviewer` pass): before this story,
+// `FocusVisible` above hard-coded `variant: 'primary'`, so no baseline ever showed a focused
+// `secondary`, `ghost` or `destructive` button — the shared outward `focus-ring` those three keep
+// was evidenced only by a code read. One story per variant, matching this file's own convention for
+// `active` (`SecondaryActive`/`DestructiveActive`/`GhostActive` below), each proving the same ring
+// paints regardless of the fill or border it sits on.
+export const SecondaryFocusVisible: Story = {
+  args: { variant: 'secondary', children: 'Cancel' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+}
+
+export const GhostFocusVisible: Story = {
+  args: { variant: 'ghost', children: 'Manage' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+}
+
+export const DestructiveFocusVisible: Story = {
+  args: { variant: 'destructive', children: 'Unlink this profile' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+}
+
 // §Button "active": `accent-active`, the third of three deliberately distinct fills (rest, hover,
 // press) — held down rather than released so the capture shows the pressed frame.
 export const Active: Story = {
