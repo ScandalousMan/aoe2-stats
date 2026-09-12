@@ -138,6 +138,52 @@ describe('DataExportPanel — failure', () => {
   })
 })
 
+describe('DataExportPanel — download link non-colour states (T588, FR-037)', () => {
+  // Row 6/H3 of README's gap register: the download link follows `Button`'s `primary` variant, so
+  // it carries the same label-underline signal — thickness for hover, position for press — rather
+  // than the outward ring row 5 found invisible against the `Callout` it renders inside.
+  it('underlines the label on hover, thicker than rest, and never relies on the fill step alone', () => {
+    render(
+      <DataExportPanel
+        onRequestExport={() => Promise.reject(new Error('unused'))}
+        onPollExport={() => Promise.reject(new Error('unused'))}
+        initialState="ready"
+      />,
+    )
+    const link = screen.getByRole('link', { name: 'Download the archive' })
+    expect(link.className).toMatch(/\bhover:underline\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
+  })
+
+  it('drops the underline position on press, distinct from the hover thickness signal', () => {
+    render(
+      <DataExportPanel
+        onRequestExport={() => Promise.reject(new Error('unused'))}
+        onPollExport={() => Promise.reject(new Error('unused'))}
+        initialState="ready"
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Download the archive' }).className).toMatch(
+      /\bactive:underline-offset-4\b/,
+    )
+  })
+
+  it('never draws the outward press ring row 5 found invisible against its own Callout', () => {
+    render(
+      <DataExportPanel
+        onRequestExport={() => Promise.reject(new Error('unused'))}
+        onPollExport={() => Promise.reject(new Error('unused'))}
+        initialState="ready"
+      />,
+    )
+    const link = screen.getByRole('link', { name: 'Download the archive' })
+    expect(link.className).not.toMatch(/active:ring-2/)
+    expect(link.className).not.toMatch(/active:ring-offset/)
+    expect(link.className).not.toMatch(/active:ring-accent-contrast/)
+  })
+})
+
 describe('DataExportPanel — initialState (stories only)', () => {
   it('renders the ready frame without calling either callback', () => {
     const onRequestExport = vi.fn()

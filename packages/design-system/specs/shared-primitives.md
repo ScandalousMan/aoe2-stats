@@ -101,6 +101,24 @@ border either variant already carries at every state, reading as that frame thic
 transparent state to promote; a box-shadow ring is the shape signal available to a control that is
 already bordered.
 
+**`primary`'s hover and press are not colour alone (T588, README's gap register row 6/H3).** The
+three-rung fill above (`accent` → `accent-hover` → `accent-active`) measures 1.26:1 rest→hover and
+1.28:1 hover→press in the light theme, 1.25:1 and 1.57:1 in the dark — a difference no still image
+carries, so FR-037's "more than colour" half was never met by the system's most prominent control.
+`primary` cannot ring outward for press the way `secondary`/`ghost`/`destructive` do above: DS-10's
+proof that no single colour clears 3:1 against both the page and an accent fill at once
+(`color-tokens.md` §5) applies to any ring whose adjacencies are the page and an accent fill,
+whatever its colour, and `primary`'s own inward focus ring (T586) already occupies the band just
+inside the edge. `product-designer`'s decision draws the signal inside the fill instead, in
+`accent-contrast` — the label's own ink at every state, so the underline needs no separate
+decoration-colour utility; it follows `currentColor`. The label underlines on hover
+(`decoration-2`, `underline-offset-2`) and drops to `underline-offset-4` on press — thickness for
+hover, position for press, the same two axes `Link`'s own non-colour signal already uses
+(`structural-tier.md` §9). `disabled:no-underline` keeps a disabled or loading button from ever
+showing the rule. Every `accent`-filled control added later follows this, and its press state is
+captured as its own component-scoped story so the signal is larger than the visual suite's
+comparator tolerance (README's gap register, row 6/H3 closure).
+
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
 — commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
@@ -118,9 +136,11 @@ extended to 44px by padding rather than by a transparent overlay.
 **States**
 
 - **default** — as tabled above.
-- **hover** — `primary`: fill `accent-hover`, in both themes. `secondary` / `ghost` /
-  `destructive`: fill `surface-sunken`. Transition `motion.duration.fast` with `easing.standard`;
-  colour only, no lift, no scale.
+- **hover** — `primary`: fill `accent-hover`, in both themes, **and the label underlines**
+  (`decoration-2`, `underline-offset-2`, in `accent-contrast` via `currentColor`) — the non-colour
+  half of FR-037 a fill step this small (1.26:1 light / 1.25:1 dark) cannot carry alone (T588,
+  above). `secondary` / `ghost` / `destructive`: fill `surface-sunken`. Transition
+  `motion.duration.fast` with `easing.standard`; colour only for those three, no lift, no scale.
 - **focus-visible** — `secondary` / `ghost` / `destructive`: `outline-2 outline-offset-2` in
   `focus-ring` (gap DS-4), clearing 3:1 against whatever page surface the button renders on.
   `primary`: `outline-2 -outline-offset-4` in `accent-contrast` instead (DS-10, `color-tokens.md`
@@ -129,7 +149,10 @@ extended to 44px by padding rather than by a transparent overlay.
   behind the button: 6.07:1 light / 8.07:1 dark at rest (higher on hover and press,
   `build-tokens.test.mjs`). Either way, on top of whatever the hover state is; never removed on
   mouse click; never replaced by a fill change alone.
-- **active** — `primary`: `accent-active`. `secondary` / `ghost` / `destructive`: fill `background`
+- **active** — `primary`: `accent-active`, **and the label's underline drops to
+  `underline-offset-4`** — position rather than the hover step's thickness, so a still image never
+  has to tell hover and press apart by a 1.28:1/1.57:1 fill step alone (T588, above). `secondary` /
+  `ghost` / `destructive`: fill `background`
   — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
   the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
   `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`

@@ -89,9 +89,26 @@ const sizeClasses: Record<ButtonSize, string> = {
 // `box-shadow` and the focus ring above paints through `outline` — two different CSS properties —
 // a keyboard `Enter` press (`:active` and `:focus-visible` matching at once) now genuinely shows
 // both at the same time, which two rules fighting over the same `outline` property never could.
+// T588 (README's gap register, row 6/H3 — `product-designer`'s decision, applied verbatim):
+// `primary` used to distinguish rest, hover and press by fill luminance alone — 1.26:1 and 1.28:1
+// in the light theme, 1.25:1 and 1.57:1 in the dark, measured with `tokens/contrast.mjs`. FR-037's
+// "more than colour" half was never met by a still image that small: no still image carries a
+// 1.25-1.57:1 step. `primary` cannot ring outward for press either — DS-10's proof
+// (`specs/color-tokens.md` §5) that no single colour clears 3:1 against both the page and an
+// accent fill at once applies to any ring drawn on this control's edge, whatever colour it uses,
+// and the inward focus ring (T586) already occupies the band just inside that edge. The signal is
+// therefore drawn inside the fill, in the label's own ink (`accent-contrast`, already the label's
+// colour at every state, so the underline needs no separate decoration-colour utility — it follows
+// `currentColor`): the label underlines on hover (`decoration-2`, `underline-offset-2`) and the
+// underline drops to `underline-offset-4` on press — thickness for hover, position for press, the
+// same two axes `Link`'s own non-colour signal already uses (`Link/index.tsx`'s `underline`
+// comment). `disabled:no-underline` keeps a disabled or loading button from ever showing the rule;
+// compiling this exact class set with tailwindcss 4.3.3 confirms `.disabled\:no-underline:disabled`
+// is emitted after the `:hover`-scoped rule in the generated stylesheet, at equal specificity, so
+// `disabled` always wins the cascade without needing an `!` or manual reordering.
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent',
+    'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4 disabled:no-underline',
   secondary:
     'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
   ghost:

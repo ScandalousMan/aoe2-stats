@@ -290,6 +290,25 @@ ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on every one, in bot
 from the link's own edge on every side, so it reads against that fill (6.07:1 light / 8.07:1 dark),
 never against `ReadyRegion`'s `Callout` behind it, which its geometry keeps it from ever touching.
 
+**`DownloadLink`'s own hover and press are not colour alone (T588, README's gap register rows
+5/H2 and 6/H3).** Like `Button`'s `primary` variant, `DownloadLink` used to distinguish rest, hover
+and press by fill luminance alone (`accent` → `accent-hover` → `accent-active`, 1.26:1/1.28:1 light,
+1.25:1/1.57:1 dark) and pressed with an outward `active:ring-2 active:ring-offset-2
+active:ring-offset-transparent active:ring-accent-contrast` — but that ring rendered inside
+`ReadyRegion`'s `bg-surface-raised` `Callout`, where `accent-contrast` **is** `surface-raised` in
+the light theme: the ring measured 1.00:1 there and 1.24:1 in the dark theme, invisible on the
+surface it actually sat on, and no story drove `:active` to catch it. An `accent`-filled control
+may not distinguish rest, hover and press by fill alone: measured, the accent ramp's steps are
+1.25–1.57:1, a difference no still image carries. It also may not ring outward for press — DS-10's
+proof (`color-tokens.md` §5) applies to any ring whose adjacencies are the page and an accent fill,
+whatever its colour. Its non-colour signal is therefore drawn inside the fill in `accent-contrast`
+and clear of the inward focus ring's edge band: the label's underline appears on hover
+(`decoration-2`, `underline-offset-2`) and drops to `underline-offset-4` on press, thickness for
+hover and position for press, the same two axes `Link` uses (`structural-tier.md` §9). The outward
+ring is deleted rather than repositioned — the same class of defect governs every colour it could
+have used. Every `accent`-filled control added later follows this, and its press state is captured
+as its own component-scoped story so the signal is larger than the comparator's tolerance.
+
 **disabled** — `DataExportPanel`: the `RequestButton` disables while a request is in flight or a job is
 preparing (its loading label says why), so a second export cannot be started over an unfinished one.
 `AccountErasurePanel`: `ConfirmAction` is `disabled` until `Acknowledgement` is checked — the one
