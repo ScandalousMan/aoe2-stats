@@ -6,6 +6,13 @@ const meta: Meta<typeof Menu> = {
   id: 'primitives-menu',
   title: 'Primitives/Forms/Menu',
   component: Menu,
+  parameters: {
+    docs: {
+      description: {
+        component: `Offers a short, known set of choices from a trigger, without leaving the page.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -56,6 +63,9 @@ export const SingleProfile: Story = {
 // `globals.viewport` (see `MatchRow.stories.tsx`'s identical rationale for why a declared option
 // rather than a Storybook device preset) — `ProfileSwitcher` above already reads at the wide,
 // popover shape.
+// visual-equivalence: primitives-menu--profile-switcher: the reviewWidthNarrow viewport pin is
+// overridden by the visual suite's own 375/768/1280 capture axis (T504), and the args are identical
+// to ProfileSwitcher's, so all six baselines match.
 export const SheetBelowMd: Story = {
   name: 'Bottom sheet below md, an anchored popover from it',
   tags: ['visual-full-page'],
@@ -262,6 +272,9 @@ export const EscapeReturnsFocusToTrigger: Story = {
 // `visual-reviewer` mapping a capture to the vocabulary has nothing to find. Added rather than
 // renaming `ProfileSwitcher`: renaming an export changes its story id and orphans the checked-in
 // baseline.
+// visual-equivalence: primitives-menu--profile-switcher: args are identical to ProfileSwitcher's —
+// this story exists so the selection vocabulary entry has something to find, not to depict a
+// distinct rendering (see this comment's own point above).
 export const Selection: Story = {
   tags: ['visual-full-page'],
   play: openMenu,

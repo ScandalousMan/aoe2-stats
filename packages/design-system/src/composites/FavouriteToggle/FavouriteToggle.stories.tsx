@@ -6,6 +6,13 @@ const meta: Meta<typeof FavouriteToggle> = {
   id: 'composite-favouritetoggle',
   title: 'Composites/Search & favourites/FavouriteToggle',
   component: FavouriteToggle,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user mark any player as a favourite, or unmark them, from that player's profile in one gesture.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -28,6 +35,10 @@ export const Bounded: Story = {
 
 // §5: removal is always permitted, so a favourited profile at the bound still shows an enabled
 // "Remove from favourites" control.
+// visual-equivalence: composite-favouritetoggle--marked: favourite-toggle.md §5's own "bounded"
+// paragraph — `atLimit` only affects the unmarked→add direction; "a favourited profile is never
+// blocked by the bound" and "the marked default above still renders and still works at the bound"
+// — so a marked, at-limit profile renders exactly like Marked above.
 export const MarkedAtLimit: Story = {
   name: 'Marked, and also at the limit — removal is never blocked',
   args: { favourited: true, authenticated: true, atLimit: true, max: 100 },

@@ -378,15 +378,22 @@ const WIDTH_STYLE_COMPANIONS = {
 // no `--border-width-*`, `--outline-width-*` or `--outline-offset-*` namespace the way it exposes
 // `--radius-*`, and its own border-width/outline-width/outline-offset utilities are an unbounded
 // numeric scale rather than a themed one (research D5). Unlike icon's uniform "one step, one
-// width-and-height utility" shape, this family's three keys each need a different CSS property
+// width-and-height utility" shape, this family's keys each need a different CSS property
 // and a utility name distinct from the JSON key, so this stays a literal mapping rather than a
 // generic loop — the utility names are fixed by contracts/token-families.md §2, not derived.
+//
+// `ring-offset-inset` (admitted post-hoc, GOVERNANCE.md's token admission Record) reuses the same
+// `outline-offset` property as `ring-offset` — the only difference is the JSON value itself already
+// carries the sign (`-4px` vs `2px`), so the generator needs no direction-specific branch here; the
+// negative literal is what makes the emitted utility's name (`outline-offset-ring-inset`) carry the
+// direction instead of a caller writing Tailwind's own `-` prefix over a positive token.
 function borderUtilityBlocks() {
   if (!border) return []
   const utilities = [
     ['hairline', 'border-hairline', 'border-width'],
     ['ring', 'outline-ring', 'outline-width'],
     ['ring-offset', 'outline-offset-ring', 'outline-offset'],
+    ['ring-offset-inset', 'outline-offset-ring-inset', 'outline-offset'],
   ]
   return utilities
     .filter(([key]) => key in border)

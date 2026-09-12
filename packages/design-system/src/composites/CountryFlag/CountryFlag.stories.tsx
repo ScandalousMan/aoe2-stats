@@ -6,6 +6,13 @@ const meta: Meta<typeof CountryFlag> = {
   id: 'composite-countryflag',
   title: 'Composites/Player identity/CountryFlag',
   component: CountryFlag,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows which country a player plays from, as the flag a reader recognises without reading, beside the country's name in words. Its flag mark is decorative; the country's name is the accessible name a \`Tooltip\` reveals on hover, keyboard focus and press alike, and it is present in the accessibility tree whether or not the tooltip has ever opened — [Foundations → Iconography](?path=/docs/foundations-iconography--docs)'s third accessible-naming shape, "the icon reveals a name that would otherwise not exist".`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -131,6 +138,9 @@ export const UncoveredCountry: Story = {
 
 // §11.4 — `flagUrl` resolved but the image fails to load/decode. Must be pixel-identical to
 // UncoveredCountry above: the onError handler removes the image, its frame and its tooltip
+// together.
+// visual-equivalence: composite-countryflag--uncovered-country: country-flag.md §11.4 requires this
+// pixel-identical to UncoveredCountry — onError removes the image, its frame and its tooltip
 // together.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',

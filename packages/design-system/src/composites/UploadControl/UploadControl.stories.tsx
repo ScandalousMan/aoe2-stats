@@ -6,6 +6,13 @@ const meta: Meta<typeof UploadControl> = {
   id: 'composite-uploadcontrol',
   title: 'Composites/Uploads/UploadControl',
   component: UploadControl,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a user rescue a match whose replay automatic capture never got, by adding the file from their own machine.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -106,11 +113,19 @@ export const UploadingValidating: Story = {
 // story needs no tag to reach that width — it exists for its own name, not to opt into a capture.
 // `file-chosen`'s seeded file (index.tsx) already carries a realistic long name, so no extra
 // fixture is needed.
+// visual-equivalence: composite-uploadcontrol--file-chosen: args are identical
+// ({ gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' }) and every story is captured
+// at 375px as a matter of course (T504, per this story's own comment above), so this story adds a
+// Storybook-reader affordance, not a captured fact distinct from FileChosen.
 export const FileChosenMobile: Story = {
   name: '375px viewport — a long file name wraps instead of being cut to a stub',
   args: { gameId: 42, onUpload: noopOnUpload, initialState: 'file-chosen' },
 }
 
+// visual-equivalence: composite-uploadcontrol--succeeded: this story exists to prove the real
+// selection-then-submit-then-success sequence (a play function `Succeeded`'s static `initialState`
+// prop cannot pin), not to depict an end frame distinct from it — it resolves to the same
+// `initialState: 'succeeded'` rendering `Succeeded` already shows.
 export const RealSelectionThenSuccess: Story = {
   name: 'a real file selection, submitted, resolving to succeeded',
   args: {

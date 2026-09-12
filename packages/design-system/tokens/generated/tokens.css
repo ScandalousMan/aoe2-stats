@@ -98,6 +98,7 @@
   --ds-border-hairline: 1px;
   --ds-border-ring: 2px;
   --ds-border-ring-offset: 2px;
+  --ds-border-ring-offset-inset: -4px;
   --ds-size-page: 80rem;
   --ds-size-panel: 42rem;
   --ds-size-measure: 65ch;

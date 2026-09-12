@@ -36,4 +36,18 @@ describe('Skeleton', () => {
     act(() => vi.advanceTimersByTime(200))
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('carries the caller className on the text variant, sizing its footprint', () => {
+    const { container } = render(<Skeleton variant="text" className="w-24" />)
+    act(() => vi.advanceTimersByTime(200))
+    const wrapper = container.firstElementChild
+    expect(wrapper).toHaveClass('w-24')
+  })
+
+  it('carries the caller className on the block variant (contrast: already worked)', () => {
+    const { container } = render(<Skeleton variant="block" className="h-9 w-24" />)
+    act(() => vi.advanceTimersByTime(200))
+    const block = container.firstElementChild
+    expect(block).toHaveClass('h-9', 'w-24')
+  })
 })

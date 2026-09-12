@@ -1,0 +1,166 @@
+[
+  {
+    "storyIds": [
+      "composite-countryflag--default",
+      "composite-countryflag--flag-dismissed-after-escape"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "FlagDismissedAfterEscape's own comment claims the flag stays visibly focused after Escape (country-flag.md §11.9), but its baseline is indistinguishable from Default's unfocused resting frame at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "composite-countryflag--flag-hover-revealed",
+      "composite-countryflag--flag-keyboard-focus-revealed",
+      "composite-countryflag--flag-pinned"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "FlagKeyboardFocusRevealed's own comment claims the tooltip open AND the focus ring visible together (country-flag.md §11.9), but its baseline is indistinguishable from FlagHoverRevealed's and FlagPinned's ringless open tooltip at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-favouriteslist--active", "composite-favouriteslist--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render FavouritesList's own distinct rest/hover/press fills (§5), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-footer--active", "composite-footer--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render Footer's own distinct link fills (§5 'active — links render link-hover while pressed'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-matchrow--active", "composite-matchrow--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render MatchRow's own distinct link states (§5 'active — per link', Link's own standalone press paint), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "composite-playercolourswatch--blue",
+      "composite-playercolourswatch--size-sm",
+      "composite-playercolourswatch--size-xs"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "Blue, SizeSm and SizeXs show different colours, player names and chip sizes by design, but the whole-page capture's diff ratio does not distinguish them at this component's small footprint; needs a capture scoped to the chip, not the whole page.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-playerresultrow--active", "composite-playerresultrow--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render PlayerResultRow's own distinct rest/hover/press states, but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-siteheader--active", "composite-siteheader--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render SiteHeader's own distinct nav-item states (§5 'active — fill surface-sunken with a 1px border-strong boundary… label text-primary'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["composite-uploadcontrol--focus-visible", "composite-uploadcontrol--idle"],
+    "found": "2026-09-12",
+    "fixOwed": "FocusVisible should show manual-upload.md §5's forced focus ring across the Remove/SubmitButton/Refresh controls, distinct from Idle's unfocused rest frame, but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["primitives-menu--active", "primitives-menu--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render Menu's own distinct item fills (shared-primitives.md §Menu 'hover — item fill surface-sunken', 'active — item fill surface-sunken with boundary border-strong'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "primitives-menu--focus-visible",
+      "primitives-menu--keyboard-navigation",
+      "primitives-menu--profile-switcher",
+      "primitives-menu--selection",
+      "primitives-menu--sheet-below-md"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "FocusVisible's own comment claims the standard focus ring on the unchecked row (shared-primitives.md §Menu 'focus-visible'), and KeyboardNavigation ends with the footer item focused — both meant to be visibly distinguishable from ProfileSwitcher/Selection/SheetBelowMd's plain open-menu resting frame (itself a deliberate three-way match — see the visual-equivalence markers on this file's own Selection and SheetBelowMd exports) — but all five are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["primitives-table--row-link-active", "primitives-table--row-link-hover"],
+    "found": "2026-09-12",
+    "fixOwed": "RowLinkActive should add the pressed border-strong rule down the row's inline-start edge on top of RowLinkHover's fill (structural-tier.md §10 'active'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "primitives-tooltip--default",
+      "primitives-tooltip--dismissed-after-blur",
+      "primitives-tooltip--dismissed-after-escape"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "DismissedAfterEscape's own comment requires the frame to show the focus ring but no surface (tooltip.md §10), distinguishing it from Default's and DismissedAfterBlur's ringless resting frame, but all three are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "primitives-tooltip--hover-revealed",
+      "primitives-tooltip--keyboard-focus-revealed",
+      "primitives-tooltip--pinned"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "KeyboardFocusRevealed should show the focus ring alongside the open tooltip (§4), distinguishing it from HoverRevealed's and Pinned's ringless open surfaces, but all three are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": ["screens-privacynotice--active", "screens-privacynotice--hover"],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render PrivacyNotice's own distinct link states (§5 'active — links render in link-hover while pressed', 'hover — … ObjectionCallToAction hovers as Button/secondary'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "screens-privacynotice--default",
+      "screens-privacynotice--focus-visible",
+      "screens-privacynotice--mobile-viewport"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "FocusVisible's own comment claims the standard ring on the first link (§5 'focus-visible'), but its baseline is indistinguishable from Default's and MobileViewport's unfocused resting frame at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "screens-profilesummary--board",
+      "screens-profilesummary--board-mobile",
+      "screens-profilesummary--board-ratings-cards-below-lg",
+      "screens-profilesummary--no-country"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "NoCountry's own comment claims the flag and its label are both absent (004 spec §12.4, FR-008) — a real, visible difference from Board's identity bar — but the whole-page capture's diff ratio does not distinguish them at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "screens-profilesummary--board-flag-hover-revealed",
+      "screens-profilesummary--board-flag-keyboard-focus-revealed",
+      "screens-profilesummary--board-flag-pinned"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "BoardFlagKeyboardFocusRevealed's own comment claims the tooltip open and focus ring together (004 spec §13.9), distinguishing it from BoardFlagHoverRevealed's and BoardFlagPinned's ringless open tooltip, but all three are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "screens-thirdpartyobjectionform--active",
+      "screens-thirdpartyobjectionform--hover"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "Active and Hover should render ThirdPartyObjectionForm's own distinct link/button states (§5 'active — the link renders accent-active while pressed'), but the baselines are indistinguishable at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  },
+  {
+    "storyIds": [
+      "screens-thirdpartyobjectionform--focus-visible",
+      "screens-thirdpartyobjectionform--idle"
+    ],
+    "found": "2026-09-12",
+    "fixOwed": "FocusVisible's own comment claims the standard ring on the input, submit button and privacy-notice link (§5), but its baseline is indistinguishable from Idle's unfocused resting frame at this check's tolerance.",
+    "fixBy": "2026-09-26"
+  }
+]

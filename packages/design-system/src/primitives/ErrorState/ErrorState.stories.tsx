@@ -7,6 +7,13 @@ const meta: Meta<typeof ErrorState> = {
   id: 'primitives-errorstate',
   title: 'Primitives/Feedback & status/ErrorState',
   component: ErrorState,
+  parameters: {
+    docs: {
+      description: {
+        component: `Tells a reader what failed, in their terms, and gives them the way forward.`,
+      },
+    },
+  },
 }
 
 export default meta

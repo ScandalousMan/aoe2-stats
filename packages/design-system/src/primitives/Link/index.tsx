@@ -75,10 +75,32 @@ const focusRing =
 // `underline-offset-2`, reached the same way `decoration-1`/`decoration-2` already are (comment
 // above `underline`): no `border.json` token names an underline offset, so this is the nearest
 // bare utility in the closed set, not an invented value.
+//
+// Sixth-pass review remediation (M1), row 2 of `specs/README.md`'s contrast-signal gap register:
+// `standalone`'s press used to be `active:bg-surface-sunken` alone — a colour change, not the
+// non-colour half FR-037's "more than colour" asks for, and measured at only 1.18:1 light /
+// 1.07:1 dark against the fill it replaces, near-imperceptible in the dark theme even as a plain
+// colour difference. `active:ring-2 active:ring-border-strong` is the real signal now, the same
+// box-shadow-backed `ring` idiom `Button`'s `secondary`/`destructive` variants already carry
+// (`Button/index.tsx`'s own comment records why `ring` paints where an `active:outline-*` utility
+// would not: this element composes `outline-none` for its own focus ring below, and
+// `tailwind.css`'s restoration of `--tw-outline-style` fires only under `:focus-visible`, leaving
+// any other pseudo-class's `outline-*` dead). `ring` reads and writes only its own `--tw-ring-*`
+// custom properties, never `--tw-outline-style`, and paints through `box-shadow` — a different CSS
+// property from the `outline` the focus ring below uses, so a keyboard `Enter` (`:active` and
+// `:focus-visible` matching at once) shows both at once rather than one clobbering the other.
+// `border-strong` is the same token `Button`'s bordered variants ring with, and clears the 3:1
+// non-text floor against every surface this package measures (README's contrast table:
+// `border-strong` against `surface-raised`/`surface`/`background`/`surface-sunken`, both themes) —
+// `standalone` has no single fixed placement to narrow that check to, so every measured surface
+// has to clear, and all four do. `active:bg-surface-sunken` is kept alongside the ring: FR-037
+// asks for a non-colour signal, not a ban on an accompanying one, and the wash still reads as a
+// filled press even though the ring, not the fill, is what makes the two states distinguishable
+// in a still image.
 const variantClasses: Record<LinkVariant, string> = {
   inline: 'active:underline-offset-4',
   standalone:
-    'inline-flex items-center gap-2 rounded-control py-3 type-body text-md active:bg-surface-sunken',
+    'inline-flex items-center gap-2 rounded-control py-3 type-body text-md active:bg-surface-sunken active:ring-2 active:ring-border-strong',
 }
 
 // `inline`'s own wrapper, added only when `external` also adds a mark that must never strand on

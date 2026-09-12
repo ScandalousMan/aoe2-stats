@@ -15,12 +15,12 @@ the shapes and the admission rules they must satisfy.
 `packages/design-system/tokens/build-tokens.mjs` reads every `*.json` in its own directory and
 writes four things. The fourth is new.
 
-| Output                | Consumed by                                    | New in 005                                  |
-| --------------------- | ---------------------------------------------- | ------------------------------------------- |
-| `packages/design-system/tokens/generated/tokens.css` | the cascade; `:root` and `[data-theme='dark']` | breakpoint, border and size variables       |
+| Output                                               | Consumed by                                    | New in 005                                                                                          |
+| ---------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `packages/design-system/tokens/generated/tokens.css` | the cascade; `:root` and `[data-theme='dark']` | breakpoint, border and size variables                                                               |
 | `packages/design-system/tokens/generated/preset.css` | Tailwind, via `@theme inline`                  | `--breakpoint-*`, `--container-*`, `--animate-*` mappings, `@keyframes`, and every `@utility` block |
-| `packages/design-system/tokens/generated/tokens.ts`  | the rare non-utility consumer                  | `breakpointTokens` as raw numbers, not `var()` references |
-| custom utilities       | component class names                          | **all of it** — icon sizes, typography roles, the overlay ceiling |
+| `packages/design-system/tokens/generated/tokens.ts`  | the rare non-utility consumer                  | `breakpointTokens` as raw numbers, not `var()` references                                           |
+| custom utilities                                     | component class names                          | **all of it** — icon sizes, typography roles, the overlay ceiling                                   |
 
 **Why `breakpointTokens` breaks the `var()` rule.** Every other generated TypeScript value is a
 `var()` reference because its resolved value depends on the active theme, which is a cascade concern.
@@ -31,19 +31,19 @@ documented exception and the generator states it at the point it emits it.
 
 A component may write these and nothing else.
 
-| Concern            | Utilities                                                          | Source                     |
-| ------------------ | ------------------------------------------------------------------ | -------------------------- |
-| Colour             | `bg-*`, `text-*`, `border-*`, `outline-*` over semantic role names | `color.json`               |
-| Spacing            | every Tailwind numeric utility, derived from the space multiplier  | `space.json`               |
-| Typography family and scale | `font-*`, `text-*`, `tracking-*`, `leading-*`             | `font.json`                |
-| Typography role    | `type-display`, `type-body`, `type-supporting`, `type-numeric`, `type-machine`, `type-identifier` | `font.json` role group |
-| Radius             | `rounded-*`                                                        | `radius.json`              |
-| Elevation          | `shadow-*`                                                         | `elevation.json`           |
-| Motion             | `duration-*`, `ease-*`, `animate-spin`, `animate-pulse`            | `motion.json`              |
-| Icon size          | `icon-xs` … `icon-3xl`                                             | `icon.json`                |
-| Widths             | `border-hairline`, `outline-ring`, `outline-offset-ring`           | `border.json`              |
-| Container widths   | `max-w-page`, `max-w-panel`, `max-w-measure`                       | `size.json`                |
-| Responsive         | `sm:`, `md:`, `lg:`, `xl:`                                         | `breakpoint.json`          |
+| Concern                     | Utilities                                                                                         | Source                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------- |
+| Colour                      | `bg-*`, `text-*`, `border-*`, `outline-*` over semantic role names                                | `color.json`           |
+| Spacing                     | every Tailwind numeric utility, derived from the space multiplier                                 | `space.json`           |
+| Typography family and scale | `font-*`, `text-*`, `tracking-*`, `leading-*`                                                     | `font.json`            |
+| Typography role             | `type-display`, `type-body`, `type-supporting`, `type-numeric`, `type-machine`, `type-identifier` | `font.json` role group |
+| Radius                      | `rounded-*`                                                                                       | `radius.json`          |
+| Elevation                   | `shadow-*`                                                                                        | `elevation.json`       |
+| Motion                      | `duration-*`, `ease-*`, `animate-spin`, `animate-pulse`                                           | `motion.json`          |
+| Icon size                   | `icon-xs` … `icon-3xl`                                                                            | `icon.json`            |
+| Widths                      | `border-hairline`, `outline-ring`, `outline-offset-ring`, `outline-offset-ring-inset`             | `border.json`          |
+| Container widths            | `max-w-page`, `max-w-panel`, `max-w-measure`                                                      | `size.json`            |
+| Responsive                  | `sm:`, `md:`, `lg:`, `xl:`                                                                        | `breakpoint.json`      |
 
 **Forbidden, without exception**: an arbitrary bracket value carrying a length, a colour, a duration
 or a shadow; a raw hex, `px`, `rem` or `ms` literal; and a hand-written `var(--ds-*)` inside a class
@@ -80,14 +80,14 @@ what it owes is that the dialog above it reads, and that pair is already measure
 One meaning per role. The monospace family currently carries three, so a change to it moves all
 three together.
 
-| Role         | Means                                           | Must carry                                    |
-| ------------ | ------------------------------------------------ | --------------------------------------------- |
-| `display`    | a page or section heading                       | the display family                            |
-| `body`       | prose and control labels                        | the sans family                               |
-| `supporting` | secondary or explanatory text                   | the sans family, one size step down           |
+| Role         | Means                                           | Must carry                                                   |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------ |
+| `display`    | a page or section heading                       | the display family                                           |
+| `body`       | prose and control labels                        | the sans family                                              |
+| `supporting` | secondary or explanatory text                   | the sans family, one size step down                          |
 | `numeric`    | a measured number                               | the mono family **and `font-variant-numeric: tabular-nums`** |
-| `machine`    | a filename, an error class, a raw string        | the mono family                               |
-| `identifier` | a value the product could not resolve to a name | the mono family, and `text-secondary` by contract |
+| `machine`    | a filename, an error class, a raw string        | the mono family                                              |
+| `identifier` | a value the product could not resolve to a name | the mono family, and `text-secondary` by contract            |
 
 `tabular-nums` on `numeric` is what makes digit alignment a decision rather than a coincidence, and
 it is why the three meanings had to separate first: declaring the variant on a shared mono role

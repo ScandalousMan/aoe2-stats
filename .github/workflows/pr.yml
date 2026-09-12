@@ -62,6 +62,27 @@ jobs:
               - 'scripts/checks/*.mjs'
               - 'scripts/visual/**'
               - 'tests/visual/**'
+              # Adversarial review finding S6, 2026-09-12: this workflow file defines the `web` job's
+              # own steps — among them the `pnpm exec playwright test --list
+              # tests/visual/focus-ring.spec.ts` step above, whose comment claims it "can land green
+              # on the very pull request that bumps it" a Node or Playwright version. `node-version:`
+              # for that job lives here, in this file, not under any path already listed above, so a
+              # pull request that bumped it — or changed any other part of what `web`/`visual` run —
+              # used to change neither job's `if` output at all. Same reasoning as the
+              # `scripts/checks/*.mjs` entry above: an edit that changes what a job does must be able
+              # to trigger that job, or its own correctness is verified by nothing.
+              #
+              # Named narrowly (this one file, not `.github/**`) rather than added to every filter
+              # below, so an edit to `migrations.yml`-equivalent GitHub configuration this feature has
+              # none of, or to a hypothetical future workflow file, does not also pull in `web` and
+              # `visual`. `paths-filter` still matches at file granularity, not job granularity,
+              # inside this one file: an edit that touches only the `python`, `config`, `migrations`,
+              # `asset-packs`, `specs` or `secrets` job below (none of which reads `node-version` or
+              # runs a Node toolchain) now also triggers `web` and `visual`, which is a real,
+              # accepted cost — there is no filter granularity finer than "this file changed" to avoid
+              # it, and paying it beats the alternative this row fixes: those two jobs never running
+              # against changes to the very file that defines them.
+              - '.github/workflows/pr.yml'
             design:
               - 'packages/design-system/**'
             migrations:
@@ -170,7 +191,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -193,7 +214,7 @@ jobs:
       # a skip exists only so a developer without Postgres running locally is not blocked.
       - run: uv run pytest -q
         env:
-          PYTEST_DISABLE_NETWORK: "1"
+          PYTEST_DISABLE_NETWORK: '1'
 
   web:
     name: Web — types, lint, unit tests, built stylesheet, routing
@@ -249,6 +270,15 @@ jobs:
       # runs immediately after, for the same reason token-scale.mjs's does.
       - run: node scripts/checks/spec-completeness.mjs
       - run: node --test scripts/checks/spec-completeness.test.mjs
+      # T578: FR-040, rows 3 and 4 of packages/design-system/specs/README.md's "Storybook
+      # documentation gap register" — a component directory with no story file, a story file whose
+      # meta carries no one-sentence `docs.description.component` purpose line, or a component that
+      # carries a redundant accessible name (SR_ONLY_NAMING_SHAPE_COMPONENTS in the script itself)
+      # whose purpose line does not name the shape and link Foundations → Iconography, fails here
+      # rather than depending on a reviewer re-reading 41 story files. Needs no build, same as the
+      # other static source checks above; its own `node --test` suite runs immediately after.
+      - run: node scripts/checks/story-docs.mjs
+      - run: node --test scripts/checks/story-docs.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
@@ -259,6 +289,27 @@ jobs:
       # failure mode (a stale suppression the scan no longer reports) needs Playwright's results
       # and belongs to T507's scan in the `visual` job instead.
       - run: node scripts/checks/a11y-allowlist.mjs
+      # T584: row 3 (L1) of packages/design-system/specs/README.md's "Contrast-signal and
+      # duplicate-baseline gap register" — a story's own responsive-viewport pin or its own
+      # state/variant class can make its captured baseline set byte-identical to another story's,
+      # independent of whether the two document the same fact. Reads committed baselines and story
+      # source only, no Storybook build, same as the other static checks above; its own `node --test`
+      # suite (real temp-dir fixtures, not the live tree) runs immediately after.
+      - run: node scripts/checks/story-baselines-duplicates.mjs
+      - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
+      # T580 follow-up (adversarial review of #74): `tests/visual/focus-ring.spec.ts` imports
+      # `packages/design-system/tokens/contrast.mjs`'s `contrastRatioRgb` — an `.mjs` module loaded
+      # from a spec that Playwright transpiles to CommonJS, the exact shape that broke CI in
+      # 0a400c4e, where `scripts/visual/a11y-scan.mjs` had to become `.cjs` for the same reason.
+      # `.cjs` is not available here: `packages/design-system/.storybook/foundations/Colour.stories.tsx`
+      # also imports `contrast.mjs`, and Vite will not serve a local CommonJS file to it. The
+      # `visual` job below only loads this spec file when `scripts/visual/run.mjs --changed` selects
+      # an affected story, so a Node or Playwright bump can land green on the very pull request that
+      # bumps it and break only the nightly run instead. `--list` fully imports the spec module
+      # (the same thing that made this import valid evidence before) without launching a browser or
+      # needing a Storybook build, so this step catches that regression on every pull request that
+      # reaches this job — do not remove it as redundant with `visual`'s own run of the spec.
+      - run: pnpm exec playwright test --list tests/visual/focus-ring.spec.ts
 
   visual:
     name: Visual regression — affected stories and the built application
@@ -344,7 +395,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

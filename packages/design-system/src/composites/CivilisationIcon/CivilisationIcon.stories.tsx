@@ -7,6 +7,13 @@ const meta: Meta<typeof CivilisationIcon> = {
   id: 'composite-civilisationicon',
   title: 'Composites/Match & game data/CivilisationIcon',
   component: CivilisationIcon,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a reader tell which civilisation a player played at a glance, from the game's own mark shown beside the civilisation's name.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -18,6 +25,8 @@ export const Default: Story = {
   args: { iconUrl: BRITONS_URL, name: 'Britons' },
 }
 
+// visual-equivalence: composite-civilisationicon--default: size 'md' is this component's own
+// default (index.tsx's `size = 'md'`), so this renders identically to Default above.
 export const SizeMd: Story = {
   name: 'Size — md (default, MatchRow)',
   args: { iconUrl: BRITONS_URL, name: 'Britons', size: 'md' },
@@ -48,6 +57,9 @@ export const UncoveredCivilisation: Story = {
 // §4 "error" — `iconUrl` resolved but the request 404s / fails to decode. Must be pixel-identical
 // to UncoveredCivilisation above: the onError handler removes the mark entirely, never a broken
 // image glyph.
+// visual-equivalence: composite-civilisationicon--uncovered-civilisation: civilisation-icon.md §4
+// "error" requires this pixel-identical to UncoveredCivilisation — onError removes the mark
+// entirely, the same empty render.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',
   args: { iconUrl: '/game-assets/civilisations/does-not-exist.webp', name: 'Gurjaras' },

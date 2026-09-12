@@ -177,7 +177,19 @@ export function DataExportPanel({
                   // Inward ring, in `accent-contrast` — this link fills with `accent`, and
                   // `focus-ring` cannot clear 3:1 against both the page and an accent fill at
                   // once (packages/design-system/specs/color-tokens.md §5, DS-10).
-                  'outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-contrast',
+                  //
+                  // T586: `-outline-offset-2` on this 2px-wide ring painted exactly the outermost
+                  // two pixels of the border box — flush with the edge, so its outer side sat on
+                  // the page at 1.00-1.42:1, the same invisible-on-the-page defect §5 exists to
+                  // prevent. The inward `outline-offset-ring-inset` (`-4px`, `border.json`'s
+                  // `ring-offset-inset`, admitted in GOVERNANCE.md's token admission Record after
+                  // this offset shipped as a bare `-outline-offset-4` literal — the same rendered
+                  // value, now named) leaves a 2px band of `accent` fill between the ring and the
+                  // edge on every side. Checked against this link's own smallest rendered size
+                  // (`min-h-11 px-6`): the ring's inner edge sits 4px inside the border box, far
+                  // short of the 24px horizontal padding around the label, so it never comes near
+                  // the text. Guarded by tokens/accent-contrast-ring.test.mjs.
+                  'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast',
                 )}
               >
                 Download the archive

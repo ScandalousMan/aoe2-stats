@@ -7,6 +7,13 @@ const meta: Meta<typeof MatchRow> = {
   id: 'composite-matchrow',
   title: 'Composites/Match & game data/MatchRow',
   component: MatchRow,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a user scan their recent matches and tell, for each one, what happened and whether its replay is safe, without opening it. Its relative-time text also carries a permanent \`sr-only\` absolute date, so the fact a mouse-only \`title\` tooltip reveals is never lost to a keyboard or touch reader — the same always-present-in-the-tree rule [Foundations → Iconography](?path=/docs/foundations-iconography--docs) states for a hover-revealed icon name (FR-039).`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -287,6 +294,10 @@ export const ListAllOutcomesUnknown: Story = {
 // `subject="other"` — the caption and empty-state sentence change, the row never does. Kept beside
 // the `subject="self"` stories above so a visual diff catches either drifting from the other
 // (§11.6's own "confirmed side by side with that story").
+// visual-equivalence: composite-matchrow--list-populated: `subject="other"` only changes the
+// table's caption and the <ul>'s aria-label, and `Table`'s own `captionHidden` renders the caption
+// sr-only (index.tsx) — both are invisible, so the populated row rendering matches ListPopulated
+// exactly.
 export const ListOtherSubjectPopulated: Story = {
   name: 'MatchList — subject="other", populated ("<alias>\'s recent matches")',
   render: () => <MatchList matches={populated} subject="other" subjectAlias="aoe2villain" />,
@@ -311,6 +322,9 @@ export const ListOtherSubjectEmpty: Story = {
 // per-story API is the `globals` shape — `parameters.viewport.defaultViewport` was never wired to
 // anything in this version and silently did nothing, including here and in `Link.stories.tsx`'s
 // `TouchFootprint`.
+// visual-equivalence: composite-matchrow--list-populated: the reviewWidthNarrow viewport pin is
+// overridden by the visual suite's own 375/768/1280 capture axis (T504, per this comment's own
+// point above), and the matches are identical to ListPopulated's, so all six baselines match.
 export const ListCardsBelowXl: Story = {
   name: 'MatchList — cards below xl, a real <table> from it (§8)',
   globals: { viewport: { value: 'reviewWidthNarrow' } },

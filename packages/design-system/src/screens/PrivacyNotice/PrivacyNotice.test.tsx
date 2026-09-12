@@ -240,6 +240,23 @@ describe('PrivacyNotice — contents navigation', () => {
     expect(links[0]).toHaveAttribute('href', '#who-we-are')
     expect(links[8]).toHaveAttribute('href', '#how-to-reach-us')
   })
+
+  // Sixth-pass review remediation (M1), row 2 of `specs/README.md`'s contrast-signal gap
+  // register: each Contents entry's press used to rely on the `surface-sunken` fill alone — a
+  // colour change, not the non-colour half FR-037's "more than colour" asks for. `ring` is a
+  // box-shadow, a different CSS property from the `outline` the focus ring uses, so this never
+  // collides with focus-visible.
+  it('every Contents entry carries a non-colour press signal — a ring — never relying on active:outline alone (FR-037)', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const nav = screen.getByRole('navigation')
+    const links = within(nav).getAllByRole('link')
+    expect(links).toHaveLength(9)
+    for (const link of links) {
+      expect(link.className).toMatch(/\bactive:ring-2\b/)
+      expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+      expect(link.className).not.toMatch(/\bactive:outline/)
+    }
+  })
 })
 
 // B5 remediation (fourth-pass adversarial review): every `SectionHeading`, including

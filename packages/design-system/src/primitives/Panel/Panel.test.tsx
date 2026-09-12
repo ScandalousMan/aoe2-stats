@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Panel } from './index'
 import { Table } from '../Table'
+import { expectNoLandmarkUniqueViolations } from '../../test/axe'
 
 describe('Panel', () => {
   it('renders a plain <div> when it has no heading', () => {
@@ -122,12 +123,18 @@ describe('Panel', () => {
   // `Panel.stories.tsx`'s `RealisticMatchTable` (remediated 2026-09-06): `Panel`'s own `<section>`
   // and `Table`'s scroll region (structural-tier.md §10) are two independent landmarks, each
   // correctly labelled on its own, but a caller that gives `Table`'s hidden caption the exact same
-  // text as the enclosing `Panel`'s `heading` produces two landmarks with one accessible name —
-  // confirmed with axe-core directly, not assumed from this DOM assertion alone. Neither component
-  // is responsible for the other's label; this only proves the composition Panel.stories.tsx now
-  // relies on keeps the two names apart.
-  it('keeps its own landmark name distinct from a nested Table region named differently', () => {
-    render(
+  // text as the enclosing `Panel`'s `heading` produces two landmarks with one accessible name.
+  // T579 replaces the hand-written DOM-name assertion this guard used to carry with the shared
+  // axe scan (`src/test/axe.ts`) every component test file and the all-stories sweep
+  // (`src/test/story-a11y.test.tsx`) now reuse, rather than re-deriving the rule by hand per
+  // composition here. Neither component is responsible for the other's label; this only proves
+  // the composition this test renders keeps the two names apart.
+  // `baseElement`, not `container` (review remediation, 2026-09-11): neither component here uses
+  // a portal today, so the two are equivalent for this render, but scanning `baseElement`
+  // (`document.body`) rather than the render's own wrapper `<div>` is what stays correct if that
+  // ever changes.
+  it('keeps its own landmark name distinct from a nested Table region named differently', async () => {
+    const { baseElement } = render(
       <Panel density="dense" heading="Recent matches">
         <Table
           caption="3 of 47 recent matches"
@@ -144,7 +151,6 @@ describe('Panel', () => {
         />
       </Panel>,
     )
-    expect(screen.getByRole('region', { name: 'Recent matches' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '3 of 47 recent matches' })).toBeInTheDocument()
+    await expectNoLandmarkUniqueViolations(baseElement)
   })
 })

@@ -18,6 +18,11 @@ const meta: Meta<typeof Page> = {
     title: 'Match history',
   },
   parameters: {
+    docs: {
+      description: {
+        component: `Gives a route the one main landmark, the one content width and the one page padding it must not decide for itself.`,
+      },
+    },
     // Full-page primitive: the layout, the padding and the landmark are only meaningful at the
     // page's own footprint, not inside Storybook's default padded canvas.
     layout: 'fullscreen',

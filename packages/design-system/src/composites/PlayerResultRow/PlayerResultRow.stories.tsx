@@ -6,6 +6,13 @@ const meta: Meta<typeof PlayerResultRow> = {
   id: 'composite-playerresultrow',
   title: 'Composites/Player identity/PlayerResultRow',
   component: PlayerResultRow,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets two players who share or nearly share a name be told apart at a glance.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -117,6 +124,10 @@ export const UnverifiedSteamClaim: Story = {
   },
 }
 
+// visual-equivalence: composite-playerresultrow--source-backed: index.tsx checks
+// `result.unverifiedSteamId != null`, so an explicit `null` here renders exactly like `base`'s own
+// omitted (`undefined`) field — player-search.md §4a: "When unverified_steam_id is null, the whole
+// line is absent."
 export const NoUnverifiedSteamClaimKnown: Story = {
   name: 'No unverified Steam claim known — the line is absent, not blank-filled (§4a)',
   args: { result: { ...base, profileId: '12351', unverifiedSteamId: null } },

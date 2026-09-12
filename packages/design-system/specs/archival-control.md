@@ -347,7 +347,13 @@ needs one).
 
 - [ ] Text column holds roughly 60–75 characters per line at 1280; it does not span the viewport.
 - [ ] No game artwork, logo, portrait or in-game font in the frame.
-- [ ] Focus ring visible and unclipped on the switch button in both themes.
+- [ ] Focus ring visible and unclipped on the switch button in both themes. In the `archiving`
+      state (`Button/secondary`), the ring is `focus-ring`, 2px outside the button's own edge, and
+      clears 3:1 against the `Callout` behind it. In the `objected` state (`Button/primary`, "Resume
+      archival"), the ring is the inward `accent-contrast` ring instead (DS-10, `color-tokens.md`
+      §5) — a band of `accent` fill separates it from the button's own edge on every side
+      (`-outline-offset-4`, T586), so it reads against that fill (6.07:1 light / 8.07:1 dark), never
+      against `Callout/info`'s `bg-surface-raised` fill behind it, which the ring never touches.
 - [ ] The identity block and the basis statement carry no shadow and read as passages of text, not
       as cards competing with `StatusRegion` for attention.
 - [ ] The section heading is visibly larger and heavier than `StatementHeading`/`BasisHeading`, which

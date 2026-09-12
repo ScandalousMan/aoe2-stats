@@ -6,6 +6,13 @@ const meta: Meta<typeof ThirdPartyObjectionForm> = {
   id: 'screens-thirdpartyobjectionform',
   title: 'Screens/Account & privacy/ThirdPartyObjectionForm',
   component: ThirdPartyObjectionForm,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a person who never signed in understand what this service holds about them and lodge an objection that a human will act on.`,
+      },
+    },
+  },
 }
 
 export default meta

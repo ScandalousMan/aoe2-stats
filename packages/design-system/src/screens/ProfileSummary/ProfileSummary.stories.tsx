@@ -8,6 +8,13 @@ const meta: Meta<typeof ProfileSummary> = {
   id: 'screens-profilesummary',
   title: 'Screens/Profile & capture/ProfileSummary',
   component: ProfileSummary,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows who the user is on the leaderboards — rating, rank and win/loss on every board they play — and makes their other linked profiles reachable in one gesture.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -114,6 +121,9 @@ export const Board: Story = {
 // `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
 // rationale for why a declared option rather than a Storybook device preset) — `Board` above
 // already reads at the wide, table shape.
+// visual-equivalence: screens-profilesummary--board: the reviewWidthNarrow viewport pin is
+// overridden by the visual suite's own 375/768/1280 capture axis (T504), and the args are identical
+// to Board's, so all six baselines match.
 export const BoardRatingsCardsBelowLg: Story = {
   name: 'Ratings as cards below lg, a table from it',
   globals: { viewport: { value: 'reviewWidthNarrow' } },
@@ -132,6 +142,9 @@ export const BoardRatingsCardsBelowLg: Story = {
 // trigger, not wrap beneath it, and the identity bar must not force the page wider than the
 // viewport. Every story is now captured at 375px as a matter of course (T504), so no tag is
 // needed to reach that width.
+// visual-equivalence: screens-profilesummary--board: args are identical to Board's, and every story
+// is captured at 375px as a matter of course (T504, per this comment's own point above), so this
+// story adds a Storybook-reader affordance, not a captured fact distinct from Board.
 export const BoardMobile: Story = {
   name: 'Board at 375 — the flag stays on the name line, resting (004 §13.8, T457)',
   args: {

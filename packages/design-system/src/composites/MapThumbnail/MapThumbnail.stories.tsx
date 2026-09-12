@@ -7,6 +7,13 @@ const meta: Meta<typeof MapThumbnail> = {
   id: 'composite-mapthumbnail',
   title: 'Composites/Match & game data/MapThumbnail',
   component: MapThumbnail,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows which map a match was played on, as the minimap a player recognises instantly, beside the map's name.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -23,6 +30,8 @@ export const SizeSm: Story = {
   args: { thumbnailUrl: ARABIA_URL, mapName: 'Arabia', size: 'sm' },
 }
 
+// visual-equivalence: composite-mapthumbnail--default: size 'md' is this component's own default
+// (index.tsx's `size = 'md'`), so this renders identically to Default above.
 export const SizeMd: Story = {
   name: 'Size — md (64px, default card layout)',
   args: { thumbnailUrl: ARABIA_URL, mapName: 'Arabia', size: 'md' },
@@ -53,6 +62,8 @@ export const UncoveredMap: Story = {
 
 // §4 "error" — the URL resolved but the image fails to load/decode. Must be pixel-identical to
 // UncoveredMap above: the image and its frame are removed together, never an empty frame.
+// visual-equivalence: composite-mapthumbnail--uncovered-map: map-thumbnail.md §4 "error" requires
+// this pixel-identical to UncoveredMap — the image and its frame are removed together.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',
   args: { thumbnailUrl: '/game-assets/maps/does-not-exist.webp', mapName: 'Some Custom Scenario' },

@@ -7,6 +7,13 @@ const meta: Meta<typeof SiteHeader> = {
   id: 'composite-siteheader',
   title: 'Composites/Site chrome/SiteHeader',
   component: SiteHeader,
+  parameters: {
+    docs: {
+      description: {
+        component: `Gives a visitor, on every page, the short list of places this product can take them, and shows which of those places they are currently in.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -30,12 +37,19 @@ export const SignedIn: Story = {
 // FR-034/FR-037 (T569 residual 2): a story literally named for the *selection* vocabulary entry —
 // the persistent underline strip plus the `font-semibold` weight change on the current item
 // (`aria-current="page"`), both of which survive as a still image, per README's own worked example
-// for this exact component. `SignedIn` above already shows the same frame but is named for its
-// scenario, not the state, so a reader browsing for "selection" or `visual-reviewer` mapping a
-// capture to the vocabulary has nothing to find. Added rather than renaming `SignedIn`: renaming an
+// for this exact component. A reader browsing for "selection" or `visual-reviewer` mapping a
+// capture to the vocabulary needs a frame that shows the mark, distinguishably from what `SignedIn`
+// and `CurrentIsNestedRoute` already show — so this marks `My data` (`§3a`'s last item) current,
+// rather than `Dashboard` (`SignedIn`) or the nested-route case that marks `Matches`
+// (`CurrentIsNestedRoute`). That also exercises something neither of those two shows: the
+// current-route rule and the weight change sitting on the *last* item in the row, not the first or
+// second (packages/design-system/specs/README.md, "Contrast-signal and duplicate-baseline gap
+// register" row 4/L2 — `args` here were previously byte-identical to `SignedIn`'s, which this closes;
+// `SiteHeader.test.tsx` pins the three stories' current items apart from each other so this cannot
+// silently re-collide). Kept as its own export rather than folded into `SignedIn`: renaming an
 // export changes its story id and orphans the checked-in baseline.
 export const Selection: Story = {
-  args: { items, currentPath: '/dashboard' },
+  args: { items, currentPath: '/privacy' },
 }
 
 export const CurrentIsNestedRoute: Story = {
@@ -53,8 +67,18 @@ export const SignedOut: Story = {
   args: { items: [] },
 }
 
+// visual-equivalence: composite-siteheader--signed-in: args are identical
+// ({ items, currentPath: '/dashboard' }) and every story is captured at 375/768/1280 as a matter of
+// course (T504), so the `reviewWidthNarrow` pin below exists only for the Storybook reader browsing
+// this story directly — it changes nothing about the six captured baselines, which the visual suite's
+// own width axis still overrides (`scripts/visual/run.mjs`'s `WIDTHS`, `MatchRow.stories.tsx`'s
+// `ListCardsBelowXl` explains the same override), so they stay identical to SignedIn's.
 export const SmallViewport: Story = {
   name: '375px — Brand alone on the first row, items wrap beneath it (§8)',
+  // Pinned to the one custom viewport `.storybook/preview.tsx` declares at `REVIEW_WIDTHS[0]` (375,
+  // §8's own width) — without it, a reader opening this story sees whatever width the toolbar last
+  // left it at, not the 375 arrangement the name asserts.
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { items, currentPath: '/dashboard' },
 }
 
@@ -70,6 +94,9 @@ const longLabelItems: SiteHeaderNavItem[] = [
 
 export const LongLabels: Story = {
   name: '375px — the longest plausible item set, wrapping onto further rows, nothing truncated',
+  // Same defect and same fix as `SmallViewport` above: the name asserts 375 but nothing pinned the
+  // story there for a Storybook reader. Cosmetic only — see `SmallViewport`'s own comment.
+  globals: { viewport: { value: 'reviewWidthNarrow' } },
   args: { items: longLabelItems, currentPath: '/dashboard' },
 }
 

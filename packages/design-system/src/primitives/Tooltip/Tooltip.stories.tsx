@@ -6,6 +6,13 @@ const meta: Meta<typeof Tooltip> = {
   id: 'primitives-tooltip',
   title: 'Primitives/Feedback & status/Tooltip',
   component: Tooltip,
+  parameters: {
+    docs: {
+      description: {
+        component: `Gives one small, non-essential fact a home that costs no horizontal space in a dense row, revealed on hover, keyboard focus and tap alike.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -140,6 +147,10 @@ export const DismissedAfterEscape: Story = {
   },
 }
 
+// visual-equivalence: primitives-tooltip--default: tooltip.md §10's own acceptance criterion only
+// requires "no surface anywhere in the frame" after a blur dismiss — the second Tab moves focus off
+// the trigger, leaving no ring either, so the resting frame matches Default's own untouched trigger
+// exactly.
 export const DismissedAfterBlur: Story = {
   tags: ['visual-full-page'],
   play: dismissAfterBlur,
@@ -253,6 +264,9 @@ export const Blank: Story = {
 // way `Blank` is (both hit the component's one `isBlank` branch), because there is genuinely no
 // third rendering: content that has not arrived and content that resolved to blank are
 // indistinguishable to this component by design — it never guesses which case it is in.
+// visual-equivalence: primitives-tooltip--blank: both hit the component's one isBlank branch (§4
+// "loading", above) — content that has not arrived and content that resolved to blank render
+// identically by design.
 export const Loading: Story = {
   args: {
     content: undefined,

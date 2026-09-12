@@ -18,6 +18,7 @@
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
     "http-server": "^14.1.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.6"
   }
 }

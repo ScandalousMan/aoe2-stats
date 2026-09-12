@@ -5,6 +5,13 @@ const meta: Meta<typeof PlayerColourSwatch> = {
   id: 'composite-playercolourswatch',
   title: 'Composites/Player identity/PlayerColourSwatch',
   component: PlayerColourSwatch,
+  parameters: {
+    docs: {
+      description: {
+        component: `Shows which in-game colour a player used, as a chip beside their name, so a reader can tie a name in the list to the colour they saw in the game. Its colour chip is never the only carrier of a player's colour: a permanent \`sr-only\` span states the colour by name, the same rule [Foundations → Iconography](?path=/docs/foundations-iconography--docs) states for an icon — "never the only carrier of a meaning" (FR-011) — applied here to a colour swatch rather than a glyph.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -64,6 +71,9 @@ export const NotRecorded: Story = {
 
 // §4 "error" — outside 1..8. Must render byte-identically to NotRecorded above: same neutral
 // chip, same hidden text, never a red/error tone.
+// visual-equivalence: composite-playercolourswatch--not-recorded: player-colour-swatch.md §4
+// "error" requires colorId 99 to render byte-identically to NotRecorded — same neutral chip, same
+// hidden text, never a red/error tone.
 export const OutOfRange: Story = {
   name: 'Error — colorId 99, out of range (must render identically to the empty story above)',
   render: () => (

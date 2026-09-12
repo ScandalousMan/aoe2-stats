@@ -8,6 +8,13 @@ const meta: Meta<typeof Field> = {
   id: 'primitives-field',
   title: 'Primitives/Forms/Field',
   component: Field,
+  parameters: {
+    docs: {
+      description: {
+        component: `Puts a control, its label, its hint and its error together so they cannot come apart.`,
+      },
+    },
+  },
 }
 
 export default meta

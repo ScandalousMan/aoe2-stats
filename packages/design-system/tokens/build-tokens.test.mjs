@@ -7,34 +7,19 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { contrastRatioHex as contrastRatio } from './contrast.mjs'
 
 const tokensDir = path.dirname(fileURLToPath(import.meta.url))
 const generatedDir = path.join(tokensDir, 'generated')
 const color = JSON.parse(readFileSync(path.join(tokensDir, 'color.json'), 'utf8'))
 const font = JSON.parse(readFileSync(path.join(tokensDir, 'font.json'), 'utf8'))
 
-// --- WCAG 2.2 contrast ratio, computed from the same relative-luminance formula the specs table
-// (packages/design-system/specs/README.md, "Measured contrast pairs") is computed from by hand.
-// This is the assertion that table's own header asks for: "a colour edit fails a test instead of
-// a review" (T034a). Keep the two in sync — recompute the table when a ratio below changes.
-function srgbToLinear(channel) {
-  const c = channel / 255
-  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-}
-
-function relativeLuminance(hex) {
-  const value = hex.replace('#', '')
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16))
-  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b)
-}
-
-function contrastRatio(hexA, hexB) {
-  const lA = relativeLuminance(hexA)
-  const lB = relativeLuminance(hexB)
-  const lighter = Math.max(lA, lB)
-  const darker = Math.min(lA, lB)
-  return (lighter + 0.05) / (darker + 0.05)
-}
+// WCAG 2.2 contrast ratio, from the shared formula `./contrast.mjs` now owns (T580 — closes the
+// "Duplicated logic and story-content gap register" row `packages/design-system/specs/README.md`
+// carried for this formula) — the same computation the specs table (packages/design-system/specs/
+// README.md, "Measured contrast pairs") is computed from by hand. This is the assertion that
+// table's own header asks for: "a colour edit fails a test instead of a review" (T034a). Keep the
+// two in sync — recompute the table when a ratio below changes.
 
 test('tokens:build regenerates the CSS and TS output without error', () => {
   execFileSync('node', [path.join(tokensDir, 'build-tokens.mjs')], { stdio: 'pipe' })
@@ -114,12 +99,26 @@ test('every themed family declares the same key set in both themes', () => {
 // these pairs were asserted against a real but unused background, rather than the one the
 // component actually paints — see the "Real rendered pairs" block below.
 
-test('accent-contrast clears AA normal text (4.5:1) on accent, accent-hover and accent-active, in both themes — DS-1, the primary button fill and (T521, color-tokens.md §5) its own inward focus ring', () => {
+test('accent-contrast clears AA normal text (4.5:1) on accent, accent-hover and accent-active, in both themes — DS-1, the primary button fill and, on both the inner and outer side of its own inward focus ring, the same fill (T582/T586)', () => {
   // `accent-contrast` is no longer only the primary button's label ink: since DS-10's resolution
   // (color-tokens.md §5), it is also the ring `Button`'s `primary` variant and
-  // `DataExportPanel`'s download link draw with `-outline-offset-2`, because `focus-ring` cannot
-  // clear 3:1 against a fill dark enough to be legible as text (§5's proof). So this pair now owes
-  // its floor at rest, on hover and on press, in both themes, not just in light.
+  // `DataExportPanel`'s download link draw, because `focus-ring` cannot clear 3:1 against a fill
+  // dark enough to be legible as text (§5's proof). T586 moved that ring to `-outline-offset-4`
+  // (from DS-10's original, flush-with-the-edge `-outline-offset-2`) so a band of the `accent` fill
+  // separates the ring from the control's edge on every side — both of the ring's adjacencies, inner
+  // and outer, are this same fill, never the page surface behind the control. This test is the
+  // contrast half of that guarantee: the fill clears the floor at rest, on hover and on press, in
+  // both themes — the only pair the ring is ever drawn against, so the only pair this file asserts.
+  // It does not, and must not, assert the ring against any page surface: that pair is no longer
+  // drawn, and a passing assertion for an undrawn pair would be the same false claim in the other
+  // direction (README's gap register, H1).
+  //
+  // A contrast test cannot see *where* the ring sits on the control, only whether the colour pair it
+  // names clears its floor — if the geometry regressed back to flush-with-the-edge, this test would
+  // keep passing while the ring's outer side was once again the page surface at 1.00-1.42:1, the
+  // defect T586 fixed. `accent-contrast-ring.test.mjs` is what guards the geometry that makes this
+  // test's premise true: the two are a pair by construction — this one proves the fill pair clears
+  // its floor, the other proves the fill pair is the one actually drawn on every side.
   for (const theme of ['light', 'dark']) {
     const {
       accent,
@@ -509,7 +508,7 @@ test('type-identifier carries the text-secondary colour var by contract (researc
 // of Tailwind's own width utilities pair the width with `<property>-style: var(--tw-<property>-style)`
 // — `.outline-2{outline-style:var(--tw-outline-style);outline-width:2px}`,
 // `.border-2{border-style:var(--tw-border-style);border-width:2px}` — never a bare width.
-test('outline-ring pairs outline-width with outline-style, in Tailwind\'s own shape', () => {
+test("outline-ring pairs outline-width with outline-style, in Tailwind's own shape", () => {
   const preset = readFileSync(path.join(generatedDir, 'preset.css'), 'utf8')
   const block = preset.match(/@utility outline-ring \{([^}]*)\}/s)?.[1]
   assert.ok(block, 'preset.css has no @utility outline-ring block')

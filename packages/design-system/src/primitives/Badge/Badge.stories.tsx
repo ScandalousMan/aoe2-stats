@@ -5,6 +5,13 @@ const meta: Meta<typeof Badge> = {
   id: 'primitives-badge',
   title: 'Primitives/Feedback & status/Badge',
   component: Badge,
+  parameters: {
+    docs: {
+      description: {
+        component: `Marks one item in a list as being in a named state, at a glance.`,
+      },
+    },
+  },
 }
 
 export default meta

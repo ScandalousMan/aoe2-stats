@@ -6,6 +6,13 @@ const meta: Meta<typeof DataExportPanel> = {
   id: 'screens-dataexportpanel',
   title: 'Screens/Account & privacy/DataExportPanel',
   component: DataExportPanel,
+  parameters: {
+    docs: {
+      description: {
+        component: `Lets a signed-in user take a complete copy of everything this service holds about them, in one archive, and download it.`,
+      },
+    },
+  },
 }
 
 export default meta
@@ -58,6 +65,9 @@ export const Failed: Story = {
 // §5 "empty — the `idle` state is the empty state — no export has been requested yet." Named
 // separately from `Idle` above so the state has its own entry matching the closed vocabulary,
 // even though the rendering is identical.
+// visual-equivalence: screens-dataexportpanel--idle: privacy-data-rights.md §5 "empty" states the
+// idle state IS the empty state — this story's own name says "identical rendering to Idle" — so
+// the two are byte-identical by design.
 export const Empty: Story = {
   name: 'empty — the idle state, named for the vocabulary (identical rendering to Idle)',
   args: { ...noopHandlers, initialState: 'idle' },

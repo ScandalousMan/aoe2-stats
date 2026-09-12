@@ -283,7 +283,12 @@ the `EraseButton` enabled, no dialog.
 
 **hover / focus-visible / active** — owned by the `Button`s, the `DownloadLink`, the `Dialog`'s
 actions and the `Acknowledgement` checkbox; the sections themselves are not interactive. The standard
-ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on every one, in both themes.
+ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on every one, in both themes, **except
+`DownloadLink`**: it is `Button/primary` rendered as an anchor, so it rings inward in
+`accent-contrast` at `-outline-offset-4` instead (DS-10, `color-tokens.md` §5, the same override
+`Button`'s own `primary` variant carries, T586) — a band of the `accent` fill separates the ring
+from the link's own edge on every side, so it reads against that fill (6.07:1 light / 8.07:1 dark),
+never against `ReadyRegion`'s `Callout` behind it, which its geometry keeps it from ever touching.
 
 **disabled** — `DataExportPanel`: the `RequestButton` disables while a request is in flight or a job is
 preparing (its loading label says why), so a second export cannot be started over an unfinished one.
@@ -466,8 +471,12 @@ links — their forward action is always a `Button`, never a link inside coloure
       actions at least 44px tall.
 - [ ] At 768 and 1280 the text column holds roughly 60–75 characters per line and does not span the
       viewport.
-- [ ] Focus ring visible and unclipped on the erase button, on the acknowledgement checkbox, on the
-      confirm and cancel actions, and on the download link, in both themes.
+- [ ] Focus ring visible and unclipped on the erase button, on the acknowledgement checkbox, and on
+      the confirm and cancel actions, in both themes — each clears 3:1 against the page surface
+      behind it (`focus-ring`, README's measured-contrast table). On the download link, the ring is
+      `accent-contrast`, inward of the link's own edge with a band of `accent` fill on either side
+      of it (`-outline-offset-4`, T586, `color-tokens.md` §5) — visible against that fill (6.07:1
+      light / 8.07:1 dark), never against the page surface, which the ring never touches.
 - [ ] No game artwork, logo, portrait or in-game font in any frame.
 - [ ] "There is no undo" (`medium`) is visibly heavier than the sentence around it (`normal`) — a
       token-correct lede that gave the whole sentence one weight would let the one clause that must
