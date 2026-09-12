@@ -131,9 +131,13 @@ export const Board: Story = {
 // `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
 // rationale for why a declared option rather than a Storybook device preset) — `Board` above
 // already reads at the wide, table shape.
-// visual-equivalence: screens-profilesummary--board: the reviewWidthNarrow viewport pin is
+// visual-equivalence: screens-profilesummary--board-mobile: the reviewWidthNarrow viewport pin is
 // overridden by the visual suite's own 375/768/1280 capture axis (T504), and the args are identical
-// to Board's, so all six baselines match.
+// to BoardMobile's, so all six baselines match. (T591 clipped `Board` itself to the name line —
+// `NAME_LINE_CLIP` above — to make the flag/no-flag signal against `NoCountry` visible; that clip
+// does not apply here, because this story exists to show the ratings region's table-vs-cards shape,
+// which a name-line clip would crop away entirely, so `Board` left this equivalence class and
+// `BoardMobile` is the remaining match.)
 export const BoardRatingsCardsBelowLg: Story = {
   name: 'Ratings as cards below lg, a table from it',
   globals: { viewport: { value: 'reviewWidthNarrow' } },
@@ -152,9 +156,13 @@ export const BoardRatingsCardsBelowLg: Story = {
 // trigger, not wrap beneath it, and the identity bar must not force the page wider than the
 // viewport. Every story is now captured at 375px as a matter of course (T504), so no tag is
 // needed to reach that width.
-// visual-equivalence: screens-profilesummary--board: args are identical to Board's, and every story
-// is captured at 375px as a matter of course (T504, per this comment's own point above), so this
-// story adds a Storybook-reader affordance, not a captured fact distinct from Board.
+// visual-equivalence: screens-profilesummary--board-ratings-cards-below-lg: args are identical to
+// BoardRatingsCardsBelowLg's, and every story is captured at 375px as a matter of course (T504, per
+// this comment's own point above), so this story adds a Storybook-reader affordance, not a captured
+// fact distinct from BoardRatingsCardsBelowLg. (T591 clipped `Board` itself to the name line —
+// `NAME_LINE_CLIP` above — for the flag/no-flag signal against `NoCountry`; this story is not
+// clipped, because it exists to show the flag staying on the name line within the full 375 layout, so
+// `Board` left this equivalence class and `BoardRatingsCardsBelowLg` is the remaining match.)
 export const BoardMobile: Story = {
   name: 'Board at 375 — the flag stays on the name line, resting (004 §13.8, T457)',
   args: {
