@@ -979,8 +979,8 @@ which no tool here does today.
 ## Accessibility mechanism gap register
 
 **Row 1 closed 2026-09-11 (T579), owed since 2026-09-08** (third-pass adversarial review, finding
-M2a); **row 2 open as of 2026-09-12** (adversarial review finding S8). This register holds a
-standing property of this package's own tooling — where an accessibility
+M2a); **row 2 closed 2026-09-12 (T590), open since 2026-09-12** (adversarial review finding S8).
+This register holds a standing property of this package's own tooling — where an accessibility
 check runs, and where it does not — the same distinction CLAUDE.md draws for the Storybook
 documentation gap register above: a fact about this package's own check coverage needs updating
 whenever a future task changes that coverage, so it is filed here rather than in a spec, which is
@@ -1024,18 +1024,41 @@ written once (T575's amendment: the subject is this package, so the fact is file
    future portal is covered too. The full sweep runs in under three seconds.
 
 2. **`accent-contrast-ring.test.mjs`'s two guards (T586) do not see every way an accent-contrast
-   ring can stop being drawn on the fill it depends on — open, found 2026-09-12 (adversarial review
-   finding S8), fix by 2026-09-26.** The file catches a `bg-clip-*` override and a painted border on
-   an accent-contrast-ringed control (`checkFillAssumptionFindings`), but not: a state-variant fill
+   ring can stop being drawn on the fill it depends on — found 2026-09-12 (adversarial review
+   finding S8).** The file caught a `bg-clip-*` override and a painted border on an
+   accent-contrast-ringed control (`checkFillAssumptionFindings`), but not: a state-variant fill
    override — `hover:bg-*` or `focus-visible:bg-*` changing the fill in the very state the ring
    paints, the state DS-10's contrast numbers assume is showing; a background image or gradient
    painted over `bg-accent` instead of a solid override, which neither `BG_CLIP_RE` nor
    `PAINTED_BORDER_COLOR_RE` recognises as changing the fill; or an `apps/web` caller passing
    `bg-clip-padding` (or any other fill-defeating class) through `Button`'s merged `className` prop
    — the scan is lexical and reads only `packages/design-system/src`, never a call site outside this
-   package. The test file's own header now names these three blind spots in place (adversarial
-   review finding S8, corrected in the same pass this row was opened), so a reader does not mistake
-   two passing guards for a complete one. **Owner: T590 (to be opened).**
+   package. **Closed 2026-09-12 (T590), two of three.** A third guard,
+   `checkStateFillAndImageFindings`, now catches the first two: a variant-prefixed `bg-<colour>`
+   utility beside a resting `bg-accent` fill is a finding unless the colour it repaints onto is one
+   of the three the accent ramp's own contrast proof already covers (`accent`, `accent-hover`,
+   `accent-active` — `build-tokens.test.mjs`), and a gradient or arbitrary background-image utility
+   beside `bg-accent` is a finding outright, prefixed or not, because it paints over
+   `background-color` rather than replacing it. Checked against `Button` primary's own
+   `hover:bg-accent-hover`/`active:bg-accent-active` (present before T588 and untouched by it): both
+   targets are on the ramp, so the new guard passes the real code and — proven by injecting the
+   regression and reverting it — would have failed had T588 swapped either to an unproven colour.
+   The new guard is grouped by `cx()` call rather than by single literal, because
+   `DataExportPanel`'s download link threads its resting fill and its `hover:`/`active:` overrides
+   through separate arguments of one `cx(...)` call — a same-literal scope, adequate for the first
+   two guards, would never see that real shape's overrides at all. The third blind spot, an
+   `apps/web` caller's `className` defeating the fill through `Button`'s merged prop, is
+   **deliberately deferred, not fixed here**: closing it needs either a second lexical pass over
+   `apps/web/src` for a fill-defeating class reaching a design-system call site (the same shape
+   `token-scale.mjs`'s own `apps/web` layout-class pass already uses, over a different tree and a
+   different property) or a runtime assertion inspecting resolved computed style, which needs a real
+   layout engine jsdom does not have. Writing either speculatively — before a real instance of this
+   defect has shipped — would blur this token-level test's boundary (the design system's own
+   contract) with call-site linting over application code, which is a separate, independently-run
+   check's job whenever it becomes a real defect, not this file's. Recorded rather than silently
+   dropped: `Button`'s `className` prop is merged last
+   (`packages/design-system/src/primitives/Button/index.tsx`'s `cx(..., className)`), so nothing in
+   this package stops a caller from winning the cascade today.
 
 ## Duplicated logic and story-content gap register
 
