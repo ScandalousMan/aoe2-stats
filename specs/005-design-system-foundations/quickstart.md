@@ -882,8 +882,9 @@ trusting this list, T595 fixes what the sweep finds, and T596 fixes `ArchivalCon
 after a design decision.
 
 **So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a
-`visual-reviewer` verdict on what they change; `reviewer`'s approval of PR #79, which has returned three
-REJECTs, each remediated on that branch; and one recorded
+`visual-reviewer` verdict on what they change; `reviewer`'s approval of PR #79, not yet given (each REJECT is
+remediated in its own `fix(005): remediate reviewer's … REJECT on #79` commit, so the branch log is
+the count); and one recorded
 limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
 agent, but the walk above counts a same-session run as non-independent).
 

@@ -1692,7 +1692,7 @@ underline` (`src/screens/ArchivalControl/index.tsx`): no hover, press or focus c
      `manual-upload.md`, `match-history.md`, `sign-in-screen.md`, `structural-tier.md`,
      `analysis-timeline.md` and `shared-primitives.md`'s `Dialog`. Two attempts to list them all in
      PR #79, one by reading and one by grep, were each incomplete on the next pass. So **this row does
-     not list them**: which sentences defer hover to a frame that does not exist is T594's sweep
+     not list them**: which sentences defer hover to a story `Button.stories.tsx` does not have is T594's sweep
      output, and a partial list here would be one more claim about a set that nobody enumerated.
 
    **Owners: T594 (the sweep), T595 (the fixes), T596 (`ArchivalControl`'s link). Fix by 2026-09-27.**
