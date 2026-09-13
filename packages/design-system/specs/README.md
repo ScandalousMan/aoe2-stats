@@ -1151,7 +1151,8 @@ closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**. **Row 5's decisi
 answered by row 6's closure, and its focus and press frames landed after it (T587), deliberately in
 that order so the frame shows the current control; its hover frame closed row 7 below (T593).**
 **Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and closed 2026-09-13
-(T593).** **Row 8 (H5) was opened 2026-09-13 by `reviewer` reviewing PR #79, and is open (T594, T595, T596).**
+(T593).** **Row 8 (H5) was opened 2026-09-13 by `reviewer` reviewing PR #79; its sweep half closed the
+same day (T594, producing findings F1-F13 below), and is open on its fix half (T595, T596).**
 
 **State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
 row 8 open. This
@@ -1657,45 +1658,415 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
 
 8. **H5 — row 7's sweep was scoped to the files #77 touched, and the same defect sits outside it —
    open.** Row 7 says its two anchors were the only `*NotApplicable` stories deferring a state they
-   own **among #77's files**, and that holds. `reviewer`'s pass over PR #79 (2026-09-13) read past that
-   boundary and found the same shape in three more components, and later passes found a fourth item
-   one level down, in a primitive's own stories. Each item below was checked against the source by
-   the session recording it, and this list is what the review passes over #79 found, not the
-   result of a sweep. The first thing owed is that sweep (T594); the fixes follow it (T595, and T596 for
-   `ArchivalControl`'s link, which needs a design decision first).
-   - **`PrivacyNotice`'s state trio does not depict its inline links.** `Hover`, `FocusVisible` and
-     `Active` force and clip `role: 'link', nth: 0` (`PrivacyNotice.stories.tsx`), which is the first
-     `Contents` entry. The inline-link recipe (`inlineLinkClasses`, `src/screens/PrivacyNotice/index.tsx`)
-     that `ErasedScreen` and `ThirdPartyObjectionForm` copy has no state frame. The objection-form
-     anchor (a `Button/secondary` look-alike with its own press fix) has no state story, and the
-     contact-route link (`text-link underline`) carries neither the hover signal nor the focus ring the
-     inline recipe does.
-   - **`ArchivalControl`'s privacy link has no state styling at all.** It is `text-text-secondary
-underline` (`src/screens/ArchivalControl/index.tsx`): no hover, press or focus classes.
-     `HoverFocusActiveNotApplicable`'s rendered text says the link "carr[ies] its own hover, focus and
-     active states", and `archival-control.md` §5 assigns those states to it ("owned by `Button` and by
-     the privacy link"). This is a rendering defect against FR-037 and the focus-ring rule, not only a
-     missing frame.
-   - **`AccountErasurePanel`'s acknowledgement checkbox** is a local `<input type="checkbox">` with the
-     screen's own focus ring, and no story captures its focus-visible. Until 2026-09-13 the story said it
-     was "covered by its own component's stories"; there is no such component. The wording is corrected
-     in PR #79; the frame is owed here.
-   - **`Button.stories.tsx` has no hover story for `secondary`, `ghost` or `destructive`.** It has a
-     focus-visible and a press story for every variant and a hover story for `primary` alone, which
-     FR-042's "every variant and every applicable state" does not allow of a primitive's own stories.
-     The gap is in `Button`'s stories, not in every baseline: other components' own stories do capture
-     a hovered non-`primary` `Button` (`FavouriteToggle`'s `ghost`, `ReplayAvailabilityList`'s
-     `secondary` `DownloadAction`). What it breaks is every sentence, in a story or a spec, that defers
-     a non-`primary` button's hover to `Button`'s stories. PR #79 corrected the two it had written
-     itself (`AccountErasurePanel`, `DataExportPanel`). Review passes then found more, one or two per
-     pass: `MatchDetailPanel`'s story text, and spec delegations in `archival-control.md`,
-     `manual-upload.md`, `match-history.md`, `sign-in-screen.md`, `structural-tier.md`,
-     `analysis-timeline.md` and `shared-primitives.md`'s `Dialog`. Two attempts to list them all in
-     PR #79, one by reading and one by grep, were each incomplete on the next pass. So **this row does
-     not list them**: which sentences defer hover to a story `Button.stories.tsx` does not have is T594's sweep
-     output, and a partial list here would be one more claim about a set that nobody enumerated.
+   own **among #77's files**, and that held only for #77's files. `reviewer`'s pass over PR #79
+   (2026-09-13) read past that boundary and found the same shape in three more components, and later
+   passes found a fourth item one level down, in a primitive's own stories; those later passes were
+   themselves partial, which is exactly the premise T594 was opened to test. **The orchestrator
+   rejected T594's first hand-back, 2026-09-13, for repeating that same partial-set shape in five
+   places** — two of seventeen primitive matrices built, conclusions asserted without their records, a
+   grep standing in for "read in full," the `apps/web`-composed handoff dropped, and three generic
+   deferrals waved through as "cannot be false" instead of filed. This is the corrected sweep. No
+   source, story or baseline changed in T594; T595 and T596 close what this enumerates.
 
-   **Owners: T594 (the sweep), T595 (the fixes), T596 (`ArchivalControl`'s link). Fix by 2026-09-27.**
+   **Method.** `scripts/checks/story-docs.mjs` prints "41 component directories" — 17 under
+   `src/primitives`, 17 under `src/composites`, 7 under `src/screens` — the same 41 walked in 8a.
+   **Record 1** (local elements and overridden primitive instances) was found by grepping every
+   component's own `index.tsx` for `<a `/`<input`/`<button`/`role="button"`/`role="link"`/`<label`/
+   `<select`/`<textarea`/`<summary`/`tabIndex` **and** for `hover:`/`focus-visible:`/`active:`, then
+   reading every match in context; a match on a non-interactive wrapper (a `tabIndex={-1}` programmatic
+   focus target, a `<label>` with no state classes of its own) is recorded as such rather than dropped
+   silently. **A "no story" verdict for a state was checked against every candidate story's `play`
+   function, not only its `parameters.visualForceState`** — the first pass's error, found on the second
+   review pass over this same row. `tests/visual/stories.spec.ts`'s own measured comment on
+   `VisualForceState` settles the mechanism: `hover` and `active` (press) can never come from a
+   story's own `play()` — only this file's real, CDP-driven `locator.hover()`/`page.mouse.down()`
+   (i.e. an explicit `visualForceState`) moves the pointer or the button state in a way Chromium's
+   `:hover`/`:active` match, so every hover/press "none" verdict below still depends on
+   `visualForceState` alone and is unaffected by this correction. `focus-visible` is different: a
+   plain script `element.focus()` call — this file's own, or one a component's internal logic makes in
+   response to a synthetic event inside a story's `play()` (`Menu`'s roving-item and trigger-refocus
+   calls among them) — reliably paints `:focus-visible` in Chromium provided no real, trusted
+   pointer/mouse interaction has occurred on the page first, and a story's own synthetic `userEvent.*`
+   click never counts as one. So a `play()` that ends with DOM focus resting on an element, with no
+   later `visualForceState` moving it elsewhere, depicts that element's real focus-visible frame — this
+   is what the first pass missed for `Menu`'s trigger and footer item (F15, F16, corrected below).
+   **Record 2** (handoffs) was found by reading every one of the 29 files under
+   `packages/design-system/specs/` — `GOVERNANCE.md`, `README.md` (its sections before this register)
+   and the 27 component/token specs — start to end, not by grepping a fixed vocabulary: the tally below
+   names, per file, how many hover/focus-visible/press handoff sentences it contains, zero included, so
+   the count is auditable against the file rather than against this prose. The token-family specs
+   (`color-tokens.md`, `typography-tokens.md`, `game-asset-tokens.md`) and `GOVERNANCE.md` were read in
+   full and contain contrast-derivation and token-admission prose, never a "this story depicts that
+   state" claim — their zero is a finding, not an omission. Every `*.stories.tsx`'s rendered `children`
+   (the text inside a `*NotApplicable` story's `<p>`, not only its leading comment) was read alongside
+   its spec counterpart, because a comment and its own story's rendered text have drifted apart before
+   (row 7, `AccountErasurePanel`). **Record 3** (primitive matrices) covers all 17 primitives — variant,
+   tone or size axis included, a non-interactive primitive's states mapped onto whichever
+   `*NotApplicable` story answers each cell, and a primitive with no variant given a one-row matrix
+   rather than folded into "nothing to report." **Record 4** (false self-claims) is every place records
+   1-3 contradict a sentence claiming a control's states are its own or are covered — quoted with its
+   file and line — and is now populated from all four records together, not only from the false-hover
+   shape row 7 had already found.
+
+   **Record 2's per-file tally (29 files).** A "handoff" here is a sentence assigning hover,
+   focus-visible or press to a named control other than the section's own root; a state the section
+   answers about itself (Badge's "none, a badge is not interactive," `Button`'s own recipe) is not
+   counted, and neither is a touch-target, responsive or contrast cross-reference that names no state.
+
+   | File                     | Handoffs | File                       | Handoffs |
+   | ------------------------ | -------: | -------------------------- | -------: |
+   | `GOVERNANCE.md`          |        0 | `player-avatar.md`         |        0 |
+   | `README.md` (§1-H4)      |        0 | `player-colour-swatch.md`  |        1 |
+   | `analysis-timeline.md`   |        2 | `player-search.md`         |        2 |
+   | `archival-control.md`    |        2 | `privacy-data-rights.md`   |        5 |
+   | `capture-state-badge.md` |        1 | `privacy-notice.md`        |        1 |
+   | `civilisation-icon.md`   |        1 | `profile-summary.md`       |        6 |
+   | `color-tokens.md`        |        0 | `replay-availability.md`   |        1 |
+   | `country-flag.md`        |        1 | `shared-primitives.md`     |        5 |
+   | `favourite-toggle.md`    |        1 | `sign-in-screen.md`        |        1 |
+   | `favourites-list.md`     |        1 | `site-header.md`           |        1 |
+   | `footer.md`              |        3 | `structural-tier.md`       |        7 |
+   | `game-asset-tokens.md`   |        0 | `third-party-objection.md` |        3 |
+   | `manual-upload.md`       |        2 | `tooltip.md`               |        0 |
+   | `map-thumbnail.md`       |        1 | `typography-tokens.md`     |        0 |
+   | `match-history.md`       |        2 |                            |          |
+
+   Total: 50 handoff sentences across 20 files with at least one; 9 files (`GOVERNANCE.md`,
+   `README.md`'s own earlier sections, `color-tokens.md`, `game-asset-tokens.md`, `player-avatar.md`,
+   `tooltip.md`, `typography-tokens.md`) carry zero. Every handoff is filed below in 8a (under the
+   component whose control it names), 8c (the no-owner list) or 8d (as a finding, where it is false or
+   incomplete); none is dropped.
+
+   **8a. The 41 directories, one line each — record 1 and the handoffs record 2 filed here.**
+
+   _Primitives (17)._ `Badge` — non-interactive by its own spec (`shared-primitives.md`: "a badge is
+   not interactive, and must never be the control that changes the state it names"); its own six-tone
+   matrix is 8b's row, every cell `*NotApplicable`-covered. `Button` — root of F1-F4, F6-F7, F13, F14;
+   full matrix in 8b. `Callout` — no local interactive element of its own (its root is `<div>`/region,
+   never `<button>`/`<a>`); its `hover`/`active` bullet ("Actions inside it have their own") names no
+   specific component — filed N4. `Dialog` — no local interactive element beyond its `tabIndex={-1}`
+   heading (a programmatic focus target, never painted with a state class — not applicable, matches its
+   own claim); its actions'-states handoff is F3. `EmptyState` — F4. `ErrorState` — F4. `Field` — its
+   control is always caller-supplied; its own `<label>` (`index.tsx` line 132) carries no hover/press
+   class of its own (labels are not focus targets independent of the control they name) — not
+   applicable. Its size axis has the F18 gap. `Link` — root of F8; full matrix in 8b. `Menu` — three
+   real local `<button>`s (trigger, `index.tsx` line 144; item, via `MenuItemRow`, line 352; footer
+   item, line 242): item is fully covered (`Hover`/`FocusVisible`/`Active`, all forced on
+   `role: 'menuitemradio'`/`'menuitem'`). Trigger and footer item are each two of three: both have a
+   real focus-visible frame from a `play()`-driven end state neither carries a `visualForceState` for
+   (or, for the footer item, carries one after all) — `EscapeReturnsFocusToTrigger` (trigger; no
+   `visualForceState`, the frame is the real keyboard-driven Escape-then-refocus this component's own
+   `close(returnFocus = true)` performs) and `KeyboardNavigation` (footer item; its own
+   `visualForceState` targets `role: 'menuitem', name: 'Link another Steam account'` directly, missed
+   by the first pass because that story was skimmed as a functional-assertion story rather than checked
+   for its own force-state parameter). Hover and press remain genuinely uncaptured for both — neither
+   can come from a `play()` function at all (the Method paragraph's own mechanism) — F15, F16, narrowed.
+   `shared-primitives.md`'s own "the trigger button follows `Button` `secondary`'s own active recipe in
+   full" is a true design-provenance statement (the classes genuinely match), not a coverage claim, so
+   it is not itself false. `Page` — its `<main tabIndex={-1}>` landmark (`index.tsx` line 66) is real
+   and is covered: `FocusVisible` forces `role: 'main'` directly on it; `HoverActiveDisabledNotApplicable`
+   ("hover/active — none. A page is not a control") matches the source, which paints no hover/active
+   class on the landmark at all — no gap. `Panel` — no local interactive element; its
+   `HoverFocusActiveNotApplicable` names "a call site's own link," which is no specific component —
+   filed N1. `Section` — same shape, filed N2. `Skeleton` — no local interactive element (its blocks
+   carry `aria-hidden` and sit outside the tab order by its own spec); matrix in 8b, all cells
+   `*NotApplicable`. `StatValue` — no local interactive element; its "the row owns hover"/"if the value
+   is a link" bullets name no specific component and no `StatValue` instance in the tree is ever
+   rendered as a link — filed N5. `Table` — its real `<a href>` row link (`index.tsx` line 261) has
+   `RowLinkHover`/`RowLinkActive` but no dedicated focus-visible story of its own — only the scroll
+   region's focus-visible is captured (`FocusVisible`, `role: 'region'`) — F17. `Text` — no local
+   interactive element (`Text` never renders `<a>`/`<button>`); its `HoverActiveNotApplicable`/
+   `FocusVisibleNotApplicable` name "whatever interactive element wraps it," no specific component —
+   filed N3. `Tooltip` — one real local `<button>` (the trigger, `index.tsx` line 259, classes
+   `border-2` + a JS-driven `pinned` boundary, no Tailwind `active:` utility because pin outlives the
+   mouse button); fully covered (`HoverRevealed`, `KeyboardFocusRevealed`, `Pinned`) — no gap.
+
+   _Composites (17)._ `AnalysisTimeline` — F1 (its own `Recompute`/"Try requesting analysis" buttons)
+   plus N6 (the `apps/web`-composed "Request analysis" primary button this spec explicitly disclaims
+   owning). `CaptureStateBadge` — no local interactive element (neither grep matched); its own states
+   cite Badge's non-interactivity rule, true. `CivilisationIcon` — no local interactive element; its
+   hover bullet names `MatchRow` — true, `MatchRow`'s own trio covers it. `CountryFlag` — composes
+   `Tooltip`'s trigger (no local reimplementation); its own `Hover`/`FocusVisible` stories (lines
+   103, 114, `role: 'button'`) capture it directly — true and covered, superseding §4's earlier generic
+   line the same way its own §11.6 heading says it does. `FavouriteToggle` — renders a real
+   `Button/ghost` (the `tabIndex={-1}` at `index.tsx` line 120 sits on a decoy, `aria-hidden`, layout-only
+   `Button`, never the real interactive one); its own `Hover`/`FocusVisible`/`Active` are real and
+   correct — this is `ghost`'s "elsewhere" pointer for F13. `FavouritesList` — local reserve-then-paint
+   row link (`hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong
+active:ring-2 active:ring-inset active:ring-border-strong`, `index.tsx` line 268, plus an outward
+   `focus-visible:` ring at line 272), with real `Hover`/`FocusVisible`/`Active` stories — no gap.
+   `Footer` — renders `Link variant="standalone"` for both `PrivacyNoticeLink` and `ObjectionLink` (not
+   a local anchor, confirmed by `index.tsx`'s own comment and by `footer.md` §5's hover/focus-visible/
+   active bullets, three handoffs, all to `Link`), covered by `Link`'s own `Hover`/`FocusVisible`/
+   `ActiveStandalone` — true, unaffected by F8 (`standalone`, not `inline`). `MapThumbnail` — no local
+   interactive element; hover bullet names `MatchRow` — true. `MatchDetailPanel` — F7. `MatchRow` —
+   local reserve-then-paint row link, identical recipe to `FavouritesList`'s (`index.tsx` lines 108,
+   422-423), full `Hover`/`FocusVisible`/`Active` coverage; carries no `DownloadAction` of its own — no
+   gap. `PlayerAvatar` — no local interactive element; every state bullet is "none," no handoff. `Player
+ColourSwatch` — no local interactive element; its hover bullet names "the enclosing row link" with no
+   specific component (the swatch is composed inside `MatchRow`, `PlayerResultRow` and
+   `FavouritesList` interchangeably) — filed N7. `PlayerResultRow` — local reserve-then-paint row link,
+   identical recipe (`index.tsx` lines 44, 89-90), full `Hover`/`FocusVisible`/`Active` coverage; its
+   own domain-state deferral to `SearchBox`'s `ResultsRegion` is outside this sweep's hover/focus/press
+   scope, correctly worded. `ReplayAvailabilityList` — this is `secondary`'s "elsewhere" pointer for
+   F13 and F2/F6/F7: its own `DownloadAction` is a real `Button/secondary` with its own real
+   `Hover`/`FocusVisible`/`Active` (lines 269-289, forced on `role: 'button', name: 'Download'`), so
+   `replay-availability.md` §5's "`DownloadAction`: per `Button`" is true of this file specifically —
+   the coverage is local, not `Button.stories.tsx`'s. `SearchBox` — local `<input>` (`hover:
+border-border-strong focus-visible:border-border-strong`, `index.tsx` line 139) and a `<label>` with
+   no state classes of its own (not applicable); the input's own `Hover`/`FocusVisible` stories
+   (`role: 'searchbox'`) capture exactly that control — no gap. `SiteHeader` — two real local anchors:
+   `Brand` (the wordmark, `hover:underline`, `index.tsx` line 195) and `NavItem` (`hover:bg-surface-
+sunken hover:text-text-primary` / `active:border-border-strong active:bg-background`, line 218-223).
+   `NavItem`'s own `Hover`/`FocusVisible`/`Active` are real and correctly targeted (`role: 'link',
+name: 'Matches'`); `Brand`'s are not — F9. Its `ThemeControl` expansion handoff to `Menu` is
+   separately true (`Menu`'s own `Expansion` story). `UploadControl` — its visible controls are real
+   `Button` instances (`Choose file` `secondary`, `SubmitButton` `primary`, `Remove`/`Refresh`
+   `secondary`); the file input itself is `hidden tabIndex={-1}`, never painted, not applicable —
+   nothing local to `UploadControl` beyond F6, filed under `manual-upload.md`.
+
+   _Screens (7)._ `AccountErasurePanel` — a real local `<input type="checkbox">` (`index.tsx` line 270,
+   classes `h-5 w-5 shrink-0` plus `focusRing` only — no hover or press class exists to paint, so those
+   two cells are "not applicable by construction" rather than a missing story, and focus-visible is the
+   one real gap, F12) and a real local `ErasedScreen` link (`text-link` + underline recipe, fully
+   covered by `ErasedScreenHover`/`ErasedScreenFocusVisible`/`ErasedScreenActive`, T593's own fix). Its
+   `HoverFocusActiveNotApplicable` rendered text is accurate as of PR #79. `ArchivalControl` — F2 (its
+   switch button) and F11 (its privacy link, `text-text-secondary underline`, `index.tsx` line 137, no
+   state class at all). `DataExportPanel` — a real local `DownloadLink` (fully covered by `ReadyHover`/
+   `ReadyFocusVisible`/`ReadyActive`) and its `RequestButton`, an unmodified `Button/secondary`; its
+   `HoverFocusActiveNotApplicable` rendered text is accurate as of PR #79 (names the `secondary`-hover
+   gap by name rather than claiming coverage). `PrivacyNotice` — F10 (three local elements: the
+   `inlineLinkClasses` recipe, `index.tsx` lines 219-222; the objection-form anchor, line 766; the
+   contact-route link, line 797). `ProfileSummary` — real local elements are the switcher trigger and
+   items (composed `Menu`, true handoff, covered by `Menu`'s own stories) and the flag (composed
+   `Tooltip`, `§13.5`'s hover/focus-visible/active bullets, covered by this file's own `Country:`-named
+   `Hover`/`FocusVisible` stories, lines 242, 259, 299) — both true. `RatingEntryHoverNotApplicable`
+   names only "the switcher trigger and its menu items… per `Menu`," true and narrow. `SignInScreen` —
+   F5 (spec-level imprecision only; the story's own claim, naming only the primary button, is itself
+   true). `ThirdPartyObjectionForm` — a real local privacy-notice link (fully covered by its own
+   `Hover`/`FocusVisible`/`Active`, clipped) and a submit button, `Button/primary` (covered) — three
+   handoffs in `third-party-objection.md` §5 (hover, focus-visible, active, each naming the submit
+   button "per `Button`"), all true because the variant is `primary`.
+
+   **8b. All 17 primitives' variant/tone/size-by-state matrices (FR-042), independent of who defers to
+   each — story name, or "none" for a real gap, or the `*NotApplicable` story for a state that does not
+   apply.**
+
+   | Primitive    | Variant / tone / size                                                                                         | rest                                                   | hover                                                     | focus-visible                                                        | press (active)                                                   | disabled                                      |
+   | ------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------- |
+   | `Badge`      | `neutral`/`accent`/`success`/`warning`/`danger`/`info` (all 6, `AllTones`)                                    | `Neutral`/`Accent`/`Success`/`Warning`/`Danger`/`Info` | N/A → `HoverFocusActiveNotApplicable`                     | N/A → same                                                           | N/A → same                                                       | N/A → `DisabledLoadingNotApplicable`          |
+   | `Button`     | `primary` / `md`                                                                                              | none, anywhere (F14)                                   | none (F14)                                                | none (F14)                                                           | none (F14)                                                       | none (F14, shares reasoning\*)                |
+   |              | `primary` / `lg`                                                                                              | `Primary`                                              | `Hover`                                                   | `FocusVisible`                                                       | `Active`                                                         | `Disabled`                                    |
+   |              | `secondary` / `md`                                                                                            | `Secondary`                                            | none, anywhere (F13)                                      | `SecondaryFocusVisible`                                              | `SecondaryActive`                                                | shares `Disabled`'s frame\*                   |
+   |              | `secondary` / `lg`                                                                                            | e.g. `MatchDetailPanel`'s "Back to match list"         | `ReplayAvailabilityList`'s `Hover`                        | `ReplayAvailabilityList`'s `FocusVisible`                            | `ReplayAvailabilityList`'s `Active`                              | shares `Disabled`'s frame\*                   |
+   |              | `ghost` / `md`                                                                                                | `Ghost`                                                | `FavouriteToggle`'s `Hover`                               | `GhostFocusVisible`                                                  | `GhostActive`                                                    | shares `Disabled`'s frame\*                   |
+   |              | `ghost` / `lg`                                                                                                | `FavouriteToggle`'s `RealisticProfileHeader`           | none (F14)                                                | none (F14)                                                           | none (F14)                                                       | none (F14, shares reasoning\*)                |
+   |              | `destructive` / `md`                                                                                          | `Destructive`                                          | none, anywhere (F13)                                      | `DestructiveFocusVisible`                                            | `DestructiveActive`                                              | shares `Disabled`'s frame\*                   |
+   |              | `destructive` / `lg`                                                                                          | `Dialog`'s `Default`/`WithBodyAndError`                | none (F14)                                                | `Dialog`'s `FocusVisible` (on `primaryAction`)                       | none (F14)                                                       | none (F14, shares reasoning\*)                |
+   | `Callout`    | `info`/`success`/`warning`/`danger` (tone does not change interaction painting — one row)                     | `Info`/`Success`/`Warning`/`Danger`                    | N/A → `HoverActiveNotApplicable` (N4)                     | `FocusVisible` (on a caller `Button/primary`, true for that example) | N/A → same as hover                                              | N/A → `DisabledNotApplicable`                 |
+   | `Dialog`     | no variant of its own (action-button variants are caller-set; default `destructive`/`secondary`)              | `Default`                                              | N/A → `EmptyHoverActiveDisabledNotApplicable` (false, F3) | `FocusVisible` (on `primaryAction`)                                  | covered via `Button`'s own `DestructiveActive`/`SecondaryActive` | `PrimaryPending` (`secondaryAction` disabled) |
+   | `EmptyState` | no variant                                                                                                    | `Default`/`WithAction`                                 | N/A → `HoverFocusActiveNotApplicable` (false, F4)         | same                                                                 | same                                                             | `DisabledNotApplicable`                       |
+   | `ErrorState` | no variant                                                                                                    | `Default`                                              | N/A → `HoverFocusActiveNotApplicable` (false, F4)         | same                                                                 | same                                                             | `DisabledNotApplicable`                       |
+   | `Field`      | `md` (default)                                                                                                | `Default`                                              | `Hover`                                                   | `FocusVisible`                                                       | N/A → `ActiveNotApplicable`                                      | `Disabled`                                    |
+   |              | `lg`                                                                                                          | `SizeLg` (rest only)                                   | none (F18)                                                | none (F18)                                                           | N/A → same reasoning                                             | none captured                                 |
+   | `Link`       | `inline`                                                                                                      | `Inline`/`Rest`                                        | none (F8)                                                 | none (F8)                                                            | `ActiveInline`                                                   | N/A → `DisabledNotApplicable`                 |
+   |              | `standalone`                                                                                                  | `Standalone`                                           | `Hover`                                                   | `FocusVisible`                                                       | `ActiveStandalone`                                               | N/A → same                                    |
+   | `Menu`       | trigger (`index.tsx` line 144)                                                                                | `ClosedTrigger`                                        | none (F15)                                                | `EscapeReturnsFocusToTrigger` (play-driven, no `visualForceState`)   | none (F15)                                                       | N/A → `Empty` (menu with no items)            |
+   |              | item, `selection`/`actions` (`MenuItemRow`)                                                                   | via any open story                                     | `Hover`                                                   | `FocusVisible`                                                       | `Active`                                                         | `ActionsWithDisabledItem`                     |
+   |              | footer item (line 242)                                                                                        | via `ProfileSwitcher`'s `footerItem`                   | none (F16)                                                | `KeyboardNavigation` (its own `visualForceState`)                    | none (F16)                                                       | N/A (no disabled footer item in the tree)     |
+   | `Page`       | no variant                                                                                                    | `Default`                                              | N/A → `HoverActiveDisabledNotApplicable`                  | `FocusVisible` (`role: 'main'`)                                      | N/A → same                                                       | N/A → same                                    |
+   | `Panel`      | `dense`/`prose` (density does not change interaction painting — one row)                                      | `Dense`/`Prose`                                        | N/A → `HoverFocusActiveNotApplicable` (N1)                | same                                                                 | same                                                             | N/A → `DisabledNotApplicable`                 |
+   | `Section`    | no variant                                                                                                    | `Default`                                              | N/A → `HoverActiveFocusVisibleNotApplicable` (N2)         | same                                                                 | same                                                             | N/A → `DisabledNotApplicable`                 |
+   | `Skeleton`   | `text`/`number`/`block`                                                                                       | `Text`/`NumberFootprint`/`Block`                       | N/A → `HoverFocusActiveDisabledErrorNotApplicable`        | same                                                                 | same                                                             | same                                          |
+   | `StatValue`  | `hero`/`compact`/`inline` (variant does not change interactivity — one row)                                   | `Hero`/`Compact`/`Inline`                              | N/A → `HoverFocusActiveDisabledNotApplicable` (N5)        | N/A → same (N5)                                                      | N/A → same                                                       | N/A → same                                    |
+   | `Table`      | scroll region (density `dense`/`prose` does not change this)                                                  | `Default`                                              | N/A (not a hover target)                                  | `FocusVisible` (`role: 'region'`)                                    | N/A                                                              | N/A → `DisabledNotApplicable`                 |
+   |              | row link                                                                                                      | `RowLinks`                                             | `RowLinkHover`                                            | none (F17)                                                           | `RowLinkActive`                                                  | N/A → same                                    |
+   | `Text`       | `display`/`body`/`supporting`/`numeric`/`machine`/`identifier` (role does not change interactivity — one row) | `AllRoles`/`Hierarchy`                                 | N/A → `HoverActiveNotApplicable` (N3)                     | N/A → `FocusVisibleNotApplicable` (N3)                               | N/A → same as hover                                              | N/A → `DisabledNotApplicable`                 |
+   | `Tooltip`    | `label`/`describe` relation (does not change trigger classes — one row)                                       | `Default`                                              | `HoverRevealed`                                           | `KeyboardFocusRevealed`                                              | `Pinned`                                                         | N/A → `DisabledNotApplicable`                 |
+
+   \*`disabled:` classes for `Button` live in `base` (`Button/index.tsx`), not in `variantClasses`, so
+   the rendered disabled treatment is identical across all four variants regardless of size —
+   `Disabled`'s one story (primary/lg) is what a second `md`/`lg` × variant disabled story would show
+   byte-for-byte, the same "invisible prop distinction" shape row 3/L1's deliberate-equivalence list
+   already documents for other components; not treated as its own gap for that reason, though it is
+   part of what F14 names.
+
+   **8c. The no-owner list — handoffs whose control no directory owns, filed separately rather than
+   dropped (the task's own instruction).**
+
+   - **N1.** `Panel`'s `HoverFocusActiveNotApplicable`: "a call site that needs a clickable card puts a
+     real link inside the panel spanning its content, and that link owns its own hover, focus and
+     active states" — no directory is named; whichever composite eventually does this owns the frame,
+     not `Panel`.
+   - **N2.** `Section`'s `HoverActiveFocusVisibleNotApplicable`: "the components inside it carry their
+     own" — same shape, no directory named.
+   - **N3.** `Text`'s `HoverActiveNotApplicable`/`FocusVisibleNotApplicable`: the ring "belongs to" or
+     "that ring belongs to a disabled control's own label" / whatever interactive element wraps the
+     text — no directory named (a heading focus target, an interactive wrapper — never one component).
+   - **N4.** `Callout`'s `hover`/`active` bullet ("Actions inside it have their own") — no directory
+     named; this component's own illustrative stories happen to use `Button/primary` (fully covered),
+     so those two specific renders are true, but the claim as written governs whatever a caller
+     supplies, which is not one owner.
+   - **N5.** `StatValue`'s `hover` ("the row owns hover") and `focus-visible` ("unless the value is a
+     link, … the standard ring applies to the link") bullets — no directory named, and no `StatValue`
+     instance anywhere in `packages/design-system/src` is ever rendered as a link, so the
+     focus-visible clause currently describes a case that does not exist in the tree.
+   - **N6.** `analysis-timeline.md`'s own words: "a plain 'Request analysis' primary `Button`, wired
+     directly in `apps/web/src/features/analysis/` (T372) … has no bespoke states beyond `Button`'s
+     own" — a real control, explicitly disclaimed by this spec as outside `AnalysisTimeline`'s anatomy,
+     so no `packages/design-system/src` directory owns it. It is `primary`, which is covered
+     (`Button`'s own `Hover`/`FocusVisible`/`Active`), so the handoff is true — filed here because the
+     task asks for the set, not only the false members of it. A grep of every other `apps/web` mention
+     across `specs/*.md` (30 more citations) found none of the rest naming a hover/focus-visible/press
+     state; they are "consumed by" provenance notes, not handoffs.
+   - **N7.** `player-colour-swatch.md`'s hover bullet: "the enclosing row link owns the hover fill" — no
+     specific component named, because the swatch is composed inside `MatchRow`, `PlayerResultRow` and
+     `FavouritesList` interchangeably; true wherever it is actually composed today (all three have their
+     own real trio), but the sentence itself names no one owner.
+
+   **8d. Findings — the false self-claims and the matrix gaps, F1 through F18 (renumbered from the
+   rejected hand-back: F14-F18 are new; F1-F13 are unchanged in substance).**
+
+   - **F1.** `AnalysisTimeline.stories.tsx`'s `HoverFocusActiveNotApplicable` ("`Button`s (`Recompute`,
+     "Try requesting analysis") follow `Button`'s own states") — false for hover. Both are
+     `Button/secondary` (`index.tsx` lines 328, 404), and `secondary` has no hover story in
+     `Button.stories.tsx` (a secondary hover frame exists elsewhere, `ReplayAvailabilityList`'s `Hover`,
+     unnamed by this file). Distinct from N6, the same spec's other, true, handoff.
+   - **F2.** `ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` ("the switch button and the
+     privacy link carry their own hover, focus and active states") — false for hover on the button half
+     too, not only the already-known link half (F11). The story's `state: 'archiving'` args render the
+     `Button/secondary` "Object" button (`index.tsx` line 198); `secondary` has no hover story in
+     `Button.stories.tsx` (covered elsewhere, `ReplayAvailabilityList`'s `Hover`, unnamed here).
+   - **F3.** `shared-primitives.md`'s `Dialog` states bullet and `Dialog.stories.tsx`'s
+     `EmptyHoverActiveDisabledNotApplicable` ("hover, active and disabled all belong to the `Button`s
+     inside it") — false for hover. No `Dialog` story sets a `variant`, so `primaryAction`/
+     `secondaryAction` default (`index.tsx` lines 128, 139) to `destructive`/`secondary`. `destructive`
+     hover has **no frame anywhere in the tree**; `secondary` hover exists elsewhere
+     (`ReplayAvailabilityList`'s `Hover`) but is not what "belong to the `Button`s inside it" points a
+     reader toward.
+   - **F4.** `structural-tier.md` §12/§13 and `EmptyState`/`ErrorState`'s own `HoverFocusActiveNotApplicable`
+     stories ("the action inside it… carries `Button`'s") — false for hover. Both components' action is
+     `Button/secondary` (§12/§13's own text; `ErrorState.stories.tsx`'s render literally passes
+     `variant="secondary"`) — same gap as F1-F3.
+   - **F5.** `sign-in-screen.md` §4 ("hover / focus-visible / active — owned entirely by `Button`") is
+     true of the `default` state's primary button, the only one `SignInScreen.stories.tsx`'s own
+     `HoverFocusActiveNotApplicable` names (correctly, and therefore not itself false) — but the same
+     bullet also covers several outcome states rendering `Button/secondary` ("try a different account",
+     "cancel", `index.tsx` lines 268, 281, 304), which the spec's blanket sentence does not distinguish
+     from the covered primary button. Filed as a spec imprecision, not a story-level false claim.
+   - **F6.** `manual-upload.md` §5's hover bullet ("the `Choose file` control and `SubmitButton` per
+     `Button`") is half true: `SubmitButton` is `Button/primary` (covered); `Choose file` is
+     `Button/secondary` (`UploadControl/index.tsx` line 293) — same gap. The same section's `active`
+     bullet ("pressed states per `Button`") is true: press is covered for every variant.
+   - **F7.** `match-history.md` §5's hover/focus-visible bullets ("`DownloadAction`: per `Button`"), as
+     consumed by `MatchDetailPanel` — `MatchDetailPanel.stories.tsx`'s own `HoverFocusActiveNotApplicable`
+     already carries an accurate source comment flagging this (added in PR #79), but the story's
+     _rendered_ text ("Its `DownloadAction` button carries its own, per `Button`'s stories") is still the
+     false sentence a Storybook reader without the source sees. The same spec bullet, consumed by
+     `ReplayAvailabilityList` instead, is true (8a, above) — one spec sentence, two components, one true
+     and one false depending on whether the consuming component's own stories happen to cover it.
+   - **F8.** `Link`'s own matrix gap (8b) — `Hover`/`FocusVisible` both force `variant: 'standalone'`;
+     `inline`'s own hover and focus-visible have no dedicated story anywhere, even though
+     `structural-tier.md` §9 documents `inline`'s hover and active as visually distinct from
+     `standalone`'s (no box fill) — `ActiveInline` exists for press, nothing depicts the other two.
+     Independent of any handoff: FR-042 asks it of the primitive's own stories regardless.
+   - **F9.** `SiteHeader`'s `Brand` wordmark anchor is styled locally (`index.tsx` line 195,
+     `hover:underline`), and `site-header.md` §9 documents its hover as visually distinct from
+     `NavItem`'s (underline vs. fill change). `SiteHeader.stories.tsx`'s `Hover`/`FocusVisible`/`Active`
+     stories all force state on `role: 'link', name: 'Matches'` — a `NavItem`. No story anywhere depicts
+     `Brand`'s own hover or focus-visible frame. (§9 does not separately document a `Brand` press state,
+     so only hover and focus-visible are missing.)
+   - **F10 (pre-existing, carried forward for the count).** `PrivacyNotice`'s inline-link recipe
+     (`inlineLinkClasses`, `index.tsx` lines 219-222), the objection-form anchor (a `Button/secondary`
+     look-alike, line 766) and the contact-route link (`text-link underline` only, line 797) have no
+     state frame; the contact-route link additionally lacks the hover signal and focus ring the inline
+     recipe carries — a rendering defect, not only a missing frame.
+   - **F11 (pre-existing).** `ArchivalControl`'s privacy link (`text-text-secondary underline`, no state
+     classes at all) — a rendering defect against FR-037 and the focus-ring rule, distinct from F2's
+     `Button` finding in the same component and the same story.
+   - **F12 (pre-existing, wording already corrected in PR #79).** `AccountErasurePanel`'s acknowledgement
+     checkbox has no focus-visible frame; the story's own text is accurate about this as of the current
+     file. Its hover and press cells are "not applicable" by construction (8a) — its own classes never
+     painted either — not a second gap.
+   - **F13 (root cause of F1-F4, F6-F7).** `Button.stories.tsx` has no `SecondaryHover`, `GhostHover` or
+     `DestructiveHover` story (8b, above) — a gap in the primitive's own matrix independent of any
+     handoff (FR-042). `ghost`'s hover is nonetheless shown elsewhere (`FavouriteToggle`'s own `Hover`)
+     and `secondary`'s elsewhere (`ReplayAvailabilityList`'s own `Hover`); `destructive`'s hover has no
+     frame anywhere in the tree — the only one of the three with no elsewhere to point to.
+   - **F14 (new, narrowed on the second review pass — see the finding immediately below this list).**
+     `Button`'s own matrix, with `size` added (8b), has one full gap and two partial ones, not the
+     blanket "one size per variant" the first pass claimed. `primary`/`md` is a full gap: nothing in
+     `packages/design-system/src` ever renders a `primary` `Button` without `size="lg"` — confirmed by
+     grepping every non-story, non-test `variant="primary"` call site — so no story anywhere shows it,
+     rest included. `ghost`/`lg` and `destructive`/`lg` are partial gaps: both have a real **rest**
+     frame from a composite that renders one (`FavouriteToggle`'s own `RealisticProfileHeader`, at
+     `size="lg"` per its own comment; `Dialog`'s `Default`/`WithBodyAndError`, since `Dialog` hard-codes
+     `size="lg"` on both actions regardless of caller, `index.tsx`), and `destructive`/`lg` additionally
+     has a real **focus-visible** frame (`Dialog`'s own `FocusVisible`, forced on `primaryAction`, which
+     defaults to `destructive`) — but neither has a hover or a press frame anywhere. `secondary`/`lg`,
+     which the first pass counted as an equally blank cell, is in fact the one combination with **full**
+     coverage: every real `secondary` `Button` in the tree is `size="lg"` (`MatchDetailPanel`'s "Back to
+     match list", `UploadControl`'s "Choose file"/"Refresh", `SignInScreen`'s several, `ProfileSummary`'s
+     "Back to primary", `DataExportPanel`'s "Request export", among others, for rest), and
+     `ReplayAvailabilityList`'s own `DownloadAction` — confirmed `size="lg"` in its own source, the same
+     size as every one of those — carries real `Hover`/`FocusVisible`/`Active` stories. This is also why
+     F1, F2, F4, F6, F7 and F13's "covered elsewhere" pointers to `ReplayAvailabilityList`'s `Hover` are
+     correct as size-matched, not merely variant-matched: every `secondary` button those findings discuss
+     is itself `lg`. Found on the second review pass (the coordinator's own spot-check): the first pass
+     built this row from `Button.stories.tsx`'s own story list alone and never cross-checked a size
+     combination against real usage elsewhere the way it already had for hover (F13).
+   - **F15 (new, narrowed on the second review pass).** `Menu`'s own trigger button (`index.tsx` line
+     144, `hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong` plus an
+     outward `focus-visible:outline-2…` ring) has no dedicated **hover or press** story anywhere in the
+     tree — neither can come from a `play()` function at all (the Method paragraph's mechanism), and
+     every `visualForceState`-driven `Hover`/`Active` in `Menu.stories.tsx` and in every consuming
+     component's own targets an item, never the trigger. **Focus-visible is not a gap**:
+     `EscapeReturnsFocusToTrigger`'s play function ends with DOM focus on the trigger after a real
+     keyboard-driven Escape (`userEvent.keyboard('{Escape}')`) closes the menu and `Menu`'s own
+     `close(returnFocus = true)` (`index.tsx` line 97) calls `triggerRef.current?.focus()` in direct
+     response to it — the shape `tests/visual/stories.spec.ts`'s own measured `VisualForceState` comment
+     says reliably paints `:focus-visible` in Chromium, since nothing in this story's play function is a
+     real, trusted pointer event. The first pass's own citation for the opposite conclusion
+     (`Page.stories.tsx`'s comment on a bare, unchained `.focus()` call) was the wrong precedent: `Page`'s
+     case is a standalone script call with no preceding keyboard event in the same chain, not a
+     component's own focus-management responding to one.
+   - **F16 (new, narrowed on the second review pass).** `Menu`'s footer-item button (`index.tsx` line
+     242, `role="menuitem"`, `hover:bg-surface-sunken active:border-l-border-strong
+active:bg-background`) — visually near-identical to `MenuItemRow`'s recipe but a structurally
+     distinct element (a plain `<button>`, not rendered through `MenuItemRow`) — also has no dedicated
+     **hover or press** story; every hover/press `visualForceState` in the tree targets a regular item,
+     never the footer row. **Focus-visible is not a gap**: `KeyboardNavigation` (`index.tsx` lines
+     217-225) carries its own `visualForceState: { state: 'focus-visible', role: 'menuitem', name:
+'Link another Steam account' }` — the footer item, forced directly — missed by the first pass
+     because that story was read for its play-function narrative (arrow-key roving, asserted
+     functionally) and never cross-checked against its own `parameters` for the footer-item finding
+     specifically, the same class of miss F15 names for a different reason.
+   - **F17 (new).** `structural-tier.md` §10's own focus-visible bullet documents two distinct rings —
+     "the scroll region shows the standard ring when it is focused for scrolling; a focusable element
+     inside a cell shows its own ring" — but `Table.stories.tsx`'s `FocusVisible` story only forces the
+     first (`role: 'region', name: 'Recent matches'`). The row link's own focus-visible ring, the second
+     half of the same sentence, has no dedicated story: `RowLinkHover`/`RowLinkActive` exist for the row
+     link, no `RowLinkFocusVisible`.
+   - **F18 (new).** `Field`'s own `Hover` and `FocusVisible` stories both default to `size: 'md'` (no
+     `size` arg set); `SizeLg` is a rest-only story with no forced state. `lg`'s own hover and
+     focus-visible frames have no story anywhere — the same shape as F14's `Button` gap, on the
+     primitive `structural-tier.md` §11 explicitly sizes "to match `Button`'s."
+
+   **Owners: T594 (this sweep). T595 closes F1-F9, F12, F13, F14 (the narrowed shape: `primary`/`md`
+   in full, `ghost`/`lg` and `destructive`/`lg`'s hover and press — or records why one of the three is
+   accepted as an equivalence, the way 8b's `disabled:` footnote already reasons for a different cell),
+   F15 and F16 (each narrowed to hover and press only — their focus-visible cells are real, not owed),
+   F17 and F18 — the fixes: add `SecondaryHover`/`GhostHover`/`DestructiveHover` to `Button.stories.tsx`
+   (or correct each false sentence to name the story that already exists elsewhere where one does), plus
+   whichever `primary`/`md`, `ghost`/`lg` and `destructive`/`lg` state stories F14 still lists as
+   missing; add `Link`'s `inline` `Hover`/`FocusVisible`; add `SiteHeader`'s `Brand` `Hover`/
+   `FocusVisible`; add `Menu`'s trigger and footer-item `Hover`/`Active` (not `FocusVisible` — F15/F16
+   already have it); add `Table`'s `RowLinkFocusVisible`; add `Field`'s `lg`-size `Hover`/`FocusVisible`;
+   add `AccountErasurePanel`'s checkbox `FocusVisible`; give `PrivacyNotice`'s three F10 controls their
+   state frames. The no-owner list (8c) closes only where a real call site exists to give the frame to
+   — `N1`-`N5` name no directory today and are not owed a story until one composes the shape they
+   describe; `N6` and `N7` are already true and need no fix. T596 closes F11 (`ArchivalControl`'s
+   privacy link), which needs a design decision first. Fix by 2026-09-27.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
