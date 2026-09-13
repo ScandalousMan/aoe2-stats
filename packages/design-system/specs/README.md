@@ -51,9 +51,12 @@ a tier and a surface class.
 **545 stories, 3,292 baseline PNGs** under `__screenshots__/`: 3,270 story captures — every story at
 {light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
 stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
-trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers** on
-every pull request, against `EXPECTED_STORY_COUNT` and `EXPECTED_BASELINE_COUNT` in its own source,
-and fails naming this section when either moves. That assertion is separate from the set equality the
+trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers**,
+against `EXPECTED_STORY_COUNT` and `EXPECTED_BASELINE_COUNT` in its own source, and fails naming this
+section when either moves. It runs on every pull request **that reaches the `visual` job** — that
+job's paths filter, not literally every pull request; the distinction costs nothing here, because a
+change that moves either count necessarily touches `packages/design-system`, which is what the filter
+selects on. That assertion is separate from the set equality the
 same check performs between the built Storybook index and the files on disk, and it has to be: set
 equality alone stays green when a story is added, because the new story does have its six captures —
 which is exactly how this paragraph would go stale without anyone touching it.
