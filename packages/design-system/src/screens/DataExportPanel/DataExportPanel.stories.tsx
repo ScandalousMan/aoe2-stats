@@ -52,12 +52,12 @@ export const Preparing: Story = {
   },
 }
 
-// `Ready`, `ReadyFocusVisible` and `ReadyActive` share one `visualCaptureClip` (README's standing
-// rule: a state whose signal is smaller than ~1% of its frame is captured clipped to the control
-// that carries it) so the three stay each other's verification — the panel's own full-page frame
-// is over a hundred times the download link's footprint, which is exactly what made
-// `ready`/`ready-focus-visible` an undocumented full-set match the first time these stories were
-// captured (found 2026-09-12, T587/T588's baseline regeneration): the inward focus ring and the
+// `Ready`, `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` share one `visualCaptureClip`
+// (README's standing rule: a state whose signal is smaller than ~1% of its frame is captured
+// clipped to the control that carries it) so the four stay each other's verification — the panel's
+// own full-page frame is over a hundred times the download link's footprint, which is exactly what
+// made `ready`/`ready-focus-visible` an undocumented full-set match the first time these stories
+// were captured (found 2026-09-12, T587/T588's baseline regeneration): the inward focus ring and the
 // underline signal are both real (T586, T588) but neither survives a whole-panel diff ratio.
 const downloadLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
 
@@ -65,6 +65,19 @@ export const Ready: Story = {
   name: 'ready — success callout, download link and expiry note',
   args: { ...noopHandlers, initialState: 'ready' },
   parameters: { visualCaptureClip: downloadLinkClip },
+}
+
+// §5 "hover / focus-visible / active": T588 gave the link `hover:underline hover:decoration-2
+// hover:underline-offset-2` alongside its press change — README's gap register row 7 (H4) found
+// this frame missing (the first sweep for row 5/H2 only added focus and press). `role: 'link'` is
+// unambiguous here: the download link is the only anchor the `ready` state renders.
+export const ReadyHover: Story = {
+  name: 'ready — hover on the download link',
+  args: { ...noopHandlers, initialState: 'ready' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: downloadLinkClip,
+  },
 }
 
 // §5 "hover / focus-visible / active": `DownloadLink`'s standard ring rings inward instead
@@ -114,22 +127,28 @@ export const Empty: Story = {
 // themselves are not interactive." / "disabled — the `RequestButton` disables while a request is
 // in flight or a job is preparing" (already shown by `Requesting`/`Preparing` above).
 //
-// Corrected (README's gap register row 5/H2): this story used to claim hover, focus and active were
-// "already covered by their own components' stories" for both interactive elements the `idle` state
-// shows here — true only for the `RequestButton`, an unmodified `Button`, whose own
-// `Button.stories.tsx` file carries every one of those states. `DownloadLink` is not a `Button`
-// instance; it is a local anchor styled directly inside this screen (`index.tsx`'s `ready` branch),
-// so nothing outside this file ever drove its `:focus-visible` or `:active` — the `ReadyFocusVisible`
-// and `ReadyActive` stories above are that coverage, added here rather than claimed elsewhere.
+// Corrected twice (README's gap register row 5/H2, then row 7/H4): this story used to claim hover,
+// focus and active were "already covered by their own components' stories" for both interactive
+// elements the `idle` state shows here — true only for focus-visible and press of the
+// `RequestButton`, an unmodified `Button` with `variant="secondary"`, whose own `Button.stories.tsx`
+// file carries those two states per variant (`SecondaryFocusVisible`, `SecondaryActive`). Not its
+// hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story), so
+// `secondary` has no hover story there — a gap recorded in README's gap register row 8, owed by
+// T595. `DownloadLink` is not a `Button` instance; it is a local anchor styled directly inside this
+// screen (`index.tsx`'s `ready` branch), so nothing outside this file ever drives its own hover,
+// focus-visible or active — the `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are
+// that coverage, all three now present, added here rather than claimed elsewhere.
 export const HoverFocusActiveNotApplicable: Story = {
   name: 'hover / focus / active — not applicable to the idle sections themselves',
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel's own sections are not interactive. The `RequestButton` shown here is an
-        unmodified `Button`, already covered by `Button.stories.tsx`'s own hover, focus-visible and
-        active stories. The download link only exists in the `ready` state — see `ReadyFocusVisible`
-        and `ReadyActive` above for its own coverage.
+        unmodified `Button` (`secondary`); its focus-visible and press are already covered by
+        `Button.stories.tsx`'s per-variant stories, but not its hover — that file only forces hover
+        for `primary` (owed by task T595). The download link only exists in the `ready` state — see
+        `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` above for its own coverage of all three
+        states.
       </p>
       <DataExportPanel {...args} />
     </div>

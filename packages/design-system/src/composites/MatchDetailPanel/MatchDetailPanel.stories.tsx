@@ -519,7 +519,11 @@ export const NotFound: Story = {
 
 // match-history.md §5 "hover / focus-visible / active... `DownloadAction`: per `Button`." The
 // panel itself is not a link and carries no hover, focus or active rendering of its own — only its
-// `DownloadAction` button does, already covered by `Button`'s own stories.
+// `DownloadAction` button does, already covered by `Button`'s own stories. Known false for hover:
+// `DownloadAction` is `variant="secondary"` and `Button.stories.tsx` captures hover for `primary`
+// only, so the rendered text below defers hover to a story `Button.stories.tsx` does not have. Recorded in README's
+// gap register row 8 and owed by T595; the rendered text is left as-is so its baseline moves once,
+// with the fix.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">

@@ -281,8 +281,9 @@ Answered for both components; where one has no meaningful case, it says why.
 progress or ready region. `AccountErasurePanel`: `idle`, the lede and both consequence groups visible,
 the `EraseButton` enabled, no dialog.
 
-**hover / focus-visible / active** — owned by the `Button`s, the `DownloadLink`, the `Dialog`'s
-actions and the `Acknowledgement` checkbox; the sections themselves are not interactive. The standard
+**hover / focus-visible / active** — owned by the `Button`s, the `DownloadLink`, the `ErasedScreen`'s
+privacy-notice link, the `Dialog`'s actions and the `Acknowledgement` checkbox; the sections
+themselves are not interactive. The standard
 ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on every one, in both themes, **except
 `DownloadLink`**: it is `Button/primary` rendered as an anchor, so it rings inward in
 `accent-contrast` at `-outline-offset-4` instead (DS-10, `color-tokens.md` §5, the same override
@@ -308,6 +309,18 @@ hover and position for press, the same two axes `Link` uses (`structural-tier.md
 ring is deleted rather than repositioned — the same class of defect governs every colour it could
 have used. Every `accent`-filled control added later follows this, and its press state is captured
 as its own component-scoped story so the signal is larger than the comparator's tolerance.
+
+**The `ErasedScreen`'s privacy-notice link follows `Link`'s `inline` variant for hover and press**
+(`structural-tier.md` §9; README's gap register row 7/H4). It is a local anchor in
+`AccountErasurePanel`'s source, not a `Link` instance: it copies that variant's ink and underline
+for rest, hover and press, and does not carry its `visited` ink, which a one-way terminal screen has
+no use for. Rest is `link` with a permanent `decoration-1` underline at `underline-offset-2`; hover is
+`link-hover` and a `decoration-2` underline at the same offset; press is `link-hover`, `decoration-2`
+and `underline-offset-4`, with no fill and no ring, so hover and press are two distinct still frames
+told apart by position rather than colour; focus-visible is the standard ring above. It sits on
+`surface` (§6, DS-9). `AccountErasurePanel.stories.tsx`'s `ErasedScreenHover`,
+`ErasedScreenFocusVisible` and `ErasedScreenActive` capture those three states clipped to the link,
+and they are judged against this paragraph.
 
 **disabled** — `DataExportPanel`: the `RequestButton` disables while a request is in flight or a job is
 preparing (its loading label says why), so a second export cannot be started over an unfinished one.
@@ -375,8 +388,9 @@ side at all.
 
 Gaps in play: **DS-4** (focus ring), **DS-5** (breakpoints), **DS-6** (reading measure — both panels
 are prose), and **DS-9**: the only inline link in these two components is the privacy-notice link in
-the `ErasedScreen` and (optionally) in the export contents statement, and both sit on `surface`, where
-`accent` with a permanent underline is the one measured pair (4.9 light / 7.7 dark). Neither panel
+the `ErasedScreen`, which sits on `surface` in `link` with a permanent underline — the pair measured in
+[the README's contrast table](./README.md) (`link` on `surface`). `DataExportPanel` renders no inline
+link: its one anchor is the `DownloadLink`, a filled control (§5). Neither panel
 paints an inline link on `surface-raised`: the callouts and the dialog body contain **no** inline
 links — their forward action is always a `Button`, never a link inside coloured-surface prose.
 
@@ -437,7 +451,7 @@ links — their forward action is always a `Button`, never a link inside coloure
 - Contrast per the README table, both themes: body `text-primary` on `surface`; callout bodies
   `text-primary` on `surface-raised`; callout headings `info` / `success` / `danger` on
   `surface-raised`; the destructive buttons' `danger` label and boundary on `surface`; the
-  privacy-notice link `accent` on `surface` (the only DS-9-permitted background).
+  privacy-notice link `link` on `surface`.
 - Reading order equals visual order equals DOM order, verified with CSS disabled: on the erasure panel,
   the irreversible lede and both consequence groups must read **before** the erase button in source, so
   a screen-reader user meets the warning before the control.

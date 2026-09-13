@@ -61,16 +61,72 @@ export const Erased: Story = {
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
 }
 
+// README's gap register row 7 (H4): `ErasedScreen`'s privacy-notice link is a local anchor styled
+// directly inside this screen (`index.tsx`), not a `Button` instance and not owned by any dialog or
+// checkbox — the same shape as `ThirdPartyObjectionForm`'s own inline link, which carries this same
+// `Hover`/`FocusVisible`/`Active` trio under a link clip (T591's "all three or none"). Not
+// `PrivacyNotice`: its trio forces and clips `role: 'link', nth: 0`, the first table-of-contents
+// entry, not its inline-link recipe (`inlineLinkClasses`, `PrivacyNotice/index.tsx`), which has no
+// state frame of its own (README's gap register row 8, T595). `role: 'link'` is unambiguous here:
+// `ErasedScreen` renders exactly one anchor.
+const erasedScreenLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
+
+export const ErasedScreenHover: Story = {
+  name: 'terminal — hover on the ErasedScreen privacy-notice link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
+export const ErasedScreenFocusVisible: Story = {
+  name: 'terminal — focus-visible on the ErasedScreen privacy-notice link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
+export const ErasedScreenActive: Story = {
+  name: 'terminal — active (pressed) on the ErasedScreen privacy-notice link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
 // privacy-data-rights.md §5 "hover / focus-visible / active — owned by the `Button`s, the
-// `Dialog`'s actions and the `Acknowledgement` checkbox; the sections themselves are not
-// interactive."
+// `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the
+// `Acknowledgement` checkbox; the sections themselves are not interactive." This story defers the
+// focus-visible and press of the `Button` this screen renders directly (`Erase my account`,
+// `destructive`) and of the `Dialog`'s own primary (`destructive`) and secondary (`secondary`)
+// actions — each covered by `Button.stories.tsx`'s per-variant `FocusVisible`/`Active` stories
+// (`DestructiveFocusVisible`, `DestructiveActive`, `SecondaryFocusVisible`, `SecondaryActive`). Not
+// their hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story),
+// so neither `destructive` nor `secondary` has a hover story there — a gap recorded in README's
+// gap register row 8, owed by T595. It does not defer the acknowledgement checkbox: a plain
+// `<input type="checkbox">` styled locally in this file (`focusRing`, `index.tsx`), owned by no
+// component with its own stories. Its focus-visible is not yet captured anywhere; that capture is
+// owed by T595 (README's gap register row 8). Corrected (README's gap register row 7/H4): it used
+// to defer `ErasedScreen`'s link too, a local anchor styled inside this same file that none of those
+// components own. That link's own hover, focus-visible and active are not deferred to anyone; they
+// are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above, judged against
+// §5's own paragraph on that link.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
-        The panel's own sections are not interactive — hover, focus and active belong to the
-        buttons, the dialog's actions and the acknowledgement checkbox, each already covered by
-        their own components' stories.
+        The panel's own sections are not interactive. The erase button (`destructive`) and the
+        dialog's actions (`destructive`, `secondary`) have their focus-visible and press already
+        covered by `Button.stories.tsx`'s per-variant stories — their hover is not: that file only
+        forces hover for `primary` (owed by task T595). Two other things are not covered here: the
+        acknowledgement checkbox is a local control of this screen whose focus-visible no story
+        captures yet (owed by task T595), and `ErasedScreen`'s privacy-notice link is a local anchor
+        styled inside this screen — see `ErasedScreenHover`, `ErasedScreenFocusVisible` and
+        `ErasedScreenActive` above for its own coverage.
       </p>
       <AccountErasurePanel {...args} />
     </div>
