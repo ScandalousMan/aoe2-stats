@@ -848,8 +848,8 @@ document, enumerate rather than group, because a range is a claim about members 
 **So item 15 stays unticked.** Written 2026-09-13 as "for exactly one reason", which the third-pass
 entry below found too narrow; this paragraph now states only the part that stays true. T593 does not
 close the `visual-reviewer` half: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
-`2dc8825b`), and the half closes only when `visual-reviewer` returns a pass on `DataExportPanel`'s
-hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half
+`2dc8825b`), and `visual-reviewer`'s verdict over them is the third-pass entry below. Those two passes are
+necessary but not sufficient: the entry below records what else the half still needs. Its `reviewer` half
 was given for the work before PR #79 (the ACCEPT above); for #79 itself, see the end of the
 third-pass entry below.
 
@@ -880,8 +880,9 @@ level down that `Button.stories.tsx` captures hover for `primary` only, so two s
 `packages/design-system/specs/README.md`'s register row 8 (H5): T594 sweeps every component rather than
 trusting this list, and T595 fixes what the sweep finds.
 
-**So item 15 stays unticked, for these reasons:** T594's sweep, T595's fixes and a `visual-reviewer`
-verdict on what T595 changes; `reviewer`'s approval of PR #79 once the corrections from that REJECT land; and one recorded
+**So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a
+`visual-reviewer` verdict on what they change; `reviewer`'s approval of PR #79, which has returned three
+REJECTs, each remediated on that branch; and one recorded
 limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
 agent, but the walk above counts a same-session run as non-independent).
 
