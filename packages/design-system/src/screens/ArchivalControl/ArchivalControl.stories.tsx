@@ -76,7 +76,12 @@ export const WithPrivacyNotice: Story = {
 }
 
 // archival-control.md §5 "hover / focus-visible / active — owned by `Button` and by the privacy
-// link. The section itself is not interactive and shows no hover affordance."
+// link. The section itself is not interactive and shows no hover affordance." The rendered claim
+// below that the privacy link "carr[ies] its own hover, focus and active states" is known to be
+// false: `index.tsx` styles that link `text-text-secondary underline` only, with no state-specific
+// classes at all — a gap recorded in README's gap register row 8, owed by T595. Left as-is here
+// rather than corrected, because correcting the rendered text would move this story's baseline,
+// which this PR is not regenerating.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">

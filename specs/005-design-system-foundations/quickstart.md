@@ -845,8 +845,9 @@ rewritten without the rows. The countermeasure that stuck is mechanical rather t
 (`findCountDrift`, which fails when the prose and the tree disagree) plus a format rule: in a living
 document, enumerate rather than group, because a range is a claim about members nobody reread.
 
-**So item 15 stays unticked, and now for exactly one reason**: its `visual-reviewer` half. T593 does
-not close it: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
+**So item 15 stays unticked.** Written 2026-09-13 as "for exactly one reason", which the third-pass
+entry below found too narrow; this paragraph now states only the part that stays true. T593 does not
+close the `visual-reviewer` half: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
 `2dc8825b`), and the half closes only when `visual-reviewer` returns a pass on `DataExportPanel`'s
 hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half
 was given for the work before PR #79 (the ACCEPT above); for #79 itself, see the end of the
@@ -873,12 +874,14 @@ the paragraph above was wrong to treat those two verdicts as the only thing left
 over PR #79 (2026-09-13, REJECT) looked past #77's files and found the same defect elsewhere:
 `PrivacyNotice`'s inline, objection-form and contact-route links have no state frame, since its state
 trio depicts a `Contents` entry; `ArchivalControl`'s privacy link has no state styling at all; and
-`AccountErasurePanel`'s acknowledgement checkbox has no focus-visible frame. These are
-`packages/design-system/specs/README.md`'s register row 8 (H5) and task T594, which begins with a
-sweep of every component rather than this list.
+`AccountErasurePanel`'s acknowledgement checkbox has no focus-visible frame. Its second pass found one
+level down that `Button.stories.tsx` captures hover for `primary` only, so two screens deferring their
+`secondary` and `destructive` buttons' hover to it were deferring to no frame. These are
+`packages/design-system/specs/README.md`'s register row 8 (H5): T594 sweeps every component rather than
+trusting this list, and T595 fixes what the sweep finds.
 
-**So item 15 stays unticked, for these reasons:** T594 and a `visual-reviewer` verdict on what it
-changes; `reviewer`'s approval of PR #79 once the corrections from that REJECT land; and one recorded
+**So item 15 stays unticked, for these reasons:** T594's sweep, T595's fixes and a `visual-reviewer`
+verdict on what T595 changes; `reviewer`'s approval of PR #79 once the corrections from that REJECT land; and one recorded
 limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
 agent, but the walk above counts a same-session run as non-independent).
 

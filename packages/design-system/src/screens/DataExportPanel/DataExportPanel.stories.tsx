@@ -129,21 +129,26 @@ export const Empty: Story = {
 //
 // Corrected twice (README's gap register row 5/H2, then row 7/H4): this story used to claim hover,
 // focus and active were "already covered by their own components' stories" for both interactive
-// elements the `idle` state shows here — true only for the `RequestButton`, an unmodified `Button`,
-// whose own `Button.stories.tsx` file carries every one of those states. `DownloadLink` is not a
-// `Button` instance; it is a local anchor styled directly inside this screen (`index.tsx`'s `ready`
-// branch), so nothing outside this file ever drives its own hover, focus-visible or active — the
-// `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are that coverage, all three now
-// present, added here rather than claimed elsewhere.
+// elements the `idle` state shows here — true only for focus-visible and press of the
+// `RequestButton`, an unmodified `Button` with `variant="secondary"`, whose own `Button.stories.tsx`
+// file carries those two states per variant (`SecondaryFocusVisible`, `SecondaryActive`). Not its
+// hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story), so
+// `secondary` has no hover frame anywhere — a gap recorded in README's gap register row 8, owed by
+// T595. `DownloadLink` is not a `Button` instance; it is a local anchor styled directly inside this
+// screen (`index.tsx`'s `ready` branch), so nothing outside this file ever drives its own hover,
+// focus-visible or active — the `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are
+// that coverage, all three now present, added here rather than claimed elsewhere.
 export const HoverFocusActiveNotApplicable: Story = {
   name: 'hover / focus / active — not applicable to the idle sections themselves',
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel's own sections are not interactive. The `RequestButton` shown here is an
-        unmodified `Button`, already covered by `Button.stories.tsx`'s own hover, focus-visible and
-        active stories. The download link only exists in the `ready` state — see `ReadyHover`,
-        `ReadyFocusVisible` and `ReadyActive` above for its own coverage of all three states.
+        unmodified `Button` (`secondary`); its focus-visible and press are already covered by
+        `Button.stories.tsx`'s per-variant stories, but not its hover — that file only forces hover
+        for `primary` (owed by task T595). The download link only exists in the `ready` state — see
+        `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` above for its own coverage of all three
+        states.
       </p>
       <DataExportPanel {...args} />
     </div>

@@ -194,7 +194,9 @@ save your choice right now**, body _Nothing has changed while this is unavailabl
 **default** — as anatomised, `state` reflects the last-known server truth, the switch enabled.
 
 **hover / focus-visible / active** — owned by `Button` and by the privacy link. The section itself
-is not interactive and shows no hover affordance.
+is not interactive and shows no hover affordance. **Not true of the shipped link today**: it renders
+with no hover, press or focus styling (`packages/design-system/specs/README.md`'s contrast-signal
+register row 8, owed by T595).
 
 **disabled** — the one visible switch button disables while its write is in flight, or while
 `unavailable`. There is exactly one button rendered at a time (`state` picks which), so there is no
