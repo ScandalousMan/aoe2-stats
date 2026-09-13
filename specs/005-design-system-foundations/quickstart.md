@@ -848,8 +848,8 @@ document, enumerate rather than group, because a range is a claim about members 
 **So item 15 stays unticked.** Written 2026-09-13 as "for exactly one reason", which the third-pass
 entry below found too narrow; this paragraph now states only the part that stays true. T593 does not
 close the `visual-reviewer` half: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
-`2dc8825b`), and `visual-reviewer`'s verdict over them is the third-pass entry below. Those two verdicts are
-necessary but not sufficient: the entry below records what else the half still needs. Its `reviewer` half
+`2dc8825b`), and that pass's two verdicts over them are the third-pass entry below. The frames and those verdicts
+are necessary but not sufficient: the entry below records what else the half still needs. Its `reviewer` half
 was given for the work before PR #79 (the ACCEPT above); for #79 itself, see the end of the
 third-pass entry below.
 
@@ -882,11 +882,17 @@ trusting this list, T595 fixes what the sweep finds, and T596 fixes `ArchivalCon
 after a design decision.
 
 **So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a
-`visual-reviewer` verdict on what they change; `reviewer`'s approval of PR #79, not yet given (each REJECT is
-remediated in its own `fix(005): remediate reviewer's … REJECT on #79` commit, so the branch log is
-the count); and one recorded
-limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
+`visual-reviewer` verdict on what they change; and one recorded limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
 agent, but the walk above counts a same-session run as non-independent).
+
+**`reviewer` on PR #79: ACCEPT, 2026-09-13, at `1e52d468`, after REJECTs.** Each REJECT is
+remediated in its own `fix(005): remediate reviewer's … REJECT on #79` commit, so the branch log is
+the count. The first two found false statements the PR had written. The later ones mostly found more
+members of a sibling set the PR kept trying to enumerate, and converged only once the PR stopped
+listing that set and handed it to T594's sweep, with the review scoped to whether what #79 asserts is
+true. The accepting pass left two non-blocking notes, both applied in the commit recording this entry:
+a wording fix in the paragraph above, and T594 now also recording a primitive whose states a local
+`className` overrides.
 
 **`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
