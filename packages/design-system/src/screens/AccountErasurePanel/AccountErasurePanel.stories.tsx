@@ -106,7 +106,7 @@ export const ErasedScreenActive: Story = {
 // actions — each covered by `Button.stories.tsx`'s per-variant `FocusVisible`/`Active` stories
 // (`DestructiveFocusVisible`, `DestructiveActive`, `SecondaryFocusVisible`, `SecondaryActive`). Not
 // their hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story),
-// so neither `destructive` nor `secondary` has a hover frame anywhere — a gap recorded in README's
+// so neither `destructive` nor `secondary` has a hover story there — a gap recorded in README's
 // gap register row 8, owed by T595. It does not defer the acknowledgement checkbox: a plain
 // `<input type="checkbox">` styled locally in this file (`focusRing`, `index.tsx`), owned by no
 // component with its own stories. Its focus-visible is not yet captured anywhere; that capture is

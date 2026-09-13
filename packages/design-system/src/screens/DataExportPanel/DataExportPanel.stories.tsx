@@ -133,7 +133,7 @@ export const Empty: Story = {
 // `RequestButton`, an unmodified `Button` with `variant="secondary"`, whose own `Button.stories.tsx`
 // file carries those two states per variant (`SecondaryFocusVisible`, `SecondaryActive`). Not its
 // hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story), so
-// `secondary` has no hover frame anywhere — a gap recorded in README's gap register row 8, owed by
+// `secondary` has no hover story there — a gap recorded in README's gap register row 8, owed by
 // T595. `DownloadLink` is not a `Button` instance; it is a local anchor styled directly inside this
 // screen (`index.tsx`'s `ready` branch), so nothing outside this file ever drives its own hover,
 // focus-visible or active — the `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are

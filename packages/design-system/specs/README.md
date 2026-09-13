@@ -1658,10 +1658,10 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
 8. **H5 — row 7's sweep was scoped to the files #77 touched, and the same defect sits outside it —
    open.** Row 7 says its two anchors were the only `*NotApplicable` stories deferring a state they
    own **among #77's files**, and that holds. `reviewer`'s pass over PR #79 (2026-09-13) read past that
-   boundary and found the same shape in three more components, and its second pass found a fourth
-   item one level down, in a primitive's own stories. Each item below was checked against the source
-   by the session recording it, and this list is what those two passes found, not the result of a
-   sweep. The first thing owed is that sweep (T594); the fixes follow it (T595, and T596 for
+   boundary and found the same shape in three more components, and later passes found a fourth item
+   one level down, in a primitive's own stories. Each item below was checked against the source by
+   the session recording it, and this list is what the four review passes over #79 found, not the
+   result of a sweep. The first thing owed is that sweep (T594); the fixes follow it (T595, and T596 for
    `ArchivalControl`'s link, which needs a design decision first).
    - **`PrivacyNotice`'s state trio does not depict its inline links.** `Hover`, `FocusVisible` and
      `Active` force and clip `role: 'link', nth: 0` (`PrivacyNotice.stories.tsx`), which is the first
@@ -1680,34 +1680,20 @@ underline` (`src/screens/ArchivalControl/index.tsx`): no hover, press or focus c
      screen's own focus ring, and no story captures its focus-visible. Until 2026-09-13 the story said it
      was "covered by its own component's stories"; there is no such component. The wording is corrected
      in PR #79; the frame is owed here.
-   - **`Button`'s hover is captured for `primary` only.** `Button.stories.tsx` has a focus-visible and a
-     press story for every variant but a hover story for `primary` alone, so no baseline shows a hovered
-     `secondary`, `ghost` or `destructive` button. This is FR-042's "every variant and every applicable
-     state". It is why T594's sweep reads what each deferral points **at**, not only local controls:
-     three review passes over #79 each found one more place relying on the missing frame, so the places
-     below were enumerated by a grep rather than by reading. The grep matched every story and spec
-     sentence in `packages/design-system` that defers a state to `Button` ("per `Button`", "`Button`'s
-     stories", "owned by `Button`", "belong to the `Button`s"), and each match was checked against the
-     variant its component renders. Deferrals of **hover** to a non-`primary` variant:
-     - _Story text claiming a frame._ `AccountErasurePanel` (`destructive`, `secondary`) and
-       `DataExportPanel` (`secondary` `RequestButton`) — corrected in PR #79, the two files that PR
-       already edits. `MatchDetailPanel`'s `HoverFocusActiveNotApplicable` (`secondary`
-       `DownloadAction`) — still false, carries a comment pointing here, and is left for T595 so its
-       baseline moves once, with the fix.
-     - _Spec delegations with no frame behind them._ `archival-control.md` §5 (the `secondary` switch);
-       `manual-upload.md` §5 (the `secondary` `Choose file` control); `match-history.md` §5
-       (`DownloadAction`, `secondary`); `shared-primitives.md`'s `Dialog` ("belong to the `Button`s
-       inside it"; `destructive` by default and `secondary`). `replay-availability.md` §5 delegates the
-       same `DownloadAction`, but `ReplayAvailabilityList.stories.tsx` carries its own `Hover` story, so
-       T594 checks whether that frame depicts the button. `sign-in-screen.md` §4 gives hover "entirely"
-       to `Button`, and `SignInScreen` renders `secondary` buttons in its failure states beside the
-       `primary` ones.
-     - _Checked and not affected._ `SignInScreen.stories.tsx`'s `HoverFocusActiveNotApplicable` names
-       only the `primary` "Continue with Steam" button; `third-party-objection.md`'s submit button is
-       `primary`; `profile-summary.md` defers only **active** to `Button`, which every variant has.
-
-     A grep finds sentences that use these words, not every sentence that means them. That is why
-     T594's sweep still reads each component rather than starting from this list.
+   - **`Button.stories.tsx` has no hover story for `secondary`, `ghost` or `destructive`.** It has a
+     focus-visible and a press story for every variant and a hover story for `primary` alone, which
+     FR-042's "every variant and every applicable state" does not allow of a primitive's own stories.
+     The gap is in `Button`'s stories, not in every baseline: other components' own stories do capture
+     a hovered non-`primary` `Button` (`FavouriteToggle`'s `ghost`, `ReplayAvailabilityList`'s
+     `secondary` `DownloadAction`). What it breaks is every sentence, in a story or a spec, that defers
+     a non-`primary` button's hover to `Button`'s stories. PR #79 corrected the two it had written
+     itself (`AccountErasurePanel`, `DataExportPanel`). Review passes then found more, one or two per
+     pass: `MatchDetailPanel`'s story text, and spec delegations in `archival-control.md`,
+     `manual-upload.md`, `match-history.md`, `sign-in-screen.md`, `structural-tier.md`,
+     `analysis-timeline.md` and `shared-primitives.md`'s `Dialog`. Two attempts to list them all in
+     PR #79, one by reading and one by grep, were each incomplete on the next pass. So **this row does
+     not list them**: which sentences defer hover to a frame that does not exist is T594's sweep
+     output, and a partial list here would be one more claim about a set that nobody enumerated.
 
    **Owners: T594 (the sweep), T595 (the fixes), T596 (`ArchivalControl`'s link). Fix by 2026-09-27.**
 
