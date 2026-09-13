@@ -48,7 +48,7 @@ a tier and a surface class.
 
 ## The baseline set, as it stands
 
-**545 stories, 3,292 baseline PNGs** under `__screenshots__/`: 3,270 story captures — every story at
+**549 stories, 3,316 baseline PNGs** under `__screenshots__/`: 3,294 story captures — every story at
 {light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
 stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
 trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers**,
@@ -1149,12 +1149,11 @@ which is why it is not folded into a spec written once.
 and re-closed 2026-09-12 by a second adversarial review of the same remediation**, **row 4
 closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**. **Row 5's decision half was
 answered by row 6's closure, and its focus and press frames landed after it (T587), deliberately in
-that order so the frame shows the current control; its hover frame is open** — see row 7, which
-holds it. **Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and is open.**
+that order so the frame shows the current control; its hover frame closed row 7 below (T593).**
+**Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and closed 2026-09-13
+(T593).**
 
-**State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4 and 6 closed; row 5
-closed on its decision and on its focus and press frames, its hover frame owed; row 7 open, carrying
-that hover frame and `AccountErasurePanel`'s identical gap. Both open items are **T593**. This
+**State of this register, enumerated rather than summarised:** rows 1 through 7 all closed. This
 sentence has been wrong twice in three commits — once as "every row is closed", once as "rows 1–6 are
 closed" while row 5's own body said otherwise — which is why it now lists the rows instead of
 grouping them: a range is a claim about rows nobody reread. Four findings the review judged
@@ -1620,36 +1619,39 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    Closed 2026-09-12.**
 
 7. **H4 — two local anchors had a state signal changed with nothing capturing it, and each
-   component's own `*NotApplicable` story defers a state it in fact owns — open, both of them.**
-   These are one defect in two components; the first sweep found one, which is why this row names
-   both and why T593 covers both. `reviewer` checked the other thirteen source files #77 touched: the
-   rest are either rendering-identical T589 offset renames or a real state change with a story behind
-   it, and these two are the only `*NotApplicable` stories deferring a state they own.
+   component's own `*NotApplicable` story deferred a state it in fact owns — closed, both of them
+   (T593).** These were one defect in two components; the first sweep found one, which is why this
+   row named both and why T593 closed both together. `reviewer` had checked the other thirteen
+   source files #77 touched: the rest are either rendering-identical T589 offset renames or a real
+   state change with a story behind it, and these two were the only `*NotApplicable` stories
+   deferring a state they own.
 
    **`DataExportPanel`'s download link — the hover frame, and the wording (row 5's remainder).** T588
    gave the link `hover:underline hover:decoration-2 hover:underline-offset-2` alongside its press
    change; `ReadyFocusVisible` and `ReadyActive` were added for focus and press, and no `ReadyHover`
-   was. `HoverFocusActiveNotApplicable` names those two as the link's coverage and says nothing of
-   hover. **Owed**: a `ReadyHover` under the same `visualCaptureClip` the other `Ready*` stories
-   share, and that story's wording corrected to name all three states.
+   was. `HoverFocusActiveNotApplicable` named those two as the link's coverage and said nothing of
+   hover. **Fixed**: `ReadyHover` added under the same `visualCaptureClip` the other `Ready*` stories
+   share, and `HoverFocusActiveNotApplicable`'s wording corrected to name all three states.
 
    **`AccountErasurePanel`'s `ErasedScreen` link — no state capture at all.**
    T591 gave that anchor the underline recipe its two siblings got in the same task
    (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2 active:underline-offset-4`,
    `src/screens/AccountErasurePanel/index.tsx`), under its own instruction of "all three or none".
    The other two got the stories with it: `PrivacyNotice` and `ThirdPartyObjectionForm` each carry
-   `Hover`, `FocusVisible` and `Active` under a link clip. `AccountErasurePanel.stories.tsx` carries
-   none, and its `HoverFocusActiveNotApplicable` states that hover, focus and active "belong to the
+   `Hover`, `FocusVisible` and `Active` under a link clip. `AccountErasurePanel.stories.tsx` carried
+   none, and its `HoverFocusActiveNotApplicable` stated that hover, focus and active "belong to the
    buttons, the dialog's actions and the acknowledgement checkbox, each already covered by their own
-   components' stories" — which is false of this anchor, exactly as row 5 (H2) was false of
+   components' stories" — false of this anchor, exactly as row 5 (H2) was false of
    `DataExportPanel`'s download link, and false in the same way: a local anchor styled inside a screen
    is covered by no other component's stories. Found 2026-09-12 by `reviewer`, on a
    `visual-reviewer` PASS that had to be withdrawn: a method that judges committed baselines is silent
-   on a state no baseline depicts, and silence is not a pass. **Owed**: a clipped `Hover`,
-   `FocusVisible` and `Active` over `ErasedScreen`'s link, the same shape its two siblings carry, and
-   `HoverFocusActiveNotApplicable` reworded to say what it really defers to.
+   on a state no baseline depicts, and silence is not a pass. **Fixed**: `ErasedScreenHover`,
+   `ErasedScreenFocusVisible` and `ErasedScreenActive` added under a clip over `ErasedScreen`'s link,
+   the same shape its two siblings carry, and `HoverFocusActiveNotApplicable` reworded to name the
+   buttons/dialog/checkbox states it still defers and to say the local anchor's own states are not
+   among them.
 
-   **Owner: T593, both components. Fix by 2026-09-26.**
+   **Owner: T593, both components. Closed 2026-09-13.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

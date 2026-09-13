@@ -61,16 +61,58 @@ export const Erased: Story = {
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
 }
 
+// README's gap register row 7 (H4): `ErasedScreen`'s home link is a local anchor styled directly
+// inside this screen (`index.tsx`), not a `Button` instance and not owned by any dialog or
+// checkbox — the same shape as `PrivacyNotice` and `ThirdPartyObjectionForm`'s own inline links,
+// which each carry this same `Hover`/`FocusVisible`/`Active` trio under a link clip (T591's "all
+// three or none"). `role: 'link'` is unambiguous here: `ErasedScreen` renders exactly one anchor.
+const erasedScreenLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
+
+export const ErasedScreenHover: Story = {
+  name: 'terminal — hover on the ErasedScreen home link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
+export const ErasedScreenFocusVisible: Story = {
+  name: 'terminal — focus-visible on the ErasedScreen home link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
+export const ErasedScreenActive: Story = {
+  name: 'terminal — active (pressed) on the ErasedScreen home link',
+  render: () => <ErasedScreen homeHref="/privacy-notice" />,
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: erasedScreenLinkClip,
+  },
+}
+
 // privacy-data-rights.md §5 "hover / focus-visible / active — owned by the `Button`s, the
 // `Dialog`'s actions and the `Acknowledgement` checkbox; the sections themselves are not
-// interactive."
+// interactive." Corrected (README's gap register row 7/H4): that sentence is true of every
+// interactive element `AccountErasurePanel` itself renders (`EraseButton`, `ConfirmDialog`'s
+// actions, the acknowledgement checkbox), each covered by its own component's stories — but it is
+// false of `ErasedScreen`'s home link, a local anchor styled inside this same file that none of
+// those components own. That link's own hover, focus-visible and active are not deferred to
+// anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel's own sections are not interactive — hover, focus and active belong to the
         buttons, the dialog's actions and the acknowledgement checkbox, each already covered by
-        their own components' stories.
+        their own components' stories. This does not include `ErasedScreen`'s home link: a local
+        anchor styled inside this screen, covered by no other component's stories — see
+        `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above for its own
+        coverage.
       </p>
       <AccountErasurePanel {...args} />
     </div>
