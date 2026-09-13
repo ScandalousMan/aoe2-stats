@@ -851,6 +851,28 @@ not close it: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #7
 hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half is
 done.
 
+**`visual-reviewer`, run 2026-09-13 (third pass) — the two verdicts the second pass left owed.** Same
+method as both earlier passes: committed CI baselines (`2dc8825b`), no local capture. The review
+opened all 48 captures (four stories per component, both themes, all three widths), not a sample.
+The spec for the `ErasedScreen` link was written the same day (`privacy-data-rights.md` §5), before
+this pass, so there was something to judge against.
+
+| Component             | Verdict  | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DataExportPanel`     | **PASS** | `screens-dataexportpanel--ready{,-hover,-focus-visible,-active}-*`: rest has no underline, hover adds one at `underline-offset-2`, press drops it to `underline-offset-4`, focus is the inward ring with an `accent` band inside the edge. No outward press ring. Distinct without colour at all six captures, and the clip encloses the link in every frame. Replaces the second pass's PARTIAL.                                              |
+| `AccountErasurePanel` | **PASS** | `screens-accounterasurepanel--erased-screen-{hover,focus-visible,active}-*` against the link inside `--erased-*`: rest is a 1px underline; hover is 2px at the same offset (thickness); press is 2px shifted about 2px lower (position); focus-visible is an outward ring clear of the text, visible on `surface` in both themes. The review checked the 194x36px clips by pixel row as well as by eye. Replaces the second pass's NO VERDICT. |
+
+Spot-checked by the dispatching session: `ready-hover`/`ready-active` dark 375,
+`erased-screen-hover`/`-active` dark 1280, and `erased-screen-focus-visible` light 768 show what the
+table says.
+
+**This resolves the one reason the paragraph above gave for leaving item 15 unticked.** Every
+component the second pass judged now has a whole PASS, and the `reviewer` half was already given.
+Two limits are recorded rather than resolved here. First, this pass was dispatched by the session
+that wrote T593: `visual-reviewer` is a separate agent, but the walk above counts a same-session run
+as non-independent. Second, `reviewer` has not yet reviewed PR #79, which carries T593 and this
+entry.
+
 **`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
 both FAIL-shaped findings were absent captures. That item is earned by a real deviation being caught,
