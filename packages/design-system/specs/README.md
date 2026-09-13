@@ -1142,11 +1142,17 @@ which is why it is not folded into a spec written once.
 **Open as of 2026-09-09** (sixth-pass adversarial review, findings H1, M1, L1, L2; rows 5-6 added 2026-09-11 while verifying the closures above); **row 1 closed
 2026-09-11 (T582)**, **row 2 closed 2026-09-11 (T583)**, **row 3 closed 2026-09-11 (T584), reopened
 and re-closed 2026-09-12 by a second adversarial review of the same remediation**, **row 4
-closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**, **row 5 closed 2026-09-12 (T587)** —
-row 5's decision half was answered by row 6's closure, and its own capture half (the story coverage,
-and the frame proving the deleted ring is gone) closed after it, deliberately in that order so the
-frame shows the current control. **Rows 1–6 are closed; row 7 (H4) was opened 2026-09-12 by
-`reviewer`, reviewing the closures, and is open.** Four findings the review judged
+closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**. **Row 5's decision half was
+answered by row 6's closure, and its focus and press frames landed after it (T587), deliberately in
+that order so the frame shows the current control; its hover frame is open** — see row 7, which
+holds it. **Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and is open.**
+
+**State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4 and 6 closed; row 5
+closed on its decision and on its focus and press frames, its hover frame owed; row 7 open, carrying
+that hover frame and `AccountErasurePanel`'s identical gap. Both open items are **T593**. This
+sentence has been wrong twice in three commits — once as "every row is closed", once as "rows 1–6 are
+closed" while row 5's own body said otherwise — which is why it now lists the rows instead of
+grouping them: a range is a claim about rows nobody reread. Four findings the review judged
 real but not blocking against B1/B2 (the `Button` `active:outline` defect this same pass's
 remediation fixes) — filed here rather than folded into the fix, for the same reason the three
 registers above are: each is a fact about this package's current state that a future task can close
@@ -1525,7 +1531,8 @@ data'`) and green after. Baselines regenerated from CI in a follow-up commit, pe
      closure got wrong. **Owner: T585. Closed 2026-09-11.**
 
 5. **H2 — `DataExportPanel`'s download link signals press with a ring that cannot be seen, and no
-   story captures the state — closed.** The link fills with
+   story captures the state — decision closed, capture half two of three (the remainder is row 7).**
+   The link fills with
    `accent` and drew its press ring outward: `active:ring-2 active:ring-offset-2
 active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataExportPanel/index.tsx`).
    A transparent offset put that ring on the surface behind the link, and the link renders inside a
@@ -1564,11 +1571,12 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    — and there is no `ReadyHover` story and no `screens-dataexportpanel--ready-hover-*` baseline. So
    the corrected `HoverFocusActiveNotApplicable` still defers a state the link owns, in the smaller
    shape this row was opened for: it names `ReadyFocusVisible` and `ReadyActive` as the link's
-   coverage and is silent about hover. This row is **not** closed on capture; the missing frame and
-   the wording are tracked with `AccountErasurePanel`'s identical gap as row 7 (H4) below, because
-   they are one defect in two components and fixing one alone is how this register keeps reopening.
-   **Owner: T593 (the hover frame and the wording). Decision and the focus/press frames closed
-   2026-09-12 (T586, T588, T587).**
+   coverage and is silent about hover. **The missing frame and the wording are row 7's, not this
+   row's** — recorded there with `AccountErasurePanel`'s identical gap, because they are one defect in
+   two components and fixing one alone is how this register keeps reopening. This row deliberately
+   carries no `Owner:` for them: a closure record that also owns open work is a closure record nobody
+   revisits when the work lands, and then the two copies drift. **Decision and the focus/press frames
+   closed 2026-09-12 (T586, T588, T587); the hover frame is row 7, T593.**
 
 6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
    closed.** `Button`'s `primary` stepped `accent` → `accent-hover` → `accent-active` and added no
