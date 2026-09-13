@@ -848,7 +848,7 @@ document, enumerate rather than group, because a range is a claim about members 
 **So item 15 stays unticked.** Written 2026-09-13 as "for exactly one reason", which the third-pass
 entry below found too narrow; this paragraph now states only the part that stays true. T593 does not
 close the `visual-reviewer` half: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
-`2dc8825b`), and `visual-reviewer`'s verdict over them is the third-pass entry below. Those two passes are
+`2dc8825b`), and `visual-reviewer`'s verdict over them is the third-pass entry below. Those two verdicts are
 necessary but not sufficient: the entry below records what else the half still needs. Its `reviewer` half
 was given for the work before PR #79 (the ACCEPT above); for #79 itself, see the end of the
 third-pass entry below.

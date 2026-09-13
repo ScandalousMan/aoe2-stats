@@ -1660,7 +1660,7 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    own **among #77's files**, and that holds. `reviewer`'s pass over PR #79 (2026-09-13) read past that
    boundary and found the same shape in three more components, and later passes found a fourth item
    one level down, in a primitive's own stories. Each item below was checked against the source by
-   the session recording it, and this list is what the four review passes over #79 found, not the
+   the session recording it, and this list is what the review passes over #79 found, not the
    result of a sweep. The first thing owed is that sweep (T594); the fixes follow it (T595, and T596 for
    `ArchivalControl`'s link, which needs a design decision first).
    - **`PrivacyNotice`'s state trio does not depict its inline links.** `Hover`, `FocusVisible` and
