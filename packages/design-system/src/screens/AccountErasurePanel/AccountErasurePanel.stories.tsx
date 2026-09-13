@@ -96,13 +96,14 @@ export const ErasedScreenActive: Story = {
 }
 
 // privacy-data-rights.md §5 "hover / focus-visible / active — owned by the `Button`s, the
-// `Dialog`'s actions and the `Acknowledgement` checkbox; the sections themselves are not
-// interactive." Corrected (README's gap register row 7/H4): that sentence is true of every
-// interactive element `AccountErasurePanel` itself renders (`EraseButton`, `ConfirmDialog`'s
-// actions, the acknowledgement checkbox), each covered by its own component's stories — but it is
-// false of `ErasedScreen`'s home link, a local anchor styled inside this same file that none of
-// those components own. That link's own hover, focus-visible and active are not deferred to
-// anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above.
+// `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the
+// `Acknowledgement` checkbox; the sections themselves are not interactive." This story defers only
+// the states of what `AccountErasurePanel` itself renders (`EraseButton`, `ConfirmDialog`'s actions,
+// the acknowledgement checkbox), each covered by its own component's stories. Corrected (README's gap
+// register row 7/H4): it used to defer `ErasedScreen`'s link too, a local anchor styled inside this
+// same file that none of those components own. That link's own hover, focus-visible and active are
+// not deferred to anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and
+// `ErasedScreenActive` above, judged against §5's own paragraph on that link.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">

@@ -1535,7 +1535,8 @@ data'`) and green after. Baselines regenerated from CI in a follow-up commit, pe
      closure got wrong. **Owner: T585. Closed 2026-09-11.**
 
 5. **H2 — `DataExportPanel`'s download link signals press with a ring that cannot be seen, and no
-   story captures the state — decision closed, capture half two of three (the remainder is row 7).**
+   story captures the state — closed: decision (T588), focus and press frames (T587), hover frame
+   (row 7, T593).**
    The link fills with
    `accent` and drew its press ring outward: `active:ring-2 active:ring-offset-2
 active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataExportPanel/index.tsx`).
@@ -1569,18 +1570,18 @@ active:ring-offset-transparent active:ring-accent-contrast` (`src/screens/DataEx
    three variants keep was evidenced by a code read and no baseline —
    `SecondaryFocusVisible`, `GhostFocusVisible` and `DestructiveFocusVisible` are that evidence.
 
-   **The capture half is two of three, found 2026-09-12 by `reviewer` re-reading this closure.** T588
+   **The capture half was two of three, found 2026-09-12 by `reviewer` re-reading this closure.** T588
    gave that anchor a hover signal as well as a press one — `hover:underline hover:decoration-2
 hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataExportPanel/index.tsx`
-   — and there is no `ReadyHover` story and no `screens-dataexportpanel--ready-hover-*` baseline. So
-   the corrected `HoverFocusActiveNotApplicable` still defers a state the link owns, in the smaller
-   shape this row was opened for: it names `ReadyFocusVisible` and `ReadyActive` as the link's
-   coverage and is silent about hover. **The missing frame and the wording are row 7's, not this
-   row's** — recorded there with `AccountErasurePanel`'s identical gap, because they are one defect in
+   — and there was then no `ReadyHover` story and no `screens-dataexportpanel--ready-hover-*`
+   baseline. So the corrected `HoverFocusActiveNotApplicable` still deferred a state the link owns, in
+   the smaller shape this row was opened for: it named `ReadyFocusVisible` and `ReadyActive` as the
+   link's coverage and was silent about hover. **The missing frame and the wording were row 7's, not
+   this row's** — recorded there with `AccountErasurePanel`'s identical gap, because they are one defect in
    two components and fixing one alone is how this register keeps reopening. This row deliberately
    carries no `Owner:` for them: a closure record that also owns open work is a closure record nobody
    revisits when the work lands, and then the two copies drift. **Decision and the focus/press frames
-   closed 2026-09-12 (T586, T588, T587); the hover frame is row 7, T593.**
+   closed 2026-09-12 (T586, T588, T587); the hover frame closed 2026-09-13 with row 7 (T593).**
 
 6. **H3 — an `accent`-filled control distinguishes rest, hover and press by fill luminance alone —
    closed.** `Button`'s `primary` stepped `accent` → `accent-hover` → `accent-active` and added no

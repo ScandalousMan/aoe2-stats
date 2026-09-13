@@ -845,8 +845,11 @@ rewritten without the rows. The countermeasure that stuck is mechanical rather t
 (`findCountDrift`, which fails when the prose and the tree disagree) plus a format rule: in a living
 document, enumerate rather than group, because a range is a claim about members nobody reread.
 
-**So item 15 stays unticked, and now for exactly one reason**: its `visual-reviewer` half, which T593
-closes. Its `reviewer` half is done.
+**So item 15 stays unticked, and now for exactly one reason**: its `visual-reviewer` half. T593 does
+not close it: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
+`2dc8825b`), and the half closes only when `visual-reviewer` returns a pass on `DataExportPanel`'s
+hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half is
+done.
 
 **`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
