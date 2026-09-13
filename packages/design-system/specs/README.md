@@ -1151,9 +1151,10 @@ closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**. **Row 5's decisi
 answered by row 6's closure, and its focus and press frames landed after it (T587), deliberately in
 that order so the frame shows the current control; its hover frame closed row 7 below (T593).**
 **Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and closed 2026-09-13
-(T593).**
+(T593).** **Row 8 (H5) was opened 2026-09-13 by `reviewer` reviewing PR #79, and is open (T594).**
 
-**State of this register, enumerated rather than summarised:** rows 1 through 7 all closed. This
+**State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
+row 8 open. This
 sentence has been wrong twice in three commits — once as "every row is closed", once as "rows 1–6 are
 closed" while row 5's own body said otherwise — which is why it now lists the rows instead of
 grouping them: a range is a claim about rows nobody reread. Four findings the review judged
@@ -1653,6 +1654,31 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    among them.
 
    **Owner: T593, both components. Closed 2026-09-13.**
+
+8. **H5 — row 7's sweep was scoped to the files #77 touched, and the same defect sits outside it —
+   open.** Row 7 says its two anchors were the only `*NotApplicable` stories deferring a state they
+   own **among #77's files**, and that holds. `reviewer`'s pass over PR #79 (2026-09-13) read past that
+   boundary and found the same shape in three more components. Each item below was checked against the
+   source by the session recording it, and this list is what that pass found, not the result of a
+   sweep. The first thing T594 owes is that sweep.
+   - **`PrivacyNotice`'s state trio does not depict its inline links.** `Hover`, `FocusVisible` and
+     `Active` force and clip `role: 'link', nth: 0` (`PrivacyNotice.stories.tsx`), which is the first
+     `Contents` entry. The inline-link recipe (`inlineLinkClasses`, `src/screens/PrivacyNotice/index.tsx`)
+     that `ErasedScreen` and `ThirdPartyObjectionForm` copy has no state frame. The objection-form
+     anchor (a `Button/secondary` look-alike with its own press fix) has no state story, and the
+     contact-route link (`text-link underline`) carries neither the hover signal nor the focus ring the
+     inline recipe does.
+   - **`ArchivalControl`'s privacy link has no state styling at all.** It is `text-text-secondary
+underline` (`src/screens/ArchivalControl/index.tsx`): no hover, press or focus classes. Both
+     `archival-control.md` §5 and `HoverFocusActiveNotApplicable`'s rendered text say it "carr[ies] its
+     own hover, focus and active states". This is a rendering defect against FR-037 and the focus-ring
+     rule, not only a missing frame.
+   - **`AccountErasurePanel`'s acknowledgement checkbox** is a local `<input type="checkbox">` with the
+     screen's own focus ring, and no story captures its focus-visible. Until 2026-09-13 the story said it
+     was "covered by its own component's stories"; there is no such component. The wording is corrected
+     in PR #79; the frame is owed here.
+
+   **Owner: T594. Fix by 2026-09-27.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this

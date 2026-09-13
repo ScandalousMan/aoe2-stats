@@ -61,15 +61,18 @@ export const Erased: Story = {
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
 }
 
-// README's gap register row 7 (H4): `ErasedScreen`'s home link is a local anchor styled directly
-// inside this screen (`index.tsx`), not a `Button` instance and not owned by any dialog or
-// checkbox — the same shape as `PrivacyNotice` and `ThirdPartyObjectionForm`'s own inline links,
-// which each carry this same `Hover`/`FocusVisible`/`Active` trio under a link clip (T591's "all
-// three or none"). `role: 'link'` is unambiguous here: `ErasedScreen` renders exactly one anchor.
+// README's gap register row 7 (H4): `ErasedScreen`'s privacy-notice link is a local anchor styled
+// directly inside this screen (`index.tsx`), not a `Button` instance and not owned by any dialog or
+// checkbox — the same shape as `ThirdPartyObjectionForm`'s own inline link, which carries this same
+// `Hover`/`FocusVisible`/`Active` trio under a link clip (T591's "all three or none"). Not
+// `PrivacyNotice`: its trio forces and clips `role: 'link', nth: 0`, the first table-of-contents
+// entry, not its inline-link recipe (`inlineLinkClasses`, `PrivacyNotice/index.tsx`), which has no
+// state frame of its own (README's gap register row 8, T594). `role: 'link'` is unambiguous here:
+// `ErasedScreen` renders exactly one anchor.
 const erasedScreenLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
 
 export const ErasedScreenHover: Story = {
-  name: 'terminal — hover on the ErasedScreen home link',
+  name: 'terminal — hover on the ErasedScreen privacy-notice link',
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
   parameters: {
     visualForceState: { state: 'hover', role: 'link' },
@@ -78,7 +81,7 @@ export const ErasedScreenHover: Story = {
 }
 
 export const ErasedScreenFocusVisible: Story = {
-  name: 'terminal — focus-visible on the ErasedScreen home link',
+  name: 'terminal — focus-visible on the ErasedScreen privacy-notice link',
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'link' },
@@ -87,7 +90,7 @@ export const ErasedScreenFocusVisible: Story = {
 }
 
 export const ErasedScreenActive: Story = {
-  name: 'terminal — active (pressed) on the ErasedScreen home link',
+  name: 'terminal — active (pressed) on the ErasedScreen privacy-notice link',
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
   parameters: {
     visualForceState: { state: 'active', role: 'link' },
@@ -97,23 +100,27 @@ export const ErasedScreenActive: Story = {
 
 // privacy-data-rights.md §5 "hover / focus-visible / active — owned by the `Button`s, the
 // `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the
-// `Acknowledgement` checkbox; the sections themselves are not interactive." This story defers only
-// the states of what `AccountErasurePanel` itself renders (`EraseButton`, `ConfirmDialog`'s actions,
-// the acknowledgement checkbox), each covered by its own component's stories. Corrected (README's gap
-// register row 7/H4): it used to defer `ErasedScreen`'s link too, a local anchor styled inside this
-// same file that none of those components own. That link's own hover, focus-visible and active are
-// not deferred to anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and
-// `ErasedScreenActive` above, judged against §5's own paragraph on that link.
+// `Acknowledgement` checkbox; the sections themselves are not interactive." This story defers the
+// states of the `Button` this screen renders directly (`Erase my account`) and of the `Dialog`'s own
+// primary/secondary actions, each a `Button` instance covered by `Button.stories.tsx`. It does not
+// defer the acknowledgement checkbox: a plain `<input type="checkbox">` styled locally in this file
+// (`focusRing`, `index.tsx`), owned by no component with its own stories. Its focus-visible is not
+// yet captured anywhere; that capture is owed by T594 (README's gap register row 8). Corrected
+// (README's gap register row 7/H4): it used to defer `ErasedScreen`'s link too, a local anchor
+// styled inside this same file that none of those components own. That link's own hover,
+// focus-visible and active are not deferred to anyone; they are `ErasedScreenHover`,
+// `ErasedScreenFocusVisible` and `ErasedScreenActive` above, judged against §5's own paragraph on
+// that link.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
-        The panel's own sections are not interactive — hover, focus and active belong to the
-        buttons, the dialog's actions and the acknowledgement checkbox, each already covered by
-        their own components' stories. This does not include `ErasedScreen`'s home link: a local
-        anchor styled inside this screen, covered by no other component's stories — see
-        `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above for its own
-        coverage.
+        The panel's own sections are not interactive — hover, focus and active belong to the buttons
+        and the dialog's actions, each already covered by their own components' stories. Two things
+        are not covered here: the acknowledgement checkbox is a local control of this screen whose
+        focus-visible no story captures yet (owed by task T594), and `ErasedScreen`'s privacy-notice
+        link is a local anchor styled inside this screen — see `ErasedScreenHover`,
+        `ErasedScreenFocusVisible` and `ErasedScreenActive` above for its own coverage.
       </p>
       <AccountErasurePanel {...args} />
     </div>

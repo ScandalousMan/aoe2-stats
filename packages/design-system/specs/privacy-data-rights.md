@@ -388,8 +388,9 @@ side at all.
 
 Gaps in play: **DS-4** (focus ring), **DS-5** (breakpoints), **DS-6** (reading measure — both panels
 are prose), and **DS-9**: the only inline link in these two components is the privacy-notice link in
-the `ErasedScreen` and (optionally) in the export contents statement, and both sit on `surface`, where
-`accent` with a permanent underline is the one measured pair (4.9 light / 7.7 dark). Neither panel
+the `ErasedScreen`, which sits on `surface` in `link` with a permanent underline — the pair measured in
+[the README's contrast table](./README.md) (`link` on `surface`). `DataExportPanel` renders no inline
+link: its one anchor is the `DownloadLink`, a filled control (§5). Neither panel
 paints an inline link on `surface-raised`: the callouts and the dialog body contain **no** inline
 links — their forward action is always a `Button`, never a link inside coloured-surface prose.
 
@@ -450,7 +451,7 @@ links — their forward action is always a `Button`, never a link inside coloure
 - Contrast per the README table, both themes: body `text-primary` on `surface`; callout bodies
   `text-primary` on `surface-raised`; callout headings `info` / `success` / `danger` on
   `surface-raised`; the destructive buttons' `danger` label and boundary on `surface`; the
-  privacy-notice link `accent` on `surface` (the only DS-9-permitted background).
+  privacy-notice link `link` on `surface`.
 - Reading order equals visual order equals DOM order, verified with CSS disabled: on the erasure panel,
   the irreversible lede and both consequence groups must read **before** the erase button in source, so
   a screen-reader user meets the warning before the control.

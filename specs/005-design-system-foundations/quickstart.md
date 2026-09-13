@@ -848,8 +848,9 @@ document, enumerate rather than group, because a range is a claim about members 
 **So item 15 stays unticked, and now for exactly one reason**: its `visual-reviewer` half. T593 does
 not close it: T593 supplies the frames a verdict needs (landed 2026-09-13, PR #79, with baselines in
 `2dc8825b`), and the half closes only when `visual-reviewer` returns a pass on `DataExportPanel`'s
-hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half is
-done.
+hover and on `AccountErasurePanel`'s `ErasedScreen` link over those baselines. Its `reviewer` half
+was given for the work before PR #79 (the ACCEPT above); for #79 itself, see the end of the
+third-pass entry below.
 
 **`visual-reviewer`, run 2026-09-13 (third pass) — the two verdicts the second pass left owed.** Same
 method as both earlier passes: committed CI baselines (`2dc8825b`), no local capture. The review
@@ -866,12 +867,20 @@ Spot-checked by the dispatching session: `ready-hover`/`ready-active` dark 375,
 `erased-screen-hover`/`-active` dark 1280, and `erased-screen-focus-visible` light 768 show what the
 table says.
 
-**This resolves the one reason the paragraph above gave for leaving item 15 unticked.** Every
-component the second pass judged now has a whole PASS, and the `reviewer` half was already given.
-Two limits are recorded rather than resolved here. First, this pass was dispatched by the session
-that wrote T593: `visual-reviewer` is a separate agent, but the walk above counts a same-session run
-as non-independent. Second, `reviewer` has not yet reviewed PR #79, which carries T593 and this
-entry.
+**What this pass settles, and what it does not.** Every component the second pass judged now has a
+whole PASS. That is narrower than item 15, which asks for a pass on **every affected component**, and
+the paragraph above was wrong to treat those two verdicts as the only thing left. `reviewer`'s pass
+over PR #79 (2026-09-13, REJECT) looked past #77's files and found the same defect elsewhere:
+`PrivacyNotice`'s inline, objection-form and contact-route links have no state frame, since its state
+trio depicts a `Contents` entry; `ArchivalControl`'s privacy link has no state styling at all; and
+`AccountErasurePanel`'s acknowledgement checkbox has no focus-visible frame. These are
+`packages/design-system/specs/README.md`'s register row 8 (H5) and task T594, which begins with a
+sweep of every component rather than this list.
+
+**So item 15 stays unticked, for these reasons:** T594 and a `visual-reviewer` verdict on what it
+changes; `reviewer`'s approval of PR #79 once the corrections from that REJECT land; and one recorded
+limit, that this pass was dispatched by the session that wrote T593 (`visual-reviewer` is a separate
+agent, but the walk above counts a same-session run as non-independent).
 
 **`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
