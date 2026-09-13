@@ -832,11 +832,21 @@ is that a press differs from hover by a boundary **and** a fill, never by fill a
 **Production-readiness item 15 is not closed, and neither half is.** The `visual-reviewer` half was
 claimed on 18 PASS verdicts; it is 16 whole verdicts plus one partial, with `AccountErasurePanel`
 owed a story before it can have a verdict at all and `DataExportPanel` owed its hover frame — both
-T593. The second half, the general `reviewer`'s approval, is a REJECT as of
-2026-09-12 — the findings are this section and the register edits above, plus a shallow-clone defect
-in `.github/workflows/baselines.yml` that would have failed the regeneration workflow on any run that
-moved no baseline. Item 15 stays unticked, now with both halves' status stated rather than one
-asserted.
+T593.
+
+**The second half, the general `reviewer`'s approval, is given — ACCEPT, 2026-09-13, after three
+REJECTs.** The findings it produced are the register edits above and most of this section, plus a
+shallow-clone defect in `.github/workflows/baselines.yml` that would have failed the regeneration
+workflow on any run that moved no baseline, and a count published as prose that no test asserted.
+Worth recording for the next feature rather than only for this one: all three REJECTs were the same
+failure, a claim about a set written from the members in front of the author — a summary over eight
+components written from four, a sibling sweep over two written from one, and an index over seven rows
+rewritten without the rows. The countermeasure that stuck is mechanical rather than diligent
+(`findCountDrift`, which fails when the prose and the tree disagree) plus a format rule: in a living
+document, enumerate rather than group, because a range is a claim about members nobody reread.
+
+**So item 15 stays unticked, and now for exactly one reason**: its `visual-reviewer` half, which T593
+closes. Its `reviewer` half is done.
 
 **`docs/risks.md`'s "visual-reviewer returns a reasoned FAIL on a component deviated from its spec"
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:

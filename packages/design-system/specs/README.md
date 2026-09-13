@@ -55,8 +55,10 @@ trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts 
 against `EXPECTED_STORY_COUNT` and `EXPECTED_BASELINE_COUNT` in its own source, and fails naming this
 section when either moves. It runs on every pull request **that reaches the `visual` job** — that
 job's paths filter, not literally every pull request; the distinction costs nothing here, because a
-change that moves either count necessarily touches `packages/design-system`, which is what the filter
-selects on. That assertion is separate from the set equality the
+change that moves either count necessarily touches `packages/design-system`, one of the paths that
+filter selects on: the story count comes from the Storybook index, built from this package's own `src`
+and nothing outside it, and the baseline count counts files under this package's `__screenshots__/`.
+`nightly.yml` also runs the check unfiltered. That assertion is separate from the set equality the
 same check performs between the built Storybook index and the files on disk, and it has to be: set
 equality alone stays green when a story is added, because the new story does have its six captures —
 which is exactly how this paragraph would go stale without anyone touching it.
