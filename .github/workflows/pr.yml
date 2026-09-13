@@ -297,6 +297,17 @@ jobs:
       # suite (real temp-dir fixtures, not the live tree) runs immediately after.
       - run: node scripts/checks/story-baselines-duplicates.mjs
       - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
+      # Two fixture-only suites whose own checks cannot run here, gathered rather than paired with
+      # them. `story-baselines.mjs` needs the built Storybook index and so runs in the `visual` job
+      # below; `baseline-regeneration-diff.mjs` is a reporting tool, never a gate — a regeneration
+      # legitimately moves anything the change it follows touched — and runs in `baselines.yml`,
+      # beside the commit it explains. Their suites need neither the build nor the real tree (a temp
+      # index, a temp baseline directory, paired PNGs in a temp dir), and running them here rather
+      # than after their checks keeps a regression in either check from being hidden behind an
+      # unrelated Storybook build failure. Both would otherwise run nowhere at all, which is what
+      # they did until 2026-09-12.
+      - run: node --test scripts/checks/story-baselines.test.mjs
+      - run: node --test scripts/checks/baseline-regeneration-diff.test.mjs
       # T580 follow-up (adversarial review of #74): `tests/visual/focus-ring.spec.ts` imports
       # `packages/design-system/tokens/contrast.mjs`'s `contrastRatioRgb` — an `.mjs` module loaded
       # from a spec that Playwright transpiles to CommonJS, the exact shape that broke CI in

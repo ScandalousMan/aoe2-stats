@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // T592: reads a `chore(visual): regenerate baselines from CI` commit so a reviewer does not have to
-// read all 3262 files by hand. `.github/workflows/baselines.yml` keeps `--update-snapshots=all`
-// (that file's own "Challenged and kept, 2026-09-12" header comment carries the full reasoning: a
-// baseline's provenance has to be a `git` fact, which `--changed` would give up) — the cost is that
+// read every rewritten capture by hand (how many that is, this file does not restate — see
+// `packages/design-system/specs/README.md`'s "The baseline set, as it stands", the one place that
+// number lives and the check that asserts it).
+//
+// `.github/workflows/baselines.yml` keeps `--update-snapshots=all` (that file's own "Challenged and
+// kept, 2026-09-12" header comment carries the full reasoning: a baseline's provenance has to be a
+// `git` fact, which `--changed` would give up) — the cost is that
 // the resulting commit rewrites every selected capture, most of which only moved by anti-aliasing
 // noise, and `git diff --stat` cannot tell a real move from noise. This script can: it decodes each
 // rewritten PNG against its own predecessor (`git show <base>:<path>` vs `git show <head>:<path>`)
@@ -42,8 +46,13 @@
 //         headRef defaults to HEAD; baseRef defaults to `<headRef>^` (its direct parent) when not
 //         given — the "one regeneration commit against the commit it rewrote" shape this task's own
 //         two validation commits (`ba20f074`, `822b4904`) both are.
-// Exit:   0 always, unless the `git` commands themselves fail (a bad ref, not a repository) or no
-//         PNG under `packages/design-system/__screenshots__/` differs between the two refs at all.
+// Exit:   0 always, unless the `git` commands themselves fail. A pair of refs with no differing PNG
+//         under `packages/design-system/__screenshots__/` is not one of those failures: it reports
+//         zero rewritten captures and exits 0. A ref that does not resolve is — and the case that
+//         actually arises is `HEAD^` in a shallow clone, where `HEAD` is the boundary and its parent
+//         is simply absent from the object store (`git diff` exits 128, "bad revision"). That is why
+//         `baselines.yml` runs this only on a run that committed: after a commit, `HEAD^` is the
+//         boundary commit itself and resolves. Pass explicit refs when calling it anywhere else.
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -189,13 +198,23 @@ export function buildReport({
     const ratio = dimensionMismatch ? null : diffPixels / totalPixels
     const bucket = classifyDiff({ dimensionMismatch, diffPixels })
     const label = deriveGroupLabel(fileName, appRouteNames)
-    return { path: newPath, fileName, label, dimensionMismatch, diffPixels, totalPixels, ratio, bucket }
+    return {
+      path: newPath,
+      fileName,
+      label,
+      dimensionMismatch,
+      diffPixels,
+      totalPixels,
+      ratio,
+      bucket,
+    }
   })
 
   const groups = new Map()
   for (const capture of captures) {
     const key = `${capture.label.kind}:${capture.label.id}`
-    if (!groups.has(key)) groups.set(key, { kind: capture.label.kind, id: capture.label.id, captures: [] })
+    if (!groups.has(key))
+      groups.set(key, { kind: capture.label.kind, id: capture.label.id, captures: [] })
     groups.get(key).captures.push(capture)
   }
 
