@@ -279,6 +279,16 @@ jobs:
       # other static source checks above; its own `node --test` suite runs immediately after.
       - run: node scripts/checks/story-docs.mjs
       - run: node --test scripts/checks/story-docs.test.mjs
+      # T594: row 8 (H5) of packages/design-system/specs/README.md's "Contrast-signal and
+      # duplicate-baseline gap register" carries tables this script renders between its
+      # `state-coverage:begin`/`end` markers (record 1 — every local interactive element — and
+      # record 3 — every primitive's variant-by-state matrix). Parses source and stories with the
+      # TypeScript compiler API, never a line grep; fails when that region differs from a fresh
+      # render against the live tree, never on a `none` cell by itself (`--write` regenerates it).
+      # Needs no build, same as the other static source checks above; its own `node --test` suite,
+      # planted shapes each with a contrast case, runs immediately after.
+      - run: node scripts/checks/state-coverage.mjs
+      - run: node --test scripts/checks/state-coverage.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
