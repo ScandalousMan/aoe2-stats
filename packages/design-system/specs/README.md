@@ -1151,7 +1151,11 @@ closed 2026-09-11 (T585)**, **row 6 closed 2026-09-12 (T588)**. **Row 5's decisi
 answered by row 6's closure, and its focus and press frames landed after it (T587), deliberately in
 that order so the frame shows the current control; its hover frame closed row 7 below (T593).**
 **Row 7 (H4) was opened 2026-09-12 by `reviewer` reviewing these closures, and closed 2026-09-13
-(T593).** **Row 8 (H5) was opened 2026-09-13 by `reviewer` reviewing PR #79, and is open (T594, T595, T596).**
+(T593).** **Row 8 (H5) was opened 2026-09-13 by `reviewer` reviewing PR #79; its sweep half was
+rejected twice more (PR #80's hand-typed pass, then a second hand-typed pass, both for the same
+partial-set shape one level down) before T594 was amended to require an extractor,
+`scripts/checks/state-coverage.mjs`, and closed with that rebuild (producing findings F1-F18, F9a and
+F10a below, and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, T596).**
 
 **State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
 row 8 open. This
@@ -1657,45 +1661,487 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
 
 8. **H5 — row 7's sweep was scoped to the files #77 touched, and the same defect sits outside it —
    open.** Row 7 says its two anchors were the only `*NotApplicable` stories deferring a state they
-   own **among #77's files**, and that holds. `reviewer`'s pass over PR #79 (2026-09-13) read past that
-   boundary and found the same shape in three more components, and later passes found a fourth item
-   one level down, in a primitive's own stories. Each item below was checked against the source by
-   the session recording it, and this list is what the review passes over #79 found, not the
-   result of a sweep. The first thing owed is that sweep (T594); the fixes follow it (T595, and T596 for
-   `ArchivalControl`'s link, which needs a design decision first).
-   - **`PrivacyNotice`'s state trio does not depict its inline links.** `Hover`, `FocusVisible` and
-     `Active` force and clip `role: 'link', nth: 0` (`PrivacyNotice.stories.tsx`), which is the first
-     `Contents` entry. The inline-link recipe (`inlineLinkClasses`, `src/screens/PrivacyNotice/index.tsx`)
-     that `ErasedScreen` and `ThirdPartyObjectionForm` copy has no state frame. The objection-form
-     anchor (a `Button/secondary` look-alike with its own press fix) has no state story, and the
-     contact-route link (`text-link underline`) carries neither the hover signal nor the focus ring the
-     inline recipe does.
-   - **`ArchivalControl`'s privacy link has no state styling at all.** It is `text-text-secondary
-underline` (`src/screens/ArchivalControl/index.tsx`): no hover, press or focus classes.
-     `HoverFocusActiveNotApplicable`'s rendered text says the link "carr[ies] its own hover, focus and
-     active states", and `archival-control.md` §5 assigns those states to it ("owned by `Button` and by
-     the privacy link"). This is a rendering defect against FR-037 and the focus-ring rule, not only a
-     missing frame.
-   - **`AccountErasurePanel`'s acknowledgement checkbox** is a local `<input type="checkbox">` with the
-     screen's own focus ring, and no story captures its focus-visible. Until 2026-09-13 the story said it
-     was "covered by its own component's stories"; there is no such component. The wording is corrected
-     in PR #79; the frame is owed here.
-   - **`Button.stories.tsx` has no hover story for `secondary`, `ghost` or `destructive`.** It has a
-     focus-visible and a press story for every variant and a hover story for `primary` alone, which
-     FR-042's "every variant and every applicable state" does not allow of a primitive's own stories.
-     The gap is in `Button`'s stories, not in every baseline: other components' own stories do capture
-     a hovered non-`primary` `Button` (`FavouriteToggle`'s `ghost`, `ReplayAvailabilityList`'s
-     `secondary` `DownloadAction`). What it breaks is every sentence, in a story or a spec, that defers
-     a non-`primary` button's hover to `Button`'s stories. PR #79 corrected the two it had written
-     itself (`AccountErasurePanel`, `DataExportPanel`). Review passes then found more, one or two per
-     pass: `MatchDetailPanel`'s story text, and spec delegations in `archival-control.md`,
-     `manual-upload.md`, `match-history.md`, `sign-in-screen.md`, `structural-tier.md`,
-     `analysis-timeline.md` and `shared-primitives.md`'s `Dialog`. Two attempts to list them all in
-     PR #79, one by reading and one by grep, were each incomplete on the next pass. So **this row does
-     not list them**: which sentences defer hover to a story `Button.stories.tsx` does not have is T594's sweep
-     output, and a partial list here would be one more claim about a set that nobody enumerated.
+   own **among #77's files**, and that held only for #77's files. `reviewer`'s pass over PR #79
+   (2026-09-13) read past that boundary and found the same shape in three more components, and later
+   passes found a fourth item one level down, in a primitive's own stories; those later passes were
+   themselves partial, which is exactly the premise T594 was opened to test. **The orchestrator
+   rejected T594's first hand-back, 2026-09-13, for repeating that same partial-set shape in five
+   places** — two of seventeen primitive matrices built, conclusions asserted without their records, a
+   grep standing in for "read in full," the `apps/web`-composed handoff dropped, and three generic
+   deferrals waved through as "cannot be false" instead of filed. This is the corrected sweep. No
+   source, story or baseline changed in T594; T595 and T596 close what this enumerates.
 
-   **Owners: T594 (the sweep), T595 (the fixes), T596 (`ArchivalControl`'s link). Fix by 2026-09-27.**
+   **A second hand-back, on PR #80, was rejected 2026-09-13 for the same shape one level down.** A
+   hand-typed sweep — reading every file the Method paragraph below now reads mechanically — fixed the
+   members three reviewer passes had shown it (`SiteHeader`'s skip link, `ThirdPartyObjectionForm`'s
+   input, `PrivacyNotice`'s section headings; a size check applied to hover only; `Menu`'s F15/F16
+   gaps never carried to `ProfileSummary` and `SiteHeader`, which defer to them) and, being a fourth
+   hand pass over the same 41 directories, offered no reason to expect it had not missed a fifth set
+   of siblings the same way. T594 was amended the same day to require an extractor for records 1 and
+   3 — `scripts/checks/state-coverage.mjs`, tested by `scripts/checks/state-coverage.test.mjs` — so
+   that what row 8 asserts about the source is asserted by a program that reads all 41 directories
+   identically, not by a person's Nth attention pass over them. **This is that rebuild.**
+
+   **Method.** `scripts/checks/state-coverage.mjs` parses every component's own (non-story, non-test)
+   source and every `*.stories.tsx` file with the TypeScript compiler API (`ts.createSourceFile`,
+   already a direct `packages/design-system` devDependency), never a line grep. **Record 1** walks
+   every JSX element in a component's own source and reports a candidate — an intrinsic interactive
+   tag, a `role="button"`/`role="link"`, any element carrying `tabIndex`, or any element whose
+   resolved `className` carries a `hover:`/`focus-visible:`/`active:` utility even with none of the
+   above — with its own classes, resolved through the same file's own `const` declarations and
+   `cx()`/`clsx()` calls, never a second file. **Record 3** finds every `Button`, `Link`, `Field` and
+   `Menu` instance anywhere in the tree, with `variant`/`size` resolved against a literal prop/arg or
+   the primitive's own default (read from its `index.tsx`) when omitted.
+
+   For both records, a `visualForceState`'s `role`/`name`/`nth` is matched to the element or instance
+   it targets by `resolveNameMatch` (`scripts/checks/state-coverage.mjs`'s own exported function):
+   a literal JSX text match first; failing that, a name found anywhere in the story's own `args`
+   (merged with the component's default meta `args`, at any depth — `Dialog`'s
+   `{ primaryAction: { label: 'Turn it off' } }`) attributed to the sole candidate rendered from a
+   `.map()`/`.flatMap()` over a literal array (`SiteHeader`'s `NavItem`, one of several `items`); an
+   `aria-hidden` element is never a candidate at all, the same exclusion Playwright's own `getByRole`
+   applies (`FavouriteToggle`'s decoy `Button`); a bare `nth` position is resolved against the
+   candidates whose own recorded line is a real render position — excluding a reusable local helper
+   function's declaration site, which a static pass cannot multiply out to its real use sites
+   (`PrivacyNotice`'s `InlineLink` recipe, declared once, invoked many times) — sorted by line.
+
+   **A dynamic `variant`/`size`/label and a conditional branch both resolve against a specific
+   story's own args, not only a literal prop.** Every JSX candidate carries its own _guards_ — the
+   `if`/ternary/`&&` conditions between the file's own top and that candidate, each `{ expr, truthy
+}` — and, for a helper _component_ invoked from exactly one known call site, that call site's own
+   guards too (`FavouriteToggle`'s `if (!authenticated) { return <SignedOutControl /> }` excludes
+   `SignedOutControl`'s own `Button` once a story's own `authenticated: true` arg resolves the guard
+   false, leaving the real control the sole, unambiguous candidate). `evaluateExpr`
+   (`scripts/checks/state-coverage.mjs`) evaluates a guard, a `variant={primaryAction.variant ??
+'destructive'}` attribute, or a `{primaryAction.label}` child against a scope built from the
+   component's own prop defaults overridden by the story's merged `args` (nested objects included) —
+   literals, `??`/`&&`/`||`, `!`, `===`/`!==`, property access and ternaries only; a function call or
+   a value truly outside the story's own data stays unresolved rather than guessed.
+
+   **A `visualForceState` naming a `selector` and no `role` targets a specific CSS element, never a
+   primitive by its accessible role** — it is not a candidate for role-based matching against any
+   number of `Button`/`Link`/`Field`/`Menu` instances the component happens to render
+   (`FavouritesList`'s own `Hover`/`FocusVisible`/`Active`, `selector: 'a[href="/players/1"]'`,
+   target its row link, never either of its two, individually name-resolvable `Button`s).
+
+   **A `role` attribute that is present but dynamic never falls back to its tag's intrinsic role.**
+   `MenuItemRow`'s own `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}` overrides
+   `<button>`'s intrinsic `button` role at render time, whatever it resolves to; treating the
+   unresolved attribute as if it fell back to `button` would pool it with `Menu`'s own trigger — two
+   elements that can never actually share a role — and invent an ambiguity between them. Excluded
+   from every implied-role pool instead, correctly leaving `Menu`'s trigger as the sole `role:
+'button'` candidate.
+
+   **A `play()` function is walked separately** for the one shape that leaves real DOM focus behind
+   it — a `.focus()` call or a `toHaveFocus()` assertion, resolved against a `getByRole`/`findByRole`
+   call in the same function or an earlier `const` binding in it — and never for hover or press,
+   which a `play()` can never leave (`tests/visual/stories.spec.ts`'s own measured `VisualForceState`
+   comment).
+
+   A cell is `'none'` only when **no** force-state of that state shares the candidate's implied role
+   anywhere in its own component's stories — a confirmed absence. When one does, but
+   `resolveNameMatch` cannot settle it on exactly one candidate, the cell is `'unresolved: <reason>'`
+   instead — printed, never guessed, and never folded into `'none'`, which used to make an
+   unresolved case indistinguishable from a real gap.
+
+   **Consistency mode is structural, not a second copy of the data.** Records 1 and 3 are rendered as
+   markdown tables directly between the `state-coverage:begin`/`state-coverage:end` HTML-comment
+   markers below — `node scripts/checks/state-coverage.mjs --write` regenerates that region in place,
+   formatted through this repository's own `prettier` binary (piped via stdin) so the committed region
+   is byte-identical to what `pnpm exec prettier --check` already expects, and check mode (no flag)
+   fails when the region on disk differs from that same fresh, formatted render. There is no JSON
+   block beside it: the rendered tables **are** the record, so a hand-written coverage claim about a
+   record-1 element or a matrix cell that disagreed with them — the defect the orchestrator's review
+   of this task's first remediation found (`coveredBy: none` for `NavItem` and `PrivacyNotice`'s
+   `Contents` entry, sitting beside prose calling both "covered") — cannot recur silently: editing the
+   visible text _is_ editing the check's own input. Every claim in 8c and 8d below about a record-1
+   element or a matrix cell cites a row inside the generated region rather than restating it.
+
+<!-- state-coverage:begin -->
+
+_Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit between these markers — run the script instead._
+
+**Record 1 — every local interactive element (41 component directories scanned).**
+
+| Component                       | Element                                      | File:Line                                                                | Hover (class → story)                                                                          | Focus-visible (class → story)                                                                                                            | Active (class → story)                                                                                                  |
+| ------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| composites/FavouritesList       | a                                            | packages/design-system/src/composites/FavouritesList/index.tsx:244       | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → none                            | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → none |
+| composites/MatchRow             | a                                            | packages/design-system/src/composites/MatchRow/index.tsx:397             | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → none                            | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → none |
+| composites/PlayerResultRow      | a                                            | packages/design-system/src/composites/PlayerResultRow/index.tsx:54       | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → none                            | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → none |
+| composites/SearchBox            | label                                        | packages/design-system/src/composites/SearchBox/index.tsx:126            | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| composites/SearchBox            | input                                        | packages/design-system/src/composites/SearchBox/index.tsx:129            | hover:border-border-strong → none                                                              | focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none     | none → none                                                                                                             |
+| composites/SiteHeader           | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:156           | none → none                                                                                    | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | none → none                                                                                                             |
+| composites/SiteHeader           | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:183           | hover:underline → none                                                                         | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | none → none                                                                                                             |
+| composites/SiteHeader           | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:209           | hover:bg-surface-sunken hover:text-text-primary → Hover                                        | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                | active:border-border-strong active:bg-background active:text-text-primary → Active                                      |
+| composites/UploadControl        | input[tabIndex=-1]                           | packages/design-system/src/composites/UploadControl/index.tsx:274        | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| primitives/Button               | a                                            | packages/design-system/src/primitives/Button/index.tsx:189               | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| primitives/Button               | button                                       | packages/design-system/src/primitives/Button/index.tsx:207               | none → Hover                                                                                   | none → FocusVisible; SecondaryFocusVisible; GhostFocusVisible; DestructiveFocusVisible                                                   | none → Active; SecondaryActive; DestructiveActive; GhostActive                                                          |
+| primitives/Dialog               | h2[tabIndex=-1]                              | packages/design-system/src/primitives/Dialog/index.tsx:102               | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| primitives/Field                | label                                        | packages/design-system/src/primitives/Field/index.tsx:132                | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| primitives/Link                 | a                                            | packages/design-system/src/primitives/Link/index.tsx:140                 | hover:text-link-hover hover:decoration-2 → Hover                                               | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                             | active:text-link-hover active:decoration-2 → ActiveStandalone; ActiveInline                                             |
+| primitives/Menu                 | button                                       | packages/design-system/src/primitives/Menu/index.tsx:144                 | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → EscapeReturnsFocusToTrigger (play-driven)   | active:bg-background active:ring-2 active:ring-border-strong → none                                                     |
+| primitives/Menu                 | button[role=menuitem][tabIndex=unresolved]   | packages/design-system/src/primitives/Menu/index.tsx:242                 | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardNavigation                          | active:border-l-border-strong active:bg-background → none                                                               |
+| primitives/Menu                 | button[role=unresolved][tabIndex=unresolved] | packages/design-system/src/primitives/Menu/index.tsx:352                 | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → none                            | active:border-l-border-strong active:bg-background → none                                                               |
+| primitives/Page                 | main[tabIndex=-1]                            | packages/design-system/src/primitives/Page/index.tsx:64                  | none → none                                                                                    | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                     | none → none                                                                                                             |
+| primitives/Table                | div[role=region][tabIndex=0]                 | packages/design-system/src/primitives/Table/index.tsx:153                | none → none                                                                                    | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                     | none → none                                                                                                             |
+| primitives/Table                | tr                                           | packages/design-system/src/primitives/Table/index.tsx:237                | hover:bg-surface-sunken → none                                                                 | none → none                                                                                                                              | active:bg-surface-sunken active:border-l-border-strong → none                                                           |
+| primitives/Table                | a                                            | packages/design-system/src/primitives/Table/index.tsx:281                | none → none                                                                                    | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                     | active:after:ring-2 active:after:ring-inset active:after:ring-border-strong → none                                      |
+| primitives/Tooltip              | button                                       | packages/design-system/src/primitives/Tooltip/index.tsx:259              | none → HoverRevealed                                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardFocusRevealed; DismissedAfterEscape | none → none                                                                                                             |
+| screens/AccountErasurePanel     | label                                        | packages/design-system/src/screens/AccountErasurePanel/index.tsx:269     | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| screens/AccountErasurePanel     | input                                        | packages/design-system/src/screens/AccountErasurePanel/index.tsx:270     | none → none                                                                                    | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | none → none                                                                                                             |
+| screens/AccountErasurePanel     | a                                            | packages/design-system/src/screens/AccountErasurePanel/index.tsx:304     | hover:text-link-hover hover:decoration-2 → ErasedScreenHover                                   | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → ErasedScreenFocusVisible                    | active:text-link-hover active:decoration-2 active:underline-offset-4 → ErasedScreenActive                               |
+| screens/ArchivalControl         | a                                            | packages/design-system/src/screens/ArchivalControl/index.tsx:137         | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| screens/DataExportPanel         | a                                            | packages/design-system/src/screens/DataExportPanel/index.tsx:149         | hover:bg-accent-hover hover:underline hover:decoration-2 hover:underline-offset-2 → ReadyHover | focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast → ReadyFocusVisible                | active:bg-accent-active active:underline-offset-4 → ReadyActive                                                         |
+| screens/PrivacyNotice           | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:242           | hover:text-link-hover hover:decoration-2 → none                                                | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | active:text-link-hover active:decoration-2 active:underline-offset-4 → none                                             |
+| screens/PrivacyNotice           | h2[tabIndex=-1]                              | packages/design-system/src/screens/PrivacyNotice/index.tsx:264           | none → none                                                                                    | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                     | none → none                                                                                                             |
+| screens/PrivacyNotice           | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:490           | hover:text-link-hover → Hover                                                                  | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                | active:text-link-hover active:bg-surface-sunken active:ring-2 active:ring-border-strong active:rounded-control → Active |
+| screens/PrivacyNotice           | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:740           | hover:bg-surface-sunken → none                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | active:bg-background active:ring-2 active:ring-border-strong → none                                                     |
+| screens/PrivacyNotice           | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:797           | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| screens/ThirdPartyObjectionForm | label                                        | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:127 | none → none                                                                                    | none → none                                                                                                                              | none → none                                                                                                             |
+| screens/ThirdPartyObjectionForm | input                                        | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130 | none → none                                                                                    | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                        | none → none                                                                                                             |
+| screens/ThirdPartyObjectionForm | a                                            | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:223 | hover:text-link-hover hover:decoration-2 → Hover                                               | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                | active:text-link-hover active:decoration-2 active:underline-offset-4 → Active                                           |
+
+**Record 3 — every primitive matrix.**
+
+#### `Badge`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Button`
+
+| Row               | Rest                                                                                                                                                                                                                                                                                                 | Hover                        | Focus-visible                                                   | Press (active)                             | Disabled |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------- | ------------------------------------------ | -------- |
+| destructive\|lg   | screens/AccountErasurePanel (packages/design-system/src/screens/AccountErasurePanel/index.tsx:218)                                                                                                                                                                                                   | none                         | Dialog:FocusVisible                                             | none                                       | none     |
+| destructive\|md   | Button:Destructive                                                                                                                                                                                                                                                                                   | none                         | Button:DestructiveFocusVisible                                  | Button:DestructiveActive                   | none     |
+| ghost\|md         | Button:Ghost; screens/ProfileSummary (packages/design-system/src/screens/ProfileSummary/ProfileSummary.stories.tsx:100)                                                                                                                                                                              | FavouriteToggle:Hover        | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active | none     |
+| ghost\|unresolved | composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:115); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:126); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:171) | none                         | none                                                            | none                                       | none     |
+| primary\|lg       | 20 real call sites                                                                                                                                                                                                                                                                                   | Button:Hover                 | Button:FocusVisible                                             | Button:Active                              | none     |
+| primary\|md       | 7 real call sites                                                                                                                                                                                                                                                                                    | none                         | Callout:FocusVisible                                            | none                                       | none     |
+| secondary\|lg     | 17 real call sites                                                                                                                                                                                                                                                                                   | ReplayAvailabilityList:Hover | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active              | none     |
+| secondary\|md     | 22 real call sites                                                                                                                                                                                                                                                                                   | none                         | Button:SecondaryFocusVisible                                    | Button:SecondaryActive                     | none     |
+| unresolved\|lg    | primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:127); primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:138)                                                                                                                                       | none                         | none                                                            | none                                       | none     |
+
+#### `Callout`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Dialog`
+
+| Row                                                             | Rest                                                       | Hover | Focus-visible | Press (active) | Disabled |
+| --------------------------------------------------------------- | ---------------------------------------------------------- | ----- | ------------- | -------------- | -------- |
+| h2 @ packages/design-system/src/primitives/Dialog/index.tsx:102 | packages/design-system/src/primitives/Dialog/index.tsx:102 | none  | none          | none           | none     |
+
+#### `EmptyState`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `ErrorState`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Field`
+
+| Row | Rest               | Hover       | Focus-visible      | Press (active) | Disabled |
+| --- | ------------------ | ----------- | ------------------ | -------------- | -------- |
+| lg  | Field:SizeLg       | none        | none               | none           | none     |
+| md  | 10 real call sites | Field:Hover | Field:FocusVisible | none           | none     |
+
+#### `Link`
+
+| Row        | Rest              | Hover      | Focus-visible     | Press (active)        | Disabled |
+| ---------- | ----------------- | ---------- | ----------------- | --------------------- | -------- |
+| inline     | 7 real call sites | none       | none              | Link:ActiveInline     | none     |
+| standalone | 5 real call sites | Link:Hover | Link:FocusVisible | Link:ActiveStandalone | none     |
+
+#### `Menu`
+
+| Row       | Rest              | Hover      | Focus-visible                                                                                                             | Press (active) | Disabled |
+| --------- | ----------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- | -------------- | -------- |
+| actions   | 6 real call sites | none       | none                                                                                                                      | none           | none     |
+| selection | 7 real call sites | Menu:Hover | Menu:FocusVisible; Menu:KeyboardNavigation; Menu:EscapeReturnsFocusToTrigger (play-driven: {"role":"button","name":null}) | Menu:Active    | none     |
+
+#### `Page`
+
+| Row                                                            | Rest                                                    | Hover | Focus-visible | Press (active) | Disabled |
+| -------------------------------------------------------------- | ------------------------------------------------------- | ----- | ------------- | -------------- | -------- |
+| main @ packages/design-system/src/primitives/Page/index.tsx:64 | packages/design-system/src/primitives/Page/index.tsx:64 | none  | none          | none           | none     |
+
+#### `Panel`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Section`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Skeleton`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `StatValue`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Table`
+
+| Row                                                                          | Rest                                                      | Hover | Focus-visible | Press (active) | Disabled |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------- | ----- | ------------- | -------------- | -------- |
+| div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153 | packages/design-system/src/primitives/Table/index.tsx:153 | none  | none          | none           | none     |
+| tr @ packages/design-system/src/primitives/Table/index.tsx:237               | packages/design-system/src/primitives/Table/index.tsx:237 | none  | none          | none           | none     |
+| a @ packages/design-system/src/primitives/Table/index.tsx:281                | packages/design-system/src/primitives/Table/index.tsx:281 | none  | none          | none           | none     |
+
+#### `Text`
+
+| Row                            | Rest | Hover | Focus-visible | Press (active) | Disabled |
+| ------------------------------ | ---- | ----- | ------------- | -------------- | -------- |
+| (no local interactive element) | N/A  | N/A   | N/A           | N/A            | N/A      |
+
+#### `Tooltip`
+
+| Row                                                                  | Rest                                                        | Hover         | Focus-visible                               | Press (active) | Disabled |
+| -------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- | ------------------------------------------- | -------------- | -------- |
+| button @ packages/design-system/src/primitives/Tooltip/index.tsx:259 | packages/design-system/src/primitives/Tooltip/index.tsx:259 | HoverRevealed | KeyboardFocusRevealed; DismissedAfterEscape | none           | none     |
+
+<!-- state-coverage:end -->
+
+**8c. Record 2 — every handoff, all 29 spec files re-read end to end this pass (not the 6 the
+prior hand-back read), quoted with file:line, counted per named control (a sentence naming several
+controls in one clause — `privacy-data-rights.md:284-286` names five — is that many handoffs, the
+convention that makes this tally's own total auditable one name at a time rather than one sentence
+at a time).**
+
+| File                       | Handoffs | Cited lines                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | -------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOVERNANCE.md`            |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `README.md` (§1-H4)        |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `analysis-timeline.md`     |        2 | :39 (Button), :288 (Button)                                                                                                                                                                                                                                                                                          |
+| `archival-control.md`      |        2 | :196 (Button, privacy link)                                                                                                                                                                                                                                                                                          |
+| `capture-state-badge.md`   |        1 | :143 (Badge)                                                                                                                                                                                                                                                                                                         |
+| `civilisation-icon.md`     |        1 | :78 (MatchRow)                                                                                                                                                                                                                                                                                                       |
+| `color-tokens.md`          |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `country-flag.md`          |        0 | §4's handoff (:110-113) is superseded by §11.6 (:372-395), which now states the flag's own states directly — 0 live handoffs, corrected from the prior tally's 1                                                                                                                                                     |
+| `favourite-toggle.md`      |        1 | :98-100 (Button/ghost)                                                                                                                                                                                                                                                                                               |
+| `favourites-list.md`       |        1 | :108-126 (FavouriteToggle)                                                                                                                                                                                                                                                                                           |
+| `footer.md`                |        3 | :102, :104, :106 (Link, ×3)                                                                                                                                                                                                                                                                                          |
+| `game-asset-tokens.md`     |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `manual-upload.md`         |        2 | :180, :192 (Button, ×2)                                                                                                                                                                                                                                                                                              |
+| `map-thumbnail.md`         |        1 | :73 (MatchRow)                                                                                                                                                                                                                                                                                                       |
+| `match-history.md`         |        2 | :169, :171 (Button, ×2)                                                                                                                                                                                                                                                                                              |
+| `player-avatar.md`         |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `player-colour-swatch.md`  |        1 | :93 (enclosing row link — N7)                                                                                                                                                                                                                                                                                        |
+| `player-search.md`         |        0 | :207-232 describes `Input`/`PlayerResultRow`'s own recipe directly, never delegated — corrected from the prior tally's 2; the two "per `Skeleton`"/cross-reference mentions (:164, :253-ish elsewhere) name a shared _rule_, not a painted state, the same distinction `N6` already draws for `analysis-timeline.md` |
+| `privacy-data-rights.md`   |        5 | :284-286 (`Button`s, `DownloadLink`, `ErasedScreen`'s link, `Dialog`'s actions, `Acknowledgement` checkbox — one sentence, five names), elaborated at :313 (`Link` inline) and :420 (`Button`)                                                                                                                       |
+| `privacy-notice.md`        |        1 | :523 (`ObjectionCallToAction` "hovers as `Button/secondary`")                                                                                                                                                                                                                                                        |
+| `profile-summary.md`       |        6 | :134, :138, :141 (`Menu`/`Button`, switcher), :869-882 (`Tooltip`, the flag, ×3)                                                                                                                                                                                                                                     |
+| `replay-availability.md`   |        1 | :157 (Badge)                                                                                                                                                                                                                                                                                                         |
+| `shared-primitives.md`     |        5 | :242-243 (Callout — N4), :422 (Menu trigger → Button, provenance), :560 (Dialog → Button — F3), :615, :616 (StatValue — N5, ×2)                                                                                                                                                                                      |
+| `sign-in-screen.md`        |        1 | :69 (Button)                                                                                                                                                                                                                                                                                                         |
+| `site-header.md`           |        1 | ThemeControl's own states section (§ThemeControl, `site-header.md`) deferring to `Menu`                                                                                                                                                                                                                              |
+| `structural-tier.md`       |        7 | :442 (Panel — N1), :345 (Section — N2), :549 (Text → Link, Button — N3, counted twice, one per name), :551 (Text focus-visible — N3), :1036 (EmptyState → Button — F4), :1125 (ErrorState → Button — F4)                                                                                                             |
+| `third-party-objection.md` |        2 | :217-218 (Button, hover), :230 (Button, active) — corrected from the prior tally's 3; the focus-visible bullet (:223-225) names the same standard ring on three elements without deferring any of their _own_ states to another spec, so it is not counted here                                                      |
+| `tooltip.md`               |        0 | —                                                                                                                                                                                                                                                                                                                    |
+| `typography-tokens.md`     |        0 | —                                                                                                                                                                                                                                                                                                                    |
+
+**Total: 46 handoffs across 20 files with at least one** (corrected from the prior sweep's "50
+across 20 files": `third-party-objection.md` −1, `player-search.md` −2, `country-flag.md` −1 —
+the same three corrections named above, each with its own reasoning quoted next to it rather than
+asserted). 9 files carry zero (`GOVERNANCE.md`, `README.md`'s own earlier sections,
+`color-tokens.md`, `country-flag.md`, `game-asset-tokens.md`, `player-avatar.md`, `player-search.md`,
+`tooltip.md`, `typography-tokens.md`). Every handoff is filed below in 8d (a finding, where it is
+false, incomplete, or newly resolved by this pass's own mechanical matching) or left true and
+unremarked; none dropped.
+
+**8d. The no-owner list — handoffs whose control no directory owns (unchanged in substance from
+the prior sweep; confirmed against the generated region above, which shows every one of `Panel`,
+`Section`, `Callout`, `StatValue`, `Text` carrying no local interactive element of its own).**
+
+- **N1.** `Panel`'s handoff (`structural-tier.md:442`) — no directory named.
+- **N2.** `Section`'s handoff (`structural-tier.md:345`) — no directory named.
+- **N3.** `Text`'s handoff (`structural-tier.md:549,551`) — no directory named (Link/Button/"whatever wraps it").
+- **N4.** `Callout`'s handoff (`shared-primitives.md:242-243`) — no directory named; its own
+  illustrative stories happen to use `Button/primary` at `md` (fully covered, see the generated
+  `Button` matrix's `primary|md` row), so those renders are true, but the claim as written governs
+  whatever a caller supplies.
+- **N5.** `StatValue`'s handoff (`shared-primitives.md:615,616`) — no directory named, and no
+  `StatValue` instance anywhere in the tree renders as a link (confirmed: the generated Record 1
+  region has no `StatValue` entry at all).
+- **N6.** `analysis-timeline.md:39`'s own words — a real control in `apps/web`, outside this
+  script's own scan of `packages/design-system/src` (the same boundary this package's rules draw
+  everywhere else). `primary`'s own rest/hover/focus-visible/press are covered (generated `Button`
+  matrix), so the handoff is true.
+- **N7.** `player-colour-swatch.md:93`'s handoff — no directory named; true wherever the swatch is
+  actually composed (`MatchRow`, `PlayerResultRow`, `FavouritesList`, each with its own real
+  hover/focus-visible/active local element in the generated Record 1 region).
+
+**8e. Findings — quoting the generated region above rather than restating it. Renumbered against
+the rejected PR #80 hand-back's F1-F18: unchanged in substance unless noted; new findings F9a,
+F10a; F14, F15/F16 and record 1's own local-element findings corrected against this pass's
+mechanical resolution, which turned several prior "confirmed by reading" assertions into cells the
+generated region now settles on its own, and left two of them honestly `unresolved` instead.**
+
+- **F1.** `AnalysisTimeline.stories.tsx`'s `HoverFocusActiveNotApplicable` — false for hover. Both
+  `Recompute`/"Try requesting analysis" are `secondary|lg` (generated Record 3, `Button`); that
+  row's own hover cell is `ReplayAvailabilityList:Hover`, unnamed by this file.
+- **F2.** `ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` — false for hover on the
+  button half (`secondary|lg`, same elsewhere pointer as F1); the privacy-link half is F11.
+- **F3.** `shared-primitives.md:560` and `Dialog.stories.tsx`'s `EmptyHoverActiveDisabledNotApplicable`
+  — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:127,138`,
+  `variant={primaryAction.variant ?? 'destructive'}`/`?? 'secondary'`) now resolve mechanically per
+  story rather than staying `unresolved`: the generator substitutes each story's own merged `args`
+  into the guard/attribute expressions a candidate carries, so `Dialog.stories.tsx`'s `FocusVisible`
+  (`args: { primaryAction: { label: 'Turn it off' }, secondaryAction: { label: 'Keep it on' } }`,
+  `visualForceState: { role: 'button', name: 'Turn it off' }`) resolves `{primaryAction.label}` to
+  `'Turn it off'`, identifies `primaryAction`, and evaluates `primaryAction.variant ?? 'destructive'`
+  (no `variant` in this story's own args) to `'destructive'` — the generated `destructive|lg` row's
+  own focus-visible cell now reads `Dialog:FocusVisible` directly. `destructive`'s own hover has no
+  frame anywhere (generated `destructive|md` row, the only other `destructive` combination in the
+  tree); `secondary`'s exists elsewhere (`secondary|lg`) but is not what "belong to the `Button`s
+  inside it" points a reader toward, and no story forces `secondaryAction`'s own state at all.
+- **F4.** `structural-tier.md:1036,1125` and `EmptyState`/`ErrorState`'s own
+  `HoverFocusActiveNotApplicable` stories — false for hover. Both actions are `secondary|md`
+  (generated Record 3 confirms the size directly — `EmptyState.stories.tsx:33`,
+  `ErrorState.stories.tsx:26` etc.), and `secondary|md`'s own hover cell is `none` — the `lg` row's
+  elsewhere pointer does not apply at this size.
+- **F5.** `sign-in-screen.md:69` ("owned entirely by `Button`") is true of the `default` state's
+  primary button (`primary|lg`, fully covered) but also covers several `secondary|lg` outcome-state
+  buttons the blanket sentence does not distinguish. Spec imprecision, not a story-level false claim.
+- **F6.** `manual-upload.md:180` (hover) is half true: `SubmitButton` is `primary|lg` (covered);
+  `Choose file`/`Refresh` are `secondary|lg` (elsewhere: `ReplayAvailabilityList:Hover`,
+  unnamed here). `:192` (active) is true: `secondary|lg`'s press is covered.
+- **F7.** `match-history.md:169,171`, as consumed by `MatchDetailPanel` — its own
+  `HoverFocusActiveNotApplicable` _rendered_ text ("carries its own, per `Button`'s stories") is
+  still false for a Storybook-only reader; `DownloadAction` is `secondary|lg`, no own hover. The
+  same spec sentence, consumed by `ReplayAvailabilityList` instead, is true — that file's own
+  `DownloadAction` is exactly the `secondary|lg` row's `Hover`/`FocusVisible`/`Active` elsewhere
+  pointer for F1, F2, F4 (at `lg`), F6 and F7 alike.
+- **F8.** `Link`'s own matrix gap (generated `Link` matrix, `inline` row) — hover and focus-visible
+  both `none`, even though `structural-tier.md` §9 documents `inline`'s hover as visually distinct
+  from `standalone`'s. `ActiveInline` covers press; nothing depicts the other two. FR-042's own
+  requirement, independent of any handoff.
+- **F9.** `SiteHeader`'s `Brand` wordmark anchor (generated Record 1, `composites/SiteHeader`,
+  `index.tsx:183`) — `hover:underline`, `coveredBy: none` on all three states, confirmed directly
+  by the generated region (no longer "confirmed by reading" — the args-based name match now
+  correctly attributes `SiteHeader.stories.tsx`'s `Hover`/`FocusVisible`/`Active` to `NavItem`
+  (`index.tsx:209`) instead, via the literal `'Matches'` found in the `items` array the story's own
+  `args` reference, and leaves `Brand` and `SkipLink` genuinely uncovered). `site-header.md` §9
+  documents `Brand`'s hover as visually distinct from `NavItem`'s (underline vs. fill).
+- **F9a.** `SiteHeader`'s `SkipLink` (generated Record 1, `index.tsx:156`) — a real focus ring
+  (`focus-visible:outline-2…`), `coveredBy: none` for focus-visible, confirmed directly. No story
+  anywhere depicts it — the state that matters most, since it is invisible until focused. Missed by
+  every sweep before this one because a `<a ` line grep never matches `<a\n      href=…`
+  (`scripts/checks/state-coverage.test.mjs`'s own first fixture is modelled on this element).
+- **F10.** `PrivacyNotice` — the generated Record 1 region now settles three of its four local
+  anchors mechanically rather than by hand: the `Contents` entry (`index.tsx:490`) **is** covered
+  (`Hover`/`FocusVisible`/`Active`, resolved via `nth: 0` against the inline, non-helper candidates
+  sorted by line — `SectionHeading`'s `InlineLink` helper, declared once and invoked many times, is
+  correctly excluded from that ordering); the `InlineLink` recipe (`index.tsx:242`), the
+  objection-form anchor (`index.tsx:740`) and the contact-route link (`index.tsx:797`) are all
+  `coveredBy: none` on every state. The contact-route link additionally paints **zero** state
+  classes of any kind (confirmed directly by Record 1's own hover/focus-visible/active columns) —
+  a rendering defect, not only a missing frame. `privacy-notice.md:523`'s own claim
+  ("`ObjectionCallToAction` hovers as `Button/secondary`") is **false**: the element it names is
+  the objection-form anchor, which the generated region shows painting no hover class at all — a
+  false self-claim this pass adds to the record (record 4).
+- **F10a.** `PrivacyNotice`'s `SectionHeading` (generated Record 1, `index.tsx:264`,
+  `tabIndex={-1}`) — a real focus ring, `coveredBy: none`. The same shape as F9a: a `tabIndex={-1}`
+  heading carrying a same-file focus-ring constant is `state-coverage.test.mjs`'s second fixture.
+- **F11 (pre-existing).** `ArchivalControl`'s privacy link (generated Record 1,
+  `screens/ArchivalControl`, `index.tsx:137`) — zero state classes of any kind, confirmed directly.
+- **F12 (pre-existing).** `AccountErasurePanel`'s acknowledgement checkbox (`index.tsx:270`) — a
+  real focus ring, `coveredBy: none`; hover/active are correctly not applicable (no class painted).
+- **F13 (root cause of F1-F4, F6-F7).** The generated `Button` matrix's own rows: `secondary|md`,
+  `secondary|lg` and `destructive|md` all show `hover: none` as an _own_ story. `ghost/md`'s own
+  hover **is** covered — `ghost|md`'s row now reads `FavouriteToggle:Hover` directly: the generator
+  substitutes `FavouriteToggle.stories.tsx`'s own `args: { favourited: false, authenticated: true }`
+  into `FavouriteToggle`'s guard tree (`if (!authenticated) return <SignedOutControl />`), which
+  resolves `!authenticated` to `false` and excludes `SignedOutControl`'s own `Button/ghost`
+  (guarded the opposite way) from the candidate pool — the one non-hidden `Button/ghost` left is the
+  real control this story renders, unambiguous, `size="md"` by the component's own default.
+  `secondary`'s hover elsewhere is `ReplayAvailabilityList:Hover`, but only at `lg` — `secondary/md`
+  (F4's subject) has none anywhere. `destructive`'s hover has no frame anywhere in the tree at any
+  size.
+- **F14 (corrected against the generated `Button` matrix).** `primary/md` has a real **rest** frame
+  (7 call sites: `Callout`'s own stories, `Field.stories.tsx:146,276`) and a real **focus-visible**
+  frame (`Callout:FocusVisible`, attributed to the specific `<Button variant="primary">Try
+again</Button>` its own `FocusVisible` story renders, once candidates are narrowed to that story's
+  own source-line range — `Callout.stories.tsx` reuses the literal text "Try again" across five
+  separate stories) — but **no hover or press frame anywhere**. `ghost/lg` is real by reading
+  (`FavouriteToggle`'s own `RealisticProfileHeader`, `size="lg"`) but does not appear as its own row
+  for a _different_ combination than `md`'s: `RealisticProfileHeader`'s own story carries no
+  `visualForceState` at all (a plain rest example), so there is nothing for the generator to
+  substitute args into — it folds into `ghost|unresolved`'s **rest**-only bucket, which is accurate
+  (a real, unforced render), not a resolution gap. `destructive/lg` has a real **rest** frame
+  (`AccountErasurePanel:218`) and a real **focus-visible** frame, now resolved directly: the
+  generated `destructive|lg` row's own focus-visible cell reads `Dialog:FocusVisible` (F3) — but no
+  hover or press frame anywhere, own or elsewhere, at `lg`. `secondary/lg` remains the one
+  fully-covered combination (generated Record 3's own row).
+- **F15.** `Menu`'s trigger (`index.tsx:144`) — the generated `Menu` matrix's `selection` row own
+  `forcedRoles` field (embedded in the script's own structures, read directly) shows `hover`/
+  `active` targeting `role: 'menuitemradio'` only, never `role: 'button'`. Focus-visible is not a
+  gap: `EscapeReturnsFocusToTrigger`'s `play()` ends on a `toHaveFocus()` assertion against a
+  `getByRole('button')` locator, resolved directly (`state-coverage.test.mjs`'s fourth fixture).
+- **F16.** `Menu`'s footer-item button (`index.tsx:242`) — same shape: no hover/active anywhere;
+  `KeyboardNavigation`'s own explicit `visualForceState` (`role: 'menuitem', name: 'Link another
+Steam account'`) covers focus-visible.
+- **F15/F16, carried to their consumers.** `ThemeControl` composes `Menu`'s `selection` variant
+  (`site-header.md`: "a `Menu` (`selection` variant)") and its own "`ThemeControl`'s own states …
+  are `Menu`'s, unchanged" is true as a deferral but silently inherits F15's trigger gap.
+  `ProfileSummary`'s "Manage" menu (`index.tsx:426`, `triggerLabel="Manage"`) composes `Menu`'s
+  **`actions`** variant instead — the generated `Menu` matrix's `actions` row has **no forced state
+  of any kind, anywhere** (`hover`/`focus-visible`/`active` all `none`, `forcedRoles` empty) — the
+  variant-whose-state-stories-all-target-the-other-variant shape `state-coverage.test.mjs`'s sixth
+  fixture plants directly. `profile-summary.md:134,141` do not distinguish the switcher (`selection`,
+  partially covered) from the "Manage" menu (`actions`, not covered at all).
+- **F17.** `Table`'s row link (generated Record 3, `Table` matrix, `a @ index.tsx:281` row) —
+  `focus-visible: none`; only the scroll region (`div[role=region] @ index.tsx:153`) has a real
+  `FocusVisible` story. The generated region also settles a prior citation error: the row's
+  reserve-then-paint hover/press classes live on the `<tr>` (`index.tsx:237`, its own row in the
+  generated matrix, all three states `none` — it is not itself a focus/interaction target), a
+  separate element from the real `<a href>` row link the F17 finding is about.
+- **F18.** `Field`'s own matrix (generated Record 3): `md`'s row has a real `Hover`/`FocusVisible`;
+  `lg`'s row (`Field:SizeLg`, rest only) has neither. Matches `structural-tier.md` §11's own sizing
+  rule ("to match `Button`'s").
+
+**Remaining `unresolved` cells in the generated region, after this pass's own resolution work
+(`aria-hidden` exclusion, args-based name matching including nested-object args, conditional-branch
+reachability substituting a story's own args, `nth` ordering against inline candidates) — none.**
+Every `→ unresolved: …` coverage cell the prior hand-back listed now resolves: `Dialog`'s
+`FocusVisible` (nested-object args: `args.primaryAction.label` matched, `primaryAction.variant ??
+'destructive'` evaluated), `FavouriteToggle`'s `Hover`/`FocusVisible`/`Active` (conditional-branch
+reachability: `args.authenticated: true` excludes `SignedOutControl`'s own `Button`, the one
+candidate a literal boolean arg does not rule out), `FavouritesList`'s own force-states (a
+`selector`-targeted `visualForceState` was being treated as a role wildcard against every `Button`
+in the file — fixed directly, not by resolving an argument) and `Menu`'s footer item
+(`footerItem: { label: 'Link another Steam account' }`, a nested-object arg, the sole candidate for
+`role: 'menuitem'` once `Menu`'s own item — a genuinely dynamic `role={…}` — is correctly excluded
+from that role's candidate pool rather than wrongly pooled under its tag's intrinsic role). Two
+`axisKey` labels still read `unresolved` (`ghost|unresolved`, `unresolved|lg` in the generated
+`Button` matrix) — these are not coverage gaps but the **rest**-only bucket for real call sites
+whose `size`/`variant` genuinely pass through a dynamic prop with no accompanying `visualForceState`
+to substitute args into and resolve against (`FavouriteToggle`'s `RealisticProfileHeader`, a rest
+example with no forced state; every one of `Dialog`'s other real call sites, none of which name a
+`variant`): there is nothing for the generator to substitute, because none of these specific
+occurrences carries a force-state naming a `role`/`name` to resolve in the first place.
+
+**Owners: T594 (this sweep — the generated region, 8c's full 29-file tally, 8d, F1-F18, F9a, F10a
+and the F15/F16 consumer findings). T595 closes the enumerated set (F11 and the contact-route half
+of F10 wait on a design decision, T596). Fix by 2026-09-27.**
 
 Also recorded, not registered here because each is a two-minute fix rather than an open gap:
 `Link.stories.tsx:47-60`'s `RestAndHover` story is renamed `Rest` in the same change that lands this
