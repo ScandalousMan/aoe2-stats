@@ -14,9 +14,7 @@ import {
   findVariantSizeDefaults,
   findPrimitiveInstances,
   findMeta,
-  metaComponentName,
   findExportedStoryObjects,
-  resolveStoryAxisValues,
   extractVisualForceState,
   findPlayFocusTarget,
   extractStringLiteralsDeep,
@@ -29,6 +27,7 @@ import {
   replaceGeneratedRegion,
   formatWithPrettier,
   findHelperInvocationGuards,
+  findHelperInvocationIterationContext,
   evaluateExpr,
   evaluateGuards,
   resolveComposedStoryMatches,
@@ -237,28 +236,27 @@ export const Active = {
 }
 `
 
+// Menu's own `variant` prop is required (no destructuring default), so `findVariantSizeDefaults`
+// resolves it to `null` — the same shape the real `primitives/Menu/index.tsx` carries.
+const MENU_INDEX_SOURCE = `
+export function Menu({ variant }) {
+  return null
+}
+`
+
 test("buildAxisMatrix leaves Menu's actions variant with no forced state when every hover/focus-visible/active story targets selection", () => {
-  const sourceFile = parse(MENU_STORIES_SOURCE, 'Menu.stories.tsx')
-  const metaObj = findMeta(sourceFile)
-  assert.equal(metaComponentName(metaObj), 'Menu')
-  const defaults = { variant: null }
-  const instances = []
-  for (const { exportName, node } of findExportedStoryObjects(sourceFile)) {
-    const axis = resolveStoryAxisValues(metaObj, node, defaults)
-    const forced = extractVisualForceState(node)
-    instances.push({
-      primitive: 'Menu',
-      kind: 'own-story',
-      componentKey: 'primitives/Menu',
-      file: 'Menu.stories.tsx',
-      storyName: exportName,
-      variant: axis.variant,
-      size: { value: null, resolved: 'n/a' },
-      forced,
-      playFocus: null,
-    })
-  }
-  const matrix = buildAxisMatrix('Menu', instances)
+  // Routed through the real pipeline (`computeStateCoverage`), not hand-built instances: the
+  // shape the orchestrator's REJECT on #80 (item 4b) asked for, so this fixture exercises the same
+  // own-story discovery, `findVariantSizeDefaults` and `buildAllMatrices` path every other
+  // primitive's matrix is built from, rather than a parallel hand-assembled one that could drift
+  // from it unnoticed.
+  const componentDirs = [{ segment: 'primitives', name: 'Menu' }]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/primitives/Menu/Menu.stories.tsx', MENU_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const matrix = computed.matrices.Menu
   const actionsRow = matrix.find((r) => r.variantSize === 'actions')
   const selectionRow = matrix.find((r) => r.variantSize === 'selection')
   assert.ok(actionsRow, 'actions row must exist (a real story renders it)')
@@ -282,6 +280,49 @@ const el = <a className={cx('base', invalid ? 'border-danger' : 'border-strong',
   const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
   assert.equal(found.length, 1)
   assert.equal(found[0].focusVisible, 'focus-visible:outline-2')
+})
+
+// T594's row-8 remediation, item found while auditing Record 1: a `label` only counts as a local
+// interactive element where it *wraps* a control (a nested JSX descendant), never for the far more
+// common `htmlFor`/sibling-`input` association — the shape `SearchBox`, `ThirdPartyObjectionForm`
+// and `Field` all use, painting no state of their own on the label itself.
+test('findLocalElements does not count a label associated by htmlFor to a sibling input as a local interactive element', () => {
+  const source = `
+function Widget() {
+  return (
+    <div>
+      <label htmlFor="name" className="font-sans text-sm">Name</label>
+      <input id="name" />
+    </div>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(
+    found.find((el) => el.tag === 'label'),
+    undefined,
+  )
+})
+
+// Contrast: a label that nests its control as a real JSX child (`AccountErasurePanel`'s own
+// acknowledgement checkbox shape) still counts.
+test('findLocalElements counts a label that wraps its control as a direct JSX child', () => {
+  const source = `
+function Widget() {
+  return (
+    <label className="flex items-center gap-2">
+      <input type="checkbox" />
+      Acknowledge
+    </label>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.ok(found.some((el) => el.tag === 'label'))
 })
 
 test('extractPseudoClasses returns null for a state with no matching utility', () => {
@@ -966,6 +1007,69 @@ test('findOwnStoryRenderInstances returns null for a plain args-driven story (co
   assert.equal(found, null)
 })
 
+// T594's row-8 remediation of #80's hand-back, item found while auditing F18: a story's own custom
+// `render` can pass a prop through `{...args}` (a spread, no literal attribute at all) rather than
+// a literal JSX prop — `Field.stories.tsx`'s own shape, every story. Falling straight to the
+// primitive's *default* whenever a spread is present, as this function used to, silently merged
+// `SizeLg`'s real `size: 'lg'` into the `md` row: no literal `size=` attribute exists anywhere in
+// its `render` for `resolveProp`'s old spread branch to read.
+const FIELD_RENDER_SPREAD_SOURCE = `
+const meta = {
+  component: Field,
+  args: { label: 'Display name' },
+}
+export default meta
+export const SizeLg = {
+  args: { size: 'lg' },
+  render: (args) => (
+    <div className="max-w-xs">
+      <Field {...args}>
+        <input />
+      </Field>
+    </div>
+  ),
+}
+`
+
+test("findOwnStoryRenderInstances resolves a spread prop through the story's own args, not the primitive default (Field SizeLg shape)", () => {
+  const sourceFile = parse(FIELD_RENDER_SPREAD_SOURCE, 'Field.stories.tsx')
+  const metaObj = findMeta(sourceFile)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const found = findOwnStoryRenderInstances(node, 'Field', { size: 'md' }, metaObj)
+  assert.equal(found.length, 1)
+  assert.deepEqual(found[0].size, { value: 'lg', resolved: 'explicit' })
+})
+
+// Contrast: a spread story that does *not* override the axis prop still resolves to the
+// primitive's default, via the same args-reading path rather than losing the value entirely — the
+// shape every other Field story (`Default`, `Hover`, …) carries, size never mentioned in their own
+// `args` at all.
+const FIELD_RENDER_SPREAD_NO_OVERRIDE_SOURCE = `
+const meta = {
+  component: Field,
+  args: { label: 'Search' },
+}
+export default meta
+export const Default = {
+  render: (args) => (
+    <div>
+      <Field {...args}>
+        <input />
+      </Field>
+    </div>
+  ),
+}
+`
+
+test('findOwnStoryRenderInstances still falls back to the primitive default through a spread when the story never overrides the axis prop', () => {
+  const sourceFile = parse(FIELD_RENDER_SPREAD_NO_OVERRIDE_SOURCE, 'Field.stories.tsx')
+  const metaObj = findMeta(sourceFile)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const found = findOwnStoryRenderInstances(node, 'Field', { size: 'md' }, metaObj)
+  assert.equal(found.length, 1)
+  assert.deepEqual(found[0].size, { value: 'md', resolved: 'default' })
+})
+
 test('buildAxisMatrix credits disabled from a story whose own args admit a nested disabled: true (Menu items shape)', () => {
   const instances = [
     {
@@ -1173,6 +1277,104 @@ test('contrast: resolveSelectorMatch stays ambiguous when the iteration array ha
     }),
     'ambiguous',
   )
+})
+
+// T594's row-8 remediation, item 4: `FavouritesList`'s own row link sits one indirection past the
+// inline shape above — inside a sibling helper (`FavouriteRow`), invoked from `entries.map()` with
+// `entry={entry}`, a prop passed through literally. `findHelperInvocationIterationContext` finds
+// that mapping; `findLocalElements` applies it to a candidate declared inside the helper's own
+// body that has no iteration context of its own.
+
+const FAVOURITES_LIST_SHAPE_SOURCE = `
+function FavouritesList({ entries }) {
+  return (
+    <ul>
+      {entries.map((entry) => (
+        <FavouriteRow key={entry.profileId} entry={entry} />
+      ))}
+    </ul>
+  )
+}
+
+function FavouriteRow({ entry }) {
+  return (
+    <a href={entry.href} className="hover:bg-surface-sunken">
+      {entry.alias}
+    </a>
+  )
+}
+`
+
+test('findHelperInvocationIterationContext maps a helper invoked with a literal iteration-variable prop', () => {
+  const sourceFile = parse(FAVOURITES_LIST_SHAPE_SOURCE, 'index.tsx')
+  const map = findHelperInvocationIterationContext(sourceFile)
+  const entry = map.get('FavouriteRow')
+  assert.ok(entry, 'FavouriteRow must be mapped')
+  assert.equal(entry.iterationVar, 'entry')
+  assert.equal(entry.iterationArrayExpr.getText(), 'entries')
+})
+
+test('findLocalElements resolves a helper-indirected candidate end to end (FavouritesList/FavouriteRow shape)', () => {
+  const sourceFile = parse(FAVOURITES_LIST_SHAPE_SOURCE, 'index.tsx')
+  const constMap = buildConstStringMap(sourceFile)
+  const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
+  const found = findLocalElements(
+    sourceFile,
+    'index.tsx',
+    constMap,
+    'FavouritesList',
+    helperIterationContext,
+  )
+  const anchor = found.find((el) => el.tag === 'a')
+  assert.ok(anchor)
+  assert.equal(anchor.iterationVar, 'entry')
+  assert.equal(anchor.iterationArrayExpr.getText(), 'entries')
+  const scope = new Map([['entries', { resolved: true, value: [{ href: '/players/1' }] }]])
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate: anchor,
+      pool: [anchor],
+      scope,
+    }),
+    'match',
+  )
+})
+
+// Contrast: a prop whose value is not a bare identifier equal to the iteration variable (a
+// transform, here) never maps the helper — `findLocalElements` then finds no inherited iteration
+// context, and the candidate's own selector stays unresolved rather than guessed.
+const FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE = `
+function FavouritesList({ entries }) {
+  return (
+    <ul>
+      {entries.map((entry) => (
+        <FavouriteRow key={entry.profileId} entry={{ ...entry, decorated: true }} />
+      ))}
+    </ul>
+  )
+}
+
+function FavouriteRow({ entry }) {
+  return (
+    <a href={entry.href} className="hover:bg-surface-sunken">
+      {entry.alias}
+    </a>
+  )
+}
+`
+
+test('contrast: a prop whose value is not passed through literally leaves the helper unmapped', () => {
+  const sourceFile = parse(FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE, 'index.tsx')
+  const map = findHelperInvocationIterationContext(sourceFile)
+  assert.equal(map.get('FavouriteRow'), undefined)
+
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'index.tsx', constMap, 'FavouritesList', map)
+  const anchor = found.find((el) => el.tag === 'a')
+  assert.ok(anchor)
+  assert.equal(anchor.iterationVar, null)
+  assert.equal(anchor.iterationArrayExpr, null)
 })
 
 test('resolveSelectorMatch rejects outright on a tag mismatch', () => {

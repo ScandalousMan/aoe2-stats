@@ -256,7 +256,28 @@ function literalTextOf(node) {
     .trim()
 }
 
-const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary', 'label'])
+const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary'])
+// A `label` only counts as a local interactive element where it *wraps* a control — nests one as
+// a JSX descendant — never for the far more common `htmlFor`/sibling-`input` association
+// (`SearchBox`, `ThirdPartyObjectionForm` and `Field` all associate this way, painting no state of
+// their own on the label itself). `AccountErasurePanel`'s acknowledgement checkbox is the one real
+// case in this tree, its `<input type="checkbox" />` a direct JSX child of the `<label>`.
+const LABEL_CONTROL_TAGS = new Set(['input', 'select', 'textarea', 'button'])
+function labelWrapsControl(node) {
+  let found = false
+  function visit(n) {
+    if (found) return
+    if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n)) {
+      if (LABEL_CONTROL_TAGS.has(tagNameOf(n))) {
+        found = true
+        return
+      }
+    }
+    ts.forEachChild(n, visit)
+  }
+  ts.forEachChild(node, visit)
+  return found
+}
 const INTRINSIC_ROLE = {
   a: 'link',
   button: 'button',
@@ -477,6 +498,70 @@ export function findHelperInvocationGuards(sourceFile) {
   return map
 }
 
+// A helper component invoked from exactly one call site *inside* a `.map()`/`.flatMap()`
+// callback, one of whose own props passes that callback's own iteration variable through
+// literally (`FavouritesList`'s own `entry={entry}`, passed to the sibling `FavouriteRow`) — one
+// indirection past the inline shape `MatchRow`/`PlayerResultRow` render their own row link in,
+// where the local element sits directly inside the `.map()` callback rather than behind a second,
+// separately-declared component. Only a bare identifier prop value equal to the call site's own
+// iteration variable qualifies; a transform, a spread, more than one candidate prop at the same
+// call site, or more than one call site with a different answer all leave the helper unmapped —
+// found, never guessed. The mapped `iterationVar` is the *prop name* at the call site
+// (`FavouriteRow`'s own `entry`), not the caller's local name, since evaluating a dynamic
+// attribute inside the helper's body reads whatever identifier its own destructuring bound —
+// ordinarily the same name, by convention, but never assumed so: a helper that renamed its own
+// destructured binding simply fails to resolve further (`evaluateExpr` finds no such identifier
+// in scope), the same "unresolved, not guessed" default as every other static gap in this file.
+export function findHelperInvocationIterationContext(sourceFile) {
+  const map = new Map()
+  function entrySignature(entry) {
+    return entry
+      ? `${entry.propName}:${entry.iterationArrayExpr.pos}:${entry.iterationArrayExpr.end}`
+      : 'none'
+  }
+  walkJsxWithContext(sourceFile, (node, context) => {
+    const tagName = tagNameOf(node)
+    if (!/^[A-Z]/.test(tagName) || PRIMITIVE_NAMES.includes(tagName)) return
+    let entry = null
+    if (context.iterationVar) {
+      const opening = openingOf(node)
+      const candidates = []
+      for (const attr of opening.attributes.properties) {
+        if (!ts.isJsxAttribute(attr) || !attr.initializer) continue
+        const expr = ts.isJsxExpression(attr.initializer) ? attr.initializer.expression : null
+        if (expr && ts.isIdentifier(expr) && expr.text === context.iterationVar) {
+          candidates.push(attr.name.getText())
+        }
+      }
+      if (candidates.length === 1) {
+        entry = {
+          propName: candidates[0],
+          iterationArrayExpr: context.iterationArrayExpr,
+        }
+      }
+    }
+    if (!map.has(tagName)) {
+      map.set(tagName, entry)
+    } else {
+      const existing = map.get(tagName)
+      if (existing === 'ambiguous') return
+      if (entrySignature(existing) !== entrySignature(entry)) {
+        map.set(tagName, 'ambiguous')
+      }
+    }
+  })
+  const result = new Map()
+  for (const [name, entry] of map) {
+    if (entry && entry !== 'ambiguous') {
+      result.set(name, {
+        iterationVar: entry.propName,
+        iterationArrayExpr: entry.iterationArrayExpr,
+      })
+    }
+  }
+  return result
+}
+
 // --- Record 1: local interactive elements -------------------------------------------------------
 
 // `mainComponentName`: the directory's own component name (`PrivacyNotice`) — an element whose
@@ -484,7 +569,13 @@ export function findHelperInvocationGuards(sourceFile) {
 // local helper invoked from more than one place this static pass cannot enumerate, so its recorded
 // line is a declaration site, not a real render position (`isHelper: true`, excluded from `nth`
 // resolution below, never from Record 1's own listing).
-export function findLocalElements(sourceFile, filePath, constMap, mainComponentName = null) {
+export function findLocalElements(
+  sourceFile,
+  filePath,
+  constMap,
+  mainComponentName = null,
+  helperIterationContext = new Map(),
+) {
   const found = []
   walkJsxWithContext(sourceFile, (node, context) => {
     const tagName = tagNameOf(node)
@@ -505,7 +596,8 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
       : []
     const pseudo = extractPseudoClasses(parts)
     const hasPseudo = pseudo.hover || pseudo['focus-visible'] || pseudo.active
-    const isIntrinsicInteractive = INTERACTIVE_TAGS.has(tagName)
+    const isIntrinsicInteractive =
+      tagName === 'label' ? labelWrapsControl(node) : INTERACTIVE_TAGS.has(tagName)
     const isRoleInteractive =
       roleAttr.literal && (roleAttr.value === 'button' || roleAttr.value === 'link')
     const isTabIndexed = tabIndexAttr.present
@@ -531,6 +623,12 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
         expr = attr.initializer.expression
       attrExprs.set(attrName, { literal: lit.present && lit.literal, value: lit.value, expr })
     }
+    // A candidate lexically inside a helper component that has no iteration context of its own
+    // (a fresh function declaration, not directly nested in a `.map()`/`.flatMap()` callback) may
+    // still be *invoked* from one, one call site, through a prop passed literally —
+    // `findHelperInvocationIterationContext`'s own map, keyed by the helper's name.
+    const inheritedIteration =
+      !context.iterationVar && context.fnName ? helperIterationContext.get(context.fnName) : null
     found.push({
       file: filePath,
       line: lineOf(sourceFile, node),
@@ -554,9 +652,10 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
       attrExprs,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
-      isInsideIteration: context.inIteration,
-      iterationVar: context.iterationVar,
-      iterationArrayExpr: context.iterationArrayExpr,
+      isInsideIteration: context.inIteration || Boolean(inheritedIteration),
+      iterationVar: context.iterationVar ?? inheritedIteration?.iterationVar ?? null,
+      iterationArrayExpr:
+        context.iterationArrayExpr ?? inheritedIteration?.iterationArrayExpr ?? null,
       guards: context.guards,
     })
   })
@@ -1001,17 +1100,36 @@ export function resolveStoryAxisValues(metaObj, storyObj, defaults) {
 // and returns one entry per instance found (`AllVariants` renders four) — `null`, never `[]`, for
 // a story with no `render` or no matching JSX in it, so the caller can tell "parse this" from
 // "nothing to parse, fall back to the args-only axis".
-export function findOwnStoryRenderInstances(storyObj, primitiveName, defaults) {
+export function findOwnStoryRenderInstances(storyObj, primitiveName, defaults, metaObj = null) {
   const renderExpr = getProp(storyObj, 'render')
   if (!renderExpr) return null
   let body = renderExpr
   if (ts.isArrowFunction(renderExpr) || ts.isFunctionExpression(renderExpr)) body = renderExpr.body
   const found = []
+  // A spread (`<Field {...args}>`) carries a prop's value through the story's own `args`, never a
+  // literal JSX attribute — falling straight to the primitive's *default* whenever a spread is
+  // present, as this function used to, silently drops every story whose custom `render` overrides
+  // `variant`/`size` only through `args` (`Field.stories.tsx`'s own `SizeLg`, `size: 'lg'` in
+  // `args`, no literal `size=` attribute anywhere in its `render`). Resolved lazily, at most once
+  // per story, through the same args-reading path `resolveStoryAxisValues` already uses for the
+  // no-`render` case, so a spread's value is read from the data that actually supplies it rather
+  // than guessed from the default.
+  let argsAxis = null
+  function resolveViaArgs(propName) {
+    if (!metaObj) return null
+    if (argsAxis === null) argsAxis = resolveStoryAxisValues(metaObj, storyObj, defaults)
+    return argsAxis[propName] ?? null
+  }
   function resolveProp(opening, propName) {
     const attr = getAttr(opening, propName)
     const lit = attrLiteral(attr)
     if (lit.present && lit.literal) return { value: lit.value, resolved: 'explicit' }
     if (lit.present && !lit.literal) return { value: null, resolved: 'unresolved' }
+    if (hasSpreadAttr(opening)) {
+      const viaArgs = resolveViaArgs(propName)
+      if (viaArgs) return viaArgs
+      return { value: null, resolved: 'unresolved' }
+    }
     if (Object.prototype.hasOwnProperty.call(defaults, propName) && defaults[propName] != null) {
       return { value: defaults[propName], resolved: 'default' }
     }
@@ -1512,7 +1630,14 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     const componentDirName = componentKey.split('/')[1]
 
     if (!isStory) {
-      const locals = findLocalElements(sourceFile, relPath(filePath), constMap, componentDirName)
+      const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
+      const locals = findLocalElements(
+        sourceFile,
+        relPath(filePath),
+        constMap,
+        componentDirName,
+        helperIterationContext,
+      )
       if (locals.length > 0) {
         localElementsByComponent.set(componentKey, [
           ...(localElementsByComponent.get(componentKey) ?? []),
@@ -1592,7 +1717,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           getProp(metaObj, 'args'),
           getProp(node, 'args'),
         )
-        const renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults)
+        const renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults, metaObj)
         if (renderInstances) {
           for (const ri of renderInstances) {
             instancesByPrimitive.get(ownPrimitive).push({
