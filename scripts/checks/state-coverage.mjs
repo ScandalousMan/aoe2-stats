@@ -42,7 +42,7 @@
 // Usage:
 //   node scripts/checks/state-coverage.mjs            check mode: exit 0 when row 8's generated
 //                                                      region matches a fresh render, 1 otherwise
-//                                                      (printing a diff).
+//                                                      (prints a line-level diff, `diffLines`).
 //   node scripts/checks/state-coverage.mjs --write     regenerates the region in place, formatted
 //                                                      through prettier so check mode never sees a
 //                                                      prettier-only difference.
@@ -230,6 +230,17 @@ function lineOf(sourceFile, node) {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
 }
 
+// An element's own literal `aria-label` — a real accessible-name source `resolveNameMatch` must
+// see the same way it sees JSX text, since a `visualForceState`'s own `name` names the accessible
+// name, not specifically the rendered children (T594's REJECT on #80, item 3). `aria-labelledby`
+// is not read here: its own value is an id reference, not display text — the name it supplies, if
+// literal, is resolved instead through the referenced element's own text via the sole-candidate
+// argsLiterals path (`Table`'s own `region`/caption shape).
+function ariaLabelText(opening) {
+  const lit = attrLiteral(getAttr(opening, 'aria-label'))
+  return lit.literal && typeof lit.value === 'string' ? lit.value : ''
+}
+
 function literalTextOf(node) {
   if (!ts.isJsxElement(node)) return ''
   return node.children
@@ -253,6 +264,39 @@ const INTRINSIC_ROLE = {
   select: 'combobox',
   textarea: 'textbox',
   summary: 'button',
+  main: 'main',
+}
+
+// `<input>`'s accessible role depends on its own `type`, not a fixed intrinsic mapping — an
+// unlisted or dynamic `type` falls back to `INTRINSIC_ROLE.input` (`'textbox'`) downstream, the
+// same behaviour every input already had before this map existed.
+const INPUT_TYPE_ROLE = {
+  search: 'searchbox',
+  checkbox: 'checkbox',
+  radio: 'radio',
+  range: 'slider',
+  button: 'button',
+  submit: 'button',
+  reset: 'button',
+}
+
+// A role this pass can derive from structure rather than from an explicit `role` attribute —
+// `<input type="search">`'s `searchbox` (`SearchBox`'s own input), `<nav>`'s `navigation`, and a
+// `<section>` given an accessible name (`aria-label`/`aria-labelledby`) its own `region`. Returns
+// `null` when nothing beyond the tag's own `INTRINSIC_ROLE` entry (or none at all) applies — the
+// caller's existing fallback chain is unchanged for every other tag.
+function deriveStructuralRole(tagName, opening) {
+  if (tagName === 'input') {
+    const typeAttr = attrLiteral(getAttr(opening, 'type'))
+    if (typeAttr.literal && INPUT_TYPE_ROLE[typeAttr.value]) return INPUT_TYPE_ROLE[typeAttr.value]
+    return null
+  }
+  if (tagName === 'nav') return 'navigation'
+  if (tagName === 'section') {
+    if (getAttr(opening, 'aria-label') || getAttr(opening, 'aria-labelledby')) return 'region'
+    return null
+  }
+  return null
 }
 
 // --- Shared JSX walk: tracks the enclosing named-function context, the *reachability guards* an
@@ -269,10 +313,6 @@ const INTRINSIC_ROLE = {
 //     `if (!authenticated) return <SignedOutControl .../>`).
 //   - `if (cond) { A } else { B }` — `A` guarded `{cond, true}`, `B` guarded `{cond, false}`.
 //   - `cond ? A : B` / `cond && A` — the same two shapes as expressions, not statements.
-//
-// `locals`: `[name, initializerExprNode][]` in declaration order, for evaluating a JSX attribute or
-// guard expression that references a local (`Dialog`'s own `bounded`, if it had one) rather than a
-// prop directly — resolved against the same scope the guards are.
 function blockAlwaysExits(statements) {
   if (statements.length === 0) return false
   const last = statements[statements.length - 1]
@@ -286,24 +326,19 @@ function statementsOf(stmtOrBlock) {
 function walkJsxWithContext(sourceFile, visitJsx) {
   function visitBlockStatements(statements, ctx) {
     let guards = ctx.guards
-    let locals = ctx.locals
     for (const stmt of statements) {
       if (ts.isVariableStatement(stmt)) {
-        const newLocals = []
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer) {
-            newLocals.push([decl.name.text, decl.initializer])
-            visit(decl.initializer, { ...ctx, guards, locals })
+            visit(decl.initializer, { ...ctx, guards })
           }
         }
-        locals = [...locals, ...newLocals]
       } else if (ts.isIfStatement(stmt)) {
         const cond = stmt.expression
         const thenStmts = statementsOf(stmt.thenStatement)
         visitBlockStatements(thenStmts, {
           ...ctx,
           guards: [...guards, { expr: cond, truthy: true }],
-          locals,
         })
         if (stmt.elseStatement) {
           const elseStmts = ts.isIfStatement(stmt.elseStatement)
@@ -312,16 +347,15 @@ function walkJsxWithContext(sourceFile, visitJsx) {
           visitBlockStatements(elseStmts, {
             ...ctx,
             guards: [...guards, { expr: cond, truthy: false }],
-            locals,
           })
         } else if (blockAlwaysExits(thenStmts)) {
           guards = [...guards, { expr: cond, truthy: false }]
         }
       } else if (ts.isReturnStatement(stmt)) {
-        if (stmt.expression) visit(stmt.expression, { ...ctx, guards, locals })
+        if (stmt.expression) visit(stmt.expression, { ...ctx, guards })
         return
       } else {
-        visit(stmt, { ...ctx, guards, locals })
+        visit(stmt, { ...ctx, guards })
       }
     }
   }
@@ -358,7 +392,7 @@ function walkJsxWithContext(sourceFile, visitJsx) {
     }
     let nextCtx = ctx
     if (ts.isFunctionDeclaration(node) && node.name) {
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [], locals: [] }
+      nextCtx = { ...ctx, fnName: node.name.text, guards: [] }
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
@@ -366,21 +400,47 @@ function walkJsxWithContext(sourceFile, visitJsx) {
       (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
     ) {
       // The name lives on the declaration; the fresh function scope starts at the initializer
-      // itself (visited next via forEachChild), which is where `guards`/`locals` should reset —
-      // done by threading the reset through this same `nextCtx`, since forEachChild's next call is
-      // exactly that initializer.
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [], locals: [] }
+      // itself (visited next via forEachChild), which is where `guards` should reset — done by
+      // threading the reset through this same `nextCtx`, since forEachChild's next call is exactly
+      // that initializer.
+      nextCtx = { ...ctx, fnName: node.name.text, guards: [] }
     }
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       (node.expression.name.text === 'map' || node.expression.name.text === 'flatMap')
     ) {
-      nextCtx = { ...nextCtx, inIteration: true }
+      // The iteration's own variable name and array source (`entries.map((entry) => ...)`) — a
+      // selector-targeted local element inside a single-entry story (`FavouritesList`'s own
+      // `entries: [rated]`) resolves its dynamic attribute (`entry.href`) against the sole array
+      // element this way; `null` when the callback's own first parameter isn't a plain identifier
+      // (a destructuring pattern), left unresolved rather than guessed further.
+      const callback = node.arguments[0]
+      let iterationVar = null
+      if (
+        callback &&
+        (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) &&
+        callback.parameters.length > 0 &&
+        ts.isIdentifier(callback.parameters[0].name)
+      ) {
+        iterationVar = callback.parameters[0].name.text
+      }
+      nextCtx = {
+        ...nextCtx,
+        inIteration: true,
+        iterationVar,
+        iterationArrayExpr: node.expression.expression,
+      }
     }
     ts.forEachChild(node, (child) => visit(child, nextCtx))
   }
-  visit(sourceFile, { fnName: null, inIteration: false, guards: [], locals: [] })
+  visit(sourceFile, {
+    fnName: null,
+    inIteration: false,
+    iterationVar: null,
+    iterationArrayExpr: null,
+    guards: [],
+  })
 }
 
 // Every locally-declared helper *component* (a capitalised, non-primitive JSX tag invoked
@@ -450,11 +510,36 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
       roleAttr.literal && (roleAttr.value === 'button' || roleAttr.value === 'link')
     const isTabIndexed = tabIndexAttr.present
     if (!(isIntrinsicInteractive || isRoleInteractive || isTabIndexed || hasPseudo)) return
+    // Whether this element carries *any* disabled-capable attribute at all (`disabled` or
+    // `aria-disabled`, literal or dynamic) — an element with neither can never render disabled, a
+    // confirmed `'none'`; one that does needs a story's own data checked before the disabled cell
+    // may say either `'none'` or name a story (T594's REJECT on #80, item 4).
+    const hasDisabledAttr = Boolean(
+      getAttr(opening, 'disabled') || getAttr(opening, 'aria-disabled'),
+    )
+    // Every attribute's own value, literal or not — the generic sibling of the named
+    // role/tabIndex/disabled reads above, read once so a `visualForceState: { selector:
+    // 'a[href="..."]' }` can resolve *any* attribute name a real selector in this tree names, not
+    // only the ones this file already has a dedicated reader for.
+    const attrExprs = new Map()
+    for (const attr of opening.attributes.properties) {
+      if (!ts.isJsxAttribute(attr)) continue
+      const attrName = attr.name.getText()
+      const lit = attrLiteral(attr)
+      let expr = null
+      if (attr.initializer && ts.isJsxExpression(attr.initializer))
+        expr = attr.initializer.expression
+      attrExprs.set(attrName, { literal: lit.present && lit.literal, value: lit.value, expr })
+    }
     found.push({
       file: filePath,
       line: lineOf(sourceFile, node),
       tag: tagName,
-      role: roleAttr.literal ? roleAttr.value : roleAttr.present ? 'unresolved' : null,
+      role: roleAttr.literal
+        ? roleAttr.value
+        : roleAttr.present
+          ? 'unresolved'
+          : deriveStructuralRole(tagName, opening),
       tabIndex: tabIndexAttr.present
         ? tabIndexAttr.literal
           ? tabIndexAttr.value
@@ -464,12 +549,15 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
       focusVisible: pseudo['focus-visible'],
       active: pseudo.active,
       classUnresolvedRefs: unresolved,
-      text: literalTextOf(node),
+      text: literalTextOf(node) || ariaLabelText(opening),
+      hasDisabledAttr,
+      attrExprs,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
       isInsideIteration: context.inIteration,
+      iterationVar: context.iterationVar,
+      iterationArrayExpr: context.iterationArrayExpr,
       guards: context.guards,
-      locals: context.locals,
     })
   })
   return found
@@ -478,6 +566,21 @@ export function findLocalElements(sourceFile, filePath, constMap, mainComponentN
 // --- Record 3: primitive instances --------------------------------------------------------------
 
 export const PRIMITIVE_NAMES = ['Button', 'Link', 'Field', 'Menu']
+
+// The role a composed primitive instance actually renders as — never a single constant per
+// primitive name (`INTRINSIC_ROLE[primitive.toLowerCase()]` gave `null` for `Link`/`Field`/`Menu`,
+// so `Link` only ever pooled on a literal `role: 'button'` force-state, and that same universal
+// `'button'` wildcard let a button-role story be wrongly credited to a `Link`/`Field`/`Menu`
+// instance sitting in the same component — T594's REJECT on #80, item 5). `Button` renders `<a
+// href>` once `href` is supplied (own `index.tsx`); `Link` is always `<a>`; `Menu`'s own trigger is
+// always `<button>`. `Field` wraps a caller-supplied control under no single fixed role of its own
+// — `null`, matched by nothing, rather than guessed.
+export function impliedRoleForPrimitiveInstance(primitive, candidate) {
+  if (primitive === 'Button') return candidate?.hasHref ? 'link' : 'button'
+  if (primitive === 'Link') return 'link'
+  if (primitive === 'Menu') return 'button'
+  return null
+}
 
 export function findVariantSizeDefaults(sourceFile) {
   let variantDefault = null
@@ -559,13 +662,16 @@ export function findPrimitiveInstances(
           ? resolveProp('size')
           : { value: null, resolved: 'n/a' },
       disabled: attrLiteral(getAttr(opening, 'disabled')).value === true,
-      text: literalTextOf(node),
+      // `Button` renders `<a href>` rather than `<button>` once `href` is supplied (its own
+      // `index.tsx`) — its own implied role follows that, not a fixed per-primitive constant
+      // (T594's REJECT on #80, item 5).
+      hasHref: Boolean(getAttr(opening, 'href')),
+      text: literalTextOf(node) || ariaLabelText(opening),
       childrenExpr: !literalTextOf(node) && ts.isJsxElement(node) ? node.children : null,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null,
       isInsideIteration: context.inIteration,
       guards: effectiveGuards,
-      locals: context.locals,
       fnName: context.fnName,
     })
   })
@@ -887,6 +993,81 @@ export function resolveStoryAxisValues(metaObj, storyObj, defaults) {
   return result
 }
 
+// A primitive's *own* story file can render its own JSX literally inside a `render:` function
+// instead of composing purely from `args` (`Button.stories.tsx`'s `Disabled`, `AllVariants`,
+// `RealisticPageActions`) — `resolveStoryAxisValues` above only ever reads `args`, so every one of
+// those stories silently fell back to the primitive's *default* row (T594's REJECT on #80, item
+// 4). This parses `render`'s own JSX exactly as `findPrimitiveInstances` parses a real call site,
+// and returns one entry per instance found (`AllVariants` renders four) — `null`, never `[]`, for
+// a story with no `render` or no matching JSX in it, so the caller can tell "parse this" from
+// "nothing to parse, fall back to the args-only axis".
+export function findOwnStoryRenderInstances(storyObj, primitiveName, defaults) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return null
+  let body = renderExpr
+  if (ts.isArrowFunction(renderExpr) || ts.isFunctionExpression(renderExpr)) body = renderExpr.body
+  const found = []
+  function resolveProp(opening, propName) {
+    const attr = getAttr(opening, propName)
+    const lit = attrLiteral(attr)
+    if (lit.present && lit.literal) return { value: lit.value, resolved: 'explicit' }
+    if (lit.present && !lit.literal) return { value: null, resolved: 'unresolved' }
+    if (Object.prototype.hasOwnProperty.call(defaults, propName) && defaults[propName] != null) {
+      return { value: defaults[propName], resolved: 'default' }
+    }
+    return { value: null, resolved: 'unresolved' }
+  }
+  function visit(node) {
+    if (isJsxTag(node) && tagNameOf(node) === primitiveName) {
+      const opening = openingOf(node)
+      found.push({
+        variant:
+          defaults.variant != null || getAttr(opening, 'variant')
+            ? resolveProp(opening, 'variant')
+            : { value: null, resolved: 'n/a' },
+        size:
+          defaults.size != null || getAttr(opening, 'size')
+            ? resolveProp(opening, 'size')
+            : { value: null, resolved: 'n/a' },
+        disabled: attrLiteral(getAttr(opening, 'disabled')).value === true,
+        text: literalTextOf(node),
+      })
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(body)
+  return found.length > 0 ? found : null
+}
+
+// A story's own merged `args` (meta's default `args` plus the story's own) can render a primitive
+// *instance's own sub-item* disabled without any literal `disabled` attribute on the primitive's
+// own JSX at all — `Menu.stories.tsx`'s `ActionsWithDisabledItem`/`LoadingItem`, whose `items`
+// array carries `disabled: true` on one entry, rendered through `MenuItemRow`, a local element
+// this static pass does not trace back to one specific array element (T594's REJECT on #80, item
+// 4). Positive at the *story* grain: "this story's own args, however nested, admit a `disabled:
+// true`" — never at the specific-item grain, which this pass cannot resolve without a fuller
+// object-shape trace than the fixed set of literals the rest of this file already stops short of.
+export function argsObjectHasDisabledTrue(...exprs) {
+  function visit(node) {
+    if (!node) return false
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const prop of node.properties) {
+        if (!ts.isPropertyAssignment(prop)) continue
+        if (prop.name.getText() === 'disabled') {
+          const lit = literalOf(prop.initializer)
+          if (lit.present && lit.literal && lit.value === true) return true
+        }
+        if (visit(prop.initializer)) return true
+      }
+      return false
+    }
+    if (ts.isArrayLiteralExpression(node)) return node.elements.some(visit)
+    if (ts.isJsxExpression(node) && node.expression) return visit(node.expression)
+    return false
+  }
+  return exprs.some(visit)
+}
+
 export function extractVisualForceState(storyObj) {
   const params = getProp(storyObj, 'parameters')
   const forced = getProp(params, 'visualForceState')
@@ -1014,6 +1195,109 @@ function resolvePlayBody(storyObj, sourceFile) {
   return null
 }
 
+// The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
+// component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
+// shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
+// read `args`. Only the *first* JSX element named `componentName` found in `render`'s own body is
+// read — every real story in this tree renders its subject exactly once.
+export function findRenderJsxProps(storyObj, componentName) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return new Map()
+  let body = renderExpr
+  if (ts.isArrowFunction(renderExpr) || ts.isFunctionExpression(renderExpr)) body = renderExpr.body
+  let found = null
+  function visit(node) {
+    if (found) return
+    if (isJsxTag(node) && tagNameOf(node) === componentName) {
+      found = node
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(body)
+  const props = new Map()
+  if (!found) return props
+  const opening = openingOf(found)
+  for (const attr of opening.attributes.properties) {
+    if (!ts.isJsxAttribute(attr)) continue
+    let expr = attr.initializer
+    if (expr && ts.isJsxExpression(expr)) expr = expr.expression
+    if (expr) props.set(attr.name.getText(), expr)
+  }
+  return props
+}
+
+// A `visualForceState: { selector }` (no `role`) targets a specific CSS selector directly rather
+// than an accessible role — `MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link
+// (`a[href="/matches/1001"]`). Only the exact `tag[attr="literal"]` shape every real selector in
+// this tree uses is parsed; anything else is `null`, resolved by the caller as unresolved rather
+// than guessed.
+export function parseSelector(selector) {
+  const m = /^([a-zA-Z][a-zA-Z0-9]*)\[([a-zA-Z-]+)="([^"]*)"\]$/.exec(selector)
+  if (!m) return null
+  return { tag: m[1], attr: m[2], value: m[3] }
+}
+
+// Every string value reachable inside a story's own resolved scope (`buildStoryPropsScope`'s
+// output, extended with a `render`'s own explicit props) — the general-valued sibling of
+// `storyArgsStringLiterals`, which only ever reads `args`. `Table`'s own `caption="Recent matches"`
+// carries no `args` at all, so a `visualForceState`'s `name` needs this to be found at all.
+export function collectScopeStringLiterals(scope) {
+  const out = new Set()
+  function visit(value) {
+    if (typeof value === 'string') out.add(value)
+    else if (Array.isArray(value)) value.forEach(visit)
+    else if (value && typeof value === 'object') {
+      for (const v of Object.values(value)) visit(v)
+    }
+  }
+  for (const entry of scope.values()) {
+    if (entry && entry.resolved) visit(entry.value)
+  }
+  return out
+}
+
+// `'match'`/`'reject'`/`'ambiguous'`, the same three-way contract as `resolveNameMatch` — resolves
+// `candidate`'s own value for `selector`'s attribute either from a literal in its own JSX or, once
+// `scope` supplies it (a story's own render-passed props, `MatchRow`'s `match={base}` resolved
+// through `evaluateExpr`), from a dynamic expression (`match.href`). A tag mismatch is a positive
+// `'reject'`; an attribute this pass cannot read at all, from either source, is `'ambiguous'` —
+// never a silent `'none'` (T594's REJECT on #80, item 1).
+export function resolveSelectorMatch({ selector, candidate, pool: _pool, scope }) {
+  const parsed = parseSelector(selector)
+  if (!parsed) return 'ambiguous'
+  if (candidate.tag !== parsed.tag) return 'reject'
+  const attrInfo = candidate.attrExprs?.get(parsed.attr)
+  if (!attrInfo) return 'ambiguous'
+  let resolved
+  if (attrInfo.literal) {
+    resolved = { resolved: true, value: attrInfo.value }
+  } else if (attrInfo.expr && scope) {
+    resolved = evaluateExpr(attrInfo.expr, scope)
+    // A dynamic attribute referencing the candidate's own iteration variable (`entry.href`,
+    // `FavouritesList`'s row link) is not in `scope` directly — only its own array source is
+    // (`entries`). A story whose merged args resolve that array to exactly one element removes the
+    // only real ambiguity (which element the story renders); more than one stays unresolved rather
+    // than guessed at an index this static pass has no way to pick.
+    if (!resolved.resolved && candidate.iterationVar && candidate.iterationArrayExpr) {
+      const arr = evaluateExpr(candidate.iterationArrayExpr, scope)
+      if (arr.resolved && Array.isArray(arr.value) && arr.value.length === 1) {
+        const item = arr.value[0]
+        const extendedScope = new Map(scope)
+        extendedScope.set(candidate.iterationVar, {
+          resolved: item !== UNRESOLVED_VALUE,
+          value: item === UNRESOLVED_VALUE ? undefined : item,
+        })
+        resolved = evaluateExpr(attrInfo.expr, extendedScope)
+      }
+    }
+  } else {
+    resolved = { resolved: false }
+  }
+  if (!resolved.resolved) return 'ambiguous'
+  return resolved.value === parsed.value ? 'match' : 'reject'
+}
+
 function focusCallShape(expr) {
   if (!expr) return null
   let call = expr
@@ -1119,7 +1403,12 @@ export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
         return 'ambiguous'
       }
     }
-    return 'reject'
+    // Neither this candidate's own JSX text, another candidate's JSX text, nor this story's own
+    // args positively account for `name` — `'none'` must be positive knowledge (T594's amendment,
+    // the orchestrator's REJECT on #80), so an unaccounted-for name is `'ambiguous'` (rendered
+    // `unresolved: <reason>`), never silently `'reject'`ed into a false `'none'`. `'reject'` is
+    // reserved for the case a *different* candidate positively carries the name.
+    return 'ambiguous'
   }
   if (nth != null) {
     // A real DOM-render-order position. Only the candidates whose own recorded line *is* a render
@@ -1251,12 +1540,37 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     const storyConstNodeMap = isStory ? buildTopLevelConstNodeMap(sourceFile) : null
 
     if (isStory) {
+      const storyFileScopeForLocals = buildFileValueScope(sourceFile)
       const entries = storyObjs.map(({ exportName, node }) => {
         const forced = extractVisualForceState(node)
         const playBody = resolvePlayBody(node, sourceFile)
         const playFocus = forced ? null : findPlayFocusTarget(playBody)
-        const argsLiterals = storyArgsStringLiterals(metaObj, node, storyConstNodeMap)
-        return { exportName, forced, playFocus, argsLiterals }
+        const argsHasDisabledTrue = argsObjectHasDisabledTrue(
+          getProp(metaObj, 'args'),
+          getProp(node, 'args'),
+        )
+        // The scope a selector-targeted local element's own dynamic attribute (`match.href`) is
+        // resolved against for *this* story: the component's own prop defaults, overridden by its
+        // merged `args`, further overridden by whatever `render: () => <Component prop={x} />`
+        // passes explicitly — the most specific signal a story can give (`MatchRow`'s own
+        // `match={base}` shape, invisible to `args` entirely).
+        const mergedArgs = evaluateMergedArgsObject(metaObj, node, storyFileScopeForLocals)
+        const scope = buildStoryPropsScope(
+          componentPropDefaultsByKey.get(componentKey) ?? new Map(),
+          mergedArgs,
+          componentFileScopeByKey.get(componentKey) ?? storyFileScopeForLocals,
+        )
+        for (const [propName, exprNode] of findRenderJsxProps(node, componentDirName)) {
+          scope.set(propName, evaluateExpr(exprNode, storyFileScopeForLocals))
+        }
+        // A name a `visualForceState` targets can come from a literal render prop rather than args
+        // (`Table`'s own `caption="Recent matches"`, no `args` at all) — folded into the same
+        // literal set `resolveNameMatch` already checks, never a separate resolution path.
+        const argsLiterals = new Set([
+          ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
+          ...collectScopeStringLiterals(scope),
+        ])
+        return { exportName, forced, playFocus, argsLiterals, argsHasDisabledTrue, scope }
       })
       storyStatesByComponent.set(componentKey, [
         ...(storyStatesByComponent.get(componentKey) ?? []),
@@ -1267,21 +1581,48 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     if (isStory && ownPrimitive && PRIMITIVE_NAMES.includes(ownPrimitive)) {
       const defaults = defaultsByPrimitive[ownPrimitive] ?? {}
       for (const { exportName, node } of storyObjs) {
-        const axis = resolveStoryAxisValues(metaObj, node, defaults)
         const forced = extractVisualForceState(node)
         const playBody = resolvePlayBody(node, sourceFile)
         const playFocus = forced ? null : findPlayFocusTarget(playBody)
-        instancesByPrimitive.get(ownPrimitive).push({
-          primitive: ownPrimitive,
-          kind: 'own-story',
-          componentKey,
-          file: relPath(filePath),
-          storyName: exportName,
-          variant: axis.variant ?? { value: null, resolved: 'n/a' },
-          size: axis.size ?? { value: null, resolved: 'n/a' },
-          forced,
-          playFocus,
-        })
+        // A story's own args admitting a nested `disabled: true` (`Menu.stories.tsx`'s
+        // `ActionsWithDisabledItem`/`LoadingItem`) credits this story's row at the story grain —
+        // real, positive knowledge ("this story's own data renders something disabled"), never at
+        // the specific sub-item grain this static pass does not trace back that far.
+        const argsDisabled = argsObjectHasDisabledTrue(
+          getProp(metaObj, 'args'),
+          getProp(node, 'args'),
+        )
+        const renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults)
+        if (renderInstances) {
+          for (const ri of renderInstances) {
+            instancesByPrimitive.get(ownPrimitive).push({
+              primitive: ownPrimitive,
+              kind: 'own-story',
+              componentKey,
+              file: relPath(filePath),
+              storyName: exportName,
+              variant: ri.variant,
+              size: ri.size,
+              disabled: ri.disabled || argsDisabled,
+              forced,
+              playFocus,
+            })
+          }
+        } else {
+          const axis = resolveStoryAxisValues(metaObj, node, defaults)
+          instancesByPrimitive.get(ownPrimitive).push({
+            primitive: ownPrimitive,
+            kind: 'own-story',
+            componentKey,
+            file: relPath(filePath),
+            storyName: exportName,
+            variant: axis.variant ?? { value: null, resolved: 'n/a' },
+            size: axis.size ?? { value: null, resolved: 'n/a' },
+            disabled: argsDisabled,
+            forced,
+            playFocus,
+          })
+        }
       }
     } else if (isStory) {
       const storyFileScope = buildFileValueScope(sourceFile)
@@ -1291,13 +1632,23 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         const storyStartLine =
           sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
         const storyEndLine = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1
-        const argsLiterals = storyArgsStringLiterals(metaObj, node, storyConstNodeMap)
         const mergedArgs = evaluateMergedArgsObject(metaObj, node, storyFileScope)
         const propsScope = buildStoryPropsScope(
           componentPropDefaultsByKey.get(componentKey) ?? new Map(),
           mergedArgs,
           componentFileScopeByKey.get(componentKey) ?? storyFileScope,
         )
+        // A `render: () => <Component prop="literal" />` story (`Table`'s own `caption` shape)
+        // carries no `args` at all, so a name a literal render prop supplies (rather than the
+        // component's own JSX text) is invisible to `storyArgsStringLiterals` — merged in here from
+        // the same render-prop scope local-element selector matching already builds.
+        for (const [propName, exprNode] of findRenderJsxProps(node, componentDirName)) {
+          propsScope.set(propName, evaluateExpr(exprNode, storyFileScope))
+        }
+        const argsLiterals = new Set([
+          ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
+          ...collectScopeStringLiterals(propsScope),
+        ])
         pendingComposedMatches.push({
           componentKey,
           file: relPath(filePath),
@@ -1313,9 +1664,14 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
 
   resolveComposedStoryMatches(pendingComposedMatches, instancesByPrimitive)
 
-  const localElements = [...localElementsByComponent.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([componentKey, elements]) => {
+  // One line per component directory, the ones with nothing to report included, so Record 1 can be
+  // counted against `story-docs.mjs`'s own directory count (T594's own text) — previously only the
+  // 19 of 41 directories that happened to have a local element at all ever appeared (REJECT on #80).
+  const localElements = componentDirs
+    .map((d) => `${d.segment}/${d.name}`)
+    .sort((a, b) => a.localeCompare(b))
+    .map((componentKey) => {
+      const elements = localElementsByComponent.get(componentKey) ?? []
       const sorted = elements.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
       const storyStates = storyStatesByComponent.get(componentKey) ?? []
       const coverageRows = buildElementMatrix(sorted, storyStates)
@@ -1380,9 +1736,8 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
         .map((c) => ({ c, reach: evaluateGuards(c.guards ?? [], propsScope) }))
         .filter(({ reach }) => reach !== 'unreached')
         .map(({ c, reach }) => ({ ...c, unresolvedGuard: reach === 'unresolved' }))
-      const implied = INTRINSIC_ROLE[primitive.toLowerCase()] ?? null
       const roleMatches = candidates.filter(
-        (c) => forced.role === 'button' || forced.role === implied,
+        (c) => forced.role === impliedRoleForPrimitiveInstance(primitive, c),
       )
       if (roleMatches.length === 0) continue
       // Each candidate's own text, resolved for *this* story: the literal JSX text when it has
@@ -1494,6 +1849,7 @@ export function buildAxisMatrix(primitiveName, instances) {
         rest: [],
         hover: [],
         'focus-visible': [],
+        focusVisibleUnresolved: [],
         active: [],
         disabled: [],
         forcedRoles: [],
@@ -1521,6 +1877,11 @@ export function buildAxisMatrix(primitiveName, instances) {
       continue
     }
     const label = cellName(inst)
+    // An own-story or composed-story instance can carry a positively-resolved `disabled` too
+    // (a literal `disabled` attribute in the story's own render JSX, or a nested `disabled: true`
+    // admitted by the story's own args) — credited independently of which state, if any, the same
+    // story also forces.
+    if (inst.disabled) row.disabled.push(label)
     if (inst.forced) {
       const stateKey = inst.forced.state
       if (row[stateKey]) row[stateKey].push(label)
@@ -1531,7 +1892,11 @@ export function buildAxisMatrix(primitiveName, instances) {
         story: label,
       })
     } else if (inst.playFocus) {
-      row['focus-visible'].push(`${label} (play-driven: ${JSON.stringify(inst.playFocus)})`)
+      // A play() script can leave a real `:focus-visible` on a fresh page, or the same frame a
+      // preceding story already captured — the script cannot tell which, statically, so this is
+      // never a confirmed cover (T594's amendment, REJECT on #80: 'none' — and a covered cell — is
+      // positive knowledge or neither is claimed).
+      row.focusVisibleUnresolved.push(`${label} (play-driven; frame not provable statically)`)
       row.forcedRoles.push({
         state: 'focus-visible',
         role: inst.playFocus.role,
@@ -1548,7 +1913,11 @@ export function buildAxisMatrix(primitiveName, instances) {
       variantSize: row.key,
       rest: row.rest.length ? [...new Set(row.rest)] : ['none'],
       hover: row.hover.length ? [...new Set(row.hover)] : ['none'],
-      focusVisible: row['focus-visible'].length ? [...new Set(row['focus-visible'])] : ['none'],
+      focusVisible: row['focus-visible'].length
+        ? [...new Set(row['focus-visible'])]
+        : row.focusVisibleUnresolved.length
+          ? [`unresolved: ${[...new Set(row.focusVisibleUnresolved)].join('; ')}`]
+          : ['none'],
       active: row.active.length ? [...new Set(row.active)] : ['none'],
       disabled: row.disabled.length ? [...new Set(row.disabled)] : ['none'],
       forcedRoles: row.forcedRoles.sort(
@@ -1635,12 +2004,46 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
             nth: null,
             argsLiterals,
           })
-          if (verdict === 'match') cells['focus-visible'].push(`${exportName} (play-driven)`)
-          else if (verdict === 'ambiguous') {
+          // A play() script can leave a real `:focus-visible` on a fresh page, or the same frame a
+          // preceding story already captured (`Page.stories.tsx`'s own `play()` `.focus()` shares
+          // its frame with `Default` — `tests/visual/stories.spec.ts:92-119`). The script cannot
+          // tell which case a given story is, so a resolved candidate is `unresolved`, never
+          // `'match'` — covered only by a real `visualForceState` (T594's amendment, REJECT on #80).
+          if (verdict === 'match') {
+            ambiguousReasons['focus-visible'].push(
+              `${exportName} (play-driven; frame not provable statically)`,
+            )
+          } else if (verdict === 'ambiguous') {
             ambiguousReasons['focus-visible'].push(
               `${exportName} (play-driven): ${pool.length} candidates share role ${JSON.stringify(impliedRole)}`,
             )
           }
+        }
+      }
+    }
+    // A `visualForceState: { selector }` targets an element by its own attribute value directly,
+    // never by role — so it applies whether or not this element even has an implied role at all
+    // (`MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link, `a[href="..."]`), and is
+    // matched against every element sharing the selector's own tag rather than `impliedRole`'s pool
+    // (T594's REJECT on #80, item 1 — previously dropped outright, `forced.role` required).
+    if (!el.ariaHidden) {
+      for (const { exportName, forced, scope } of storyObjectsWithMeta) {
+        if (!forced || forced.role || !forced.selector) continue
+        const parsed = parseSelector(forced.selector)
+        if (!parsed) continue
+        const tagPool = elements.filter((o) => o.tag === parsed.tag && !o.ariaHidden)
+        if (el.tag !== parsed.tag) continue
+        const verdict = resolveSelectorMatch({
+          selector: forced.selector,
+          candidate: el,
+          pool: tagPool,
+          scope,
+        })
+        if (verdict === 'match') cells[forced.state].push(exportName)
+        else if (verdict === 'ambiguous') {
+          ambiguousReasons[forced.state].push(
+            `${exportName}: selector ${JSON.stringify(forced.selector)} not resolvable against this element's own ${JSON.stringify(parsed.attr)}`,
+          )
         }
       }
     }
@@ -1650,13 +2053,29 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
         : ambiguousReasons[state].length > 0
           ? [`unresolved: ${ambiguousReasons[state].join('; ')}`]
           : ['none']
+    // `'none'` is confirmed only when this element carries no disabled-capable attribute at all —
+    // it structurally can never render disabled. When it does (`aria-disabled={item.disabled ||
+    // ...}`, `MenuItemRow`'s own shape), credit every story whose own args admit a nested
+    // `disabled: true` anywhere; that is real, positive knowledge at the *story* grain (T594's
+    // REJECT on #80, item 4) even though this static pass cannot trace it to one specific
+    // rendered instance among several in an iteration.
+    const disabledCell = !el.hasDisabledAttr
+      ? ['none']
+      : (() => {
+          const covering = [
+            ...new Set(
+              storyObjectsWithMeta.filter((s) => s.argsHasDisabledTrue).map((s) => s.exportName),
+            ),
+          ]
+          return covering.length > 0 ? covering : ['none']
+        })()
     return {
       variantSize: `${el.tag}${el.role ? `[role=${el.role}]` : ''}${el.ariaHidden ? '[aria-hidden]' : ''} @ ${el.file}:${el.line}`,
       rest: [`${el.file}:${el.line}`],
       hover: cellFor('hover'),
       focusVisible: cellFor('focus-visible'),
       active: cellFor('active'),
-      disabled: ['none'],
+      disabled: disabledCell,
     }
   })
 }
@@ -1694,8 +2113,13 @@ function table(headers, rows) {
   return [head, sep, body].filter(Boolean).join('\n')
 }
 
-function stateCell(classText, coverageList) {
-  const cls = classText ?? 'none'
+// `classResolved`: `false` only when `resolveClassParts` hit something it could not read at all
+// (a call to an unknown function, a spread, an out-of-scope identifier) — in that case a `null`
+// `classText` is not confirmed knowledge that no pseudo-class utility exists, so it must not print
+// as `'none'` (T594's amendment, the orchestrator's REJECT on #80: `'none'` is positive knowledge
+// or it is not printed at all).
+function stateCell(classText, coverageList, classResolved) {
+  const cls = classText ?? (classResolved ? 'none' : 'unresolved: className not fully resolved')
   const coverage = coverageList.join('; ')
   return `${cls} → ${coverage}`
 }
@@ -1703,14 +2127,19 @@ function stateCell(classText, coverageList) {
 export function renderRecord1(computed) {
   const rows = []
   for (const { componentKey, elements } of computed.localElements) {
+    if (elements.length === 0) {
+      rows.push([componentKey, '(no local interactive element)', 'N/A', 'N/A', 'N/A', 'N/A'])
+      continue
+    }
     for (const el of elements) {
+      const classResolved = (el.classUnresolvedRefs ?? []).length === 0
       rows.push([
         componentKey,
         `${el.tag}${el.role ? `[role=${el.role}]` : ''}${el.tabIndex !== null ? `[tabIndex=${el.tabIndex}]` : ''}${el.ariaHidden ? '[aria-hidden]' : ''}`,
         `${el.file}:${el.line}`,
-        stateCell(el.hover, el.coveredBy.hover),
-        stateCell(el.focusVisible, el.coveredBy.focusVisible),
-        stateCell(el.active, el.coveredBy.active),
+        stateCell(el.hover, el.coveredBy.hover, classResolved),
+        stateCell(el.focusVisible, el.coveredBy.focusVisible, classResolved),
+        stateCell(el.active, el.coveredBy.active, classResolved),
       ])
     }
   }
@@ -1793,6 +2222,25 @@ export function formatWithPrettier(text) {
   })
 }
 
+// A minimal line-level diff between two strings — the usage comment above promises check mode
+// prints one; before this it only ever named the two commands to run, never showed what actually
+// differed. A parallel line-index comparison, not a true LCS diff: good enough for this region,
+// whose content is one markdown table row per line, and worth more than the comment it replaces.
+export function diffLines(before, after) {
+  const beforeLines = before.split('\n')
+  const afterLines = after.split('\n')
+  const max = Math.max(beforeLines.length, afterLines.length)
+  const out = []
+  for (let i = 0; i < max; i++) {
+    const b = beforeLines[i]
+    const a = afterLines[i]
+    if (b === a) continue
+    if (b !== undefined) out.push(`- ${b}`)
+    if (a !== undefined) out.push(`+ ${a}`)
+  }
+  return out.length > 0 ? out.join('\n') : '(no line-level difference — whitespace only)'
+}
+
 // --- main --------------------------------------------------------------------------------------
 
 function readAllSourceFiles() {
@@ -1847,6 +2295,7 @@ function main() {
       `row 8 (H5)'s generated region disagrees with a fresh render — run ` +
         '`node scripts/checks/state-coverage.mjs --write` and commit the result.',
     )
+    console.error(diffLines(currentRegion, formattedRegion))
     return
   }
 

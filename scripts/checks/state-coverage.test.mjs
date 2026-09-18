@@ -32,6 +32,13 @@ import {
   evaluateExpr,
   evaluateGuards,
   resolveComposedStoryMatches,
+  renderRecord1,
+  findOwnStoryRenderInstances,
+  parseSelector,
+  resolveSelectorMatch,
+  findRenderJsxProps,
+  impliedRoleForPrimitiveInstance,
+  computeStateCoverage,
 } from './state-coverage.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
@@ -522,6 +529,53 @@ test('check mode (region equality after a prettier round-trip) passes when nothi
   assert.notEqual(corruptedRegion, formattedRegion)
 })
 
+// The test above only ever proves a region matches *itself* through a second prettier pass — it
+// never runs the real check path, `main()`'s own comparison of a *committed* region against one
+// computed fresh from real source, so a defect in `computeStateCoverage` itself (as opposed to
+// `renderGeneratedRegion`'s formatting) could never fail it. This drives the same pipeline `main()`
+// does — `computeStateCoverage` over a real fixture source tree, then `renderGeneratedRegion` /
+// `replaceGeneratedRegion` / `formatWithPrettier` — against a *stale* committed region, standing in
+// for source that changed without `--write` being re-run.
+const REAL_CHECK_FIXTURE_SOURCE = `
+function Widget() {
+  return <a className="hover:underline">Contents</a>
+}
+`
+
+test('the real check path fails when source has moved and the committed region was never regenerated', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Widget/index.tsx', REAL_CHECK_FIXTURE_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const freshRegion = renderGeneratedRegion(computed)
+  const staleReadme = `# Title\n\n${renderGeneratedRegion(FIXTURE_COMPUTED)}\n`
+  const freshReadme = formatWithPrettier(replaceGeneratedRegion(staleReadme, freshRegion))
+  const freshFormattedRegion = extractGeneratedRegion(freshReadme)
+  // The committed text (stale — a different fixture's own region) disagrees with what real source
+  // computes today.
+  const committedRegion = extractGeneratedRegion(formatWithPrettier(staleReadme))
+  assert.notEqual(committedRegion, freshFormattedRegion)
+})
+
+test('contrast: the real check path passes once the committed region is regenerated from the same source', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Widget/index.tsx', REAL_CHECK_FIXTURE_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const freshRegion = renderGeneratedRegion(computed)
+  const readme = `# Title\n\n${freshRegion}\n`
+  const written = formatWithPrettier(readme)
+  const writtenRegion = extractGeneratedRegion(written)
+  // Re-running check mode against the exact text --write just produced must agree with itself.
+  const recomputed = computeStateCoverage({ componentDirs, filesByPath })
+  const recomputedRegion = extractGeneratedRegion(
+    formatWithPrettier(replaceGeneratedRegion(written, renderGeneratedRegion(recomputed))),
+  )
+  assert.equal(writtenRegion, recomputedRegion)
+})
+
 // --- Orchestrator remediation (round 3): four behaviours that moved cells, each with a fixture and
 // a contrast case. Items 3 and 4 are regressions — their own pre-fix failing output is pasted in
 // the task's hand-back, captured by temporarily reverting each fix in turn. -----------------------
@@ -644,7 +698,7 @@ test('a nested-object arg label resolves a visualForceState name end to end, for
   assert.equal(secondaryMatched[0].variant.value, 'secondary')
 })
 
-test('contrast: a name with no literal arg anywhere resolves nothing, never guessed', () => {
+test('contrast: a name with no literal arg anywhere is unresolved, never a silent none (T594 REJECT on #80: none must be positive knowledge)', () => {
   const propsScope = new Map([
     ['primaryAction', { resolved: true, value: { label: 'Turn it off' } }],
     ['secondaryAction', { resolved: true, value: { label: 'Keep it on' } }],
@@ -672,8 +726,8 @@ test('contrast: a name with no literal arg anywhere resolves nothing, never gues
   const unresolved = instancesByPrimitive
     .get('Button')
     .filter((i) => i.kind === 'composed-story-unresolved')
-  assert.equal(matched.length, 0)
-  assert.equal(unresolved.length, 0)
+  assert.equal(matched.length, 0, 'never guessed')
+  assert.equal(unresolved.length, 1, 'unaccounted-for name renders unresolved, not a silent none')
 })
 
 // 3. Regression: a `selector`-targeted force-state (no `role`) must never be attributed to a
@@ -738,6 +792,674 @@ test('a selector-targeted force-state (no role) is never attributed to any Butto
 // 4. Regression: a `role` attribute that is present but dynamic must never fall back to its tag's
 // intrinsic role — `Menu`'s own trigger (a plain `<button>`) beside `MenuItemRow`'s
 // `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}`.
+
+// --- REJECT on #80: 'none' must be positive knowledge. A className the parser could not fully
+// resolve (a call to an unknown function) must not render as a confirmed 'none' hover/focus/active
+// class — that claims certainty the parser does not have. Contrast with a fully-resolved className
+// that genuinely carries no pseudo-class utility, which stays 'none'. -----------------------------
+
+const UNRESOLVED_CLASS_SOURCE = `
+function Widget() {
+  return <button className={getClasses()}>Click</button>
+}
+`
+
+test('findLocalElements records classUnresolvedRefs when the className cannot be resolved', () => {
+  const sourceFile = parse(UNRESOLVED_CLASS_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.length, 1)
+  assert.equal(found[0].hover, null)
+  assert.ok(found[0].classUnresolvedRefs.length > 0)
+})
+
+test("renderRecord1 renders 'unresolved: ...' rather than a confirmed 'none' when the className itself could not be resolved", () => {
+  const sourceFile = parse(UNRESOLVED_CLASS_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          { ...el, coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] } },
+        ],
+      },
+    ],
+  }
+  const rendered = renderRecord1(computed)
+  assert.doesNotMatch(rendered, /\bnone → none\b/)
+  assert.match(rendered, /unresolved: className not fully resolved/)
+})
+
+test("renderRecord1 keeps a confirmed 'none' when the className is fully resolved and genuinely carries no pseudo-class utility (contrast)", () => {
+  const source = `const el = <button className="bg-surface text-text-primary">Click</button>`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(el.classUnresolvedRefs.length, 0)
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          { ...el, coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] } },
+        ],
+      },
+    ],
+  }
+  const rendered = renderRecord1(computed)
+  assert.match(rendered, /\bnone → none\b/)
+})
+
+// --- REJECT on #80: play-driven focus is 'unresolved', not covered. `tests/visual/stories.spec.ts`
+// says a script `.focus()` matches `:focus-visible` on a fresh page *and* `Page.stories.tsx`'s own
+// `play()` `.focus()` captured the same frame as `Default` — the script cannot know statically
+// which case a given story is, so a play-driven match must never count as a confirmed frame. -----
+
+test('buildElementMatrix renders a play-driven focus match as unresolved, not as covered', () => {
+  const elements = [
+    {
+      tag: 'a',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'f.tsx',
+      line: 10,
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'EscapeReturnsFocusToTrigger',
+      forced: null,
+      playFocus: { role: 'link', name: null },
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.equal(rows[0].focusVisible.length, 1)
+  assert.match(rows[0].focusVisible[0], /^unresolved:/)
+  assert.match(rows[0].focusVisible[0], /play-driven; frame not provable statically/)
+  assert.match(rows[0].focusVisible[0], /EscapeReturnsFocusToTrigger/)
+})
+
+test('buildAxisMatrix renders a play-driven focus-visible match as unresolved, not as covered (record 3)', () => {
+  const instances = [
+    {
+      primitive: 'Menu',
+      kind: 'own-story',
+      componentKey: 'primitives/Menu',
+      file: 'Menu.stories.tsx',
+      storyName: 'EscapeReturnsFocusToTrigger',
+      variant: { value: 'actions', resolved: 'explicit' },
+      size: { value: null, resolved: 'n/a' },
+      forced: null,
+      playFocus: { role: 'button', name: null },
+    },
+  ]
+  const matrix = buildAxisMatrix('Menu', instances)
+  const row = matrix.find((r) => r.variantSize === 'actions')
+  assert.equal(row.focusVisible.length, 1)
+  assert.match(row.focusVisible[0], /^unresolved:/)
+  assert.match(row.focusVisible[0], /play-driven; frame not provable statically/)
+  assert.match(row.focusVisible[0], /EscapeReturnsFocusToTrigger/)
+})
+
+// --- REJECT on #80, item 4: own story files skip their JSX and take axis values from args only,
+// so Button.stories.tsx's Disabled/AllVariants/RealisticPageActions (real JSX in a `render:`
+// function, no `args` at all) land in the primitive's default row (`secondary|md`) instead of the
+// variant/size their own JSX actually renders. -----------------------------------------------------
+
+const BUTTON_RENDER_DISABLED_SOURCE = `
+export const Disabled = {
+  render: () => (
+    <div>
+      <Button variant="primary" size="lg" disabled>
+        Continue with Steam
+      </Button>
+    </div>
+  ),
+}
+`
+
+test('findOwnStoryRenderInstances parses literal JSX inside a render() function, never falling back to defaults', () => {
+  const sourceFile = parse(BUTTON_RENDER_DISABLED_SOURCE, 'Button.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const found = findOwnStoryRenderInstances(node, 'Button', { variant: 'secondary', size: 'md' })
+  assert.equal(found.length, 1)
+  assert.deepEqual(found[0].variant, { value: 'primary', resolved: 'explicit' })
+  assert.deepEqual(found[0].size, { value: 'lg', resolved: 'explicit' })
+  assert.equal(found[0].disabled, true)
+})
+
+const BUTTON_RENDER_ALL_VARIANTS_SOURCE = `
+export const AllVariants = {
+  render: () => (
+    <div>
+      <Button variant="primary">Primary</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="ghost">Ghost</Button>
+      <Button variant="destructive">Destructive</Button>
+    </div>
+  ),
+}
+`
+
+test('findOwnStoryRenderInstances finds every JSX instance in a render() with more than one', () => {
+  const sourceFile = parse(BUTTON_RENDER_ALL_VARIANTS_SOURCE, 'Button.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const found = findOwnStoryRenderInstances(node, 'Button', { variant: 'secondary', size: 'md' })
+  assert.deepEqual(
+    found.map((f) => f.variant.value),
+    ['primary', 'secondary', 'ghost', 'destructive'],
+  )
+  // No `size` attribute anywhere in this render — falls back to the primitive default, not `n/a`.
+  assert.deepEqual(found[0].size, { value: 'md', resolved: 'default' })
+})
+
+test('findOwnStoryRenderInstances returns null for a plain args-driven story (contrast, no render at all)', () => {
+  const sourceFile = parse(`export const Primary = { args: { variant: 'primary', size: 'lg' } }`)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const found = findOwnStoryRenderInstances(node, 'Button', { variant: 'secondary', size: 'md' })
+  assert.equal(found, null)
+})
+
+test('buildAxisMatrix credits disabled from a story whose own args admit a nested disabled: true (Menu items shape)', () => {
+  const instances = [
+    {
+      primitive: 'Menu',
+      kind: 'own-story',
+      componentKey: 'primitives/Menu',
+      file: 'Menu.stories.tsx',
+      storyName: 'ActionsWithDisabledItem',
+      variant: { value: 'actions', resolved: 'explicit' },
+      size: { value: null, resolved: 'n/a' },
+      disabled: true,
+      forced: null,
+      playFocus: null,
+    },
+  ]
+  const matrix = buildAxisMatrix('Menu', instances)
+  const row = matrix.find((r) => r.variantSize === 'actions')
+  assert.deepEqual(row.disabled, ['Menu:ActionsWithDisabledItem'])
+})
+
+test("buildElementMatrix stops hard-coding disabled: ['none'] — credits a story whose args admit disabled: true, for an element that carries a disabled-capable attribute", () => {
+  const elements = [
+    {
+      tag: 'button',
+      role: 'unresolved',
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'f.tsx',
+      line: 10,
+      hasDisabledAttr: true,
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'ActionsWithDisabledItem',
+      forced: null,
+      playFocus: null,
+      argsLiterals: new Set(),
+      argsHasDisabledTrue: true,
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].disabled, ['ActionsWithDisabledItem'])
+})
+
+test('contrast: buildElementMatrix keeps a confirmed none when the element carries no disabled-capable attribute at all', () => {
+  const elements = [
+    {
+      tag: 'a',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'f.tsx',
+      line: 10,
+      hasDisabledAttr: false,
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'SomeStory',
+      forced: null,
+      playFocus: null,
+      argsLiterals: new Set(),
+      argsHasDisabledTrue: true,
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].disabled, ['none'])
+})
+
+// --- REJECT on #80, item 1: selector targets for local elements (a script `visualForceState:
+// { selector }` was dropped entirely for local elements — MatchRow/FavouritesList/PlayerResultRow's
+// own row link — read as a false 'none' on hover/focus/active). -----------------------------------
+
+test('parseSelector parses tag[attr="literal"]', () => {
+  assert.deepEqual(parseSelector('a[href="/matches/1001"]'), {
+    tag: 'a',
+    attr: 'href',
+    value: '/matches/1001',
+  })
+})
+
+test('parseSelector returns null for anything else (never guessed)', () => {
+  assert.equal(parseSelector('[data-visual-scope]'), null)
+  assert.equal(parseSelector('a.some-class'), null)
+})
+
+test('resolveSelectorMatch resolves a literal attribute directly', () => {
+  const candidate = {
+    tag: 'a',
+    attrExprs: new Map([['href', { literal: true, value: '/players/1', expr: null }]]),
+  }
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope: null,
+    }),
+    'match',
+  )
+})
+
+test('resolveSelectorMatch resolves a story-arg-derived attribute (MatchRow/FavouritesList/PlayerResultRow shape: href={match.href})', () => {
+  const candidate = {
+    tag: 'a',
+    attrExprs: new Map([['href', { literal: false, value: undefined, expr: 'HREF_EXPR' }]]),
+  }
+  // Stand in for `evaluateExpr` resolving `match.href` against a scope built from the story's own
+  // render-passed `match={base}` — `scope.get` is queried by `resolveSelectorMatch`'s own call to
+  // `evaluateExpr`, so the fixture supplies a real property-access AST node instead of a string.
+  const sourceFile = parse(`const x = match.href`)
+  const exprNode = sourceFile.statements[0].declarationList.declarations[0].initializer
+  candidate.attrExprs.set('href', { literal: false, value: undefined, expr: exprNode })
+  const scope = new Map([['match', { resolved: true, value: { href: '/matches/1001' } }]])
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/matches/1001"]',
+      candidate,
+      pool: [candidate],
+      scope,
+    }),
+    'match',
+  )
+})
+
+test('resolveSelectorMatch rejects a confirmed different value, positive knowledge either way', () => {
+  const candidate = {
+    tag: 'a',
+    attrExprs: new Map([['href', { literal: true, value: '/players/2', expr: null }]]),
+  }
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope: null,
+    }),
+    'reject',
+  )
+})
+
+test('resolveSelectorMatch is ambiguous (never a silent none) when the attribute cannot be resolved at all', () => {
+  const candidate = { tag: 'a', attrExprs: new Map([['href', { literal: false, expr: null }]]) }
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope: null,
+    }),
+    'ambiguous',
+  )
+})
+
+test('resolveSelectorMatch resolves a selector against the sole element of a single-entry iteration array (FavouritesList shape: entries.map((entry) => <a href={entry.href}>))', () => {
+  const sourceFile = parse(`const x = entry.href`)
+  const hrefExpr = sourceFile.statements[0].declarationList.declarations[0].initializer
+  const iterationSourceFile = parse(`const y = entries`)
+  const iterationArrayExpr =
+    iterationSourceFile.statements[0].declarationList.declarations[0].initializer
+  const candidate = {
+    tag: 'a',
+    attrExprs: new Map([['href', { literal: false, expr: hrefExpr }]]),
+    iterationVar: 'entry',
+    iterationArrayExpr,
+  }
+  const scope = new Map([['entries', { resolved: true, value: [{ href: '/players/1' }] }]])
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope,
+    }),
+    'match',
+  )
+})
+
+test('contrast: resolveSelectorMatch stays ambiguous when the iteration array has more than one entry (which index this candidate is cannot be picked)', () => {
+  const sourceFile = parse(`const x = entry.href`)
+  const hrefExpr = sourceFile.statements[0].declarationList.declarations[0].initializer
+  const iterationSourceFile = parse(`const y = entries`)
+  const iterationArrayExpr =
+    iterationSourceFile.statements[0].declarationList.declarations[0].initializer
+  const candidate = {
+    tag: 'a',
+    attrExprs: new Map([['href', { literal: false, expr: hrefExpr }]]),
+    iterationVar: 'entry',
+    iterationArrayExpr,
+  }
+  const scope = new Map([
+    ['entries', { resolved: true, value: [{ href: '/players/1' }, { href: '/players/2' }] }],
+  ])
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope,
+    }),
+    'ambiguous',
+  )
+})
+
+test('resolveSelectorMatch rejects outright on a tag mismatch', () => {
+  const candidate = { tag: 'button', attrExprs: new Map() }
+  assert.equal(
+    resolveSelectorMatch({
+      selector: 'a[href="/players/1"]',
+      candidate,
+      pool: [candidate],
+      scope: null,
+    }),
+    'reject',
+  )
+})
+
+const MATCHROW_LIKE_RENDER_SOURCE = `
+export const Hover = {
+  render: () => <MatchRow match={base} />,
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' } },
+}
+`
+
+test('findRenderJsxProps reads the explicit JSX props a render() passes to the component under test', () => {
+  const sourceFile = parse(MATCHROW_LIKE_RENDER_SOURCE, 'MatchRow.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const props = findRenderJsxProps(node, 'MatchRow')
+  assert.ok(props.has('match'))
+  assert.equal(props.get('match').getText(), 'base')
+})
+
+test('buildElementMatrix positively resolves a selector-targeted force-state against a story-arg-derived href, end to end (MatchRow shape)', () => {
+  const sourceFile = parse(`const x = match.href`)
+  const hrefExpr = sourceFile.statements[0].declarationList.declarations[0].initializer
+  const elements = [
+    {
+      tag: 'a',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'index.tsx',
+      line: 397,
+      attrExprs: new Map([['href', { literal: false, expr: hrefExpr }]]),
+    },
+  ]
+  const scope = new Map([['match', { resolved: true, value: { href: '/matches/1001' } }]])
+  const storyStates = [
+    {
+      exportName: 'Hover',
+      forced: {
+        state: 'hover',
+        role: null,
+        name: null,
+        selector: 'a[href="/matches/1001"]',
+        nth: null,
+      },
+      playFocus: null,
+      argsLiterals: new Set(),
+      scope,
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].hover, ['Hover'])
+})
+
+test('contrast: buildElementMatrix leaves a selector-targeted force-state unresolved (never none) when the href cannot be resolved from any scope', () => {
+  const sourceFile = parse(`const x = match.href`)
+  const hrefExpr = sourceFile.statements[0].declarationList.declarations[0].initializer
+  const elements = [
+    {
+      tag: 'a',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'index.tsx',
+      line: 397,
+      attrExprs: new Map([['href', { literal: false, expr: hrefExpr }]]),
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'Hover',
+      forced: {
+        state: 'hover',
+        role: null,
+        name: null,
+        selector: 'a[href="/matches/1001"]',
+        nth: null,
+      },
+      playFocus: null,
+      argsLiterals: new Set(),
+      scope: null,
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.equal(rows[0].hover.length, 1)
+  assert.match(rows[0].hover[0], /^unresolved:/)
+})
+
+// --- REJECT on #80, item 2: roles. INTRINSIC_ROLE lacked `main`/`region` and mapped every `input`
+// to `textbox`, so `SearchBox`'s `role: 'searchbox'` force-state, `Page`'s `main` landmark and
+// `Table`'s `region` never found a candidate to match at all. -------------------------------------
+
+test('findLocalElements derives \'searchbox\' from a literal type="search", not the generic textbox default', () => {
+  const source = `const el = <input type="search" className="hover:border-strong" />`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found[0].role, 'searchbox')
+})
+
+test('contrast: findLocalElements leaves an unlisted/dynamic input type with no derived role (falls back to textbox downstream, unchanged)', () => {
+  const source = `const el = <input type="email" className="hover:border-strong" />`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found[0].role, null)
+})
+
+test("findLocalElements derives 'navigation' for a <nav>, once it otherwise qualifies for Record 1 (tabIndex here, standing in for a real hover/focus signal)", () => {
+  const source = `const el = <nav aria-label="Primary" tabIndex={0} />`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found[0].role, 'navigation')
+})
+
+test("findLocalElements derives 'region' for a labelled <section>", () => {
+  const source = `const el = <section aria-labelledby="heading-id" tabIndex={0} />`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found[0].role, 'region')
+})
+
+test("buildElementMatrix matches a role: 'searchbox' force-state against the derived role, end to end (SearchBox shape)", () => {
+  const elements = [
+    {
+      tag: 'input',
+      role: 'searchbox',
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'f.tsx',
+      line: 10,
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'Hover',
+      forced: { state: 'hover', role: 'searchbox', name: null, nth: null },
+      playFocus: null,
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].hover, ['Hover'])
+})
+
+// --- REJECT on #80, item 3: also resolve names from a literal aria-label. --------------------
+
+test("findLocalElements resolves a candidate's own name from a literal aria-label when it carries no JSX text", () => {
+  const source = `const el = <nav aria-label="Primary" tabIndex={0} />`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found[0].text, 'Primary')
+})
+
+// --- REJECT on #80, item 5: composed primitives. INTRINSIC_ROLE[primitive.toLowerCase()] gave
+// null for Link/Field/Menu, so a role: 'link' force-state (Footer's own shape) never found a Link
+// candidate, and a universal `forced.role === 'button'` wildcard let a button-role story be
+// wrongly credited to a Link/Field/Menu instance in the same component. --------------------------
+
+test("impliedRoleForPrimitiveInstance: Link is always 'link', never null", () => {
+  assert.equal(impliedRoleForPrimitiveInstance('Link', {}), 'link')
+})
+
+test("impliedRoleForPrimitiveInstance: Button is 'link' once it renders <a href>, 'button' otherwise", () => {
+  assert.equal(impliedRoleForPrimitiveInstance('Button', { hasHref: true }), 'link')
+  assert.equal(impliedRoleForPrimitiveInstance('Button', { hasHref: false }), 'button')
+})
+
+test("impliedRoleForPrimitiveInstance: Menu's own trigger is always 'button'", () => {
+  assert.equal(impliedRoleForPrimitiveInstance('Menu', {}), 'button')
+})
+
+test('impliedRoleForPrimitiveInstance: Field has no single fixed role (null, matched by nothing, never guessed)', () => {
+  assert.equal(impliedRoleForPrimitiveInstance('Field', {}), null)
+})
+
+const FOOTER_LIKE_SOURCE = `
+function FooterLike() {
+  return (
+    <footer>
+      <Link href="/privacy">Privacy notice</Link>
+    </footer>
+  )
+}
+`
+
+test('a role: "link" force-state resolves a Link instance end to end (Footer shape, previously dropped: implied was null)', () => {
+  const sourceFile = parse(FOOTER_LIKE_SOURCE, 'index.tsx')
+  const found = findPrimitiveInstances(sourceFile, 'index.tsx', {})
+  const instancesByPrimitive = new Map([
+    ['Button', []],
+    ['Link', found.map((f) => ({ ...f, kind: 'jsx', componentKey: 'composites/Footer' }))],
+    ['Field', []],
+    ['Menu', []],
+  ])
+  const pending = [
+    {
+      componentKey: 'composites/Footer',
+      file: 'Footer.stories.tsx',
+      exportName: 'FocusVisible',
+      forced: { state: 'focus-visible', role: 'link', name: null, selector: null, nth: null },
+      storyLineRange: null,
+      argsLiterals: new Set(),
+      propsScope: new Map(),
+    },
+  ]
+  resolveComposedStoryMatches(pending, instancesByPrimitive)
+  const matched = instancesByPrimitive.get('Link').filter((i) => i.kind === 'composed-story')
+  assert.equal(matched.length, 1)
+})
+
+test('contrast: a role: "button" force-state is never credited to a Link instance in the same component (previously a universal wildcard)', () => {
+  const sourceFile = parse(FOOTER_LIKE_SOURCE, 'index.tsx')
+  const found = findPrimitiveInstances(sourceFile, 'index.tsx', {})
+  const instancesByPrimitive = new Map([
+    ['Button', []],
+    ['Link', found.map((f) => ({ ...f, kind: 'jsx', componentKey: 'composites/Footer' }))],
+    ['Field', []],
+    ['Menu', []],
+  ])
+  const pending = [
+    {
+      componentKey: 'composites/Footer',
+      file: 'Footer.stories.tsx',
+      exportName: 'Hover',
+      forced: { state: 'hover', role: 'button', name: null, selector: null, nth: null },
+      storyLineRange: null,
+      argsLiterals: new Set(),
+      propsScope: new Map(),
+    },
+  ]
+  resolveComposedStoryMatches(pending, instancesByPrimitive)
+  const matched = instancesByPrimitive.get('Link').filter((i) => i.kind === 'composed-story')
+  assert.equal(matched.length, 0)
+})
+
+// --- REJECT on #80: Record 1 must be one line per component, the ones with nothing to report
+// included — previously only the directories that happened to have a local element appeared at
+// all (19 of 41), so the list could not be counted against story-docs.mjs's own directory count. --
+
+test('renderRecord1 emits a row for a component with no local interactive element, rather than omitting it', () => {
+  const computed = {
+    localElements: [
+      { componentKey: 'primitives/EmptyOne', elements: [] },
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'a',
+            role: null,
+            tabIndex: null,
+            hover: 'hover:underline',
+            focusVisible: null,
+            active: null,
+            ariaHidden: false,
+            classUnresolvedRefs: [],
+            file: 'f.tsx',
+            line: 12,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+  }
+  const rendered = renderRecord1(computed)
+  assert.match(rendered, /primitives\/EmptyOne \| \(no local interactive element\) \| N\/A/)
+  assert.match(rendered, /primitives\/Widget/)
+})
 
 test('a dynamic role={…} element is excluded from the plain button’s implied-role pool', () => {
   const plainButton = {
