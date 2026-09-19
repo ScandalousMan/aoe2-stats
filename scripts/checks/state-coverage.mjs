@@ -3342,7 +3342,10 @@ export function checkCitations({ readmeText }) {
     if (!ranges) continue
     const fileText = readFileSync(resolved, 'utf8')
     const maxLine = Math.max(...ranges.map(([, end]) => end))
-    if (maxLine > fileText.split('\n').length) continue // already reported for the citation itself, above
+    // A hole T595 closes, not a duplicate report: `findInlineCodeClaims` skips every span
+    // `CITATION_RE` parsed, so `checkCitations`'s own out-of-range branch never saw this claim and
+    // nothing above reports it. It is dropped here and the run still exits 0.
+    if (maxLine > fileText.split('\n').length) continue
     if (!matchQuoteAgainstText(claim.claim, fileText, ranges)) {
       inlineClaimFailureCount++
       failures.push({

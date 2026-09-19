@@ -2083,7 +2083,7 @@ counting the citation once.
 | `player-colour-swatch.md`  |        1 | `:93` "The enclosing row link owns the hover fill" (filed under **N7**, no fixed owner — true wherever the swatch is composed: MatchRow, PlayerResultRow, FavouritesList).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `player-search.md`         |        0 | `:207-232` describes `Input`/`PlayerResultRow`'s own recipe directly, never delegated — corrected from the prior tally's 2; the two "per `Skeleton`"/cross-reference mentions (`:164`, `:253`-ish elsewhere) name a shared _rule_, not a painted state, the same distinction `N6` already draws for `analysis-timeline.md`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `privacy-data-rights.md`   |        1 | `:284-285` "owned by the `Button`s, the `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the `Acknowledgement` checkbox" — one citation, five names (filed under **DataExportPanel**/**AccountErasurePanel**). `:288` and `:313` elaborate two of those five (`DownloadLink` → Button/primary; `ErasedScreen`'s link → Link/inline) rather than adding new ones; `privacy-data-rights.md:420`'s "per `Button`" is a stacking-order convention (`recommended-position action first`), not a hover/focus/active deferral — cited by its own full path, deliberately outside this row's bare-`:line` count, so it is verified without inflating the Handoffs tally (corrected in this audit).                                                                            |
-| `privacy-notice.md`        |        1 | `:523` "`ObjectionCallToAction` hovers as `Button/secondary`" (filed under **PrivacyNotice**, target primitives/Button, `secondary` — **F10**, false: the element this sentence names is the objection-form anchor, which paints no hover class at all).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `privacy-notice.md`        |        1 | `:523` "`ObjectionCallToAction` hovers as `Button/secondary`" (filed under **PrivacyNotice**, target primitives/Button, `secondary` — **F10**: accurate about the classes, and a handoff to a frame that does not exist — no `secondary` hover story).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `profile-summary.md`       |        5 | `:134` "switcher trigger and menu items per `Menu`" (hover) and `:141` "per `Button` and `Menu`" (active) — two citations; `profile-summary.md:138`'s focus-visible bullet ("standard ring on the trigger, on menu items, and on the ghost actions") describes the ring directly rather than deferring — cited by its own full path so it is verified without counting toward this row's own tally; `:869` "the pointer over the flag opens the tooltip" (hover), `:873` "the identity bar's focus stops are now the flag …" (focus-visible), `:882` "pressing the flag pins its tooltip open" (active) — three more citations. Five total: the switcher pair filed under **ProfileSummary**→Menu/Button (F15/F16-carried), the flag trio under **ProfileSummary**→Tooltip.                               |
 | `replay-availability.md`   |        2 | `:157` "`AvailabilityBadge`: none, per `Badge`'s own rule" (filed under **ReplayAvailabilityList**, target primitives/Badge). `:158` "`DownloadAction`: per `Button`" (target primitives/Button, `secondary`\|`lg` — missed by the prior sweep, found in the pass before this one).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `shared-primitives.md`     |        5 | `:242-243` "— none; the root is not interactive. Actions inside it have their own" (hover / active) (filed under **N4**, Callout, no fixed owner). `:422` "The trigger button follows `Button` `secondary`'s own active recipe in full" (filed under **Menu**, target primitives/Button, `secondary` — provenance, not a gap). `:560` "hover, active and disabled all belong to the `Button`s inside it" (filed under **Dialog**, target primitives/Button — **F3**). `:616-617` "none unless the value is a link, in which case the standard ring applies to the link" (focus-visible) and `:618` "none" (active) (filed under **N5**, StatValue, no fixed owner and no live instance).                                                                                                                  |
@@ -2327,43 +2327,31 @@ generated region now settles on its own, and left two of them honestly `unresolv
   anywhere depicts it — the state that matters most, since it is invisible until focused. Missed by
   every sweep before this one because a `<a ` line grep never matches `<a\n      href=…`
   (`scripts/checks/state-coverage.test.mjs`'s own first fixture is modelled on this element).
-- **F10 (corrected in this pass against `8e3006e9`).** `PrivacyNotice` — the generated Record 1
-  region now settles all four of its local anchors mechanically rather than by hand: the `Contents`
-  entry (`index.tsx:490`) **is** covered (`Hover`/`FocusVisible`/`Active`, resolved via `nth: 0`
-  against the inline, non-helper candidates sorted by line — `SectionHeading`'s `InlineLink` helper,
-  declared once and invoked many times, is correctly excluded from that ordering); the objection-form
-  anchor (`index.tsx:740`) and the contact-route link (`index.tsx:797`) are both `coveredBy: none` on
-  every state. The `InlineLink` recipe itself (`index.tsx:242`) no longer reads a confirmed `none`:
-  `8e3006e9` fixed `resolveNameMatch`'s own `nth` branch (an unorderable helper's own render position
-  is unknown, so a bare `nth` against it is ambiguous, not silently accepted), and its own three
-  cells now read `unresolved: … 4 candidates share role "link", nth 0 not orderable` —
-  **corrected in this pass: `unresolved` is this script declining to decide, and no finding may
-  claim a gap from it (row 8's own Method section, and T594's amendment) — the prior wording did
-  exactly that ("no proof of any frame for it either... T595 still owes it one"), the standard
-  this same audit holds every other finding to.** Checked before concluding either way: every
-  `visualForceState` in `PrivacyNotice.stories.tsx` targeting `role: 'link'` names `nth: 0`
-  only — no story here targets `nth: 1` or higher — and `nth: 0` is _not_ actually ambiguous:
-  `index.tsx:490` (the `Contents` entry) sorts before every textual `InlineLink` occurrence in
-  this file (the first is `:646`), so `nth: 0` resolves to the `Contents` entry regardless of
-  where `InlineLink`'s own several call sites would rank against each other. What stays genuinely
-  open is a _general_ one — `resolveNameMatch` excludes a helper's declaration site from ordering
-  because it cannot enumerate the helper's own call sites' real line positions; teaching it to (a
-  textual or AST scan for `<InlineLink` occurrences, giving each its own sortable position) would
-  settle any future story targeting `nth: 1` or higher against a role a helper also shares, but
-  nothing in the tree today exercises that path, so this pass does not build it speculatively.
-  Off T595's ledger: there is no frame this component owes for `InlineLink`'s own cells, only an
-  open question a future `nth: 1+` story (or the enumeration above) would settle if either ever
-  arrives. The contact-route link additionally paints **zero** state
-  classes of any kind (confirmed directly by Record 1's own hover/focus-visible/active columns) —
-  a rendering defect, not only a missing frame. `privacy-notice.md:523`'s own claim
-  ("`ObjectionCallToAction` hovers as `Button/secondary`") is **false**: the element it names is
-  the objection-form anchor, which the generated region shows painting no hover class at all — a
-  false self-claim this pass adds to the record (record 4).
-- **F10a (citation corrected 2026-09-19 — M2/M3: `:264` is the `<h2` tag's own opening line;
-  `tabIndex={-1}` sits two lines below it).** `PrivacyNotice`'s `SectionHeading` (generated Record 1,
-  `index.tsx:264-266`, `tabIndex={-1}`) — a real focus ring, `coveredBy: none`. The same shape as
-  F9a: a `tabIndex={-1}`
-  heading carrying a same-file focus-ring constant is `state-coverage.test.mjs`'s second fixture.
+- **F10 (corrected 2026-09-19).** `PrivacyNotice`'s local anchors, as the generated Record 1 region
+  reads them: the `Contents` entry (`index.tsx:490`) is covered on all three states, by `Hover`,
+  `FocusVisible` and `Active`; the objection-form anchor (`index.tsx:740`) and the contact-route
+  link (`index.tsx:797`) read `none` on every state; the `InlineLink` recipe (`index.tsx:242`) reads
+  `unresolved` on every state, because it is a helper declared once and invoked many times and the
+  script cannot order a helper's call sites against the inline candidates, so it declines to say
+  which link a bare `nth` reaches. **The script declining does not leave the question open here; a
+  check by hand settles it.** Every `visualForceState` in `PrivacyNotice.stories.tsx` names
+  `role: 'link'` with `nth: 0`, and the `Contents` entry sorts before the first `<InlineLink` call
+  site in `index.tsx`, so all three state stories depict the `Contents` entry and no story depicts
+  `InlineLink`. T595 owes `InlineLink` its three frames, and owes the extractor whatever lets the
+  region say so itself. The contact-route link additionally paints **zero** state classes of any
+  kind (Record 1's own class columns) — a rendering defect, not only a missing frame, which is why
+  that half of this finding is T596's. `privacy-notice.md`'s handoff for the objection-form anchor
+  (8c's row for that file) is accurate about the classes — the anchor paints the same
+  `hover:bg-surface-sunken` that `Button`'s `secondary` variant does — and hands the state to a
+  frame that does not exist: `Button.stories.tsx` has no `secondary` hover story, and the anchor's
+  own hover cell reads `none`.
+- **F10a (corrected 2026-09-19).** `PrivacyNotice`'s `SectionHeading` (generated Record 1,
+  `index.tsx:264-266`, `tabIndex={-1}`) carries a real focus ring, and the region reads its cells
+  `unresolved: no implied role`, the script declining. Settled by hand the same way as F10: no
+  `visualForceState` in `PrivacyNotice.stories.tsx` targets anything but `role: 'link'`, and no
+  story there has a `play()`, so no story depicts the heading's focus ring and T595 owes it a
+  frame. The same shape as F9a: a `tabIndex={-1}` heading carrying a same-file focus-ring constant
+  is `state-coverage.test.mjs`'s second fixture.
 - **F11 (pre-existing).** `ArchivalControl`'s privacy link (generated Record 1,
   `screens/ArchivalControl`, `index.tsx:137`) — zero state classes of any kind, confirmed directly.
 - **F12 (pre-existing).** `AccountErasurePanel`'s acknowledgement checkbox (`index.tsx:270`) — a
@@ -2615,13 +2603,11 @@ region as it now stands, not as it stood when the finding was first filed: F10, 
 each name one, and each is re-checked here — a finding is **not** automatically still a gap only
 because its cell used to read `none`; `unresolved` is a different fact (no proof either way, not a
 confirmed absence), and a finding that only ever claimed "no story proves this state" reads the
-same under either word. None of the four turns out to overturn its own finding: F10a
-(`PrivacyNotice`'s `SectionHeading`) claimed "no story anywhere depicts it," true of `unresolved`
-exactly as it was of `none` — a heading this script cannot even check for a confirmed absence is a
-fortiori not confirmed covered either, so T595 still owes it a frame. F10 (`PrivacyNotice`'s
-`InlineLink`) already read its own three cells as this exact `unresolved` text at the time it was
-filed (quoted from the generated region, not restated) — the commit that moved them is the same one
-this finding was written against, so nothing about F10's own claim changes. F12
+same under either word. None of the four turns out to overturn its own finding, but **an `unresolved`
+cell is never itself the evidence**: where a finding keeps its gap over one, the finding states the
+check by hand that establishes it. F10a (`PrivacyNotice`'s `SectionHeading`) and F10
+(`PrivacyNotice`'s `InlineLink`) both do, in their own bullets above, and both are owed frames by
+T595. F12
 (`AccountErasurePanel`'s checkbox) rests on `index.tsx:270`, the checkbox itself, never `:269`'s
 `label` — a different element in the same pair, untouched by this commit. F17 (`Table`'s row link
 and its `tr`) already narrates the `tr`'s own ancestor-of-a-forced-descendant reason as its own
