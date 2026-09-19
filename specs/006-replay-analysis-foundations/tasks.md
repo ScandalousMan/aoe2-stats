@@ -373,7 +373,7 @@ after being produced through the new stream.
       pass: the fixtures README already carries that instruction and ADR-0001's own failure mode was
       a parser upgrade that silently changed what was being read. A diff here means the stream lost
       or altered something, which is the one thing this phase may not do
-- [ ] T629 [US4] Commit the canonical stream for each **committed** reference recording — one if T605
+- [x] T629 [US4] Commit the canonical stream for each **committed** reference recording — one if T605
       was taken, two otherwise — as a golden file under
       `tests/fixtures/replays/`, following the regeneration discipline the README already states for
       the timeline: regenerate only on an engine upgrade or a deliberate logic change, never by hand,
