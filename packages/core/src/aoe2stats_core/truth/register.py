@@ -253,3 +253,89 @@ def load_packaged_register() -> Register:
 
 
 REGISTER = load_packaged_register()
+
+VIEW_FILENAME = "REGISTER.md"
+REGENERATE_COMMAND = "uv run python -m aoe2stats_core.truth.register"
+
+_HEADING = {
+    NON_DETERMINABLE: (
+        "Non-determinable",
+        "These data cannot be known from the recording. Each is stated in full: why, what it "
+        "costs, what stands in for it, and what would change the answer.",
+    ),
+    "observed": ("observed", "Read directly from the recording."),
+    "decoded": ("decoded", "Read from the recording after decoding an encoded field."),
+    "reconstructed": ("reconstructed", "Rebuilt from several recorded facts."),
+    "derived": ("derived", "Computed from other published data."),
+    "inferred": ("inferred", "A signal read from behaviour, not a recorded fact."),
+    "predicted": ("predicted", "A forecast."),
+}
+_ORDER = (NON_DETERMINABLE, *(t.value for t in Tier))
+
+
+def _code_list(items: tuple[str, ...]) -> str:
+    return ", ".join(f"`{i}`" for i in items) if items else "none"
+
+
+def _render_entry(entry: Entry) -> list[str]:
+    lines = [f"### `{entry.id}`", "", f"- status: {entry.status}"]
+    if entry.blocked_on:
+        lines.append(f"- blocked on: {entry.blocked_on}")
+    if entry.classification == NON_DETERMINABLE:
+        lines += [
+            f"- reason: {entry.reason}",
+            f"- impact: {entry.impact}",
+            f"- approximation: {entry.approximation}",
+            f"- approximation_acceptable: {entry.approximation_acceptable}",
+            f"- would change if: {entry.would_change_if}",
+        ]
+    lines += [f"- source: {entry.source}", f"- method: {entry.method}"]
+    if entry.path:
+        lines.append(f"- document path: `{entry.path}`")
+    if entry.non_claim:
+        lines.append(f"- non-claim: {entry.non_claim}")
+    if entry.confidence_method:
+        lines.append(f"- confidence method: {entry.confidence_method}")
+    lines += [
+        f"- requires knowledge: {_code_list(entry.requires_knowledge)}",
+        f"- depends on: {_code_list(entry.depends_on)}",
+        f"- validation: {entry.validation}",
+        f"- evidence: {entry.evidence}",
+        "",
+    ]
+    return lines
+
+
+def render_view(register: Register) -> str:
+    """Render the human-readable view: non-determinable first, then tiers strongest first.
+
+    Deterministic: no timestamp, entries in declaration order within a group.
+    """
+    out = [
+        "# The determinability register",
+        "",
+        "<!-- GENERATED FILE. Do not edit. -->",
+        "",
+        "This file is generated from `register.toml`, the only place a classification is written "
+        f"(FR-006a). Regenerate it with `{REGENERATE_COMMAND}`; a test fails when the two diverge.",
+        "",
+    ]
+    for group in _ORDER:
+        members = [e for e in register if e.classification == group]
+        if not members:
+            continue
+        title, blurb = _HEADING[group]
+        out += [f"## {title} ({len(members)})", "", blurb, ""]
+        for entry in members:
+            out += _render_entry(entry)
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def write_view() -> None:
+    """Regenerate ``REGISTER.md`` beside this module from the packaged register."""
+    target = resources.files("aoe2stats_core.truth").joinpath(VIEW_FILENAME)
+    target.write_text(render_view(REGISTER), encoding="utf-8")  # type: ignore[attr-defined]
+
+
+if __name__ == "__main__":
+    write_view()
