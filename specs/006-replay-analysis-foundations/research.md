@@ -102,9 +102,16 @@ The two conditions the spec asked to be settled:
   repackaged and the README says in so many words that the bytes and the checksum are this
   repository's and not the source's. Verbatim is strongly preferred; a documented repackaging is
   still better than an unrepeatable measurement.
-- **Principle IX.** Not a new obstacle. The first fixture already names two real players and is
-  retained on the already-public basis. The second adds two more on the same basis, recorded in the
-  processing register in the same change.
+- **Principle IX.** **Corrected by `/speckit-analyze`: this paragraph first claimed the first
+  fixture was already covered by the register's already-public retention basis. It is not.** No
+  register activity governs a file committed to git; the on-demand retention activity's safeguards —
+  never served to anyone, read only by the analyzer — cannot describe a file in a public repository;
+  and the register's own last open item names a committed fixture of real players as a gap weighed
+  and not closed. The second recording names four players, not two. So this feature writes a **new
+  activity** for committed reference recordings of public matches, with a balancing test that states
+  the real exposure — public history, no erasure path, no expiry, forks out of reach — and it covers
+  the first fixture too. Copying the retention row would produce exactly the misdescription the
+  register's opening warns against.
 
 **If the file cannot be recovered at all**, FR-045 is satisfied in its narrower honest form: §2
 records two measurements, names which one is reproducible from a committed fixture, and keeps the
@@ -248,7 +255,9 @@ isolation, and a breaking change to a consumer this feature does not own.
 serialisation. The published object's key carries that digest. `match_analyses` keeps `game_id` as
 its primary key — that key is 003's double-click dedupe and is not this feature's to change — and its
 existing `result_key` column names the current document. Earlier documents stay in the object store
-under their own keys and remain resolvable by identity. No migration.
+under their own keys and remain resolvable by identity. The row gains one nullable column holding
+the digest: today a published row is stale only when the parser changes, so without it a new
+knowledge version would never trigger the recompute this decision exists to preserve.
 
 Reconstruction and analytics versions are part of the identity from the start and carry an explicit
 *not applicable* marker until 007 ships, so the tuple's shape never changes (FR-040, and the reason
@@ -265,16 +274,41 @@ no meaning, stream order where it does, fixed float formatting.
 ## D10 — Canonical events sit on the existing seam, as a second protocol beside the first
 
 **Decision.** The vocabulary is pure types in `packages/core/src/aoe2stats_core/replay/events.py`.
-The adapter in `packages/replay-engine` gains a second entry point that yields canonical events from
-the same single pass the existing extractor makes. The existing `MatchTimeline` extractor is then
+The adapter in `packages/replay-engine` gains a second entry point that yields canonical events in
+one pass over the parsed operations. **The existing extractor makes two** — one to find the final
+match clock, one to reduce — while its own docstrings claim one; the fold removes the first pass and
+corrects the docstrings. The existing `MatchTimeline` extractor is then
 re-expressed as a fold over that stream, and the committed golden timeline must come back
 byte-identical — the only available proof that the new stream loses nothing the old path read.
 
-**Memory (FR-021).** The stream is a generator over the wheel's operations; the adapter never
-materialises the operation list, and the existing memory-ceiling test is extended to the new entry
-point. Whether the stream is *persisted* is settled here as **no**: it is recomputable from the
+**Memory (FR-021).** The wheel materialises every operation before any of this code runs — that is
+where the resident memory `specs/003-player-search-match-analysis/research.md` R3 measured comes
+from, and nothing at this seam can remove it. What this feature can guarantee is narrower and is
+what FR-021 now says: no second copy, and nothing retained past the fold. **The existing
+"memory-ceiling" test is an input-size refusal test; it measures no consumption**, so extending it
+proves only that the new entry point refuses the same inputs. A real peak-memory measurement over
+both fixtures is added beside it, because this feature puts three accumulators on that path and the
+second recording's object-id space is several times the first's. Whether the stream is *persisted* is settled here as **no**: it is recomputable from the
 retained recording by a versioned tool, which is principle IV's definition of disposable, and 007
 consumes it in-process.
+
+**Collapse (FR-018).** Only research, age-up and resignation collapse, first occurrence over the
+whole match — what the extractor does today. There is no window and the `replay-parsing` skill
+mandates none; it names one key, for research. Unit queueing must not collapse: the first fixture's
+queue commands reduce to a few dozen distinct tuples, and collapsing them would erase the villager
+count. The published `actions` figure is counted **before** collapse today, so the fold counts raw
+commands there or the golden timeline moves.
+
+**The clock.** Only action operations carry a time. Chat, the post-game block and everything else do
+not, so every canonical event takes its time from one clock accumulated from the sync operations'
+increments. That clock was checked against the first fixture: it equals the post-game match time
+exactly, and every action's own time matches it with no drift. View-lock operations are camera
+positions; they are excluded because they carry no intent, not because they feed the clock.
+
+**Three kinds are decoded, not observed.** Sell, buy and delete come back from the wheel as raw byte
+payloads, and the chat channel sits inside the same JSON string as the message text. Each needs a
+small decoder of the placement decoder's kind, golden-tested. For chat, "no text" is therefore a rule
+about what is discarded after parsing, since the text cannot be avoided on the way to the channel.
 
 **Undecoded commands (FR-019)** become an event of kind *undecoded* carrying the engine's own
 operation kind as an opaque label and the payload length — never the payload's shape, which would be
@@ -282,8 +316,31 @@ an engine-specific field (FR-017).
 
 **The group-silence observable (FR-013)** is computed here, as the one inferred datum this feature
 ships. Its confidence basis is the ratio of commands naming the group before the silence to the
-length of the silence, banded into the closed levels; the banding thresholds live in the register
+length of the silence, banded into the closed levels. **It sees only three command kinds** — move,
+interact and order carry decoded unit ids; formation, stance, patrol and stop do not — so a group
+told to hold or patrol and never moved again reads as silent. That blind spot is military-shaped and
+is stated in the datum's method and its non-claim; the banding thresholds live in the register
 entry's method, and its non-claim is a required field of the datum, not a comment.
+
+## D11 — What the second recording measured
+
+Supplied 2026-09-19 as an extracted recording; played thirteen days earlier, so the served archive
+may still be fetchable and is preferred (D2).
+
+- **Same game build as the first fixture.** One snapshot, one carry-forward (D4).
+- **Four participants, two teams, four civilisations, none shared with the first fixture.** The
+  first snapshot therefore models **six** civilisations, not the four the plan first stated (D5).
+- **Its post-game operation carries the same two blocks as the first fixture's, and no statistics
+  block.** This is the second measurement `docs/data-sources.md` §2 asked for.
+- **It contains an action kind the wheel does not name at all**, which gives FR-019's undecoded event
+  a live instance in a committed fixture instead of a hypothetical one.
+- **The two recordings expose different action kinds** — each has kinds the other lacks — so anything
+  generated "from the fixture" must be generated from every committed recording.
+- **It carries two resignations, a handful of commands apart, at the very end of the match.** A few
+  commands by other participants follow the first and none by the player who left. That is a thin
+  witness for the exit rule — better than the first fixture, whose only resignation is its last
+  command — and not a strong one: neither recording shows a player who resigns while the match runs
+  on at length. The exit rule therefore also needs a synthetic stream in its test.
 
 ## Principle V, read exactly
 

@@ -36,10 +36,10 @@ post-game block list contains no statistics block — which is what lets
 **The corrections** (FR-046, FR-047):
 
 ```bash
-grep -rn "apps/parser" .claude/skills/replay-parsing/SKILL.md docs/adr/0001-replay-parser.md
+grep -rn "apps/parser" .claude/skills/replay-parsing/SKILL.md docs/adr/0001-replay-parser.md .github/workflows/pr.yml
 ```
 
-Expected: no output. Then read the placement paragraph of the skill against
+Expected: no output — the skill's frontmatter description included. Then read the placement paragraph of the skill against
 `packages/replay-engine/tests/test_aoe2rec.py` — they must now say the same thing.
 
 ## Phase 2 — Truth types and the register
@@ -73,7 +73,9 @@ Expected:
 - The doubled age-up command in the fixture appears once (SC-010).
 - Emitted events plus deliberately consumed operations equal the operation count (no silent drop).
 - No payload field name appears in the wheel-derived deny-list (SC-009).
-- The memory-ceiling test passes at the existing bound through the new entry point (FR-021).
+- The input-size refusal holds through the new entry point, and the separate peak-memory measurement
+  over every committed recording stays under its recorded ceiling (FR-021). The first proves nothing
+  about the second.
 - Neither declared-only kind is emitted (FR-020).
 
 ## Phase 4 — The knowledge base and its gaps
@@ -129,9 +131,11 @@ Expected:
 - A document whose dependency record is empty is rejected (SC-011).
 - The web reader parses a version 2 fixture with no source change.
 
-**After deploy**, per the runbook: the health endpoint reports the new schema revision, and one
-analysis requested by hand shows a populated dependency record, an identity digest, and a gap list
-that is empty or explains itself.
+**After deploy**, per the runbook: the health endpoint answers **200**. Read the status, not the
+revision field — that field is the build's own compiled constant and says nothing about the
+database. Between applying the migration and the deploy going live it answers 503, which is the
+check working. Then one analysis requested by hand shows a populated dependency record, an identity
+digest, and a gap list that is empty or explains itself.
 
 ## What this feature deliberately cannot show
 

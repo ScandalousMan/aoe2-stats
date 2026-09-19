@@ -33,9 +33,9 @@ Closed. Each kind has one typed payload. Tier is per kind and fixed.
 | `unit-queued`         | observed   | unit id, producing building object, count                   | yes          |
 | `research-queued`     | observed   | technology id, researching building object                  | yes          |
 | `units-commanded`     | observed   | command class, unit object ids, optional target             | yes          |
-| `market-transaction`  | observed   | direction, resource, amount                                 | yes          |
-| `object-deleted`      | observed   | object id                                                   | yes          |
-| `chat`                | observed   | channel — **not the text**                                  | yes          |
+| `market-transaction`  | decoded    | direction, resource, amount                                 | yes — needs a decoder |
+| `object-deleted`      | decoded    | object id                                                   | yes — needs a decoder |
+| `chat`                | decoded    | channel — **not the text**                                  | yes — needs a decoder |
 | `participant-resigned`| observed   | —                                                           | yes          |
 | `match-ended`         | observed   | final match-clock time                                      | yes          |
 | `undecoded`           | observed   | opaque operation label, payload length                      | yes          |
@@ -47,8 +47,15 @@ this repository's own decoder. The participant on the same event comes from a na
 be observed alone; the event takes the weaker tier, which is the weakest-input rule applied to an
 event.
 
-**`chat` carries no text.** The text is personal data this feature has no use for, and its absence
-here keeps principle IX out of the vocabulary entirely.
+**Three kinds are decoded, and the wheel does not decode them.** Sell, buy and delete arrive as raw
+byte payloads; each gets a small decoder of the placement decoder's kind, derived empirically and
+golden-tested over every committed recording (FR-014). `units-commanded` carries unit ids for move,
+interact and order only — the other command kinds arrive undecoded and are emitted with an empty id
+list, never a guessed one.
+
+**`chat` carries no text.** The channel sits inside the same JSON string as the message, so the text
+cannot be avoided on the way to it; the rule is that it is discarded at the adapter and appears in no
+event, no golden file and no log. The text is personal data this feature has no use for.
 
 **The two declared-only kinds** satisfy FR-020: their types exist, the register marks their data
 `blocked`, and a test asserts the adapter emits neither — so the day a producer lands, that test is
@@ -56,15 +63,19 @@ what changes, and no type does.
 
 ## Adapter obligations
 
-1. **One pass, nothing retained** (FR-021). `events` is a generator over the wheel's operations. The
-   existing memory-ceiling test is extended to this entry point and must hold at the same bound.
-2. **First-occurrence collapse** (FR-018). Per kind, keyed on the fields that identify one player
-   action; the window and keys are the ones the `replay-parsing` skill already mandates. SC-010 is
-   asserted on the fixture's doubled age-up command.
-3. **No silent drop** (FR-019). Any operation the adapter does not map becomes `undecoded`. A test
-   asserts that the count of emitted events plus the count of operation kinds deliberately excluded
-   — sync and view-lock, which are consumed for the clock and carry no intent — equals the
-   operation count the wheel reports.
+1. **One pass, no copy, nothing retained past the fold** (FR-021). `events` is a generator over the
+   operations the wheel has already materialised — that materialisation is the wheel's cost and is
+   not removable here. The input-size refusal applies to this entry point as to the old one, **and a
+   peak-memory measurement over every committed recording is added**, because the refusal test
+   measures no consumption.
+2. **First-occurrence collapse, idempotent kinds only** (FR-018). Research, age-up and resignation,
+   over the whole match, no window — what the extractor does today. Queueing, placement and movement
+   never collapse. SC-010 is asserted on the doubled age-up command.
+3. **No silent drop** (FR-019). Any **action** the adapter does not map becomes `undecoded`. Sync is
+   consumed for the clock; view-lock is a camera position and is excluded because it carries no
+   intent. A test asserts that emitted events plus those two excluded kinds equal the operation count
+   the wheel reports. The second recording carries an action kind the wheel itself cannot name, so
+   this rule has a live instance.
 4. **Exit discipline.** No event is attributed to a participant after their `participant-resigned`.
 5. **No participant timeline for an observer or an empty slot** — they are absent from
    `match-started`, not present and silent.
@@ -75,8 +86,8 @@ what changes, and no type does.
 
 A test walks every payload type's field names and asserts none appears in a deny-list built from
 the wheel's own output keys, and that no payload carries a raw byte sequence, an offset or a length
-other than `undecoded`'s. The deny-list is generated from the fixture's parse, so it tracks the
-wheel and is not maintained by hand.
+other than `undecoded`'s. The deny-list is generated from the parse of **every committed recording**
+— the two expose different action kinds — so it tracks the wheel and is not maintained by hand.
 
 ## The proof that nothing was lost
 
@@ -99,5 +110,9 @@ Computed in `packages/replay-engine`, from `units-commanded` events only.
   how long the silence lasted relative to the remaining match; `basis` states both figures for the
   instance. The bands live in the register entry's method.
 - **Non-claim**, verbatim on every instance: *not a casualty count — a group can fall silent
-  because it was garrisoned, left idle or simply not re-selected*.
+  because it was garrisoned, left idle, told to hold, patrol or change formation, or simply not
+  re-selected*.
+- **Blind spot, stated in the method.** Only move, interact and order carry decoded unit ids. Formation,
+  stance, patrol and stop do not, so exactly the commands that park a military group are invisible,
+  and a parked group reads as silent. This caps the level the banding may assign.
 - It consumes no deletion and no market event, and is never summed with either (FR-014).

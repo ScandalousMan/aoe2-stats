@@ -88,6 +88,11 @@ placed at an observed path, and validation must reject it — once per tier boun
   and that a key, once written, is never written again.
 - `match_analyses.result_key` names the current document. Its primary key is unchanged.
 - A recompute under a new identity writes a new object and repoints the row. It deletes nothing.
+- **A recompute has to be triggered.** Today a published row is stale only when the parser's name or
+  version differs, so a new knowledge or analytics version would never recompute at all. The
+  staleness test becomes a comparison of the stored identity digest with the current one.
+- The row's `engine_deps` column, which exists and which nothing has ever written, is written with
+  the same record the document carries.
 - A read by identity resolves the older object directly. SC-005 is: publish, record the identity,
   promote a new snapshot, recompute, then fetch by the first identity and compare.
 

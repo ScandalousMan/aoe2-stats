@@ -110,7 +110,8 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   Does it hold? → A: No; it was measured against the reference recording and refuted on both
   preconditions. It is re-typed to an inferred engagement observable, *loss of control over a group*,
   with a stated confidence and an explicit non-claim that it is not a casualty count. Explicit
-  deletion and market transactions stay observed and exact.
+  deletion and market transactions stay exact and are never blended into it; their tier is settled
+  below.
 - Q: How should the mission be cut into features? → A: Two. This feature is the versioned knowledge
   base, the canonical event model and the truth-tier and provenance spine. Feature 007 is the
   deterministic reconstruction, its invariants and its golden fixtures.
@@ -135,6 +136,20 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   and every dependent value is withheld. Informational — no currently published value depends on it,
   nothing is withheld, and the gap only counts toward the aggregate rate. There is no level under
   which a value is published despite a missing input.
+- Q: Deletions and market transactions reach this repository as undecoded payloads. What tier are
+  they published at? → A: Decoded, exact, never inferred. The parser hands both back as raw bytes, so
+  calling them observed would mis-tier the first data this feature publishes. Found by
+  `/speckit-analyze` against the code.
+- Q: How is one player action told apart from a genuine repeat? → A: Only idempotent kinds collapse —
+  research, age-up and resignation — first occurrence over the whole match, which is what the
+  extractor does today. Queueing, placement and movement are never collapsed: repeating them is how
+  the game is played.
+- Q: What shape does the aggregate gap report take? → A: A grouped query over the gap table. The
+  analyzer has no run and no counters, and none is invented for this.
+- Q: On what basis is a reference recording naming real players committed to a public repository? →
+  A: Its own register activity, with its own balancing test, covering every committed recording
+  including the first — which has had no entry. It is not the on-demand retention basis, whose
+  safeguards a public repository cannot meet.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -356,8 +371,9 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-013**: The *loss of control over a group* observable MUST be published only at the inferred
   tier, MUST carry a confidence, and MUST carry an explicit statement that it is not a casualty count
   (session 2026-09-19).
-- **FR-014**: Explicit deletions and market transactions MUST be published at the observed tier and
-  MUST NOT be blended into any inferred quantity.
+- **FR-014**: Explicit deletions and market transactions MUST be published at the decoded tier — the
+  parser returns both as undecoded payloads, and this repository's decoders are what read them — MUST
+  be exact, and MUST NOT be blended into any inferred quantity.
 
 ### The canonical event model
 
@@ -368,15 +384,19 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-017**: The canonical vocabulary MUST NOT contain a field whose name, shape or offset is
   specific to any one engine's output.
 - **FR-018**: A command the game emitted more than once for a single player action MUST appear once in
-  the canonical stream, collapsed to its first occurrence.
+  the canonical stream, collapsed to its first occurrence. Collapse applies only to kinds for which a
+  repeat cannot carry meaning — research, age-up and resignation — over the whole match. Queueing,
+  placement and movement MUST NOT be collapsed.
 - **FR-019**: A command the running engine does not decode MUST be represented as an undecoded event
   of known kind, never dropped silently and never guessed at.
 - **FR-020**: The canonical event model MUST accommodate events that the current engine cannot yet
   produce — those depending on the starting state — without requiring the vocabulary to be redesigned
   when they become available.
-- **FR-021**: Producing the canonical stream MUST NOT retain the raw operation stream, honouring the
-  memory bound that `specs/003-player-search-match-analysis/contracts/analysis.md` already makes part
-  of the extraction contract.
+- **FR-021**: Producing the canonical stream MUST NOT copy the raw operation stream and MUST NOT
+  retain it past the single fold that consumes it, honouring the memory bound that
+  `specs/003-player-search-match-analysis/contracts/analysis.md` already makes part of the extraction
+  contract. The parser materialises every operation before this code runs; that cost is the
+  parser's and is not one this requirement can remove.
 
 ### The versioned knowledge base
 
@@ -459,8 +479,8 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   corrected to name the paths that exist — the adapter at
   `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and the protocols at
   `packages/core/src/aoe2stats_core/replay/` — in place of a path that was never created.
-- **FR-047**: `.claude/skills/replay-parsing/SKILL.md` MUST be corrected where it states that the
-  placement command carries no player identifier; the pinned engine does supply it, as
+- **FR-047**: `.claude/skills/replay-parsing/SKILL.md` and `docs/adr/0001-replay-parser.md` MUST be
+  corrected where they state that the placement command carries no player identifier; the pinned engine does supply it, as
   `packages/replay-engine/tests/test_aoe2rec.py` measures, and only the building identifier requires
   decoding.
 
@@ -603,8 +623,10 @@ and constitution IX governs retaining a recording naming real players. Decided a
 
 **Resolved 2026-09-19 — [research.md](./research.md) D2.** It is committed, as served, because
 `docs/data-sources.md` §2 sets a bar the two recordings meet only if both can be re-measured, and the
-second is currently in no checkout. Constitution IX is not a new obstacle — the first fixture already
-rests on the same basis — and the processing register gains the entry. If the served zip cannot be
+second is currently in no checkout. Constitution IX does apply and was mis-stated here at first: no
+register activity covers a recording committed to a public repository, the first fixture included,
+and the on-demand retention basis cannot describe one. The register gains a new activity with its own
+balancing test, covering every committed recording. If the served zip cannot be
 recovered, FR-045 is satisfied in its narrower form: two measurements recorded, one reproducible,
 the question marked corroborated and not settled.
 

@@ -37,8 +37,8 @@ never a lookup falling back at query time.
 
 **Today's storage destroys what FR-042 protects.** One row and one object per match, overwritten on
 recompute. The published object's key gains the identity digest; 003's row keeps its primary key and
-points at the current document. That change needs no migration; the gap table in phase 5 is the
-feature's only one.
+points at the current document, and gains one nullable column holding the digest so that a change
+of knowledge or analytics version is actually noticed — today only a parser change is.
 
 The two datasets that look like a primary and a cross-check are one pipeline run twice, so the
 second source is the publisher's patch notes, transcribed by hand. And the second reference
@@ -58,7 +58,8 @@ register is TOML, read with the standard library. The new `packages/knowledge` d
 
 **Storage**: Object store only, through `packages/storage`. The published analysis document gains
 an identity-addressed key. One additive table, `analysis_knowledge_gaps`, for the aggregate gap
-report — an expand-only migration with nothing to contract. Knowledge packs and the register are
+report, and one nullable column, `match_analyses.identity_digest`, for the staleness test — a single
+additive revision with nothing to contract. Knowledge packs and the register are
 files in the repository, shipped inside their packages.
 
 **Testing**: `uv run pytest` across the workspace under `PYTEST_DISABLE_NETWORK=1`, which
@@ -72,20 +73,22 @@ imported by `apps/analyzer`; nothing is platform-aware.
 **Project Type**: Python library packages inside the existing uv workspace, consumed by one existing
 application.
 
-**Performance Goals**: The canonical stream is produced in the same single pass the extractor
-already makes, and the existing fixture-parse time must not regress by more than a small constant
+**Performance Goals**: The canonical stream is produced in one pass over the parsed operations — one
+fewer than the extractor makes today (research D10) — and the existing fixture-parse time must not regress by more than a small constant
 factor. A knowledge query is an in-memory lookup after a one-time load of a snapshot measured in
 single-digit megabytes.
 
 **Constraints**: The memory ceiling in `specs/003-player-search-match-analysis/contracts/analysis.md`
-binds the new entry point exactly as it binds the old one — the operation stream is never
-materialised. No scheduled job, no request-path work, nothing that draws on the capture budget
+binds the new entry point exactly as it binds the old one — the operation stream is never copied and
+never retained past the fold. The wheel materialises it before this code runs, which no design here
+can change, and peak memory is measured, not inferred from the input-size refusal (research D10). No scheduled job, no request-path work, nothing that draws on the capture budget
 (FR-049). No network at build, test or run time. No default, average or neighbouring value, ever.
 
 **Scale/Scope**: 6 user stories, 52 functional requirements, 14 success criteria. One new package,
 two existing packages extended, one application touched at two functions. One vendored pack of three
-files, two hand-modelled civilisations in the first snapshot (four if the second fixture lands).
-Three documents corrected. Five phases, each independently green.
+files, six hand-modelled civilisations in the first snapshot — two from the first fixture, four from
+the second, none shared (research D11). Five documents corrected. Five build phases and a closing
+one, each independently green.
 
 ## Constitution Check
 
@@ -97,16 +100,19 @@ the post-design ones. All twelve principles were walked from
 | -------- | --------------------------------------------- | --------------------------------------------- | ----------------------------- |
 | **I**    | Capture Outranks Analysis                     | **PASS**                                      | Nothing here touches the ingester, the enqueue, the budget or the replay fetch. FR-049 forbids a scheduled job and forbids drawing on the capture budget, and the design has neither: every new code path is a library call inside an analysis a person asked for. One thing to hold — D2 has a closing window, and recovering the second recording is capture work, so it outranks every other task in this plan. |
 | **II**   | Python Backend                                | **PASS**                                      | All logic is Python. The web reader gains no rule: the tier, the gaps and the identity are data it may later display and never computes. |
-| **III**  | All External Data Goes Through a DataProvider | **PASS** — by making no call                  | No outbound connection is added anywhere. The knowledge pack is imported by a network-free script from a checkout a person made, the discipline `scripts/ops/sync_map_thumbnails.py` already follows, so there is no call for a provider to wrap. FR-032's "through `packages/providers`" binds the day someone automates a refresh; this plan does not, and says so. The rules data is re-obtainable at any time, so no verbatim response is owed. |
+| **III**  | All External Data Goes Through a DataProvider | **PASS** — by making no call                  | No outbound connection is added anywhere. The knowledge pack is imported by a network-free script from a checkout a person made, the discipline `scripts/ops/sync_map_thumbnails.py` already follows, so there is no call for a provider to wrap. FR-032's "through `packages/providers`" binds the day someone automates a refresh; this plan does not, and says so. The spec's own risks say these sources may stop and one already has, and the principle resolves that doubt toward *irrecoverable* — which vendoring the pack verbatim, with its checksum, is exactly the answer to. |
 | **IV**   | Raw Is Sacred, Derived Is Disposable          | **PASS** — and one gap in it closes           | The recording is read and never written. Every derived artifact records what produced it: that is FR-040, and FR-044 repairs the one place the record is an empty literal today. FR-042's "never destroy" is stricter than this principle's "disposable" and is honoured by addressing, not by forbidding recomputation. If the second fixture must be repackaged (D2), the README says the bytes are ours — a fixture is not a retained capture, but the principle's honesty about checksums applies. |
 | **V**    | Parsing Runs in an Isolated, Pluggable Engine | **PASS** — this feature is the principle's subject | The canonical vocabulary is the interface the principle asks for, stated in types with no engine-shaped field (FR-017). The pinned wheel stays imported in exactly one package. The principle's "both behind one interface" is unmet today and was before this feature — one engine has an adapter, the other is a canary — and it stays an open item in `docs/risks.md`; this feature makes closing it cheaper and does not claim to close it. |
 | **VI**   | Tokens First                                  | **N/A**                                       | No component, no style. |
 | **VII**  | Visual Tests Are Mandatory                    | **N/A**                                       | No component is created or modified. The published document changes additively and the reader's existing tests cover that it still parses. |
 | **VIII** | No Secrets in the Clear                       | **PASS**                                      | No secret, no new environment variable. |
-| **IX**   | GDPR by Design                                | **PASS, with one register entry owed**        | No new personal data is processed by the code. The second fixture (D2) names two more real players in a public match, retained on the already-public basis exactly as the first is; the processing register gains that entry in the same change. The group-silence observable is a property of a match, keyed to a participant slot the document already carries. All regions stay EU. |
+| **IX**   | GDPR by Design                                | **PASS, with one new register activity owed** | No new personal data is processed by the code. The second fixture (D2) commits four more real players' names and profile identifiers to a public repository, and **no existing activity covers that** — not for the first fixture either, and the on-demand retention basis cannot, since its safeguards are that nothing is ever served. The register gains a new activity for committed reference recordings, with a balancing test stating the real exposure, in the same change as the file. The first draft of this row claimed an existing basis; `/speckit-analyze` found there is none. The group-silence observable is a property of a match, keyed to a participant slot the document already carries. All regions stay EU. |
 | **X**    | Intellectual Property                         | **PASS, with one mandatory gate**             | The pack is MIT and lands with the five-field licence record; `scripts/checks/asset_packs.py` and its workflow path filter are extended to `packages/knowledge/packs/` in the same change, because the check is scoped by root and would otherwise neither see nor run on it. The game's own data file is rejected outright — the usage rules' first prohibition bars the extraction — and that rejection is recorded so it is not re-proposed. Non-commercial and the disclaimer are untouched. |
 | **XI**   | Documentation Is in English                   | **PASS**                                      | Every artifact is English. The vendored strings file is the English locale only. |
 | **XII**  | Portable by Construction                      | **PASS**                                      | Packs and the register are package data read through `importlib.resources`, not filesystem paths, so they load identically from a serverless bundle and a virtual environment. No local state is written. Objects go through `packages/storage`. |
+
+**Post-analysis correction**: IX's row was wrong as first written and is corrected above; III's
+justification contradicted the spec's own risk section and now agrees with it.
 
 **Post-design re-check**: one verdict gained an obligation. IX had none before Phase 0; D2 created
 the processing-register entry. III moved from "PASS, via a provider" in the first draft to "PASS, by
@@ -178,7 +184,7 @@ packages/knowledge/                    # NEW PACKAGE — depends on aoe2stats-co
 │       ├── data.json
 │       ├── trees/
 │       └── strings.en.json
-├── snapshots/                         # one directory per snapshot identity — append-only
+├── snapshots/                         # one directory per snapshot identity — append-only, size-budgeted
 └── tests/
 
 apps/analyzer/
@@ -212,7 +218,8 @@ docs/
 └── risks.md                           # R3 gains the starting-state finding
 
 .claude/skills/replay-parsing/SKILL.md # path (FR-046), placement player id (FR-047), initial state
-.github/workflows/pr.yml               # asset-packs path filter extended
+.github/workflows/pr.yml               # asset-packs filter extended; python filter gains the analyzer
+                                       # and the new package, and loses the path that never existed
 pyproject.toml                         # workspace member; testpaths; mypy
 package.json                           # format globs exclude vendored packs and snapshots
 ```
@@ -228,7 +235,8 @@ followed, because it would make the API depend on a data package to read a tier.
 
 ## Phases
 
-Five, in this order. Each is independently green and separately mergeable. `/speckit-implement` is
+Five build phases in this order, then a closing one. Each is independently green and separately
+mergeable. `/speckit-implement` is
 run one phase at a time, naming the task range and the stop condition.
 
 | # | Phase                              | Stories   | Why here |
@@ -236,16 +244,20 @@ run one phase at a time, naming the task range and the stop condition.
 | 1 | Evidence and corrections           | US1       | The second fixture has a closing window (D2), so it goes first and outranks everything. The three document corrections are cheap, true today, and stop the next reader being misled while the rest is built. |
 | 2 | Truth types and the register       | US1, US3  | Everything else imports these. The register must exist before anything can be checked against it, and severity (D7) is computed from it. |
 | 3 | Canonical events                   | US4       | Needs the tier type. Proven by the golden timeline coming back byte-identical through the new path — a proof available only before anything else changes that path. |
-| 4 | The knowledge base and its gaps    | US2, US5  | Needs the register for severity and the canonical stream for the coverage pass. Carries the vendored pack, the two hand-modelled civilisations and the carry-forward to the fixture's build. |
+| 4 | The knowledge base and its gaps    | US2, US5  | Needs the register for severity and the canonical stream for the coverage pass. Carries the vendored pack, the six hand-modelled civilisations and the carry-forward to the fixtures' shared build. |
 | 5 | Identity and the published document| US3, US6  | Last, because it is the only phase that changes what production publishes, and it assembles all four foundations into one validated document. Carries the migration and FR-044. |
+| 6 | Closing                            | —         | The living documents that can only be written once the rest is true, the end-to-end quickstart run, and the lint. |
 
 Phase 4 carries the one unknown this plan cannot size: how many bonuses of the fixture
 civilisations resist the effect model (D5). The valve is the rule itself — a bonus that does not fit
 is recorded as not modelled and its fields stay gapped — so the phase cannot be blocked by it, only
 made to report a blocking gap that SC-007a then turns into a visible failure with a named cause.
 
-Phase 5's migration is expand-only and is applied before the deploy per
-`docs/runbooks/database-migrations.md`. The local environment file points at production, so no task
+Phase 5's migration is a single additive revision. The runbook permits applying it before or
+immediately after the deploy; **before** is chosen here because the same change bumps the expected
+schema revision, and the smoke workflow on every push to `main` would otherwise fail against a
+database that lags the build. The cost is stated, not hidden: between apply and deploy the health
+endpoint answers 503, so merge and apply happen in one sitting. The local environment file points at production, so no task
 in this plan runs a migration from a developer machine; the runbook's sequence is the only path.
 
 ## Complexity Tracking

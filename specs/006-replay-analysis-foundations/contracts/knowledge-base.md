@@ -8,7 +8,7 @@
 ```text
 packages/knowledge/
 ├── packs/aoe2techtree/        vendored source files at one pinned commit + LICENCE.md
-└── snapshots/<identity>/      one directory per snapshot, written once
+└── snapshots/<identity>/      one directory per snapshot, written once — under a size budget
     ├── snapshot.toml          identity, validation record, civilisations modelled
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
@@ -112,17 +112,34 @@ recording resolves.
 - **SC-007**: a test deletes one field from an in-memory copy of a snapshot, runs the pass, and
   asserts that exactly the dependent data are withheld, a gap names the entity, field, build and
   civilisation, and every other datum is unchanged.
-- **Aggregate** (FR-039): gaps are written to `analysis_knowledge_gaps`. The report is a grouped
-  count by build, cause and severity over a window, exposed as one repository function and one
-  line in the existing analyzer run summary — the shape `quarantined_total` already has.
+- **Aggregate** (FR-039): gaps are written to `analysis_knowledge_gaps`, and the table **is** the
+  aggregate. The report is a grouped count by build, cause and severity over a window, exposed as
+  one repository function and printed by one check script. The analyzer has no run, no counters and
+  no summary to attach a line to — the ingester's quarantine counter is a column on a per-run table
+  the analyzer has no equivalent of — and none is invented for this.
 
 ## Licence gate (FR-031, FR-033)
 
-`packs/aoe2techtree/LICENCE.md` carries the five fields `scripts/checks/asset_packs.py` enforces.
-That check's root list and the pull-request workflow's path filter are extended to
-`packages/knowledge/packs` in the same change that adds the pack; until they are, the check neither
-sees the pack nor runs when it changes. The mirror in `docs/asset-packs.md` gains the row the check
-demands.
+`packs/aoe2techtree/LICENCE.md` carries the five fields `scripts/checks/asset_packs.py` enforces,
+named exactly as it matches them: `Source`, `Licence`, `Permitted usage`, `Ruling`, `Checked`. The
+ruling leads with **COPY IN**, the one verdict besides READ ONLY the gate recognises.
+
+That check scopes itself by a list of **(root, size budget) pairs**. Two pairs are added in the
+change that adds the pack — `packages/knowledge/packs` and `packages/knowledge/snapshots`, each with
+its own named budget constant and its own stated justification, as the two existing roots have. The
+snapshots root is append-only by design and ships inside the package, so it is the one that needs a
+ceiling most. The pull-request workflow's `asset-packs` path filter gains both. Until then the check
+neither sees the pack nor runs when it changes.
+
+`docs/asset-packs.md` gains a **third section** for knowledge packs, as feature 005 added one for
+typefaces, and its opening scope sentence — which today names game assets only — is widened. The
+row does not go in the game-assets table.
+
+**Residual risk, stated once.** The files are MIT; the values in them were produced upstream by
+reading the game's data file, which the publisher's usage rules do not authorise. This repository
+already weighed that for this same source — `docs/data-sources.md` §1 rules its data MIT, and the
+risk register's R7 records the residual — so the ruling cites both and restates neither. It is not
+the flags pack's position, which has no game-derived content at all.
 
 Sources ruled *read and transcribe only* appear in no pack. A value transcribed from one is an
 effect or a disagreement entry carrying the sentence read, where, by whom and when.

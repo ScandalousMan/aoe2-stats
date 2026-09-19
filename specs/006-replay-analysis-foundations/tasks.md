@@ -15,8 +15,8 @@ which passes silently when the behaviour appears by accident — and the impleme
 marker. A test and the task that turns it green may be separately committed only where the `xfail`
 makes the tree green in between, and every task below says which of the two it is.
 
-**Organization**: grouped by the five phases [plan.md](./plan.md) fixes, not by story priority. The
-ordering is forced three times over — the fixture has a closing window, the golden-timeline identity
+**Organization**: grouped by the five build phases and the closing phase [plan.md](./plan.md)
+fixes, not by story priority. The ordering is forced three times over — the fixture has a closing window, the golden-timeline identity
 proof exists only before anything else touches the parse path, and gap severity cannot be computed
 before the register exists — and those constraints do not line up with P1/P2/P3. Story labels ride
 on each task; a phase serving two stories says so.
@@ -24,7 +24,8 @@ on each task; a phase serving two stories says so.
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: can run in parallel — different files, no dependency on an incomplete task
-- **[Story]**: US1..US6, mapping to the user stories in [spec.md](./spec.md)
+- **[Story]**: US1..US6, mapping to the user stories in [spec.md](./spec.md); the closing phase's
+  tasks serve no single story and carry none
 - Every task names its exact file path
 
 ## Path Conventions
@@ -60,7 +61,7 @@ wrong — stop and say so. This is FR-038, and the whole feature exists because 
 | Phase 1 — the fixture     | 1     | US1      | T603, T604               |
 | Phase 1 — the corrections | 1     | US1      | T606, T607               |
 | Phase 2 — the register    | 2     | US1, US3 | T614, T617, T621         |
-| Phase 3 — canonical events| 3     | US4      | T626, T628, T630, T632   |
+| Phase 3 — canonical events| 3     | US4      | T626, T626a, T628, T630, T632 |
 | Phase 4 — the knowledge base | 4  | US2, US5 | T641, T646, T649, T651   |
 | Phase 5 — identity        | 5     | US3, US6 | T657, T660, T663, T665   |
 
@@ -68,7 +69,7 @@ wrong — stop and say so. This is FR-038, and the whole feature exists because 
 
 ## Phase 1: Evidence and corrections (plan phase 1 — US1)
 
-**Purpose**: secure the evidence before it expires, and stop three documents lying. Everything here
+**Purpose**: secure the evidence before it expires, and stop the documents that describe the parser lying. Everything here
 is true today and none of it depends on any other phase.
 
 **Independent test**: quickstart Phase 1. Both committed archives match their recorded checksums and
@@ -86,16 +87,20 @@ neither carries a post-game statistics block; no document names a parser path th
       admissible and the next three tasks each handle one: the served archive (best), an extracted
       recording that must be repackaged (acceptable, and the repackaging is disclosed), or
       unrecoverable (T605). Do not proceed past T605 on an unrecorded outcome
-- [ ] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry in the
-      existing table's shape: match kind, date played, date downloaded, the download address, game
-      build, archive size, extracted size, member count, point of view, operation counts, and its
-      checksum. **If and only if the archive was repackaged**, state that plainly — that the bytes
-      and therefore the checksum are this repository's and not the source's, and that the first
-      fixture remains the verbatim one. A repackaged fixture is still evidence; a repackaged fixture
-      presented as verbatim is not. Repeat the existing do-not-modify instruction for the new file
-- [ ] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** archive under
-      `tests/fixtures/replays/`, assert the recorded checksum matches, the archive holds exactly one
-      recording, and the parsed post-game block list contains no statistics block. Parameterise over
+- [ ] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry, **in
+      the shape the first entry actually has**: a heading sentence carrying the match kind, the date
+      played, the date downloaded and the download address; the six-row table — game build, zip
+      size, extracted size, members, point of view, operations; and the checksum as a trailing line.
+      **If and only if the archive was repackaged**, state that plainly — that the bytes and
+      therefore the checksum are this repository's and not the source's, and that the first fixture
+      remains the verbatim one — and **amend the README's do-not-re-zip rule with an explicit, named
+      exception for this one file**. Repeating the rule beside a file that breaks it would leave the
+      README prohibiting what it contains. A repackaged fixture is still evidence; a repackaged
+      fixture presented as verbatim is not. The README's prohibition on committing an extracted
+      recording beside an archive stands unchanged: the file lands as an archive or not at all
+- [ ] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** `*.zip` under
+      `tests/fixtures/replays/` — the directory also holds a golden JSON file and a README — assert
+      the recorded checksum matches, the archive holds exactly one recording, and the parsed post-game block list contains no statistics block. Parameterise over
       the directory rather than naming files, so a third recording added later is covered without
       anyone remembering to extend it. This is the test that lets `docs/data-sources.md` §2 stop
       being an open question, and it is why T601 comes first: the claim needs bytes anyone can
@@ -119,23 +124,53 @@ neither carries a post-game statistics block; no document names a parser path th
 - [ ] T606 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` and
       `docs/adr/0001-replay-parser.md` to name the paths that exist (**FR-046**): the adapter at
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and the protocols at
-      `packages/core/src/aoe2stats_core/replay/`, in place of the parser application directory
-      neither document's path ever pointed at. In the same edit, correct ADR-0001's Decision section
-      where it states that both engines sit behind one protocol: one engine has an adapter and the
-      other is installed ephemerally by `scripts/checks/parser_canary.py` in the nightly workflow.
-      **Do not claim to have closed that gap** — `docs/risks.md` carries it as an open item, it
-      predates this feature, and the canonical event model is what makes closing it cheap later
-- [ ] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` where it states the placement
-      command carries no player identifier (**FR-047**). The pinned wheel supplies it;
+      `packages/core/src/aoe2stats_core/replay/`, in place of the parser application directory that
+      was never created. **The skill's frontmatter description names that directory too**, and the
+      quickstart's grep expects no match anywhere in the file. In the same edit, correct every other
+      claim in ADR-0001 that is false today, because `docs/` must be true today and a half-corrected
+      ADR is still a lying one: that both engines sit behind one protocol — one has an adapter, the
+      other is installed ephemerally by `scripts/checks/parser_canary.py` in the nightly workflow;
+      that the canary parses recent replays and publishes success rates — it parses the one
+      committed fixture and the secondary engine only reports; that the fast alternative is kept as
+      a fallback — [research.md](./research.md) **D1** measured that it cannot open the current
+      build, and `docs/risks.md` R3 repeats the same fallback and is corrected in T667; and its
+      paragraph calling the post-game statistics block an open question, which T604 settles and
+      which must not stay open in one living document while settled in another. **Do not claim to
+      have closed the one-protocol gap** — `docs/risks.md` carries it as an open item, it predates
+      this feature, and the canonical event model is what makes closing it cheap later. Also remove
+      the phantom parser directory from the `python` paths filter in `.github/workflows/pr.yml` and
+      add `apps/analyzer/**`, which is in no filter at all today — a pull request touching only the
+      analyzer runs no Python job
+- [ ] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` **and** the 2026-08-24
+      correction note in `docs/adr/0001-replay-parser.md` where each states the placement command
+      carries no player identifier (**FR-047**). The pinned wheel supplies it;
       `packages/replay-engine/tests/test_aoe2rec.py` pins that as a currently-passing fact across
-      every placement in the fixture and names both this file and the ADR in its own docstring. Only
-      the building identifier requires decoding. A skill that a test has been contradicting is worse
-      than no skill: it is read by agents that will not check
-- [ ] T608 [US1] Add the second recording's participants to `docs/privacy/processing-register.md`
-      under the existing already-public retention basis, with its balancing test, matching the
-      entry the first fixture already has. Constitution IX is not a new obstacle here and the entry
-      must not imply it is — what is new is two more named players, on the same basis, in the same
-      shape. Skip only if T605 was taken, in which case no recording was added
+      every placement in the fixture and names both documents in its own docstring. Only the
+      building identifier requires decoding. In the same edit of the skill, correct its collapse
+      rule to what is true — one key, for research, no window — and record what the initial-state
+      section actually contains and what the pinned wheel exposes of it, referencing
+      [research.md](./research.md) **D1** and restating no offset, so the next agent starts from the
+      anchor and not from the claim that nothing is there. A skill that a test has been
+      contradicting is worse than no skill: it is read by agents that will not check. T606 and T607
+      both edit the skill and the ADR, so **they are not parallel with each other** despite the
+      marker — run them as one unit
+- [ ] T608 [US1] Add a **new processing activity** to `docs/privacy/processing-register.md` for
+      reference recordings of public matches committed to this repository, covering **every**
+      committed recording — the first fixture included, which has never had an entry. **Do not reuse
+      the on-demand retention activity**: its safeguards are that a recording is never served to
+      anyone and is read only by the analyzer, and a file in a public repository meets neither. One
+      row in the activities table in its eight-column shape, and a balancing-test section with the
+      five headings every other one uses — interest pursued, necessity, impact on the data subject,
+      safeguards, outcome. The test must state the real exposure and not soften it: participants'
+      names and profile identifiers sit in the history of a public repository, reachable by no
+      erasure or export endpoint, bounded by no expiry, and out of reach in any fork or clone
+      already taken. State the necessity honestly too — a recording cannot be pseudonymised without
+      destroying the bytes the parser tests exist to read. Cross-reference the register's existing
+      open launch item about a committed provider fixture, which names this same class of exposure
+      as weighed and not closed; this task does not close that item and must not claim to.
+      Constitution IX requires new personal data to reach the register in the same change as the
+      data, so this task and T601 are **one commit unit**. Skip only if T605 was taken — and even
+      then write the activity for the first fixture, which is owed regardless
 
 **Checkpoint**: the evidence is committed and re-measurable, and no document names a path that does
 not exist.
@@ -189,7 +224,8 @@ the view fails the suite.
       absence of a post-game statistics block, with its reason, its impact on the analytics that
       wanted it, the approximation that exists, `approximation_acceptable = "no"`, and the single
       condition that would change the answer (**FR-003** — the last question is answered, not left
-      open). Explicit deletions and market transactions at **observed** (**FR-014**). The
+      open). Explicit deletions and market transactions at **decoded** (**FR-014**) — the wheel returns
+      both as raw payloads, so observed would mis-tier them. The
       group-silence datum at **inferred** with its non-claim (**FR-013**). Every datum feature 007
       intends to publish, at planned or blocked, each carrying the knowledge it requires
       (**FR-005**) — that list is what makes gap severity computable in phase 4, so an entry with an
@@ -272,19 +308,51 @@ after being produced through the new stream.
 - [ ] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
       every kind has a tier; an event without a participant is constructible only for the
       match-level kinds; the two declared-only kinds exist as types
-- [ ] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`:
-      a generator mapping the wheel's operations to canonical events in **one pass**, never
-      materialising the operation list (**FR-021**). The memory ceiling in
-      `specs/003-player-search-match-analysis/contracts/analysis.md` binds this entry point exactly
-      as it binds the existing one, and it was sized against parsing alone — do not treat headroom
-      as available because this path is new. First-occurrence collapse per kind (**FR-018**), using
-      the keys the `replay-parsing` skill already mandates. Nothing is attributed to a participant
-      after their exit, and an observer or empty slot yields no participant at all — not a silent one
-- [ ] T626 [US4] Represent every operation the adapter does not decode as an `undecoded` event
-      carrying the engine's own operation label and the payload length, never dropped and never
-      guessed at (**FR-019**). Add the conservation test: emitted events plus the operation kinds
-      deliberately consumed for the clock equal the operation count the wheel reports. A silent drop
-      is the failure mode that cannot be found later, because nothing downstream knows to miss it
+- [ ] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
+      generator mapping the wheel's operations to canonical events in **one pass, with no copy and
+      nothing retained past the fold** (**FR-021**). Be exact about what that guarantees: the wheel
+      has already materialised every operation before this code runs, which is where the resident
+      memory R3 measured comes from and which nothing here can remove. **Every event's time comes
+      from one clock accumulated from the sync operations' increments** — only actions carry a time
+      of their own; chat and the post-game block carry none. That clock was checked against the
+      first fixture and matches both the post-game match time and every action's own time exactly;
+      assert both in a test, since nothing verifies it today. View-lock operations are camera
+      positions and are excluded because they carry no intent — not because they feed the clock,
+      which they do not. **Collapse only research, age-up and resignation**, first occurrence over
+      the whole match, no window (**FR-018**) — what the extractor does today. **Never collapse
+      queueing, placement or movement**: the first fixture's unit-queue commands reduce to a few
+      dozen distinct tuples, and collapsing them erases the villager count. Nothing is attributed to
+      a participant after their exit, and an observer or empty slot yields no participant at all —
+      not a silent one. Neither committed recording shows a player resigning while the match runs on
+      at length ([research.md](./research.md) **D11**), so test the exit rule on a synthetic stream
+      as well
+- [ ] T626 [US4] Represent every **action** the adapter does not decode as an `undecoded` event
+      carrying the engine's own label and the payload length, never dropped and never guessed at
+      (**FR-019**). Command kinds that arrive without decoded unit ids — formation, stance, patrol,
+      stop and the rest — are emitted as `units-commanded` with an **empty** id list, never an
+      inferred one. Add the conservation test over every committed recording: emitted events, plus
+      sync and view-lock operations, equal the operation count the wheel reports. The second
+      recording carries an action kind the wheel itself cannot name, so this rule has a live
+      instance to assert on. A silent drop is the failure mode that cannot be found later, because
+      nothing downstream knows to miss it
+- [ ] T626a [US4] Write the market and deletion decoders in
+      `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, in the placement decoder's
+      mould (**FR-014**). The wheel returns sell, buy and delete as raw byte payloads, so direction,
+      resource, amount and the deleted object's id must be derived **empirically** — sweep the byte
+      positions across every instance in every committed recording, cross-check against values that
+      can be verified independently, and golden-test the result over all of them, exactly as the
+      building identifier was found. These events are **decoded**, exact, and never blended into an
+      inferred quantity. If a field cannot be pinned with confidence, emit the event without it and
+      register the field as blocked — a guessed amount at the decoded tier is the precise lie this
+      feature exists to prevent. Test first, `xfail(strict=True)`
+- [ ] T626b [US4] Decode the chat channel in
+      `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`. The channel sits inside the
+      same JSON string as the message text, so the text cannot be avoided on the way to it: parse,
+      keep the channel and the participant, and **discard the text at the adapter**. Assert that no
+      message text appears in any canonical event, in either committed golden stream, or in any log
+      line this module emits — the text is personal data this feature has no use for, and
+      constitution IX is kept out of this seam by that assertion, not by intention. Chat carries no
+      time of its own and takes T625's accumulated clock
 - [ ] T627 [US4] Populate the engine dependency record inside the adapter (**FR-044**) from installed
       distribution metadata for the engine and each requirement it declares, and make an empty
       record a construction error. `apps/analyzer/src/aoe2stats_analyzer/extract.py` publishes an
@@ -294,36 +362,54 @@ after being produced through the new stream.
 - [ ] T628 [US4] Re-express the existing timeline extractor in
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` as a fold over the canonical
       stream, and **prove the committed golden timeline comes back byte-identical**. `git status`
-      shows `tests/fixtures/replays/AgeIIDE_Replay_500546441.timeline.json` untouched. Do **not**
-      regenerate it to make a test pass: the fixtures README already carries that instruction and
-      ADR-0001's own failure mode was a parser upgrade that silently changed what was being read. A
-      diff here means the stream lost or altered something, which is the one thing this phase may
-      not do
-- [ ] T629 [US4] Commit the canonical stream for each reference recording as a golden file under
+      shows `tests/fixtures/replays/AgeIIDE_Replay_500546441.timeline.json` untouched. Three things
+      will move it if handled naively, and each has been measured: the published `actions` figure is
+      counted **before** collapse today, so the fold counts raw commands there or
+      `actions_per_minute` shifts; unit-queue and placement commands are **not** collapsed today and
+      must stay so; and research is the only command kind collapsed today, with resignation. The
+      extractor makes **two** passes today — one to find the final match clock, one to reduce —
+      while its module and class docstrings both claim one; the fold removes the first pass, and the
+      docstrings are corrected in this task. Do **not** regenerate the golden file to make a test
+      pass: the fixtures README already carries that instruction and ADR-0001's own failure mode was
+      a parser upgrade that silently changed what was being read. A diff here means the stream lost
+      or altered something, which is the one thing this phase may not do
+- [ ] T629 [US4] Commit the canonical stream for each **committed** reference recording — one if T605
+      was taken, two otherwise — as a golden file under
       `tests/fixtures/replays/`, following the regeneration discipline the README already states for
       the timeline: regenerate only on an engine upgrade or a deliberate logic change, never by hand,
       and read and explain every diff it produces
 - [ ] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
-      names and assert none appears in a deny-list **generated from the wheel's own output keys** for
-      the fixture, and that no payload carries a raw byte sequence, a byte offset or a length other
+      names and assert none appears in a deny-list **generated from the wheel's own output keys** across
+      **every committed recording** — the two expose different action kinds, so a list built from one
+      is blind to the other's keys — and that no payload carries a raw byte sequence, a byte offset or a length other
       than `undecoded`'s (**FR-017**). Generating the deny-list rather than writing it by hand is the
       point — a hand-maintained list tracks what someone remembered, and the wheel is what changes
 - [ ] T631 [P] [US4] Write the collapse test (**SC-010**): the age-up command the fixture's player
-      issued twice by double-clicking appears once in the canonical stream. Both reference recordings
-      carry real duplicates, so assert over every committed recording rather than one
-- [ ] T632 [US4] Extend the existing memory-ceiling test to the canonical entry point at the same
-      bound, and assert the declared-only kinds are never emitted (**FR-020**). That second
-      assertion is what makes the reserved vocabulary honest: the day a producer lands, this test is
-      what changes, and no type does
+      issued twice by double-clicking appears once in the canonical stream. Assert over every
+      committed recording rather than one, and assert the inverse too: repeated unit-queue commands
+      are **not** collapsed, because a test that only checks collapse cannot see over-collapse
+- [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point, **and add
+      a real peak-memory measurement beside it**. The existing test is named for the memory ceiling
+      and measures no memory: it asserts that an oversized input is refused, which says nothing
+      about what an accepted input consumes. This feature puts three accumulators on that path — the
+      stream's consumers, the group-silence state and the coverage pass — and the second recording's
+      object-id space is several times the first's. Measure peak allocation over every committed
+      recording through the full canonical path and record the ceiling the test asserts against,
+      with its derivation, in the test itself. Also assert the declared-only kinds are never emitted
+      (**FR-020**): that is what makes the reserved vocabulary honest — the day a producer lands,
+      this test is what changes, and no type does
 - [ ] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
       group-control-lost observable, computed from commanded-unit events only, published at the
       **inferred** tier with a confidence whose basis states the command intensity and the silence
-      length for that instance (**FR-013**). Every instance carries the non-claim verbatim — it is
-      not a casualty count. It consumes no deletion and no market event and is never summed with
-      either (**FR-014**). Its banding lives in the register entry's method, so changing it is a
-      register change with a regenerated view, not a constant edit. **This is the datum a reader is
-      most likely to misread as a loss figure**, which is why the non-claim is a required field of
-      the type and not a comment near it
+      length for that instance (**FR-013**). **State its blind spot in the datum's method**: only
+      move, interact and order carry decoded unit ids; formation, stance, patrol and stop do not, so
+      exactly the commands that park a military group are invisible and a parked group reads as
+      silent. That blind spot caps the level the banding may assign, and the non-claim names it.
+      Every instance carries the non-claim verbatim — it is not a casualty count. It consumes no
+      deletion and no market event and is never summed with either (**FR-014**). Its banding lives
+      in the register entry's method, so changing it is a register change with a regenerated view,
+      not a constant edit. **This is the datum a reader is most likely to misread as a loss
+      figure**, which is why the non-claim is a required field of the type and not a comment near it
 
 **Checkpoint**: one vocabulary, no engine-shaped field, nothing dropped, and the golden timeline
 proves nothing was lost.
@@ -350,24 +436,41 @@ committed recording reports no blocking gap.
       `.gitignore` names — a `.prettierignore` is not consulted, because the script passes its own
       ignore path — so a vendored data file would fail the pull-request check until someone
       reformatted it, rewriting vendored bytes and invalidating every digest taken over them. This
-      trap is invisible until the pack lands, which is why it is disarmed in the task before
+      trap is invisible until the pack lands, which is why it is disarmed in the task before. **Also add
+      `packages/knowledge/**` to the `python` paths filter in `.github/workflows/pr.yml`**: without it
+      every later pull request touching only this package runs no Python job at all, the failure that
+      file's own comments already record twice. Update the root `pyproject.toml` comment that counts
+      the workspace members
 - [ ] T635 [US2] Write `scripts/ops/import_knowledge_pack.py`: reads a **local checkout** of the
       source at a stated commit and writes `packages/knowledge/packs/aoe2techtree/`. It opens no
       socket, and its header carries the same warning `scripts/ops/sync_map_thumbnails.py` does,
       plus the statement that automating the download is the moment a provider becomes mandatory
       (**FR-032**). Nothing in the running system, the build or the tests fetches a knowledge source,
       and the way that is guaranteed here is that no code performs a fetch at all
-- [ ] T636 [US2] Vendor the pack at a pinned commit with its five-field `LICENCE.md` — source,
-      licence, permitted usage, ruling, checked date — in the exact form
-      `scripts/checks/asset_packs.py` already enforces (**FR-033**), and add its row to
-      `docs/asset-packs.md`, which that check mirrors. Only a source whose licence permits it is
-      vendored (**FR-031**): this one is MIT. Record the same residual risk the civilisation-icon
-      pack's ruling already records, rather than restating it as new
-- [ ] T637 [US2] Extend `scripts/checks/asset_packs.py`'s root list and the `asset-packs` paths
-      filter in `.github/workflows/pr.yml` to `packages/knowledge/packs`. The check is hard-scoped
-      to the game-assets root today, so until both are extended it neither sees the new pack nor runs
-      when it changes, and constitution X is enforced only where the gate looks. **Prove it bites**:
-      drop one licence field, confirm the check names the pack, restore it
+- [ ] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
+      named **exactly** as `scripts/checks/asset_packs.py` matches them — `Source`, `Licence`,
+      `Permitted usage`, `Ruling`, `Checked` (**FR-033**); a field written any other way fails the
+      gate as missing. The ruling leads with **COPY IN**, one of the two verdicts the gate
+      recognises. Only a source whose licence permits it is vendored (**FR-031**): this one is MIT.
+      Add a **third section** to `docs/asset-packs.md` for knowledge packs, as feature 005 added one
+      for typefaces — the row does not belong in the game-assets table — and widen that document's
+      opening scope sentence, which names game assets only. **State the residual risk once and do
+      not borrow the wrong precedent**: the files are MIT, but their values were produced upstream
+      by reading the game's data file, which the publisher's usage rules do not authorise. This
+      repository already weighed that for this source — `docs/data-sources.md` §1 rules its data MIT
+      and the risk register's R7 records the residual — so cite both and restate neither. The flags
+      pack records no such risk because it has no game-derived content; this pack is not in that
+      position
+- [ ] T637 [US2] Extend the list of roots in `scripts/checks/asset_packs.py` and the `asset-packs`
+      paths filter in `.github/workflows/pr.yml`. That list holds **(root, size budget) pairs**, not
+      bare paths, so each new root needs its own named budget constant with its own stated
+      justification, as the two existing roots have. Add **two**: `packages/knowledge/packs`, and
+      `packages/knowledge/snapshots` — the snapshots root is append-only by design and ships inside
+      the package, so it is the one that most needs a ceiling and had none. Size each budget from
+      the measured payload with stated headroom. The check is scoped by root today, so until both
+      are added it neither sees the new pack nor runs when it changes, and constitution X is
+      enforced only where the gate looks. **Prove it bites**: drop one licence field, confirm the
+      check names the pack, restore it
 - [ ] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
       source, source version, described build, content digest (**FR-024**) — loaded through
       `importlib.resources` so it works identically from a serverless bundle and a virtual
@@ -420,7 +523,8 @@ committed recording reports no blocking gap.
       conditional on state is recorded as **not modelled** with its reason, and its fields stay
       gapped — a bonus is never half-applied
 - [ ] T645 [US2] Model the civilisations that appear in the committed reference recordings, and only
-      those (**FR-022a**). Both players in the first fixture trained units their civilisation
+      those (**FR-022a**) — **six** with both fixtures committed, two from the first and four from the
+      second with none shared ([research.md](./research.md) **D11**); two if T605 was taken. Both players in the first fixture trained units their civilisation
       discounts, so this is not an optional refinement: without it the one committed recording
       produces blocking gaps on day one. Implement the conservative rule in `query.py` — a
       civilisation absent from the modelled set refuses **every** civilisation-qualified cost and
@@ -465,11 +569,14 @@ committed recording reports no blocking gap.
       finally gives feature 002's licence rulings a living home — 002's own register was never
       written, and they survive today only in a frozen task list and a module docstring
 - [ ] T652 [US5] Add `analysis_knowledge_gaps` to `packages/storage/src/aoe2stats_storage/models.py`
-      per [data-model.md](./data-model.md) §7, with the aggregate report as one repository function
-      grouping by build, cause and severity (**FR-039**) and one line in the analyzer's run summary,
-      the shape the quarantine counter already has. A pattern of gaps introduced by a game patch must
-      be visible as a rate, not discovered one analysis at a time. The table holds no personal data:
-      a participant is not a column
+      per [data-model.md](./data-model.md) §7. **The table is the aggregate** (**FR-039**): one
+      repository function grouping by build, cause and severity over a window, and one check script
+      under `scripts/checks/` that prints the rate. Do **not** mirror the ingester's quarantine
+      counter — that is a column on a per-run table fed by a multi-stage aggregator, and the
+      analyzer has no run, no counters and no logger to attach one to; inventing a run concept for
+      this would be a second table the data model says this feature does not have. A pattern of gaps
+      introduced by a game patch must be visible as a rate, not discovered one analysis at a time.
+      The table holds no personal data: a participant is not a column
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -501,7 +608,9 @@ after everything underneath it moves.
       document version per
       [contracts/analysis-document.md](./contracts/analysis-document.md): **additive only**, every
       existing field at its existing path, four blocks added. Populate the dependency map from
-      T627's record, replacing the empty literal. Every published value carries its tier as data and
+      T627's record, replacing the empty literal, **and write the same record to the
+      `match_analyses.engine_deps` column** — it has existed through two migrations and nothing has
+      ever written it. Every published value carries its tier as data and
       the method that produced it (**FR-007**, **FR-009**), and a value at inferred or predicted
       carries a confidence and is worded so it cannot be read as a measurement (**FR-010**)
 - [ ] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
@@ -510,11 +619,22 @@ after everything underneath it moves.
       **before** the object is written: a failing document is not published and the analysis fails
       through 003's existing failure path
 - [ ] T657 [US6] Make the published object's key carry the identity digest, and keep
-      `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object per
-      match is overwritten on recompute, which destroys an existing analysis — a new parser, patch,
-      knowledge version or analytics version must produce a **new** analysis and rewrite nothing.
-      `match_analyses` keeps its primary key: that key is 003's double-click dedupe and is not this
-      feature's to change (**FR-048** — where this feature and 003 meet, 003 stands)
+      `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object
+      per match is overwritten on recompute, which destroys an existing analysis — a new parser,
+      patch, knowledge version or analytics version must produce a **new** analysis and rewrite
+      nothing. `match_analyses` keeps its primary key: that key is 003's double-click dedupe and is
+      not this feature's to change (**FR-048** — where this feature and 003 meet, 003 stands)
+- [ ] T657a [US6] Extend the staleness test in `apps/analyzer/src/aoe2stats_analyzer/run.py` so a
+      recompute is actually triggered (**FR-042**). Today a published row is stale only when the
+      parser's name or version differs, so a new knowledge or analytics version returns early and
+      never recomputes — the identity-addressed key in T657 would then preserve analyses that are
+      never produced. Compare the stored identity digest with the current one. This is **not** a
+      change to 003's request, dedupe or lease behaviour (**FR-048**): the same branch, the same
+      recompute path, a wider condition. The stored digest lives in a new nullable `identity_digest`
+      column on `match_analyses`, added by T663's single additive revision
+      ([data-model.md](./data-model.md) §8). A row published before this feature has none, which
+      reads as stale and recomputes once — the intended outcome. The object key already carries the
+      digest, and parsing it back out of a key was rejected: a storage layout is not a record
 - [ ] T658 [US6] Implement reproduction from a recorded identity (**FR-043**): read the retained
       recording through `packages/storage`, verify its checksum, resolve the named snapshot from
       package data, reach **no external source**, and refuse — naming what is missing — when the
@@ -543,11 +663,18 @@ after everything underneath it moves.
       twice, and publish the gap list in the document. When no snapshot matches the recording's
       build, the knowledge block records the absence explicitly and one blocking gap says so
       (**FR-027**)
-- [ ] T663 [US6] Add the expand-only migration for `analysis_knowledge_gaps` under
-      `infra/migrations/versions/`. **It adds and drops nothing**, so it applies before the deploy
-      per `docs/runbooks/database-migrations.md` — which is the only path, because `.env.local`
-      points at production and no task here runs a migration from a developer machine. Bump the
-      expected schema revision in the same change so the health endpoint reports it
+- [ ] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
+      nullable `match_analyses.identity_digest` column T657a reads — under
+      `infra/migrations/versions/`, following that directory's naming convention and chaining from
+      its current head, and bump the expected schema revision in `packages/storage` in the same
+      commit — a test asserts the two agree. **Apply it before the deploy, and know why**: the
+      runbook permits before or immediately after for a lone additive revision, but this change also
+      moves the expected revision, and the smoke workflow on every push to `main` would fail against
+      a database that lags the build. The cost is real and is stated: between apply and deploy the
+      health endpoint answers 503, so **merge and apply in one sitting**. Follow
+      `docs/runbooks/database-migrations.md` exactly — the direct, unpooled endpoint; its single
+      prompted command; and unsetting the variable afterwards. `.env.local` points at production and
+      no task here runs a migration from a developer machine by any other route
 - [ ] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
       next-version document fixture with **no source change**. The reader already requires only the
       existing fields, accepts any numeric schema version and ignores unknown keys — this test is
@@ -555,9 +682,10 @@ after everything underneath it moves.
       rather than moved. No component changes; displaying a tier or a gap needs a design-system spec
       first and is a later feature's decision
 - [ ] T665 [US6] Verify the phase end to end against quickstart Phase 5, including the post-deploy
-      checks: the health endpoint reports the new schema revision, and one analysis requested by hand
-      shows a populated dependency record, an identity digest and a gap list that is empty or
-      explains itself
+      checks: the health endpoint answers **200** — read the status, not the revision field, which
+      is the build's own compiled constant and is no evidence about the database — and one analysis
+      requested by hand shows a populated dependency record, an identity digest and a gap list that
+      is empty or explains itself
 - [ ] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
@@ -570,16 +698,26 @@ destroys its predecessor.
 
 ---
 
-## Phase 6: Polish and cross-cutting
+## Phase 6: Closing (plan phase 6)
 
-- [ ] T667 [P] Add the starting-state finding to `docs/risks.md` under the existing parser risk: the
-      section is present in the header and reachable in two tiers of very different cost, with the
-      per-patch fragility of the object grammar recorded. This retires the assumption that it is
-      unreadable **without** promising the decoder, which is 007's
-- [ ] T668 [P] Correct `.claude/skills/replay-parsing/SKILL.md` to record what the initial-state
-      section actually contains and what the pinned wheel exposes of it, so the next agent starts
-      from the anchor rather than from the claim that nothing is there. Reference
-      [research.md](./research.md) **D1**; restate no offset — the measurement has one home
+**Purpose**: the living documents that can only be written once the rest is true, the end-to-end
+quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
+
+- [ ] T667 [P] Update `docs/risks.md`: correct R3's fallback list, which names the fast alternative
+      parser as a fallback although [research.md](./research.md) **D1** measured that it cannot open
+      the current build; and add a row for the dependency class this feature creates —
+      community-maintained knowledge sources that may stop, one of which already has, plus the
+      standing hand-transcription of civilisation bonuses and patch notes. Add the
+      verification-checklist line for T603's assertion under parsing. Tick no existing checklist
+      item
+- [ ] T668 [P] Record the starting-state finding in `docs/data-sources.md` §2, which is where a
+      measured property of the outside world lives — not in the risk register: the initial-state
+      section is present in the header, per-player starting attributes are reachable at a
+      self-verifying anchor, and the object table sits behind a per-patch grammar. A living fact in
+      `docs/` is trustworthy only because a test asserts it, so add a fixture test that finds the
+      attribute anchor in every committed recording. This retires the claim that the section is
+      unreadable **without** promising the decoder, which is 007's. [research.md](./research.md)
+      **D1** then becomes the historical record and stops being the home
 - [ ] T669 [P] Run the full quickstart end to end on a clean checkout and record any step whose
       stated expectation did not match what happened. A quickstart nobody has executed is a
       hypothesis
@@ -613,19 +751,20 @@ may be separate commits. Where a task says the marker is deleted in the same cha
 
 The smallest set of tasks that was ever simultaneously green. T609/T610 with T611 are one commit —
 the test is written first and the marker comes off in the same change, so neither half is green
-alone. T634 is one commit with nothing else: it changes workspace membership and format globs, and a
+alone. T601, T602 and T608 are one commit: constitution IX puts new personal data and its register
+entry in the same change. T634 is one commit with nothing else: it changes workspace membership and format globs, and a
 half-applied version leaves the tree red in a way that looks like a formatting problem. T627 and
 T655 are separate: T627 populates the record inside the adapter and is green alone; T655 publishes
 it. **Before committing any removal or rename, grep for consumers.**
 
 ### Parallel opportunities
 
-- T603, T606, T607 — three different files, no shared state.
+- T603 alongside the T606/T607 unit — T606 and T607 share two files and run as one.
 - T609, T610 in one batch; T611 is their shared test and rides with them.
 - T623, T624 with T630, T631 once the vocabulary exists.
 - T646, T649, T650 — three test files in the same package.
 - T654, T660, T661, T664, T666 — five test files across four packages.
-- T667, T668, T669 — three documents.
+- T667, T668, T669 — two different documents and a quickstart run.
 
 A parallel batch is **one commit**: agents sharing a working tree interleave in the same files, and
 splitting that afterwards invents commits that never existed as a working state.

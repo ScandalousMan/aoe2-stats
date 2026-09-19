@@ -77,7 +77,7 @@ gate in [contracts/register.md](./contracts/register.md).
 | `blocked_on`         | Required when `status` is `blocked`: the named dependency (FR-005).                    |
 | `non_claim`          | Required for the group-silence datum (FR-013); optional elsewhere.                     |
 
-Only when `classification` is `non-determinable`, and then all four are mandatory (FR-003):
+Only when `classification` is `non-determinable`, and then all five are mandatory (FR-003, FR-004):
 
 | Field                      | Rule                                                        |
 | -------------------------- | ----------------------------------------------------------- |
@@ -98,14 +98,14 @@ One engine-independent occurrence (FR-015 to FR-020). Vocabulary in
 
 | Field         | Type                       | Rule                                                                  |
 | ------------- | -------------------------- | --------------------------------------------------------------------- |
-| `clock_ms`    | integer                    | Match clock, from the recording's own sync, never wall time.          |
+| `clock_ms`    | integer                    | Match clock, **accumulated** from sync increments — only actions carry a time of their own (research D10). Never wall time. |
 | `participant` | participant slot, optional | Absent only for match-level events. Never an observer or empty slot.  |
 | `kind`        | closed enumeration         | See the contract. Includes `undecoded`.                               |
 | `tier`        | Truth tier                 | `observed` or `decoded` for everything this feature's adapter emits.  |
 | `payload`     | one typed record per kind  | No field named, shaped or offset after an engine's output (FR-017).   |
 
-**Rules.** A repeated command collapses to its first occurrence, keyed per kind (FR-018). Nothing is
-attributed to a participant after their exit. An unfinished production is never emitted as complete.
+**Rules.** Research, age-up and resignation collapse to their first occurrence over the whole match;
+no other kind collapses (FR-018). Nothing is attributed to a participant after their exit. An unfinished production is never emitted as complete.
 Kinds that need the starting state are **declared and unproduced**, so adding their producer later
 changes no type (FR-020).
 
@@ -189,6 +189,9 @@ The tuple that makes a published analysis reproducible (FR-040 to FR-044). Docum
 | `reconstruction_engine`    | `not-applicable` until 007. Present from the start so the tuple never changes shape. |
 | `analytics`                | This feature's own version for the coverage pass and the group-silence method. |
 
-`digest` is computed over the canonical serialisation of the six. The published object's key carries
+`digest` is computed over the canonical serialisation of the six, and is stored on the row in a new
+nullable `match_analyses.identity_digest` column, added by the same additive revision as the gap
+table. It is what the staleness test compares; a row with none is stale. Adding a nullable column to
+003's table changes none of 003's behaviour and leaves its primary key alone (FR-048). The published object's key carries
 it; `match_analyses.result_key` names the current one; earlier objects are never deleted (research
 D9). The wall-clock extraction time is **outside** the identity and outside the compared body.
