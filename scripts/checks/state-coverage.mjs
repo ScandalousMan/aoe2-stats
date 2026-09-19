@@ -353,11 +353,20 @@ function statementsOf(stmtOrBlock) {
 function walkJsxWithContext(sourceFile, visitJsx) {
   function visitBlockStatements(statements, ctx) {
     let guards = ctx.guards
+    // A local `const` declared earlier in the same function body (`FavouriteToggle`'s own `const
+    // bounded = atLimit && !favourited`) is not a prop and not in scope for a later story-args
+    // evaluation unless its own initializer travels with the candidate — threaded the same way
+    // `guards` already is, reset at the same function boundaries (`visit` below), so a candidate's
+    // own `localConsts` map always reflects exactly what is declared and in scope at its own JSX
+    // position, in source order.
+    let localConsts = ctx.localConsts
     for (const stmt of statements) {
       if (ts.isVariableStatement(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer) {
-            visit(decl.initializer, { ...ctx, guards })
+            visit(decl.initializer, { ...ctx, guards, localConsts })
+            localConsts = new Map(localConsts)
+            localConsts.set(decl.name.text, decl.initializer)
           }
         }
       } else if (ts.isIfStatement(stmt)) {
@@ -366,6 +375,7 @@ function walkJsxWithContext(sourceFile, visitJsx) {
         visitBlockStatements(thenStmts, {
           ...ctx,
           guards: [...guards, { expr: cond, truthy: true }],
+          localConsts,
         })
         if (stmt.elseStatement) {
           const elseStmts = ts.isIfStatement(stmt.elseStatement)
@@ -374,15 +384,16 @@ function walkJsxWithContext(sourceFile, visitJsx) {
           visitBlockStatements(elseStmts, {
             ...ctx,
             guards: [...guards, { expr: cond, truthy: false }],
+            localConsts,
           })
         } else if (blockAlwaysExits(thenStmts)) {
           guards = [...guards, { expr: cond, truthy: false }]
         }
       } else if (ts.isReturnStatement(stmt)) {
-        if (stmt.expression) visit(stmt.expression, { ...ctx, guards })
+        if (stmt.expression) visit(stmt.expression, { ...ctx, guards, localConsts })
         return
       } else {
-        visit(stmt, { ...ctx, guards })
+        visit(stmt, { ...ctx, guards, localConsts })
       }
     }
   }
@@ -419,7 +430,7 @@ function walkJsxWithContext(sourceFile, visitJsx) {
     }
     let nextCtx = ctx
     if (ts.isFunctionDeclaration(node) && node.name) {
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [] }
+      nextCtx = { ...ctx, fnName: node.name.text, guards: [], localConsts: new Map() }
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
@@ -427,10 +438,10 @@ function walkJsxWithContext(sourceFile, visitJsx) {
       (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
     ) {
       // The name lives on the declaration; the fresh function scope starts at the initializer
-      // itself (visited next via forEachChild), which is where `guards` should reset — done by
-      // threading the reset through this same `nextCtx`, since forEachChild's next call is exactly
-      // that initializer.
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [] }
+      // itself (visited next via forEachChild), which is where `guards`/`localConsts` should
+      // reset — done by threading the reset through this same `nextCtx`, since forEachChild's next
+      // call is exactly that initializer.
+      nextCtx = { ...ctx, fnName: node.name.text, guards: [], localConsts: new Map() }
     }
     if (
       ts.isCallExpression(node) &&
@@ -467,6 +478,7 @@ function walkJsxWithContext(sourceFile, visitJsx) {
     iterationVar: null,
     iterationArrayExpr: null,
     guards: [],
+    localConsts: new Map(),
   })
 }
 
@@ -679,6 +691,14 @@ export function findLocalElements(
 
 export const PRIMITIVE_NAMES = ['Button', 'Link', 'Field', 'Menu']
 
+// `Button` (`primitives/Button/index.tsx`: `disabled={disabled || loading}`) and `Field`
+// (`primitives/Field/index.tsx`: `const isDisabled = disabled || loading`) both render their own
+// `loading` prop through the exact same rendered-disabled state their `disabled` prop reaches —
+// `Link` and `Menu` carry no such fold. A call site that only ever sets `loading` (`FavouriteToggle`'s
+// own `AddingInFlight`/`RemovingInFlight`, never a literal `disabled`) is real, positive disabled
+// coverage this file must not miss (T594's row 8 sweep, item 1).
+const PRIMITIVES_WHERE_LOADING_DISABLES = new Set(['Button', 'Field'])
+
 // The role a composed primitive instance actually renders as — never a single constant per
 // primitive name (`INTRINSIC_ROLE[primitive.toLowerCase()]` gave `null` for `Link`/`Field`/`Menu`,
 // so `Link` only ever pooled on a literal `role: 'button'` force-state, and that same universal
@@ -761,6 +781,21 @@ export function findPrimitiveInstances(
       }
       return { value: null, resolved: 'unresolved' }
     }
+    // `disabled`'s own literal/dynamic split, the same reading `resolveProp` already gives
+    // `variant`/`size` — a literal `disabled`/`disabled={true}` is real, story-independent
+    // knowledge (kept in `disabled` below, unconditionally true); a *dynamic* expression
+    // (`FavouriteToggle`'s own `disabled={bounded}`, `Dialog`'s own `disabled={primaryAction.disabled}`)
+    // is not resolvable here at all — it carries no story's own args yet — so it is kept as
+    // `disabledExpr` for a later pass to evaluate against each of this component's own stories
+    // (T594's row 8 sweep, item 1: this used to be silently dropped, reading a confirmed `'none'`
+    // no comparison had actually made). `loadingExpr` is the same reading of a `loading` attribute,
+    // captured only for the primitives whose own rendering folds `loading` into `disabled` too.
+    const disabledAttr = getAttr(opening, 'disabled')
+    const disabledLit = attrLiteral(disabledAttr)
+    const loadingAttr = PRIMITIVES_WHERE_LOADING_DISABLES.has(tagName)
+      ? getAttr(opening, 'loading')
+      : undefined
+    const loadingLit = attrLiteral(loadingAttr)
     found.push({
       primitive: tagName,
       file: filePath,
@@ -773,7 +808,15 @@ export function findPrimitiveInstances(
         defaults.size != null || getAttr(opening, 'size')
           ? resolveProp('size')
           : { value: null, resolved: 'n/a' },
-      disabled: attrLiteral(getAttr(opening, 'disabled')).value === true,
+      disabled:
+        (disabledLit.literal && disabledLit.value === true) ||
+        (loadingLit.literal && loadingLit.value === true),
+      disabledExpr: disabledLit.present && !disabledLit.literal ? attrExprOf(disabledAttr) : null,
+      loadingExpr: loadingLit.present && !loadingLit.literal ? attrExprOf(loadingAttr) : null,
+      // Every local `const` in scope at this exact JSX position (`FavouriteToggle`'s own `const
+      // bounded = atLimit && !favourited`) — `disabledExpr`/`loadingExpr` above are frequently a
+      // bare reference to one of these, never resolvable against a story's own args without it.
+      localConsts: context.localConsts,
       // `Button` renders `<a href>` rather than `<button>` once `href` is supplied (its own
       // `index.tsx`) — its own implied role follows that, not a fixed per-primitive constant
       // (T594's REJECT on #80, item 5).
@@ -1645,6 +1688,13 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   const instancesByPrimitive = new Map(PRIMITIVE_NAMES.map((p) => [p, []]))
   const storyStatesByComponent = new Map()
   const pendingComposedMatches = []
+  // One entry per story of a *non-primitive-owning* component (composite or screen), forced or
+  // not — `resolveDisabledFromStories` needs every one of them, since a story that resolves a
+  // `Button`/`Link`/`Field`/`Menu` call site's own `disabled`/`loading` prop true through its own
+  // `args` (`FavouriteToggle`'s own `Bounded`, `AddingInFlight`) never sets `visualForceState` at
+  // all — only `pendingComposedMatches` above is forced-only, for the role-based state matching
+  // that genuinely needs a forced pseudo-class to mean anything.
+  const pendingDisabledChecks = []
 
   for (const filePath of allFiles) {
     const isStory = filePath.endsWith('.stories.tsx')
@@ -1779,10 +1829,6 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       const storyFileScope = buildFileValueScope(sourceFile)
       for (const { exportName, node } of storyObjs) {
         const forced = extractVisualForceState(node)
-        if (!forced) continue
-        const storyStartLine =
-          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
-        const storyEndLine = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1
         const mergedArgs = evaluateMergedArgsObject(metaObj, node, storyFileScope)
         const propsScope = buildStoryPropsScope(
           componentPropDefaultsByKey.get(componentKey) ?? new Map(),
@@ -1796,6 +1842,20 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         for (const [propName, exprNode] of findRenderJsxProps(node, componentDirName)) {
           propsScope.set(propName, evaluateExpr(exprNode, storyFileScope))
         }
+        // Every story — forced or not — can resolve a local `Button`/`Link`/`Field`/`Menu`
+        // instance's own dynamic `disabled`/`loading` prop through its own `args` alone
+        // (`FavouriteToggle`'s `Bounded`, `AddingInFlight`; `Dialog`'s `PrimaryPending`), so this
+        // runs unconditionally rather than gated on `forced` the way role-based matching is below.
+        pendingDisabledChecks.push({
+          componentKey,
+          file: relPath(filePath),
+          exportName,
+          propsScope,
+        })
+        if (!forced) continue
+        const storyStartLine =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+        const storyEndLine = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1
         const argsLiterals = new Set([
           ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
           ...collectScopeStringLiterals(propsScope),
@@ -1814,6 +1874,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   }
 
   resolveComposedStoryMatches(pendingComposedMatches, instancesByPrimitive)
+  resolveDisabledFromStories(pendingDisabledChecks, instancesByPrimitive)
 
   // One line per component directory, the ones with nothing to report included, so Record 1 can be
   // counted against `story-docs.mjs`'s own directory count (T594's own text) — previously only the
@@ -1846,7 +1907,64 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     storyStatesByComponent,
   )
 
-  return { componentDirCount: componentDirs.length, localElements, matrices }
+  return {
+    componentDirCount: componentDirs.length,
+    localElements,
+    matrices,
+    ambiguitySummary: summarizeAmbiguities(instancesByPrimitive, matrices),
+  }
+}
+
+// The kept/dropped split the Method's own ambiguity-precedence paragraph describes in prose
+// (`cellFor`'s own precedence, above): every `composed-story-ambiguous-variant` push taints one
+// (primitive, row, state) cell, and that cell's own rendered text either still carries the
+// ambiguity note (`'kept'` — nothing else covers that exact state on that exact row) or a real,
+// unambiguous match elsewhere on the same row displaced it (`'dropped'`). Counted from the built
+// `matrices` themselves, never re-derived by hand — the exact defect item 2 of the row 8 sweep
+// found (a hand-typed "six ambiguities... only Menu's actions keeps the note" that measured 13
+// tainted cells, not six, and got the keep/drop split backwards under the story-name reading).
+function summarizeAmbiguities(instancesByPrimitive, matrices) {
+  let instances = 0
+  let events = 0
+  const storyNames = new Set()
+  const taintedCells = new Map()
+  for (const primitive of PRIMITIVE_NAMES) {
+    for (const inst of instancesByPrimitive.get(primitive) ?? []) {
+      if (inst.kind === 'composed-story-unresolved') {
+        events++
+        storyNames.add(inst.storyName)
+      } else if (inst.kind === 'composed-story-ambiguous-variant') {
+        instances++
+        storyNames.add(inst.storyName)
+        const cellKey = `${primitive}|${axisKey(inst)}|${inst.forced.state}`
+        if (!taintedCells.has(cellKey)) {
+          taintedCells.set(cellKey, { primitive, key: axisKey(inst), state: inst.forced.state })
+        }
+      }
+    }
+  }
+  let kept = 0
+  let dropped = 0
+  for (const { primitive, key, state } of taintedCells.values()) {
+    const cellProp = state === 'focus-visible' ? 'focusVisible' : state
+    const row = (matrices[primitive] ?? []).find((r) => r.variantSize === key)
+    const cell = row ? row[cellProp] : null
+    const stillNoted =
+      Array.isArray(cell) &&
+      cell.length === 1 &&
+      typeof cell[0] === 'string' &&
+      cell[0].includes('none uniquely resolved')
+    if (stillNoted) kept++
+    else dropped++
+  }
+  return {
+    instances,
+    events,
+    taintedCells: taintedCells.size,
+    kept,
+    dropped,
+    storyNames: storyNames.size,
+  }
 }
 
 export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
@@ -1971,6 +2089,86 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
   }
 }
 
+// `variant`/`size` already get evaluated against a specific story's own merged args (`resolveProp`
+// falling to `resolveDynamicAxisValue` above) — `disabled` (and, on `Button`/`Field`, `loading`,
+// which reaches the same rendered state, `PRIMITIVES_WHERE_LOADING_DISABLES`) never did: a dynamic
+// expression on a `Button`/`Link`/`Field`/`Menu` call site (`FavouriteToggle`'s own `disabled=
+// {bounded}`, `Dialog`'s own `disabled={primaryAction.disabled}`/`loading={primaryAction.loading}`)
+// used to leave every row's `disabled` cell reading a bare `'none'` no comparison had ever actually
+// made — four such cells, found live in this tree (T594's row 8 sweep, item 1). This runs once per
+// `(candidate, story)` pair, for *every* story of the owning component — never only the force-state
+// ones `resolveComposedStoryMatches` reads, since `Bounded`/`AddingInFlight` force nothing at all,
+// they only ever set `args`. A candidate whose own guards resolve `'unreached'` for a given story
+// (`FavouriteToggle`'s decoy `SignedOutControl` button when `authenticated: true`) is skipped
+// outright — that story could not possibly render it — the same exclusion role-based matching
+// already applies.
+// Extends `baseScope` with a candidate's own `localConsts` (`walkJsxWithContext`'s own map,
+// declaration order preserved by `Map`) — each evaluated against the *growing* scope in turn, the
+// same fold `buildFileValueScope` already does for top-level file consts, so a later local const
+// may itself reference an earlier one. Returns `baseScope` unchanged when there are none, the
+// common case, rather than copying a `Map` for every candidate with nothing local to add.
+function scopeWithLocalConsts(baseScope, localConsts) {
+  if (!localConsts || localConsts.size === 0) return baseScope
+  const scope = new Map(baseScope)
+  for (const [name, exprNode] of localConsts) {
+    scope.set(name, evaluateExpr(exprNode, scope))
+  }
+  return scope
+}
+
+export function resolveDisabledFromStories(pendingStoryScopes, instancesByPrimitive) {
+  for (const { componentKey, file, exportName, propsScope } of pendingStoryScopes) {
+    const label = `${path.basename(file, '.stories.tsx')}:${exportName}`
+    for (const primitive of PRIMITIVE_NAMES) {
+      const candidates = instancesByPrimitive
+        .get(primitive)
+        .filter((i) => i.kind === 'jsx' && i.componentKey === componentKey && !i.ariaHidden)
+      for (const candidate of candidates) {
+        const exprs = [candidate.disabledExpr, candidate.loadingExpr].filter(Boolean)
+        if (exprs.length === 0) continue // no dynamic disabled-capable attribute at all: nothing to resolve, and nothing to add — a genuine 'none' stands on its own weight elsewhere
+        const reach = evaluateGuards(candidate.guards ?? [], propsScope)
+        if (reach === 'unreached') continue
+        const scope = scopeWithLocalConsts(propsScope, candidate.localConsts)
+        let anyTrue = false
+        let anyUnresolved = reach === 'unresolved'
+        for (const expr of exprs) {
+          const v = evaluateExpr(expr, scope)
+          if (!v.resolved) anyUnresolved = true
+          else if (v.value) anyTrue = true
+        }
+        const variant = resolveDynamicAxisValue(candidate.variant, scope)
+        const size = resolveDynamicAxisValue(candidate.size, scope)
+        if (anyTrue) {
+          instancesByPrimitive.get(primitive).push({
+            primitive,
+            kind: 'jsx-disabled-resolved',
+            componentKey,
+            file,
+            storyName: exportName,
+            variant,
+            size,
+            label,
+          })
+        } else if (anyUnresolved) {
+          instancesByPrimitive.get(primitive).push({
+            primitive,
+            kind: 'jsx-disabled-unresolved',
+            componentKey,
+            file,
+            storyName: exportName,
+            variant,
+            size,
+            reason: `disabled not statically resolvable (${label})`,
+          })
+        }
+        // Resolved, and false on every dynamic attribute this story carries: real negative
+        // knowledge for this one story, nothing to add — the row still falls to a confirmed
+        // `'none'` only once *no* story anywhere resolved it true or left it unresolved either.
+      }
+    }
+  }
+}
+
 // The children of a JSX element, evaluated as text against `scope` — literal `JsxText` runs plus
 // any `{expr}` child resolved through `evaluateExpr` (`Dialog`'s own `{primaryAction.label}`).
 // `null` when any part cannot be resolved, so the caller falls back to whatever static text (if
@@ -2047,14 +2245,22 @@ export function buildAxisMatrix(primitiveName, instances) {
         // ambiguous between; `cellFor` below only ever reads this list when the same row's own
         // `hover`/`focus-visible`/`active` match list is empty, so a row that *also* carries a real,
         // unambiguous match for that exact state from elsewhere — another story, another candidate
-        // — shows that match and drops the ambiguity note entirely; only `Menu`'s own `actions` row
-        // is left with nothing else to show, of the six ambiguities live in this tree today).** A
-        // real match anywhere for this row's own state is positive knowledge in its own right — a
+        // — shows that match and drops the ambiguity note entirely; `Menu`'s own `actions` row is
+        // one of the cells this leaves with nothing else to show, so it keeps the note — the exact
+        // kept/dropped split, over every ambiguity live in this tree today, is `summarizeAmbiguities`'
+        // own printed line below, never hand-counted here again (a hand count was wrong twice, T594's
+        // row 8 sweep, item 2).**
+        //
+        // A real match anywhere for this row's own state is positive knowledge in its own right — a
         // cell covered by one story and merely ambiguous against a second force-state is still
         // covered — and outranks noting that a *different* comparison could not be settled; the
         // ambiguity note is not lost, it simply never has to carry a row whose state is already
         // known some other way.
-        unresolvedByState: { hover: [], 'focus-visible': [], active: [] },
+        // `disabled` carries its own reason list the same way (T594's row 8 sweep, item 1): a
+        // dynamic `disabled`/`loading` expression this pass could not evaluate against a specific
+        // story's own args is `unresolved: <reason>`, never folded into the same confirmed `'none'`
+        // a control that carries no disabled-capable attribute at all genuinely earns.
+        unresolvedByState: { hover: [], 'focus-visible': [], active: [], disabled: [] },
       })
     }
     return rows.get(key)
@@ -2102,6 +2308,19 @@ export function buildAxisMatrix(primitiveName, instances) {
       row.unresolvedByState[stateKey].push(
         `${inst.componentKey}/${path.basename(inst.file)}:${inst.storyName} — ${inst.reason}`,
       )
+      continue
+    }
+    // A `disabled`/`loading` expression `resolveDisabledFromStories` evaluated against one specific
+    // story's own merged args — real, positive knowledge that this exact row renders disabled under
+    // that story, or a reason it could not tell (T594's row 8 sweep, item 1). Filed on the row the
+    // *story* resolved variant/size to, the same redirect `composed-story` already gets, not the
+    // JSX candidate's own possibly-different static row.
+    if (inst.kind === 'jsx-disabled-resolved') {
+      row.disabled.push(inst.label)
+      continue
+    }
+    if (inst.kind === 'jsx-disabled-unresolved') {
+      row.unresolvedByState.disabled.push(inst.reason)
       continue
     }
     const label = cellName(inst)
@@ -2168,7 +2387,7 @@ export function buildAxisMatrix(primitiveName, instances) {
           'focus-visible',
         ),
         active: cellFor(row.active, row.unresolvedByState.active, 'active'),
-        disabled: row.disabled.length ? [...new Set(row.disabled)] : ['none'],
+        disabled: cellFor(row.disabled, row.unresolvedByState.disabled, 'disabled'),
         forcedRoles: row.forcedRoles.sort(
           (a, b) => a.state.localeCompare(b.state) || String(a.role).localeCompare(String(b.role)),
         ),
@@ -2899,17 +3118,93 @@ function bulletBlockAround(scopeText, lineNum) {
   return lines.slice(start, end).join('\n')
 }
 
-export function resolveBareLocationFromBullet(scopeText, lineNum, bareLocation, allSrcFiles) {
-  const blockText = bulletBlockAround(scopeText, lineNum)
-  const nameRe = /`([A-Z][A-Za-z0-9]*)/g
+// Every backtick-quoted `PascalCase` word in `blockText` that names a real component directory,
+// in the order it appears, each tagged with whether it is immediately followed by a possessive
+// `'s` — the one grammatical signal this prose actually uses to mark a bullet's own subject
+// ("`Dialog`'s own two `Button` instances": `Dialog` is possessive, the subject; `Button` is the
+// object of that sentence, never marked that way). Returns `{ name, dir, possessive }` per match,
+// `dir` already resolved to the real directory `PRIMITIVE_NAMES`/`TIER_SEGMENTS` gives it.
+function namedDirectoriesInBlock(blockText, allSrcFiles) {
+  // The *whole* backtick span, from an opening backtick immediately followed by an uppercase
+  // letter (never `` `<Button` ``, a JSX tag quoted for its own sake, the same exclusion the
+  // pre-fix version got by accident from a narrower regex) to its own closing backtick — captures
+  // only the leading `PascalCase` run (`` `Dialog.stories.tsx` `` still names `Dialog`), so the
+  // possessive check below can look at what follows the *closing* backtick regardless of how much
+  // of the span's own text sits after the captured name.
+  const spanRe = /`([A-Z][A-Za-z0-9]*)[^`]*`/g
+  const found = []
   let m
-  while ((m = nameRe.exec(blockText))) {
-    const dirRe = new RegExp(`/(?:primitives|composites|screens)/${m[1]}/`)
+  while ((m = spanRe.exec(blockText))) {
+    const name = m[1]
+    const dirRe = new RegExp(`/(?:primitives|composites|screens)/${name}/`)
     const match = allSrcFiles.find((f) => dirRe.test(f))
     if (!match) continue
     const dir = match.slice(0, match.indexOf(match.match(dirRe)[0]) + match.match(dirRe)[0].length)
+    const possessive = /^'s\b/.test(blockText.slice(m.index + m[0].length))
+    found.push({ name, dir, possessive })
+  }
+  return found
+}
+
+// Every *fully qualified* citation in the block for this exact `bareLocation` basename
+// (`` `AccountErasurePanel/index.tsx:224` `` when `bareLocation` is `index.tsx`) — the strongest
+// signal available: the prose itself already disambiguates this exact file elsewhere in the same
+// bullet, so a bare citation for the same basename resolves against it before any weaker heuristic
+// runs at all. Distinct directories returned, in no particular order — the caller fails outright
+// when there is more than one, a genuine internal contradiction rather than something to guess past.
+function selfQualifiedDirs(blockText, bareLocation, allSrcFiles) {
+  const escaped = bareLocation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp('`([A-Z][A-Za-z0-9]*)/' + escaped + '(?::|`)', 'g')
+  const dirs = new Set()
+  let m
+  while ((m = re.exec(blockText))) {
+    const dirRe = new RegExp(`/(?:primitives|composites|screens)/${m[1]}/`)
+    const match = allSrcFiles.find((f) => dirRe.test(f))
+    if (match)
+      dirs.add(match.slice(0, match.indexOf(match.match(dirRe)[0]) + match.match(dirRe)[0].length))
+  }
+  return [...dirs]
+}
+
+// Resolves a bare filename (`index.tsx`, no leading path) against the *one* component directory
+// this bullet is genuinely about — never merely the first real-directory name the block happens to
+// mention, which silently picks the wrong file once a bullet's own subject is named after some
+// other real component it discusses along the way (T594's row 8 sweep, item 5; documented before
+// this fix as a known risk, worked around per-citation by qualifying the path in full rather than
+// closed at the source — `selfQualifiedDirs` above is that same workaround, read back out of the
+// prose instead of trusted by construction). Three signals, in order of how much they actually
+// commit to an answer: (1) a fully qualified citation for this exact basename elsewhere in the
+// block — unambiguous, and a *second*, disagreeing one is a real contradiction, failed outright;
+// (2) the directory named with a possessive `'s` — this prose's own grammatical marker for "this is
+// what the sentence is about" (`` `Dialog`'s own two `Button` instances ``: `Dialog` is possessive,
+// the subject; `Button` is the object of that sentence, never marked that way) — more than one
+// distinct directory marked this way is the same kind of contradiction; (3) the first real-directory
+// name in the block, whether marked or not — the pre-fix rule, kept as the last resort so a citation
+// that predates this fix and never needed disambiguating still resolves exactly as it always did.
+export function resolveBareLocationFromBullet(scopeText, lineNum, bareLocation, allSrcFiles) {
+  const blockText = bulletBlockAround(scopeText, lineNum)
+  const tryDir = (dir) => {
     const candidate = path.join(dir, bareLocation)
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
+    return existsSync(candidate) && statSync(candidate).isFile() ? candidate : null
+  }
+  const qualified = selfQualifiedDirs(blockText, bareLocation, allSrcFiles)
+  if (qualified.length > 1) return null // the block itself qualifies this basename two ways — contradiction, not a guess to make
+  if (qualified.length === 1) {
+    const resolved = tryDir(qualified[0])
+    if (resolved) return resolved
+  }
+  const named = namedDirectoriesInBlock(blockText, allSrcFiles)
+  const possessiveDirs = [...new Set(named.filter((n) => n.possessive).map((n) => n.dir))]
+  if (possessiveDirs.length > 1) return null // genuine subject ambiguity — fail, never guess
+  if (possessiveDirs.length === 1) {
+    const resolved = tryDir(possessiveDirs[0])
+    if (resolved) return resolved
+    // The marked subject's own directory carries no file at this bare name — fall through to the
+    // first-named rule below rather than fail outright, the same tolerance the pre-fix version had.
+  }
+  for (const { dir } of named) {
+    const resolved = tryDir(dir)
+    if (resolved) return resolved
   }
   return null
 }
@@ -3227,7 +3522,10 @@ export function checkDeferralVocabularyCoverage(
   // cites for that component — table and exclusion citations feed the same per-component line
   // set, since either one is an equally real accounting of the hit.
   //
-  // **Genuinely quote level, not block level (T594 M4, REJECT #5 on #80/#79)**: this comment used
+  // **Block membership plus a citation window, never block membership alone (T594 M4, REJECT #5 on
+  // #80/#79; heading corrected in the row 8 sweep's own item 6 — it used to read "genuinely quote
+  // level, not block level", the exact framing `README.md`'s own paragraph above retracts, while
+  // this body already stated the real rule below it)**: this comment used
   // to claim "quote level, not component level" while the excuse condition below only ever checked
   // *block* membership — a whole prose block, and some of this package's own blocks run 30+ lines
   // (`AccountErasurePanel.stories.tsx` 101-135, `DataExportPanel.stories.tsx` 126-157). One
@@ -3278,7 +3576,15 @@ export function checkDeferralVocabularyCoverage(
         "prose block in 8c-bis's own table nor named in its own exclusion paragraph",
     })
   }
-  return { failures, hitCount: hits.length }
+  // T594's row 8 sweep, item 7: `README.md`'s own prose used to hand-type "Eighteen components
+  // carry at least one" with no tripwire of its own — correct the day it was written, silently
+  // wrong the next time a row was added or dropped. Printed instead: the 8c-bis table's own row
+  // count, one `| \`Component\` | ... |` line per real, judged citation — never the wider set of
+  // every distinct `hit.component` this pass finds, which also includes components named only in
+  // the exclusion paragraph below the table (`Badge`, `SiteHeader`'s `expansion` hit, `Menu`'s
+  // `selection` hit and others) and were never meant to be part of this count.
+  const tableRowCount = (sectionText.match(/^\|\s*`[A-Z][A-Za-z0-9]*`\s*\|/gm) ?? []).length
+  return { failures, hitCount: hits.length, tableRowCount }
 }
 
 // --- Cell-count tallies (item 4 of the row-8 sweep's own remediation) --------------------------
@@ -3383,7 +3689,14 @@ export function logCellCounts(computed, logFn = log) {
       `primitive-matrix row — the "(no local interactive element)" and "(unresolved matches…)" ` +
       `rows excluded): ${formatCounts(r3)}`,
   )
-  return { record1: r1, record3: r3 }
+  const amb = computed.ambiguitySummary
+  logFn(
+    `record 3 ambiguity tally (composed-story-ambiguous-variant): ${amb.instances} instances, ` +
+      `${amb.events} distinct ambiguity events, ${amb.taintedCells} tainted (row, state) cells ` +
+      `across ${amb.storyNames} distinct story names, of which ${amb.kept} keep the note and ` +
+      `${amb.dropped} drop it (a real match elsewhere on the same row covers that state instead)`,
+  )
+  return { record1: r1, record3: r3, ambiguity: amb }
 }
 
 // --- main --------------------------------------------------------------------------------------
@@ -3505,7 +3818,8 @@ function runCitationCheck() {
   log("8c's own per-file Handoffs counts and total agree with its own quoted citations.")
   log(
     `${vocab.hitCount} deferral-vocabulary hits across every *.stories.tsx; every one is either a ` +
-      "row in 8c-bis's own table or named in its own exclusion paragraph.",
+      "row in 8c-bis's own table (currently " +
+      `${vocab.tableRowCount} rows, one per component) or named in its own exclusion paragraph.`,
   )
 }
 

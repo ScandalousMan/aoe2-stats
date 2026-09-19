@@ -34,6 +34,7 @@ import {
   evaluateExpr,
   evaluateGuards,
   resolveComposedStoryMatches,
+  resolveDisabledFromStories,
   renderRecord1,
   findOwnStoryRenderInstances,
   parseSelector,
@@ -373,6 +374,102 @@ test('contrast: the same shape resolves to one row when the forced name is liter
   const selectionRow = matrix.find((r) => r.variantSize === 'selection')
   assert.deepEqual(actionsRow.hover, ['Board:ManageHoverRevealed'])
   assert.deepEqual(selectionRow.hover, ['none'])
+})
+
+// T594's row 8 sweep, item 2: a hand-typed count in the Method paragraph above was wrong (a
+// story-name count where the real comparison is over tainted `(row, state)` cells) — printed
+// instead, by `computeStateCoverage`'s own `ambiguitySummary`, never hand-counted again.
+
+test("computeStateCoverage's ambiguitySummary counts one ambiguous instance per tainted candidate, one event per story/state, and both tainted cells as kept when nothing else on either row covers that state", () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Board' },
+    { segment: 'primitives', name: 'Menu' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/composites/Board/index.tsx', BOARD_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Board/Board.stories.tsx',
+      BOARD_AMBIGUOUS_STORIES_SOURCE,
+    ],
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  assert.deepEqual(computed.ambiguitySummary, {
+    instances: 2,
+    events: 1,
+    taintedCells: 2,
+    kept: 2,
+    dropped: 0,
+    storyNames: 1,
+  })
+})
+
+test('contrast: the ambiguity tally is all zero once the forced name is literally unique (no ambiguity at all)', () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Board' },
+    { segment: 'primitives', name: 'Menu' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/composites/Board/index.tsx', BOARD_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Board/Board.stories.tsx',
+      BOARD_RESOLVED_STORIES_SOURCE,
+    ],
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  assert.deepEqual(computed.ambiguitySummary, {
+    instances: 0,
+    events: 0,
+    taintedCells: 0,
+    kept: 0,
+    dropped: 0,
+    storyNames: 0,
+  })
+})
+
+// A tainted cell is 'dropped' once a *different* story gives that exact (row, state) a real,
+// unambiguous match — the fixture 6/6b Menu shape extended with a second story that resolves
+// `selection`'s own hover directly, so `selection`'s tainted cell drops the note while `actions`'s
+// (nothing else covers it) still keeps it.
+const BOARD_MIXED_STORIES_SOURCE = `
+import { Board } from './index'
+const meta = { component: Board, args: {} }
+export default meta
+
+export const CountryHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+}
+
+export const ChooseHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Choose' } },
+}
+`
+
+test('a tainted cell drops the note once a different story gives that exact row/state a real, unambiguous match', () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Board' },
+    { segment: 'primitives', name: 'Menu' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/composites/Board/index.tsx', BOARD_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Board/Board.stories.tsx',
+      BOARD_MIXED_STORIES_SOURCE,
+    ],
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const matrix = computed.matrices.Menu
+  const actionsRow = matrix.find((r) => r.variantSize === 'actions')
+  const selectionRow = matrix.find((r) => r.variantSize === 'selection')
+  assert.match(actionsRow.hover[0], /^unresolved: /)
+  assert.deepEqual(selectionRow.hover, ['Board:ChooseHoverRevealed'])
+  assert.equal(computed.ambiguitySummary.taintedCells, 2)
+  assert.equal(computed.ambiguitySummary.kept, 1)
+  assert.equal(computed.ambiguitySummary.dropped, 1)
 })
 
 // --- Fixture 6c: a JSX candidate's own static axis and the axis its own force-state resolves to
@@ -1463,6 +1560,178 @@ test('contrast: buildElementMatrix keeps a confirmed none when the element carri
   assert.deepEqual(rows[0].disabled, ['none'])
 })
 
+// --- T594 row 8 sweep, item 1: `disabled` gets the same `cellFor` redirect `variant`/`size`
+// already had — a dynamic `disabled`/`loading` expression on a `Button`/`Link`/`Field`/`Menu`
+// call site, resolved against a story's own merged args, never a false confirmed `none`. Routed
+// through the real pipeline (`computeStateCoverage`), the same level fixture 6/6b already use, so
+// this exercises `resolveDisabledFromStories` exactly as `computeStateCoverage` wires it, not a
+// parallel hand-assembled shape that could drift from it unnoticed. -------------------------------
+
+// `findVariantSizeDefaults`/`getComponentPropDefaults` read this the same way they read the real
+// `primitives/Button/index.tsx` — `variant`/`size` default via destructuring, `disabled`/`loading`
+// folded together the same real file does (`disabled={disabled || loading}`), so a call site that
+// only ever sets `loading` is real disabled coverage, not a coincidence of this fixture.
+const BUTTON_INDEX_SOURCE = `
+export function Button({ variant = 'secondary', size = 'md', disabled, loading, children }) {
+  return <button disabled={disabled || loading}>{children}</button>
+}
+`
+
+// Fixture A — a prop-driven `disabled` resolved from a story's own `args` (`FavouriteToggle`'s own
+// `Bounded` shape: `disabled={bounded}`, `bounded = atLimit && !favourited`, no `visualForceState`
+// at all — only `args`).
+const BOUNDED_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ atLimit = false, favourited = false }) {
+  const bounded = atLimit && !favourited
+  return <Button variant="ghost" disabled={bounded}>Toggle</Button>
+}
+`
+const BOUNDED_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Bounded = { args: { atLimit: true, favourited: false } }
+`
+
+test("resolveDisabledFromStories (via computeStateCoverage): credits a prop-driven disabled resolved from a story's own args, not a false none", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/composites/Widget/index.tsx', BOUNDED_WIDGET_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      BOUNDED_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(row, 'ghost must exist — the real, static axis of this call site')
+  assert.deepEqual(row.disabled, ['Widget:Bounded'])
+})
+
+// Fixture B — a `loading`-driven disabled, no `disabled` attribute on the call site at all
+// (`FavouriteToggle`'s own `AddingInFlight`/`RemovingInFlight` shape).
+const LOADING_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ loading = false }) {
+  return <Button variant="ghost" loading={loading}>Toggle</Button>
+}
+`
+const LOADING_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const AddingInFlight = { args: { loading: true } }
+`
+
+test('resolveDisabledFromStories (via computeStateCoverage): credits a loading-driven disabled with no disabled attribute on the call site at all', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/composites/Widget/index.tsx', LOADING_WIDGET_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      LOADING_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(row)
+  assert.deepEqual(row.disabled, ['Widget:AddingInFlight'])
+})
+
+// Fixture C (contrast) — a `disabled` expression this pass genuinely cannot resolve from any
+// story's own args (a function call over a prop, not a literal, a property access or any of the
+// other shapes `evaluateExpr` handles) must stay `unresolved`, never fall back to a false `none`.
+const UNRESOLVABLE_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ status }) {
+  return <Button variant="ghost" disabled={computeDisabled(status)}>Toggle</Button>
+}
+`
+const UNRESOLVABLE_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Default = { args: { status: 'idle' } }
+`
+
+test('contrast: resolveDisabledFromStories leaves disabled unresolved, never a false none, when the expression cannot be statically evaluated', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      UNRESOLVABLE_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      UNRESOLVABLE_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(row)
+  assert.equal(row.disabled.length, 1)
+  assert.match(row.disabled[0], /^unresolved: disabled not statically resolvable/)
+})
+
+// A candidate whose own guard is `'unreached'` for a given story (the same exclusion role-based
+// matching already applies) is skipped outright — that story could not possibly render it, so it
+// must contribute neither a credited match nor an unresolved reason.
+const GUARDED_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+function SignedOutControl() {
+  return <Button variant="ghost" disabled={someExternalFlag()}>Sign in</Button>
+}
+export function Widget({ authenticated }) {
+  if (!authenticated) {
+    return <SignedOutControl />
+  }
+  return <Button variant="secondary">Real</Button>
+}
+`
+const GUARDED_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const SignedIn = { args: { authenticated: true } }
+`
+
+test('resolveDisabledFromStories skips a candidate whose own guard is unreached for a given story, contributing neither a match nor an unresolved reason', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/composites/Widget/index.tsx', GUARDED_WIDGET_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      GUARDED_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  // The ghost button's own static JSX `rest` entry still exists (guards never remove a candidate
+  // from Record 3's own existence listing, only from a *specific story's* disabled resolution) —
+  // but `SignedIn`'s own `authenticated: true` makes `SignedOutControl`'s `!authenticated` guard
+  // resolve `'unreached'` for that story, so its unresolvable `disabled` expression must never
+  // surface at all: a confirmed `none`, no unresolved note riding along.
+  const ghostRow = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(ghostRow, "the candidate's own static rest entry still exists")
+  assert.deepEqual(ghostRow.disabled, ['none'])
+})
+
 // --- REJECT on #80, item 1: selector targets for local elements (a script `visualForceState:
 // { selector }` was dropped entirely for local elements — MatchRow/FavouritesList/PlayerResultRow's
 // own row link — read as a false 'none' on hover/focus/active). -----------------------------------
@@ -2413,10 +2682,10 @@ test('contrast: a citation already followed immediately by its own quote is neve
   assert.deepEqual(findInlineCodeClaims(scopeText), [])
 })
 
-test("resolveBareLocationFromBullet: resolves `index.tsx` against the bullet's own first named component, never the nearest-preceding one", () => {
-  // `Button` sits textually between `Dialog` (the bullet's real subject) and the citation — the
-  // nearest-preceding rule would misattribute this to `Button`'s own `index.tsx`; the first-named
-  // rule in the bullet gets `Dialog`'s.
+test("resolveBareLocationFromBullet: resolves `index.tsx` against the bullet's own possessive-marked subject, never the nearest-preceding one", () => {
+  // `Button` sits textually between `Dialog` (the bullet's real subject, marked possessive: `` `Dialog`'s ``)
+  // and the citation — the nearest-preceding rule would misattribute this to `Button`'s own
+  // `index.tsx`; the possessive-subject rule gets `Dialog`'s (T594's row 8 sweep, item 5).
   const scopeText =
     '**8e. Findings.**\n\n' +
     "- **F3.** `Dialog`'s own two `Button` instances (`index.tsx:127`, `variant={x}`) resolve.\n" +
@@ -2427,6 +2696,46 @@ test("resolveBareLocationFromBullet: resolves `index.tsx` against the bullet's o
   ]
   const resolved = resolveBareLocationFromBullet(scopeText, 3, 'index.tsx', allSrcFiles)
   assert.equal(resolved, 'packages/design-system/src/primitives/Dialog/index.tsx')
+})
+
+// T594's row 8 sweep, item 5: the possessive-subject rule alone gets this real, live shape wrong —
+// `AccountErasurePanel`'s own bullet possessive-marks `` `Button`'s own stories `` (the *deferral
+// target*, not the subject) while its real subject, `AccountErasurePanel`, is never itself marked
+// possessive anywhere in the block. A fully qualified citation for the *same basename* elsewhere in
+// the same block (`` `AccountErasurePanel/index.tsx:224` ``) outranks the possessive signal, because
+// it is the prose disambiguating itself rather than a heuristic guessing at intent.
+test('resolveBareLocationFromBullet: a self-qualified citation for the same basename elsewhere in the block outranks a possessive mention of a different, unrelated directory', () => {
+  const scopeText =
+    '**8e. Findings.**\n\n' +
+    '- **F20.** `AccountErasurePanel.stories.tsx:106` "covered by `Button`\'s own stories". ' +
+    '`index.tsx:218-220` renders the button. `AccountErasurePanel/index.tsx:224` "Erase my account" ' +
+    'is the accessible name.\n' +
+    '- **F21.** unrelated bullet.\n'
+  const allSrcFiles = [
+    'packages/design-system/src/screens/AccountErasurePanel/index.tsx',
+    'packages/design-system/src/primitives/Button/index.tsx',
+  ]
+  const resolved = resolveBareLocationFromBullet(scopeText, 3, 'index.tsx', allSrcFiles)
+  assert.equal(resolved, 'packages/design-system/src/screens/AccountErasurePanel/index.tsx')
+})
+
+// The ambiguous-bullet case the fix is for: two real component directories, both genuinely marked
+// as this bullet's own subject (possessive `'s` on each), and nothing elsewhere in the block
+// self-qualifies the bare citation's own basename against either one. No heuristic gets to break
+// this tie — `resolveBareLocationFromBullet` fails outright rather than silently picking whichever
+// name happens to come first.
+test('contrast: resolveBareLocationFromBullet fails, never guesses, when a bullet genuinely names more than one component directory as its own subject and the location is bare', () => {
+  const scopeText =
+    '**8e. Findings.**\n\n' +
+    "- **F9.** `Widget`'s own control and `Gadget`'s own control both render similarly " +
+    '(`index.tsx:5`, some shared detail) — ambiguous.\n' +
+    '- **F10.** unrelated bullet.\n'
+  const allSrcFiles = [
+    'packages/design-system/src/primitives/Widget/index.tsx',
+    'packages/design-system/src/primitives/Gadget/index.tsx',
+  ]
+  const resolved = resolveBareLocationFromBullet(scopeText, 3, 'index.tsx', allSrcFiles)
+  assert.equal(resolved, null)
 })
 
 test("checkCitations: an inline-code claim against a bare `index.tsx`, resolved through the bullet's own named component, passes end to end (real file, F3/Dialog shape)", () => {
