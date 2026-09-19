@@ -28,17 +28,35 @@ Nothing is attributed to a participant after their `participant-resigned`. An ac
 `player_id` names no seated participant yields no event at all — never an event with a silent or
 invented participant.
 
-What is not mapped yet
-----------------------
-Undecoded actions (T626), market and deletion (T626a) and chat (T626b) are routed through
-`_unmapped_action` / `_unmapped_operation`, the two seams those tasks fill. Until then those
-operation kinds yield nothing — a known gap, not a decision that they carry no information.
+No silent drop (FR-019) and the accounting
+------------------------------------------
+Every operation is exactly one of: a `Sync` (consumed for the clock), a `Viewlock` (a camera
+position, no intent), an operation that yields one event, or an operation deliberately dropped for
+one of four named reasons. `Accounting` counts each reason as it happens, so that
+
+    events + syncs + viewlocks + collapsed + after_exit + unseated + chat_pending == operations
+
+is an equation a test can check rather than an assurance:
+
+- `collapsed`: a repeated research or resignation (FR-018);
+- `after_exit`: an action by a participant who has already resigned;
+- `unseated`: an action naming a `player_id` that is no seated slot;
+- `chat_pending`: a chat operation. Chat names no participant outside its JSON text, and an event
+  needs one, so it cannot be `undecoded` yet. It is counted, not dropped, until T626b decodes the
+  channel and the participant and this category goes to zero.
+
+Every action the adapter does not decode is emitted as `undecoded`, carrying the engine's own label
+(for a `Game` command, the wheel's name for the inner command) and the payload length the wheel
+reports — never dropped, never guessed at. Command kinds that name no decoded unit ids are
+`units-commanded` with an empty id list. Market and deletion are `undecoded` until T626a replaces
+them.
 """
 
 from __future__ import annotations
 
 import struct
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import cast
 
 from aoe2stats_core.replay.events import (
@@ -48,6 +66,7 @@ from aoe2stats_core.replay.events import (
     MatchEndedPayload,
     Position,
     ResearchQueuedPayload,
+    UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
 )
@@ -68,6 +87,35 @@ _INTERACT = "interact"
 _ORDER = "order"
 
 _Payload = Mapping[str, object]
+
+# Command kinds that command units but whose unit ids the adapter does not decode. Each becomes
+# `units-commanded` with an empty id list and no target. Deliberately absent: `Transform` (not
+# established to be a unit command), `Sell`/`Buy`/`Delete` (T626a), `Flare`, `TownBell`, `Game`
+# and anything the wheel cannot name, which stay `undecoded`.
+_UNIT_COMMANDS: Mapping[str, str] = {
+    "Formation": "formation",
+    "Stance": "stance",
+    "Patrol": "patrol",
+    "Stop": "stop",
+    "Gatherpoint": "gatherpoint",
+    "Release": "release",
+    "Wall": "wall",
+    "Repair": "repair",
+    "BackToWork": "back-to-work",
+    "Autoscout": "autoscout",
+    "DeAttackMove": "attack-move",
+    "AttackGround": "attack-ground",
+}
+
+
+@dataclass(slots=True)
+class Accounting:
+    """Counts of the operations that yield no event, by reason. See the module docstring."""
+
+    collapsed: int = 0
+    after_exit: int = 0
+    unseated: int = 0
+    chat_pending: int = 0
 
 
 class _Exits:
@@ -116,7 +164,8 @@ def _unit_queued(clock: int, player: int, payload: _Payload, _: _Exits) -> Canon
     # not represented — a known narrowing of the vocabulary, reported at hand-back.
     building_objects = _ints(payload["building_ids"])
     if not building_objects:
-        return None
+        # No producing building to name: undecoded rather than dropped (FR-019).
+        return _undecoded("DeQueue", clock, player, payload)
     return CanonicalEvent(
         clock_ms=clock,
         kind=EventKind.UNIT_QUEUED,
@@ -197,19 +246,27 @@ _ACTION_MAPPERS: Mapping[str, _ActionMapper] = {
 }
 
 
-def _unmapped_action(
-    clock: int, player: int, label: str, payload: _Payload, state: _Exits
-) -> CanonicalEvent | None:
-    """The seam T626 fills with the `undecoded` event (and market, deletion, empty-id commands).
+def _undecoded(label: str, clock: int, player: int, payload: _Payload) -> CanonicalEvent:
+    return CanonicalEvent(
+        clock_ms=clock,
+        kind=EventKind.UNDECODED,
+        participant=player,
+        payload=UndecodedPayload(
+            operation=label, payload_length=cast(int, payload["action_length"])
+        ),
+    )
 
-    Returns nothing today. That is a gap in this task's scope, not a claim the action is empty.
-    """
-    return None
 
-
-def _unmapped_operation(kind: str, operation: _Payload) -> CanonicalEvent | None:
-    """The seam T626b fills for `Chat`. `Sync`, `Viewlock` and `PostGame` never reach it."""
-    return None
+def _unmapped_action(clock: int, player: int, label: str, payload: _Payload) -> CanonicalEvent:
+    """Every action the adapter does not decode: never dropped, never guessed at (FR-019)."""
+    command_class = _UNIT_COMMANDS.get(label)
+    if command_class is not None:
+        return _commanded(clock, player, command_class, (), None)
+    if label == "Game":
+        # The wheel's own name for the inner command (`FarmAutoqueue`, ...) is the engine's label.
+        inner = cast(Mapping[str, object], payload["game_command"])
+        label = next(iter(inner), label)
+    return _undecoded(label, clock, player, payload)
 
 
 def _match_ended(clock: int, operation: _Payload) -> CanonicalEvent:
@@ -236,8 +293,14 @@ def _seated(parsed: Mapping[str, object]) -> frozenset[int]:
     return frozenset(cast(int, player["player_number"]) for player in players)
 
 
-def canonical_events(parsed: Mapping[str, object]) -> Iterator[CanonicalEvent]:
-    """Yield the canonical events of one parsed replay, in stream order, in one pass."""
+def canonical_events(
+    parsed: Mapping[str, object], accounting: Accounting | None = None
+) -> Iterator[CanonicalEvent]:
+    """Yield the canonical events of one parsed replay, in stream order, in one pass.
+
+    Pass an `Accounting` to have every deliberately dropped operation counted by reason.
+    """
+    tally = accounting if accounting is not None else Accounting()
     seated = _seated(parsed)
     state = _Exits()
     clock = 0
@@ -245,27 +308,33 @@ def canonical_events(parsed: Mapping[str, object]) -> Iterator[CanonicalEvent]:
     for operation in operations:
         kind = next(iter(operation))
         body = cast(_Payload, operation[kind])
-        event: CanonicalEvent | None
         if kind == "Sync":
             clock += cast(int, body["time_increment"])
+        elif kind == "Viewlock":
             continue
-        if kind == "Viewlock":
-            continue
-        if kind == "PostGame":
+        elif kind == "PostGame":
             yield _match_ended(clock, body)
-            continue
-        if kind != "Action":
-            event = _unmapped_operation(kind, body)
-        else:
+        elif kind == "Chat":
+            tally.chat_pending += 1
+        elif kind == "Action":
             action_data = cast(Mapping[str, _Payload], body["action_data"])
             label, payload = next(iter(action_data.items()))
             player = cast(int, payload["player_id"])
-            if player not in seated or state.has_exited(player):
+            if player not in seated:
+                tally.unseated += 1
+                continue
+            if state.has_exited(player):
+                tally.after_exit += 1
                 continue
             mapper = _ACTION_MAPPERS.get(label)
-            if mapper is None:
-                event = _unmapped_action(clock, player, label, payload, state)
+            event = (
+                _unmapped_action(clock, player, label, payload)
+                if mapper is None
+                else mapper(clock, player, payload, state)
+            )
+            if event is None:
+                tally.collapsed += 1
             else:
-                event = mapper(clock, player, payload, state)
-        if event is not None:
-            yield event
+                yield event
+        else:
+            raise EngineParseError(f"operation kind {kind!r} is not one the adapter knows")

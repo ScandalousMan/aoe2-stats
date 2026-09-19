@@ -326,7 +326,7 @@ after being produced through the new stream.
       not a silent one. Neither committed recording shows a player resigning while the match runs on
       at length ([research.md](./research.md) **D11**), so test the exit rule on a synthetic stream
       as well
-- [ ] T626 [US4] Represent every **action** the adapter does not decode as an `undecoded` event
+- [x] T626 [US4] Represent every **action** the adapter does not decode as an `undecoded` event
       carrying the engine's own label and the payload length, never dropped and never guessed at
       (**FR-019**). Command kinds that arrive without decoded unit ids — formation, stance, patrol,
       stop and the rest — are emitted as `units-commanded` with an **empty** id list, never an
