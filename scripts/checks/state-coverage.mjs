@@ -1569,14 +1569,16 @@ function resolvePlayBody(storyObj, sourceFile) {
   return null
 }
 
-// The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
-// component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
-// shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
-// read `args`. Only the *first* JSX element named `componentName` found in `render`'s own body is
-// read — every real story in this tree renders its subject exactly once.
-export function findRenderJsxProps(storyObj, componentName) {
+// The first JSX element named `componentName` anywhere in a story's own `render: () => (...)`
+// body, or `null` when the story has no `render` at all (the component is then instantiated
+// implicitly from `args`, always "rendered") or when `render` never mounts it — the shape every
+// `*NotApplicable` placeholder story in this tree uses (`Dialog`'s own
+// `EmptyHoverActiveDisabledNotApplicable`, `<p>A dialog with no actions...</p>`, no `<Dialog>` tag
+// anywhere in it). Factored out of `findRenderJsxProps` so `storyRendersComponent` below can ask
+// the same question without re-walking the tree a second way.
+function findRenderComponentTag(storyObj, componentName) {
   const renderExpr = getProp(storyObj, 'render')
-  if (!renderExpr) return new Map()
+  if (!renderExpr) return null
   let body = renderExpr
   if (ts.isArrowFunction(renderExpr) || ts.isFunctionExpression(renderExpr)) body = renderExpr.body
   let found = null
@@ -1589,13 +1591,48 @@ export function findRenderJsxProps(storyObj, componentName) {
     ts.forEachChild(node, visit)
   }
   visit(body)
+  return found
+}
+
+// Whether a story instantiates its own component at all — `true` for every `args`-only story
+// (Storybook renders `<Component {...args} />` implicitly, always) and for a `render:` story that
+// mounts the component somewhere inside its own JSX (`PrivacyNotice`'s own `render: (args) => (<div>
+// ...<PrivacyNotice {...args} /></div>)`, wrapped but still mounted); `false` only for a `render:`
+// story whose own body never mounts it — a `*NotApplicable` placeholder's prose paragraph, T595's
+// own `Dialog:EmptyHoverActiveDisabledNotApplicable`. A story this returns `false` for supplies no
+// data whatsoever about any candidate inside the component — not "this story's own data cannot
+// resolve the expression" (kept `unresolved:`, T594's own rule), but "this story never reaches the
+// component's own render at all", the same exclusion an `'unreached'` guard already gets,
+// generalised to the whole story rather than one branch inside it (T595, `resolveDisabledFromStories`).
+function storyRendersComponent(storyObj, componentName) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return true
+  return findRenderComponentTag(storyObj, componentName) != null
+}
+
+// The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
+// component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
+// shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
+// read `args`. Only the *first* JSX element named `componentName` found in `render`'s own body is
+// read — every real story in this tree renders its subject exactly once. A bare attribute (no
+// `={...}`, `<FavouriteToggle authenticated size="lg" />`) is JSX shorthand for `={true}` — the
+// same reading `attrLiteral` already gives everywhere else in this file — synthesised as a real
+// `true` keyword node so `evaluateExpr` resolves it the same way a written-out literal would
+// (T595: `FavouriteToggle:RealisticProfileHeader`'s own bare `authenticated` used to leave that
+// prop `UNRESOLVED`, which left an unrelated guard elsewhere in the component unresolved too).
+export function findRenderJsxProps(storyObj, componentName) {
+  const found = findRenderComponentTag(storyObj, componentName)
   const props = new Map()
   if (!found) return props
   const opening = openingOf(found)
   for (const attr of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attr)) continue
+    if (!attr.initializer) {
+      props.set(attr.name.getText(), ts.factory.createTrue())
+      continue
+    }
     let expr = attr.initializer
-    if (expr && ts.isJsxExpression(expr)) expr = expr.expression
+    if (ts.isJsxExpression(expr)) expr = expr.expression
     if (expr) props.set(attr.name.getText(), expr)
   }
   return props
@@ -2045,13 +2082,20 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         // Every story — forced or not — can resolve a local `Button`/`Link`/`Field`/`Menu`
         // instance's own dynamic `disabled`/`loading` prop through its own `args` alone
         // (`FavouriteToggle`'s `Bounded`, `AddingInFlight`; `Dialog`'s `PrimaryPending`), so this
-        // runs unconditionally rather than gated on `forced` the way role-based matching is below.
-        pendingDisabledChecks.push({
-          componentKey,
-          file: relPath(filePath),
-          exportName,
-          propsScope,
-        })
+        // runs unconditionally rather than gated on `forced` the way role-based matching is below —
+        // except for a story that never mounts the component at all (`storyRendersComponent`,
+        // T595), which is excluded the same way an `'unreached'` guard already is below: it has
+        // nothing to say about any candidate inside a component it never rendered, so it is never
+        // pushed at all rather than resolved against defaults that are not this story's own data
+        // (`Dialog:EmptyHoverActiveDisabledNotApplicable`'s own `<p>`, no `primaryAction` in sight).
+        if (storyRendersComponent(node, componentDirName)) {
+          pendingDisabledChecks.push({
+            componentKey,
+            file: relPath(filePath),
+            exportName,
+            propsScope,
+          })
+        }
         if (!forced) continue
         const storyStartLine =
           sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
@@ -2348,6 +2392,17 @@ export function resolveDisabledFromStories(pendingStoryScopes, instancesByPrimit
             variant,
             size,
             label,
+            // The candidate's own source position (never the story file above) — `buildAxisMatrix`
+            // reads this the same way it already reads a `composed-story` match's `sourceFile`/
+            // `sourceLine`, so a real, confirmed `disabled` resolution credits this exact `label`
+            // to a call site's own static row wherever this exact story proved it, the one shared
+            // mechanism T595 lifted this into rather than a second copy of the redirect rule here.
+            // `jsx-disabled-unresolved` below carries no such position: an uncertain note about one
+            // story is real only about the row it already sits on, never a fact this pass may pin
+            // on a different row's own call site (the same exclusion an ambiguous role match
+            // already gets from this same mechanism).
+            sourceFile: candidate.file,
+            sourceLine: candidate.line,
           })
         } else if (anyUnresolved) {
           instancesByPrimitive.get(primitive).push({
@@ -2465,23 +2520,68 @@ export function buildAxisMatrix(primitiveName, instances) {
     }
     return rows.get(key)
   }
-  // T594's REJECT on #80, item 2: a JSX candidate's own state can resolve, through a specific
-  // story, to a row keyed *differently* from the row its own static (often dynamic-unresolved)
-  // variant/size key files its `rest` entry under — `FavouriteToggle`'s real button (`ghost`
-  // variant, a dynamic `size` prop no story literal resolves) files `rest` at `ghost|unresolved`,
-  // but `FavouriteToggle:Hover`'s own args default that same `size` to `'md'` and land the *match*
-  // at `ghost|md` instead; `Dialog`'s two `Button` instances the same way, `unresolved|lg` vs.
-  // `destructive|lg`. The same source line lands in two rows, and the row that kept `rest` read a
-  // confirmed `'none'` over a comparison that actually found a match elsewhere — positive knowledge
-  // this pass has, filed under a different key. Recorded once, up front, from every already-matched
-  // `composed-story` instance's own source position, so the row a `rest` line stays on can point at
-  // wherever its own state actually resolved instead of falling to `'none'`.
+  // T594's REJECT on #80, item 2 (widened by T595, item 2 of the orchestrator's own finding on
+  // this task): a JSX candidate's own state can resolve, through a specific story, to a row keyed
+  // *differently* from the row its own static (often dynamic-unresolved) variant/size key files
+  // its `rest` entry under — `FavouriteToggle`'s real button (`ghost` variant, a dynamic `size`
+  // prop no story literal resolves) files `rest` at `ghost|unresolved`, but `FavouriteToggle:Hover`'s
+  // own args default that same `size` to `'md'` and land the *match* at `ghost|md` instead;
+  // `Dialog`'s two `Button` instances the same way — `index.tsx:127` (`primaryAction`) to
+  // `destructive|lg`, `index.tsx:138` (`secondaryAction`) to `secondary|lg`, two *different* target
+  // rows off two different lines of the same `rest` list, both real. The same source line lands in
+  // two rows, and the row that kept `rest` read a confirmed `'none'` over a comparison that
+  // actually found a match elsewhere — positive knowledge this pass has, filed under a different
+  // key.
+  //
+  // **One map, fed from both mechanisms that resolve a candidate's axis per story, not a second
+  // copy of the redirect rule inside `resolveDisabledFromStories` (T595, orchestrator finding):
+  // `disabled` already reads through this exact same `cellFor` below, same as the other four
+  // columns — the gap was never that `disabled` needed its own redirect logic, only that nothing
+  // had ever told this map about a `disabled` resolution's own source line.**
+  //
+  // **Credits the exact story label a match proved, never a whole target row's list (corrected in
+  // this pass — the orchestrator's own review of the first version of this fix).** A first draft
+  // stored the *target row's key* here and had `cellFor` pull that row's entire state list —
+  // correct only by accident, because every target row this tree's `hover`/`focus-visible`/`active`
+  // redirects ever reached happened to carry exactly one contributor. `disabled` breaks that
+  // accident immediately: `unresolved|lg`'s own two call sites resolve to `destructive|lg` and
+  // `secondary|lg`, and `secondary|lg`'s own disabled list also carries
+  // `MatchDetailPanel:DownloadPreparing`/`ArchivalControl:Submitting` — two real Button call sites
+  // in *other* components that only ever share that row by axis coincidence, never a fact about
+  // `Dialog`'s own two buttons. Pulling the whole row would have credited `unresolved|lg` with
+  // stories that prove nothing about either of its own call sites — the same "a per-story
+  // resolution is knowledge about that story, never a claim about the call site in general" bar
+  // this whole mechanism exists to hold. So this map stores the label a match itself established
+  // (`cellName(inst)` for a `composed-story`, `inst.label` for a `jsx-disabled-resolved`) keyed by
+  // the exact source line and state that match belongs to — `cellFor` below credits those labels
+  // directly, never a row lookup. **Only a *confirmed* match feeds it — a `composed-story-
+  // ambiguous-variant` or a `jsx-disabled-unresolved` never does** (the same exclusion the
+  // ambiguity paragraph above already applies to `unresolvedByState`: an uncertain note about one
+  // call site is not a claim this pass may pin on a different one). A `Set` of labels per `(line,
+  // state)`, not one label: two *different* candidates on the same static row (`Dialog`'s two
+  // `Button`s) can each prove a different state real, and crediting only the first found would
+  // silently drop the second (T595, orchestrator finding — `:138` was exactly this).
   const storyResolvedBySourceLine = new Map()
-  for (const inst of instances) {
-    if (inst.kind !== 'composed-story' || inst.sourceLine == null || !inst.sourceFile) continue
-    const lineKey = `${inst.componentKey}|${inst.sourceFile}|${inst.sourceLine}`
+  const addResolvedLabel = (componentKey, sourceFile, sourceLine, state, label) => {
+    if (sourceLine == null || !sourceFile) return
+    const lineKey = `${componentKey}|${sourceFile}|${sourceLine}`
     if (!storyResolvedBySourceLine.has(lineKey)) storyResolvedBySourceLine.set(lineKey, new Map())
-    storyResolvedBySourceLine.get(lineKey).set(inst.forced.state, axisKey(inst))
+    const byState = storyResolvedBySourceLine.get(lineKey)
+    if (!byState.has(state)) byState.set(state, new Set())
+    byState.get(state).add(label)
+  }
+  for (const inst of instances) {
+    if (inst.kind === 'composed-story') {
+      addResolvedLabel(
+        inst.componentKey,
+        inst.sourceFile,
+        inst.sourceLine,
+        inst.forced.state,
+        cellName(inst),
+      )
+    } else if (inst.kind === 'jsx-disabled-resolved') {
+      addResolvedLabel(inst.componentKey, inst.sourceFile, inst.sourceLine, 'disabled', inst.label)
+    }
   }
   for (const inst of instances) {
     if (inst.kind === 'composed-story-unresolved') {
@@ -2559,22 +2659,49 @@ export function buildAxisMatrix(primitiveName, instances) {
   const builtRows = [...rows.values()]
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((row) => {
-      // Before this row's own cell falls all the way to a confirmed `'none'`, check whether one of
-      // its own `rest` lines resolved this exact state to a *different* row through a story — if
-      // so, point there instead of claiming an absence this pass never actually confirmed.
-      const redirectFor = (state) => {
+      // Before this row's own cell falls all the way to a confirmed `'none'`, check whether *any*
+      // of its own `rest` lines proved this exact state real through a story, on whatever row that
+      // story's own axis actually resolves to — every label any of them proved, not only the
+      // first found: two different candidates on the same static row can each prove a *different*
+      // row's worth of coverage (`Dialog`'s `index.tsx:127` proves `destructive|lg`'s
+      // `Dialog:PrimaryPending`, `:138` proves `secondary|lg`'s own, both off `unresolved|lg`'s own
+      // `rest` list, T595 orchestrator finding), and stopping at the first would silently drop the
+      // second. Credits the exact label(s) `storyResolvedBySourceLine` proved for this line and
+      // state — never a target row's own full list (the pollution the orchestrator's review caught:
+      // `secondary|lg`'s own disabled list also carries `MatchDetailPanel:DownloadPreparing`/
+      // `ArchivalControl:Submitting`, real coverage for *their* own call sites, proving nothing
+      // about either of `Dialog`'s two buttons) — so a row's own `rest` line is credited with
+      // exactly what a story proved about *that line*, and nothing a different call site's own
+      // story happened to also prove on a row it coincidentally shares.
+      const creditedFor = (state) => {
+        const labels = new Set()
         for (const inst of row.restInstances) {
           const lineKey = `${inst.componentKey}|${inst.file}|${inst.line}`
-          const target = storyResolvedBySourceLine.get(lineKey)?.get(state)
-          if (target && target !== row.key) return target
+          for (const label of storyResolvedBySourceLine.get(lineKey)?.get(state) ?? []) {
+            labels.add(label)
+          }
         }
-        return null
+        return [...labels].sort()
       }
+      // A label credited here is exactly as real as if a story had matched this row directly — the
+      // same positive-knowledge-outranks-a-note precedence this row's own ambiguity handling
+      // already applies (`unresolvedByState` above, dropped once a real match exists elsewhere on
+      // the *same* row) — so this is checked before `unresolvedList`, not after: real coverage
+      // always outranks a note that a comparison could not be settled, never the reverse.
+      // `storyResolvedBySourceLine` is fed exclusively by confirmed matches (above), so once a
+      // label is credited here it is never a bare pointer needing a separate "unresolved: axis
+      // resolved only per story" fallback — there is nothing left for that fallback to name that
+      // isn't already a real label. **One mechanism, not two:** this is the same `cellFor` every
+      // one of the five columns already goes through, including `disabled` — the redirect map
+      // above is what changed, not a second copy of this rule filed inside
+      // `resolveDisabledFromStories` (T595, orchestrator finding: the disabled column reads
+      // through `cellFor` exactly like the other four already did before this pass; what it lacked
+      // was `storyResolvedBySourceLine` ever hearing about a `disabled` resolution at all).
       const cellFor = (stateList, unresolvedList, state) => {
         if (stateList.length) return [...new Set(stateList)]
+        const credited = creditedFor(state)
+        if (credited.length) return credited
         if (unresolvedList.length) return [`unresolved: ${[...new Set(unresolvedList)].join('; ')}`]
-        const redirect = redirectFor(state)
-        if (redirect) return [`unresolved: axis resolved only per story (→ ${redirect})`]
         return ['none']
       }
       return {

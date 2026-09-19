@@ -543,16 +543,70 @@ test("buildAxisMatrix (red first, pre-fix shape): a story-resolved match must no
   )
 })
 
-test("buildAxisMatrix: the unresolved row's hover cell points at the row the story actually resolved to, not a bare 'unresolved' with no destination", () => {
+test("buildAxisMatrix: the unresolved row's hover cell credits the row the story actually resolved to directly, not a bare pointer note (T595)", () => {
   const matrix = buildAxisMatrix('Button', redirectFixtureInstances())
   const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
   const resolvedRow = matrix.find((r) => r.variantSize === 'ghost|md')
   assert.ok(resolvedRow, "the story's own resolved axis ('md') gets its own row")
   assert.deepEqual(resolvedRow.hover, ['Widget:Hover'])
-  assert.deepEqual(unresolvedRow.hover, ['unresolved: axis resolved only per story (→ ghost|md)'])
+  // T595: real coverage the story already established on the target row is credited here too —
+  // the same story name, not a `'unresolved: axis resolved only per story (→ ghost|md)'` pointer a
+  // reader would otherwise have to follow by hand.
+  assert.deepEqual(unresolvedRow.hover, ['Widget:Hover'])
   // The states the story never forced stay a genuine, uncontested `'none'` — the fix is scoped to
   // the one state that actually resolved elsewhere, not a blanket redirect for the whole row.
   assert.deepEqual(unresolvedRow.active, ['none'])
+})
+
+test('buildAxisMatrix: a call site is credited to every row its own stories resolve it to, never only one (T595, FavouriteToggle/Dialog shape)', () => {
+  // The same source line — one dynamic `size`/`variant` no literal can key a row on — resolves to
+  // `ghost|md` under one story (hover) and to `ghost|lg` under a different one (active), exactly
+  // `FavouriteToggle`'s own three call sites against `Hover`/`FocusVisible`/`Active` (all default
+  // `size` to `'md'`) versus `RealisticProfileHeader` (`size="lg"`, no force-state at all — so it
+  // never appears here, only in `rest`). Crediting only the *first* redirect found would silently
+  // drop the second story's own real knowledge; both must show up on their own state.
+  const instances = [
+    {
+      kind: 'jsx',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/index.tsx',
+      line: 6,
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: null, resolved: 'unresolved' },
+      disabled: false,
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'Hover',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'md', resolved: 'resolved-from-story' },
+      forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'RealisticHeader',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'lg', resolved: 'resolved-from-story' },
+      forced: { state: 'active', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+  ]
+  const matrix = buildAxisMatrix('Button', instances)
+  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
+  assert.deepEqual(unresolvedRow.hover, ['Widget:Hover'])
+  assert.deepEqual(unresolvedRow.active, ['Widget:RealisticHeader'])
+  // Contrast within the same row: no story anywhere forces focus-visible on this source line, so
+  // it stays a genuine, uncontested `'none'` rather than borrowing either neighbour's credit.
+  assert.deepEqual(unresolvedRow.focusVisible, ['none'])
 })
 
 test('contrast: a JSX candidate with no story resolving it anywhere still reads a genuine none, not a manufactured redirect', () => {
@@ -1750,6 +1804,229 @@ test('resolveDisabledFromStories skips a candidate whose own guard is unreached 
   assert.deepEqual(ghostRow.disabled, ['none'])
 })
 
+// T595: a story built entirely from `render:` and never mounting its own component at all (a
+// `*NotApplicable` placeholder's own `<p>...</p>`, the shape `Dialog:EmptyHoverActiveDisabledNot
+// Applicable` uses) supplies no data whatsoever about any candidate inside it — excluded before
+// `resolveDisabledFromStories` runs at all (`storyRendersComponent`), never left to read
+// `'unresolved'` by omission the way an ordinary story with unresolvable data correctly does
+// (Fixture C / the contrast test above, `UNRESOLVABLE_WIDGET_*`). No `size` literal on the call
+// site either (`Dialog`'s own `variant={...}`/no matching `size`, both dynamic) — the same
+// `unresolved|lg`-shaped row a masking positive match on a *plain* `ghost` row could not prove this
+// against: the only story in this fixture is the one that never renders `Widget` at all, so the
+// row's own `disabled` cell has nothing else to fall back on, and the assertion actually
+// distinguishes "skipped" from "happened to be outranked by real knowledge elsewhere".
+const NOT_APPLICABLE_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction }) {
+  return <Button variant={primaryAction.variant ?? 'ghost'} size="lg" disabled={primaryAction.disabled}>{primaryAction.label}</Button>
+}
+`
+const NOT_APPLICABLE_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const EmptyNotApplicable = {
+  render: () => <p>No candidate is ever mounted by this story.</p>,
+}
+`
+
+test('resolveDisabledFromStories (via computeStateCoverage): a story that never mounts the component at all is skipped outright, not left to read unresolved by omission (T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      NOT_APPLICABLE_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      NOT_APPLICABLE_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row, "the candidate's own static rest entry still exists on its unresolved-variant row")
+  // `EmptyNotApplicable` is this fixture's *only* story, and it never renders `Widget` — no
+  // `primaryAction` in sight, real or otherwise — so it must contribute nothing at all: no
+  // `unresolved: disabled not statically resolvable (Widget:EmptyNotApplicable)` note, real or
+  // otherwise, and the cell falls to the same confirmed `'none'` every other information-free cell
+  // in this matrix already reads.
+  assert.deepEqual(row.disabled, ['none'])
+})
+
+// Contrast, in one fixture, so the two cannot be conflated: a story that genuinely renders the
+// component but whose own data cannot resolve the expression (`Default`, a function call over a
+// prop) must still read `'unresolved'` — a check that ran and could not settle, never a skip —
+// while the one that never mounts the component at all (`EmptyNotApplicable`) contributes nothing,
+// not even a second `'unresolved'` reason.
+const CONTRAST_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ status }) {
+  return <Button variant="ghost" disabled={computeDisabled(status)}>Toggle</Button>
+}
+`
+const CONTRAST_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Default = { args: { status: 'idle' } }
+export const EmptyNotApplicable = {
+  render: () => <p>No candidate is ever mounted by this story.</p>,
+}
+`
+
+test('contrast: resolveDisabledFromStories (via computeStateCoverage) keeps `unresolved` for a story that renders the component but cannot settle the expression, and adds nothing for the sibling that never renders it at all (T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/composites/Widget/index.tsx', CONTRAST_WIDGET_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      CONTRAST_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(row)
+  // Exactly one unresolved reason, and it names `Default` — the story that actually rendered
+  // `Widget` and left `computeDisabled(status)` unresolvable — never `EmptyNotApplicable`, which
+  // never got the chance to be either resolved or unresolved.
+  assert.deepEqual(row.disabled, [
+    'unresolved: disabled not statically resolvable (Widget:Default)',
+  ])
+})
+
+// --- Orchestrator finding on T595's own hand-back: the redirect credit `cellFor` already applies
+// to hover/focus-visible/active did not reach `disabled` at all, and the fix must be a property of
+// the row (every column), never a second copy of the rule filed inside
+// `resolveDisabledFromStories`. `Dialog`'s real shape, reproduced generally: two call sites with a
+// dynamic `variant` (no literal to key a row on) and a literal `size`, each resolving to a
+// *different* target row (`primaryAction` to `destructive|lg`-shaped, `secondaryAction` to
+// `secondary|lg`-shaped) — plus `Button`'s own literal, unrelated `secondary|lg` story that shares
+// `secondaryAction`'s own target row by axis coincidence, the exact pollution the orchestrator's
+// review caught in the first version of this fix. `Button`'s own story, not a second composite: a
+// `componentKeyForFile` quirk this suite's own fixtures already lean on (every other multi-component
+// fixture here pairs exactly one composite with `Button`) collapses two *composite* fixtures under
+// this fabricated `/repo/...` root into the same key, which would make the two indistinguishable to
+// `resolveDisabledFromStories`'s own componentKey filter and prove nothing about the row credit this
+// test targets. ------------------------------------------------------------------------------------
+
+const REDIRECT_DIALOG_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction, secondaryAction }) {
+  return (
+    <div>
+      <Button variant={primaryAction.variant ?? 'destructive'} size="lg" disabled={primaryAction.disabled} loading={primaryAction.loading}>{primaryAction.label}</Button>
+      <Button variant={secondaryAction.variant ?? 'secondary'} size="lg" disabled={secondaryAction.disabled} loading={secondaryAction.loading}>{secondaryAction.label}</Button>
+    </div>
+  )
+}
+`
+const REDIRECT_DIALOG_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const PrimaryPending = {
+  args: { primaryAction: { label: 'Go', loading: true }, secondaryAction: { label: 'Cancel' } },
+}
+export const SecondaryPending = {
+  args: { primaryAction: { label: 'Go' }, secondaryAction: { label: 'Cancel', disabled: true } },
+}
+`
+// `Button`'s own literal `secondary|lg`, disabled directly in its own args — real coverage for
+// *its own* call site (an `own-story` instance, credited independently of
+// `resolveDisabledFromStories` entirely), never a fact about `Widget`'s `secondaryAction`, which
+// only shares `secondary|lg` by axis coincidence.
+const REDIRECT_BUTTON_OWN_STORIES_SOURCE = `
+import { Button } from './index'
+const meta = { component: Button, args: {} }
+export default meta
+export const SecondaryLgDisabled = { args: { variant: 'secondary', size: 'lg', disabled: true } }
+`
+
+test('resolveDisabledFromStories redirect (via computeStateCoverage): a row whose two call sites settle disabled on two different target rows is credited with both, not just the first (T595, orchestrator finding)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/primitives/Button/Button.stories.tsx',
+      REDIRECT_BUTTON_OWN_STORIES_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      REDIRECT_DIALOG_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      REDIRECT_DIALOG_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row, "both call sites' own static axis is unresolved — the row still exists")
+  const secondaryLgRow = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.deepEqual(
+    secondaryLgRow.disabled,
+    ['Button:SecondaryLgDisabled', 'Widget:SecondaryPending'].sort(),
+    "sanity check: secondary|lg itself carries both — Button's own and Widget's own",
+  )
+  // Both of `Widget`'s own call sites are credited on the static row — `primaryAction` proves
+  // `Widget:PrimaryPending` on its own target row, `secondaryAction` proves `Widget:SecondaryPending`
+  // on a *different* one — and `Button:SecondaryLgDisabled`, real coverage for a wholly unrelated
+  // call site that only shares `secondary|lg` by axis coincidence, never leaks in.
+  assert.deepEqual(row.disabled, ['Widget:PrimaryPending', 'Widget:SecondaryPending'])
+})
+
+// Contrast: a call site whose story resolves the axis to a real target row, but whose own
+// `disabled`/`loading` genuinely evaluates `false` there (real negative knowledge, nothing to
+// credit) must not manufacture coverage on the static row either.
+const REDIRECT_NEVER_DISABLED_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction }) {
+  return <Button variant={primaryAction.variant ?? 'destructive'} size="lg" disabled={primaryAction.disabled}>{primaryAction.label}</Button>
+}
+`
+const REDIRECT_NEVER_DISABLED_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Default = { args: { primaryAction: { label: 'Go' } } }
+`
+
+test('contrast: resolveDisabledFromStories redirect (via computeStateCoverage) never manufactures coverage when the redirect target itself has none (T595, orchestrator finding)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      REDIRECT_NEVER_DISABLED_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      REDIRECT_NEVER_DISABLED_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row)
+  // `Default` genuinely renders `Widget` and resolves `primaryAction.disabled` to a real `false` —
+  // the target row (`destructive|lg`-shaped) itself has nothing to show, so the static row must not
+  // invent a `'unresolved: axis resolved only per story (→ …)'` note or any other coverage either.
+  assert.deepEqual(row.disabled, ['none'])
+})
+
 // --- REJECT on #80, item 1: selector targets for local elements (a script `visualForceState:
 // { selector }` was dropped entirely for local elements — MatchRow/FavouritesList/PlayerResultRow's
 // own row link — read as a false 'none' on hover/focus/active). -----------------------------------
@@ -2009,6 +2286,40 @@ test('findRenderJsxProps reads the explicit JSX props a render() passes to the c
   const props = findRenderJsxProps(node, 'MatchRow')
   assert.ok(props.has('match'))
   assert.equal(props.get('match').getText(), 'base')
+})
+
+// T595: a bare JSX attribute (`<FavouriteToggle authenticated size="lg" />`, no `={...}`) is JSX
+// shorthand for `={true}` — `RealisticProfileHeader`'s own shape. It used to carry no initializer
+// at all, so it was never added to the props map — invisible, not `false` — which left an
+// unrelated guard elsewhere in the same component (`if (!authenticated) return <SignedOutControl
+// />`) unresolved by omission.
+const BARE_ATTR_RENDER_SOURCE = `
+export const RealisticProfileHeader = {
+  render: () => <FavouriteToggle authenticated size="lg" enabled={false} />,
+}
+`
+
+test('findRenderJsxProps reads a bare boolean attribute (no initializer) as `={true}`, not as absent (T595)', () => {
+  const sourceFile = parse(BARE_ATTR_RENDER_SOURCE, 'FavouriteToggle.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const props = findRenderJsxProps(node, 'FavouriteToggle')
+  assert.ok(props.has('authenticated'), 'a bare attribute is a real prop, not an absent one')
+  assert.deepEqual(evaluateExpr(props.get('authenticated'), new Map()), {
+    resolved: true,
+    value: true,
+  })
+})
+
+test('contrast: findRenderJsxProps never invents a value for a genuinely absent attribute, and still reads an explicit `={false}` as false, not as the bare-attribute shorthand (T595)', () => {
+  const sourceFile = parse(BARE_ATTR_RENDER_SOURCE, 'FavouriteToggle.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const props = findRenderJsxProps(node, 'FavouriteToggle')
+  // `loading` is never written on this call site at all — absent, not `false`.
+  assert.ok(!props.has('loading'))
+  // `enabled={false}` is a real, explicit initializer — read through the ordinary path, never
+  // mistaken for the bare-attribute shape just because it also resolves falsy-adjacent.
+  assert.ok(props.has('enabled'))
+  assert.deepEqual(evaluateExpr(props.get('enabled'), new Map()), { resolved: true, value: false })
 })
 
 test('buildElementMatrix positively resolves a selector-targeted force-state against a story-arg-derived href, end to end (MatchRow shape)', () => {
