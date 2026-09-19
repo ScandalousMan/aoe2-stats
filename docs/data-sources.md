@@ -253,26 +253,34 @@ _not_ happen is the opposite inference — that replays are now safe for six mon
 relax. This sample cannot support that, and 56 recordings were permanently lost while it was being
 taken.
 
-### Open question: does any current-patch ranked recording carry an `Achievements` block?
+### Settled: no current-patch ranked recording carries a post-game statistics block
 
-**Not known.** `docs/adr/0001-replay-parser.md`'s correction note (2026-08-24) records that the
-parser's type table carries an `Achievements` post-game block the one reference recording measured
-there does not have — that recording carries only `Leaderboards` and `WorldTime`. One recording,
-from one match, is a single negative sample, and a single negative sample does not establish that
-the block is absent from current-patch ranked recordings in general: it could be gated on game mode,
-on a settings toggle, on whether the match completed normally, or on something else not yet probed.
+**Settled, within the scope below.** `docs/adr/0001-replay-parser.md`'s correction note (2026-08-24)
+records that the parser's type table carries an `Achievements` post-game block that its one reference
+recording did not have. That was a single negative sample. It is now corroborated: a second recording
+differs from the first in match size (a 1v1 and a 2v2), in match date (2026-08-19 and 2026-09-06) and
+in players and civilisations, and its `PostGame` operation carries the same two blocks and nothing
+else. Both are described in `tests/fixtures/replays/README.md` as ranked, on the same game build.
+`tests/test_reference_recordings.py` asserts it over every archive committed there: the `PostGame`
+block list is exactly `{Leaderboards, WorldTime}`, and no block kind name suggests statistics,
+achievements or scores. That test, not this paragraph, is the evidence; the archives cannot be
+re-downloaded, which is why they are committed.
 
-Resolving this needs several recordings across several game modes (at minimum ranked 1v1 and ranked
-team games; ideally also unranked and custom, since "ranked" is itself an unverified boundary here)
-checked for `num_blocks` and the block list the parser reports, the same way the reference recording
-above was checked.
+**What the finding does not cover.** Still unmeasured: unranked and custom recordings, which this
+section's earlier form called ideal rather than required and which this repository does not hold;
+ranked team games larger than 2v2; and any other game build. "Ranked" is the fixtures README's
+description of where the two files came from, not something the files prove. The test also reads only
+the block kinds the pinned parser reports for `PostGame`, so it does not assert that no unit-death or
+score data exists elsewhere in the file, or that the parser would surface an unknown block kind. If a
+recording from an unmeasured mode is ever committed under `tests/fixtures/replays/`, the test covers
+it automatically and this section should be revisited if it fails.
 
-**What the answer decides.** The derivation/analysis feature in this codebase (V2) needs
-achievement-shaped outcomes — final scores, victory conditions, and similar post-game facts. If no
-current-patch recording ever carries the block, that data does not exist in the recording and V2 has
-to derive or simulate it from what does (`operations`, `game_settings`, the command log). If some
-recordings do carry it, V2 can read it directly instead, which is simpler and more reliable wherever
-it is present. Until this is measured, do not build V2 achievement handling on either assumption.
+**What the answer decides.** The derivation/analysis feature in this codebase (V2) would have needed
+achievement-shaped outcomes — final scores, victory conditions, and similar post-game facts. In the
+recordings measured, that data is not there, so outcome-shaped facts are not read from the recording:
+nothing may be built on their being present. What V2 derives, it derives from what the recording does
+carry (`operations`, `game_settings`, the command log), and it must not present a derivation as a
+recorded outcome.
 
 ### Publication delay: distribution
 

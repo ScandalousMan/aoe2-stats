@@ -77,7 +77,7 @@ neither carries a post-game statistics block; no document names a parser path th
 
 **Story goal (US1)**: a reader can trust what the repository says about what a recording contains.
 
-- [ ] T601 [US1] **Recover the second reference recording, and do it first.** Constitution I is the
+- [x] T601 [US1] **Recover the second reference recording, and do it first.** Constitution I is the
       reason this task leads a feature that otherwise never touches capture: the source purges
       recordings on a schedule this project does not control, so every other task in this list can
       be done tomorrow and this one cannot. Obtain the ranked team-game recording measured during
@@ -87,7 +87,7 @@ neither carries a post-game statistics block; no document names a parser path th
       admissible and the next three tasks each handle one: the served archive (best), an extracted
       recording that must be repackaged (acceptable, and the repackaging is disclosed), or
       unrecoverable (T605). Do not proceed past T605 on an unrecorded outcome
-- [ ] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry, **in
+- [x] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry, **in
       the shape the first entry actually has**: a heading sentence carrying the match kind, the date
       played, the date downloaded and the download address; the six-row table — game build, zip
       size, extracted size, members, point of view, operations; and the checksum as a trailing line.
@@ -98,14 +98,14 @@ neither carries a post-game statistics block; no document names a parser path th
       README prohibiting what it contains. A repackaged fixture is still evidence; a repackaged
       fixture presented as verbatim is not. The README's prohibition on committing an extracted
       recording beside an archive stands unchanged: the file lands as an archive or not at all
-- [ ] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** `*.zip` under
+- [x] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** `*.zip` under
       `tests/fixtures/replays/` — the directory also holds a golden JSON file and a README — assert
       the recorded checksum matches, the archive holds exactly one recording, and the parsed post-game block list contains no statistics block. Parameterise over
       the directory rather than naming files, so a third recording added later is covered without
       anyone remembering to extend it. This is the test that lets `docs/data-sources.md` §2 stop
       being an open question, and it is why T601 comes first: the claim needs bytes anyone can
       re-measure, not a citation to a conversation
-- [ ] T604 [US1] Rewrite `docs/data-sources.md` §2's open question as a settled finding (**FR-045**):
+- [x] T604 [US1] Rewrite `docs/data-sources.md` §2's open question as a settled finding (**FR-045**):
       the post-game statistics block is absent from current-patch ranked recordings, corroborated
       across more than one recording, more than one date and more than one match size, asserted by
       T603. Keep the section's own account of what the answer decides — it is what makes the finding
@@ -121,7 +121,7 @@ neither carries a post-game statistics block; no document names a parser path th
       `## Important unresolved decisions` entry is amended to say which branch was taken. Do not
       soften this into a claim the repository cannot check — an unrepeatable measurement promoted to
       settled is the exact failure `CLAUDE.md`'s filing rule exists to prevent
-- [ ] T606 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` and
+- [x] T606 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` and
       `docs/adr/0001-replay-parser.md` to name the paths that exist (**FR-046**): the adapter at
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and the protocols at
       `packages/core/src/aoe2stats_core/replay/`, in place of the parser application directory that
@@ -141,7 +141,7 @@ neither carries a post-game statistics block; no document names a parser path th
       the phantom parser directory from the `python` paths filter in `.github/workflows/pr.yml` and
       add `apps/analyzer/**`, which is in no filter at all today — a pull request touching only the
       analyzer runs no Python job
-- [ ] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` **and** the 2026-08-24
+- [x] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` **and** the 2026-08-24
       correction note in `docs/adr/0001-replay-parser.md` where each states the placement command
       carries no player identifier (**FR-047**). The pinned wheel supplies it;
       `packages/replay-engine/tests/test_aoe2rec.py` pins that as a currently-passing fact across
@@ -154,7 +154,7 @@ neither carries a post-game statistics block; no document names a parser path th
       contradicting is worse than no skill: it is read by agents that will not check. T606 and T607
       both edit the skill and the ADR, so **they are not parallel with each other** despite the
       marker — run them as one unit
-- [ ] T608 [US1] Add a **new processing activity** to `docs/privacy/processing-register.md` for
+- [x] T608 [US1] Add a **new processing activity** to `docs/privacy/processing-register.md` for
       reference recordings of public matches committed to this repository, covering **every**
       committed recording — the first fixture included, which has never had an entry. **Do not reuse
       the on-demand retention activity**: its safeguards are that a recording is never served to

@@ -114,6 +114,7 @@ testpaths = [
   "scripts/checks/tests",
   "scripts/ops/tests",
   "tests/architecture",
+  "tests/test_reference_recordings.py",
 ]
 # `tests/conftest.py` (the network-blocking autouse fixture, constitution III) is not an ancestor
 # directory of any path above, so pytest would never load it as a plain per-directory conftest.

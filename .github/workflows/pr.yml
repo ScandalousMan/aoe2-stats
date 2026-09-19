@@ -31,9 +31,9 @@ jobs:
         with:
           filters: |
             python:
+              - 'apps/analyzer/**'
               - 'apps/api/**'
               - 'apps/ingester/**'
-              - 'apps/parser/**'
               - 'packages/core/**'
               - 'packages/providers/**'
               - 'packages/replay-engine/**'

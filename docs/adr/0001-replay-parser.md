@@ -52,12 +52,21 @@ opening detection, idle-TC and eAPM.
 
 ## Decision
 
-**`aoe2rec-py` is the primary parser. `aoc-mgz` is kept as a secondary engine.**
+**`aoe2rec-py` is the primary parser. `aoc-mgz` is kept as a secondary engine, for cross-checking
+only.**
 
-Both sit behind one Protocol in `apps/parser/src/aoe2stats_parser/engines/`. `replay_parses` records
-`parser_name`, `parser_version` and `engine_deps` on every row, and is unique on
-`(replay_capture_id, parser_name, parser_version)`, so running both engines over the same archive
-costs nothing and re-parsing after an upgrade is an insert rather than a migration.
+Only the primary sits behind a Protocol. Its adapter is
+`packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py`; the Protocols it satisfies
+(`ReplayValidator`, `ReplayExtractor`) live in `packages/core/src/aoe2stats_core/replay/`. The
+secondary has no adapter and is in no lockfile: `scripts/checks/parser_canary.py` installs it
+ephemerally (`uv run --with mgz`) in the nightly workflow and nowhere else. **The gap between the
+original intent — both engines behind one Protocol, selectable by configuration — and this reality is
+open**; it predates feature 006 and is carried as an unchecked item in `docs/risks.md`.
+
+The `replay_parses` table is designed so that both engines could run over the same archive:
+`(replay_capture_id, parser_name, parser_version)` is its primary key, so re-parsing after an
+upgrade would be an insert rather than a migration. Nothing writes to it today — it is created and
+empty, and `engine_deps` has no writer.
 
 The Python-backend constraint from the brief is unaffected: `aoe2rec-py` is an ordinary Python
 import, not a subprocess. Wheels cover cp39 to cp314 on manylinux, musllinux, macOS arm64 and
@@ -66,17 +75,19 @@ Windows; the manylinux x86_64 wheel is ~445 KB, well inside Vercel's 500 MB Pyth
 ## Consequences
 
 - V2 is **not** blocked. The analysis engine can be built against current-patch replays today.
-- `aoc-mgz` remains useful for pre-2026-02 archives and for cross-checking fields that `aoe2rec` does
-  not yet name.
+- `aoc-mgz` is expected to remain useful for pre-2026-02 archives and for cross-checking fields that
+  `aoe2rec` does not yet name, but no code path reaches it today (see Decision).
 - Two known defects to work around, both minor and documented in the `replay-parsing` skill:
   - the bundled `RecSummary` helper raises `KeyError` on spectator chat in a 1v1, so we call
     `parse_rec()` directly and build our own summary layer;
   - the published wheel (0.1.21, 2026-03-08) lags the Rust crate (0.9.0, plus multichapter support
     added 2026-08-02), so saved-and-restored games may fail until a new wheel ships. Fallback is
     building from source with `maturin`.
-- A nightly canary parses recent replays with **both** engines and publishes both success rates. The
-  failure mode we are guarding against — a game patch silently breaking parsing for months — is
-  exactly what happened to aoestats.
+- A nightly canary (`scripts/checks/parser_canary.py`) parses the **one committed reference fixture**
+  with both engines and prints a result for each; it does not sample recent replays and does not
+  publish success rates. Only the primary engine's result sets the exit code; the secondary only
+  reports. The failure mode we are guarding against — a game patch silently breaking parsing for
+  months — is exactly what happened to aoestats.
 
 ## Correction — 2026-08-24
 
@@ -90,20 +101,32 @@ first, so they are corrected here rather than left for a reader to discover the 
   `player_id` field, and this repo's own `packages/replay-engine` has to decode the player id and
   building type out of that `data` payload itself. Do not assume `Build` is usable as delivered by
   the wheel; see `specs/003-player-search-match-analysis/research.md`, section R4, for the measured
-  byte shape and the decoder.
+  byte shape and the decoder. **Amended 2026-09-19 — the player-identifier claim in this bullet is
+  wrong; see the amendment below.**
 - **The parser's type table carries an `Achievements` post-game block that the reference recording
   above does not contain.** The Evidence section's `AgeIIDE_Replay_500546441.aoe2record` has
-  `num_blocks: 2` — only `Leaderboards` and `WorldTime` — no `Achievements`. Whether any
-  current-patch ranked recording ever carries an `Achievements` block is an open question, not
-  settled by this ADR; do not assume achievement data is available without verifying it is present
-  first.
+  `num_blocks: 2` — only `Leaderboards` and `WorldTime` — no `Achievements`. This is now
+  **settled within its scope**: a second recording of a different size and date carries the same two
+  blocks, asserted over every committed archive; see `docs/data-sources.md` §2 for the finding and
+  what it does not cover. It was open when this note was written.
+
+**Amendment — 2026-09-19.** The first bullet above says the `Build` action carries no `player_id`
+and that the repository must decode it from `data`. That is false of the pinned wheel
+(`aoe2rec-py==0.1.21`): it returns `{"player_id", "action_length", "data"}`, and
+`packages/replay-engine/tests/test_aoe2rec.py` asserts the `player_id` field on every placement in
+the reference fixture, and that no fixed byte offset in `data` recovers it. Only the **building
+identifier** needs decoding from `data`, which is what `decode_build_action` does. The
+`replay-parsing` skill carried the same error and is corrected alongside.
 
 ## Alternatives considered
 
 - **Wait for mgz PRs #139/#142 to merge.** Rejected: six months of inaction, and waiting would mean
   archiving replays we cannot verify.
-- **Fork aoc-mgz with #142 applied.** Kept as a fallback, not as the default: it inherits the same
-  maintenance gap.
-- **`AoEInsights/mgz-fast`.** Kept as a fallback.
+- **Fork aoc-mgz with #142 applied.** Not the default: it inherits the same maintenance gap.
+  Feature 006 (`specs/006-replay-analysis-foundations/research.md`, D1) found that none of the open
+  upstream pull requests fixes the initial-state section, so this would not have delivered it.
+- **`AoEInsights/mgz-fast`.** Not a fallback: 006 D1 found from its source that it gates on save
+  versions below this build's and skips the attribute block the starting state needs. It has not been
+  run against the fixture; that check is deferred to feature 007.
 - **Call the `aoe2rec` Rust CLI as a subprocess.** Rejected: `aoe2rec-py` gives the same parser
   in-process with no serialization boundary and no binary to ship.
