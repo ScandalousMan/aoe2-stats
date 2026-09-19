@@ -98,7 +98,7 @@ neither carries a post-game statistics block; no document names a parser path th
       README prohibiting what it contains. A repackaged fixture is still evidence; a repackaged
       fixture presented as verbatim is not. The README's prohibition on committing an extracted
       recording beside an archive stands unchanged: the file lands as an archive or not at all
-- [ ] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** `*.zip` under
+- [x] T603 [P] [US1] Write `tests/test_reference_recordings.py`: for **every** `*.zip` under
       `tests/fixtures/replays/` — the directory also holds a golden JSON file and a README — assert
       the recorded checksum matches, the archive holds exactly one recording, and the parsed post-game block list contains no statistics block. Parameterise over
       the directory rather than naming files, so a third recording added later is covered without
