@@ -1,4 +1,4 @@
-"""Tests for the document validator (T619), written first (T620) as strict xfails.
+"""Tests for the document validator (T619), written first as T620.
 
 API chosen here, which T619 must implement in ``aoe2stats_core.truth.validate``:
 
@@ -29,8 +29,6 @@ from typing import Any
 import pytest
 
 from aoe2stats_core.truth.tiers import Tier
-
-XFAIL = pytest.mark.xfail(strict=True, reason="T619 not implemented yet")
 
 
 @dataclass(frozen=True)
@@ -128,14 +126,12 @@ def _rejected(doc: dict[str, Any], *rules: int) -> None:
     assert str(info.value)
 
 
-@XFAIL
 def test_a_conforming_document_is_accepted() -> None:
     from aoe2stats_core.truth.validate import validate
 
     validate(_good(), _register())
 
 
-@XFAIL
 def test_the_wall_clock_set_is_exempt_from_the_register() -> None:
     from aoe2stats_core.truth.validate import validate
 
@@ -147,14 +143,12 @@ def test_the_wall_clock_set_is_exempt_from_the_register() -> None:
 # SC-001, rule 1
 
 
-@XFAIL
 def test_a_leaf_with_no_register_entry_is_rejected() -> None:
     doc = _good()
     doc["participants"][0]["mystery_stat"] = 5
     _rejected(doc, 1)
 
 
-@XFAIL
 def test_a_leaf_resolving_to_a_planned_datum_is_rejected() -> None:
     doc = _good()
     doc["participants"][0]["planned_thing"] = 5
@@ -162,7 +156,6 @@ def test_a_leaf_resolving_to_a_planned_datum_is_rejected() -> None:
     _rejected(doc, 1)
 
 
-@XFAIL
 def test_a_leaf_resolving_to_two_data_is_rejected() -> None:
     from aoe2stats_core.truth.validate import DocumentInvalid, validate
 
@@ -176,35 +169,30 @@ def test_a_leaf_resolving_to_two_data_is_rejected() -> None:
 # SC-002, rules 2 to 5
 
 
-@XFAIL
 def test_a_datum_without_provenance_is_rejected() -> None:
     doc = _good()
     del doc["provenance"]["participant.civ_id"]
     _rejected(doc, 2)
 
 
-@XFAIL
 def test_a_provenance_key_absent_from_the_document_is_rejected() -> None:
     doc = _good()
     doc["provenance"]["participant.build_count"] = _prov("reconstructed")
     _rejected(doc, 2)
 
 
-@XFAIL
 def test_a_value_missing_its_tier_is_rejected() -> None:
     doc = _good()
     del doc["provenance"]["participant.civ_id"]["tier"]
     _rejected(doc, 3)
 
 
-@XFAIL
 def test_a_tier_that_differs_from_the_register_is_rejected() -> None:
     doc = _good()
     doc["provenance"]["participant.civ_id"]["tier"] = "decoded"
     _rejected(doc, 3)
 
 
-@XFAIL
 def test_a_tier_stronger_than_the_weakest_input_is_rejected() -> None:
     doc = _good()
     doc["provenance"]["participant.pace"]["inputs"] = ["participant.group_control_lost"]
@@ -212,21 +200,18 @@ def test_a_tier_stronger_than_the_weakest_input_is_rejected() -> None:
 
 
 @pytest.mark.parametrize("bad", [None, "", "   "])
-@XFAIL
 def test_an_entry_without_a_method_is_rejected(bad: str | None) -> None:
     doc = _good()
     doc["provenance"]["participant.civ_id"]["method"] = bad
     _rejected(doc, 4)
 
 
-@XFAIL
 def test_an_entry_with_no_method_key_is_rejected() -> None:
     doc = _good()
     del doc["provenance"]["participant.civ_id"]["method"]
     _rejected(doc, 4)
 
 
-@XFAIL
 def test_an_inferred_instance_missing_its_confidence_is_rejected() -> None:
     doc = _good()
     del doc["inferred"]["participant.group_control_lost"][0]["confidence"]
@@ -234,14 +219,12 @@ def test_an_inferred_instance_missing_its_confidence_is_rejected() -> None:
 
 
 @pytest.mark.parametrize("basis", ["", "   ", None])
-@XFAIL
 def test_an_inferred_instance_with_an_empty_basis_is_rejected(basis: str | None) -> None:
     doc = _good()
     doc["inferred"]["participant.group_control_lost"][0]["confidence"]["basis"] = basis
     _rejected(doc, 5)
 
 
-@XFAIL
 def test_an_inferred_instance_missing_its_basis_key_is_rejected() -> None:
     doc = _good()
     del doc["inferred"]["participant.group_control_lost"][0]["confidence"]["basis"]
@@ -249,14 +232,12 @@ def test_an_inferred_instance_missing_its_basis_key_is_rejected() -> None:
 
 
 @pytest.mark.parametrize("level", ["certain", "", 0.9, 2, "0.9", None])
-@XFAIL
 def test_a_confidence_level_outside_the_closed_set_is_rejected(level: object) -> None:
     doc = _good()
     doc["inferred"]["participant.group_control_lost"][0]["confidence"]["level"] = level
     _rejected(doc, 5)
 
 
-@XFAIL
 def test_a_second_instance_is_checked_as_well_as_the_first() -> None:
     doc = _good()
     second = copy.deepcopy(doc["inferred"]["participant.group_control_lost"][0])
@@ -271,7 +252,6 @@ BOUNDARIES = [Tier.OBSERVED, Tier.DECODED, Tier.RECONSTRUCTED]
 
 
 @pytest.mark.parametrize("claimed", BOUNDARIES, ids=lambda t: t.value)
-@XFAIL
 def test_a_coaching_conclusion_typed_at_a_stronger_tier_is_rejected(claimed: Tier) -> None:
     """The coaching datum is inferred; it sits outside ``inferred`` and claims a stronger tier."""
     doc = _good()
@@ -281,7 +261,6 @@ def test_a_coaching_conclusion_typed_at_a_stronger_tier_is_rejected(claimed: Tie
 
 
 @pytest.mark.parametrize("claimed", BOUNDARIES, ids=lambda t: t.value)
-@XFAIL
 def test_a_coaching_conclusion_with_honest_tier_outside_inferred_is_rejected(
     claimed: Tier,
 ) -> None:
@@ -306,7 +285,6 @@ def test_a_coaching_conclusion_with_honest_tier_outside_inferred_is_rejected(
         "participant.pace",
     ],
 )
-@XFAIL
 def test_a_stronger_tier_datum_inside_inferred_is_rejected(datum: str) -> None:
     doc = _good()
     doc["inferred"][datum] = [
@@ -315,7 +293,6 @@ def test_a_stronger_tier_datum_inside_inferred_is_rejected(datum: str) -> None:
     _rejected(doc, 6)
 
 
-@XFAIL
 def test_an_inferred_datum_is_accepted_only_under_inferred() -> None:
     from aoe2stats_core.truth.validate import validate
 
@@ -325,14 +302,12 @@ def test_an_inferred_datum_is_accepted_only_under_inferred() -> None:
 # Rule 7
 
 
-@XFAIL
 def test_an_instance_missing_a_declared_non_claim_is_rejected() -> None:
     doc = _good()
     del doc["inferred"]["participant.group_control_lost"][0]["non_claim"]
     _rejected(doc, 7)
 
 
-@XFAIL
 def test_a_non_claim_is_required_on_every_instance() -> None:
     doc = _good()
     second = copy.deepcopy(doc["inferred"]["participant.group_control_lost"][0])
@@ -363,14 +338,12 @@ def _with_army_cost() -> dict[str, Any]:
     return doc
 
 
-@XFAIL
 def test_a_datum_depending_on_a_blocking_gap_is_rejected() -> None:
     doc = _with_army_cost()
     doc["knowledge_gaps"] = [_gap("blocking")]
     _rejected(doc, 8)
 
 
-@XFAIL
 def test_an_informational_or_unrelated_gap_withholds_nothing() -> None:
     from aoe2stats_core.truth.validate import validate
 
@@ -382,7 +355,6 @@ def test_an_informational_or_unrelated_gap_withholds_nothing() -> None:
 # Rules 9 and 10
 
 
-@XFAIL
 def test_empty_parser_dependencies_are_rejected() -> None:
     from aoe2stats_core.truth.validate import identity_digest
 
@@ -392,21 +364,18 @@ def test_empty_parser_dependencies_are_rejected() -> None:
     _rejected(doc, 9)
 
 
-@XFAIL
 def test_a_digest_that_does_not_recompute_is_rejected() -> None:
     doc = _good()
     doc["identity"]["digest"] = "0" * 64
     _rejected(doc, 10)
 
 
-@XFAIL
 def test_a_changed_identity_field_breaks_the_digest() -> None:
     doc = _good()
     doc["identity"]["analytics"] = "a2"
     _rejected(doc, 10)
 
 
-@XFAIL
 def test_the_digest_covers_every_field_but_itself() -> None:
     from aoe2stats_core.truth.validate import identity_digest
 
@@ -416,8 +385,59 @@ def test_the_digest_covers_every_field_but_itself() -> None:
     assert identity_digest(identity) == identity_digest({**identity, "digest": "ignored"})
 
 
-@XFAIL
 def test_a_document_without_identity_is_rejected() -> None:
     doc = _good()
     del doc["identity"]
     _rejected(doc, 9)
+
+
+# Contrast cases for the boundaries
+
+
+def test_every_violated_rule_is_reported_not_only_the_first() -> None:
+    doc = _good()
+    doc["participants"][0]["mystery_stat"] = 5
+    doc["identity"]["digest"] = "0" * 64
+    _rejected(doc, 1, 10)
+
+
+def test_a_tier_equal_to_its_weakest_input_is_accepted() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _good()
+    doc["provenance"]["participant.pace"]["inputs"] = ["participant.pace"]
+    validate(doc, _register())
+
+
+def test_an_inferred_key_with_no_register_entry_is_rejected() -> None:
+    doc = _good()
+    doc["inferred"]["participant.invented"] = [{"confidence": {"level": "low", "basis": "b"}}]
+    _rejected(doc, 1)
+
+
+def test_an_empty_list_leaf_still_resolves_to_its_datum() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _good()
+    doc["participants"][0]["age_up_commands"] = []
+    validate(doc, _register())
+
+
+def test_a_blocking_gap_does_not_withhold_a_datum_that_is_absent() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _good()
+    doc["knowledge_gaps"] = [_gap("blocking")]
+    validate(doc, _register())
+
+
+def test_a_datum_with_no_declared_non_claim_needs_none() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    register = _register()
+    doc = _good()
+    doc["provenance"]["participant.coaching_note"] = _prov("inferred", ["participant.civ_id"])
+    doc["inferred"]["participant.coaching_note"] = [
+        {"confidence": {"level": "high", "basis": "b"}, "value": "x"}
+    ]
+    validate(doc, register)

@@ -1,7 +1,6 @@
 """The determinability register loader refuses each defect in contracts/register.md (T616).
 
-Written before T615, so every test is ``xfail(strict=True)``: the body runs with every assertion
-intact, and the run turns red the moment T615 makes one pass, forcing the marker off.
+Written before T615 as strict xfails; T615 implemented the loader and the markers are gone.
 
 Each test PLANTS the defect in a small TOML string and asserts the loader refuses it. A test that
 only loaded the good file would prove the file is good, not that the loader refuses anything.
@@ -28,8 +27,6 @@ API assumed here, which T615 (and T622's id check) must provide in
 from __future__ import annotations
 
 import pytest
-
-XFAIL = pytest.mark.xfail(strict=True, reason="T615 not implemented yet")
 
 _ND_FIELDS = ("reason", "impact", "approximation", "approximation_acceptable", "would_change_if")
 
@@ -91,68 +88,56 @@ def _refused(text: str, keyword: str) -> None:
         _load(text)
 
 
-@XFAIL
 def test_contrast_a_well_formed_register_loads() -> None:
     """The contrast case: the refusals below are not the loader refusing everything."""
     register = _load(_entry() + _nd_entry())
     assert register is not None
 
 
-@XFAIL
 def test_refuses_a_duplicate_id() -> None:
     # A repeated table header is invalid TOML; the loader must still surface it as RegisterError.
     _refused(_entry() + _entry(), "duplicate")
 
 
-@XFAIL
 def test_refuses_a_classification_outside_the_closed_set() -> None:
     _refused(_entry(classification="guessed"), "classification")
 
 
-@XFAIL
 def test_refuses_a_status_outside_the_closed_set() -> None:
     _refused(_entry(status="shipped"), "status")
 
 
-@XFAIL
 @pytest.mark.parametrize("missing", _ND_FIELDS)
 def test_refuses_a_non_determinable_entry_missing_any_of_its_five_fields(missing: str) -> None:
     _refused(_nd_entry(omit=missing), missing)
 
 
-@XFAIL
 @pytest.mark.parametrize("value", ["maybe", "", "true"])
 def test_refuses_approximation_acceptable_other_than_yes_or_no(value: str) -> None:
     _refused(_nd_entry(approximation_acceptable=value), "approximation_acceptable")
 
 
-@XFAIL
 def test_refuses_a_blocked_entry_with_no_named_dependency() -> None:
     _refused(_entry(status="blocked"), "blocked_on")
 
 
-@XFAIL
 def test_refuses_a_blocked_entry_with_an_empty_blocked_on() -> None:
     _refused(_entry(status="blocked", extra='blocked_on = ""'), "blocked_on")
 
 
-@XFAIL
 def test_refuses_a_dangling_dependency() -> None:
     _refused(_entry(depends_on=["participant.does_not_exist"]), "dangling")
 
 
-@XFAIL
 def test_refuses_a_dependency_cycle() -> None:
     text = _entry("a.first", depends_on=["a.second"]) + _entry("a.second", depends_on=["a.first"])
     _refused(text, "cycle")
 
 
-@XFAIL
 def test_refuses_a_self_dependency() -> None:
     _refused(_entry("a.first", depends_on=["a.first"]), "cycle")
 
 
-@XFAIL
 def test_refuses_a_tier_stronger_than_the_weakest_dependency() -> None:
     text = _entry("a.base", classification="derived") + _entry(
         "a.top", classification="observed", depends_on=["a.base"]
@@ -160,7 +145,6 @@ def test_refuses_a_tier_stronger_than_the_weakest_dependency() -> None:
     _refused(text, "tier")
 
 
-@XFAIL
 def test_tier_is_judged_against_the_weakest_of_several_dependencies() -> None:
     text = (
         _entry("a.strong", classification="observed")
@@ -170,7 +154,6 @@ def test_tier_is_judged_against_the_weakest_of_several_dependencies() -> None:
     _refused(text, "tier")
 
 
-@XFAIL
 def test_contrast_an_entry_as_weak_as_its_dependency_loads() -> None:
     text = _entry("a.base", classification="derived") + _entry(
         "a.top", classification="derived", depends_on=["a.base"]
@@ -178,33 +161,27 @@ def test_contrast_an_entry_as_weak_as_its_dependency_loads() -> None:
     assert _load(text) is not None
 
 
-@XFAIL
 @pytest.mark.parametrize("tier", ["inferred", "predicted"])
 def test_refuses_a_published_weak_entry_with_no_confidence_method(tier: str) -> None:
     _refused(_entry(classification=tier), "confidence")
 
 
-@XFAIL
 def test_refuses_a_published_inferred_entry_with_an_empty_confidence_method() -> None:
     _refused(_entry(classification="inferred", extra='confidence_method = ""'), "confidence")
 
 
-@XFAIL
 def test_contrast_a_planned_inferred_entry_needs_no_confidence_method_yet() -> None:
     assert _load(_entry(classification="inferred", status="planned")) is not None
 
 
-@XFAIL
 def test_refuses_empty_evidence() -> None:
     _refused(_entry(evidence=""), "evidence")
 
 
-@XFAIL
 def test_refuses_missing_evidence() -> None:
     _refused(_entry(omit=("evidence",)), "evidence")
 
 
-@XFAIL
 @pytest.mark.parametrize(
     "bad_id",
     [
@@ -218,3 +195,33 @@ def test_refuses_missing_evidence() -> None:
 )
 def test_refuses_an_id_that_breaks_the_naming_shape(bad_id: str) -> None:
     _refused(_entry(bad_id), "id")
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["participant.age_up_times", "participant.buildings_built", "participant.villagers"],
+)
+def test_refuses_an_id_naming_an_outcome_rather_than_a_measurement(bad_id: str) -> None:
+    _refused(_entry(bad_id), "outcome")
+
+
+@pytest.mark.parametrize(
+    "good_id",
+    ["participant.age_up_commands", "participant.villagers_ordered", "match.world_time_ms"],
+)
+def test_contrast_ids_stating_what_was_measured_load(good_id: str) -> None:
+    assert good_id in _load(_entry(good_id)).entries
+
+
+def test_the_dependency_graph_is_exposed() -> None:
+    text = _entry("a.base") + _entry("a.top", depends_on=["a.base"])
+    register = _load(text)
+    assert dict(register.graph) == {"a.base": (), "a.top": ("a.base",)}
+    assert register.dependents("a.base") == ("a.top",)
+
+
+def test_the_packaged_register_loads_at_import() -> None:
+    from aoe2stats_core.truth.register import REGISTER
+
+    assert len(REGISTER) > 0
+    assert REGISTER["participant.units_lost"].approximation_acceptable == "no"
