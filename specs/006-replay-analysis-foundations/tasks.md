@@ -251,7 +251,7 @@ the view fails the suite.
       regeneration command in its message. The file is filed **beside the package**, not under
       `docs/`, because its subject is this product's own data — `CLAUDE.md`'s filing rule sends a
       fact about a package to live next to what recomputes it
-- [ ] T618 [US1] Verify **SC-012** by hand and record the result in the task hand-back: open
+- [x] T618 [US1] Verify **SC-012** by hand and record the result in the task hand-back: open
       `REGISTER.md`, look up unit loss, and confirm — **without opening a Python file** — that it
       says why it cannot be known, what that costs, that the approximation is not acceptable, and
       what would change the answer. If that read needs the source, the renderer is the defect
@@ -267,7 +267,7 @@ the view fails the suite.
       tier boundary and not once overall. **SC-001**: a document carrying a leaf with no register
       entry is rejected. **SC-002**: a document with a value missing its tier, and one with an
       inferred value missing its confidence or its basis, are both rejected
-- [ ] T621 [US1] Verify the drift gate bites: edit one impact line in `register.toml`, run the
+- [x] T621 [US1] Verify the drift gate bites: edit one impact line in `register.toml`, run the
       suite, confirm the view test fails and prints the regeneration command, regenerate, confirm
       green, and leave the register as it was. A gate nobody has seen fail is a gate nobody knows
       the shape of
