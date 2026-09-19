@@ -105,7 +105,7 @@ neither carries a post-game statistics block; no document names a parser path th
       anyone remembering to extend it. This is the test that lets `docs/data-sources.md` §2 stop
       being an open question, and it is why T601 comes first: the claim needs bytes anyone can
       re-measure, not a citation to a conversation
-- [ ] T604 [US1] Rewrite `docs/data-sources.md` §2's open question as a settled finding (**FR-045**):
+- [x] T604 [US1] Rewrite `docs/data-sources.md` §2's open question as a settled finding (**FR-045**):
       the post-game statistics block is absent from current-patch ranked recordings, corroborated
       across more than one recording, more than one date and more than one match size, asserted by
       T603. Keep the section's own account of what the answer decides — it is what makes the finding
