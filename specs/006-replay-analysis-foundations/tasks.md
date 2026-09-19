@@ -345,7 +345,7 @@ after being produced through the new stream.
       inferred quantity. If a field cannot be pinned with confidence, emit the event without it and
       register the field as blocked — a guessed amount at the decoded tier is the precise lie this
       feature exists to prevent. Test first, `xfail(strict=True)`
-- [ ] T626b [US4] Decode the chat channel in
+- [x] T626b [US4] Decode the chat channel in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`. The channel sits inside the
       same JSON string as the message text, so the text cannot be avoided on the way to it: parse,
       keep the channel and the participant, and **discard the text at the adapter**. Assert that no

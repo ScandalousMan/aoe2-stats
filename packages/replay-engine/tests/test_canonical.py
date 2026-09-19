@@ -7,6 +7,9 @@ length (research.md D11).
 
 from __future__ import annotations
 
+import dataclasses
+import json
+import logging
 import struct
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
@@ -17,6 +20,8 @@ import pytest
 
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
+    CanonicalEvent,
+    ChatPayload,
     EventKind,
     MarketTransactionPayload,
     MatchEndedPayload,
@@ -199,6 +204,11 @@ def _act(label: str, player: int, **fields: object) -> dict[str, object]:
     }
 
 
+def _chat(player: int, text: str, channel: int = 0) -> dict[str, object]:
+    body = json.dumps({"player": player, "channel": channel, "message": text, "tauntNumber": 0})
+    return {"Chat": {"padding": (255, 255, 255, 255), "text": body}}
+
+
 def _research(player: int, technology: int = 101) -> dict[str, object]:
     return _act("Research", player, building_id=7, technology_type=technology)
 
@@ -317,7 +327,7 @@ def test_placement_decodes_position_and_building_from_the_raw_bytes() -> None:
 
 
 def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: _Parsed) -> None:
-    """events + syncs + viewlocks + collapsed + after_exit + unseated + chat_pending == operations.
+    """events + syncs + viewlocks + collapsed + after_exit + unseated == operations.
 
     The two left-hand counts the wheel reports come from the raw operation list; the rest come from
     the generator's own `Accounting`, so a new way to lose an operation has to be named to pass.
@@ -327,9 +337,7 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
     operations = _operations(parsed)
     syncs = sum(1 for op in operations if "Sync" in op)
     viewlocks = sum(1 for op in operations if "Viewlock" in op)
-    chats = sum(1 for op in operations if "Chat" in op)
 
-    assert accounting.chat_pending == chats
     assert (
         len(events)
         + syncs
@@ -337,14 +345,15 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
         + accounting.collapsed
         + accounting.after_exit
         + accounting.unseated
-        + accounting.chat_pending
         == len(operations)
     )
 
 
 def test_every_recorded_action_is_an_event_or_a_named_drop(parsed: _Parsed) -> None:
+    # Chat has its own accounting (below); leave it out so `unseated` counts actions only.
+    without_chat = {**parsed, "operations": [op for op in _operations(parsed) if "Chat" not in op]}
     accounting = Accounting()
-    events = list(canonical_events(parsed, accounting))
+    events = list(canonical_events(without_chat, accounting))
     actions = sum(1 for op in _operations(parsed) if "Action" in op)
     action_events = sum(
         1 for e in events if e.kind not in (EventKind.MATCH_ENDED, EventKind.MATCH_STARTED)
@@ -430,13 +439,14 @@ def test_an_unmapped_action_from_an_exited_or_unseated_slot_is_counted_not_emitt
         _act("Stop", 1, data=[0]),
         _act("Stop", 9, data=[0]),
         _act("Resign", 1, data=[0]),
-        {"Chat": {"padding": (0, 0), "text": "x"}},
+        _chat(1, "hello"),  # after player 1's exit
+        _chat(9, "hello"),  # names no seated slot
         players=(1, 2),
     )
     events = list(canonical_events(stream, accounting))
     assert [e.kind for e in events] == [EventKind.PARTICIPANT_RESIGNED]
     # The second resignation is after the first exit, so it is an after-exit action, not a collapse.
-    assert accounting == Accounting(after_exit=2, unseated=1, chat_pending=1)
+    assert accounting == Accounting(after_exit=3, unseated=2)
 
 
 def test_a_queue_command_naming_no_building_is_undecoded_not_dropped() -> None:
@@ -651,3 +661,114 @@ def test_decoding_market_and_deletion_does_not_change_the_event_count(parsed: _P
         if e.kind is EventKind.UNDECODED
     }
     assert not labels & {"Sell", "Buy", "Delete"}
+
+
+# --- chat (T626b): the channel and the participant are kept, the text never is -----------------
+
+_SECRET = "Zx9-distinctive-message-text"
+
+
+def _chat_texts(parsed: _Parsed) -> set[str]:
+    texts: set[str] = set()
+    for operation in _operations(parsed):
+        if "Chat" in operation:
+            raw = cast(Mapping[str, str], operation["Chat"])["text"]
+            texts.add(cast(str, json.loads(raw)["message"]))
+    return texts
+
+
+def _strings(value: object) -> Iterator[str]:
+    """Every string held anywhere in an event, by walking its fields rather than its repr."""
+    if isinstance(value, str):
+        yield value
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        for field in dataclasses.fields(value):
+            yield from _strings(getattr(value, field.name))
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            yield from _strings(item)
+
+
+def _leaks(event: CanonicalEvent, texts: set[str]) -> bool:
+    """A held string equal to a message, or containing one long enough to be no coincidence.
+
+    Short messages ("1") are searched for by equality only: as a substring of a repr they would
+    match any digit.
+    """
+    held = list(_strings(event))
+    return any(
+        text and (text in held or (len(text) >= 8 and any(text in item for item in held)))
+        for text in texts
+    )
+
+
+def test_a_seated_participants_chat_is_an_event_with_channel_and_no_text() -> None:
+    accounting = Accounting()
+    stream = _stream(_sync(300), _chat(2, _SECRET, channel=3), players=(1, 2))
+    (event,) = canonical_events(stream, accounting)
+    assert event.kind is EventKind.CHAT
+    assert event.participant == 2
+    assert event.clock_ms == 300  # chat has no time of its own: it takes the accumulated clock
+    assert event.payload == ChatPayload(channel="3")
+    assert accounting == Accounting()
+    assert _SECRET not in repr(event)
+
+
+def test_chat_from_an_unseated_sender_or_after_exit_is_counted_not_emitted() -> None:
+    accounting = Accounting()
+    stream = _stream(_chat(7, _SECRET), _act("Resign", 1, data=[0]), _chat(1, _SECRET))
+    events = list(canonical_events(stream, accounting))
+    assert [e.kind for e in events] == [EventKind.PARTICIPANT_RESIGNED]
+    assert accounting == Accounting(unseated=1, after_exit=1)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json " + _SECRET,
+        '{"player": 1, "message": "' + _SECRET + '"}',  # no channel
+        '{"player": "1", "channel": 0, "message": "' + _SECRET + '"}',  # sender not an integer
+        '{"player": 1, "channel": true, "message": "' + _SECRET + '"}',
+        '["' + _SECRET + '"]',
+        '{"player": 1, "channel": 0, "message": "' + _SECRET,  # truncated
+        "",
+    ],
+)
+def test_malformed_chat_is_counted_unseated_and_never_raises_or_leaks(
+    text: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    accounting = Accounting()
+    stream = _stream(_sync(50), {"Chat": {"padding": (0,), "text": text}})
+    with caplog.at_level(logging.DEBUG):
+        events = list(canonical_events(stream, accounting))
+    assert events == []
+    assert accounting == Accounting(unseated=1)
+    assert _SECRET not in caplog.text
+    assert caplog.records == []
+
+
+def test_no_chat_text_reaches_any_event_or_log_line_of_either_recording(
+    parsed: _Parsed, caplog: pytest.LogCaptureFixture
+) -> None:
+    texts = _chat_texts(parsed)
+    assert texts, "the recording carries no chat to protect"
+    accounting = Accounting()
+    with caplog.at_level(logging.DEBUG):
+        events = list(canonical_events(parsed, accounting))
+    assert not any(_leaks(event, texts) for event in events)
+    assert caplog.records == []
+    chats = [e for e in events if e.kind is EventKind.CHAT]
+    assert chats
+    assert all(cast(ChatPayload, e.payload).channel == "0" for e in chats)
+
+
+def test_no_chat_text_reaches_an_event_or_a_log_line_on_a_planted_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stream = _stream(_chat(1, _SECRET), _chat(1, _SECRET, channel=2), _chat(8, _SECRET))
+    with caplog.at_level(logging.DEBUG):
+        events = list(canonical_events(stream))
+    assert len(events) == 2
+    assert not any(_leaks(event, {_SECRET}) for event in events)
+    assert _SECRET not in caplog.text
+    assert caplog.records == []
