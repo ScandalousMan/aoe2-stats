@@ -3307,6 +3307,8 @@ export function checkCitations({ readmeText }) {
   let inlineClaimVerifiedCount = 0
   let inlineClaimFailureCount = 0
   let inlineClaimUnresolvableCount = 0
+  let inlineClaimOutOfRangeCount = 0
+  let inlineClaimMalformedLineSpecCount = 0
   for (const claim of inlineClaims) {
     // `LOCATION_ONLY_RE`'s own `location` group (`[\w./-]*`) matches empty, so a genuinely bare
     // `` `:96` `` (no filename at all — F17's own opening parenthetical, "`:96` is the `const
@@ -3339,13 +3341,39 @@ export function checkCitations({ readmeText }) {
       continue
     }
     const ranges = parseLineSpec(claim.lineSpec)
-    if (!ranges) continue
+    // A hole T595 closes: this used to be a bare `continue`, the same silent-drop shape as the
+    // out-of-range branch below — a malformed line spec was dropped from the tally with the run
+    // still exiting 0. It is a failure now, with its own counter, so the sum assertion after this
+    // loop can hold. `claim.lineSpec` is always `LOCATION_ONLY_RE`'s own capture group, built from
+    // exactly the atoms `parseLineSpec`'s per-part regex accepts (see that function's own comment
+    // on its citation-level twin above, `parseCitations`'s `!ranges` branch: "the citation regex
+    // already guarantees digits and dashes only, so this is a belt") — so `!ranges` cannot be
+    // reached through any real `readmeText` today. It stays a real, counted failure rather than a
+    // silent `continue` anyway, so a future widening of that regex cannot reopen this hole unnoticed.
+    if (!ranges) {
+      inlineClaimMalformedLineSpecCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)}: malformed line spec ${JSON.stringify(claim.lineSpec)}`,
+      })
+      continue
+    }
     const fileText = readFileSync(resolved, 'utf8')
     const maxLine = Math.max(...ranges.map(([, end]) => end))
-    // A hole T595 closes, not a duplicate report: `findInlineCodeClaims` skips every span
-    // `CITATION_RE` parsed, so `checkCitations`'s own out-of-range branch never saw this claim and
-    // nothing above reports it. It is dropped here and the run still exits 0.
-    if (maxLine > fileText.split('\n').length) continue
+    const lineCount = fileText.split('\n').length
+    // The hole T595 was written to close: `findInlineCodeClaims` skips every span `CITATION_RE`
+    // already parsed, so `checkCitations`'s own out-of-range branch above (the one for
+    // double-quoted citations) never sees this claim — it has to be caught here or nowhere. It
+    // used to be a bare `continue`, dropped from every count with the run still exiting 0; it is a
+    // failure now, with its own counter, mirroring the double-quoted branch's own reason text.
+    if (maxLine > lineCount) {
+      inlineClaimOutOfRangeCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)}: ${relPath(resolved)} has ${lineCount} lines, cited up to :${maxLine}`,
+      })
+      continue
+    }
     if (!matchQuoteAgainstText(claim.claim, fileText, ranges)) {
       inlineClaimFailureCount++
       failures.push({
@@ -3356,6 +3384,31 @@ export function checkCitations({ readmeText }) {
     }
     inlineClaimVerifiedCount++
   }
+  // Every branch of the loop above increments exactly one of these five counters before its
+  // `continue` (or falls through to `inlineClaimVerifiedCount++`), so their sum must equal
+  // `inlineClaims.length`. This is not restating that arithmetic for its own sake: it is the
+  // guard against the next silent `continue`. Both branches T595 closed here were a `continue`
+  // added to this loop with no counter and no failure behind it, and the run kept exiting 0 —
+  // this assertion is what makes that shape fail the moment it is written again, instead of
+  // waiting for someone to notice the claim went missing from every count.
+  const inlineClaimCountSum =
+    inlineClaimVerifiedCount +
+    inlineClaimFailureCount +
+    inlineClaimUnresolvableCount +
+    inlineClaimOutOfRangeCount +
+    inlineClaimMalformedLineSpecCount
+  if (inlineClaimCountSum !== inlineClaims.length) {
+    failures.push({
+      raw: '(inline-claim count)',
+      reason:
+        `inline-code claim counts (${inlineClaimVerifiedCount} verified + ` +
+        `${inlineClaimFailureCount} mismatch + ${inlineClaimUnresolvableCount} unresolvable + ` +
+        `${inlineClaimOutOfRangeCount} out of range + ${inlineClaimMalformedLineSpecCount} ` +
+        `malformed line spec = ${inlineClaimCountSum}) do not sum to the ${inlineClaims.length} ` +
+        'claims `findInlineCodeClaims` found — some branch of the loop dropped a claim without ' +
+        'counting it',
+    })
+  }
   return {
     parsedCount: citations.length,
     unparsedQuoteCarryingCount: unparsed.length,
@@ -3363,6 +3416,8 @@ export function checkCitations({ readmeText }) {
     inlineClaimVerifiedCount,
     inlineClaimUnresolvableCount,
     inlineClaimFailureCount,
+    inlineClaimOutOfRangeCount,
+    inlineClaimMalformedLineSpecCount,
     failures,
   }
 }
@@ -3798,16 +3853,20 @@ function runCitationCheck() {
   )
   // T594's REJECT on #80, item 1: this used to print "found and verified" for every claim
   // `findInlineCodeClaims` returned, whether or not this loop actually checked it — a bare
-  // location silently skipped the whole comparison and still reported as verified. Three numbers
+  // location silently skipped the whole comparison and still reported as verified. Five numbers
   // now, none folded into another: `found` is what the extractor returned, `verified` is what this
   // pass actually confirmed matches its own cited line, `unresolvable` is a location this pass
-  // could not resolve to one file at all (a failure above, same as a content mismatch — the two are
-  // kept apart only so a reader can tell "wrong place" from "wrong text").
+  // could not resolve to one file at all, `out of range` is a cited line past the end of its file
+  // (T595) and `malformed line spec` is a line spec that did not parse at all (T595) — the four
+  // failing kinds are kept apart only so a reader can tell "wrong place" from "wrong text" from
+  // "past the end" from "unparseable", and `checkCitations` itself asserts the five sum to `found`.
   log(
     `${result.inlineClaimCount} inline-code claims next to a \`file:line\` found (T594 M2/M3); ` +
       `${result.inlineClaimVerifiedCount} verified, ${result.inlineClaimUnresolvableCount} ` +
-      `unresolvable, ${result.inlineClaimFailureCount} content mismatch (unresolvable and ` +
-      'mismatch are each also a failure above, not merely a count).',
+      `unresolvable, ${result.inlineClaimFailureCount} content mismatch, ` +
+      `${result.inlineClaimOutOfRangeCount} out of range, ` +
+      `${result.inlineClaimMalformedLineSpecCount} malformed line spec (unresolvable, mismatch, ` +
+      'out of range and malformed line spec are each also a failure above, not merely a count).',
   )
   if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
     fail(

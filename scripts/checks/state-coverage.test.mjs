@@ -2819,6 +2819,105 @@ test('checkCitations: a bare inline-code claim whose location resolves to no fil
   assert.match(result.failures[0].reason, /did not resolve to exactly one file/)
 })
 
+// --- T595: the out-of-range hole in `--check-citations` mode ---------------------------------
+// `findInlineCodeClaims` skips every span `CITATION_RE` already parsed, so the out-of-range branch
+// a few lines above (the one guarding double-quoted citations) never sees an inline-code claim —
+// it has to be caught in this loop or nowhere. Before this fix it was a bare `continue`: dropped
+// from every printed count, and `--check-citations` still exited 0.
+
+test('checkCitations: an inline-code claim whose cited line is past the end of its real file fails, naming the real line count (T595, was silently skipped and still exited 0)', () => {
+  const filePath = path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx')
+  const lineCount = readFileSync(filePath, 'utf8').split('\n').length
+  const outOfRangeLine = lineCount + 1000
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:${outOfRangeLine}\`) opens with \`size="lg"\` and more prose after it.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 1)
+  assert.equal(result.inlineClaimVerifiedCount, 0)
+  assert.equal(result.inlineClaimFailureCount, 0)
+  assert.equal(result.inlineClaimUnresolvableCount, 0)
+  const failure = result.failures.find((f) => f.reason.includes('inline-code claim'))
+  assert.ok(failure, 'expected an inline-code-claim failure')
+  assert.match(failure.reason, new RegExp(`has ${lineCount} lines, cited up to :${outOfRangeLine}`))
+})
+
+test('contrast: the same inline-code claim shape, cited in range with the text really on that line, still passes and is counted as verified — the fix is a boundary, not a blanket rejection', () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:1\`) opens with \`${firstLine}\` and more prose after it.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimVerifiedCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 0)
+})
+
+// The inline loop's own malformed-line-spec branch (`if (!ranges) continue`, now a counted
+// failure) cannot be exercised the same end-to-end way: `claim.lineSpec` is always
+// `LOCATION_ONLY_RE`'s own capture group (`` `([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`` `` —
+// see `scripts/checks/state-coverage.mjs`), built from exactly the atoms `parseLineSpec`'s
+// per-part regex accepts, so `parseLineSpec` can never return `null` for a `lineSpec` that regex
+// produced — confirmed here directly, the same unreachable-by-construction shape `parseLineSpec`'s
+// own comment already documents for its citation-level twin (`parseCitations`'s `!ranges` branch:
+// "the citation regex already guarantees digits and dashes only, so this is a belt"). No
+// `readmeText` reaches the inline loop's `!ranges` branch today, so no end-to-end `checkCitations`
+// test can turn it red — one written to "prove" that would pass before the fix too, on both sides
+// of it, and prove nothing. The fix (a counted failure instead of a silent `continue`) is still
+// correct defence against a future widening of that regex; this is what the regex guarantees today.
+test("parseLineSpec never returns null for output shaped by LOCATION_ONLY_RE — the inline loop's malformed-line-spec branch is unreachable through any real citation text, the same as its citation-level twin", () => {
+  assert.deepEqual(parseLineSpec('39'), [[39, 39]])
+  assert.deepEqual(parseLineSpec('550-551'), [[550, 551]])
+  assert.deepEqual(parseLineSpec('441,344-345'), [
+    [441, 441],
+    [344, 345],
+  ])
+  // Genuinely malformed input parseLineSpec was written to reject — never producible by
+  // LOCATION_ONLY_RE, but this is the contract the unreachable branch defends.
+  assert.equal(parseLineSpec('abc'), null)
+  assert.equal(parseLineSpec('1-'), null)
+  assert.equal(parseLineSpec(''), null)
+})
+
+test('checkCitations: the inline-claim counts it returns always sum to the number of claims found (sum invariant, T595) — a fixture mixing a verified and a failing claim', () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const filePath = path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx')
+  const lineCount = readFileSync(filePath, 'utf8').split('\n').length
+  const outOfRangeLine = lineCount + 1000
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:1\`) opens with \`${firstLine}\` and more prose after it.\n` +
+    `- **F2.** \`Text\`'s own file (\`index.tsx:${outOfRangeLine}\`) opens with \`size="lg"\` and more prose after it.\n` +
+    "- **F3.** `NoSuchComponentAnywhere`'s own file opens with `:1` is the `whatever=1` line.\n\n" +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimCount, 3)
+  const sum =
+    result.inlineClaimVerifiedCount +
+    result.inlineClaimFailureCount +
+    result.inlineClaimUnresolvableCount +
+    result.inlineClaimOutOfRangeCount +
+    result.inlineClaimMalformedLineSpecCount
+  assert.equal(sum, result.inlineClaimCount)
+  assert.equal(result.inlineClaimVerifiedCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 1)
+  assert.equal(result.inlineClaimUnresolvableCount, 1)
+})
+
 test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
   const readme =
     '**8c. Record 2 — every handoff.**\n\n' +
