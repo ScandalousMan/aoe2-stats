@@ -32,18 +32,28 @@ No silent drop (FR-019) and the accounting
 ------------------------------------------
 Every operation is exactly one of: a `Sync` (consumed for the clock), a `Viewlock` (a camera
 position, no intent), an operation that yields one event, or an operation deliberately dropped for
-one of four named reasons. `Accounting` counts each reason as it happens, so that
+one of three named reasons. `Accounting` counts each reason as it happens, so that
 
-    events + syncs + viewlocks + collapsed + after_exit + unseated + chat_pending == operations
+    events + syncs + viewlocks + collapsed + after_exit + unseated == operations
 
 is an equation a test can check rather than an assurance:
 
 - `collapsed`: a repeated research or resignation (FR-018);
 - `after_exit`: an action by a participant who has already resigned;
 - `unseated`: an action naming a `player_id` that is no seated slot;
-- `chat_pending`: a chat operation. Chat names no participant outside its JSON text, and an event
-  needs one, so it cannot be `undecoded` yet. It is counted, not dropped, until T626b decodes the
-  channel and the participant and this category goes to zero.
+
+Chat (T626b) is an operation like any other: it yields one `chat` event, or is counted as
+`after_exit` / `unseated` by the participant its JSON names, exactly as an action would be.
+
+Chat and the message text
+-------------------------
+A chat operation is one JSON string holding the sender, the channel and the message. The text
+cannot be avoided on the way to the other two, so it is parsed and then discarded here: it is bound
+to no name that outlives `_decode_chat`, appears in no event, no exception message and no log line
+(this module logs nothing). A string that is not the expected JSON object is counted as
+`unseated` (it names no seated participant, and `undecoded` requires one), never quoted. The
+channel is the game's integer, carried as its decimal string; the recordings only ever show
+channel 0 and the names of the others cannot be established from them, so none is invented.
 
 Every action the adapter does not decode is emitted as `undecoded`, carrying the engine's own label
 (for a `Game` command, the wheel's name for the inner command) and the payload length the wheel
@@ -54,6 +64,7 @@ payloads, and fall back to `undecoded` when a payload does not fit the layout fo
 
 from __future__ import annotations
 
+import json
 import struct
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -62,6 +73,7 @@ from typing import cast
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
     CanonicalEvent,
+    ChatPayload,
     EventKind,
     MarketTransactionPayload,
     MatchEndedPayload,
@@ -149,7 +161,6 @@ class Accounting:
     collapsed: int = 0
     after_exit: int = 0
     unseated: int = 0
-    chat_pending: int = 0
 
 
 class _Exits:
@@ -339,6 +350,25 @@ def _unmapped_action(clock: int, player: int, label: str, payload: _Payload) -> 
     return _undecoded(label, clock, player, payload)
 
 
+def _decode_chat(body: _Payload) -> tuple[int, str] | None:
+    """Parse a chat operation into `(sender, channel)`, discarding the message text.
+
+    Returns None when the string is not the expected object. No exception raised here quotes the
+    text: `json` errors are swallowed and nothing is logged.
+    """
+    try:
+        fields = json.loads(cast(str, body["text"]))
+    except ValueError:
+        return None
+    if not isinstance(fields, dict):
+        return None
+    sender, channel = fields.get("player"), fields.get("channel")
+    for value in (sender, channel):
+        if not isinstance(value, int) or isinstance(value, bool):
+            return None
+    return cast(int, sender), str(channel)
+
+
 def _match_ended(clock: int, operation: _Payload) -> CanonicalEvent:
     blocks = cast(Sequence[Mapping[str, object]], operation["blocks"])
     for block in blocks:
@@ -385,7 +415,23 @@ def canonical_events(
         elif kind == "PostGame":
             yield _match_ended(clock, body)
         elif kind == "Chat":
-            tally.chat_pending += 1
+            decoded = _decode_chat(body)
+            if decoded is None:
+                # No sender can be read, so the chat names no seated participant.
+                tally.unseated += 1
+                continue
+            sender, channel = decoded
+            if sender not in seated:
+                tally.unseated += 1
+            elif state.has_exited(sender):
+                tally.after_exit += 1
+            else:
+                yield CanonicalEvent(
+                    clock_ms=clock,
+                    kind=EventKind.CHAT,
+                    participant=sender,
+                    payload=ChatPayload(channel=channel),
+                )
         elif kind == "Action":
             action_data = cast(Mapping[str, _Payload], body["action_data"])
             label, payload = next(iter(action_data.items()))
