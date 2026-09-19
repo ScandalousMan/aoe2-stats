@@ -138,6 +138,33 @@ grep -rn "dataset.theme\|data-theme" packages/design-system/src --include='*.tsx
 **Pass**: matches only under `packages/design-system/src/theme`. Nothing else may know which theme
 is active — the toggle sets it and styles nothing by it.
 
+### Result (T537, run 2026-09-06)
+
+All four cases run against `apps/web`'s dev server, each result read back from
+`document.documentElement.dataset.theme`, from the stored override and from `matchMedia` rather than
+by eye. Recorded here rather than left in the commit body that first carried it: a pre-squash commit
+message is not a durable citation on this branch, by this file's own convention, and this is the only
+evidence production-readiness item 4 and SC-005 have.
+
+1. **System dark, fresh profile** (storage cleared, colour scheme dark, reload): theme `dark`,
+   nothing stored, system prefers dark. The application's own error boundary — the backend is
+   unreachable locally, unrelated to this feature — rendered on the dark surface tokens immediately.
+   No light frame, and no theme-related console error.
+2. **Override to light, reload** (override stored as light, colour scheme still dark): theme `light`,
+   override `light`, system still prefers dark. The override wins over the system preference across a
+   reload, which is what FR-015 and FR-016 ask (SC-005).
+3. **Blocked site data, reload**: the preview browser has no control that makes an origin's storage
+   throw before a fresh page's own inline script runs, so this case was verified by re-executing the
+   inline script's identical branch structure with the read replaced by a forced `DOMException`, the
+   shape a real storage block raises. It resolves to dark where the system prefers dark and to light
+   where it does not, in both cases completing without the exception escaping. The same fallback
+   chain is asserted as a unit test in `packages/design-system/src/theme/ThemeProvider.test.tsx`, so
+   the manual check and the automated one agree rather than substitute for each other.
+4. **No override and no system preference**: theme `light`, nothing stored — the defined default.
+
+**All four pass.** T577's walk of 2026-09-08 recorded item 4 as "partly met — not run this session";
+it had been run two days earlier, and this record is what that walk had no way to find.
+
 ## Scenario 7 — Numbers are legible and comparable (US4)
 
 Open Storybook and compare a column of ratings of differing digit counts.

@@ -16,6 +16,14 @@ claims coverage it does not have; this contract is what makes the claim true.
 **1,794 captures**, from 279 baselines today. States are already separate stories, so the state axis
 rides on the story axis rather than being duplicated.
 
+**These are the design-time figures and are deliberately left as they were sized.** The tree holds
+more: the per-state stories the closed state vocabulary requires of every component, and the clipped
+state stories the package's own contrast-signal register produced, were not written when this
+contract was. The current figure is stated once, in `packages/design-system/specs/README.md`'s "The
+baseline set, as it stands", where `scripts/checks/story-baselines.mjs` asserts both the story count
+and the baseline count and fails naming that section when either moves. Re-derive neither number from
+the table above.
+
 **The two sets do not currently agree.** 25 stories have no baseline — `Tooltip`'s thirteen were
 never committed at all — and 3 baselines name stories that no longer exist. Phase 1 reconciles them
 at the existing axes _before_ expanding, because multiplying an unreconciled set by six multiplies
