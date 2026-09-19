@@ -20,11 +20,12 @@ from aoe2stats_core.replay.events import (
     EventKind,
     MatchEndedPayload,
     ResearchQueuedPayload,
+    UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
 )
 from aoe2stats_replay_engine.aoe2rec import _parse_or_raise, _read_member_bytes
-from aoe2stats_replay_engine.canonical import canonical_events
+from aoe2stats_replay_engine.canonical import Accounting, canonical_events
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _RECORDINGS = sorted(_FIXTURES.glob("AgeIIDE_Replay_*.zip"))
@@ -308,6 +309,142 @@ def test_placement_decodes_position_and_building_from_the_raw_bytes() -> None:
         building_id=70, position=cast(BuildingPlacedPayload, event.payload).position
     )
     assert (event.payload.position.x, event.payload.position.y) == (12.0, 69.0)  # type: ignore[union-attr]
+
+
+# --- no silent drop (T626, FR-019) -------------------------------------------------------------
+
+
+def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: _Parsed) -> None:
+    """events + syncs + viewlocks + collapsed + after_exit + unseated + chat_pending == operations.
+
+    The two left-hand counts the wheel reports come from the raw operation list; the rest come from
+    the generator's own `Accounting`, so a new way to lose an operation has to be named to pass.
+    """
+    accounting = Accounting()
+    events = list(canonical_events(parsed, accounting))
+    operations = _operations(parsed)
+    syncs = sum(1 for op in operations if "Sync" in op)
+    viewlocks = sum(1 for op in operations if "Viewlock" in op)
+    chats = sum(1 for op in operations if "Chat" in op)
+
+    assert accounting.chat_pending == chats
+    assert (
+        len(events)
+        + syncs
+        + viewlocks
+        + accounting.collapsed
+        + accounting.after_exit
+        + accounting.unseated
+        + accounting.chat_pending
+        == len(operations)
+    )
+
+
+def test_every_recorded_action_is_an_event_or_a_named_drop(parsed: _Parsed) -> None:
+    accounting = Accounting()
+    events = list(canonical_events(parsed, accounting))
+    actions = sum(1 for op in _operations(parsed) if "Action" in op)
+    action_events = sum(
+        1 for e in events if e.kind not in (EventKind.MATCH_ENDED, EventKind.MATCH_STARTED)
+    )
+    assert action_events + accounting.collapsed + accounting.after_exit + accounting.unseated == (
+        actions
+    )
+
+
+def test_a_collapsed_research_is_counted_as_collapsed() -> None:
+    accounting = Accounting()
+    stream = _stream(_research(1, 101), _research(1, 101), _research(1, 102))
+    assert len(list(canonical_events(stream, accounting))) == 2
+    assert accounting == Accounting(collapsed=1)
+
+
+def test_the_action_kind_the_wheel_cannot_name_is_emitted_undecoded() -> None:
+    recordings = [_parse(path) for path in _RECORDINGS]
+    named = [
+        [
+            (label, payload)
+            for _, label, payload in _timed_actions(parsed_)
+            if label.startswith("Unknown")
+        ]
+        for parsed_ in recordings
+    ]
+    assert any(named), "no committed recording carries an action the wheel cannot name"
+    for parsed_, instances in zip(recordings, named, strict=True):
+        undecoded = [
+            e.payload
+            for e in canonical_events(parsed_)
+            if isinstance(e.payload, UndecodedPayload) and e.payload.operation.startswith("Unknown")
+        ]
+        expected = Counter((label, cast(int, p["action_length"])) for label, p in instances)
+        assert Counter((u.operation, u.payload_length) for u in undecoded) == expected
+
+
+def test_undecoded_carries_the_engines_label_and_the_payload_length(parsed: _Parsed) -> None:
+    labels = {
+        label
+        for _, label, _ in _timed_actions(parsed)
+        if label in ("Sell", "Buy", "Delete", "Flare", "TownBell", "Transform")
+    }
+    got = {
+        e.payload.operation
+        for e in canonical_events(parsed)
+        if isinstance(e.payload, UndecodedPayload)
+    }
+    assert labels <= got
+
+
+def test_command_kinds_without_decoded_ids_are_commanded_with_an_empty_list(
+    parsed: _Parsed,
+) -> None:
+    empty = Counter(
+        cast(UnitsCommandedPayload, e.payload).command_class
+        for e in canonical_events(parsed)
+        if e.kind is EventKind.UNITS_COMMANDED
+        and cast(UnitsCommandedPayload, e.payload).command_class
+        not in ("move", "interact", "order")
+    )
+    assert empty["formation"] == _count(parsed, "Formation")
+    assert empty["stance"] == _count(parsed, "Stance")
+    assert empty["stop"] == _count(parsed, "Stop")
+    for e in canonical_events(parsed):
+        if e.kind is EventKind.UNITS_COMMANDED:
+            payload = cast(UnitsCommandedPayload, e.payload)
+            if payload.command_class not in ("move", "interact", "order"):
+                assert payload.unit_objects == ()
+                assert payload.target is None
+
+
+def test_a_game_command_is_undecoded_under_the_wheels_inner_name() -> None:
+    stream = _stream(_act("Game", 1, game_command={"FarmUnqueue": {}}, action_length=16))
+    (event,) = canonical_events(stream)
+    assert event.payload == UndecodedPayload(operation="FarmUnqueue", payload_length=16)
+
+
+def test_an_unmapped_action_from_an_exited_or_unseated_slot_is_counted_not_emitted() -> None:
+    accounting = Accounting()
+    stream = _stream(
+        _act("Resign", 1, data=[0]),
+        _act("Stop", 1, data=[0]),
+        _act("Stop", 9, data=[0]),
+        _act("Resign", 1, data=[0]),
+        {"Chat": {"padding": (0, 0), "text": "x"}},
+        players=(1, 2),
+    )
+    events = list(canonical_events(stream, accounting))
+    assert [e.kind for e in events] == [EventKind.PARTICIPANT_RESIGNED]
+    # The second resignation is after the first exit, so it is an after-exit action, not a collapse.
+    assert accounting == Accounting(after_exit=2, unseated=1, chat_pending=1)
+
+
+def test_a_queue_command_naming_no_building_is_undecoded_not_dropped() -> None:
+    stream = _stream(
+        _act(
+            "DeQueue", 1, building_type=109, unit_id=83, amount=1, building_ids=[], action_length=6
+        )
+    )
+    (event,) = canonical_events(stream)
+    assert event.payload == UndecodedPayload(operation="DeQueue", payload_length=6)
 
 
 def _timed_actions(parsed: _Parsed) -> Iterator[tuple[int, str, Mapping[str, object]]]:
