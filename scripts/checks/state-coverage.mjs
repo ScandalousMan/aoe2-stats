@@ -1507,9 +1507,16 @@ export function findPlayFocusTarget(body) {
 // (aria-hidden ones already excluded by the caller, mirroring Playwright's own `getByRole`).
 export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
   if (name) {
-    if (candidate.text && candidate.text.includes(name)) return 'match'
+    // Every pool member whose own text literally carries the name, not just this candidate's own
+    // — checked before deciding anything, so two candidates that both carry it are caught as one
+    // ambiguity rather than each independently returning `'match'` (T594's REJECT on #80, item 5:
+    // `resolveComposedStoryMatches`'s own caller took whichever of the two a plain `for` loop
+    // visited last, silently crediting one frame to both elements — zero live occurrences today,
+    // the one ambiguity shape B1's own fixture sweep never covers).
     const directTextMatches = pool.filter((c) => c.text && c.text.includes(name))
-    if (directTextMatches.length > 0) return 'reject'
+    if (directTextMatches.length > 1) return 'ambiguous'
+    if (directTextMatches.length === 1)
+      return directTextMatches[0] === candidate ? 'match' : 'reject'
     if (argsLiterals) {
       let inArgs = false
       for (const lit of argsLiterals) {
@@ -1921,6 +1928,11 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
           forced,
           playFocus: null,
           sourceLine: matchedCandidate.line,
+          // `file` above is the *story* file this match was resolved against — `buildAxisMatrix`'s
+          // own fold-back (item 2) needs the JSX candidate's own source file to key against its
+          // `rest` entry, which lives in a different file entirely (`FavouriteToggle/index.tsx` vs.
+          // `FavouriteToggle.stories.tsx`).
+          sourceFile: matchedCandidate.file,
         })
       } else if (ambiguous) {
         const reason = `state ${JSON.stringify(forced.state)}: ${roleMatches.length} ${primitive} instances in ${componentKey} match role ${JSON.stringify(forced.role)}${forced.name ? ` / name ${JSON.stringify(forced.name)}` : ''}${forced.nth != null ? ` / nth ${forced.nth}` : ''}, none uniquely resolved${roleMatches.some((c) => c.unresolvedGuard) ? " (at least one candidate's own guard could not be evaluated from this story's args)" : ''}`
@@ -2017,6 +2029,7 @@ export function buildAxisMatrix(primitiveName, instances) {
       rows.set(key, {
         key,
         rest: [],
+        restInstances: [],
         hover: [],
         'focus-visible': [],
         active: [],
@@ -2026,12 +2039,43 @@ export function buildAxisMatrix(primitiveName, instances) {
         // above. Two shapes land here: a play-driven focus-visible match (never provably a real
         // frame, T594's amendment) and, since B1, an ambiguous composed-story match — the
         // positive-knowledge rule Record 1's own `buildElementCells` already applies, extended to
-        // Record 3 so an ambiguity renders `unresolved` on every row it was ambiguous between,
-        // never a confirmed `'none'` over a comparison that produced an ambiguity.
+        // Record 3 so an ambiguity never renders a confirmed `'none'` over a comparison that
+        // produced an ambiguity.
+        //
+        // **Precedence, stated rather than left implied (T594's REJECT on #80, item 4 — the
+        // comment this replaced claimed an ambiguity renders `unresolved` on *every* row it was
+        // ambiguous between; `cellFor` below only ever reads this list when the same row's own
+        // `hover`/`focus-visible`/`active` match list is empty, so a row that *also* carries a real,
+        // unambiguous match for that exact state from elsewhere — another story, another candidate
+        // — shows that match and drops the ambiguity note entirely; only `Menu`'s own `actions` row
+        // is left with nothing else to show, of the six ambiguities live in this tree today).** A
+        // real match anywhere for this row's own state is positive knowledge in its own right — a
+        // cell covered by one story and merely ambiguous against a second force-state is still
+        // covered — and outranks noting that a *different* comparison could not be settled; the
+        // ambiguity note is not lost, it simply never has to carry a row whose state is already
+        // known some other way.
         unresolvedByState: { hover: [], 'focus-visible': [], active: [] },
       })
     }
     return rows.get(key)
+  }
+  // T594's REJECT on #80, item 2: a JSX candidate's own state can resolve, through a specific
+  // story, to a row keyed *differently* from the row its own static (often dynamic-unresolved)
+  // variant/size key files its `rest` entry under — `FavouriteToggle`'s real button (`ghost`
+  // variant, a dynamic `size` prop no story literal resolves) files `rest` at `ghost|unresolved`,
+  // but `FavouriteToggle:Hover`'s own args default that same `size` to `'md'` and land the *match*
+  // at `ghost|md` instead; `Dialog`'s two `Button` instances the same way, `unresolved|lg` vs.
+  // `destructive|lg`. The same source line lands in two rows, and the row that kept `rest` read a
+  // confirmed `'none'` over a comparison that actually found a match elsewhere — positive knowledge
+  // this pass has, filed under a different key. Recorded once, up front, from every already-matched
+  // `composed-story` instance's own source position, so the row a `rest` line stays on can point at
+  // wherever its own state actually resolved instead of falling to `'none'`.
+  const storyResolvedBySourceLine = new Map()
+  for (const inst of instances) {
+    if (inst.kind !== 'composed-story' || inst.sourceLine == null || !inst.sourceFile) continue
+    const lineKey = `${inst.componentKey}|${inst.sourceFile}|${inst.sourceLine}`
+    if (!storyResolvedBySourceLine.has(lineKey)) storyResolvedBySourceLine.set(lineKey, new Map())
+    storyResolvedBySourceLine.get(lineKey).set(inst.forced.state, axisKey(inst))
   }
   for (const inst of instances) {
     if (inst.kind === 'composed-story-unresolved') {
@@ -2049,6 +2093,7 @@ export function buildAxisMatrix(primitiveName, instances) {
     const row = rowFor(key)
     if (inst.kind === 'jsx') {
       row.rest.push(`${inst.componentKey} (${inst.file}:${inst.line})`)
+      row.restInstances.push(inst)
       if (inst.disabled) row.disabled.push(`${inst.componentKey} (${inst.file}:${inst.line})`)
       continue
     }
@@ -2094,29 +2139,41 @@ export function buildAxisMatrix(primitiveName, instances) {
   }
   const builtRows = [...rows.values()]
     .sort((a, b) => a.key.localeCompare(b.key))
-    .map((row) => ({
-      variantSize: row.key,
-      rest: row.rest.length ? [...new Set(row.rest)] : ['none'],
-      hover: row.hover.length
-        ? [...new Set(row.hover)]
-        : row.unresolvedByState.hover.length
-          ? [`unresolved: ${[...new Set(row.unresolvedByState.hover)].join('; ')}`]
-          : ['none'],
-      focusVisible: row['focus-visible'].length
-        ? [...new Set(row['focus-visible'])]
-        : row.unresolvedByState['focus-visible'].length
-          ? [`unresolved: ${[...new Set(row.unresolvedByState['focus-visible'])].join('; ')}`]
-          : ['none'],
-      active: row.active.length
-        ? [...new Set(row.active)]
-        : row.unresolvedByState.active.length
-          ? [`unresolved: ${[...new Set(row.unresolvedByState.active)].join('; ')}`]
-          : ['none'],
-      disabled: row.disabled.length ? [...new Set(row.disabled)] : ['none'],
-      forcedRoles: row.forcedRoles.sort(
-        (a, b) => a.state.localeCompare(b.state) || String(a.role).localeCompare(String(b.role)),
-      ),
-    }))
+    .map((row) => {
+      // Before this row's own cell falls all the way to a confirmed `'none'`, check whether one of
+      // its own `rest` lines resolved this exact state to a *different* row through a story — if
+      // so, point there instead of claiming an absence this pass never actually confirmed.
+      const redirectFor = (state) => {
+        for (const inst of row.restInstances) {
+          const lineKey = `${inst.componentKey}|${inst.file}|${inst.line}`
+          const target = storyResolvedBySourceLine.get(lineKey)?.get(state)
+          if (target && target !== row.key) return target
+        }
+        return null
+      }
+      const cellFor = (stateList, unresolvedList, state) => {
+        if (stateList.length) return [...new Set(stateList)]
+        if (unresolvedList.length) return [`unresolved: ${[...new Set(unresolvedList)].join('; ')}`]
+        const redirect = redirectFor(state)
+        if (redirect) return [`unresolved: axis resolved only per story (→ ${redirect})`]
+        return ['none']
+      }
+      return {
+        variantSize: row.key,
+        rest: row.rest.length ? [...new Set(row.rest)] : ['none'],
+        hover: cellFor(row.hover, row.unresolvedByState.hover, 'hover'),
+        focusVisible: cellFor(
+          row['focus-visible'],
+          row.unresolvedByState['focus-visible'],
+          'focus-visible',
+        ),
+        active: cellFor(row.active, row.unresolvedByState.active, 'active'),
+        disabled: row.disabled.length ? [...new Set(row.disabled)] : ['none'],
+        forcedRoles: row.forcedRoles.sort(
+          (a, b) => a.state.localeCompare(b.state) || String(a.role).localeCompare(String(b.role)),
+        ),
+      }
+    })
   if (unresolvedReasons.length > 0) {
     builtRows.push({
       variantSize: '(unresolved matches — no row, printed rather than dropped)',
@@ -2539,11 +2596,21 @@ export function diffLines(before, after) {
 // An ellipsis (`…`, U+2026) inside a quote elides a run of text: the quote is split there into an
 // ordered sequence of parts, each required to appear, in that order, in the target text — an
 // unelided quote is one part, matched as a literal (whitespace-collapsed) substring.
+// T594's REJECT on #80, item 7: this used to stop at `**Cell counts` — the paragraph that follows
+// row 8's own tally rule — which left roughly the last hundred lines of row 8 (the "Six cells
+// moved again" paragraph, the re-derivation of F10/F10a/F12/F17 against them, the Owners
+// paragraph, and the closing "Also recorded" note) entirely outside this checker's reach: eight
+// `index.tsx:N` citations in that span were never mechanically verified (a reviewer hand-checked
+// them; all correct), and a ninth, the closing note's own `Link.stories.tsx:47-60`, had gone stale
+// (the rename it promised already landed) with nothing to catch it. Row 8 is the last thing in
+// this file (`packages/design-system/specs/README.md`'s own "Contrast-signal and duplicate-
+// baseline gap register" carries no ninth row and no section after it), so the scope now runs to
+// the end of the document rather than to an interior heading that happens to name a real boundary
+// for only *part* of the row.
 export function extractCitationScope(readmeText) {
   const start = readmeText.indexOf('**8c. Record 2')
-  const end = readmeText.indexOf('**Cell counts')
-  if (start === -1 || end === -1 || end < start) return null
-  return readmeText.slice(start, end)
+  if (start === -1) return null
+  return readmeText.slice(start)
 }
 
 // The double-quoted alternative allows a backslash-escaped `\"` inside it — several citations on
@@ -2942,20 +3009,34 @@ export function checkCitations({ readmeText }) {
   // same way a double-quoted citation is — never merely skipped because it carries a backtick
   // instead of a `"`.
   const inlineClaims = findInlineCodeClaims(scopeText)
+  let inlineClaimVerifiedCount = 0
   let inlineClaimFailureCount = 0
+  let inlineClaimUnresolvableCount = 0
   for (const claim of inlineClaims) {
-    if (!claim.location) continue // a bare `:line` claim outside a table row — out of this pass's scope
-    let resolved = resolveCitationLocation(
-      { location: claim.location, tableContext: null },
-      { specsDir: path.join(dsDir, 'specs'), allSrcFiles },
-    )
+    // `LOCATION_ONLY_RE`'s own `location` group (`[\w./-]*`) matches empty, so a genuinely bare
+    // `` `:96` `` (no filename at all — F17's own opening parenthetical, "`:96` is the `const
+    // focusRing =` declaration itself") parses with `claim.location === ''`, falsy exactly like a
+    // real absence. `if (!claim.location) continue` (T594's REJECT on #80, item 1) treated the two
+    // the same and dropped every bare-location claim unverified — five of the ten claims on this
+    // page at the time of that REJECT, every one of them an M2/M3 citation correction. A bare
+    // location means "this bullet's own subject component's `index.tsx`", the exact shape
+    // `resolveBareLocationFromBullet` already resolves for a *named* bare filename (`index.tsx`
+    // with no leading path) below — routed through the same function with that default name rather
+    // than skipped.
+    const bareLocation = claim.location || 'index.tsx'
+    let resolved = claim.location
+      ? resolveCitationLocation(
+          { location: claim.location, tableContext: null },
+          { specsDir: path.join(dsDir, 'specs'), allSrcFiles },
+        )
+      : null
     // A bare filename every component shares (`index.tsx`) never resolves uniquely on its own —
     // fall back to the bullet's own named subject component (see `resolveBareLocationFromBullet`).
-    if (!resolved && !claim.location.includes('/')) {
-      resolved = resolveBareLocationFromBullet(scopeText, claim.line, claim.location, allSrcFiles)
+    if (!resolved && !bareLocation.includes('/')) {
+      resolved = resolveBareLocationFromBullet(scopeText, claim.line, bareLocation, allSrcFiles)
     }
     if (!resolved) {
-      inlineClaimFailureCount++
+      inlineClaimUnresolvableCount++
       failures.push({
         raw: claim.raw,
         reason: `inline-code claim ${JSON.stringify(claim.claim)}: location ${JSON.stringify(claim.location)} did not resolve to exactly one file`,
@@ -2973,12 +3054,16 @@ export function checkCitations({ readmeText }) {
         raw: claim.raw,
         reason: `inline-code claim ${JSON.stringify(claim.claim)} not found at ${relPath(resolved)}:${claim.lineSpec}`,
       })
+      continue
     }
+    inlineClaimVerifiedCount++
   }
   return {
     parsedCount: citations.length,
     unparsedQuoteCarryingCount: unparsed.length,
     inlineClaimCount: inlineClaims.length,
+    inlineClaimVerifiedCount,
+    inlineClaimUnresolvableCount,
     inlineClaimFailureCount,
     failures,
   }
@@ -3395,10 +3480,18 @@ function runCitationCheck() {
       `${result.unparsedQuoteCarryingCount} more, outside the recognised citation format, still ` +
       'carry a nearby quote (each of those is also a failure above, not merely a count).',
   )
+  // T594's REJECT on #80, item 1: this used to print "found and verified" for every claim
+  // `findInlineCodeClaims` returned, whether or not this loop actually checked it — a bare
+  // location silently skipped the whole comparison and still reported as verified. Three numbers
+  // now, none folded into another: `found` is what the extractor returned, `verified` is what this
+  // pass actually confirmed matches its own cited line, `unresolvable` is a location this pass
+  // could not resolve to one file at all (a failure above, same as a content mismatch — the two are
+  // kept apart only so a reader can tell "wrong place" from "wrong text").
   log(
-    `${result.inlineClaimCount} inline-code claims next to a \`file:line\` found and verified ` +
-      `(T594 M2/M3); ${result.inlineClaimFailureCount} failed (also a failure above, not merely a ` +
-      'count).',
+    `${result.inlineClaimCount} inline-code claims next to a \`file:line\` found (T594 M2/M3); ` +
+      `${result.inlineClaimVerifiedCount} verified, ${result.inlineClaimUnresolvableCount} ` +
+      `unresolvable, ${result.inlineClaimFailureCount} content mismatch (unresolvable and ` +
+      'mismatch are each also a failure above, not merely a count).',
   )
   if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
     fail(

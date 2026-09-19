@@ -375,6 +375,107 @@ test('contrast: the same shape resolves to one row when the forced name is liter
   assert.deepEqual(selectionRow.hover, ['none'])
 })
 
+// --- Fixture 6c: a JSX candidate's own static axis and the axis its own force-state resolves to
+// per story disagree (T594's REJECT on #80, item 2). `Widget`'s real button carries a literal
+// `variant="ghost"` but a *dynamic* `size` prop — the same shape `FavouriteToggle`'s own real
+// button and `Dialog`'s own two `Button` instances carry live in this tree. Pre-fix, the JSX
+// candidate's own `rest` entry filed at `ghost|unresolved` (the static axis, size never a literal)
+// while the same source line's own story-resolved match — `size` resolved to `'md'` per story —
+// filed its `hover` cell at `ghost|md` instead: one source line in two rows, the first reading a
+// confirmed `'none'` over a comparison that actually found a match on the second. Built directly
+// against `buildAxisMatrix` (the function item 2 changed) rather than through the full
+// `computeStateCoverage` file-parsing pipeline, the same level fixture 6a
+// ("buildAxisMatrix renders a play-driven focus-visible match…") already uses. --------------------
+
+function redirectFixtureInstances() {
+  return [
+    {
+      kind: 'jsx',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/index.tsx',
+      line: 6,
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: null, resolved: 'unresolved' },
+      disabled: false,
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'Hover',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'md', resolved: 'resolved-from-story' },
+      forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+  ]
+}
+
+test("buildAxisMatrix (red first, pre-fix shape): a story-resolved match must not leave its own JSX candidate's static row reading a plain none", () => {
+  // This is the contrast the fix must pass, proven directly against the row rather than against
+  // the fix's own implementation: the row carrying the JSX candidate's own `rest` entry must never
+  // claim a bare `'none'` once a story elsewhere resolved a match against that exact source line.
+  const matrix = buildAxisMatrix('Button', redirectFixtureInstances())
+  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
+  assert.ok(unresolvedRow, 'the static, unresolved-size row must still exist (a real rest entry)')
+  assert.ok(unresolvedRow.rest[0].includes('composites/Widget'))
+  assert.notDeepEqual(
+    unresolvedRow.hover,
+    ['none'],
+    'a confirmed absence would be false: a story elsewhere matched this exact source line',
+  )
+})
+
+test("buildAxisMatrix: the unresolved row's hover cell points at the row the story actually resolved to, not a bare 'unresolved' with no destination", () => {
+  const matrix = buildAxisMatrix('Button', redirectFixtureInstances())
+  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
+  const resolvedRow = matrix.find((r) => r.variantSize === 'ghost|md')
+  assert.ok(resolvedRow, "the story's own resolved axis ('md') gets its own row")
+  assert.deepEqual(resolvedRow.hover, ['Widget:Hover'])
+  assert.deepEqual(unresolvedRow.hover, ['unresolved: axis resolved only per story (→ ghost|md)'])
+  // The states the story never forced stay a genuine, uncontested `'none'` — the fix is scoped to
+  // the one state that actually resolved elsewhere, not a blanket redirect for the whole row.
+  assert.deepEqual(unresolvedRow.active, ['none'])
+})
+
+test('contrast: a JSX candidate with no story resolving it anywhere still reads a genuine none, not a manufactured redirect', () => {
+  const [jsxOnly] = redirectFixtureInstances()
+  const matrix = buildAxisMatrix('Button', [jsxOnly])
+  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
+  assert.deepEqual(unresolvedRow.hover, ['none'])
+})
+
+test('contrast: a story-resolved match whose axis agrees with its own JSX row never needs a redirect (same row throughout)', () => {
+  const instances = [
+    {
+      kind: 'jsx',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/index.tsx',
+      line: 6,
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'md', resolved: 'explicit' },
+      disabled: false,
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'Hover',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'md', resolved: 'explicit' },
+      forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+  ]
+  const matrix = buildAxisMatrix('Button', instances)
+  assert.equal(matrix.length, 1)
+  assert.deepEqual(matrix[0].hover, ['Widget:Hover'])
+})
+
 // --- extractPseudoClasses / resolveClassParts, the primitives everything above is built from ------
 
 test('resolveClassParts resolves a cx() call over string literals, a ternary and a same-file const', () => {
@@ -560,6 +661,33 @@ test('resolveNameMatch resolves nth against inline candidates sorted by line, ex
 test('resolveNameMatch is ambiguous (not none) when nth exceeds the orderable pool', () => {
   const only = { isHelper: false, line: 100 }
   assert.equal(resolveNameMatch({ candidate: only, pool: [only], name: null, nth: 5 }), 'ambiguous')
+})
+
+// T594's REJECT on #80, item 5: two candidates both literally carrying the forced name used to
+// each independently return `'match'` — the caller (`resolveComposedStoryMatches`) then let
+// whichever a plain `for` loop visited last silently overwrite `matchedCandidate`, crediting one
+// frame to both elements. Zero live occurrences in this tree today; this is the one ambiguity
+// shape B1's own fixture sweep never covers.
+test('resolveNameMatch is ambiguous, not a silent double match, when two candidates both literally carry the forced name', () => {
+  const a = { text: 'Turn it off' }
+  const b = { text: 'Turn it off' }
+  const pool = [a, b]
+  assert.equal(
+    resolveNameMatch({ candidate: a, pool, name: 'Turn it off', nth: null }),
+    'ambiguous',
+  )
+  assert.equal(
+    resolveNameMatch({ candidate: b, pool, name: 'Turn it off', nth: null }),
+    'ambiguous',
+  )
+})
+
+test('contrast: resolveNameMatch still matches the sole candidate directly when only one carries the forced name', () => {
+  const a = { text: 'Turn it off' }
+  const b = { text: 'Keep it on' }
+  const pool = [a, b]
+  assert.equal(resolveNameMatch({ candidate: a, pool, name: 'Turn it off', nth: null }), 'match')
+  assert.equal(resolveNameMatch({ candidate: b, pool, name: 'Turn it off', nth: null }), 'reject')
 })
 
 // --- Orchestrator remediation 1: a cell distinguishes a confirmed 'none' from an 'unresolved:
@@ -2180,6 +2308,35 @@ test('checkCitations: a citation whose location resolves to no file fails', () =
   assert.match(result.failures[0].reason, /did not resolve to exactly one file/)
 })
 
+// T594's REJECT on #80, item 7: `extractCitationScope` used to stop at `**Cell counts`, so nothing
+// from there to the end of row 8 was ever checked — the "Six cells moved again" paragraph, the
+// Owners paragraph, and the closing "Also recorded" note (roughly the last hundred lines of row 8
+// at the time of that REJECT), each carrying its own citations no run ever verified. Row 8 is the
+// last thing in `README.md`, so the scope now runs to the end of the document.
+test('checkCitations: a bad citation placed after the old `**Cell counts` boundary now fails — item 7 widened the scope to the whole of row 8, not only up to that heading', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    'prose before the old boundary.\n\n' +
+    '**Cell counts, printed by the script, never restated here.**\n\n' +
+    "Prose past the old boundary, the shape `8e`'s Owners paragraph and the closing note take: " +
+    '`GOVERNANCE.md:1` "this exact sentence does not appear on that line, guaranteed by ' +
+    'construction" trailing prose.\n'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /quote not found/)
+})
+
+test('contrast: the same citation, placed before the old `**Cell counts` boundary, already failed before this pass — proving the widened scope adds coverage rather than changing what a citation before the old boundary does', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    'prose `GOVERNANCE.md:1` "this exact sentence does not appear on that line, guaranteed by ' +
+    'construction" more prose.\n\n' +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /quote not found/)
+})
+
 test('findUnparsedQuoteAdjacentCitations: a `file:line` span outside every recognised gap shape, followed closely by a real quote, is flagged', () => {
   const scopeText = '`index.tsx:218-220` renders "Erase my account" `destructive`.'
   const results = findUnparsedQuoteAdjacentCitations(scopeText)
@@ -2300,6 +2457,57 @@ test('contrast: the same shape fails when the claimed code is not actually at th
     result.failures.find((f) => f.reason.includes('inline-code claim')).reason,
     /not found at/,
   )
+})
+
+// T594's REJECT on #80, item 1: `LOCATION_ONLY_RE`'s own `location` group (`[\w./-]*`) matches
+// empty, so a genuinely bare `` `:1` `` (no filename at all, F17's own `` `:96` `` shape) parsed
+// with `location === ''` — falsy exactly like a real absence — and `if (!claim.location) continue`
+// dropped it unverified rather than routing it through `resolveBareLocationFromBullet` the way a
+// *named* bare filename (`index.tsx`) already was. Proof this was a real, false "verified": before
+// this fix, swapping the true claim below for a false one (`bogusNeverExists`) left `failures`
+// empty and `inlineClaimCount` still counting it — the claim was never actually compared.
+test("checkCitations: a genuinely bare `:line` inline claim (no filename at all) resolves through the bullet's own named component and is verified, not silently skipped (F17's own `:96` shape)", () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file opens with \`:1\` is the \`${firstLine}\` line.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimVerifiedCount, 1)
+  assert.equal(result.inlineClaimFailureCount, 0)
+  assert.equal(result.inlineClaimUnresolvableCount, 0)
+})
+
+test('contrast: the same genuinely bare `:line` shape fails when the claimed code is not actually there — proving the claim above is really checked, not merely counted', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    "- **F1.** `Text`'s own file opens with `:1` is the `bogusNeverExists=1` line.\n\n" +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimVerifiedCount, 0)
+  assert.equal(result.inlineClaimFailureCount, 1)
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /not found at/)
+})
+
+test('checkCitations: a bare inline-code claim whose location resolves to no file at all is counted as unresolvable, never as verified', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    "- **F1.** `NoSuchComponentAnywhere`'s own file opens with `:1` is the `whatever=1` line.\n\n" +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimVerifiedCount, 0)
+  assert.equal(result.inlineClaimUnresolvableCount, 1)
+  assert.equal(result.inlineClaimFailureCount, 0)
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /did not resolve to exactly one file/)
 })
 
 test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
