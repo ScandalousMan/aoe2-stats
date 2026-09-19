@@ -219,7 +219,7 @@ the view fails the suite.
       it requires, what it depends on and how it is validated, and its evidence is a **reference**
       into `docs/data-sources.md` or [research.md](./research.md) — never a restated number
       (**SC-013**). Include every leaf the published document carries today, at observed or decoded
-- [ ] T614 [US1] Add to `register.toml` the entries the spec names individually. Unit loss as
+- [x] T614 [US1] Add to `register.toml` the entries the spec names individually. Unit loss as
       **non-determinable** (**FR-004**), citing the absence of any damage or death event and the
       absence of a post-game statistics block, with its reason, its impact on the analytics that
       wanted it, the approximation that exists, `approximation_acceptable = "no"`, and the single
