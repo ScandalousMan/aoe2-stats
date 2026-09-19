@@ -584,12 +584,29 @@ This is a time-boxed research task, resolved at `/speckit-plan` and reported in 
 reports, nothing that depends on the starting state is specified, approximated or promised. Its
 outcome decides whether feature 007 covers the spatial and income tier or stops at the spending side.
 
+**Resolved 2026-09-19 — [research.md](./research.md) D1.** The starting state is unreadable by every
+working parser and present in the file: per-player starting attributes are reachable by a
+repository-local decoder without a grammar, and the map's object table is reachable behind one.
+Route 3 is chosen, with route 1's open grammar as reference and not as a dependency; route 2 cannot
+deliver objects. The affected data are therefore registered as *decoded and blocked on a named
+decoder* — not as non-determinable — and the decoder is feature 007's first work item. Feature 007
+covers the income side; the map's resource geometry, exploration, vision and map control stay
+deferred at a stated cost. Nothing in this feature's requirements changes: FR-005 and FR-020 were
+written for exactly this outcome.
+
 **Whether the second reference recording becomes a committed fixture.** It is the only available 2v2
 and the only current-patch corroboration of FR-045, which argues for committing it. Two conditions
 must be settled rather than assumed: the repository admits only zipped recordings under its fixtures
 directory, so the file would have to be repackaged, meaning the committed bytes are ours rather than
 the ones the source served — unlike the existing fixture, whose value rests partly on being verbatim;
 and constitution IX governs retaining a recording naming real players. Decided at `/speckit-plan`.
+
+**Resolved 2026-09-19 — [research.md](./research.md) D2.** It is committed, as served, because
+`docs/data-sources.md` §2 sets a bar the two recordings meet only if both can be re-measured, and the
+second is currently in no checkout. Constitution IX is not a new obstacle — the first fixture already
+rests on the same basis — and the processing register gains the entry. If the served zip cannot be
+recovered, FR-045 is satisfied in its narrower form: two measurements recorded, one reproducible,
+the question marked corroborated and not settled.
 
 ## Risks
 
