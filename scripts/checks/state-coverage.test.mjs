@@ -56,6 +56,9 @@ import {
   checkDeferralVocabularyCoverage,
   countRecord1Cells,
   countRecord3Cells,
+  findUnaccountedForceStates,
+  KNOWN_UNACCOUNTED_FORCE_STATES,
+  readAllSourceFiles,
 } from './state-coverage.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
@@ -830,6 +833,564 @@ test('resolveNameMatch resolves nth against inline candidates sorted by line, ex
 test('resolveNameMatch is ambiguous (not none) when nth exceeds the orderable pool', () => {
   const only = { isHelper: false, line: 100 }
   assert.equal(resolveNameMatch({ candidate: only, pool: [only], name: null, nth: 5 }), 'ambiguous')
+})
+
+// --- T595 (row 8, H5): closing the `nth`/`name` family's own remaining `unresolved` cells —
+// PrivacyNotice's `InlineLink`, Footer's two `Link` instances, and ProfileSummary's composed
+// `Tooltip` name. Routed through `computeStateCoverage` end to end, the newest tests' own style,
+// since each mechanism reads real guards/call sites/composed files a hand-built object cannot carry
+// honestly. Each mechanism gets its own resolving case and its own contrast. -----------------------
+
+const INLINE_LINK_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      <InlineLink href={hrefs.a}>A</InlineLink>
+      <InlineLink href={hrefs.b}>B</InlineLink>
+    </div>
+  )
+}
+`
+
+const INLINE_LINK_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a', b: '/b' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test("resolveNameMatch (via computeStateCoverage): a non-exported helper's own real call sites are enumerated and the earliest reached for this story stands in for its render position (PrivacyNotice/InlineLink shape, T595)", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), INLINE_LINK_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'), INLINE_LINK_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const contents = elements.find((el) => el.text === 'Contents')
+  const inlineLink = elements.find((el) => el.isHelper)
+  assert.ok(
+    contents && inlineLink,
+    'both the inline Contents link and the InlineLink recipe must be found',
+  )
+  // `Contents` sorts before InlineLink's own earliest call site — nth: 0 is `Contents`, confirmed.
+  assert.deepEqual(contents.coveredBy.hover, ['Hover'])
+  // InlineLink's own declaration is not the nth: 0 target — a real, positive `none`, not the old
+  // unconditional `unresolved` this pass used to print for every helper candidate.
+  assert.deepEqual(inlineLink.coveredBy.hover, ['none'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves an exported helper's nth cell unresolved — its call sites elsewhere are invisible to a single-file pass (T595)", () => {
+  const exportedHelperSource = INLINE_LINK_INDEX_SOURCE.replace(
+    'function InlineLink(',
+    'export function InlineLink(',
+  )
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), exportedHelperSource],
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'), INLINE_LINK_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  assert.equal(inlineLink.coveredBy.hover.length, 1)
+  assert.match(inlineLink.coveredBy.hover[0], /^unresolved:/)
+})
+
+const GUARDED_CALL_SITE_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs, extra }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      {isExtraAllowed(extra) && <InlineLink href={hrefs.a}>A</InlineLink>}
+    </div>
+  )
+}
+`
+
+const GUARDED_CALL_SITE_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a' } } }
+export default meta
+export const Hover = {
+  args: { extra: {} },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves the whole pool unresolved when a helper's own call-site guard is a function call no story's scope can evaluate (T595, 'a guard no story settles')", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), GUARDED_CALL_SITE_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'),
+      GUARDED_CALL_SITE_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  // `isExtraAllowed(extra)` is a function call — `evaluateExpr` never evaluates one, so this
+  // story's own scope cannot tell whether `InlineLink`'s own call site is even reached. Genuinely
+  // unknown whether `InlineLink` renders at all, so it is neither placed at `nth: 0` nor ruled out
+  // — `'ambiguous'`, never guessed into a `'reject'` this pass has not earned (`Contents` itself
+  // still resolves normally: only the candidate whose own position is genuinely unknown is affected,
+  // the same one-candidate-at-a-time contract every other `resolveNameMatch` call already has).
+  assert.equal(inlineLink.coveredBy.hover.length, 1)
+  assert.match(inlineLink.coveredBy.hover[0], /^unresolved:/)
+})
+
+const FOOTER_LIKE_INDEX_SOURCE = `
+import { Link } from '../../primitives/Link'
+export function TwoLinkFooter({ aHref, bHref }) {
+  const hasLinks = Boolean(aHref || bHref)
+  return (
+    <footer>
+      {hasLinks && (
+        <div>
+          {aHref && <Link href={aHref} variant="standalone">A</Link>}
+          {bHref && <Link href={bHref} variant="standalone">B</Link>}
+        </div>
+      )}
+    </footer>
+  )
+}
+`
+
+const FOOTER_LIKE_STORIES_SOURCE = `
+import { TwoLinkFooter } from './index'
+const meta = { component: TwoLinkFooter }
+export default meta
+export const Hover = {
+  args: { aHref: '/a', bHref: '/b' },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test('resolveComposedStoryMatches (via computeStateCoverage): a Link instance declared directly in its own owning component is no longer isHelper: true, so nth: 0 places it correctly (Footer shape, T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Link' },
+    { segment: 'composites', name: 'TwoLinkFooter' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'composites/TwoLinkFooter/index.tsx'), FOOTER_LIKE_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'composites/TwoLinkFooter/TwoLinkFooter.stories.tsx'),
+      FOOTER_LIKE_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Link.find((r) => r.variantSize === 'standalone')
+  assert.ok(row, 'the standalone row must exist')
+  assert.deepEqual(row.hover, ['TwoLinkFooter:Hover'])
+})
+
+test('contrast (findPrimitiveInstances): a primitive instance declared behind a real, nested local helper still reads isHelper: true — only the owning component itself is excluded (T595)', () => {
+  const nestedHelperSource = `
+    function Decoy({ href }) {
+      return <Link href={href} variant="standalone">Decoy</Link>
+    }
+    export function TwoLinkFooter({ href }) {
+      return <div><Decoy href={href} /></div>
+    }
+  `
+  const sourceFile = parse(nestedHelperSource)
+  const found = findPrimitiveInstances(
+    sourceFile,
+    'fixture.tsx',
+    {},
+    [],
+    new Map(),
+    'TwoLinkFooter',
+  )
+  assert.equal(found.length, 1)
+  assert.equal(found[0].isHelper, true)
+})
+
+const TOOLTIP_LIKE_INDEX_SOURCE = `
+export function Tooltip({ children }) {
+  return (
+    <span>
+      <button type="button" className="hover:bg-surface-sunken focus-visible:outline-2">
+        {children}
+      </button>
+    </span>
+  )
+}
+`
+
+const COUNTRY_FLAG_LIKE_INDEX_SOURCE = `
+import { Tooltip } from '../../primitives/Tooltip'
+export function Flag({ countryName }) {
+  return (
+    <Tooltip content={countryName} qualifier="Country:">
+      <span>flag</span>
+    </Tooltip>
+  )
+}
+`
+
+const PROFILE_BOARD_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+import { Flag } from '../../composites/Flag'
+export function ProfileBoard({ countryName, onRetry }) {
+  return (
+    <div>
+      <Flag countryName={countryName} />
+      <Button variant="secondary" size="lg" onClick={onRetry}>Retry</Button>
+    </div>
+  )
+}
+`
+
+const PROFILE_BOARD_STORIES_SOURCE = `
+import { ProfileBoard } from './index'
+const meta = { component: ProfileBoard, args: { countryName: 'France' } }
+export default meta
+export const FlagHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+}
+`
+
+test("resolveNameMatch (via computeStateCoverage): a name composed one hop away through a locally-rendered component's own Tooltip qualifier positively rejects every candidate Record 3 tracks, and credits Tooltip's own local button instead (ProfileSummary/CountryFlag shape, T595 — coordinator's own finding on this task's first hand-back)", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+    { segment: 'screens', name: 'ProfileBoard' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), COUNTRY_FLAG_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/ProfileBoard/index.tsx'), PROFILE_BOARD_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'screens/ProfileBoard/ProfileBoard.stories.tsx'),
+      PROFILE_BOARD_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.ok(row, 'the secondary|lg row must exist')
+  // Before T595: `resolveNameMatch` could not place "Country:" anywhere and left this row
+  // `unresolved: ... none uniquely resolved`. `Button`'s own Retry instance carries no such name and
+  // is positively `reject`ed once the name is traced to `Flag`'s own composed `Tooltip`, so the row
+  // reads a confirmed `none` instead — `Tooltip` is not one of `PRIMITIVE_NAMES` at all.
+  assert.deepEqual(row.hover, ['none'])
+  // The coordinator's own finding on this task's first hand-back: rejecting every wrong candidate
+  // is not the same as crediting the right one. `Tooltip`'s own local `<button>` (record 1) is that
+  // candidate — its own pool for role `button` has exactly one member, so the credit lands there,
+  // labelled by the story file that forced it, the same convention `Footer:Hover` already uses.
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['ProfileBoard:FlagHoverRevealed'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) stays ambiguous when the composed Tooltip's own qualifier is not a literal — a name this pass cannot trace is never guessed into a reject, and nothing is credited either (T595, 'a composed name that is not derivable')", () => {
+  const dynamicQualifierSource = COUNTRY_FLAG_LIKE_INDEX_SOURCE.replace(
+    'qualifier="Country:"',
+    'qualifier={qualifierLabel}',
+  )
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+    { segment: 'screens', name: 'ProfileBoard' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), dynamicQualifierSource],
+    [path.join(REPO_SRC_DIR, 'screens/ProfileBoard/index.tsx'), PROFILE_BOARD_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'screens/ProfileBoard/ProfileBoard.stories.tsx'),
+      PROFILE_BOARD_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.ok(row, 'the secondary|lg row must exist')
+  assert.equal(row.hover.length, 1)
+  assert.match(row.hover[0], /^unresolved:/)
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['none'])
+})
+
+// --- The coordinator's own review of this task's first hand-back, part two: a role-only
+// force-state (no `name` at all, `CountryFlag`'s own `FlagHoverRevealed`) needs the *zero-hop*
+// case — a component's own source composes `<Tooltip>` directly, not through a second component —
+// and needs `componentHasOwnCandidateForRole`'s own guard: routing a role-only force-state
+// elsewhere is only safe when the forcing component has no candidate of its own for that role. ----
+
+const FLAG_LIKE_DIRECT_INDEX_SOURCE = `
+import { Tooltip } from '../../primitives/Tooltip'
+export function Flag({ countryName }) {
+  return (
+    <Tooltip content={countryName} qualifier="Country:">
+      <span>flag</span>
+    </Tooltip>
+  )
+}
+`
+
+const FLAG_LIKE_STORIES_SOURCE = `
+import { Flag } from './index'
+const meta = { component: Flag, args: { countryName: 'France' } }
+export default meta
+export const FlagHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): a role-only force-state (no name, no nth) on a component that directly composes Tooltip and has no candidate of its own routes to Tooltip too (CountryFlag shape, zero-hop, T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), FLAG_LIKE_DIRECT_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/Flag.stories.tsx'), FLAG_LIKE_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['Flag:FlagHoverRevealed'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) never routes a role-only force-state elsewhere when the forcing component has a candidate of its own for that role — 'no name' is not 'no ambiguity' (T595, componentHasOwnCandidateForRole)", () => {
+  const flagWithOwnButtonSource = `
+    import { Tooltip } from '../../primitives/Tooltip'
+    export function Flag({ countryName }) {
+      return (
+        <div>
+          <button type="button" className="hover:bg-surface-sunken">Own button</button>
+          <Tooltip content={countryName} qualifier="Country:">
+            <span>flag</span>
+          </Tooltip>
+        </div>
+      )
+    }
+  `
+  const componentDirs = [
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), flagWithOwnButtonSource],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/Flag.stories.tsx'), FLAG_LIKE_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  // `Flag` has a candidate of its own for role `button`, so `componentHasOwnCandidateForRole`
+  // blocks the composed-elsewhere route entirely — `Tooltip`'s own row stays a confirmed `none`,
+  // never credited on the strength of a role this pass cannot tell apart from `Flag`'s own.
+  const tooltip = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(tooltip.elements[0].coveredBy.hover, ['none'])
+  // `Flag`'s own button is real, positive knowledge by the *pre-existing*, unrelated "sole
+  // candidate needs no further disambiguation" rule — record 1's own pool is always scoped to one
+  // file, so `Flag`'s own resolution never even sees `Tooltip`'s candidate as competition. This is
+  // the correct outcome, not a second bug: crediting both would be the real defect.
+  const flag = computed.localElements.find((c) => c.componentKey === 'composites/Flag')
+  assert.deepEqual(flag.elements[0].coveredBy.hover, ['FlagHoverRevealed'])
+})
+
+// --- The invariant itself: every real `visualForceState` is credited or named somewhere in the
+// region, or the run fails — the coordinator's own instruction, T595. --------------------------
+
+test('findUnaccountedForceStates catches a real force-state that is credited nowhere and named in no unresolved reason (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Lost',
+      [{ exportName: 'ForcedButNeverShown', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const { missing, known, expired } = findUnaccountedForceStates(
+    storyStatesByComponent,
+    '| Lost | button | none | none | none |',
+  )
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.equal(missing.length, 1)
+  assert.equal(missing[0].exportName, 'ForcedButNeverShown')
+})
+
+test('contrast: findUnaccountedForceStates does not flag a force-state that is genuinely credited, named in an unresolved reason, from a story that never renders the component, or manufactured by this pass itself (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Credited',
+      [{ exportName: 'RealHover', forced: { state: 'hover', role: 'button' } }],
+    ],
+    [
+      'composites/Named',
+      [{ exportName: 'AmbiguousHover', forced: { state: 'hover', role: 'button' } }],
+    ],
+    [
+      'composites/NeverRenders',
+      [
+        {
+          exportName: 'NotApplicablePlaceholder',
+          forced: { state: 'hover', role: 'button' },
+          rendersComponent: false,
+        },
+      ],
+    ],
+    [
+      'primitives/Tooltip',
+      [
+        {
+          exportName: 'Flag:FlagHoverRevealed',
+          forced: { state: 'hover', role: 'button' },
+          synthetic: true,
+        },
+      ],
+    ],
+  ])
+  const regionText =
+    '| Credited | button | RealHover | none | none |\n' +
+    '| Named | button | unresolved: AmbiguousHover: 2 candidates share role "button" | none | none |'
+  const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, regionText)
+  assert.deepEqual(missing, [])
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+})
+
+test('findUnaccountedForceStates (via computeStateCoverage): the one live, filed exception is reported as known, never as missing or expired (T595, KNOWN_UNACCOUNTED_FORCE_STATES)', () => {
+  const { componentDirs, filesByPath } = readAllSourceFiles()
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { missing, known, expired } = computed.unaccountedForceStates
+  assert.deepEqual(missing, [])
+  assert.deepEqual(expired, [])
+  assert.deepEqual(
+    known.map((k) => k.exportName),
+    KNOWN_UNACCOUNTED_FORCE_STATES.map((k) => k.exportName),
+  )
+  // Every field the report line reads must actually be there — an owner and a deadline, not only
+  // a reason (the coordinator's own finding: a dated entry with no owner is a record nobody updates).
+  for (const entry of known) {
+    assert.equal(typeof entry.date, 'string')
+    assert.equal(typeof entry.fixOwed, 'string')
+    assert.equal(typeof entry.fixBy, 'string')
+  }
+})
+
+// --- An allowlist with no expiry is how a temporary exception becomes permanent (the coordinator's
+// own question, answered): a filed exception whose own `fixBy` has passed, or that is missing a
+// required field, fails the run exactly like an unfiled loss — the same shape `a11y-allowlist.mjs`
+// already enforces for its own file. ------------------------------------------------------------
+
+test('findUnaccountedForceStates fails a filed exception once its own fixBy has passed, rather than reporting it as known forever (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Overdue',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push({
+    componentKey: 'composites/Overdue',
+    exportName: 'StillLost',
+    date: '2020-01-01',
+    fixOwed: 'T000',
+    fixBy: '2020-01-08',
+    reason: 'test fixture, deliberately expired',
+  })
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(known, [])
+    assert.equal(expired.length, 1)
+    assert.equal(expired[0].exportName, 'StillLost')
+    assert.equal(expired[0].fixBy, '2020-01-08')
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
+})
+
+test('contrast: findUnaccountedForceStates keeps reporting a filed exception as known while its own fixBy is still in the future', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/NotYetDue',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const farFuture = new Date()
+  farFuture.setFullYear(farFuture.getFullYear() + 10)
+  const filed = [
+    {
+      componentKey: 'composites/NotYetDue',
+      exportName: 'StillLost',
+      date: '2026-09-19',
+      fixOwed: 'T000',
+      fixBy: farFuture.toISOString().slice(0, 10),
+      reason: 'test fixture, not yet due',
+    },
+  ]
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push(...filed)
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(expired, [])
+    assert.equal(known.length, 1)
+    assert.equal(known[0].exportName, 'StillLost')
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
+})
+
+test('findUnaccountedForceStates fails a malformed filed exception (missing fixOwed, invalid fixBy) rather than treating it as a valid, permanent exception', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Malformed',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push({
+    componentKey: 'composites/Malformed',
+    exportName: 'StillLost',
+    date: '2026-09-19',
+    fixOwed: '',
+    fixBy: 'not-a-date',
+    reason: 'test fixture, malformed',
+  })
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(known, [])
+    assert.equal(expired.length, 1)
+    assert.ok(expired[0].malformed.includes('fixOwed'))
+    assert.ok(expired[0].malformed.some((m) => m.startsWith('fixBy')))
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
 })
 
 // T594's REJECT on #80, item 5: two candidates both literally carrying the forced name used to

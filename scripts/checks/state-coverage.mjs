@@ -704,6 +704,43 @@ export function findHelperInvocationGuards(sourceFile) {
   return map
 }
 
+// Every real invocation of a locally-declared helper *component*, each with its own line and its
+// own guards at that exact call site — the call-site-level sibling of `findHelperInvocationGuards`
+// above, which keeps only a single shared guard set and gives up the moment two call sites
+// disagree. A helper this file never `export`s cannot be invoked from anywhere this single-file
+// pass does not already see, so every one of its call sites is enumerable in full
+// (`PrivacyNotice`'s own `InlineLink`, invoked five times: four unconditional, one behind `hrefs.
+// processingRegister &&`) — mapped to its own array of `{ line, guards }` sites. An `export`ed
+// helper's call sites elsewhere in the tree are invisible to a pass over one file, so it is never
+// entered into this map at all (T595): `resolveNameMatch`'s own `nth` branch reads a helper's
+// absence from this map the same way it always has, as "cannot enumerate."
+export function findHelperCallSites(sourceFile) {
+  const exported = new Set()
+  for (const statement of sourceFile.statements) {
+    const hasExportModifier = statement.modifiers?.some(
+      (m) => m.kind === ts.SyntaxKind.ExportKeyword,
+    )
+    if (!hasExportModifier) continue
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      exported.add(statement.name.text)
+    } else if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) exported.add(decl.name.text)
+      }
+    }
+  }
+  const map = new Map()
+  walkJsxWithContext(sourceFile, (node, context) => {
+    const tagName = tagNameOf(node)
+    if (!/^[A-Z]/.test(tagName) || PRIMITIVE_NAMES.includes(tagName)) return
+    if (exported.has(tagName)) return
+    const site = { line: lineOf(sourceFile, node), guards: context.guards }
+    if (!map.has(tagName)) map.set(tagName, [site])
+    else map.get(tagName).push(site)
+  })
+  return map
+}
+
 // A helper component invoked from exactly one call site *inside* a `.map()`/`.flatMap()`
 // callback, one of whose own props passes that callback's own iteration variable through
 // literally (`FavouritesList`'s own `entry={entry}`, passed to the sibling `FavouriteRow`) — one
@@ -781,6 +818,7 @@ export function findLocalElements(
   constMap,
   mainComponentName = null,
   helperIterationContext = new Map(),
+  helperCallSites = new Map(),
 ) {
   const found = []
   // T595: computed once per file, not per element — `resolveClassParts`'s own top comment states
@@ -871,6 +909,17 @@ export function findLocalElements(
       localConsts: context.localConsts,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
+      // Every real call site of this element's own enclosing helper, within this file, each with
+      // its own line and its own guards — `null` when the element is not inside a helper at all,
+      // or the helper is `export`ed and so not fully enumerable from this file alone
+      // (`findHelperCallSites`, T595). `resolveNameMatch`'s own `nth` branch reads this to place a
+      // helper candidate (`PrivacyNotice`'s own `InlineLink`) at whichever of its own real
+      // invocations is reachable for a specific story, rather than treating every helper
+      // candidate as permanently unplaceable.
+      helperCallSites:
+        context.fnName != null && context.fnName !== mainComponentName
+          ? (helperCallSites.get(context.fnName) ?? null)
+          : null,
       isInsideIteration: context.inIteration || Boolean(inheritedIteration),
       iterationVar: context.iterationVar ?? inheritedIteration?.iterationVar ?? null,
       iterationArrayExpr:
@@ -952,6 +1001,7 @@ export function findPrimitiveInstances(
   defaultsByPrimitive,
   skipPrimitives = [],
   helperGuards = new Map(),
+  mainComponentName = null,
 ) {
   const found = []
   walkJsxWithContext(sourceFile, (node, context) => {
@@ -1024,7 +1074,7 @@ export function findPrimitiveInstances(
       text: literalTextOf(node) || ariaLabelText(opening),
       childrenExpr: !literalTextOf(node) && ts.isJsxElement(node) ? node.children : null,
       ariaHidden: isAriaHidden(opening),
-      isHelper: context.fnName != null,
+      isHelper: context.fnName != null && context.fnName !== mainComponentName,
       isInsideIteration: context.inIteration,
       guards: effectiveGuards,
       fnName: context.fnName,
@@ -1777,6 +1827,35 @@ export function findPlayFocusTarget(body) {
   return last
 }
 
+// A helper candidate's own sort position for `nth` ordering against a *specific* story's own
+// scope — never called for a non-helper candidate, which always stands for its own recorded line
+// directly (`resolveNameMatch`'s own nth branch, below). A helper stands for its *declaration*
+// site, never a render position on its own — but when `scope` is supplied and `helperCallSites`
+// enumerates every real invocation in this file (`findHelperCallSites`, T595: `null` for an
+// `export`ed helper this pass cannot enumerate in full), each call site's own guards are evaluated
+// against this specific story's own scope, and the *earliest* one reached stands in for the
+// helper's own position — the same one-slot-per-candidate approximation the existing line sort
+// already makes for a `.map()`-rendered candidate (one AST node standing for every real instance it
+// renders; every real `nth` in this tree is `0`, so only "which candidate renders first" ever needs
+// deciding, never a candidate's exact index among several of its own instances). Four outcomes, kept
+// distinct because only two of them let the caller say anything at all: `'unplaceable'` (no `scope`,
+// or no enumerable call sites — the original, unconditional exclusion this replaces, `'ambiguous'`
+// in the caller); `'uncertain'` (a call site whose own guard this story's scope cannot resolve — this
+// pass does not know whether the helper renders at all, `'ambiguous'` too, never guessed either way);
+// `'absent'` (every call site resolvable, none reached for this story — confirmed, positive
+// knowledge that this helper does not render at all here, so it cannot be the `nth` target,
+// `'reject'`); `'placed'` (a real line, ordered against the rest of the pool below).
+function helperNthPosition(c, scope) {
+  if (!c.helperCallSites || !scope) return { status: 'unplaceable', line: null }
+  let earliest = null
+  for (const site of c.helperCallSites) {
+    const reach = evaluateGuards(site.guards, scope)
+    if (reach === 'unresolved') return { status: 'uncertain', line: null }
+    if (reach === 'reached' && (earliest === null || site.line < earliest)) earliest = site.line
+  }
+  return earliest == null ? { status: 'absent', line: null } : { status: 'placed', line: earliest }
+}
+
 // --- Shared candidate-resolution: does `forced`/`playFocus` target `candidate` among `pool`? ------
 //
 // Returns `'match'` (this candidate, and only this one, is the target), `'reject'` (a *different*
@@ -1784,8 +1863,21 @@ export function findPlayFocusTarget(body) {
 // "attempt" against this candidate) or `'ambiguous'` (the state genuinely could not be resolved to
 // one candidate — printed as `unresolved`, never silently guessed and never silently dropped as
 // `none`). `pool` is every candidate in the component sharing the same implied role as `candidate`
-// (aria-hidden ones already excluded by the caller, mirroring Playwright's own `getByRole`).
-export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
+// (aria-hidden ones already excluded by the caller, mirroring Playwright's own `getByRole`). `scope`
+// (a specific story's own props/args scope, T595) lets a `nth` force-state place a helper candidate
+// by its own real call sites rather than only ever excluding it, and lets a `name` force-state be
+// positively `reject`ed for every candidate in `composedElsewhere` (a name this pass has already
+// traced to a different, untracked primitive composed one hop away — `resolveComposedStoryMatches`
+// only, T595).
+export function resolveNameMatch({
+  candidate,
+  pool,
+  name,
+  nth,
+  argsLiterals,
+  scope,
+  composedElsewhere,
+}) {
   if (name) {
     // Every pool member whose own text literally carries the name, not just this candidate's own
     // — checked before deciding anything, so two candidates that both carry it are caught as one
@@ -1822,23 +1914,46 @@ export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
       }
     }
     // Neither this candidate's own JSX text, another candidate's JSX text, nor this story's own
-    // args positively account for `name` — `'none'` must be positive knowledge (T594's amendment,
+    // args positively account for `name` — unless this pass has already traced `name` to a
+    // *different*, untracked primitive composed one hop away from this component (`ProfileSummary`'s
+    // own `<CountryFlag>`, whose own source composes `<Tooltip qualifier="Country:">` —
+    // `findComposedElsewhereNames`, T595): every candidate in *this* pool is then positively not the
+    // target, a real `'reject'`, not a guess — the true target is known to exist, just not among
+    // anything Record 3 tracks. Absent that, `'none'` must be positive knowledge (T594's amendment,
     // the orchestrator's REJECT on #80), so an unaccounted-for name is `'ambiguous'` (rendered
-    // `unresolved: <reason>`), never silently `'reject'`ed into a false `'none'`. `'reject'` is
-    // reserved for the case a *different* candidate positively carries the name.
+    // `unresolved: <reason>`), never silently `'reject'`ed into a false `'none'`.
+    if (composedElsewhere && composedElsewhere.has(name)) return 'reject'
     return 'ambiguous'
   }
   if (nth != null) {
-    // The candidate itself is a reusable helper's declaration site (`PrivacyNotice`'s own
-    // `InlineLink`, invoked from several call sites this static pass does not enumerate) — its
-    // real render position relative to the orderable candidates below is unknown, so this pass can
-    // neither place it at `nth` nor rule it out. `'reject'` would be a confirmed exclusion this
-    // pass never actually established (T594 part A); `'ambiguous'` is what it actually knows.
-    if (candidate.isHelper) return 'ambiguous'
+    // The candidate itself is a reusable helper's declaration site — its own real render position
+    // is placed against *this* story's own scope (`helperNthPosition`, T595) when its own call
+    // sites are fully enumerable; genuine uncertainty about whether it renders at all (a call site
+    // whose guard this story's scope cannot resolve) leaves it exactly as unplaceable as before —
+    // `'ambiguous'`, never guessed into a `'reject'` this pass has not actually earned. A helper
+    // confirmed to never render this story (every real call site guarded off) cannot be the `nth`
+    // target either way, so it is `'reject'`ed on that same positive knowledge.
+    let candidateLine = candidate.line
+    if (candidate.isHelper) {
+      const pos = helperNthPosition(candidate, scope)
+      if (pos.status === 'unplaceable' || pos.status === 'uncertain') return 'ambiguous'
+      if (pos.status === 'absent') return 'reject'
+      candidateLine = pos.line
+    }
     // A real DOM-render-order position. Only the candidates whose own recorded line *is* a render
     // position (not a reusable helper's declaration site, invoked from elsewhere this static pass
-    // cannot enumerate) can be ordered this way.
-    const orderable = pool.filter((c) => !c.isHelper).sort((a, b) => a.line - b.line)
+    // cannot enumerate) can be ordered this way — except the candidate under test itself, already
+    // placed above when it is a helper this pass could enumerate for this specific story; every
+    // *other* helper in the pool stays excluded, the original, unconditional exclusion (this pass
+    // only ever places the one candidate a given call is asking about, never a second helper's own
+    // position at the same time). Sorted and compared by object identity, never by line value alone
+    // — two real elements can share a line number and must never be confused for one another.
+    const orderable = pool
+      .filter((c) => !c.isHelper || c === candidate)
+      .map((c) => ({ c, line: c === candidate ? candidateLine : c.line }))
+      .filter((p) => p.line != null)
+      .sort((a, b) => a.line - b.line)
+      .map((p) => p.c)
     if (orderable.length > nth) {
       return orderable[nth] === candidate ? 'match' : 'reject'
     }
@@ -1846,6 +1961,100 @@ export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
   }
   // No name, no nth: safe only when this candidate is the pool's sole member.
   return pool.length === 1 ? 'match' : 'ambiguous'
+}
+
+// A `visualForceState`'s own `name` can be produced not by the target component's own source at
+// all, but by `Tooltip`'s own `qualifier` prop, composed one hop away through a component this one
+// invokes directly (`ProfileSummary`'s own `<CountryFlag>`, whose own source composes `<Tooltip
+// qualifier="Country:">` — `Tooltip/index.tsx`'s own doc, §8: the qualifier prepends the trigger's
+// accessible name). Only `Tooltip`'s own `qualifier` is read this way — the one documented
+// mechanism this tree uses to compose an accessible name across a file boundary — and only one
+// hop: a capitalised JSX tag `sourceFile`'s own source invokes directly, resolved to its own
+// `index.tsx` by name (`indexFileByComponentName`), read once for a literal `qualifier`. A tag this
+// pass cannot resolve to a file, or whose own `Tooltip` usage carries no literal qualifier,
+// contributes nothing — never guessed, and never walked a second hop past that one file (T595, row
+// 8's own composition-scope decision — see the Method section).
+//
+// Returns `Map<name, targetComponentKey>`, never a bare `Set` — a name traced this way names its
+// own real target too (always `primitives/Tooltip` today, since `Tooltip` is the one component this
+// mechanism reads through), because the whole point of tracing it is to *place* the frame it belongs
+// to, not only to explain why it is not any candidate in the component that forced it
+// (`resolveComposedElsewhereCredits`, below — orchestrator finding on this task's own first hand-back,
+// which traced the name far enough to reject every wrong candidate and no further, losing the frame
+// entirely rather than crediting it to the right one).
+export function findComposedElsewhereNames(sourceFile, indexFileByComponentName, sourceFiles) {
+  const names = new Map()
+  // `Tooltip`'s own file, resolved once — the credit always belongs there (its own `<button>`
+  // trigger), never to a component that only composes the usage but owns no interactive element of
+  // its own to credit (`CountryFlag`; the coordinator's own finding: a name traced far enough to
+  // exclude every wrong candidate is traced far enough to say which one is right, and the right one
+  // is `Tooltip`'s, not the file this loop happens to be reading).
+  const tooltipFile = indexFileByComponentName.get('Tooltip')
+  const tooltipComponentKey = tooltipFile ? componentKeyForFile(srcDir, tooltipFile) : null
+  if (!tooltipComponentKey) return names
+  function collectFromTooltipUsages(file) {
+    walkJsxWithContext(file, (node) => {
+      if (tagNameOf(node) !== 'Tooltip') return
+      const qualifierAttr = attrLiteral(getAttr(openingOf(node), 'qualifier'))
+      if (qualifierAttr.present && qualifierAttr.literal) {
+        names.set(qualifierAttr.value, tooltipComponentKey)
+      }
+    })
+  }
+  // Zero hops: `sourceFile`'s own source composes `<Tooltip>` directly (`CountryFlag`'s own
+  // `index.tsx:71`) — the shape the walk below used to exclude outright (`tagName === 'Tooltip'`
+  // skipped unconditionally, meant to stop a Tooltip usage from being read as *itself* a candidate
+  // one hop further, but it excluded a real, direct usage from ever being read at all — found by
+  // `findUnaccountedForceStates`, T595: `CountryFlag.stories.tsx`'s own `FlagHoverRevealed`/
+  // `FlagKeyboardFocusRevealed` name no candidate anywhere because `CountryFlag` itself has no
+  // local interactive element, and this walk never looked at `CountryFlag`'s own direct usage).
+  collectFromTooltipUsages(sourceFile)
+  // One hop: a component `sourceFile` composes directly itself composes `<Tooltip>`
+  // (`ProfileSummary`'s own `<CountryFlag>`).
+  const composedTags = new Set()
+  walkJsxWithContext(sourceFile, (node) => {
+    const tagName = tagNameOf(node)
+    if (!/^[A-Z]/.test(tagName) || tagName === 'Tooltip' || PRIMITIVE_NAMES.includes(tagName))
+      return
+    composedTags.add(tagName)
+  })
+  for (const tagName of composedTags) {
+    const composedFile = indexFileByComponentName.get(tagName)
+    if (!composedFile) continue
+    const composedSourceFile = sourceFiles.get(composedFile)
+    if (!composedSourceFile) continue
+    collectFromTooltipUsages(composedSourceFile)
+  }
+  return names
+}
+
+// Whether `componentKey` has any candidate of its own — a local element (record 1) or a tracked
+// primitive instance (record 3) — for `role`, checked before a *role-only* force-state (no `name`,
+// no `nth`) is ever routed to a composed-elsewhere target. A `name` positively traces to one real
+// target and *displaces* every wrong candidate in its own component, the same `'reject'` shape
+// `resolveNameMatch` already gives elsewhere; a role alone traces nothing on its own; it is safe to
+// route only when this component could not possibly have meant one of its own candidates because it
+// has none — `CountryFlag`'s own shape, never `ProfileSummary`'s (which has real `Button`/`Menu`
+// instances a role-only force-state could still mean).
+function componentHasOwnCandidateForRole(
+  componentKey,
+  role,
+  localElementsByComponent,
+  instancesByPrimitive,
+) {
+  const hasLocal = (localElementsByComponent.get(componentKey) ?? []).some(
+    (el) => !el.ariaHidden && impliedRoleOf(el) === role,
+  )
+  if (hasLocal) return true
+  return PRIMITIVE_NAMES.some((primitive) =>
+    (instancesByPrimitive.get(primitive) ?? []).some(
+      (i) =>
+        i.kind === 'jsx' &&
+        i.componentKey === componentKey &&
+        !i.ariaHidden &&
+        impliedRoleForPrimitiveInstance(primitive, i) === role,
+    ),
+  )
 }
 
 // --- Directory / file plumbing --------------------------------------------------------------
@@ -1882,6 +2091,116 @@ function relPath(filePath) {
   return path.relative(rootDir, filePath)
 }
 
+// Reject anything that is not a real, unambiguous ISO calendar date (`YYYY-MM-DD`) — the identical
+// reading `a11y-allowlist.mjs` already gives its own `fixBy`/`date` fields, duplicated rather than
+// imported across these two independent checks: `new Date("soon")` parses to `Invalid Date`, and a
+// later `<` comparison against it is always false — silently never overdue — so a garbage string
+// must fail as malformed here rather than surviving to the expiry comparison and being read as
+// never expiring.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+function isValidIsoDate(value) {
+  if (typeof value !== 'string' || !ISO_DATE_RE.test(value)) return false
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return false
+  return parsed.toISOString().slice(0, 10) === value
+}
+
+// Every entry here is a real, filed exception with an owner and a deadline — not a suppression —
+// the same shape `a11y-allowlist.mjs` already carries for its own file (row 8's own Method section
+// cites it: printing "empty — nothing to validate" proves no *known* violation is currently
+// hidden), down to the field names (`date`/`fixOwed`/`fixBy`) so the two allowlists read the same
+// way. `findUnaccountedForceStates` still fails the run on anything *outside* this list, and now
+// also on anything *inside* it that is malformed or past its own `fixBy` — an allowlist with no
+// expiry is how a temporary exception becomes permanent, and this project already enforces exactly
+// that date shape elsewhere (`a11y-allowlist.mjs`, `story-baselines-duplicates.test.mjs`'s own debt
+// entries, T591). One entry today: `ProfileSummary`'s own `SwitcherFocusVisibleAndOpen` (`role:
+// 'menuitemradio', name: 'aoe2guy'`) targets `MenuItemRow`'s own dynamic-role element
+// (`primitives/Menu/index.tsx`'s own local element, record 1) through a `Menu` instance
+// `ProfileSummary` composes — a real, different mechanism from mechanism 3's `Tooltip`-qualifier
+// hop (that one composes an accessible *name* through a literal prop; this one needs `MenuItemRow`'s
+// own `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}` resolved against the specific
+// `Menu` call site's own `variant` prop, then a record-1 local element in one component matched
+// against a *different* component's own story — record 1 has no cross-component matching path at
+// all today, the same gap `resolveComposedStoryMatches` closes for record 3's tracked primitives
+// but record 1 has never had). Found by this same check, 2026-09-19 — **owned by T598**, which
+// deletes this entry outright in the commit that closes it, never leaves it behind as a passing
+// allowlist row: building the cross-component path correctly needs the same care mechanism 3 itself
+// just needed, and rushing it under the review that found this is how the next false credit gets
+// shipped instead of the next honest gap.
+export const KNOWN_UNACCOUNTED_FORCE_STATES = [
+  {
+    componentKey: 'screens/ProfileSummary',
+    exportName: 'SwitcherFocusVisibleAndOpen',
+    date: '2026-09-19',
+    fixOwed: 'T598',
+    fixBy: '2026-09-27',
+    reason:
+      "targets MenuItemRow's own dynamic-role element (primitives/Menu, record 1) through a Menu instance — record 1 has no cross-component matching path yet",
+  },
+]
+
+// Every real `visualForceState` in every story under this package's three tiers is either credited
+// on some cell (a real match) or named in some cell's own `unresolved: <reason>` text — the two
+// ways this region ever shows that a force-state was compared against anything at all. A
+// force-state that is neither has been silently lost somewhere between the source and the region —
+// exactly the shape mechanism 3's own first draft shipped (`ProfileSummary`'s three flag stories,
+// traced far enough to reject every wrong candidate in `Button`/`Menu` and credited nowhere at all,
+// T595 orchestrator finding on this task's own hand-back: "a real forced frame that appears
+// nowhere"). Checked against the region's own rendered text — the same text a reader actually
+// opens — rather than re-derived a second, parallel way from `coveredBy`/`ambiguousReasons` that
+// could itself drift from what renders. A story whose own `render:` never mounts the component
+// (`rendersComponent`, `storyRendersComponent`) is excluded: it has nothing to say about any
+// candidate and legitimately credits nothing, the same exclusion `pendingDisabledChecks` already
+// applies — never a loss. A `synthetic` entry (a credit this pass manufactured on another
+// component's behalf, T595's own composed-elsewhere mechanism) is excluded too: it is not a real
+// exported story object anywhere, and the real story it originated from is checked under its own
+// name in its own component's own list. Returns three groups, never merged so a genuinely new loss
+// can never hide behind an old, filed one: `missing` (unfiled — fails the run), `known` (a
+// well-formed, unexpired `KNOWN_UNACCOUNTED_FORCE_STATES` member that is, in fact, still
+// unaccounted — reported every run, never fails on its own, so a fix that closes one is never left
+// stale on the list by accident), and `expired` (a filed member that is malformed or past its own
+// `fixBy` — fails the run exactly like `missing`, because an exception nobody enforces the deadline
+// on is not an exception, it is a rename of the original bug).
+export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
+  const missing = []
+  const known = []
+  const expired = []
+  const today = new Date().toISOString().slice(0, 10)
+  for (const [componentKey, entries] of storyStatesByComponent) {
+    for (const { exportName, forced, rendersComponent, synthetic } of entries) {
+      if (!forced || synthetic || rendersComponent === false) continue
+      const escaped = exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(`\\b${escaped}\\b`)
+      if (re.test(regionText)) continue
+      const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
+        (k) => k.componentKey === componentKey && k.exportName === exportName,
+      )
+      if (!filed) {
+        missing.push({ componentKey, exportName, state: forced.state })
+        continue
+      }
+      const malformed = ['date', 'fixOwed', 'fixBy'].filter((field) => {
+        const value = filed[field]
+        return typeof value !== 'string' || value.trim() === ''
+      })
+      if (!malformed.includes('fixBy') && !isValidIsoDate(filed.fixBy)) {
+        malformed.push('fixBy (not a valid ISO date)')
+      }
+      if (!malformed.includes('date') && !isValidIsoDate(filed.date)) {
+        malformed.push('date (not a valid ISO date)')
+      }
+      if (malformed.length > 0) {
+        expired.push({ componentKey, exportName, state: forced.state, ...filed, malformed })
+      } else if (filed.fixBy < today) {
+        expired.push({ componentKey, exportName, state: forced.state, ...filed, overdue: today })
+      } else {
+        known.push({ componentKey, exportName, state: forced.state, ...filed })
+      }
+    }
+  }
+  return { missing, known, expired }
+}
+
 // --- Orchestration -------------------------------------------------------------------------
 
 export function computeStateCoverage({ componentDirs, filesByPath }) {
@@ -1910,6 +2229,10 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   // against a specific story's own args later.
   const componentPropDefaultsByKey = new Map()
   const componentFileScopeByKey = new Map()
+  // A component's own name (its directory's own name, the same convention every JSX-tag-to-file
+  // lookup in this pass already relies on) mapped to its own `index.tsx` — the one hop
+  // `findComposedElsewhereNames` reads a locally-composed tag's own source through, below.
+  const indexFileByComponentName = new Map()
   for (const { segment, name } of componentDirs) {
     const key = `${segment}/${name}`
     const indexPath = allFiles.find(
@@ -1919,7 +2242,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     const indexSourceFile = sourceFiles.get(indexPath)
     componentPropDefaultsByKey.set(key, getComponentPropDefaults(indexSourceFile, name))
     componentFileScopeByKey.set(key, buildFileValueScope(indexSourceFile))
+    indexFileByComponentName.set(name, indexPath)
   }
+  const composedElsewhereNamesByKey = new Map()
 
   const localElementsByComponent = new Map()
   const instancesByPrimitive = new Map(PRIMITIVE_NAMES.map((p) => [p, []]))
@@ -1944,18 +2269,30 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
 
     if (!isStory) {
       const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
+      const localHelperCallSites = findHelperCallSites(sourceFile)
       const locals = findLocalElements(
         sourceFile,
         relPath(filePath),
         constMap,
         componentDirName,
         helperIterationContext,
+        localHelperCallSites,
       )
       if (locals.length > 0) {
         localElementsByComponent.set(componentKey, [
           ...(localElementsByComponent.get(componentKey) ?? []),
           ...locals,
         ])
+      }
+      const composedHere = findComposedElsewhereNames(
+        sourceFile,
+        indexFileByComponentName,
+        sourceFiles,
+      )
+      if (composedHere.size > 0) {
+        const existing = composedElsewhereNamesByKey.get(componentKey) ?? new Map()
+        for (const [n, targetComponentKey] of composedHere) existing.set(n, targetComponentKey)
+        composedElsewhereNamesByKey.set(componentKey, existing)
       }
     }
 
@@ -1969,6 +2306,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       defaultsByPrimitive,
       skip,
       helperGuards,
+      componentDirName,
     )
     for (const inst of jsxInstances) {
       instancesByPrimitive.get(inst.primitive).push({ ...inst, kind: 'jsx', componentKey })
@@ -2008,7 +2346,22 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
           ...collectScopeStringLiterals(scope),
         ])
-        return { exportName, forced, playFocus, argsLiterals, argsHasDisabledTrue, scope }
+        // A `render:` story whose own body never mounts the component (`storyRendersComponent`,
+        // T595) has nothing to say about any candidate inside it, the same exclusion
+        // `pendingDisabledChecks` above already applies — carried here too so
+        // `findUnaccountedForceStates` (below) never demands an accounting a story that renders
+        // nothing could not possibly have given, a legitimate `'credits nothing'` this pass must
+        // not confuse with a lost frame.
+        const rendersComponent = storyRendersComponent(node, componentDirName)
+        return {
+          exportName,
+          forced,
+          playFocus,
+          argsLiterals,
+          argsHasDisabledTrue,
+          scope,
+          rendersComponent,
+        }
       })
       storyStatesByComponent.set(componentKey, [
         ...(storyStatesByComponent.get(componentKey) ?? []),
@@ -2117,7 +2470,98 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     }
   }
 
-  resolveComposedStoryMatches(pendingComposedMatches, instancesByPrimitive)
+  // A composed-elsewhere name (above) only tells this pass a candidate in the *forcing* component
+  // is not the target — it does not, on its own, say where the frame really is. Left there, this
+  // mechanism's own first draft rejected every wrong candidate and credited nobody: a real,
+  // captured frame (`ProfileSummary`'s own `BoardFlagHoverRevealed` and its two siblings, forcing
+  // `Tooltip`'s own trigger through `CountryFlag`) disappeared from the region entirely — the same
+  // false-absence shape `b251b073`'s first draft shipped (orchestrator finding on this task's own
+  // hand-back: "a name good enough to exclude every candidate in the pool is good enough to say
+  // which candidate it belongs to"). Resolved here, once, after every component's own local elements
+  // are known: a composed-elsewhere name is only ever *confirmed* — and only then does
+  // `resolveComposedStoryMatches` below get to `reject` every candidate in the forcing component —
+  // when the *target* component's own local-element pool for the force-state's role resolves to
+  // exactly one candidate, the same "sole candidate needs no further disambiguation" bar
+  // `resolveNameMatch`'s own `name` branch already holds elsewhere. A target pool of zero or more
+  // than one stays unconfirmed: nothing is credited anywhere, and the forcing component's own
+  // candidates fall back to the ordinary "unaccounted name" `'ambiguous'` — the honest reading when
+  // this pass genuinely cannot place the frame.
+  const confirmedComposedElsewhereByKey = new Map()
+  for (const entry of pendingComposedMatches) {
+    if (!entry.forced.role) continue
+    const targetsForComponent = composedElsewhereNamesByKey.get(entry.componentKey)
+    if (!targetsForComponent || targetsForComponent.size === 0) continue
+    let targetComponentKey
+    if (entry.forced.name) {
+      targetComponentKey = targetsForComponent.get(entry.forced.name)
+    } else if (entry.forced.nth == null) {
+      // No `name` and no `nth` at all (`CountryFlag`'s own `FlagHoverRevealed`, `role: 'button'`
+      // alone) — safe only when every composed-elsewhere name this component reaches names the
+      // same one target (in practice always `Tooltip` today) *and* this component has no candidate
+      // of its own for the role a bare role-only force-state could otherwise mean
+      // (`componentHasOwnCandidateForRole`, above) — `CountryFlag`'s own shape, never
+      // `ProfileSummary`'s.
+      const distinctTargets = new Set(targetsForComponent.values())
+      if (
+        distinctTargets.size === 1 &&
+        !componentHasOwnCandidateForRole(
+          entry.componentKey,
+          entry.forced.role,
+          localElementsByComponent,
+          instancesByPrimitive,
+        )
+      ) {
+        targetComponentKey = [...distinctTargets][0]
+      }
+    }
+    if (!targetComponentKey) continue
+    const targetPool = (localElementsByComponent.get(targetComponentKey) ?? []).filter(
+      (el) => !el.ariaHidden && impliedRoleOf(el) === entry.forced.role,
+    )
+    if (targetPool.length !== 1) continue
+    // The credited label follows Record 3's own composed-story convention (`Footer:Hover`) — the
+    // *story file's* own basename, not the forcing component's directory name, so a reader sees
+    // exactly which story forced this frame, the same way every other cross-component credit in
+    // this region already reads. `name` is dropped, not carried through: the target's own element
+    // pool is already known here to hold exactly one candidate for this role — the same "sole
+    // candidate needs no further disambiguation" shortcut `resolveNameMatch`'s own final branch
+    // already applies whenever a force-state carries neither `name` nor `nth` — so re-attempting a
+    // literal name/args match against `Tooltip`'s own file (where "Country:" appears nowhere at
+    // all — it is `CountryFlag`'s own literal, a fact about the *composition*, not about `Tooltip`'s
+    // own source) would only manufacture a fresh, false `'ambiguous'` on an already-settled match.
+    const label = `${path.basename(entry.file, '.stories.tsx')}:${entry.exportName}`
+    storyStatesByComponent.set(targetComponentKey, [
+      ...(storyStatesByComponent.get(targetComponentKey) ?? []),
+      {
+        exportName: label,
+        forced: { ...entry.forced, name: null },
+        playFocus: null,
+        argsLiterals: entry.argsLiterals,
+        argsHasDisabledTrue: false,
+        scope: entry.propsScope,
+        // Not a real exported story object of `targetComponentKey`'s own file — a credit this pass
+        // manufactured on its behalf. `findUnaccountedForceStates` (below) scans real stories only;
+        // this entry's own origin (`entry.componentKey`'s real story, already in its own list) is
+        // what that check actually verifies.
+        synthetic: true,
+      },
+    ])
+    // The `reject`-every-wrong-candidate half below only means anything when a `name` positively
+    // displaces them; a role-only credit (`CountryFlag`'s own shape) already confirmed this
+    // component has no candidate of its own to reject in the first place.
+    if (entry.forced.name) {
+      if (!confirmedComposedElsewhereByKey.has(entry.componentKey)) {
+        confirmedComposedElsewhereByKey.set(entry.componentKey, new Set())
+      }
+      confirmedComposedElsewhereByKey.get(entry.componentKey).add(entry.forced.name)
+    }
+  }
+
+  resolveComposedStoryMatches(
+    pendingComposedMatches,
+    instancesByPrimitive,
+    confirmedComposedElsewhereByKey,
+  )
   resolveDisabledFromStories(pendingDisabledChecks, instancesByPrimitive)
 
   // One line per component directory, the ones with nothing to report included, so Record 1 can be
@@ -2151,11 +2595,25 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     storyStatesByComponent,
   )
 
+  // The region's own rendered text, built from exactly the two fields a reader actually opens
+  // (`localElements`, `matrices`) — read again below by `findUnaccountedForceStates`, never a
+  // second, parallel derivation from `coveredBy`/`ambiguousReasons` that could itself drift from
+  // what renders.
+  const regionTextForAccounting = renderGeneratedRegion({
+    componentDirCount: componentDirs.length,
+    localElements,
+    matrices,
+  })
+
   return {
     componentDirCount: componentDirs.length,
     localElements,
     matrices,
     ambiguitySummary: summarizeAmbiguities(instancesByPrimitive, matrices),
+    unaccountedForceStates: findUnaccountedForceStates(
+      storyStatesByComponent,
+      regionTextForAccounting,
+    ),
   }
 }
 
@@ -2211,7 +2669,11 @@ function summarizeAmbiguities(instancesByPrimitive, matrices) {
   }
 }
 
-export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
+export function resolveComposedStoryMatches(
+  pending,
+  instancesByPrimitive,
+  confirmedComposedElsewhereByKey = new Map(),
+) {
   for (const {
     componentKey,
     file,
@@ -2271,6 +2733,8 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
           name: forced.name,
           nth: forced.nth,
           argsLiterals,
+          scope: propsScope,
+          composedElsewhere: confirmedComposedElsewhereByKey.get(componentKey),
         })
         if (verdict === 'match') matchedCandidate = candidate
         if (verdict === 'ambiguous') {
@@ -2762,7 +3226,7 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
   const cells = { hover: [], 'focus-visible': [], active: [] }
   const ambiguousReasons = { hover: [], 'focus-visible': [], active: [] }
   if (!el.ariaHidden && impliedRole) {
-    for (const { exportName, forced, playFocus, argsLiterals } of storyObjectsWithMeta) {
+    for (const { exportName, forced, playFocus, argsLiterals, scope } of storyObjectsWithMeta) {
       // A `selector`-targeted force-state names no `role` — never a candidate for a local
       // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
       // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
@@ -2774,6 +3238,7 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
           name: forced.name,
           nth: forced.nth,
           argsLiterals,
+          scope,
         })
         if (verdict === 'match') cells[forced.state].push(exportName)
         else if (verdict === 'ambiguous') {
@@ -2854,6 +3319,7 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
             name: forced.name,
             nth: forced.nth,
             argsLiterals,
+            scope,
           })
           if (verdict === 'match') cells[forced.state].push(exportName)
           else if (verdict === 'ambiguous') {
@@ -4228,7 +4694,10 @@ export function logCellCounts(computed, logFn = log) {
 
 // --- main --------------------------------------------------------------------------------------
 
-function readAllSourceFiles() {
+// Exported so a test can run `computeStateCoverage` against the live tree end to end — needed for
+// exactly one thing a fixture cannot stand in for: whether `KNOWN_UNACCOUNTED_FORCE_STATES`'s own
+// membership still matches the live tree's real gaps (T595).
+export function readAllSourceFiles() {
   const componentDirs = listComponentDirs(srcDir)
   const filesByPath = new Map()
   for (const filePath of walkAllTsxFiles(srcDir)) {
@@ -4242,6 +4711,47 @@ function main() {
   const { componentDirs, filesByPath } = readAllSourceFiles()
   const computed = computeStateCoverage({ componentDirs, filesByPath })
   const freshRegion = renderGeneratedRegion(computed)
+
+  // A real `visualForceState` this run could not find credited anywhere, and not named in any
+  // `unresolved: <reason>` either — a frame the region has silently lost (T595, the exact shape
+  // mechanism 3's own first draft shipped: a name traced far enough to reject every wrong candidate
+  // and credited nowhere). Fails the run rather than only printing a tally — the same choice
+  // `2f04a6ef`'s inline-claim sum invariant made, for the same reason: the point is catching the
+  // *next* silent loss unattended, not this one, which a printed line nobody reads would not do. A
+  // well-formed, unexpired member of `KNOWN_UNACCOUNTED_FORCE_STATES` is reported, every run, but
+  // never fails on its own — a filed, dated, *owned* exception, not a suppression
+  // (`a11y-allowlist.mjs`'s own pattern, down to the field names). A member that is malformed or
+  // past its own `fixBy` fails exactly like an unfiled loss: an allowlist entry nobody enforces the
+  // deadline on is not an exception, it is a rename of the original bug (T598's own deadline is
+  // 2026-09-27, the same date row 8 (H5) itself carries).
+  const { missing, known, expired } = computed.unaccountedForceStates
+  for (const { componentKey, exportName, state } of missing) {
+    fail(
+      `${componentKey}'s own ${exportName} forces "${state}" but is credited on no cell and ` +
+        'named in no unresolved reason anywhere in the region — a lost frame.',
+    )
+  }
+  for (const entry of expired) {
+    const detail = entry.malformed
+      ? `malformed filed exception (${entry.malformed.join(', ')})`
+      : `filed exception past its own fixBy (${entry.fixBy}, owed to ${entry.fixOwed})`
+    fail(
+      `${entry.componentKey}'s own ${entry.exportName} forces "${entry.state}" and is still ` +
+        `credited nowhere — ${detail}.`,
+    )
+  }
+  for (const { componentKey, exportName, state, date, fixOwed, fixBy, reason } of known) {
+    log(
+      `known, filed exception — ${componentKey}'s own ${exportName} forces "${state}" and is ` +
+        `still credited nowhere (filed ${date}, owed to ${fixOwed}, fix by ${fixBy}): ${reason}`,
+    )
+  }
+  if (missing.length === 0 && expired.length === 0) {
+    log(
+      `every real visualForceState is credited on some cell or named in some unresolved reason ` +
+        `(${known.length} filed exception${known.length === 1 ? '' : 's'}).`,
+    )
+  }
 
   let readmeText
   try {
