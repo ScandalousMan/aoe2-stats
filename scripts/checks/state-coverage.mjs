@@ -284,6 +284,19 @@ function labelWrapsControl(node) {
   ts.forEachChild(node, visit)
   return found
 }
+// T595 (row 8, H5, the `noImpliedRoleReason` family): every tag below carries exactly one ARIA
+// role regardless of its own attributes — the same property that makes a bare per-tag constant
+// honest here, unlike `<input>` (handled separately through `INPUT_TYPE_ROLE`/`deriveStructuralRole`
+// because its role depends on `type`). `h1`-`h6` are always `heading` (`aria-level` follows the
+// number, immaterial to matching a `role`). The table family is extended past the one tag the
+// sweep actually found a local element for (`tr`, `Table`'s own row) to its whole fixed-role
+// group — `table`, `thead`/`tbody`/`tfoot` (`rowgroup`) and `td` (`cell`) — so the next component
+// that puts a hover class on a `<td>` does not reopen this map one tag at a time. `th` is
+// deliberately absent: its own role is `columnheader` or `rowheader` depending on its `scope`
+// attribute (`col`/`colgroup` vs `row`/`rowgroup`) or, lacking one, its position in the table — the
+// same shape as `<input>`'s `type`-dependent role, not a constant this map can hold honestly, and no
+// `th` in this tree carries a pseudo-class today for a `deriveStructuralRole` entry to be written
+// and tested against.
 const INTRINSIC_ROLE = {
   a: 'link',
   button: 'button',
@@ -292,6 +305,18 @@ const INTRINSIC_ROLE = {
   textarea: 'textbox',
   summary: 'button',
   main: 'main',
+  h1: 'heading',
+  h2: 'heading',
+  h3: 'heading',
+  h4: 'heading',
+  h5: 'heading',
+  h6: 'heading',
+  table: 'table',
+  thead: 'rowgroup',
+  tbody: 'rowgroup',
+  tfoot: 'rowgroup',
+  tr: 'row',
+  td: 'cell',
 }
 
 // `<input>`'s accessible role depends on its own `type`, not a fixed intrinsic mapping — an
@@ -669,6 +694,12 @@ export function findLocalElements(
       text: literalTextOf(node) || ariaLabelText(opening),
       hasDisabledAttr,
       attrExprs,
+      // Every local `const` in scope at this exact JSX position (`MenuItemRow`'s own `const role =
+      // variant === 'selection' ? 'menuitemradio' : 'menuitem'`) — the same read
+      // `findPrimitiveInstances` already keeps for a dynamic `disabled`/`loading` expression, needed
+      // here so a dynamic `role={role}` attribute (`attrExprs.get('role').expr`, below) can be
+      // resolved against a specific story's own scope (T595, `noImpliedRoleReason`'s "dynamic role").
+      localConsts: context.localConsts,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
       isInsideIteration: context.inIteration || Boolean(inheritedIteration),
@@ -2483,6 +2514,82 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
       }
     }
   }
+  // T595 (row 8, H5, `noImpliedRoleReason`'s "dynamic role" family): a `role` attribute that is
+  // *present but dynamic* (`el.role === 'unresolved'`, `MenuItemRow`'s own `role={role}`, `role =
+  // variant === 'selection' ? 'menuitemradio' : 'menuitem'`) has no place in the static pool above
+  // — `impliedRoleOf` returns `null` for it on purpose (the comment on that function explains why:
+  // falling back to the tag's own intrinsic role would wrongly pool this element with ones that
+  // really do render that role). But the expression is frequently resolvable *per story*, the same
+  // fold `resolveDisabledFromStories` already applies to a dynamic `disabled`/`loading` prop:
+  // evaluated against that one story's own props/args scope, extended by the element's own local
+  // `const`s in scope (`scopeWithLocalConsts`, below — reused, not a second evaluator). A story
+  // whose own data settles the expression is real, positive knowledge for that story alone, never a
+  // claim about the element's role in general; a story whose data cannot settle it is simply
+  // skipped here (not a negative), the same way a story whose disabled expression cannot be
+  // evaluated is skipped rather than counted as a confirmed absence.
+  if (!el.ariaHidden && el.role === 'unresolved') {
+    const roleExpr = el.attrExprs?.get('role')?.expr ?? null
+    if (roleExpr) {
+      // A story-specific pool: every other element in the component whose own role, *for this same
+      // story*, is also the resolved role — either a plain static role that matches outright, or
+      // another dynamic-role element that resolves to the same string for this same story (none in
+      // this tree today; kept general rather than assuming exactly one dynamic-role element per
+      // component).
+      const roleForStory = (candidate, scope) => {
+        if (candidate.role !== 'unresolved') return impliedRoleOf(candidate)
+        const candidateExpr = candidate.attrExprs?.get('role')?.expr ?? null
+        if (!candidateExpr) return null
+        const v = evaluateExpr(candidateExpr, scopeWithLocalConsts(scope, candidate.localConsts))
+        return v.resolved && typeof v.value === 'string' ? v.value : null
+      }
+      for (const { exportName, forced, playFocus, argsLiterals, scope } of storyObjectsWithMeta) {
+        if (!scope) continue
+        if (evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
+        const resolved = evaluateExpr(roleExpr, scopeWithLocalConsts(scope, el.localConsts))
+        if (!resolved.resolved || typeof resolved.value !== 'string') continue
+        const resolvedRole = resolved.value
+        const poolForStory = elements.filter(
+          (o) => !o.ariaHidden && (o === el || roleForStory(o, scope) === resolvedRole),
+        )
+        if (forced && forced.role && forced.role === resolvedRole) {
+          const verdict = resolveNameMatch({
+            candidate: el,
+            pool: poolForStory,
+            name: forced.name,
+            nth: forced.nth,
+            argsLiterals,
+          })
+          if (verdict === 'match') cells[forced.state].push(exportName)
+          else if (verdict === 'ambiguous') {
+            ambiguousReasons[forced.state].push(
+              `${exportName}: ${poolForStory.length} candidates share role ${JSON.stringify(resolvedRole)} (resolved for this story)${forced.name ? `, name ${JSON.stringify(forced.name)} not literally resolvable` : forced.nth != null ? `, nth ${forced.nth} not orderable` : ''}`,
+            )
+          }
+        } else if (
+          !forced &&
+          playFocus &&
+          (playFocus.role === resolvedRole || playFocus.role === 'unresolved')
+        ) {
+          const verdict = resolveNameMatch({
+            candidate: el,
+            pool: poolForStory,
+            name: playFocus.name,
+            nth: null,
+            argsLiterals,
+          })
+          if (verdict === 'match') {
+            ambiguousReasons['focus-visible'].push(
+              `${exportName} (play-driven; frame not provable statically)`,
+            )
+          } else if (verdict === 'ambiguous') {
+            ambiguousReasons['focus-visible'].push(
+              `${exportName} (play-driven): ${poolForStory.length} candidates share role ${JSON.stringify(resolvedRole)} (resolved for this story)`,
+            )
+          }
+        }
+      }
+    }
+  }
   // A `visualForceState: { selector }` targets an element by its own attribute value directly,
   // never by role — so it applies whether or not this element even has an implied role at all
   // (`MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link, `a[href="..."]`), and is
@@ -2516,30 +2623,56 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
 // `null` for — this pass never even attempted to compare a force-state against `el` (the whole
 // loop in `buildElementCells` is gated on a truthy `impliedRole`), so `'none'` would be reporting
 // an absence this pass never checked for (T594's amendment: `'none'` is positive knowledge or it
-// is not printed). Three shapes, in order:
-//   - `el.role === 'unresolved'`: a dynamic `role={…}` (`MenuItemRow`'s own `role={role}`) — its
-//     real rendered role depends on data this static pass does not evaluate.
-//   - a descendant of `el` (by JSX nesting, `nodeStart`/`nodeEnd` containment within the same
-//     file) was itself matched or left ambiguous for this same `state` — `Table`'s own `<tr>`
-//     wraps the row `<a>` a `hover`/`active` force-state actually resolves against, and the browser
-//     paints `<tr>`'s own `hover:`/`active:` utilities whenever the pointer is over that link too,
-//     but whether the visual harness's own forced-pseudo-state mechanism (`CSS.forcePseudoState`
-//     or equivalent) cascades to an ancestor the way a real pointer does is not knowable from
-//     source — genuinely unresolved, not a confirmed absence and not a confirmed cover either.
-//   - neither of the above: the tag simply carries no role this pass can derive at all (`h2`,
-//     `label`, `tr` — none are in `INTRINSIC_ROLE`, `:281-289`).
+// is not printed). `buildElementCells` already resolves a dynamic `role={…}` per story where a
+// story's own data settles it (T595) — this function is reached only once that path has already
+// run and found nothing for this `el`/`state`, i.e. `el.role === 'unresolved'` genuinely means "no
+// story's own data resolved this element's role", never "this pass didn't try". Likewise,
+// `buildElementMatrix` already credits `hover`/`active` (never `focus-visible`, which does not
+// cascade — see that credit's own comment) from a confirmed descendant match before this function
+// is ever called, so the descendant branch below is reached only for a descendant whose own match
+// was merely *ambiguous* (never a confirmed one, already credited) — still genuinely unresolved,
+// not a confirmed absence and not a confirmed cover either. Two shapes, in order:
+//   - `el.role === 'unresolved'`: a dynamic `role={…}` (`MenuItemRow`'s own `role={role}`) whose
+//     real rendered role no story's own data settles.
+//   - `el` itself carries a real `hover:`/`active:`/`focus-visible:` class for this `state` and a
+//     descendant of `el` (by JSX nesting, `nodeStart`/`nodeEnd` containment within the same file)
+//     was left ambiguous for this same `state` — genuinely unresolved rather than a guess either
+//     way; nothing to credit when `el` carries no such class at all (nothing paints regardless of
+//     what a descendant does), which falls to the last case below instead.
+//   - neither of the above, *and `el` carries a class for this `state`*: the tag simply carries no
+//     role this pass can derive at all. Nothing in this tree reaches this third case today — every
+//     `impliedRole == null` element that carries a class either resolves its role dynamically
+//     (`MenuItemRow`) or is credited by the ancestor-cascade pass above — but a future one might.
+// When `el` carries **no** class for this `state` at all (`AccountErasurePanel`'s own `<label>`,
+// which ARIA gives no role of its own to begin with — `INTRINSIC_ROLE` deliberately has no entry
+// for it, never guessed — and whose own `className` paints no `hover:`/`focus-visible:`/`active:`
+// utility of any kind, confirmed the same way `disabledCell` already confirms a control that carries
+// no disabled-capable attribute at all is a real `'none'`), the caller (`cellFor`, below) never
+// reaches this function in the first place: nothing exists for any story to depict differently,
+// regardless of role, so that comparison needs no role and no story reading to settle — real,
+// positive knowledge of a structural absence, not a claim about a comparison this pass declined.
+// `labelWrapsControl` (used only as this label's own capture gate, above) independently confirms
+// the same shape from the other direction: this specific label wraps its own control directly
+// rather than standing in for a state of its own, consistent with — not the source of — the
+// class-absence fact this rule actually rests on.
+function ownPseudoClass(el, state) {
+  return state === 'hover' ? el.hover : state === 'active' ? el.active : el.focusVisible
+}
 function noImpliedRoleReason(el, state, perElement) {
   if (el.role === 'unresolved') return 'dynamic role'
-  const descendant = perElement.find(
-    ({ el: other, cells, ambiguousReasons }) =>
-      other !== el &&
-      other.file === el.file &&
-      el.nodeStart != null &&
-      other.nodeStart != null &&
-      el.nodeStart <= other.nodeStart &&
-      el.nodeEnd >= other.nodeEnd &&
-      (cells[state].length > 0 || ambiguousReasons[state].length > 0),
-  )
+  const ownClass = ownPseudoClass(el, state)
+  const descendant = ownClass
+    ? perElement.find(
+        ({ el: other, cells, ambiguousReasons }) =>
+          other !== el &&
+          other.file === el.file &&
+          el.nodeStart != null &&
+          other.nodeStart != null &&
+          el.nodeStart <= other.nodeStart &&
+          el.nodeEnd >= other.nodeEnd &&
+          (cells[state].length > 0 || ambiguousReasons[state].length > 0),
+      )
+    : null
   if (descendant) {
     const signal =
       descendant.cells[state].length > 0
@@ -2570,13 +2703,53 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
     ]
   }
   const perElement = elements.map((el) => buildElementCells(el, elements, storyObjectsWithMeta))
+  // T595 (row 8, H5, `noImpliedRoleReason`'s "ancestor of a forced descendant" family): `hover` and
+  // `active` are driven in the visual harness by a real, CDP-backed pointer move and mouse-down
+  // (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment — `locator.hover()`, then
+  // `page.mouse.down()`), never a role-scoped pseudo-class toggle, so a real capture of either state
+  // also matches `:hover`/`:active` on every ancestor whose own box contains the forced descendant —
+  // the same fact `Table`'s own `<tr>` around its row `<a>` used to carry only as hand-written prose
+  // (row 8's F17). Credited here, directly into `cells`, before `cellFor` below ever runs, so a
+  // credited element's own cell reads the descendant's story name(s) exactly like a direct match —
+  // never a special-cased "inherited" value, because the capture the reader opens shows no
+  // difference between the two. `focus-visible` is excluded on purpose: a story drives it with a
+  // plain `element.focus()` targeting one specific element, which does not move a pointer and does
+  // not cascade the way a real hover/press does (row 8's own F17 makes the same distinction). Two
+  // guards keep this from over-crediting: `el` must carry a real `hover:`/`active:` class of its own
+  // for that state (nothing to credit when nothing paints), and only a *confirmed* descendant match
+  // counts — an ambiguous descendant credits nothing, and still falls through to
+  // `noImpliedRoleReason`'s own ancestor wording below for an element with no implied role of its
+  // own, unresolved rather than guessed either way.
+  for (const { el, cells } of perElement) {
+    for (const state of ['hover', 'active']) {
+      if (cells[state].length > 0) continue
+      const ownClass = state === 'hover' ? el.hover : el.active
+      if (!ownClass) continue
+      const descendant = perElement.find(
+        ({ el: other, cells: otherCells }) =>
+          other !== el &&
+          other.file === el.file &&
+          el.nodeStart != null &&
+          other.nodeStart != null &&
+          el.nodeStart <= other.nodeStart &&
+          el.nodeEnd >= other.nodeEnd &&
+          otherCells[state].length > 0,
+      )
+      if (descendant) cells[state] = [...new Set(descendant.cells[state])]
+    }
+  }
   return perElement.map(({ el, impliedRole, cells, ambiguousReasons }) => {
+    // T595: an `impliedRole == null` element that carries no class for this specific `state` at all
+    // (`ownPseudoClass`, shared with `noImpliedRoleReason` above) needs no role and no story
+    // resolved to know its cell — a real, positive `'none'`, never routed through
+    // `noImpliedRoleReason` at all (see that function's own comment for the reasoning this rests
+    // on).
     const cellFor = (state) =>
       cells[state].length > 0
         ? [...new Set(cells[state])]
         : ambiguousReasons[state].length > 0
           ? [`unresolved: ${ambiguousReasons[state].join('; ')}`]
-          : impliedRole == null
+          : impliedRole == null && ownPseudoClass(el, state)
             ? [`unresolved: ${noImpliedRoleReason(el, state, perElement)}`]
             : ['none']
     // `'none'` is confirmed only when this element carries no disabled-capable attribute at all —
