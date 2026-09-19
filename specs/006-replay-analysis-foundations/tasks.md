@@ -308,7 +308,7 @@ after being produced through the new stream.
 - [x] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
       every kind has a tier; an event without a participant is constructible only for the
       match-level kinds; the two declared-only kinds exist as types
-- [ ] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
+- [x] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
       generator mapping the wheel's operations to canonical events in **one pass, with no copy and
       nothing retained past the fold** (**FR-021**). Be exact about what that guarantees: the wheel
       has already materialised every operation before this code runs, which is where the resident
