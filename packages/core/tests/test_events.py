@@ -1,8 +1,6 @@
-"""Tests for the canonical event vocabulary (T624), written before T623 as strict xfails.
+"""Tests for the canonical event vocabulary (T624).
 
-T623 removes the markers when ``aoe2stats_core.replay.events`` lands.
-
-Names T623 must use (the contract fixes the kinds and tiers, not the Python names):
+Names T623 uses (the contract fixes the kinds and tiers, not the Python names):
 
 - ``EventKind``: enum whose values are the contract's kebab-case kind names.
 - ``KIND_TIER``: mapping ``EventKind -> Tier`` covering every kind (tier is per kind, fixed).
@@ -19,8 +17,6 @@ Names T623 must use (the contract fixes the kinds and tiers, not the Python name
 from __future__ import annotations
 
 import pytest
-
-XFAIL = pytest.mark.xfail(strict=True, reason="T623 not implemented yet")
 
 CONTRACT_TIERS = {
     "match-started": "OBSERVED",
@@ -41,7 +37,6 @@ MATCH_LEVEL = {"match-started", "match-ended"}
 DECLARED_ONLY = {"starting-attributes", "starting-object"}
 
 
-@XFAIL
 def test_vocabulary_is_closed_and_matches_the_contract() -> None:
     from aoe2stats_core.replay.events import EventKind
 
@@ -49,7 +44,6 @@ def test_vocabulary_is_closed_and_matches_the_contract() -> None:
     assert len(EventKind) == 13
 
 
-@XFAIL
 def test_every_kind_has_the_contract_tier() -> None:
     from aoe2stats_core.replay.events import KIND_TIER, EventKind
 
@@ -58,7 +52,6 @@ def test_every_kind_has_the_contract_tier() -> None:
         assert KIND_TIER[kind].name == CONTRACT_TIERS[kind.value]
 
 
-@XFAIL
 def test_event_tier_is_derived_from_its_kind() -> None:
     from aoe2stats_core.replay.events import KIND_TIER, CanonicalEvent, EventKind
 
@@ -67,7 +60,6 @@ def test_event_tier_is_derived_from_its_kind() -> None:
         assert event.tier is KIND_TIER[kind]
 
 
-@XFAIL
 def test_building_placed_takes_the_weaker_decoded_tier() -> None:
     from aoe2stats_core.replay.events import CanonicalEvent, EventKind
     from aoe2stats_core.truth.tiers import Tier
@@ -76,14 +68,12 @@ def test_building_placed_takes_the_weaker_decoded_tier() -> None:
     assert event.tier is Tier.DECODED
 
 
-@XFAIL
 def test_match_level_kinds_are_exactly_the_two_match_subject_kinds() -> None:
     from aoe2stats_core.replay.events import MATCH_LEVEL_KINDS
 
     assert {k.value for k in MATCH_LEVEL_KINDS} == MATCH_LEVEL
 
 
-@XFAIL
 def test_participantless_event_is_constructible_only_for_match_level_kinds() -> None:
     from aoe2stats_core.replay.events import CanonicalEvent, EventKind
 
@@ -97,7 +87,6 @@ def test_participantless_event_is_constructible_only_for_match_level_kinds() -> 
                 CanonicalEvent(clock_ms=0, kind=kind, participant=None)
 
 
-@XFAIL
 def test_match_level_kinds_may_still_carry_a_participant() -> None:
     from aoe2stats_core.replay.events import CanonicalEvent, EventKind
 
@@ -105,7 +94,6 @@ def test_match_level_kinds_may_still_carry_a_participant() -> None:
     assert event.participant == 3
 
 
-@XFAIL
 def test_declared_only_kinds_exist_as_types() -> None:
     from aoe2stats_core.replay.events import (
         KIND_TIER,
@@ -121,7 +109,6 @@ def test_declared_only_kinds_exist_as_types() -> None:
         assert KIND_TIER[EventKind(value)] is Tier.DECODED
 
 
-@XFAIL
 def test_chat_payload_carries_no_text() -> None:
     from dataclasses import fields, is_dataclass
 
