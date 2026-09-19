@@ -359,7 +359,7 @@ after being produced through the new stream.
       empty dependency map as a literal today, and the column to hold it has existed all along —
       this is the task that stops the document claiming to identify its engine while recording
       nothing (**SC-011** is asserted in phase 5, where the document carries it)
-- [ ] T628 [US4] Re-express the existing timeline extractor in
+- [x] T628 [US4] Re-express the existing timeline extractor in
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` as a fold over the canonical
       stream, and **prove the committed golden timeline comes back byte-identical**. `git status`
       shows `tests/fixtures/replays/AgeIIDE_Replay_500546441.timeline.json` untouched. Three things

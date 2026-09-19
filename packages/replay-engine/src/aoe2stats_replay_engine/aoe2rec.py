@@ -33,16 +33,19 @@ module docstring and `_EXPECTED_BUILDING_TYPE_COUNTS` for the full derivation.
 `Aoe2RecExtractor` (T355) satisfies `aoe2stats_core.replay.analysis.ReplayExtractor`. It shares
 `_read_member_bytes` with `Aoe2RecValidator.validate` — the same well-formedness check, the same
 bounded chunked read against `_MAX_INNER_BYTES` — rather than a second copy of either (contracts/
-analysis.md's "it does not re-implement them"). Once the wheel has parsed the bytes, it walks
-`operations` exactly once, reducing directly into the per-participant `ParticipantTimeline` fields
-and never retaining the operation list itself (R3, contracts/analysis.md's "memory is part of the
-contract"): the parsed dict and everything under it fall out of scope, and are eligible for
-collection, the moment `extract` returns.
+analysis.md's "it does not re-implement them"). Once the wheel has parsed the bytes, it folds
+the canonical event stream (`canonical.canonical_events`) — one walk over `operations`, no first
+pass to find the match clock, since the stream's own `match-ended` event carries it — reducing
+directly into the per-participant `ParticipantTimeline` fields and never retaining the operation
+list or the events (R3, contracts/analysis.md's "memory is part of the contract"): the parsed dict
+and everything under it fall out of scope, and are eligible for collection, the moment `extract`
+returns.
 
 Every `Research` command is collapsed to its first occurrence per `(player_id, technology_type)`
-before anything downstream sees it — a double-click on a button issues the same command twice,
-208 ms apart on the wire, and the reference replay carries this for several technologies including
-two of its three age-ups (R5). `age_up_commands` is that same collapsed set, filtered to technology
+by the stream, before anything downstream sees it — a double-click on a button issues the same
+command twice, 208 ms apart on the wire, and the reference replay carries this for several
+technologies including two of its three age-ups (R5). `age_up_commands` is that same collapsed
+set, filtered to technology
 101/102/103 and keyed by technology id: an *ordered* age, never a *reached* one — see R5 for why a
 research command is not a research completion, and why that distinction is roughly two minutes, in
 the direction that flatters the player.
@@ -69,11 +72,20 @@ from aoe2stats_core.replay.analysis import (
     ResearchEvent,
     TrainingEvent,
 )
+from aoe2stats_core.replay.events import (
+    BuildingPlacedPayload,
+    EventKind,
+    MatchEndedPayload,
+    ResearchQueuedPayload,
+    UnitQueuedPayload,
+    UnitUnqueuedPayload,
+)
 from aoe2stats_core.replay.validation import (
     EngineParseError,
     MalformedArchiveError,
     ReplayValidationResult,
 )
+from aoe2stats_replay_engine.canonical import Accounting, canonical_events
 
 ENGINE_NAME = "aoe2rec-py"
 
@@ -313,17 +325,8 @@ def decode_build_action(build_action: Mapping[str, object]) -> DecodedBuildActio
 # The DE train command for a villager (`DeQueue.unit_id`), confirmed against the reference
 # replay's own `_EXPECTED_BUILDING_TYPE_COUNTS`-style cross-check: every `DeQueue` naming this
 # unit id is issued at a Town Center in this game. `villagers_ordered` counts these, net of the
-# cancellations below (R1, FR-043b) — never a population.
+# cancellations the stream carries as `unit-unqueued` (R1, FR-043b) — never a population.
 _VILLAGER_UNIT_ID = 83
-
-# The DE action vocabulary's cancellation counterparts to `DeQueue`, per R1: "the action
-# vocabulary carries `Unqueue`, `FarmUnqueue` and `FishtrapUnqueue` — verified present in the
-# parser's own type table, though absent from this particular game". None of the three appears
-# in the committed reference replay (`villagers_ordered` there is the raw `DeQueue` sum with
-# nothing to net against), so this set is exercised only once a recording that cancels a queued
-# villager is captured — carried here rather than left to be discovered then, on the same
-# `{"player_id", "unit_id", "amount"}` shape `DeQueue` already has.
-_TRAINING_CANCELLATION_VARIANTS = frozenset({"Unqueue", "FarmUnqueue", "FishtrapUnqueue"})
 
 # Technology 101 (Feudal Age), 102 (Castle Age), 103 (Imperial Age) — named here because the
 # analysis is about them (R13); every other technology id ships as an identifier, unnamed.
@@ -335,9 +338,15 @@ class Aoe2RecExtractor:
 
     Shares `_read_member_bytes` with `Aoe2RecValidator.validate` — see that function's docstring —
     so this class implements no well-formedness check of its own. Once the wheel has parsed the
-    bytes, `extract` walks `parsed["operations"]` exactly once, reducing directly into the
-    returned `MatchTimeline` and never retaining the operation list (R3): everything the wheel
-    materialised is eligible for collection the moment this method returns.
+    bytes, `extract` folds the canonical event stream, which walks
+    `parsed["operations"]` exactly once, reducing directly into the returned `MatchTimeline` and
+    never retaining the operation list or the events (R3): everything the wheel materialised is
+    eligible for collection the moment this method returns. The published `actions` is the stream's
+    raw per-participant command count, taken before collapse and before the exit rule, so it and
+    `actions_per_minute` are what the timeline has always published. Two deliberate consequences of
+    the stream's exit rule: a build or training issued after a participant's resignation is no
+    longer attributed to them, and an unknown operation kind raises `EngineParseError` where the old
+    walk skipped it; neither occurs in a committed recording.
 
     `max_raw_bytes` (T357, R3) is a **required** keyword-only constructor argument, not a module
     constant: it is the analysis memory ceiling (`ANALYSIS_MAX_RAW_BYTES`), a number this package
@@ -393,27 +402,6 @@ def _parse_or_raise(data: bytes) -> Mapping[str, object]:
         raise EngineParseError(f"{ENGINE_NAME} rejected the replay: {exc}") from exc
 
 
-def _postgame_world_time_ms(parsed: Mapping[str, object]) -> int:
-    """The `PostGame` `WorldTime` block: the match clock's end (contracts/analysis.md).
-
-    `PostGame` is one operation, present exactly once, carrying a list of typed `blocks` — this
-    replay's carries `Leaderboards` and `WorldTime` (R1's `Achievements` is a block the engine
-    knows how to read, not one this game contains). Only `WorldTime` is this repository's to read.
-    """
-    operations = cast(Sequence[Mapping[str, object]], parsed["operations"])
-    for operation in operations:
-        if "PostGame" not in operation:
-            continue
-        postgame = cast(Mapping[str, object], operation["PostGame"])
-        blocks = cast(Sequence[Mapping[str, object]], postgame["blocks"])
-        for block in blocks:
-            if "WorldTime" in block:
-                world_time_block = cast(Mapping[str, object], block["WorldTime"])
-                return cast(int, world_time_block["world_time"])
-        raise EngineParseError("PostGame block carries no WorldTime entry")
-    raise EngineParseError("no PostGame block in the parsed replay")
-
-
 def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
     zheader = cast(Mapping[str, object], parsed["zheader"])
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
@@ -428,58 +416,51 @@ def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
     rec_owner_index = cast(int, meta["rec_owner"])
     point_of_view_profile_id = cast(int, raw_players[rec_owner_index]["profile_id"])
 
-    world_time_ms = _postgame_world_time_ms(parsed)
-
     builds: dict[int, list[BuildEvent]] = defaultdict(list)
     trainings: dict[int, list[TrainingEvent]] = defaultdict(list)
-    # player_id -> technology_id -> the first world_time_ms it was ordered at. A `dict` preserves
-    # insertion order, which is stream order here, and `setdefault` below is exactly "first
-    # occurrence wins" (R5): a later, duplicate command for the same pair never overwrites it.
+    # player_id -> technology_id -> the clock it was ordered at. Research is already collapsed to
+    # its first occurrence by the stream (R5), so a plain assignment here is that first one.
     researches: dict[int, dict[int, int]] = defaultdict(dict)
     villagers_ordered: dict[int, int] = defaultdict(int)
-    actions: dict[int, int] = defaultdict(int)
     resigned_at_ms: dict[int, int] = {}
+    world_time_ms: int | None = None
 
-    operations = cast(Sequence[Mapping[str, object]], parsed["operations"])
-    for operation in operations:
-        if "Action" not in operation:
-            # `Sync`, `Viewlock`, `Chat`, `PostGame` — none of them an ordered command.
+    # The stream's own `Accounting` supplies `actions`: that figure counts raw commands, before
+    # collapse, and a stream of events cannot (T628). It is a count, never the operations.
+    accounting = Accounting()
+    for event in canonical_events(parsed, accounting):
+        payload = event.payload
+        participant = event.participant
+        if isinstance(payload, MatchEndedPayload):
+            if world_time_ms is None:
+                world_time_ms = payload.final_clock_ms
+        elif participant is None:
             continue
-        action = cast(Mapping[str, object], operation["Action"])
-        action_world_time_ms = cast(int, action["world_time"])
-        action_data = cast(Mapping[str, Mapping[str, object]], action["action_data"])
-        variant, payload = next(iter(action_data.items()))
-        player_id = cast(int, payload["player_id"])
-        actions[player_id] += 1
-
-        if variant == "Build":
-            decoded = decode_build_action(payload)
-            builds[decoded.player_id].append(
-                BuildEvent(building_id=decoded.building_id, world_time_ms=action_world_time_ms)
+        elif isinstance(payload, BuildingPlacedPayload):
+            builds[participant].append(
+                BuildEvent(building_id=payload.building_id, world_time_ms=event.clock_ms)
             )
-        elif variant == "DeQueue":
-            unit_id = cast(int, payload["unit_id"])
-            amount = cast(int, payload["amount"])
-            building_id = cast(int, payload["building_type"])
-            trainings[player_id].append(
+        elif isinstance(payload, UnitQueuedPayload):
+            trainings[participant].append(
                 TrainingEvent(
-                    unit_id=unit_id,
-                    amount=amount,
-                    building_id=building_id,
-                    world_time_ms=action_world_time_ms,
+                    unit_id=payload.unit_id,
+                    amount=payload.count,
+                    building_id=payload.building_type,
+                    world_time_ms=event.clock_ms,
                 )
             )
-            if unit_id == _VILLAGER_UNIT_ID:
-                villagers_ordered[player_id] += amount
-        elif variant in _TRAINING_CANCELLATION_VARIANTS:
-            unit_id = cast(int, payload.get("unit_id", -1))
-            if unit_id == _VILLAGER_UNIT_ID:
-                villagers_ordered[player_id] -= cast(int, payload.get("amount", 0))
-        elif variant == "Research":
-            technology_id = cast(int, payload["technology_type"])
-            researches[player_id].setdefault(technology_id, action_world_time_ms)
-        elif variant == "Resign":
-            resigned_at_ms.setdefault(player_id, action_world_time_ms)
+            if payload.unit_id == _VILLAGER_UNIT_ID:
+                villagers_ordered[participant] += payload.count
+        elif isinstance(payload, UnitUnqueuedPayload):
+            if payload.unit_id == _VILLAGER_UNIT_ID:
+                villagers_ordered[participant] -= payload.count
+        elif isinstance(payload, ResearchQueuedPayload):
+            researches[participant][payload.technology_id] = event.clock_ms
+        elif event.kind is EventKind.PARTICIPANT_RESIGNED:
+            resigned_at_ms.setdefault(participant, event.clock_ms)
+
+    if world_time_ms is None:
+        raise EngineParseError("no PostGame block in the parsed replay")
 
     participants = [
         _build_participant(
@@ -488,7 +469,7 @@ def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
             trainings=trainings,
             researches=researches,
             villagers_ordered=villagers_ordered,
-            actions=actions,
+            actions=accounting.raw_actions,
             resigned_at_ms=resigned_at_ms,
             world_time_ms=world_time_ms,
         )

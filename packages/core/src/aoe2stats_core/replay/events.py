@@ -22,6 +22,7 @@ class EventKind(Enum):
     MATCH_STARTED = "match-started"
     BUILDING_PLACED = "building-placed"
     UNIT_QUEUED = "unit-queued"
+    UNIT_UNQUEUED = "unit-unqueued"
     RESEARCH_QUEUED = "research-queued"
     UNITS_COMMANDED = "units-commanded"
     MARKET_TRANSACTION = "market-transaction"
@@ -40,6 +41,7 @@ KIND_TIER: Mapping[EventKind, Tier] = {
     EventKind.MATCH_STARTED: Tier.OBSERVED,
     EventKind.BUILDING_PLACED: Tier.DECODED,
     EventKind.UNIT_QUEUED: Tier.OBSERVED,
+    EventKind.UNIT_UNQUEUED: Tier.OBSERVED,
     EventKind.RESEARCH_QUEUED: Tier.OBSERVED,
     EventKind.UNITS_COMMANDED: Tier.OBSERVED,
     EventKind.MARKET_TRANSACTION: Tier.DECODED,
@@ -96,7 +98,18 @@ class BuildingPlacedPayload:
 @dataclass(frozen=True, slots=True)
 class UnitQueuedPayload:
     unit_id: int
+    # The game's building *type* (a Town Center is 109), not an object: it names what kind of
+    # building trains the unit, which the per-object id cannot.
+    building_type: int
     building_object: int
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnitUnqueuedPayload:
+    """A cancellation of queued units: the counterpart of ``unit-queued``, netted against it."""
+
+    unit_id: int
     count: int
 
 
@@ -165,6 +178,7 @@ Payload = (
     MatchStartedPayload
     | BuildingPlacedPayload
     | UnitQueuedPayload
+    | UnitUnqueuedPayload
     | ResearchQueuedPayload
     | UnitsCommandedPayload
     | MarketTransactionPayload
