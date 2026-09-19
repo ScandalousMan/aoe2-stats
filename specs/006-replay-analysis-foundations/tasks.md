@@ -77,7 +77,7 @@ neither carries a post-game statistics block; no document names a parser path th
 
 **Story goal (US1)**: a reader can trust what the repository says about what a recording contains.
 
-- [ ] T601 [US1] **Recover the second reference recording, and do it first.** Constitution I is the
+- [x] T601 [US1] **Recover the second reference recording, and do it first.** Constitution I is the
       reason this task leads a feature that otherwise never touches capture: the source purges
       recordings on a schedule this project does not control, so every other task in this list can
       be done tomorrow and this one cannot. Obtain the ranked team-game recording measured during
@@ -87,7 +87,7 @@ neither carries a post-game statistics block; no document names a parser path th
       admissible and the next three tasks each handle one: the served archive (best), an extracted
       recording that must be repackaged (acceptable, and the repackaging is disclosed), or
       unrecoverable (T605). Do not proceed past T605 on an unrecorded outcome
-- [ ] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry, **in
+- [x] T602 [US1] Extend `tests/fixtures/replays/README.md` with the second recording's entry, **in
       the shape the first entry actually has**: a heading sentence carrying the match kind, the date
       played, the date downloaded and the download address; the six-row table — game build, zip
       size, extracted size, members, point of view, operations; and the checksum as a trailing line.
@@ -154,7 +154,7 @@ neither carries a post-game statistics block; no document names a parser path th
       contradicting is worse than no skill: it is read by agents that will not check. T606 and T607
       both edit the skill and the ADR, so **they are not parallel with each other** despite the
       marker — run them as one unit
-- [ ] T608 [US1] Add a **new processing activity** to `docs/privacy/processing-register.md` for
+- [x] T608 [US1] Add a **new processing activity** to `docs/privacy/processing-register.md` for
       reference recordings of public matches committed to this repository, covering **every**
       committed recording — the first fixture included, which has never had an entry. **Do not reuse
       the on-demand retention activity**: its safeguards are that a recording is never served to
