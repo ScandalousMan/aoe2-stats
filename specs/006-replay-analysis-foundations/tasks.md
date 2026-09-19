@@ -295,7 +295,7 @@ after being produced through the new stream.
 
 **Story goal (US4)**: when the parser changes, the adapter changes and nothing above it does.
 
-- [ ] T623 [P] [US4] Create `packages/core/src/aoe2stats_core/replay/events.py`: the closed event
+- [x] T623 [P] [US4] Create `packages/core/src/aoe2stats_core/replay/events.py`: the closed event
       vocabulary and the source protocol in
       [contracts/canonical-events.md](./contracts/canonical-events.md). Every event carries a
       match-clock time, the participant it is attributed to, its kind and its tier (**FR-016**), and
@@ -305,7 +305,7 @@ after being produced through the new stream.
       text**: the text is personal data this feature has no use for, and leaving it out of the
       vocabulary keeps constitution IX out of this seam entirely. Declare the two starting-state
       kinds **without a producer** (**FR-020**), so the day the decoder lands no type changes
-- [ ] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
+- [x] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
       every kind has a tier; an event without a participant is constructible only for the
       match-level kinds; the two declared-only kinds exist as types
 - [ ] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
