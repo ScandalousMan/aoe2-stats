@@ -335,7 +335,7 @@ after being produced through the new stream.
       recording carries an action kind the wheel itself cannot name, so this rule has a live
       instance to assert on. A silent drop is the failure mode that cannot be found later, because
       nothing downstream knows to miss it
-- [ ] T626a [US4] Write the market and deletion decoders in
+- [x] T626a [US4] Write the market and deletion decoders in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, in the placement decoder's
       mould (**FR-014**). The wheel returns sell, buy and delete as raw byte payloads, so direction,
       resource, amount and the deleted object's id must be derived **empirically** — sweep the byte

@@ -18,7 +18,9 @@ import pytest
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
     EventKind,
+    MarketTransactionPayload,
     MatchEndedPayload,
+    ObjectDeletedPayload,
     ResearchQueuedPayload,
     UndecodedPayload,
     UnitQueuedPayload,
@@ -384,7 +386,7 @@ def test_undecoded_carries_the_engines_label_and_the_payload_length(parsed: _Par
     labels = {
         label
         for _, label, _ in _timed_actions(parsed)
-        if label in ("Sell", "Buy", "Delete", "Flare", "TownBell", "Transform")
+        if label in ("Flare", "TownBell", "Transform")
     }
     got = {
         e.payload.operation
@@ -458,3 +460,194 @@ def _timed_actions(parsed: _Parsed) -> Iterator[tuple[int, str, Mapping[str, obj
             ]
             label, payload = next(iter(data.items()))
             yield clock, label, payload
+
+
+# --- the market and deletion decoders (T626a, FR-014) -------------------------------------------
+#
+# Layout, found by sweeping every byte position of every Sell, Buy and Delete in both committed
+# recordings (see canonical.py for the evidence):
+#   Sell/Buy  8 bytes  <h resource> <h amount in market steps> <I market object id>
+#   Delete    4 bytes  <I object id>
+# Direction is the wheel's own label; it is not read from the payload.
+
+_RESOURCE_NAMES = {0: "food", 1: "wood", 2: "stone"}
+
+# Expected market transactions per recording: (direction, resource, amount in resource units).
+_GOLDEN_MARKET: Mapping[str, Mapping[tuple[str, str, int], int]] = {
+    "AgeIIDE_Replay_500546441": {
+        ("buy", "food", 100): 18,
+        ("buy", "stone", 100): 15,
+        ("buy", "wood", 100): 6,
+        ("sell", "food", 100): 7,
+        ("sell", "food", 500): 1,
+        ("sell", "stone", 100): 17,
+        ("sell", "stone", 500): 1,
+        ("sell", "wood", 100): 42,
+    },
+    "AgeIIDE_Replay_504695319": {
+        ("buy", "food", 100): 7,
+        ("buy", "wood", 100): 2,
+        ("sell", "food", 100): 18,
+        ("sell", "wood", 100): 74,
+        ("sell", "wood", 500): 14,
+    },
+}
+# Deletion golden: (count, sum of the object ids) — the ids themselves are checked one by one
+# against the raw bytes below; the sum pins the whole list so a shifted field cannot match.
+_GOLDEN_DELETES: Mapping[str, tuple[int, int]] = {
+    "AgeIIDE_Replay_500546441": (43, 273252),
+    "AgeIIDE_Replay_504695319": (16, 348476),
+}
+
+
+@pytest.fixture(scope="module", params=_RECORDINGS, ids=lambda p: p.stem)
+def named(request: pytest.FixtureRequest) -> tuple[str, _Parsed]:
+    return request.param.stem, _parse(request.param)
+
+
+def _raw(parsed: _Parsed, *labels: str) -> list[tuple[int, str, int, bytes]]:
+    return [
+        (clock, label, cast(int, payload["player_id"]), bytes(cast(Sequence[int], payload["data"])))
+        for clock, label, payload in _timed_actions(parsed)
+        if label in labels
+    ]
+
+
+def test_every_market_transaction_is_decoded_exactly_and_matches_the_golden_counts(
+    named: tuple[str, _Parsed],
+) -> None:
+    name, parsed_ = named
+    events = [e for e in canonical_events(parsed_) if e.kind is EventKind.MARKET_TRANSACTION]
+    raw = _raw(parsed_, "Sell", "Buy")
+
+    assert len(events) == len(raw) > 0
+    for event, (clock, label, player, data) in zip(events, raw, strict=True):
+        resource, steps, market = struct.unpack("<hhI", data)
+        assert market > 0
+        assert event.clock_ms == clock
+        assert event.participant == player
+        assert event.payload == MarketTransactionPayload(
+            direction=label.lower(), resource=_RESOURCE_NAMES[resource], amount=steps * 100
+        )
+    counts = Counter(
+        (p.direction, p.resource, p.amount)
+        for p in (cast(MarketTransactionPayload, e.payload) for e in events)
+    )
+    assert counts == _GOLDEN_MARKET[name]
+
+
+def test_the_market_layout_holds_over_every_instance(named: tuple[str, _Parsed]) -> None:
+    """The empirical basis of the decoder: the bytes the decoder ignores are always zero and the
+    values it reads stay inside the small closed sets observed."""
+    _, parsed_ = named
+    for _, _, _, data in _raw(parsed_, "Sell", "Buy"):
+        assert len(data) == 8
+        assert data[1] == 0 and data[3] == 0
+        assert data[0] in _RESOURCE_NAMES  # gold is the counter-currency, never the named side
+        assert data[2] in (1, 5)  # a click and a shift-click
+
+
+def test_a_market_object_that_is_deleted_is_deleted_after_its_last_transaction(
+    named: tuple[str, _Parsed],
+) -> None:
+    """Cross-check of the market object id: where the market building is later deleted, the
+    delete names the same id and comes after every transaction on it."""
+    _, parsed_ = named
+    last: dict[int, int] = {}
+    for clock, _, _, data in _raw(parsed_, "Sell", "Buy"):
+        last[struct.unpack("<hhI", data)[2]] = clock
+    deleted = {struct.unpack("<I", data)[0]: clock for clock, _, _, data in _raw(parsed_, "Delete")}
+    hits = {market: deleted[market] for market in last if market in deleted}
+    for market, when in hits.items():
+        assert when > last[market]
+    # Recording-level evidence: recordings that show the pairing show it every time it can occur.
+    assert hits or named[0] == "AgeIIDE_Replay_504695319"
+
+
+def test_every_deletion_is_decoded_exactly_and_matches_the_golden(
+    named: tuple[str, _Parsed],
+) -> None:
+    name, parsed_ = named
+    events = [e for e in canonical_events(parsed_) if e.kind is EventKind.OBJECT_DELETED]
+    raw = _raw(parsed_, "Delete")
+
+    assert len(events) == len(raw)
+    for event, (clock, _, player, data) in zip(events, raw, strict=True):
+        assert event.clock_ms == clock
+        assert event.participant == player
+        assert event.payload == ObjectDeletedPayload(object_id=struct.unpack("<I", data)[0])
+    ids = [cast(ObjectDeletedPayload, e.payload).object_id for e in events]
+    assert (len(ids), sum(ids)) == _GOLDEN_DELETES[name]
+
+
+def test_a_deleted_object_id_is_never_named_by_a_later_command(named: tuple[str, _Parsed]) -> None:
+    """Cross-check of the delete field: an id that the same recording named before the delete is
+    not named again after it. Ids that were never named elsewhere are not asserted on."""
+    _, parsed_ = named
+    mentions: dict[int, list[int]] = {}
+    for clock, label, payload in _timed_actions(parsed_):
+        if label == "Delete":
+            continue
+        ids: list[int] = []
+        for key in ("unit_ids", "object_ids", "building_ids"):
+            ids += cast(Sequence[int], payload.get(key, ()))
+        for key in ("target_id", "building_id"):
+            value = cast(int, payload.get(key, -1))
+            if value >= 0:
+                ids.append(value)
+        for object_id in ids:
+            mentions.setdefault(object_id, []).append(clock)
+
+    verified = 0
+    for clock, _, _, data in _raw(parsed_, "Delete"):
+        seen = mentions.get(struct.unpack("<I", data)[0], [])
+        if any(when < clock for when in seen):
+            verified += 1
+            assert not any(when > clock + 2000 for when in seen)
+    assert verified > 0
+
+
+def test_a_market_command_is_exact_on_a_synthetic_stream() -> None:
+    sell = _act("Sell", 1, data=list(struct.pack("<hhI", 1, 5, 4321)), action_length=8)
+    buy = _act("Buy", 2, data=list(struct.pack("<hhI", 2, 1, 4321)), action_length=8)
+    first, second = canonical_events(_stream(sell, buy))
+    assert first.payload == MarketTransactionPayload("sell", "wood", 500)
+    assert second.payload == MarketTransactionPayload("buy", "stone", 100)
+    assert first.tier.value == "decoded"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        list(struct.pack("<hhI", 3, 1, 9)),  # a resource code outside the closed set
+        list(struct.pack("<hhI", 0, 0, 9)),  # no amount
+        list(struct.pack("<hhI", 0, -1, 9)),  # a negative amount
+        list(struct.pack("<hh", 0, 1)),  # short
+        list(struct.pack("<hhIB", 0, 1, 9, 0)),  # long
+    ],
+)
+def test_a_market_payload_that_does_not_fit_the_layout_is_undecoded_never_guessed(
+    data: list[int],
+) -> None:
+    (event,) = canonical_events(_stream(_act("Sell", 1, data=data, action_length=len(data))))
+    assert event.kind is EventKind.UNDECODED
+    assert event.payload == UndecodedPayload(operation="Sell", payload_length=len(data))
+
+
+def test_a_delete_payload_that_does_not_fit_the_layout_is_undecoded_never_guessed() -> None:
+    (event,) = canonical_events(_stream(_act("Delete", 1, data=[1, 2, 3], action_length=3)))
+    assert event.kind is EventKind.UNDECODED
+    assert event.payload == UndecodedPayload(operation="Delete", payload_length=3)
+
+
+def test_decoding_market_and_deletion_does_not_change_the_event_count(parsed: _Parsed) -> None:
+    """Undecoded became decoded one for one: no operation gained or lost an event."""
+    kinds = Counter(e.kind for e in canonical_events(parsed))
+    assert kinds[EventKind.MARKET_TRANSACTION] == _count(parsed, "Sell") + _count(parsed, "Buy")
+    assert kinds[EventKind.OBJECT_DELETED] == _count(parsed, "Delete")
+    labels = {
+        cast(UndecodedPayload, e.payload).operation
+        for e in canonical_events(parsed)
+        if e.kind is EventKind.UNDECODED
+    }
+    assert not labels & {"Sell", "Buy", "Delete"}

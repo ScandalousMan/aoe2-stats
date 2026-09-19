@@ -542,7 +542,7 @@ Read from the recording after decoding an encoded field.
 
 - status: planned
 - source: the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes
-- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity
+- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The code is read from the payload and only 0, 1 and 2 occur; the names food, wood and stone are the game's own resource enumeration, which the recordings cannot confirm by themselves
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
@@ -552,7 +552,7 @@ Read from the recording after decoding an encoded field.
 
 - status: planned
 - source: the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes
-- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity
+- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The payload carries a count of market steps, only 1 and 5 occurring; the amount is that count times the game's fixed step of 100 units, a constant the recordings do not carry
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)

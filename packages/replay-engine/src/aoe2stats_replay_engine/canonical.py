@@ -48,8 +48,8 @@ is an equation a test can check rather than an assurance:
 Every action the adapter does not decode is emitted as `undecoded`, carrying the engine's own label
 (for a `Game` command, the wheel's name for the inner command) and the payload length the wheel
 reports — never dropped, never guessed at. Command kinds that name no decoded unit ids are
-`units-commanded` with an empty id list. Market and deletion are `undecoded` until T626a replaces
-them.
+`units-commanded` with an empty id list. Market and deletion are decoded (T626a) from raw
+payloads, and fall back to `undecoded` when a payload does not fit the layout found empirically.
 """
 
 from __future__ import annotations
@@ -63,7 +63,9 @@ from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
     CanonicalEvent,
     EventKind,
+    MarketTransactionPayload,
     MatchEndedPayload,
+    ObjectDeletedPayload,
     Position,
     ResearchQueuedPayload,
     UndecodedPayload,
@@ -82,6 +84,38 @@ _BUILD_POSITION_STRUCT = struct.Struct("<ff")
 _BUILD_ID_OFFSET = 12
 _BUILD_ID_STRUCT = struct.Struct("<I")
 
+# Market and deletion (T626a, FR-014). The wheel returns Sell, Buy and Delete as raw bytes; the
+# layouts below were found by sweeping every byte position of every instance in both committed
+# recordings (107 + 115 transactions, 59 deletions), not read from documentation:
+#
+#   Sell/Buy  8 bytes  `<h resource> <h amount> <I market object id>`
+#   Delete    4 bytes  `<I object id>`
+#
+# What the sweep established, and how:
+# - Byte 1 and byte 3 are zero in all 222 transactions; bytes 4..7 are a stable per-market id (five
+#   distinct ones in the first recording, three in the second, each used by one player). Two of
+#   those ids reappear as `Delete` payloads later, each after the market's last transaction — the
+#   same object, so the position is the market's object id. Three more are named by the same
+#   player's other commands, the rest by none (a market can go unnamed).
+# - Delete has no other bytes. 18 of the 59 ids are named by the same recording's move, interact,
+#   order, research or transaction commands *before* the delete and none is named more than two
+#   seconds *after* it; no id is deleted twice; all lie inside the range of ids the recording
+#   itself uses. That is what an object id does and what a random u32 would not.
+# - Direction is the wheel's own action label (Sell / Buy), not a payload field.
+# - Resource is only ever 0, 1 or 2 (gold never appears: it is the market's counter-currency), the
+#   three tradeable resources in the game's attribute order food, wood, stone. The value set is
+#   verified against the recordings; the *names* are the game's own enumeration, which the
+#   recordings cannot confirm by themselves (aoc-mgz reads the same layout with the same names).
+# - Amount is only ever 1 or 5: one click and one shift-click, counted in market steps. A step is
+#   100 units of the resource, the game's fixed market step; that constant is not in the recording.
+#
+# A payload that does not fit (length, unknown resource code, non-positive amount) is emitted as
+# `undecoded`, never decoded from a guess.
+_MARKET_STRUCT = struct.Struct("<hhI")
+_MARKET_RESOURCES: Mapping[int, str] = {0: "food", 1: "wood", 2: "stone"}
+_MARKET_STEP = 100
+_DELETE_STRUCT = struct.Struct("<I")
+
 _MOVE = "move"
 _INTERACT = "interact"
 _ORDER = "order"
@@ -90,8 +124,8 @@ _Payload = Mapping[str, object]
 
 # Command kinds that command units but whose unit ids the adapter does not decode. Each becomes
 # `units-commanded` with an empty id list and no target. Deliberately absent: `Transform` (not
-# established to be a unit command), `Sell`/`Buy`/`Delete` (T626a), `Flare`, `TownBell`, `Game`
-# and anything the wheel cannot name, which stay `undecoded`.
+# established to be a unit command), `Sell`/`Buy`/`Delete` (decoded, T626a), `Flare`, `TownBell`,
+# `Game` and anything the wheel cannot name, which stay `undecoded`.
 _UNIT_COMMANDS: Mapping[str, str] = {
     "Formation": "formation",
     "Stance": "stance",
@@ -232,6 +266,39 @@ def _order(clock: int, player: int, payload: _Payload, _: _Exits) -> CanonicalEv
     )
 
 
+def _market(direction: str, label: str) -> _ActionMapper:
+    def decode(clock: int, player: int, payload: _Payload, _: _Exits) -> CanonicalEvent:
+        data = bytes(cast(Sequence[int], payload["data"]))
+        if len(data) == _MARKET_STRUCT.size:
+            resource, steps, _market_object = _MARKET_STRUCT.unpack(data)
+            name = _MARKET_RESOURCES.get(resource)
+            if name is not None and steps > 0:
+                return CanonicalEvent(
+                    clock_ms=clock,
+                    kind=EventKind.MARKET_TRANSACTION,
+                    participant=player,
+                    payload=MarketTransactionPayload(
+                        direction=direction, resource=name, amount=steps * _MARKET_STEP
+                    ),
+                )
+        return _undecoded(label, clock, player, payload)
+
+    return decode
+
+
+def _deleted(clock: int, player: int, payload: _Payload, _: _Exits) -> CanonicalEvent:
+    data = bytes(cast(Sequence[int], payload["data"]))
+    if len(data) != _DELETE_STRUCT.size:
+        return _undecoded("Delete", clock, player, payload)
+    (object_id,) = _DELETE_STRUCT.unpack(data)
+    return CanonicalEvent(
+        clock_ms=clock,
+        kind=EventKind.OBJECT_DELETED,
+        participant=player,
+        payload=ObjectDeletedPayload(object_id=object_id),
+    )
+
+
 _ActionMapper = Callable[[int, int, _Payload, _Exits], CanonicalEvent | None]
 
 # Keyed by the wheel's own action label. Anything absent goes to `_unmapped_action`.
@@ -243,6 +310,9 @@ _ACTION_MAPPERS: Mapping[str, _ActionMapper] = {
     "Move": _move,
     "Interact": _interact,
     "Order": _order,
+    "Sell": _market("sell", "Sell"),
+    "Buy": _market("buy", "Buy"),
+    "Delete": _deleted,
 }
 
 
