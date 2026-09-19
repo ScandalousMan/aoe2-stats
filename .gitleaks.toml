@@ -1,7 +1,9 @@
 # gitleaks configuration for aoe2-stats.
 #
-# Keeps the full default ruleset (useDefault) and adds one narrow allowlist: the fabricated,
-# non-secret, credential-shaped string used by the T103 log-redaction tests. Those tests
+# Keeps the full default ruleset (useDefault) and adds two narrow allowlists.
+#
+# The first is the fabricated, non-secret, credential-shaped string used by the T103 log-redaction
+# tests. Those tests
 # (apps/api/tests/test_error_logging.py, apps/ingester/tests/test_run.py) raise an exception whose
 # message embeds this value and then assert the log line has redacted it — so the fixture must,
 # by design, contain a string shaped like a leaked S3 secret. The default `generic-api-key` rule
@@ -11,6 +13,15 @@
 # secret committed anywhere — the test tree included — is still caught. Applied from the working
 # tree at scan time, it also covers the historical commit that first introduced the fixture, which
 # a same-line `gitleaks:allow` marker added later cannot reach.
+#
+# The second is T594's `componentKey` (scripts/checks/state-coverage.mjs and its tests): a
+# component's own directory path, `primitives/Dialog` and the like, which the generated records in
+# packages/design-system/specs/README.md are keyed by. `generic-api-key` fires on the identifier
+# ending in `Key` plus the value's entropy, not on anything secret — the same values are printed in
+# full in that README and in the script's own output. Scoped to that exact shape, anchored, so it
+# admits a component path and nothing else; a real key assigned to a variable named `…Key` anywhere
+# in the repository is still caught. Applied from the working tree, so it covers the two earlier
+# commits on this branch that the scan reports (`86da423e`, `de9cc4de`) without rewriting them.
 
 title = "aoe2-stats gitleaks config"
 
@@ -18,9 +29,12 @@ title = "aoe2-stats gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Fabricated, non-secret credential-shaped fixtures asserted-redacted by the T103 log tests"
+description = "Non-secret fixtures and identifiers the default ruleset reads as credential-shaped"
 regexes = [
   # The bare value gitleaks captures for `generic-api-key` (the hex suffix, not the whole
   # assignment) — allowlist regexes match against the captured secret by default.
   '''cd1f9e7b2a6e4c0f9b7a3d5e8c1a2b3d''',
+  # T594's `componentKey`: a design-system component's own directory path. Anchored to the three
+  # tier directories and a single component name, so nothing else can hide behind it.
+  '''^(primitives|composites|screens)/[A-Za-z][A-Za-z0-9]*$''',
 ]
