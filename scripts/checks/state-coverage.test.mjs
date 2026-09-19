@@ -43,6 +43,8 @@ import {
   computeStateCoverage,
   checkCitations,
   findUnparsedQuoteAdjacentCitations,
+  findInlineCodeClaims,
+  resolveBareLocationFromBullet,
   parseCitations,
   parseLineSpec,
   resolveCitationLocation,
@@ -280,6 +282,97 @@ test("buildAxisMatrix leaves Menu's actions variant with no forced state when ev
   assert.notDeepEqual(selectionRow.hover, ['none'])
   assert.notDeepEqual(selectionRow.focusVisible, ['none'])
   assert.notDeepEqual(selectionRow.active, ['none'])
+})
+
+// --- Fixture 6b: an ambiguous composed-story match must render `unresolved` on every variant row
+// it was ambiguous between (T594 B1, REJECT #5 on #80/#79). Two `Menu` instances of *different*
+// variants, both role `button`, neither carrying the forced name literally and the name absent
+// from the story's own args either — the live shape `README.md:1902`/`:2305` contradicted itself
+// over (`ProfileSummary`'s two `Menu`s, forced name `"Country:"`, matching neither `"Manage"` nor
+// `"Choose"`). Pre-fix, this landed only in the unresolved pseudo-row and left both variant rows
+// at `'none'` — a confirmed absence over a comparison that actually produced an ambiguity.
+
+const BOARD_INDEX_SOURCE = `
+import { Menu } from '../../primitives/Menu'
+
+export function Board() {
+  return (
+    <div>
+      <Menu variant="actions" aria-label="Manage" items={[]} />
+      <Menu variant="selection" aria-label="Choose" items={[]} />
+    </div>
+  )
+}
+`
+
+const BOARD_AMBIGUOUS_STORIES_SOURCE = `
+import { Board } from './index'
+const meta = { component: Board, args: {} }
+export default meta
+
+export const CountryHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+}
+`
+
+test("buildAxisMatrix renders 'unresolved', not a confirmed 'none', on every variant row an ambiguous composed-story match was ambiguous between", () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Board' },
+    { segment: 'primitives', name: 'Menu' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/composites/Board/index.tsx', BOARD_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Board/Board.stories.tsx',
+      BOARD_AMBIGUOUS_STORIES_SOURCE,
+    ],
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const matrix = computed.matrices.Menu
+  const actionsRow = matrix.find((r) => r.variantSize === 'actions')
+  const selectionRow = matrix.find((r) => r.variantSize === 'selection')
+  assert.ok(actionsRow)
+  assert.ok(selectionRow)
+  assert.match(actionsRow.hover[0], /^unresolved: /)
+  assert.match(selectionRow.hover[0], /^unresolved: /)
+  // Neither row's other states were ever forced by this story — those stay a real, uncontested
+  // `'none'`, the contrast that proves the fix is scoped to the state that was actually ambiguous.
+  assert.deepEqual(actionsRow.focusVisible, ['none'])
+  assert.deepEqual(selectionRow.focusVisible, ['none'])
+})
+
+const BOARD_RESOLVED_STORIES_SOURCE = `
+import { Board } from './index'
+const meta = { component: Board, args: {} }
+export default meta
+
+export const ManageHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Manage' } },
+}
+`
+
+test('contrast: the same shape resolves to one row when the forced name is literally unique — the other variant stays a genuine none', () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Board' },
+    { segment: 'primitives', name: 'Menu' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/composites/Board/index.tsx', BOARD_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Board/Board.stories.tsx',
+      BOARD_RESOLVED_STORIES_SOURCE,
+    ],
+    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const matrix = computed.matrices.Menu
+  const actionsRow = matrix.find((r) => r.variantSize === 'actions')
+  const selectionRow = matrix.find((r) => r.variantSize === 'selection')
+  assert.deepEqual(actionsRow.hover, ['Board:ManageHoverRevealed'])
+  assert.deepEqual(selectionRow.hover, ['none'])
 })
 
 // --- extractPseudoClasses / resolveClassParts, the primitives everything above is built from ------
@@ -2105,6 +2198,110 @@ test('findUnparsedQuoteAdjacentCitations: a span already recognised by the widen
   assert.deepEqual(findUnparsedQuoteAdjacentCitations(scopeText), [])
 })
 
+// T594 B2, REJECT #5 on #80/#79: a plain inline-code span in the gap (no `:digit`, so it is prose,
+// never another citation's own location marker) used to be an escape hatch — the scan bailed at
+// its opening backtick and never reached the real quote past it, exactly the shape that let F20's
+// own mis-cited quote through both this check and `checkCitations` untouched. The F20 gap itself
+// (`... dialog's \`destructive\` action has "..."`) crosses a backtick at offset 20 of its own 40.
+test('findUnparsedQuoteAdjacentCitations: a plain inline-code span in the gap is not an escape hatch — the real quote past it is still found (T594 B2)', () => {
+  const scopeText = '`x/y.tsx:1-2` says the `Button` state is "already covered".'
+  const results = findUnparsedQuoteAdjacentCitations(scopeText)
+  assert.equal(results.length, 1)
+  assert.equal(results[0].raw, '`x/y.tsx:1-2`')
+  assert.equal(results[0].gap, ' says the `Button` state is ')
+})
+
+test('contrast: a citation-shaped backtick span in the gap (`foo:123`) still bails — it is the next citation, not prose', () => {
+  const scopeText = '`x/y.tsx:1-2` says `:9` state is "already covered".'
+  const results = findUnparsedQuoteAdjacentCitations(scopeText)
+  // Only `:9`'s own gap is flagged (it finds its own nearby quote); the first span, `x/y.tsx:1-2`,
+  // bails at the citation-shaped `:9` span exactly as before and is never reported.
+  assert.equal(results.length, 1)
+  assert.equal(results[0].raw, '`:9`')
+})
+
+// --- T594 M2/M3, REJECT #5 on #80/#79: an inline-code span next to a `file:line` is a claim about
+// that line, and about half of row 8's own inline-code spans were never verified — F17 cited
+// `Table/index.tsx:96` for a string that is at `:97`; F19 cited `FavouritesList/index.tsx:293` for
+// `size="lg"`, which is at `:298`. Both escaped `checkCitations` because the code span was a few
+// words off from its citation, outside `CITATION_RE`'s own immediately-adjacent grammar. ----------
+
+test('findInlineCodeClaims: a code-shaped span (real source punctuation) a few words after a citation is found', () => {
+  const scopeText =
+    '`FavouritesList/index.tsx:298` gives `RemoveControl` (`FavouriteToggle`) `size="lg"`, but more.'
+  const claims = findInlineCodeClaims(scopeText)
+  assert.equal(claims.length, 1)
+  assert.equal(claims[0].location, 'FavouritesList/index.tsx')
+  assert.equal(claims[0].lineSpec, '298')
+  assert.equal(claims[0].claim, 'size="lg"')
+})
+
+test('contrast: a bare identifier span (no source punctuation) is a reference, not a claim — skipped rather than reported', () => {
+  const scopeText = '`Widget/index.tsx:1` renders `Button` and nothing else, plain prose past it.'
+  assert.deepEqual(findInlineCodeClaims(scopeText), [])
+})
+
+test("contrast: a bare identifier immediately followed by a possessive 's reassigns the subject — the scan bails rather than misattribute a later code span (play() shape)", () => {
+  const scopeText =
+    '`Menu/index.tsx:144` has no hover frame of its own anywhere. Focus-visible is not a gap: ' +
+    "`EscapeReturnsFocusToTrigger`'s `play()` ends on a toHaveFocus() assertion."
+  assert.deepEqual(findInlineCodeClaims(scopeText), [])
+})
+
+test('contrast: a citation already followed immediately by its own quote is never double-claimed here', () => {
+  const scopeText =
+    '`index.tsx:97` (`focus-visible:outline-ring`) more prose `size="lg"` far past it.'
+  // The immediately-adjacent backtick quote is `checkCitations`' own citation grammar; this
+  // function only ever looks past a `file:line` that CITATION_RE did *not* already consume.
+  assert.deepEqual(findInlineCodeClaims(scopeText), [])
+})
+
+test("resolveBareLocationFromBullet: resolves `index.tsx` against the bullet's own first named component, never the nearest-preceding one", () => {
+  // `Button` sits textually between `Dialog` (the bullet's real subject) and the citation — the
+  // nearest-preceding rule would misattribute this to `Button`'s own `index.tsx`; the first-named
+  // rule in the bullet gets `Dialog`'s.
+  const scopeText =
+    '**8e. Findings.**\n\n' +
+    "- **F3.** `Dialog`'s own two `Button` instances (`index.tsx:127`, `variant={x}`) resolve.\n" +
+    '- **F4.** unrelated bullet.\n'
+  const allSrcFiles = [
+    'packages/design-system/src/primitives/Dialog/index.tsx',
+    'packages/design-system/src/primitives/Button/index.tsx',
+  ]
+  const resolved = resolveBareLocationFromBullet(scopeText, 3, 'index.tsx', allSrcFiles)
+  assert.equal(resolved, 'packages/design-system/src/primitives/Dialog/index.tsx')
+})
+
+test("checkCitations: an inline-code claim against a bare `index.tsx`, resolved through the bullet's own named component, passes end to end (real file, F3/Dialog shape)", () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:1\`) opens with \`${firstLine}\` and more prose after it.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimFailureCount, 0)
+})
+
+test('contrast: the same shape fails when the claimed code is not actually at the cited line', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    "- **F1.** `Text`'s own file (`index.tsx:1`) opens with `this text is not really there=1`.\n\n" +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimFailureCount, 1)
+  assert.match(
+    result.failures.find((f) => f.reason.includes('inline-code claim')).reason,
+    /not found at/,
+  )
+})
+
 test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
   const readme =
     '**8c. Record 2 — every handoff.**\n\n' +
@@ -2268,6 +2465,62 @@ test("checkDeferralVocabularyCoverage: a hit in a *second, separate* prose block
     // already-listed component's own second block passed unseen.
     assert.equal(result.failures.length, 1)
     assert.match(result.failures[0].reason, /Known\.stories\.tsx:3 carries deferral vocabulary/)
+  })
+})
+
+// T594 M4, REJECT #5 on #80/#79: the excuse condition used to check only block *membership* — a
+// citation anywhere in the same, no-blank-line-broken block excused every hit in it, and this
+// package's own blocks run 30+ lines (`AccountErasurePanel.stories.tsx` 101-135). A single hit far
+// from its citation, still in the same one continuous block, used to pass; this plants that exact
+// shape with a filler-padded block, no blank line anywhere, so it stays one block by the same rule
+// the block-joining test above relies on.
+test('checkDeferralVocabularyCoverage: a hit far from its own citation, but still in the same one continuous block, now fails — block membership alone is no longer enough (T594 M4)', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Known', 'Known.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    const filler = Array.from({ length: 20 }, (_, i) => `// filler line ${i + 1}, no vocabulary`)
+    writeFileSync(
+      storyFile,
+      '// hover — none; owned by `Button` and by nothing else.\n' +
+        filler.join('\n') +
+        '\n' +
+        '// press — none either; covered by `Button` alone.\n',
+    )
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    assert.equal(result.failures.length, 1)
+    assert.match(result.failures[0].reason, /Known\.stories\.tsx:22 carries deferral vocabulary/)
+  })
+})
+
+test('contrast: a hit close to its own citation, in the same block, still passes (T594 M4)', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Known', 'Known.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    writeFileSync(
+      storyFile,
+      '// hover — none; owned by `Button` and by nothing else.\n' +
+        '// press — none either; covered by `Button` alone.\n',
+    )
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    assert.deepEqual(result.failures, [])
   })
 })
 

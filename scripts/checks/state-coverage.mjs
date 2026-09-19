@@ -1894,6 +1894,7 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
       }))
       let matchedCandidate = null
       let ambiguous = false
+      const ambiguousCandidates = []
       for (const candidate of resolvedPool) {
         const verdict = resolveNameMatch({
           candidate,
@@ -1903,7 +1904,10 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
           argsLiterals,
         })
         if (verdict === 'match') matchedCandidate = candidate
-        if (verdict === 'ambiguous') ambiguous = true
+        if (verdict === 'ambiguous') {
+          ambiguous = true
+          ambiguousCandidates.push(candidate)
+        }
       }
       if (matchedCandidate) {
         instancesByPrimitive.get(primitive).push({
@@ -1919,6 +1923,7 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
           sourceLine: matchedCandidate.line,
         })
       } else if (ambiguous) {
+        const reason = `state ${JSON.stringify(forced.state)}: ${roleMatches.length} ${primitive} instances in ${componentKey} match role ${JSON.stringify(forced.role)}${forced.name ? ` / name ${JSON.stringify(forced.name)}` : ''}${forced.nth != null ? ` / nth ${forced.nth}` : ''}, none uniquely resolved${roleMatches.some((c) => c.unresolvedGuard) ? " (at least one candidate's own guard could not be evaluated from this story's args)" : ''}`
         instancesByPrimitive.get(primitive).push({
           primitive,
           kind: 'composed-story-unresolved',
@@ -1926,8 +1931,29 @@ export function resolveComposedStoryMatches(pending, instancesByPrimitive) {
           file,
           storyName: exportName,
           forced,
-          reason: `state ${JSON.stringify(forced.state)}: ${roleMatches.length} ${primitive} instances in ${componentKey} match role ${JSON.stringify(forced.role)}${forced.name ? ` / name ${JSON.stringify(forced.name)}` : ''}${forced.nth != null ? ` / nth ${forced.nth}` : ''}, none uniquely resolved${roleMatches.some((c) => c.unresolvedGuard) ? " (at least one candidate's own guard could not be evaluated from this story's args)" : ''}`,
+          reason,
         })
+        // Positive-knowledge rule (T594 B1, REJECT on #80): an ambiguous match is not a confirmed
+        // absence over the variant/size rows it was ambiguous *between* either — Record 1's own
+        // `buildElementCells` already applies this (every candidate sharing the role gets its own
+        // `unresolved` entry); Record 3 previously only recorded the pseudo-row above and let the
+        // real variant rows fall through to a `'none'` that no comparison actually confirmed
+        // (`Menu`'s `actions` row against `ProfileSummary`'s `BoardFlagHoverRevealed`, live at
+        // `README.md:1902`/`:2305`). Every candidate the ambiguity was between renders `unresolved`
+        // on its own row for this state too, alongside the pseudo-row that keeps the detail.
+        for (const candidate of ambiguousCandidates) {
+          instancesByPrimitive.get(primitive).push({
+            primitive,
+            kind: 'composed-story-ambiguous-variant',
+            componentKey,
+            file,
+            storyName: exportName,
+            variant: resolveDynamicAxisValue(candidate.variant, propsScope),
+            size: resolveDynamicAxisValue(candidate.size, propsScope),
+            forced,
+            reason,
+          })
+        }
       }
     }
   }
@@ -1993,10 +2019,16 @@ export function buildAxisMatrix(primitiveName, instances) {
         rest: [],
         hover: [],
         'focus-visible': [],
-        focusVisibleUnresolved: [],
         active: [],
         disabled: [],
         forcedRoles: [],
+        // One unresolved-reason list per force-state, parallel to `hover`/`focus-visible`/`active`
+        // above. Two shapes land here: a play-driven focus-visible match (never provably a real
+        // frame, T594's amendment) and, since B1, an ambiguous composed-story match — the
+        // positive-knowledge rule Record 1's own `buildElementCells` already applies, extended to
+        // Record 3 so an ambiguity renders `unresolved` on every row it was ambiguous between,
+        // never a confirmed `'none'` over a comparison that produced an ambiguity.
+        unresolvedByState: { hover: [], 'focus-visible': [], active: [] },
       })
     }
     return rows.get(key)
@@ -2020,6 +2052,13 @@ export function buildAxisMatrix(primitiveName, instances) {
       if (inst.disabled) row.disabled.push(`${inst.componentKey} (${inst.file}:${inst.line})`)
       continue
     }
+    if (inst.kind === 'composed-story-ambiguous-variant') {
+      const stateKey = inst.forced.state
+      row.unresolvedByState[stateKey].push(
+        `${inst.componentKey}/${path.basename(inst.file)}:${inst.storyName} — ${inst.reason}`,
+      )
+      continue
+    }
     const label = cellName(inst)
     // An own-story or composed-story instance can carry a positively-resolved `disabled` too
     // (a literal `disabled` attribute in the story's own render JSX, or a nested `disabled: true`
@@ -2040,7 +2079,9 @@ export function buildAxisMatrix(primitiveName, instances) {
       // preceding story already captured — the script cannot tell which, statically, so this is
       // never a confirmed cover (T594's amendment, REJECT on #80: 'none' — and a covered cell — is
       // positive knowledge or neither is claimed).
-      row.focusVisibleUnresolved.push(`${label} (play-driven; frame not provable statically)`)
+      row.unresolvedByState['focus-visible'].push(
+        `${label} (play-driven; frame not provable statically)`,
+      )
       row.forcedRoles.push({
         state: 'focus-visible',
         role: inst.playFocus.role,
@@ -2056,13 +2097,21 @@ export function buildAxisMatrix(primitiveName, instances) {
     .map((row) => ({
       variantSize: row.key,
       rest: row.rest.length ? [...new Set(row.rest)] : ['none'],
-      hover: row.hover.length ? [...new Set(row.hover)] : ['none'],
+      hover: row.hover.length
+        ? [...new Set(row.hover)]
+        : row.unresolvedByState.hover.length
+          ? [`unresolved: ${[...new Set(row.unresolvedByState.hover)].join('; ')}`]
+          : ['none'],
       focusVisible: row['focus-visible'].length
         ? [...new Set(row['focus-visible'])]
-        : row.focusVisibleUnresolved.length
-          ? [`unresolved: ${[...new Set(row.focusVisibleUnresolved)].join('; ')}`]
+        : row.unresolvedByState['focus-visible'].length
+          ? [`unresolved: ${[...new Set(row.unresolvedByState['focus-visible'])].join('; ')}`]
           : ['none'],
-      active: row.active.length ? [...new Set(row.active)] : ['none'],
+      active: row.active.length
+        ? [...new Set(row.active)]
+        : row.unresolvedByState.active.length
+          ? [`unresolved: ${[...new Set(row.unresolvedByState.active)].join('; ')}`]
+          : ['none'],
       disabled: row.disabled.length ? [...new Set(row.disabled)] : ['none'],
       forcedRoles: row.forcedRoles.sort(
         (a, b) => a.state.localeCompare(b.state) || String(a.role).localeCompare(String(b.role)),
@@ -2528,16 +2577,23 @@ const CITATION_RE = new RegExp(
 )
 
 // Every `` `location:line` `` shaped span in scope, not already parsed above as a citation, that
-// is followed — within a short distance, stopping at the first backtick or table-cell boundary so
-// an unrelated later quote or another citation's own text is never mistaken for this one's — by a
-// real double-quoted string. Anything this finds is a citation whose own gap the widened parser
-// above still does not recognise: a malformed or misplaced citation, not a structural pointer
-// (the same fourth-REJECT instruction: "a citation outside the recognised format must fail, not be
-// skipped"). Only a plain `"` counts as the quote here, deliberately narrower than the parser's own
-// quote grammar — a bare backtick that follows is at least as likely to be the *next* citation's
-// own location marker as a quote, and this check would rather under-flag than manufacture a false
-// positive out of that ambiguity.
+// is followed — within a short distance, stopping at a table-cell boundary or at a *citation-shaped*
+// backtick span (`` `foo:123` ``, the next citation's own location marker) so an unrelated later
+// quote or another citation's own text is never mistaken for this one's — by a real double-quoted
+// string. Anything this finds is a citation whose own gap the widened parser above still does not
+// recognise: a malformed or misplaced citation, not a structural pointer (the same fourth-REJECT
+// instruction: "a citation outside the recognised format must fail, not be skipped"). Only a plain
+// `"` counts as the quote here, deliberately narrower than the parser's own quote grammar.
+//
+// A plain inline-code span in the gap (`` `Button.stories.tsx` ``, `` `destructive` `` — no
+// `:digit` inside) is **not** a stop condition: it is prose, not another citation, and stopping
+// there is exactly how F20's own defect escaped this check (T594 B2, REJECT #5 on #80/#79) — the
+// gap between `:122-124` and its real quote crosses `` `destructive` `` at offset 20 of 40, and the
+// old scan bailed there before ever reaching the quote, so a citation whose quote matched neither
+// cited location was never even flagged as malformed. A backtick with no matching close before the
+// budget (or past it) still bails — genuinely ambiguous, the same as before.
 const LOCATION_ONLY_RE = /`([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`/g
+const CITATION_SHAPED_SPAN_RE = /^[\w./-]*:\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/
 export const UNPARSED_QUOTE_DISTANCE = 40
 
 export function findUnparsedQuoteAdjacentCitations(scopeText) {
@@ -2559,16 +2615,94 @@ export function findUnparsedQuoteAdjacentCitations(scopeText) {
     let quoteAt = -1
     while (pos < budget && pos < flat.length) {
       const ch = flat[pos]
+      if (ch === '`') {
+        const closeIdx = flat.indexOf('`', pos + 1)
+        if (closeIdx === -1 || closeIdx >= budget) break // unmatched within the gap: bail, ambiguous
+        const inner = flat.slice(pos + 1, closeIdx)
+        if (CITATION_SHAPED_SPAN_RE.test(inner)) break // the *next* citation's own location marker
+        pos = closeIdx + 1
+        continue
+      }
       if (ch === '"') {
         quoteAt = pos
         break
       }
-      if (ch === '`' || ch === '|') break
+      if (ch === '|') break
       pos++
     }
     if (quoteAt === -1) continue
     const lineIndex = scopeText.slice(0, lm.index).split('\n').length - 1
     results.push({ raw: lm[0], line: lineIndex + 1, gap: flat.slice(spanEnd, quoteAt) })
+  }
+  return results
+}
+
+// T594 M2/M3, REJECT #5 on #80/#79: a `` `file:line` `` citation followed by a `"..."`-quoted
+// string is verified by `checkCitations` above; one followed by an *inline-code* span (single
+// backtick, no surrounding double quotes) never was — `CITATION_RE`'s own backtick-quote
+// alternative only fires when the code span sits immediately adjacent, and about half the
+// inline-code spans in row 8's own F1-F20/8d/8e prose sit a few words further off (`F19`'s own
+// `FavouritesList/index.tsx:293\` gives \`RemoveControl\` (\`FavouriteToggle\`) \`size="lg"\``:
+// two bare-identifier spans intervene before the real claim). Both real defects this task found
+// (F17's `focusRing` string one line off, F19's `size="lg"` five lines off) were inline-code claims
+// exactly this shape, sitting unverified.
+//
+// The distinction this exports, deliberately: a bare identifier span (`` `Button` ``, `` `Menu` ``,
+// `` `RemoveControl` ``, `` `FavouriteToggle` `` — a single word, no source punctuation) is a
+// *reference* to a component, not a claim about what a specific cited line contains, and is never
+// treated as one — skipped over on the way to the real claim, the same way a bare component name in
+// a table's own citation column is not itself verified against file content. A span carrying real
+// source punctuation (`=`, `(`, `)`, `{`, `}`, `<`, `>` — a prop assignment, a call, a class list,
+// a tag) *is* a claim about the nearest preceding cited line, and is verified the same way a
+// double-quoted citation already is: `matchQuoteAgainstText` against that line's own text.
+const CODE_SHAPED_SPAN_RE = /[="(){}<>]/
+export const INLINE_CLAIM_DISTANCE = 150
+
+export function findInlineCodeClaims(scopeText) {
+  const flat = scopeText.replace(/\n/g, ' ')
+  const parsedSpans = []
+  CITATION_RE.lastIndex = 0
+  let pm
+  while ((pm = CITATION_RE.exec(flat))) parsedSpans.push([pm.index, pm.index + pm[0].length])
+  const isParsed = (pos) => parsedSpans.some(([s, e]) => pos >= s && pos < e)
+
+  const results = []
+  LOCATION_ONLY_RE.lastIndex = 0
+  let lm
+  while ((lm = LOCATION_ONLY_RE.exec(flat))) {
+    // Already a real citation (a `"..."` or immediately-adjacent `` `...` `` quote follows it
+    // directly) — verified by `checkCitations` itself, never double-claimed here.
+    if (isParsed(lm.index)) continue
+    const [, location, lineSpec] = lm
+    const spanEnd = lm.index + lm[0].length
+    const budget = spanEnd + INLINE_CLAIM_DISTANCE
+    let pos = spanEnd
+    let claim = null
+    while (pos < budget && pos < flat.length) {
+      const ch = flat[pos]
+      if (ch === '"' || ch === '|') break // a real quote or a table boundary: a different citation's own domain
+      if (ch === '`') {
+        const closeIdx = flat.indexOf('`', pos + 1)
+        if (closeIdx === -1 || closeIdx >= budget) break // unmatched within the budget: bail, ambiguous
+        const inner = flat.slice(pos + 1, closeIdx)
+        if (CITATION_SHAPED_SPAN_RE.test(inner)) break // the *next* citation's own location marker
+        if (CODE_SHAPED_SPAN_RE.test(inner)) {
+          claim = inner
+          break
+        }
+        // A bare identifier immediately followed by a possessive `'s` reassigns the subject —
+        // `` `EscapeReturnsFocusToTrigger`'s `play()` `` is a claim about *that* identifier, never
+        // about whatever citation preceded it (`Menu`'s own `index.tsx:144`, three sentences
+        // earlier) — bail rather than let the next code-shaped span downstream be misattributed.
+        if (flat.slice(closeIdx + 1, closeIdx + 3) === "'s") break
+        pos = closeIdx + 1 // a bare identifier span: a reference, not a claim — skip past it
+        continue
+      }
+      pos++
+    }
+    if (claim === null) continue
+    const lineIndex = scopeText.slice(0, lm.index).split('\n').length - 1
+    results.push({ raw: lm[0], location, lineSpec, line: lineIndex + 1, claim })
   }
   return results
 }
@@ -2677,6 +2811,42 @@ export function resolveCitationLocation(
   return unique.length === 1 ? unique[0] : null
 }
 
+// A bare filename shared by every component (`index.tsx`, `index.tsx:426`) cannot resolve uniquely
+// through `resolveCitationLocation` above — the whole reason a bullet names its subject component
+// once, in **bold** or in its own opening clause, rather than repeating the directory on every
+// citation inside it. T594 M2/M3's own inline-code-claim check hits this directly: a claim's own
+// citation is routinely a bare `index.tsx:N` inside a bullet whose subject was already named a
+// sentence earlier (`Dialog`, `PrivacyNotice`, `ProfileSummary`…). Resolved here the same way a
+// reader resolves it — the *first* backtick-quoted `PascalCase` word in the bullet's own text
+// (the list item this line sits in, from its own `- **` start to the next one) that names a real
+// component directory, never the nearest preceding one: a bullet routinely mentions a second
+// component's name (`Button`, `Menu`) after its own subject, and the nearest-preceding rule would
+// misattribute a citation about the subject's own file to that second component's directory instead
+// (`Dialog`'s own two `Button` instances — `Button` sits between `Dialog` and the citation).
+function bulletBlockAround(scopeText, lineNum) {
+  const lines = scopeText.split('\n')
+  let start = lineNum - 1
+  while (start > 0 && !/^-\s+\*\*/.test(lines[start])) start--
+  let end = lineNum
+  while (end < lines.length && !/^-\s+\*\*/.test(lines[end])) end++
+  return lines.slice(start, end).join('\n')
+}
+
+export function resolveBareLocationFromBullet(scopeText, lineNum, bareLocation, allSrcFiles) {
+  const blockText = bulletBlockAround(scopeText, lineNum)
+  const nameRe = /`([A-Z][A-Za-z0-9]*)/g
+  let m
+  while ((m = nameRe.exec(blockText))) {
+    const dirRe = new RegExp(`/(?:primitives|composites|screens)/${m[1]}/`)
+    const match = allSrcFiles.find((f) => dirRe.test(f))
+    if (!match) continue
+    const dir = match.slice(0, match.indexOf(match.match(dirRe)[0]) + match.match(dirRe)[0].length)
+    const candidate = path.join(dir, bareLocation)
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
+  }
+  return null
+}
+
 // Whether `quote` (an ellipsis-elided sequence or a plain string) appears, in order, in the text
 // spanned by `ranges` (1-indexed, inclusive) of `fileText`'s own lines.
 export function matchQuoteAgainstText(quote, fileText, ranges) {
@@ -2768,7 +2938,50 @@ export function checkCitations({ readmeText }) {
         'gap rule again for one more shape',
     })
   }
-  return { parsedCount: citations.length, unparsedQuoteCarryingCount: unparsed.length, failures }
+  // T594 M2/M3: an inline-code span next to a `file:line` is a claim about that line, verified the
+  // same way a double-quoted citation is — never merely skipped because it carries a backtick
+  // instead of a `"`.
+  const inlineClaims = findInlineCodeClaims(scopeText)
+  let inlineClaimFailureCount = 0
+  for (const claim of inlineClaims) {
+    if (!claim.location) continue // a bare `:line` claim outside a table row — out of this pass's scope
+    let resolved = resolveCitationLocation(
+      { location: claim.location, tableContext: null },
+      { specsDir: path.join(dsDir, 'specs'), allSrcFiles },
+    )
+    // A bare filename every component shares (`index.tsx`) never resolves uniquely on its own —
+    // fall back to the bullet's own named subject component (see `resolveBareLocationFromBullet`).
+    if (!resolved && !claim.location.includes('/')) {
+      resolved = resolveBareLocationFromBullet(scopeText, claim.line, claim.location, allSrcFiles)
+    }
+    if (!resolved) {
+      inlineClaimFailureCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)}: location ${JSON.stringify(claim.location)} did not resolve to exactly one file`,
+      })
+      continue
+    }
+    const ranges = parseLineSpec(claim.lineSpec)
+    if (!ranges) continue
+    const fileText = readFileSync(resolved, 'utf8')
+    const maxLine = Math.max(...ranges.map(([, end]) => end))
+    if (maxLine > fileText.split('\n').length) continue // already reported for the citation itself, above
+    if (!matchQuoteAgainstText(claim.claim, fileText, ranges)) {
+      inlineClaimFailureCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)} not found at ${relPath(resolved)}:${claim.lineSpec}`,
+      })
+    }
+  }
+  return {
+    parsedCount: citations.length,
+    unparsedQuoteCarryingCount: unparsed.length,
+    inlineClaimCount: inlineClaims.length,
+    inlineClaimFailureCount,
+    failures,
+  }
 }
 
 // Item 2 of the row-8 sweep's own remediation: "have the checker assert each row's count equals
@@ -2839,8 +3052,15 @@ export function checkHandoffTally(readmeText) {
 // Four more shapes carry no live instance today but are named because the class of phrasing is the
 // point, not today's inventory: `` live in `X`'s own ``, `deferred to `X` ``, `` `X`'s stories for
 // ``, `` inherits `X`'s ``.
+//
+// Widened again (T594 B3, REJECT #5 on #80/#79): `owns`/`owned` had no bare alternative — only
+// `owned by` — so "The enclosing row's own link owns the hover fill." (`PlayerColourSwatch`,
+// `CivilisationIcon`, `MapThumbnail` — the identical sentence filed on the spec side in 8c but
+// never carried to the story side) went uncaught. `\bowns?\b`/`\bowned\b` close that. The singular
+// `` is `X`'s `` joins the plural `` are `X`'s `` already above (`SiteHeader.stories.tsx:198`'s own
+// "that state is `Menu`'s to answer").
 export const DEFERRAL_VOCABULARY_RE =
-  /per `[A-Za-z]+`|owned (?:entirely )?by|belongs? to|covered by|already covered|follows? .{0,20}states|carr(?:y|ies) (?:its|their) own|are `[A-Za-z]+`'s\b|live in `[A-Za-z]+`'s own|deferred to `[A-Za-z]+`|`[A-Za-z]+`'s stories for|inherits `[A-Za-z]+`'s/g
+  /per `[A-Za-z]+`|owned (?:entirely )?by|\bowns\b|\bowned\b|belongs? to|covered by|already covered|follows? .{0,20}states|carr(?:y|ies) (?:its|their) own|(?:are|is) `[A-Za-z]+`'s\b|live in `[A-Za-z]+`'s own|deferred to `[A-Za-z]+`|`[A-Za-z]+`'s stories for|inherits `[A-Za-z]+`'s/g
 
 // A file's own "prose blocks" — maximal runs of non-blank lines — so a phrase this vocabulary
 // crosses a line boundary is never invisible only because prettier wrapped a comment or a rendered
@@ -2919,14 +3139,22 @@ export function checkDeferralVocabularyCoverage(
   const sectionText = readmeText.slice(start, end)
   const citations = parseCitations(sectionText)
   // Every line either the table's own row for a component, or the exclusion paragraph after it,
-  // cites for that component — "quote level," not "component level" (`reviewer`'s fourth REJECT,
-  // item 2's second weakness): the old check excused *any* hit in a component with *any* table
-  // row, so a new, false deferral landing in an already-listed component never failed. A hit is
-  // now excused only when one of the lines in its own prose block is itself one of that
-  // component's own cited lines — table and exclusion citations feed the same per-component line
-  // set, since either one is an equally real accounting of the hit, and a component's own comment
-  // routinely spans several blocks a single table citation cannot each name on its own (`Text`'s
-  // own `disabled`-vocabulary block, a second, separate block from its table row's own citations).
+  // cites for that component — table and exclusion citations feed the same per-component line
+  // set, since either one is an equally real accounting of the hit.
+  //
+  // **Genuinely quote level, not block level (T594 M4, REJECT #5 on #80/#79)**: this comment used
+  // to claim "quote level, not component level" while the excuse condition below only ever checked
+  // *block* membership — a whole prose block, and some of this package's own blocks run 30+ lines
+  // (`AccountErasurePanel.stories.tsx` 101-135, `DataExportPanel.stories.tsx` 126-157). One
+  // citation anywhere in a block that size excused every hit in it, including one a later edit adds
+  // far from the citation that was supposed to account for it. A hit is now excused only when one
+  // of that component's own cited lines is *both* in the hit's own block (never crossing a blank
+  // line — a component's own comment routinely spans several blocks a single table citation cannot
+  // each name on its own, `Text`'s own `disabled`-vocabulary block a second, separate block from
+  // its table row's own citations) *and* within `DEFERRAL_CITATION_WINDOW` physical lines of the
+  // hit itself — close enough that the citation is plausibly accounting for *this* clause, not
+  // merely present somewhere in the same multi-paragraph comment.
+  const DEFERRAL_CITATION_WINDOW = 15
   const citedLinesByComponent = new Map()
   const addCitedLines = (component, lineSpec) => {
     const ranges = parseLineSpec(lineSpec) ?? []
@@ -2949,9 +3177,15 @@ export function checkDeferralVocabularyCoverage(
   const failures = []
   for (const hit of hits) {
     const citedLines = citedLinesByComponent.get(hit.component)
-    const blockCited =
-      citedLines && Array.from(citedLines).some((l) => l >= hit.blockStart && l <= hit.blockEnd)
-    if (blockCited) continue
+    const quoteCited =
+      citedLines &&
+      Array.from(citedLines).some(
+        (l) =>
+          l >= hit.blockStart &&
+          l <= hit.blockEnd &&
+          Math.abs(l - hit.line) <= DEFERRAL_CITATION_WINDOW,
+      )
+    if (quoteCited) continue
     failures.push({
       reason:
         `${hit.component}.stories.tsx:${hit.line} carries deferral vocabulary ` +
@@ -3160,6 +3394,11 @@ function runCitationCheck() {
     `${result.parsedCount} \`file:line\` spans parsed as citations; ` +
       `${result.unparsedQuoteCarryingCount} more, outside the recognised citation format, still ` +
       'carry a nearby quote (each of those is also a failure above, not merely a count).',
+  )
+  log(
+    `${result.inlineClaimCount} inline-code claims next to a \`file:line\` found and verified ` +
+      `(T594 M2/M3); ${result.inlineClaimFailureCount} failed (also a failure above, not merely a ` +
+      'count).',
   )
   if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
     fail(
