@@ -353,7 +353,7 @@ after being produced through the new stream.
       line this module emits — the text is personal data this feature has no use for, and
       constitution IX is kept out of this seam by that assertion, not by intention. Chat carries no
       time of its own and takes T625's accumulated clock
-- [ ] T627 [US4] Populate the engine dependency record inside the adapter (**FR-044**) from installed
+- [x] T627 [US4] Populate the engine dependency record inside the adapter (**FR-044**) from installed
       distribution metadata for the engine and each requirement it declares, and make an empty
       record a construction error. `apps/analyzer/src/aoe2stats_analyzer/extract.py` publishes an
       empty dependency map as a literal today, and the column to hold it has existed all along —
