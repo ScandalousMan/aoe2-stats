@@ -28,7 +28,7 @@ same key; a `$comment` carrying the rationale and the regeneration instruction.
   component that will break when the reader switches.
 - Every colour role declares the surfaces it may be painted on (FR-005).
 
-**Families after this feature** — nine, up from seven:
+**Families after this feature** — ten, up from seven:
 
 | Family       | Themed | Utility vocabulary                              | Status                          |
 | ------------ | ------ | ------------------------------------------------ | ------------------------------- |
@@ -133,6 +133,10 @@ by the story axis rather than duplicated.
 **Full matrix**: 1,794 captures. 25 stories have no baseline today and 3 baselines name stories
 that no longer exist; phase 1 reconciles both sets before adding an axis, and a set-equality check
 keeps them reconciled ([research.md](./research.md) D2a).
+
+**Design-time figures.** What the tree holds now is stated once, in
+`packages/design-system/specs/README.md`'s "The baseline set, as it stands", asserted by
+`scripts/checks/story-baselines.mjs`; this table is what the feature was sized against.
 
 | Run          | Story selection          | Axes           |
 | ------------ | ------------------------ | -------------- |

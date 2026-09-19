@@ -279,6 +279,32 @@ jobs:
       # other static source checks above; its own `node --test` suite runs immediately after.
       - run: node scripts/checks/story-docs.mjs
       - run: node --test scripts/checks/story-docs.test.mjs
+      # T594: row 8 (H5) of packages/design-system/specs/README.md's "Contrast-signal and
+      # duplicate-baseline gap register" carries tables this script renders between its
+      # `state-coverage:begin`/`end` markers (record 1 — every local interactive element — and
+      # record 3 — every primitive's variant-by-state matrix). Parses source and stories with the
+      # TypeScript compiler API, never a line grep; fails when that region differs from a fresh
+      # render against the live tree, never on a `none` cell by itself (`--write` regenerates it).
+      # Needs no build, same as the other static source checks above; its own `node --test` suite,
+      # planted shapes each with a contrast case, runs immediately after.
+      - run: node scripts/checks/state-coverage.mjs
+      # T594 (row-8 sweep, reviewer's third REJECT on #80, widened by the fourth): every
+      # `file:line "quote"` citation in row 8's own 8c/8c-bis/8d/8e prose, parsed and checked
+      # against the live tree (never a citation left unverified by hand) — the citation format,
+      # its own recognition rule and its match rule are documented in `checkCitations`'s own
+      # header, including the three gap shapes it admits and the secondary check
+      # (`findUnparsedQuoteAdjacentCitations`) that fails a `file:line` span outside all three when
+      # a quote still sits close behind it, rather than silently skipping it. Also asserts 8c's own
+      # per-file `Handoffs` numbers and total agree with the citations found for them, and greps
+      # every `*.stories.tsx` for 8c-bis's own (also widened) deferral vocabulary, failing when a
+      # hit sits outside every cited line's own prose block and outside the exclusion paragraph —
+      # matched at that block, never merely at whether the hit's component has any row at all (the
+      # fourth REJECT's own second finding: the prior, component-level match let a new, false
+      # deferral inside an already-listed component pass unseen). Runs beside the region check
+      # above rather than inside it, so either can fail on its own and be read from its own log
+      # line.
+      - run: node scripts/checks/state-coverage.mjs --check-citations
+      - run: node --test scripts/checks/state-coverage.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own

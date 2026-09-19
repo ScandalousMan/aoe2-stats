@@ -138,6 +138,47 @@ grep -rn "dataset.theme\|data-theme" packages/design-system/src --include='*.tsx
 **Pass**: matches only under `packages/design-system/src/theme`. Nothing else may know which theme
 is active — the toggle sets it and styles nothing by it.
 
+### Result (T537, run 2026-09-06)
+
+Cases 1, 2 and 4 run against `apps/web`'s dev server; case 3 ran against the inline script's exact
+fallback logic instead, for the reason stated under it. That split is the source commit's own
+wording and is kept, because "all four against the dev server" would be the more flattering claim
+and the false one. Each result is read back from `document.documentElement.dataset.theme`, from the
+stored override and from `matchMedia` rather than by eye.
+
+Recorded here rather than left in the commit body that first carried it: a pre-squash commit message
+is not a durable citation on this branch, by this file's own convention. This is the only evidence the two behavioural halves of production-readiness item 4 and SC-005
+have — the flash-free first paint and the reload-persistence of an override, which are exactly the
+two T577's walk records as un-run. `packages/design-system/src/theme/ThemeProvider.test.tsx` is not
+a substitute for either: its seven tests are jsdom tests of the provider, and nothing anywhere
+exercises `apps/web/index.html`'s inline pre-hydration script or a real reload end to end. Case 2
+below is the only evidence the reload path has.
+
+1. **System dark, fresh profile** (storage cleared, colour scheme dark, reload): theme `dark`,
+   nothing stored, system prefers dark. The application's own error boundary — the backend is
+   unreachable locally, unrelated to this feature — rendered on the dark surface tokens immediately.
+   No light frame, and no theme-related console error.
+2. **Override to light, reload** (override stored as light, colour scheme still dark): theme `light`,
+   override `light`, system still prefers dark. The override wins over the system preference across a
+   reload, which is what FR-015 and FR-016 ask (SC-005).
+3. **Blocked site data, reload**: the preview browser has no control that makes an origin's storage
+   throw before a fresh page's own inline script runs, so this case was verified by re-executing the
+   inline script's identical branch structure with the read replaced by a forced `DOMException`, the
+   shape a real storage block raises. It resolves to dark where the system prefers dark and to light
+   where it does not, in both cases completing without the exception escaping. The same fallback
+   chain is asserted as a unit test in `packages/design-system/src/theme/ThemeProvider.test.tsx`, so
+   the manual check and the automated one agree rather than substitute for each other.
+4. **No override, and a system preference of light**: theme `light`, nothing stored, system does
+   not prefer dark — the defined default. Scenario 6's step 4 above asks for a system expressing
+   **no** preference; what was exercised is a system expressing light. The two reach the same branch
+   of the inline script — neither is an override and neither prefers dark — so the outcome is the
+   one step 4 predicts, but the absent-preference condition itself was not tested. Left as the
+   narrower true claim rather than widened to the step's wording.
+
+**All four pass as run**, with case 3's substitution and case 4's condition exactly as stated above.
+T577's walk of 2026-09-08 recorded item 4's behavioural half as not run; it had been run two days
+earlier, and this record is what that walk had no way to find.
+
 ## Scenario 7 — Numbers are legible and comparable (US4)
 
 Open Storybook and compare a column of ratings of differing digit counts.
@@ -878,7 +919,7 @@ trio depicts a `Contents` entry; `ArchivalControl`'s privacy link has no state s
 level down that `Button.stories.tsx` captures hover for `primary` only, so two screens deferring their
 `secondary` and `destructive` buttons' hover to it were deferring to no frame. These are
 `packages/design-system/specs/README.md`'s register row 8 (H5): T594 sweeps every component rather than
-trusting this list, T595 fixes what the sweep finds, and T596 fixes `ArchivalControl`'s link
+trusting this list, T595 fixes what the sweep finds, and T596 fixes the two anchors
 after a design decision.
 
 **So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a
