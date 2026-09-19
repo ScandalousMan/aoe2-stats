@@ -288,6 +288,17 @@ jobs:
       # Needs no build, same as the other static source checks above; its own `node --test` suite,
       # planted shapes each with a contrast case, runs immediately after.
       - run: node scripts/checks/state-coverage.mjs
+      # T594 (row-8 sweep, reviewer's third REJECT on #80): every `file:line "quote"` citation in
+      # row 8's own 8c/8c-bis/8d/8e prose, parsed and checked against the live tree (never a
+      # citation left unverified by hand) — the citation format, its own recognition rule and its
+      # match rule are documented in `checkCitations`'s own header. Also asserts 8c's own per-file
+      # `Handoffs` numbers and total agree with the citations found for them, and greps every
+      # `*.stories.tsx` for 8c-bis's own deferral vocabulary, failing when a hit's component is
+      # named in neither 8c-bis's table nor its own exclusion paragraph — the mechanism that
+      # replaced the hand claim ("no component outside this list…") three review passes found
+      # false. Runs beside the region check above rather than inside it, so either can fail on its
+      # own and be read from its own log line.
+      - run: node scripts/checks/state-coverage.mjs --check-citations
       - run: node --test scripts/checks/state-coverage.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a

@@ -6,6 +6,9 @@
 // `node --test` conventions: real functions, small fixtures, node:assert/strict, no mocking.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import {
   parseTsx,
   buildConstStringMap,
@@ -38,6 +41,16 @@ import {
   findRenderJsxProps,
   impliedRoleForPrimitiveInstance,
   computeStateCoverage,
+  extractCitationScope,
+  parseCitations,
+  parseLineSpec,
+  resolveCitationLocation,
+  matchQuoteAgainstText,
+  checkHandoffTally,
+  findDeferralHitsInStories,
+  checkDeferralVocabularyCoverage,
+  countRecord1Cells,
+  countRecord3Cells,
 } from './state-coverage.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
@@ -1818,4 +1831,336 @@ test('buildElementMatrix: an ancestor of a forced descendant reads "unresolved: 
   // `active` carries no force-state at all in this fixture, on either element — a genuine gap
   // ('no implied role'), not an ancestor of anything forced.
   assert.match(trRow.active[0], /^unresolved: no implied role$/)
+})
+
+// --- Citation checker (reviewer's third REJECT on PR #80) --------------------------------------
+
+test('parseLineSpec: single line, a range, and a comma list of both', () => {
+  assert.deepEqual(parseLineSpec('39'), [[39, 39]])
+  assert.deepEqual(parseLineSpec('550-551'), [[550, 551]])
+  assert.deepEqual(parseLineSpec('441,344-345'), [
+    [441, 441],
+    [344, 345],
+  ])
+})
+
+test('matchQuoteAgainstText: a plain quote matches a literal substring, whitespace-collapsed', () => {
+  const text = 'line one\n  line two has the phrase right here\nline three'
+  assert.equal(matchQuoteAgainstText('the phrase right here', text, [[1, 3]]), true)
+  assert.equal(matchQuoteAgainstText('the phrase nowhere here', text, [[1, 3]]), false)
+})
+
+test('matchQuoteAgainstText: an ellipsis elides a run of text, matched as an ordered pair', () => {
+  const text = 'a bare, unstyled\nButton firing POST has no bespoke states beyond Button own'
+  assert.equal(
+    matchQuoteAgainstText('a bare, unstyled … has no bespoke states beyond Button own', text, [
+      [1, 2],
+    ]),
+    true,
+  )
+  // Out of order — the suffix appears before the prefix in the text — must not match.
+  assert.equal(matchQuoteAgainstText('has no bespoke … a bare, unstyled', text, [[1, 2]]), false)
+})
+
+test('matchQuoteAgainstText: a range concatenates every listed line, in order, into one target', () => {
+  const text = 'one\ntwo\nthree\nfour'
+  assert.equal(matchQuoteAgainstText('two three', text, [[2, 3]]), true)
+  assert.equal(
+    matchQuoteAgainstText('one four', text, [
+      [1, 1],
+      [4, 4],
+    ]),
+    true,
+  )
+})
+
+test('parseCitations: a table row supplies a bare citation its own file column', () => {
+  const scope =
+    '| File | Handoffs | Cited lines |\n' +
+    '| --- | --- | --- |\n' +
+    '| `example.md` | 1 | `:39` "a quoted excerpt" (filed under Foo). |\n'
+  const citations = parseCitations(scope)
+  assert.equal(citations.length, 1)
+  assert.equal(citations[0].location, null)
+  assert.deepEqual(citations[0].tableContext, { kind: 'md', name: 'example.md' })
+  assert.equal(citations[0].lineSpec, '39')
+  assert.equal(citations[0].quote, 'a quoted excerpt')
+})
+
+test('parseCitations: table context resets outside the table and does not leak into prose', () => {
+  const scope =
+    '| `example.md` | 1 | `:39` "quoted" |\n\nProse after the table `:40` "unquoted-ish"\n'
+  const citations = parseCitations(scope)
+  // The prose line's `:40` carries no location and no table row above it (a blank line ended the
+  // table), so it is not attributed to `example.md` — this citation is unresolvable, not silently
+  // inherited from the last table row.
+  assert.equal(citations.length, 2)
+  assert.equal(citations[1].tableContext, null)
+})
+
+test('parseCitations: a quote wrapped across a hard line break is still found, flattened to one line', () => {
+  // Mirrors what prettier's own prose wrap does to a long bullet — the citation and the first half
+  // of its quote end one physical line, the rest starts the next (T594's own second hand-back was
+  // rejected for exactly this shape going unrecognised).
+  const scope =
+    '- **N1.** `structural-tier.md:441` "A Panel is never itself\n  interactive" — no owner.\n'
+  const citations = parseCitations(scope)
+  assert.equal(citations.length, 1)
+  assert.equal(citations[0].location, 'structural-tier.md')
+  // `parseCitations` flattens `\n` to a single space before matching (its own header explains
+  // why), so the captured quote carries that flattened form — `matchQuoteAgainstText` is what
+  // collapses runs of whitespace down to one, not this step.
+  assert.equal(citations[0].quote, 'A Panel is never itself   interactive')
+})
+
+test('parseCitations: an escaped double quote inside the quoted text is unescaped, not a boundary', () => {
+  const scope = '| `x.md` | 1 | `:1` "carries \\"Try again\\" verbatim" |\n'
+  const citations = parseCitations(scope)
+  assert.equal(citations.length, 1)
+  assert.equal(citations[0].quote, 'carries "Try again" verbatim')
+})
+
+test('parseCitations: a bare `:line` citation with no adjacent quote is not recognised at all', () => {
+  const scope = 'See `structural-tier.md:441` for more, discussed later without a quote.\n'
+  assert.equal(parseCitations(scope).length, 0)
+})
+
+function withFixtureTree(build) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'state-coverage-citations-'))
+  try {
+    return build(dir)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+test('resolveCitationLocation: a bare .md filename resolves under specsDir', () => {
+  withFixtureTree((dir) => {
+    const specsDir = path.join(dir, 'specs')
+    mkdirSync(specsDir, { recursive: true })
+    writeFileSync(path.join(specsDir, 'example.md'), 'line one\nline two\n')
+    const resolved = resolveCitationLocation(
+      { location: 'example.md', tableContext: null },
+      { specsDir, allSrcFiles: [] },
+    )
+    assert.equal(resolved, path.join(specsDir, 'example.md'))
+  })
+})
+
+test('resolveCitationLocation: a bare component name from an 8c-bis table row resolves its own .stories.tsx', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Widget', 'Widget.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    writeFileSync(storyFile, '// story\n')
+    const allSrcFiles = [storyFile.split(path.sep).join('/')]
+    const resolved = resolveCitationLocation(
+      { location: null, tableContext: { kind: 'stories', name: 'Widget' } },
+      { specsDir: path.join(dir, 'specs'), allSrcFiles },
+    )
+    assert.equal(resolved, storyFile)
+  })
+})
+
+test('resolveCitationLocation: an ambiguous suffix (two files with the same tail) fails rather than guessing', () => {
+  const allSrcFiles = ['/repo/a/Widget/index.tsx', '/repo/b/Widget/index.tsx']
+  const resolved = resolveCitationLocation(
+    { location: 'Widget/index.tsx', tableContext: null },
+    { specsDir: '/repo/specs', allSrcFiles },
+  )
+  assert.equal(resolved, null)
+})
+
+test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
+  const readme =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    '| File | Handoffs | Cited lines |\n' +
+    '| --- | --- | --- |\n' +
+    '| `a.md` | 2 | `:1` "one" and `:2` "two" |\n' +
+    '| `b.md` | 0 | — |\n\n' +
+    '**Total: 2 handoffs across 1 files with at least one**\n\n' +
+    '**Cell counts,'
+  assert.deepEqual(checkHandoffTally(readme).failures, [])
+})
+
+test('checkHandoffTally: fails when a row Handoffs number disagrees with its own citation count', () => {
+  const readme =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    '| File | Handoffs | Cited lines |\n' +
+    '| --- | --- | --- |\n' +
+    '| `a.md` | 3 | `:1` "one" and `:2` "two" |\n\n' +
+    '**Total: 3 handoffs across 1 files with at least one**\n\n' +
+    '**Cell counts,'
+  const result = checkHandoffTally(readme)
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /a\.md.*reads 3 but 2/)
+})
+
+test('checkHandoffTally: fails when the Total line disagrees with the table row sum', () => {
+  const readme =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    '| File | Handoffs | Cited lines |\n' +
+    '| --- | --- | --- |\n' +
+    '| `a.md` | 1 | `:1` "one" |\n\n' +
+    '**Total: 2 handoffs across 1 files with at least one**\n\n' +
+    '**Cell counts,'
+  const result = checkHandoffTally(readme)
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /disagrees with the table's own row sum, 1/)
+})
+
+test('findDeferralHitsInStories: finds the vocabulary in a story file and attributes it to its own component', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Widget', 'Widget.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    writeFileSync(
+      storyFile,
+      '// hover — none; owned by `Button` and by nothing else.\nexport const X = {}\n',
+    )
+    const allSrcFiles = [storyFile.split(path.sep).join('/')]
+    const hits = findDeferralHitsInStories(allSrcFiles)
+    assert.equal(hits.length, 1)
+    assert.equal(hits[0].component, 'Widget')
+    assert.equal(hits[0].line, 1)
+  })
+})
+
+test('findDeferralHitsInStories: a non-story .tsx file is never scanned', () => {
+  withFixtureTree((dir) => {
+    const indexFile = path.join(dir, 'src', 'primitives', 'Widget', 'index.tsx')
+    mkdirSync(path.dirname(indexFile), { recursive: true })
+    writeFileSync(indexFile, '// owned by `Button`\n')
+    const allSrcFiles = [indexFile.split(path.sep).join('/')]
+    assert.deepEqual(findDeferralHitsInStories(allSrcFiles), [])
+  })
+})
+
+test('checkDeferralVocabularyCoverage: a hit whose component has no table row and no exclusion fails', () => {
+  const readme =
+    '**8c-bis. Story comments.**\n\n' +
+    '| Component | Quotes |\n' +
+    '| --- | --- |\n' +
+    '| `Known` | `:1` "owned by `Button`" — filed. |\n\n' +
+    'No exclusions here.\n\n' +
+    '**8d. The no-owner list**\n'
+  // findDeferralHitsInStories reads the *real* package tree (it is not injectable through this
+  // entry point, by design — the check has to see the live source, the same reason
+  // `state-coverage.mjs`'s own consistency mode never takes a fixture tree either), so this test
+  // only exercises the table/exclusion-parsing half directly, via the same `parseCitations` path
+  // `checkDeferralVocabularyCoverage` itself calls.
+  const start = readme.indexOf('**8c-bis.')
+  const end = readme.indexOf('**8d.')
+  const citations = parseCitations(readme.slice(start, end))
+  const tableComponents = new Set(
+    citations
+      .filter((c) => c.location === null && c.tableContext && c.tableContext.kind === 'stories')
+      .map((c) => c.tableContext.name),
+  )
+  assert.deepEqual([...tableComponents], ['Known'])
+})
+
+test('countRecord1Cells/countRecord3Cells: classify none, the one play-driven unresolved, and covered', () => {
+  const computed = {
+    localElements: [
+      {
+        elements: [
+          {
+            coveredBy: {
+              hover: ['none'],
+              focusVisible: [
+                'unresolved: EscapeReturnsFocusToTrigger (play-driven; frame not provable statically)',
+              ],
+              active: ['SomeStory'],
+            },
+          },
+          {
+            coveredBy: {
+              hover: ['unresolved: no implied role'],
+              focusVisible: ['none'],
+              active: ['none'],
+            },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: '(no local interactive element)',
+          rest: ['N/A'],
+          hover: ['N/A'],
+          focusVisible: ['N/A'],
+          active: ['N/A'],
+          disabled: ['N/A'],
+        },
+      ],
+      Other: [
+        {
+          variantSize: '(unresolved matches — no row, printed rather than dropped)',
+          rest: ['N/A'],
+          hover: ['unresolved: x'],
+          focusVisible: ['N/A'],
+          active: ['N/A'],
+          disabled: ['N/A'],
+        },
+        {
+          variantSize: 'md',
+          rest: ['2 real call sites'],
+          hover: ['none'],
+          focusVisible: ['Story'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const r1 = countRecord1Cells(computed)
+  // Element 1: hover=none, focusVisible=unresolved (play-driven), active=covered.
+  // Element 2: hover=unresolved ("no implied role" — counts as unresolved, whatever the reason,
+  // never folded into `none`: the orchestrator's own correction after the play-driven-only version
+  // shipped), focusVisible=none, active=none.
+  assert.deepEqual(r1, { none: 3, unresolved: 2, covered: 1 })
+
+  const r3 = countRecord3Cells(computed)
+  // Only `Other`'s real `md` row counts (the placeholder and the unresolved-matches info row are
+  // both excluded): rest=covered, hover=none, focusVisible=covered, active=none, disabled=none.
+  assert.deepEqual(r3, { none: 3, unresolved: 0, covered: 2 })
+})
+
+test('countRecord1Cells/countRecord3Cells: never folds an unresolved reason into none, whatever the reason', () => {
+  // Plants one cell of each of the three renderable values, in both records, so a future version
+  // that re-merges `unresolved` into `none` (the exact defect this test exists to catch — see the
+  // orchestrator's own correction above) fails here first, loudly, rather than only in a hand-read
+  // of the printed line.
+  const computed = {
+    localElements: [
+      {
+        elements: [
+          {
+            coveredBy: {
+              hover: ['none'],
+              focusVisible: ['unresolved: dynamic role'],
+              active: ['SomeStory'],
+            },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'md',
+          rest: ['none'],
+          hover: ['unresolved: ancestor of a forced descendant (…)'],
+          focusVisible: ['Story'],
+          active: ['none'],
+          disabled: ['unresolved: no implied role'],
+        },
+      ],
+    },
+  }
+  assert.deepEqual(countRecord1Cells(computed), { none: 1, unresolved: 1, covered: 1 })
+  // Record 3's fixture row carries 2 `unresolved` (hover, disabled), 2 `none` (rest, active) and 1
+  // `covered` (focus-visible) — a distinct 2/2/1 shape from Record 1's 1/1/1, on purpose, so the
+  // two records cannot pass by accidentally sharing one counter.
+  assert.deepEqual(countRecord3Cells(computed), { none: 2, unresolved: 2, covered: 1 })
 })

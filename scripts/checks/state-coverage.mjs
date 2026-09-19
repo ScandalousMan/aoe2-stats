@@ -46,7 +46,7 @@
 //   node scripts/checks/state-coverage.mjs --write     regenerates the region in place, formatted
 //                                                      through prettier so check mode never sees a
 //                                                      prettier-only difference.
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -2455,6 +2455,446 @@ export function diffLines(before, after) {
   return out.length > 0 ? out.join('\n') : '(no line-level difference — whitespace only)'
 }
 
+// --- Citation checking (`reviewer`'s third REJECT on PR #80) ------------------------------------
+//
+// Every citation in row 8's own prose (8c, 8c-bis, 8d's no-owner list, 8e's findings) names a
+// `file:line` and quotes what is there — the shape three review passes found wrong line numbers
+// and misquotes in, and could not verify twelve of at all. This is the reader nobody should have
+// to be, run as its own gate.
+//
+// **What a citation is.** A backtick span ``` `location:line` ``` or ``` `location:line-line2` ```
+// — a comma joins several line numbers/ranges under one `location` (`structural-tier.md:549,551`,
+// a citation claiming its quote spans both, not that each repeats it independently) — immediately
+// followed by its own quote: a straight double-quoted string, or, failing that within the same
+// short gap, the next inline-code span. "Immediately" allows only whitespace and one optional
+// `(` between the citation's closing backtick and the quote's opening mark — the same gap the
+// best-formed citations on this page already leave (`` `sign-in-screen.md:69` ("owned entirely by
+// `Button`") ``). A backtick `location:line` with nothing adjacent to it is not a citation under
+// this definition: read as a structural pointer into source ("`index.tsx:127,138`, `variant={…}`
+// … "), not a claim this checker can hold to particular prose — deliberately out of scope, not a
+// silently accepted one. Every span that *does* carry an adjacent quote is parsed and must resolve
+// and match, or the run fails and names it.
+//
+// **`location`.** A bare `*.md` filename resolves under `packages/design-system/specs/`. Inside
+// 8c's own table, a citation may omit `location` entirely (`` `:39` ``) — resolved against that
+// table row's own first cell, the file the row is filed under; inside 8c-bis's table, the same
+// bare shorthand resolves against that row's own component, as `<Component>.stories.tsx`. Outside
+// a table (8d, 8e), `location` is never omitted — any other value (a bare `*.stories.tsx`
+// filename, a `segment/Component/index.tsx`-shaped relative path, or a path rooted at
+// `packages/design-system/`) is resolved by an exact or unique-suffix match against every file
+// this package's own source tree carries; a location this checker cannot resolve to exactly one
+// file fails, rather than matching the first thing that looks close.
+//
+// **Matching.** The cited line(s) are read from the resolved file, concatenated with a single
+// space (so a quote split across `:550-551` is one string to search), and whitespace-collapsed.
+// An ellipsis (`…`, U+2026) inside a quote elides a run of text: the quote is split there into an
+// ordered sequence of parts, each required to appear, in that order, in the target text — an
+// unelided quote is one part, matched as a literal (whitespace-collapsed) substring.
+export function extractCitationScope(readmeText) {
+  const start = readmeText.indexOf('**8c. Record 2')
+  const end = readmeText.indexOf('**Cell counts')
+  if (start === -1 || end === -1 || end < start) return null
+  return readmeText.slice(start, end)
+}
+
+// The double-quoted alternative allows a backslash-escaped `\"` inside it — several citations on
+// this page quote a spec sentence that itself contains a nested literal quote (`analysis-
+// timeline.md:288`'s `"Try requesting analysis"` button label) and escape it to keep the outer
+// quote closing where it should; `unescapeQuote` below undoes that before matching.
+const CITATION_RE =
+  /`([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`(\s*\(?\s*)(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)/g
+
+function unescapeQuote(text) {
+  return text.replace(/\\(.)/g, '$1')
+}
+
+// Every citation found in `scopeText`, line by line so a bare (location-less) citation can be
+// resolved against the markdown table row it sits in — 8c's own file column, or 8c-bis's own
+// component column. `tableContext` carries forward across consecutive `|`-prefixed lines only,
+// the same rule that keeps prose after a table from inheriting its last row's file by accident.
+export function parseCitations(scopeText) {
+  // Table-row context (8c's own File column, 8c-bis's own Component column) is a per-*physical*-
+  // line fact — computed against the real lines first, forward-filled the same way a reader's eye
+  // carries a table's own file down its rows, reset the moment a line stops being one.
+  const lines = scopeText.split('\n')
+  const contextByLine = []
+  let tableContext = null
+  for (const line of lines) {
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('|')) {
+      const rowMatch = trimmed.match(/^\|\s*`([^`]+)`\s*\|/)
+      if (rowMatch) {
+        const cell = rowMatch[1]
+        tableContext = cell.endsWith('.md')
+          ? { kind: 'md', name: cell }
+          : { kind: 'stories', name: cell }
+      }
+    } else {
+      tableContext = null
+    }
+    contextByLine.push(tableContext)
+  }
+
+  // Prose (8d, 8e) is prettier-wrapped — a citation's own quote can carry a hard line break
+  // between the words either side of it, invisible to a reader and meaningless to what the quote
+  // claims. Newlines are flattened to spaces before matching (`\n` and `' '` are both one
+  // character, so every match offset below still lands on the same *character* of `scopeText`,
+  // and the line it started on is still recoverable by counting the newlines before it) — a
+  // citation is never invisible to this parser only because prettier chose to wrap it.
+  const flat = scopeText.replace(/\n/g, ' ')
+  const citations = []
+  CITATION_RE.lastIndex = 0
+  let m
+  while ((m = CITATION_RE.exec(flat))) {
+    const [raw, location, lineSpec, , doubleQuote, codeQuote] = m
+    const quote = doubleQuote !== undefined ? unescapeQuote(doubleQuote) : codeQuote
+    const lineIndex = scopeText.slice(0, m.index).split('\n').length - 1
+    citations.push({
+      raw,
+      location: location || null,
+      lineSpec,
+      quote,
+      tableContext: location ? null : contextByLine[lineIndex],
+    })
+  }
+  return citations
+}
+
+// Parses `1`, `1-2`, `1,5-7` into `[[1, 1], [5, 7]]`. Malformed input (the citation regex already
+// guarantees digits and dashes only, so this is a belt) returns `null`.
+export function parseLineSpec(lineSpec) {
+  const ranges = []
+  for (const part of lineSpec.split(',')) {
+    const m = part.match(/^(\d+)(?:-(\d+))?$/)
+    if (!m) return null
+    ranges.push([Number(m[1]), m[2] ? Number(m[2]) : Number(m[1])])
+  }
+  return ranges
+}
+
+// Resolves a citation's own `location` (or its table context) to one file under this repository,
+// or `null` when it cannot be resolved to exactly one — ambiguity is a failure, not a guess.
+export function resolveCitationLocation(
+  { location, tableContext },
+  { specsDir: specs, allSrcFiles },
+) {
+  // 8c-bis's own table context is a bare component name (`AnalysisTimeline`, its first cell),
+  // never a filename — resolved against that component's own `<Name>.stories.tsx`, the same file
+  // an explicit `AnalysisTimeline.stories.tsx:176` in prose would resolve to.
+  const name = location ?? (tableContext ? tableContext.name : null)
+  if (!name) return null
+  if (tableContext && tableContext.kind === 'stories' && !location) {
+    return resolveCitationLocation(
+      { location: `${name}.stories.tsx`, tableContext: null },
+      { specsDir: specs, allSrcFiles },
+    )
+  }
+  if (name.endsWith('.md')) {
+    const direct = path.isAbsolute(name) ? name : path.join(rootDir, name)
+    if (existsSync(direct) && statSync(direct).isFile()) return direct
+    const p = path.join(specs, path.basename(name))
+    return existsSync(p) ? p : null
+  }
+  // A story-file table context (8c-bis) is always a bare `<Component>.stories.tsx` — resolved the
+  // same suffix-unique way as an explicit one in prose.
+  const direct = path.join(srcDir, name)
+  if (existsSync(direct) && statSync(direct).isFile()) return direct
+  const base = name.split('/').slice(-2).join('/') // "Component/index.tsx" style suffix
+  const suffixMatches = allSrcFiles.filter(
+    (f) => f.endsWith(`/${name}`) || f.endsWith(`/${base}`) || path.basename(f) === name,
+  )
+  const unique = [...new Set(suffixMatches)]
+  return unique.length === 1 ? unique[0] : null
+}
+
+// Whether `quote` (an ellipsis-elided sequence or a plain string) appears, in order, in the text
+// spanned by `ranges` (1-indexed, inclusive) of `fileText`'s own lines.
+export function matchQuoteAgainstText(quote, fileText, ranges) {
+  const lines = fileText.split('\n')
+  const spanned = ranges
+    .map(([start, end]) => lines.slice(start - 1, end).join(' '))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  let cursor = 0
+  for (const rawPart of quote.split('…')) {
+    const part = rawPart.replace(/\s+/g, ' ').trim()
+    if (part === '') continue
+    const idx = spanned.indexOf(part, cursor)
+    if (idx === -1) return false
+    cursor = idx + part.length
+  }
+  return true
+}
+
+// Parses and verifies every citation in row 8's own 8c/8c-bis/8d/8e prose (`extractCitationScope`)
+// against the live tree.
+export function checkCitations({ readmeText }) {
+  const scopeText = extractCitationScope(readmeText)
+  if (scopeText === null) {
+    return {
+      parsedCount: 0,
+      failures: [
+        { raw: '(scope)', reason: '8c/8c-bis/8d/8e scope markers not found in README.md' },
+      ],
+    }
+  }
+  const allSrcFiles = walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
+  const citations = parseCitations(scopeText)
+  const failures = []
+  for (const citation of citations) {
+    if (citation.location === null && citation.tableContext === null) {
+      failures.push({
+        raw: citation.raw,
+        reason: 'bare `:line` citation outside a recognised table row',
+      })
+      continue
+    }
+    const ranges = parseLineSpec(citation.lineSpec)
+    if (!ranges) {
+      failures.push({
+        raw: citation.raw,
+        reason: `malformed line spec ${JSON.stringify(citation.lineSpec)}`,
+      })
+      continue
+    }
+    const resolved = resolveCitationLocation(citation, {
+      specsDir: path.join(dsDir, 'specs'),
+      allSrcFiles,
+    })
+    if (!resolved) {
+      const name = citation.location ?? citation.tableContext?.name
+      failures.push({
+        raw: citation.raw,
+        reason: `location ${JSON.stringify(name)} did not resolve to exactly one file`,
+      })
+      continue
+    }
+    const maxLine = Math.max(...ranges.map(([, end]) => end))
+    const fileText = readFileSync(resolved, 'utf8')
+    const lineCount = fileText.split('\n').length
+    if (maxLine > lineCount) {
+      failures.push({
+        raw: citation.raw,
+        reason: `${relPath(resolved)} has ${lineCount} lines, cited up to :${maxLine}`,
+      })
+      continue
+    }
+    if (!matchQuoteAgainstText(citation.quote, fileText, ranges)) {
+      failures.push({
+        raw: citation.raw,
+        reason: `quote not found at ${relPath(resolved)}:${citation.lineSpec}`,
+      })
+    }
+  }
+  return { parsedCount: citations.length, failures }
+}
+
+// Item 2 of the row-8 sweep's own remediation: "have the checker assert each row's count equals
+// the number of quoted citations in that row." 8c's own table is the only place `Handoffs` is a
+// number a reader could compare against something — one row per spec file, its own citations
+// never repeated table-scoped in 8d/8e (which cite the *same* line again in full-path form to
+// stand alone, `structural-tier.md:441` rather than bare `:441`, so they don't re-inflate a table
+// row's own count here). Fails per file when the printed number and the parsed count disagree, and
+// once more when their sum disagrees with the `**Total: N handoffs**` line.
+export function checkHandoffTally(readmeText) {
+  const scopeText = extractCitationScope(readmeText)
+  if (scopeText === null)
+    return { failures: [{ reason: '8c/8c-bis/8d/8e scope markers not found' }] }
+  const citations = parseCitations(scopeText)
+  const perFile = new Map()
+  for (const c of citations) {
+    if (c.location === null && c.tableContext && c.tableContext.kind === 'md') {
+      perFile.set(c.tableContext.name, (perFile.get(c.tableContext.name) ?? 0) + 1)
+    }
+  }
+  const failures = []
+  const rowRe = /^\|\s*`([\w-]+\.md)`\s*\|\s*(\d+)\s*\|/gm
+  let rowMatch
+  let printedSum = 0
+  const seenFiles = new Set()
+  while ((rowMatch = rowRe.exec(scopeText))) {
+    const [, file, printedStr] = rowMatch
+    const printed = Number(printedStr)
+    printedSum += printed
+    seenFiles.add(file)
+    const parsed = perFile.get(file) ?? 0
+    if (printed !== parsed) {
+      failures.push({
+        reason: `${file}'s own Handoffs cell reads ${printed} but ${parsed} quoted citation(s) were found for it in 8c's table`,
+      })
+    }
+  }
+  for (const file of perFile.keys()) {
+    if (!seenFiles.has(file)) {
+      failures.push({ reason: `${file} has quoted citations but no row in 8c's own table` })
+    }
+  }
+  const totalMatch = scopeText.match(/\*\*Total:\s*(\d+)\s*handoffs/)
+  if (!totalMatch) {
+    failures.push({ reason: 'no "**Total: N handoffs**" line found to check the sum against' })
+  } else if (Number(totalMatch[1]) !== printedSum) {
+    failures.push({
+      reason: `"**Total: ${totalMatch[1]} handoffs**" disagrees with the table's own row sum, ${printedSum}`,
+    })
+  }
+  return { failures }
+}
+
+// --- 8c-bis vocabulary sweep (item 3 of the row-8 sweep's own remediation) ---------------------
+//
+// 8c-bis's own closing claim — "no component outside this list carries any deferral language in
+// its own `*.stories.tsx`" — was false three times over before this pass (`Section`, `Callout`,
+// `Text`). Read, by hand, is exactly the shape that keeps failing; this greps every
+// `*.stories.tsx` under this package's own three tiers for the vocabulary 8c-bis itself names, and
+// fails when a hit's component is neither a row in 8c-bis's own table nor named in its own
+// exclusion paragraph — so the next hit is a build failure, not a fifth review pass.
+export const DEFERRAL_VOCABULARY_RE =
+  /per `[A-Za-z]+`|owned by|belongs? to|covered by|already covered|follows? .{0,20}states|carr(?:y|ies) (?:its|their) own/g
+
+export function findDeferralHitsInStories(allSrcFiles) {
+  const hits = []
+  for (const file of allSrcFiles) {
+    if (!file.endsWith('.stories.tsx')) continue
+    const segMatch = file.match(/\/src\/(primitives|composites|screens)\/([A-Za-z0-9]+)\//)
+    if (!segMatch) continue
+    const component = segMatch[2]
+    const text = readFileSync(file, 'utf8')
+    const lines = text.split('\n')
+    lines.forEach((line, i) => {
+      DEFERRAL_VOCABULARY_RE.lastIndex = 0
+      if (DEFERRAL_VOCABULARY_RE.test(line)) {
+        hits.push({ component, file, line: i + 1, text: line.trim() })
+      }
+    })
+  }
+  return hits
+}
+
+export function checkDeferralVocabularyCoverage(readmeText) {
+  const start = readmeText.indexOf('**8c-bis.')
+  const end = readmeText.indexOf('**8d.')
+  if (start === -1 || end === -1 || end < start) {
+    return { failures: [{ reason: '8c-bis section markers not found' }] }
+  }
+  const sectionText = readmeText.slice(start, end)
+  const citations = parseCitations(sectionText)
+  const tableComponents = new Set(
+    citations
+      .filter((c) => c.location === null && c.tableContext && c.tableContext.kind === 'stories')
+      .map((c) => c.tableContext.name.replace(/\.stories\.tsx$/, '')),
+  )
+  const excludedRefs = new Set(
+    citations
+      .filter((c) => c.location && c.location.endsWith('.stories.tsx'))
+      .flatMap((c) => {
+        const component = path.basename(c.location, '.stories.tsx')
+        const ranges = parseLineSpec(c.lineSpec) ?? []
+        const refs = []
+        for (const [startLine, endLine] of ranges) {
+          for (let l = startLine; l <= endLine; l++) refs.push(`${component}:${l}`)
+        }
+        return refs
+      }),
+  )
+  const allSrcFiles = walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
+  const hits = findDeferralHitsInStories(allSrcFiles)
+  const failures = []
+  for (const hit of hits) {
+    if (tableComponents.has(hit.component)) continue
+    if (excludedRefs.has(`${hit.component}:${hit.line}`)) continue
+    failures.push({
+      reason:
+        `${hit.component}.stories.tsx:${hit.line} carries deferral vocabulary ` +
+        `(${JSON.stringify(hit.text.slice(0, 80))}) but is neither a row in 8c-bis's own table ` +
+        'nor named in its own exclusion paragraph',
+    })
+  }
+  return { failures, hitCount: hits.length }
+}
+
+// --- Cell-count tallies (item 4 of the row-8 sweep's own remediation) --------------------------
+//
+// Row 8's own prose used to restate Record 1's and Record 3's cell counts by hand (T594's Amended
+// text bans exactly this: "Counts the script prints are cited, never restated in prose"), and
+// every restated triple this branch has carried was wrong at least once. This prints the count
+// instead, computed the same way both times a cell is rendered — from `el.coveredBy`
+// (Record 1) and each matrix row's own `hover`/`focusVisible`/`active`/`disabled`/`rest` fields
+// (Record 3) — so there is exactly one place a cell's classification is decided.
+//
+// A cell counts as the value it renders — `'none'` only for the literal `['none']`, `'unresolved'`
+// for any `'unresolved: <reason>'` whatever the reason, `'covered'` otherwise. This used to fold
+// every non-`play-driven` `unresolved` into `'none'`, on the reasoning that both state "no proof of
+// any frame for this state." The orchestrator rejected that: `'none'` is a confirmed absence, a gap
+// T595 must close; `'unresolved'` is this script declining to decide, and no finding may claim a
+// gap from it — the distinction row 8's own Method section exists to defend, and this tally is not
+// the one place allowed to erase it again. Count what the region actually renders; a reader who
+// wants "how many gaps and how many undecided" reads two numbers, not one merged into the other.
+function classifyCoverage(list) {
+  if (Array.isArray(list) && list.length === 1 && list[0] === 'none') return 'none'
+  const joined = Array.isArray(list) ? list.join('; ') : String(list)
+  if (joined.includes('unresolved:')) return 'unresolved'
+  return 'covered'
+}
+
+// Record 1: every local element's own hover/focus-visible/active cell (never `rest`, which
+// Record 1 does not track — "8c" above: "Record 1 tracks hover/focus-visible/active only").
+export function countRecord1Cells(computed) {
+  const counts = { none: 0, unresolved: 0, covered: 0 }
+  for (const { elements } of computed.localElements) {
+    for (const el of elements) {
+      counts[classifyCoverage(el.coveredBy.hover)]++
+      counts[classifyCoverage(el.coveredBy.focusVisible)]++
+      counts[classifyCoverage(el.coveredBy.active)]++
+    }
+  }
+  return counts
+}
+
+// Record 3: every primitive matrix's own real row (excluding the `(no local interactive
+// element)` placeholder and the `(unresolved matches — no row, printed rather than dropped)`
+// information row, neither of which is a variant/size combination FR-042 asks a cell of) across
+// all five of its own states — `rest`, `hover`, `focus-visible`, `press` (`active`) and
+// `disabled` — the matrix's full FR-042 vocabulary, not Record 1's narrower three.
+export function countRecord3Cells(computed) {
+  const counts = { none: 0, unresolved: 0, covered: 0 }
+  for (const rows of Object.values(computed.matrices)) {
+    for (const row of rows) {
+      if (row.variantSize === '(no local interactive element)') continue
+      if (row.variantSize.startsWith('(unresolved matches')) continue
+      counts[classifyCoverage(row.rest)]++
+      counts[classifyCoverage(row.hover)]++
+      counts[classifyCoverage(row.focusVisible)]++
+      counts[classifyCoverage(row.active)]++
+      counts[classifyCoverage(row.disabled)]++
+    }
+  }
+  return counts
+}
+
+function formatCounts(counts) {
+  const total = counts.none + counts.unresolved + counts.covered
+  return `${counts.none} none / ${counts.unresolved} unresolved / ${counts.covered} covered (${total} cells)`
+}
+
+// Names the axes and the row unit each total is built from, so a reader can reproduce the count
+// without inferring the convention from the two numbers alone — the omission that let a prior
+// version fold `unresolved` into `none` silently.
+export function logCellCounts(computed, logFn = log) {
+  const r1 = countRecord1Cells(computed)
+  const r3 = countRecord3Cells(computed)
+  logFn(
+    `record 1 cell counts (hover/focus-visible/active, one cell per state per local interactive ` +
+      `element): ${formatCounts(r1)}`,
+  )
+  logFn(
+    `record 3 cell counts (rest/hover/focus-visible/press/disabled, one cell per state per real ` +
+      `primitive-matrix row — the "(no local interactive element)" and "(unresolved matches…)" ` +
+      `rows excluded): ${formatCounts(r3)}`,
+  )
+  return { record1: r1, record3: r3 }
+}
+
 // --- main --------------------------------------------------------------------------------------
 
 function readAllSourceFiles() {
@@ -2493,6 +2933,7 @@ function main() {
   if (write) {
     writeFileSync(readmePath, formatted)
     log(`wrote the generated region for ${computed.componentDirCount} component directories.`)
+    logCellCounts(computed)
     return
   }
 
@@ -2517,8 +2958,49 @@ function main() {
     `${computed.componentDirCount} component directories; row 8's generated region matches a fresh ` +
       'render — no drift.',
   )
+  logCellCounts(computed)
+}
+
+function runCitationCheck() {
+  let readmeText
+  try {
+    readmeText = readFileSync(readmePath, 'utf8')
+  } catch {
+    fail(`could not read ${relPath(readmePath)}.`)
+    return
+  }
+  const result = checkCitations({ readmeText })
+  for (const failure of result.failures) {
+    console.error(`state-coverage: citation ${JSON.stringify(failure.raw)} — ${failure.reason}`)
+  }
+  const tally = checkHandoffTally(readmeText)
+  for (const failure of tally.failures) {
+    console.error(`state-coverage: handoff tally — ${failure.reason}`)
+  }
+  const vocab = checkDeferralVocabularyCoverage(readmeText)
+  for (const failure of vocab.failures) {
+    console.error(`state-coverage: 8c-bis vocabulary — ${failure.reason}`)
+  }
+  if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
+    fail(
+      `${result.failures.length} of ${result.parsedCount} row-8 citations failed verification, ` +
+        `${tally.failures.length} handoff-tally mismatch(es), ${vocab.failures.length} ` +
+        'uncovered 8c-bis deferral hit(s) (see above).',
+    )
+    return
+  }
+  log(`${result.parsedCount} row-8 citations parsed and verified against their own file:line.`)
+  log("8c's own per-file Handoffs counts and total agree with its own quoted citations.")
+  log(
+    `${vocab.hitCount} deferral-vocabulary hits across every *.stories.tsx; every one is either a ` +
+      "row in 8c-bis's own table or named in its own exclusion paragraph.",
+  )
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main()
+  if (process.argv.includes('--check-citations')) {
+    runCitationCheck()
+  } else {
+    main()
+  }
 }
