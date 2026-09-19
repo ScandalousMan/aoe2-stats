@@ -2010,9 +2010,9 @@ counting the citation once.
 | `player-avatar.md`         |        0 | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `player-colour-swatch.md`  |        1 | `:93` "The enclosing row link owns the hover fill" (filed under **N7**, no fixed owner — true wherever the swatch is composed: MatchRow, PlayerResultRow, FavouritesList).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `player-search.md`         |        0 | `:207-232` describes `Input`/`PlayerResultRow`'s own recipe directly, never delegated — corrected from the prior tally's 2; the two "per `Skeleton`"/cross-reference mentions (`:164`, `:253`-ish elsewhere) name a shared _rule_, not a painted state, the same distinction `N6` already draws for `analysis-timeline.md`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `privacy-data-rights.md`   |        1 | `:284-285` "owned by the `Button`s, the `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the `Acknowledgement` checkbox" — one citation, five names (filed under **DataExportPanel**/**AccountErasurePanel**). `:288` and `:313` elaborate two of those five (`DownloadLink` → Button/primary; `ErasedScreen`'s link → Link/inline) rather than adding new ones; `:420`'s "per `Button`" is a stacking-order convention (`recommended-position action first`), not a hover/focus/active deferral, and is not counted (corrected in this audit).                                                                                                                                                                                                                       |
+| `privacy-data-rights.md`   |        1 | `:284-285` "owned by the `Button`s, the `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the `Acknowledgement` checkbox" — one citation, five names (filed under **DataExportPanel**/**AccountErasurePanel**). `:288` and `:313` elaborate two of those five (`DownloadLink` → Button/primary; `ErasedScreen`'s link → Link/inline) rather than adding new ones; `privacy-data-rights.md:420`'s "per `Button`" is a stacking-order convention (`recommended-position action first`), not a hover/focus/active deferral — cited by its own full path, deliberately outside this row's bare-`:line` count, so it is verified without inflating the Handoffs tally (corrected in this audit).                                                                            |
 | `privacy-notice.md`        |        1 | `:523` "`ObjectionCallToAction` hovers as `Button/secondary`" (filed under **PrivacyNotice**, target primitives/Button, `secondary` — **F10**, false: the element this sentence names is the objection-form anchor, which paints no hover class at all).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `profile-summary.md`       |        5 | `:134` "switcher trigger and menu items per `Menu`" (hover) and `:141` "per `Button` and `Menu`" (active) — two citations; `:138`'s focus-visible bullet ("standard ring on the trigger, on menu items, and on the ghost actions") describes the ring directly rather than deferring, so it carries no citation here; `:869` "the pointer over the flag opens the tooltip" (hover), `:873` "the identity bar's focus stops are now the flag …" (focus-visible), `:882` "pressing the flag pins its tooltip open" (active) — three more citations. Five total: the switcher pair filed under **ProfileSummary**→Menu/Button (F15/F16-carried), the flag trio under **ProfileSummary**→Tooltip.                                                                                                             |
+| `profile-summary.md`       |        5 | `:134` "switcher trigger and menu items per `Menu`" (hover) and `:141` "per `Button` and `Menu`" (active) — two citations; `profile-summary.md:138`'s focus-visible bullet ("standard ring on the trigger, on menu items, and on the ghost actions") describes the ring directly rather than deferring — cited by its own full path so it is verified without counting toward this row's own tally; `:869` "the pointer over the flag opens the tooltip" (hover), `:873` "the identity bar's focus stops are now the flag …" (focus-visible), `:882` "pressing the flag pins its tooltip open" (active) — three more citations. Five total: the switcher pair filed under **ProfileSummary**→Menu/Button (F15/F16-carried), the flag trio under **ProfileSummary**→Tooltip.                               |
 | `replay-availability.md`   |        2 | `:157` "`AvailabilityBadge`: none, per `Badge`'s own rule" (filed under **ReplayAvailabilityList**, target primitives/Badge). `:158` "`DownloadAction`: per `Button`" (target primitives/Button, `secondary`\|`lg` — missed by the prior sweep, found in the pass before this one).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `shared-primitives.md`     |        5 | `:242-243` "— none; the root is not interactive. Actions inside it have their own" (hover / active) (filed under **N4**, Callout, no fixed owner). `:422` "The trigger button follows `Button` `secondary`'s own active recipe in full" (filed under **Menu**, target primitives/Button, `secondary` — provenance, not a gap). `:560` "hover, active and disabled all belong to the `Button`s inside it" (filed under **Dialog**, target primitives/Button — **F3**). `:616-617` "none unless the value is a link, in which case the standard ring applies to the link" (focus-visible) and `:618` "none" (active) (filed under **N5**, StatValue, no fixed owner and no live instance).                                                                                                                  |
 | `sign-in-screen.md`        |        1 | `:69` "owned entirely by `Button`" (filed under **SignInScreen**, target primitives/Button, `primary`\|`lg` — **F5**, true of the default state, imprecise about outcome-state buttons).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -2048,23 +2048,29 @@ unremarked otherwise; none dropped.
 **8c-bis. Story comments and rendered text carry the same claim a spec sentence does, and only
 spec files were counted before this pass.** Swept every `*.stories.tsx` under
 `packages/design-system/src/{primitives,composites,screens}` for the same deferral vocabulary —
-`` per `X` ``, `owned by`, `belongs`/`belong to`, `covered by`, `already covered`,
-`follows`/`follow … states`, `carries`/`carry its`/`their own` — in a story's own comment and in a
-`*NotApplicable` story's rendered text alike, not `*NotApplicable` stories only, since a comment
-attached to a real capturing story (`ThirdPartyObjectionForm`'s `Hover`/`Active`) defers a sibling
-control's state the same way. `scripts/checks/state-coverage.mjs --check-citations` greps this same
-vocabulary over the live tree every run and fails when a hit's component is neither a row below nor
-named in the exclusion paragraph after the table — the mechanism this pass adds because the prior
-"ten components, no others" claim was false three times over (`Section`, `Callout`, `Text`, found
-by that same grep, below). Thirteen components carry at least one; each is quoted, filed under the
-component whose story it is, and judged the same way as 8c — every citation here immediately
-followed by its own quote, so the checker can verify it the same way it verifies 8c's own table.
+`` per `X` ``, `owned (entirely) by`, `belongs`/`belong to`, `covered by`, `already covered`,
+`follows`/`follow … states`, `carries`/`carry its`/`their own`, and (widened by `reviewer`'s fourth
+REJECT on PR #80) ``are `X`'s``, ``live in `X`'s own``, `` deferred to `X` ``, `` `X`'s stories
+for ``, ``inherits `X`'s`` — in a story's own comment and in a `*NotApplicable` story's rendered
+text alike, not `*NotApplicable` stories only, since a comment attached to a real capturing story
+(`ThirdPartyObjectionForm`'s `Hover`/`Active`) defers a sibling control's state the same way, and
+across a comment block or a rendered `<p>`'s own text run rather than one physical line at a time,
+so a phrase prettier wraps is never invisible to it. `scripts/checks/state-coverage.mjs
+--check-citations` greps this same vocabulary over the live tree every run and fails when a hit is
+outside every cited line's own prose block below and outside the exclusion paragraph after the
+table — a hit is matched to the _block_ a table row's own cited line sits in, not merely to whether
+its component has a row at all (the fourth REJECT's own second finding: the old, component-level
+check let a new, false deferral inside an already-listed component pass unseen). Fourteen
+components carry at least one; each is quoted, filed under the component whose story it is, and
+judged the same way as 8c — every citation here immediately followed by its own quote, so the
+checker can verify it the same way it verifies 8c's own table.
 
 | Component                 | Quotes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AnalysisTimeline`        | `:176` "follow `Button`'s own states" (comment, quoting the spec) and `:183` "follow `Button`'s own states." (rendered text) — target `secondary\|lg`, no own hover — **false, same as F1** (the story's own rendered text repeats the spec's claim verbatim, so it is false for the identical reason).                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `MatchDetailPanel`        | `:522` "already covered by `Button`'s own stories" (comment) and `:532` "carries its own, per `Button`'s stories" (rendered text) — target `secondary\|lg` — **the comment already flags hover; this audit widens it**: focus-visible is also false here (`secondary\|lg`'s own fv cell is `ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible`, never `Button.stories.tsx`) and so is press (`ReplayAvailabilityList:Active`) — all three states are covered elsewhere, none by "`Button`'s own stories" as both the comment and the rendered text claim. T595's own known item (c) is this rendered text; this audit's correction is that the gap is three states wide, not one.                    |
 | `ReplayAvailabilityList`  | `:266` "`DownloadAction`: per `Button`" (comment, quoting the spec) on the `Hover` story itself — not a deferral, context for why the story exists — **not counted** (this is the story that supplies `secondary\|lg`'s own coverage, not a claim of absence).                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `FavouriteToggle`         | `:103` "owned entirely by `Button/ghost`" (comment, quoting the spec) on the `Hover` story itself — the same shape as `ReplayAvailabilityList`'s own `:266` above — not a deferral, context for why `Hover`/`FocusVisible`/`Active` are captured directly here — **not counted** (found only once the vocabulary sweep admitted `owned entirely by`, `reviewer`'s fourth REJECT on PR #80).                                                                                                                                                                                                                                                                                                                        |
 | `SignInScreen`            | `:79` "owned entirely by `Button`" (comment, quoting the spec) and `:86` "carries its own, per `Button`'s stories" (rendered text) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ThirdPartyObjectionForm` | `:68` "the submit button (per `Button`)" (comment on the `Hover` story) and `:91` "the button per `Button`" (comment on the `Active` story) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `AccountErasurePanel`     | `:106` "covered by `Button.stories.tsx`'s per-variant `FocusVisible`/`Active` stories" (comment) and `:123-124` "already covered by `Button.stories.tsx`'s per-variant stories" (rendered text) both claim the dialog's `destructive` action has press **false, same claim as F20, quoted twice**: `DestructiveActive` resolves to `destructive\|md`, never the `lg` this screen renders. Focus-visible is true in outcome but attributed to the wrong story by both quotes (`DestructiveFocusVisible`, itself `md`) — the real `lg` coverage is `Dialog:FocusVisible`, a story neither quote names (F20's own "true, by a different route than the one named").                                                   |
@@ -2087,10 +2093,17 @@ independent of `isPrimary`") is about the selection-badge _mark_, not a hover/fo
 signal — a different sense of "carries its own" than the one this row tracks.
 `PrivacyNotice.stories.tsx:27` ("renders nothing, per `Callout`'s own empty rule") is about the
 `empty` vocabulary entry, not hover/focus-visible/active.
-`AccountErasurePanel.stories.tsx:65-71`'s own comment and `ArchivalControl`'s own comment above are
-likewise read, not counted, for the same reason 8c-bis's own intro gives. No hit this grep finds
-outside these two groups (the table above, and this paragraph) exists — the check that replaces the
-hand claim this paragraph used to close with.
+`AccountErasurePanel.stories.tsx:65-66` ("not a `Button` instance and not owned by any dialog
+or … checkbox") is its own, separate comment block from the row's `:106`/`:123-124` citations above (no
+blank line separates a comment from the code or rendered text immediately below it, so those two
+share one block; this one, about `ErasedScreen`'s link, is a block of its own, closed by a blank
+line at `:72`) — it states the link is **not** deferred, the opposite of a deferral, so it is read
+and excluded rather than filed as a claim to judge. `Text.stories.tsx:156` ("Text never paints the
+disabled ink — that belongs to a disabled control's own label.", `:150`'s comment quoting the same
+sentence) is a second, separate block from the row's own `:134`/`:142-143` citations above (the
+`disabled` vocabulary entry, not hover/focus-visible/active — the same shape row 8's own `Badge`/
+`PrivacyNotice` exclusions above are). No hit this grep finds outside the table above and this
+paragraph exists — the check that replaces the hand claim this paragraph used to close with.
 
 **8d. The no-owner list — handoffs whose control no directory owns (unchanged in substance from
 the prior sweep; confirmed against the generated region above, which shows every one of `Panel`,
@@ -2104,11 +2117,15 @@ the prior sweep; confirmed against the generated region above, which shows every
   `Link` (§9) or sits inside a `Button`" (hover/active) and `structural-tier.md:552` "none of its
   own. `Text` is not focusable" (focus-visible) — no directory named (Link/Button/"whatever wraps
   it").
-- **N4.** `Callout`'s handoff, `shared-primitives.md:242-243` "— none; the root is not
-  interactive. Actions inside it have their own" — no directory named; its own illustrative
-  stories happen to use `Button/primary` at `md` (fully covered, see the generated `Button`
-  matrix's `primary|md` row), so those renders are true, but the claim as written governs whatever
-  a caller supplies.
+- **N4 (corrected in this pass: the render is not fully covered).** `Callout`'s handoff,
+  `shared-primitives.md:242-243` "— none; the root is not interactive. Actions inside it have
+  their own" — no directory named; its own illustrative stories happen to use `Button/primary` at
+  `md` (the generated `Button` matrix's own `primary|md` row), but that row reads `hover: none`,
+  `active: none` — **false for hover and press**, the same cells F14 and 8c-bis's own `Callout`
+  row (`:97`/`:103`) already read, and only `rest`/focus-visible are real there. The claim as
+  written governs whatever a caller supplies, and remains true in kind (the states genuinely are
+  the `Button`'s own to paint); it is this component's own illustrative render that is not, for
+  two of the three states Record 1 tracks.
 - **N5.** `StatValue`'s handoff, `shared-primitives.md:616-617` "none unless the value is a link,
   in which case the standard ring applies to the link" (focus-visible) and
   `shared-primitives.md:618` "none" (active) — no directory named, and no `StatValue` instance
@@ -2196,9 +2213,24 @@ generated region now settles on its own, and left two of them honestly `unresolv
   every state. The `InlineLink` recipe itself (`index.tsx:242`) no longer reads a confirmed `none`:
   `8e3006e9` fixed `resolveNameMatch`'s own `nth` branch (an unorderable helper's own render position
   is unknown, so a bare `nth` against it is ambiguous, not silently accepted), and its own three
-  cells now read `unresolved: … 4 candidates share role "link", nth 0 not orderable` — real, not a
-  confirmed absence, but still no proof of any frame for it either, the same practical gap under a
-  different word; T595 still owes it one. The contact-route link additionally paints **zero** state
+  cells now read `unresolved: … 4 candidates share role "link", nth 0 not orderable` —
+  **corrected in this pass: `unresolved` is this script declining to decide, and no finding may
+  claim a gap from it (row 8's own Method section, and T594's amendment) — the prior wording did
+  exactly that ("no proof of any frame for it either... T595 still owes it one"), the standard
+  this same audit holds every other finding to.** Checked before concluding either way: every
+  `visualForceState` in `PrivacyNotice.stories.tsx` targeting `role: 'link'` names `nth: 0`
+  only — no story here targets `nth: 1` or higher — and `nth: 0` is _not_ actually ambiguous:
+  `index.tsx:490` (the `Contents` entry) sorts before every textual `<InlineLink` occurrence in
+  this file (the first is `:646`), so `nth: 0` resolves to the `Contents` entry regardless of
+  where `InlineLink`'s own several call sites would rank against each other. What stays genuinely
+  open is a _general_ one — `resolveNameMatch` excludes a helper's declaration site from ordering
+  because it cannot enumerate the helper's own call sites' real line positions; teaching it to (a
+  textual or AST scan for `<InlineLink` occurrences, giving each its own sortable position) would
+  settle any future story targeting `nth: 1` or higher against a role a helper also shares, but
+  nothing in the tree today exercises that path, so this pass does not build it speculatively.
+  Off T595's ledger: there is no frame this component owes for `InlineLink`'s own cells, only an
+  open question a future `nth: 1+` story (or the enumeration above) would settle if either ever
+  arrives. The contact-route link additionally paints **zero** state
   classes of any kind (confirmed directly by Record 1's own hover/focus-visible/active columns) —
   a rendering defect, not only a missing frame. `privacy-notice.md:523`'s own claim
   ("`ObjectionCallToAction` hovers as `Button/secondary`") is **false**: the element it names is
@@ -2211,8 +2243,13 @@ generated region now settles on its own, and left two of them honestly `unresolv
   `screens/ArchivalControl`, `index.tsx:137`) — zero state classes of any kind, confirmed directly.
 - **F12 (pre-existing).** `AccountErasurePanel`'s acknowledgement checkbox (`index.tsx:270`) — a
   real focus ring, `coveredBy: none`; hover/active are correctly not applicable (no class painted).
-- **F13 (root cause of F1-F4, F6-F7).** The generated `Button` matrix's own rows: `secondary|md`,
-  `secondary|lg` and `destructive|md` all show `hover: none` as an _own_ story. `ghost/md`'s own
+- **F13 (root cause of F1-F4, F6-F7; corrected in this pass).** The generated `Button` matrix's own
+  rows: `secondary|md` and `destructive|md` both show `hover: none` — no story anywhere depicts
+  either. `secondary|lg` does not belong beside them: its own row reads `hover:
+ReplayAvailabilityList:Hover`, exactly F1's own "elsewhere" pointer — real, just not an _own_
+  story of `secondary|lg` (the region carries no separate "own story" column to distinguish that
+  with; F1, F2, F4, F6 and F7 all name the same `ReplayAvailabilityList:Hover` cell as coverage
+  elsewhere, never as a gap). `ghost/md`'s own
   hover **is** covered — `ghost|md`'s row now reads `FavouriteToggle:Hover` directly: the generator
   substitutes `FavouriteToggle.stories.tsx`'s own `args: { favourited: false, authenticated: true }`
   into `FavouriteToggle`'s guard tree (`if (!authenticated) return <SignedOutControl />`), which
@@ -2269,9 +2306,13 @@ statically)` in the generated `selection` row rather than credited as covered �
   is positive knowledge or it is not claimed). `profile-summary.md:134,141` do not distinguish the
   switcher (`selection`, partially covered) from the "Manage" menu (`actions`, no state confirmed
   and one hover/focus-visible pair left unresolved rather than ruled out). **Carried further, into the
-  story file itself (8c-bis):** `ProfileSummary.stories.tsx:493-495`'s own comment ("the switcher's
-  own hover/focus/active are `Menu`'s stories") and `:573`'s rendered text ("the switcher trigger and
-  its menu items carry theirs, per `Menu`") repeat the same claim as `profile-summary.md:134` and are
+  story file itself (8c-bis):** `ProfileSummary.stories.tsx:496`'s own comment ("The switcher's
+  own hover/focus/active are `Menu`'s stories" — corrected in this pass from `:493-495`, which
+  pointed at the leading spec-quote lines rather than the sentence itself) and
+  `ProfileSummary.stories.tsx:572-573`'s rendered text ("The switcher trigger and its menu items
+  carry theirs, per `Menu`" — corrected from the bare `:573` alone, one line short of the quote's
+  own start, and given its own full path here since 8e, unlike 8c's table, never omits one) repeat
+  the same claim as `profile-summary.md:134` and are
   false for the identical reason (F15: `Menu`'s trigger has no hover frame anywhere) — a comment and
   a rendered sentence defer a state exactly as a spec sentence does, and neither is a `*NotApplicable`
   story.
@@ -2307,15 +2348,21 @@ descendant (a@…/Table/index.tsx:281, hover: RowLinkHover)` (and `active: RowLi
   consumer actually renders. `FavouritesList/index.tsx:293` gives `RemoveControl` (`FavouriteToggle`)
   `size="lg"`, but `FavouriteToggle.stories.tsx`'s own `Hover`/`FocusVisible`/`Active`
   (`:107-119`) supply no `size` arg at all, resolving to `FavouriteToggle`'s own default —
-  the generated `Button` matrix's `ghost|lg` row (composed through `FavouriteToggle`'s own `Button`)
-  reads `hover: none`, `focus-visible: none`, `active: none`; every one of those three states has a
+  the generated `Button` matrix's `ghost|lg` row (corrected in this pass: composed through
+  `Button.stories.tsx`'s own `RealisticPageActions`, not `FavouriteToggle` — `FavouriteToggle`'s
+  own `lg` instance, `RealisticProfileHeader`, carries no `visualForceState` at all and folds into
+  the separate `ghost|unresolved` rest-only bucket instead, F14's own subject) reads `hover: none`,
+  `focus-visible: none`, `active: none`; every one of those three states has a
   frame only at `ghost|md`. The deferral is real in kind (the states are `Button`'s own paint) and
   false in size (no frame proves it at `lg`).
 - **F20 (new, 2026-09-18 remediation, same size-grain judgment).**
   `packages/design-system/src/screens/AccountErasurePanel/AccountErasurePanel.stories.tsx:106` and its
   rendered text at `:122-124` claim the dialog's `destructive` action has "focus-visible and press
   already covered by `Button.stories.tsx`'s per-variant stories (`DestructiveFocusVisible`,
-  `DestructiveActive`)". `index.tsx:218-220` renders "Erase my account" `destructive`/`size="lg"`; the
+  `DestructiveActive`)". `index.tsx:218-220` renders the button `destructive`/`size="lg"`;
+  `AccountErasurePanel/index.tsx:224` "Erase my account" (corrected in this pass: the label sits at
+  `:224`, not within the `:218-220`
+  span, which carries only `variant`/`size`) is the button's own accessible name. The
   generated `Button` matrix's `destructive|lg` row reads `hover: none`, `focus-visible:
 Dialog:FocusVisible` (real, composed through `Dialog`'s own `destructive`/`lg` confirm action —
   this half of the claim holds), `active: none` — `DestructiveActive` itself resolves to
@@ -2328,9 +2375,20 @@ by every triple this paragraph used to carry** (each of six historical counts he
 of them arithmetically impossible against the region's own real cell count; deleted below rather
 than corrected, since none is mechanically re-derivable from a commit already several edits behind
 the live tree). `node scripts/checks/state-coverage.mjs` prints both records' own tallies on every
-run, current against the live tree, classified once (`classifyCoverage`, that file's own source) —
+run, current against the live tree, classified once (`classifyCoverage`/`classifyClassHalf`, that
+file's own source) —
 **as the value each cell actually renders, never re-merged**: `none` only for the literal `none`,
-`unresolved` for any `unresolved: <reason>` whatever the reason, `covered` otherwise. An earlier
+`unresolved` for any `unresolved: <reason>` whatever the reason, `covered` otherwise. **Record 1's
+own cell renders two halves, `class → story`** (`el.hover`/`el.focus`/`el.focusVisible`/`el.active`,
+resolved through the same file's own `const`s and `cx()`/`clsx()` calls, on the left; `el.coveredBy`
+on the right) **and both are checked, not the right half alone** — `reviewer`'s fourth REJECT on
+PR #80 found `countRecord1Cells` reading only `el.coveredBy`, so eight cells whose own left half
+rendered `unresolved: className not fully resolved` (the class expression itself never resolved)
+were still counted by whatever their right half said — some `none`, some `covered`, neither a
+reading this pass actually has (the split and the corrected totals are the script's own printed
+line, cited above rather than restated here, exactly this paragraph's own rule). A cell whose class
+half is `unresolved` is now an `unresolved` cell regardless of its story half; Record 3 carries no
+such second column and was unaffected by this pass. An earlier
 version of this tally folded every non-`play-driven` `unresolved` into `none`, on the reasoning
 that both state "no proof of any frame for this state" — the orchestrator rejected that directly:
 `none` is a confirmed absence, a gap T595 must close; `unresolved` is this script declining to

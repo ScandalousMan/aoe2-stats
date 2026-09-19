@@ -2501,8 +2501,77 @@ export function extractCitationScope(readmeText) {
 // this page quote a spec sentence that itself contains a nested literal quote (`analysis-
 // timeline.md:288`'s `"Try requesting analysis"` button label) and escape it to keep the outer
 // quote closing where it should; `unescapeQuote` below undoes that before matching.
-const CITATION_RE =
-  /`([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`(\s*\(?\s*)(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)/g
+//
+// **The gap, three shapes** (widened by `reviewer`'s fourth REJECT on PR #80 — the plain form
+// alone admitted only whitespace and one optional `(`, which made ten citations carrying a real
+// adjacent quote invisible to this parser, several of them wrong line numbers a check that never
+// parsed them could not catch): the plain form itself (`` `sign-in-screen.md:69` ("owned entirely
+// by `Button`") ``, quote either double-quoted or a bare code span); a possessive annotation — an
+// apostrophe-`s`, an optional `own`, and up to three lowercase words, with an optional trailing `(`
+// (`` `:138`'s focus-visible bullet ("...") ``, `` `privacy-notice.md:523`'s own claim ("...") ``);
+// and a bold parenthetical aside ending in an em dash (`` `favourites-list.md:110-111`
+// (**corrected …**) — "..." ``). The latter two admit only a double-quoted string as the quote,
+// never the bare-code-span alternative: the annotation words themselves are prose that can end in
+// an unrelated inline-code reference (`` '...`ArchivalControl`'s own comment...' ``), and crediting
+// that as *this* citation's quote is worse than declining to parse it at all. A gap outside all
+// three shapes is not a citation under this definition — never silently accepted, caught instead by
+// `findUnparsedQuoteAdjacentCitations` below, which fails the run when a quote sits just past one.
+const CITATION_RE = new RegExp(
+  '`([\\w./-]*):(\\d+(?:-\\d+)?(?:,\\d+(?:-\\d+)?)*)`' +
+    '(?:' +
+    '\\s*\\(?\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|`([^`]*)`)' +
+    '|' +
+    "(?:\\s*'s\\s*(?:own\\s+)?(?:[a-z][a-z-]*\\s+){0,3}\\(?\\s*|" +
+    '\\s*\\(\\*\\*[\\s\\S]*?\\*\\*\\)\\s*—\\s*)"((?:[^"\\\\]|\\\\.)*)"' +
+    ')',
+  'g',
+)
+
+// Every `` `location:line` `` shaped span in scope, not already parsed above as a citation, that
+// is followed — within a short distance, stopping at the first backtick or table-cell boundary so
+// an unrelated later quote or another citation's own text is never mistaken for this one's — by a
+// real double-quoted string. Anything this finds is a citation whose own gap the widened parser
+// above still does not recognise: a malformed or misplaced citation, not a structural pointer
+// (the same fourth-REJECT instruction: "a citation outside the recognised format must fail, not be
+// skipped"). Only a plain `"` counts as the quote here, deliberately narrower than the parser's own
+// quote grammar — a bare backtick that follows is at least as likely to be the *next* citation's
+// own location marker as a quote, and this check would rather under-flag than manufacture a false
+// positive out of that ambiguity.
+const LOCATION_ONLY_RE = /`([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`/g
+export const UNPARSED_QUOTE_DISTANCE = 40
+
+export function findUnparsedQuoteAdjacentCitations(scopeText) {
+  const flat = scopeText.replace(/\n/g, ' ')
+  const parsedSpans = []
+  CITATION_RE.lastIndex = 0
+  let pm
+  while ((pm = CITATION_RE.exec(flat))) parsedSpans.push([pm.index, pm.index + pm[0].length])
+  const isParsed = (pos) => parsedSpans.some(([s, e]) => pos >= s && pos < e)
+
+  const results = []
+  LOCATION_ONLY_RE.lastIndex = 0
+  let lm
+  while ((lm = LOCATION_ONLY_RE.exec(flat))) {
+    if (isParsed(lm.index)) continue
+    const spanEnd = lm.index + lm[0].length
+    const budget = spanEnd + UNPARSED_QUOTE_DISTANCE
+    let pos = spanEnd
+    let quoteAt = -1
+    while (pos < budget && pos < flat.length) {
+      const ch = flat[pos]
+      if (ch === '"') {
+        quoteAt = pos
+        break
+      }
+      if (ch === '`' || ch === '|') break
+      pos++
+    }
+    if (quoteAt === -1) continue
+    const lineIndex = scopeText.slice(0, lm.index).split('\n').length - 1
+    results.push({ raw: lm[0], line: lineIndex + 1, gap: flat.slice(spanEnd, quoteAt) })
+  }
+  return results
+}
 
 function unescapeQuote(text) {
   return text.replace(/\\(.)/g, '$1')
@@ -2546,7 +2615,8 @@ export function parseCitations(scopeText) {
   CITATION_RE.lastIndex = 0
   let m
   while ((m = CITATION_RE.exec(flat))) {
-    const [raw, location, lineSpec, , doubleQuote, codeQuote] = m
+    const [raw, location, lineSpec, plainDoubleQuote, codeQuote, annotatedDoubleQuote] = m
+    const doubleQuote = plainDoubleQuote ?? annotatedDoubleQuote
     const quote = doubleQuote !== undefined ? unescapeQuote(doubleQuote) : codeQuote
     const lineIndex = scopeText.slice(0, m.index).split('\n').length - 1
     citations.push({
@@ -2687,7 +2757,18 @@ export function checkCitations({ readmeText }) {
       })
     }
   }
-  return { parsedCount: citations.length, failures }
+  const unparsed = findUnparsedQuoteAdjacentCitations(scopeText)
+  for (const u of unparsed) {
+    failures.push({
+      raw: u.raw,
+      reason:
+        `at row 8's own region, README.md line ${u.line}: a quote follows within ` +
+        `${UNPARSED_QUOTE_DISTANCE} characters (gap ${JSON.stringify(u.gap)}) but this span's own ` +
+        'gap does not parse as a citation — fix the citation (or its quote) rather than widen the ' +
+        'gap rule again for one more shape',
+    })
+  }
+  return { parsedCount: citations.length, unparsedQuoteCarryingCount: unparsed.length, failures }
 }
 
 // Item 2 of the row-8 sweep's own remediation: "have the checker assert each row's count equals
@@ -2749,8 +2830,49 @@ export function checkHandoffTally(readmeText) {
 // `*.stories.tsx` under this package's own three tiers for the vocabulary 8c-bis itself names, and
 // fails when a hit's component is neither a row in 8c-bis's own table nor named in its own
 // exclusion paragraph — so the next hit is a build failure, not a fifth review pass.
+//
+// Widened by `reviewer`'s fourth REJECT on PR #80, which found ordinary deferral wording the
+// original list missed entirely: `owned entirely by` (an intervening word breaks the plain `owned
+// by` phrase — `SignInScreen.stories.tsx:79`, `FavouriteToggle.stories.tsx:103`) and a possessive
+// attribution, `` are `X`'s `` (`ProfileSummary.stories.tsx:496`'s own "are `Menu`'s stories",
+// already quoted and judged false by row 8 itself — the sweep just never independently found it).
+// Four more shapes carry no live instance today but are named because the class of phrasing is the
+// point, not today's inventory: `` live in `X`'s own ``, `deferred to `X` ``, `` `X`'s stories for
+// ``, `` inherits `X`'s ``.
 export const DEFERRAL_VOCABULARY_RE =
-  /per `[A-Za-z]+`|owned by|belongs? to|covered by|already covered|follows? .{0,20}states|carr(?:y|ies) (?:its|their) own/g
+  /per `[A-Za-z]+`|owned (?:entirely )?by|belongs? to|covered by|already covered|follows? .{0,20}states|carr(?:y|ies) (?:its|their) own|are `[A-Za-z]+`'s\b|live in `[A-Za-z]+`'s own|deferred to `[A-Za-z]+`|`[A-Za-z]+`'s stories for|inherits `[A-Za-z]+`'s/g
+
+// A file's own "prose blocks" — maximal runs of non-blank lines — so a phrase this vocabulary
+// crosses a line boundary is never invisible only because prettier wrapped a comment or a rendered
+// `<p>`'s own text run split it (`reviewer`'s fourth REJECT, item 2: "make it latent-proof by
+// matching across a comment block or joining continuation lines"). No wrapped instance exists in
+// this tree today; this is what keeps the next one from being a fifth review pass. These blocks
+// also give `checkDeferralVocabularyCoverage` below the unit it excuses a hit at — a table
+// citation commonly quotes one clause of a longer comment-and-rendered-text claim (`AccountErasurePanel`'s
+// own privacy-data-rights.md paragraph, 101-135, cites only `:106`/`:123-124`), so matching at the
+// bare physical line the old, component-level check never had to distinguish would fail most of
+// this package's own existing, honest deferral prose.
+function splitIntoProseBlocks(text) {
+  const lines = text.split('\n')
+  const blocks = []
+  let i = 0
+  while (i < lines.length) {
+    if (lines[i].trim() === '') {
+      i++
+      continue
+    }
+    const startLine = i
+    let end = i
+    while (end + 1 < lines.length && lines[end + 1].trim() !== '') end++
+    blocks.push({
+      startLine: startLine + 1,
+      endLine: end + 1,
+      text: lines.slice(startLine, end + 1),
+    })
+    i = end + 1
+  }
+  return blocks
+}
 
 export function findDeferralHitsInStories(allSrcFiles) {
   const hits = []
@@ -2760,18 +2882,35 @@ export function findDeferralHitsInStories(allSrcFiles) {
     if (!segMatch) continue
     const component = segMatch[2]
     const text = readFileSync(file, 'utf8')
-    const lines = text.split('\n')
-    lines.forEach((line, i) => {
+    for (const block of splitIntoProseBlocks(text)) {
+      // Joined with real `\n`s first, then flattened to spaces for the regex — `parseCitations`'
+      // own idiom (`:2559` above) — so a match's character offset still recovers its own physical
+      // line by counting the newlines the *joined* text carries before it.
+      const joined = block.text.join('\n')
+      const flat = joined.replace(/\n/g, ' ')
       DEFERRAL_VOCABULARY_RE.lastIndex = 0
-      if (DEFERRAL_VOCABULARY_RE.test(line)) {
-        hits.push({ component, file, line: i + 1, text: line.trim() })
+      let m
+      while ((m = DEFERRAL_VOCABULARY_RE.exec(flat))) {
+        const lineOffset = joined.slice(0, m.index).split('\n').length - 1
+        const physicalLine = block.startLine + lineOffset
+        hits.push({
+          component,
+          file,
+          line: physicalLine,
+          blockStart: block.startLine,
+          blockEnd: block.endLine,
+          text: (block.text[lineOffset] ?? flat).trim(),
+        })
       }
-    })
+    }
   }
   return hits
 }
 
-export function checkDeferralVocabularyCoverage(readmeText) {
+export function checkDeferralVocabularyCoverage(
+  readmeText,
+  { allSrcFiles: injectedSrcFiles } = {},
+) {
   const start = readmeText.indexOf('**8c-bis.')
   const end = readmeText.indexOf('**8d.')
   if (start === -1 || end === -1 || end < start) {
@@ -2779,35 +2918,45 @@ export function checkDeferralVocabularyCoverage(readmeText) {
   }
   const sectionText = readmeText.slice(start, end)
   const citations = parseCitations(sectionText)
-  const tableComponents = new Set(
-    citations
-      .filter((c) => c.location === null && c.tableContext && c.tableContext.kind === 'stories')
-      .map((c) => c.tableContext.name.replace(/\.stories\.tsx$/, '')),
-  )
-  const excludedRefs = new Set(
-    citations
-      .filter((c) => c.location && c.location.endsWith('.stories.tsx'))
-      .flatMap((c) => {
-        const component = path.basename(c.location, '.stories.tsx')
-        const ranges = parseLineSpec(c.lineSpec) ?? []
-        const refs = []
-        for (const [startLine, endLine] of ranges) {
-          for (let l = startLine; l <= endLine; l++) refs.push(`${component}:${l}`)
-        }
-        return refs
-      }),
-  )
-  const allSrcFiles = walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
+  // Every line either the table's own row for a component, or the exclusion paragraph after it,
+  // cites for that component — "quote level," not "component level" (`reviewer`'s fourth REJECT,
+  // item 2's second weakness): the old check excused *any* hit in a component with *any* table
+  // row, so a new, false deferral landing in an already-listed component never failed. A hit is
+  // now excused only when one of the lines in its own prose block is itself one of that
+  // component's own cited lines — table and exclusion citations feed the same per-component line
+  // set, since either one is an equally real accounting of the hit, and a component's own comment
+  // routinely spans several blocks a single table citation cannot each name on its own (`Text`'s
+  // own `disabled`-vocabulary block, a second, separate block from its table row's own citations).
+  const citedLinesByComponent = new Map()
+  const addCitedLines = (component, lineSpec) => {
+    const ranges = parseLineSpec(lineSpec) ?? []
+    const lines = citedLinesByComponent.get(component) ?? new Set()
+    for (const [startLine, endLine] of ranges) {
+      for (let l = startLine; l <= endLine; l++) lines.add(l)
+    }
+    citedLinesByComponent.set(component, lines)
+  }
+  for (const c of citations) {
+    if (c.location === null && c.tableContext && c.tableContext.kind === 'stories') {
+      addCitedLines(c.tableContext.name.replace(/\.stories\.tsx$/, ''), c.lineSpec)
+    } else if (c.location && c.location.endsWith('.stories.tsx')) {
+      addCitedLines(path.basename(c.location, '.stories.tsx'), c.lineSpec)
+    }
+  }
+  const allSrcFiles =
+    injectedSrcFiles ?? walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
   const hits = findDeferralHitsInStories(allSrcFiles)
   const failures = []
   for (const hit of hits) {
-    if (tableComponents.has(hit.component)) continue
-    if (excludedRefs.has(`${hit.component}:${hit.line}`)) continue
+    const citedLines = citedLinesByComponent.get(hit.component)
+    const blockCited =
+      citedLines && Array.from(citedLines).some((l) => l >= hit.blockStart && l <= hit.blockEnd)
+    if (blockCited) continue
     failures.push({
       reason:
         `${hit.component}.stories.tsx:${hit.line} carries deferral vocabulary ` +
-        `(${JSON.stringify(hit.text.slice(0, 80))}) but is neither a row in 8c-bis's own table ` +
-        'nor named in its own exclusion paragraph',
+        `(${JSON.stringify(hit.text.slice(0, 80))}) but is neither within a cited line's own ` +
+        "prose block in 8c-bis's own table nor named in its own exclusion paragraph",
     })
   }
   return { failures, hitCount: hits.length }
@@ -2837,15 +2986,38 @@ function classifyCoverage(list) {
   return 'covered'
 }
 
+// Record 1's own left half — `stateCell`'s own `cls`, whether resolving the element's `className`
+// found a pseudo-class utility, found none, or could not resolve the expression at all — classified
+// the identical three ways, mirroring `stateCell`'s own rule (`classText ?? (classResolved ? 'none'
+// : 'unresolved: …')`) rather than re-deriving it, so the two can never drift apart.
+function classifyClassHalf(classText, classResolved) {
+  if (classText != null) return 'covered'
+  return classResolved ? 'none' : 'unresolved'
+}
+
 // Record 1: every local element's own hover/focus-visible/active cell (never `rest`, which
-// Record 1 does not track — "8c" above: "Record 1 tracks hover/focus-visible/active only").
+// Record 1 does not track — "8c" above: "Record 1 tracks hover/focus-visible/active only"). A cell
+// renders two halves, `class → story`, and both are counted — not `el.coveredBy` alone, which the
+// orchestrator's fifth REJECT (row 8's own recount, this pass) found undercounted `unresolved`:
+// eight cells render `unresolved: className not fully resolved` on their own left half while their
+// right half (`el.coveredBy`) independently reads `none` (five) or a real story (three) — the
+// element's own class expression was never resolved, so neither reading is knowledge this pass
+// actually has. A cell whose class half is `unresolved` is an `unresolved` cell regardless of what
+// its story half says; otherwise the story half alone decides, exactly as before.
 export function countRecord1Cells(computed) {
   const counts = { none: 0, unresolved: 0, covered: 0 }
   for (const { elements } of computed.localElements) {
     for (const el of elements) {
-      counts[classifyCoverage(el.coveredBy.hover)]++
-      counts[classifyCoverage(el.coveredBy.focusVisible)]++
-      counts[classifyCoverage(el.coveredBy.active)]++
+      const classResolved = (el.classUnresolvedRefs ?? []).length === 0
+      const pairs = [
+        [el.hover, el.coveredBy.hover],
+        [combineFocusClassText(el.focus, el.focusVisible), el.coveredBy.focusVisible],
+        [el.active, el.coveredBy.active],
+      ]
+      for (const [classText, coverageList] of pairs) {
+        const classHalf = classifyClassHalf(classText, classResolved)
+        counts[classHalf === 'unresolved' ? 'unresolved' : classifyCoverage(coverageList)]++
+      }
     }
   }
   return counts
@@ -2981,6 +3153,14 @@ function runCitationCheck() {
   for (const failure of vocab.failures) {
     console.error(`state-coverage: 8c-bis vocabulary — ${failure.reason}`)
   }
+  // Printed on every run, pass or fail, so silence can never pass for scope: how many
+  // `` `location:line` `` spans in row 8's own citation prose actually parsed as citations, and how
+  // many more, outside that recognised format, still carry a quote close enough to need one.
+  log(
+    `${result.parsedCount} \`file:line\` spans parsed as citations; ` +
+      `${result.unparsedQuoteCarryingCount} more, outside the recognised citation format, still ` +
+      'carry a nearby quote (each of those is also a failure above, not merely a count).',
+  )
   if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
     fail(
       `${result.failures.length} of ${result.parsedCount} row-8 citations failed verification, ` +

@@ -6,7 +6,7 @@
 // `node --test` conventions: real functions, small fixtures, node:assert/strict, no mocking.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -41,7 +41,8 @@ import {
   findRenderJsxProps,
   impliedRoleForPrimitiveInstance,
   computeStateCoverage,
-  extractCitationScope,
+  checkCitations,
+  findUnparsedQuoteAdjacentCitations,
   parseCitations,
   parseLineSpec,
   resolveCitationLocation,
@@ -917,6 +918,77 @@ test("renderRecord1 keeps a confirmed 'none' when the className is fully resolve
   }
   const rendered = renderRecord1(computed)
   assert.match(rendered, /\bnone → none\b/)
+})
+
+// --- Row 8's own recount (`reviewer`'s fourth REJECT on PR #80, item B): `countRecord1Cells` used
+// to read `el.coveredBy` alone, so a cell whose *left* half rendered 'unresolved: className not
+// fully resolved' was still counted by its right half — `none` when `coveredBy` said `none`,
+// `covered` when a story happened to be named there. Both are wrong: the element's own class
+// expression was never resolved, so neither half is knowledge this pass actually has. A cell whose
+// class half is unresolved must count as `unresolved` regardless of what its story half says. ------
+
+test('countRecord1Cells: a cell whose own class half is unresolved counts as unresolved even when its story half reads none', () => {
+  const sourceFile = parse(UNRESOLVED_CLASS_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          { ...el, coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] } },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  // Pre-fix, this rendered `unresolved: className not fully resolved → none` (asserted above) but
+  // counted as `none` on all three states, since `countRecord1Cells` only ever read `coveredBy`.
+  assert.deepEqual(countRecord1Cells(computed), { none: 0, unresolved: 3, covered: 0 })
+})
+
+test('countRecord1Cells: a cell whose own class half is unresolved counts as unresolved even when its story half names a real story (contrast — the other wrong half of the pre-fix bug)', () => {
+  const sourceFile = parse(UNRESOLVED_CLASS_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            ...el,
+            coveredBy: { hover: ['SomeStory'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  // Pre-fix, hover's right half named a real story, so it counted as `covered` even though the
+  // left half of the same cell was never resolved — the "three counted covered" half of the eight
+  // cells row 8's own recount found.
+  assert.deepEqual(countRecord1Cells(computed), { none: 0, unresolved: 3, covered: 0 })
+})
+
+test('countRecord1Cells: a fully-resolved className that genuinely carries no pseudo-class utility still counts a confirmed none (contrast)', () => {
+  const source = `const el = <button className="bg-surface text-text-primary">Click</button>`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(el.classUnresolvedRefs.length, 0)
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          { ...el, coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] } },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  assert.deepEqual(countRecord1Cells(computed), { none: 3, unresolved: 0, covered: 0 })
 })
 
 // --- REJECT on #80: play-driven focus is 'unresolved', not covered. `tests/visual/stories.spec.ts`
@@ -1970,6 +2042,69 @@ test('resolveCitationLocation: an ambiguous suffix (two files with the same tail
   assert.equal(resolved, null)
 })
 
+// --- `reviewer`'s fourth REJECT on PR #80, item A3: `checkCitations` was never called by any test
+// — only its own pieces (`parseCitations`, `resolveCitationLocation`, `matchQuoteAgainstText`) were.
+// `checkCitations` itself reads the live tree for resolution (`specsDir`/`srcDir` are module-level
+// constants, not injectable — the same reason `checkDeferralVocabularyCoverage`'s own live-tree
+// call is the one made injectable instead), so these end-to-end tests point at real, stable files
+// under this package's own `specs/` and `src/`, reading their content fresh rather than hard-coding
+// it, so the test cannot drift from what it asserts against. ------------------------------------
+
+test('checkCitations: a citation whose quote text is not present at its own cited location fails (mis-cited quote), end to end', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    'prose `GOVERNANCE.md:1` "this exact sentence does not appear on that line, guaranteed by ' +
+    'construction" more prose.\n\n' +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /quote not found/)
+})
+
+test('checkCitations: a citation whose quote text is present at its own cited location passes, end to end (contrast)', () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `prose \`Text/index.tsx:1\` "${firstLine}" more prose.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.parsedCount, 1)
+})
+
+test('checkCitations: a citation whose location resolves to no file fails', () => {
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    'prose `NoSuchComponent/index.tsx:1` "anything" more prose.\n\n' +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0].reason, /did not resolve to exactly one file/)
+})
+
+test('findUnparsedQuoteAdjacentCitations: a `file:line` span outside every recognised gap shape, followed closely by a real quote, is flagged', () => {
+  const scopeText = '`index.tsx:218-220` renders "Erase my account" `destructive`.'
+  const results = findUnparsedQuoteAdjacentCitations(scopeText)
+  assert.equal(results.length, 1)
+  assert.equal(results[0].raw, '`index.tsx:218-220`')
+  assert.equal(results[0].gap, ' renders ')
+})
+
+test('findUnparsedQuoteAdjacentCitations: a structural pointer with no nearby quote at all is never flagged (contrast)', () => {
+  const scopeText = "`index.tsx:127,138`, `variant={primaryAction.variant ?? 'destructive'}`."
+  assert.deepEqual(findUnparsedQuoteAdjacentCitations(scopeText), [])
+})
+
+test('findUnparsedQuoteAdjacentCitations: a span already recognised by the widened CITATION_RE is never double-flagged (contrast)', () => {
+  const scopeText = '`:138`\'s focus-visible bullet ("standard ring on the trigger").'
+  assert.deepEqual(findUnparsedQuoteAdjacentCitations(scopeText), [])
+})
+
 test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
   const readme =
     '**8c. Record 2 — every handoff.**\n\n' +
@@ -2034,28 +2169,106 @@ test('findDeferralHitsInStories: a non-story .tsx file is never scanned', () => 
   })
 })
 
-test('checkDeferralVocabularyCoverage: a hit whose component has no table row and no exclusion fails', () => {
-  const readme =
-    '**8c-bis. Story comments.**\n\n' +
-    '| Component | Quotes |\n' +
-    '| --- | --- |\n' +
-    '| `Known` | `:1` "owned by `Button`" — filed. |\n\n' +
-    'No exclusions here.\n\n' +
-    '**8d. The no-owner list**\n'
-  // findDeferralHitsInStories reads the *real* package tree (it is not injectable through this
-  // entry point, by design — the check has to see the live source, the same reason
-  // `state-coverage.mjs`'s own consistency mode never takes a fixture tree either), so this test
-  // only exercises the table/exclusion-parsing half directly, via the same `parseCitations` path
-  // `checkDeferralVocabularyCoverage` itself calls.
-  const start = readme.indexOf('**8c-bis.')
-  const end = readme.indexOf('**8d.')
-  const citations = parseCitations(readme.slice(start, end))
-  const tableComponents = new Set(
-    citations
-      .filter((c) => c.location === null && c.tableContext && c.tableContext.kind === 'stories')
-      .map((c) => c.tableContext.name),
-  )
-  assert.deepEqual([...tableComponents], ['Known'])
+// --- `reviewer`'s fourth REJECT on PR #80, item A3: no test proved any of the three row-8 gates
+// actually fails on bad input — this one was named "…fails" but only ever exercised
+// `parseCitations` by hand, never called `checkDeferralVocabularyCoverage` itself. `allSrcFiles` is
+// injectable for exactly this reason: the check has to see the live source on every real run (the
+// same reason `state-coverage.mjs`'s own consistency mode never takes a fixture tree either), but a
+// test proving the *gate* fails needs a fixture it controls, not the live tree. -------------------
+
+test('checkDeferralVocabularyCoverage: a real hit whose component has no table row and no exclusion fails, end to end', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Stray', 'Stray.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    writeFileSync(storyFile, '// hover — none; owned by `Button` and by nothing else.\n')
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button`" — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    assert.equal(result.failures.length, 1)
+    assert.match(result.failures[0].reason, /Stray\.stories\.tsx:1 carries deferral vocabulary/)
+  })
+})
+
+test('checkDeferralVocabularyCoverage: the same hit passes once its own line is cited in its table row (contrast)', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Known', 'Known.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    writeFileSync(storyFile, '// hover — none; owned by `Button` and by nothing else.\n')
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    assert.deepEqual(result.failures, [])
+  })
+})
+
+test('checkDeferralVocabularyCoverage: two hits in one prose block are both excused by one cited line inside it (block-joining, latent-proof against a wrapped phrase)', () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Known', 'Known.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    // Two lines, one block (no blank line between them): the table only cites line 1, but line 2
+    // carries its own, independent deferral hit.
+    writeFileSync(
+      storyFile,
+      '// hover — none; owned by `Button` and by nothing else.\n' +
+        '// press — none either; covered by `Button` alone.\n',
+    )
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    // Both lines sit in the same prose block as the cited `:1`, so both are excused.
+    assert.deepEqual(result.failures, [])
+  })
+})
+
+test("checkDeferralVocabularyCoverage: a hit in a *second, separate* prose block of an already-listed component still fails (quote-level, not component-level — the fourth REJECT's own second finding)", () => {
+  withFixtureTree((dir) => {
+    const storyFile = path.join(dir, 'src', 'primitives', 'Known', 'Known.stories.tsx')
+    mkdirSync(path.dirname(storyFile), { recursive: true })
+    // Two blocks, separated by a blank line: the table cites a line in the first block only. The
+    // second block carries its own, independent deferral hit that no citation names.
+    writeFileSync(
+      storyFile,
+      '// hover — none; owned by `Button` and by nothing else.\n' +
+        '\n' +
+        '// press — none either; covered by `Button` alone.\n',
+    )
+    const readme =
+      '**8c-bis. Story comments.**\n\n' +
+      '| Component | Quotes |\n' +
+      '| --- | --- |\n' +
+      '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n\n' +
+      'No exclusions here.\n\n' +
+      '**8d. The no-owner list**\n'
+    const result = checkDeferralVocabularyCoverage(readme, {
+      allSrcFiles: [storyFile.split(path.sep).join('/')],
+    })
+    // Pre-fix, `Known` having *any* table row excused every hit anywhere in its own file — this is
+    // exactly the shape `reviewer`'s fourth REJECT found: a new, false deferral in an
+    // already-listed component's own second block passed unseen.
+    assert.equal(result.failures.length, 1)
+    assert.match(result.failures[0].reason, /Known\.stories\.tsx:3 carries deferral vocabulary/)
+  })
 })
 
 test('countRecord1Cells/countRecord3Cells: classify none, the one play-driven unresolved, and covered', () => {
