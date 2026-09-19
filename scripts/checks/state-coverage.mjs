@@ -92,7 +92,50 @@ function tagNameOf(node) {
 
 // --- Same-file string/class resolution ------------------------------------------------------
 
-export function resolveClassParts(expr, constMap, unresolved = []) {
+// T595 (row 8, H5, the `className not fully resolved` family): `resolveClassParts` used to have
+// exactly one namespace to resolve an identifier against — `constMap`, module-top-level `const`s
+// only — so a *function-local* `const` a className expression itself references (`Button`'s own
+// `const classes = cx(...)`, the JSX attribute's real value) was never even attempted: the bare
+// identifier `classes` fell straight to the catch-all, unresolved, and every fragment `classes`
+// itself composes (a real, resolvable object-literal lookup and a real, resolvable conditional
+// among them) stayed invisible behind it. `scopes` (default `null`, so every pre-T595 call site —
+// `buildConstStringMap` below among them — keeps its exact prior behaviour unchanged) threads three
+// additional, independent namespaces through every recursive call:
+//   - `localConsts`: the function-local `const` bindings in scope at the JSX node's own position
+//     (`walkJsxWithContext`'s own map, `context.localConsts` — the same read the dynamic-`role={…}`
+//     resolution already relies on). Checked *before* `constMap`, matching real JS lexical scoping
+//     (a local declaration shadows an outer one of the same name, never observed in this tree today
+//     but the correct order regardless) — resolved by recursing into the local `const`'s own
+//     initializer expression, through this same function, with this same identifier removed from
+//     the scope handed to that recursive call (self-reference protection; no local `const` in this
+//     codebase is self-referential, but a cycle must stay unresolved rather than loop forever).
+//   - `defaultScope`: an `evaluateExpr`-shaped scope (`{ resolved, value }` per name) carrying the
+//     owning component's own **default** `variant`/`size` value, when it destructures one
+//     (`buildVariantSizeDefaultScope`, `findVariantSizeDefaults` reused rather than reinvented —
+//     the exact default Record 3 already resolves an *omitted* prop to for its own axis matrix).
+//     Consulted by two node shapes below, both only when a real default value settles them: an
+//     `ElementAccessExpression` whose key is that prop (`variantClasses[variant]`) and a
+//     `ConditionalExpression` whose condition is a real comparison against that prop
+//     (`variant === 'primary' ? primaryFocusRing : focusRing`). **The decision this closes, stated
+//     once here since both shapes share it**: `variant` is a real axis (record 3's own matrix
+//     already carries every value it can take), and record 1 has no room for one — one row per
+//     element, not one row per element per variant. Resolving `variantClasses[variant]` by
+//     unioning *every* entry the object holds would compile and would be wrong: the combined string
+//     is not the classes any single variant actually renders, which is exactly the "flattened,
+//     true of none of them" shape this task was warned against. Resolving it against the
+//     component's own **default** variant instead is not a guess: it is the one configuration a
+//     bare `<Button className="…">` — the exact call this element's own `className` slot exists
+//     for — actually renders as, the same "resting configuration" Record 3's own doc comment
+//     already names ("resolved against the primitive's own defaults when a prop is omitted").
+//     Record 1 documents that resting configuration; Record 3 still carries the full per-variant
+//     breakdown for anyone who needs the rest. A component with no default for the prop the
+//     expression keys on (`defaultScope` has no entry) leaves both shapes exactly as unresolved as
+//     before — never guessed further.
+//   - `objectConstMap`: every module-top-level `const NAME = { ... }` object literal, keyed by
+//     `NAME` (`buildConstObjectMap`, Button's own `variantClasses`/`sizeClasses`) — the namespace
+//     `ElementAccessExpression` resolves its own object against, parallel to how `constMap` already
+//     serves a plain identifier.
+export function resolveClassParts(expr, constMap, unresolved = [], scopes = null) {
   if (!expr) return []
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
     return [expr.text]
@@ -106,52 +149,172 @@ export function resolveClassParts(expr, constMap, unresolved = []) {
     return parts
   }
   if (ts.isParenthesizedExpression(expr)) {
-    return resolveClassParts(expr.expression, constMap, unresolved)
+    return resolveClassParts(expr.expression, constMap, unresolved, scopes)
   }
   if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
     return [
-      ...resolveClassParts(expr.left, constMap, unresolved),
-      ...resolveClassParts(expr.right, constMap, unresolved),
+      ...resolveClassParts(expr.left, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.right, constMap, unresolved, scopes),
     ]
+  }
+  // T595: `cond && 'classes'` — the left operand is a *condition*, never itself a class-string
+  // fragment (`Table`'s own `href && 'border-l-2 … hover:bg-surface-sunken …'`). Resolving it as if
+  // it might contribute text pushed a bare boolean identifier like `href` into `unresolved` for no
+  // reason: this pass cannot know the condition's runtime value, so the right-hand class string is
+  // already kept unconditionally (dual-branch-conservative, T594's own rule), and the left side was
+  // never going to contribute anything a real capture renders — only ever a false "cannot resolve"
+  // signal. `||`/`??` keep the prior dual-branch treatment: unlike `&&`, *either* side can be the
+  // real rendered value depending on which one is truthy (`a || b`), so both stay real candidates,
+  // the same conservative-superset treatment the ternary below still falls back to.
+  if (
+    ts.isBinaryExpression(expr) &&
+    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+  ) {
+    return resolveClassParts(expr.right, constMap, unresolved, scopes)
   }
   if (
     ts.isBinaryExpression(expr) &&
-    (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+    (expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
       expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
   ) {
     return [
-      ...resolveClassParts(expr.left, constMap, unresolved),
-      ...resolveClassParts(expr.right, constMap, unresolved),
+      ...resolveClassParts(expr.left, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.right, constMap, unresolved, scopes),
     ]
   }
   if (ts.isConditionalExpression(expr)) {
+    // T595: when `scopes.defaultScope` actually settles the condition (`variant === 'primary'`
+    // against the component's own default `variant`), only the branch that default really takes is
+    // real — see this function's own top comment for why the other branch is not also included.
+    if (scopes?.defaultScope) {
+      const cond = evaluateExpr(expr.condition, scopes.defaultScope)
+      if (cond.resolved) {
+        return resolveClassParts(
+          cond.value ? expr.whenTrue : expr.whenFalse,
+          constMap,
+          unresolved,
+          scopes,
+        )
+      }
+    }
     return [
-      ...resolveClassParts(expr.whenTrue, constMap, unresolved),
-      ...resolveClassParts(expr.whenFalse, constMap, unresolved),
+      ...resolveClassParts(expr.whenTrue, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.whenFalse, constMap, unresolved, scopes),
     ]
   }
   if (ts.isArrayLiteralExpression(expr)) {
-    return expr.elements.flatMap((el) => resolveClassParts(el, constMap, unresolved))
+    return expr.elements.flatMap((el) => resolveClassParts(el, constMap, unresolved, scopes))
   }
   if (ts.isCallExpression(expr)) {
     const callee = expr.expression.getText()
     if (callee === 'cx' || callee === 'clsx') {
-      return expr.arguments.flatMap((arg) => resolveClassParts(arg, constMap, unresolved))
+      return expr.arguments.flatMap((arg) => resolveClassParts(arg, constMap, unresolved, scopes))
     }
     unresolved.push(`<call:${callee}>`)
     return []
   }
+  // T595: `variantClasses[variant]` — resolved only when the object is a known module-level object
+  // literal (`scopes.objectConstMap`) *and* the key resolves against the component's own default
+  // (`scopes.defaultScope`, this function's own top comment for the reasoning). Anything else (a
+  // computed object, a key with no default to fall back on) stays unresolved, printed as the same
+  // `<ElementAccessExpression>` shape the pre-T595 catch-all already produced for it — a shape this
+  // pass still cannot reduce, not a guess dressed up as one.
+  if (ts.isElementAccessExpression(expr)) {
+    const objectName = ts.isIdentifier(expr.expression) ? expr.expression.text : null
+    const objectLiteral =
+      objectName && scopes?.objectConstMap ? scopes.objectConstMap.get(objectName) : null
+    const key =
+      objectLiteral && scopes?.defaultScope
+        ? evaluateExpr(expr.argumentExpression, scopes.defaultScope)
+        : UNRESOLVED
+    if (objectLiteral && key.resolved) {
+      const propNode = objectLiteral.properties.find(
+        (p) => ts.isPropertyAssignment(p) && propertyKeyText(p.name) === key.value,
+      )
+      if (propNode) {
+        return resolveClassParts(propNode.initializer, constMap, unresolved, scopes)
+      }
+    }
+    unresolved.push('<ElementAccessExpression>')
+    return []
+  }
   if (ts.isIdentifier(expr)) {
+    // T595: a function-local `const` in scope at this exact JSX position (`Button`'s own `classes`)
+    // — checked before `constMap`, matching real lexical scoping (see this function's own top
+    // comment). Resolved by recursing into its own initializer with itself removed from the scope
+    // handed onward, so a genuine cycle stays unresolved rather than looping.
+    if (scopes?.localConsts?.has(expr.text)) {
+      const initializer = scopes.localConsts.get(expr.text)
+      const nextLocalConsts = new Map(scopes.localConsts)
+      nextLocalConsts.delete(expr.text)
+      return resolveClassParts(initializer, constMap, unresolved, {
+        ...scopes,
+        localConsts: nextLocalConsts,
+      })
+    }
     if (constMap.has(expr.text)) return constMap.get(expr.text)
+    // T595: `className` bare, resolved through neither namespace above, is this design system's
+    // own universal "caller extension slot" — every primitive/composite/screen here declares
+    // `className?: string` and forwards it as the trailing `cx(…, className)` argument (grepping
+    // `className)` across `packages/design-system/src` finds the idiom on 25 of this file's own
+    // sibling components, not a one-off). Its contents belong to the caller, never to this
+    // component's own source, and record 1 already treated it exactly this way for every element
+    // whose *other* fragments supply a real class for a given state (`MatchRow`/`PlayerResultRow`'s
+    // own row link: the unresolved `className` was already invisible to `stateCell`'s own
+    // classText-first priority). This closes the mirror case honestly: when nothing else this
+    // component's own code declares paints a given state either, that is real, positive knowledge
+    // of what this component's own source contributes — the caller-controlled remainder is out of
+    // this register's own scope by the same convention already applied everywhere else, not a new
+    // one invented for this case. Contributes no parts and is never pushed to `unresolved` — the one
+    // identifier this branch does not treat as "this pass does not know".
+    if (expr.text === 'className') return []
     unresolved.push(expr.text)
     return []
   }
   if (ts.isJsxExpression(expr) && expr.expression) {
-    return resolveClassParts(expr.expression, constMap, unresolved)
+    return resolveClassParts(expr.expression, constMap, unresolved, scopes)
   }
   unresolved.push(`<${ts.SyntaxKind[expr.kind] ?? 'expr'}>`)
   return []
+}
+
+function propertyKeyText(name) {
+  if (ts.isIdentifier(name)) return name.text
+  if (ts.isStringLiteral(name)) return name.text
+  return null
+}
+
+// T595: every module-top-level `const NAME = { ... }` object literal (`Button`'s own
+// `variantClasses`/`sizeClasses`), keyed by `NAME` — `resolveClassParts`'s own
+// `ElementAccessExpression` branch resolves its object against this map, parallel to how `constMap`
+// already serves a plain identifier reference. Kept to *object literals* only (never a computed or
+// spread-built object), the same "found, never guessed" bar `buildConstStringMap` already holds
+// its own module scan to.
+export function buildConstObjectMap(sourceFile) {
+  const map = new Map()
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    for (const decl of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
+      if (ts.isObjectLiteralExpression(decl.initializer)) {
+        map.set(decl.name.text, decl.initializer)
+      }
+    }
+  }
+  return map
+}
+
+// T595: an `evaluateExpr`-shaped scope (`{ resolved, value }` per name) carrying only the two names
+// `findVariantSizeDefaults` already extracts from this file's own component — `resolveClassParts`'s
+// own top comment states the reasoning this rests on (record 1 documents the default/resting
+// configuration; record 3 still owns the full per-variant/size axis). A component with no default
+// for either prop leaves that name absent from the scope, not present with a guessed value.
+export function buildVariantSizeDefaultScope(sourceFile) {
+  const { variant, size } = findVariantSizeDefaults(sourceFile)
+  const scope = new Map()
+  if (variant != null) scope.set('variant', { resolved: true, value: variant })
+  if (size != null) scope.set('size', { resolved: true, value: size })
+  return scope
 }
 
 export function buildConstStringMap(sourceFile) {
@@ -620,6 +783,11 @@ export function findLocalElements(
   helperIterationContext = new Map(),
 ) {
   const found = []
+  // T595: computed once per file, not per element — `resolveClassParts`'s own top comment states
+  // what these two feed and why (an `ElementAccessExpression`'s own object namespace, and the
+  // component's default `variant`/`size` two node shapes below resolve against).
+  const constObjectMap = buildConstObjectMap(sourceFile)
+  const defaultScope = buildVariantSizeDefaultScope(sourceFile)
   walkJsxWithContext(sourceFile, (node, context) => {
     const tagName = tagNameOf(node)
     if (!/^[a-z]/.test(tagName)) return
@@ -635,6 +803,7 @@ export function findLocalElements(
             : classAttr.initializer,
           constMap,
           unresolved,
+          { localConsts: context.localConsts, defaultScope, objectConstMap: constObjectMap },
         )
       : []
     const pseudo = extractPseudoClasses(parts)

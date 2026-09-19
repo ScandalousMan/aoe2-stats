@@ -2669,6 +2669,236 @@ test('contrast: a dynamic role={…} stays "unresolved: dynamic role" when no st
   assert.deepEqual(row.coveredBy.active, ['unresolved: dynamic role'])
 })
 
+// --- T595 (row 8, H5): closing the `unresolved: className not fully resolved` family — a
+// function-local `const` (`Button`'s own `classes`) resolveClassParts previously never looked up at
+// all, an `ElementAccessExpression` into a module-level object literal keyed by the component's own
+// default `variant`/`size` (never every value the prop can take — a real axis record 3 already
+// owns), the left operand of `cond && 'classes'` no longer pushed into `unresolved` as if it were
+// itself class text, and the bare `className` passthrough prop treated as the caller-controlled
+// slot it is rather than a genuinely unknown fragment. Each mechanism gets its own resolving case
+// and its own contrast (boundary) case below, run against the pre-T595 code first (see the task
+// hand-back for the failing output this file's own history records). --------------------------------
+
+const BUTTON_SHAPE_INDEX_SOURCE = `
+const variantClasses = {
+  primary: 'bg-accent hover:bg-accent-hover active:bg-accent-active',
+  secondary: 'bg-surface hover:bg-surface-sunken active:bg-background active:ring-2',
+}
+const sizeClasses = {
+  md: 'h-10 px-4',
+  lg: 'h-12 px-6',
+}
+const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-ring'
+const primaryFocusRing = 'focus-visible:outline-2 focus-visible:outline-accent-contrast'
+
+export function Widget({ variant = 'secondary', size = 'md', className }) {
+  const classes = cx(
+    'inline-flex items-center',
+    sizeClasses[size],
+    variantClasses[variant],
+    variant === 'primary' ? primaryFocusRing : focusRing,
+    className,
+  )
+  return <button className={classes}>Go</button>
+}
+`
+
+test("buildElementMatrix (via computeStateCoverage): a function-local const (Button's own `classes`) fully resolves through an ElementAccessExpression keyed on the component's own default variant, a conditional on that same prop, and the className passthrough — classUnresolvedRefs empty, class text is the DEFAULT variant's own (Button shape)", () => {
+  const storiesSource = `
+    import { Widget } from './index'
+    const meta = { component: Widget, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/index.tsx'), BUTTON_SHAPE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/Widget.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Widget')
+  const button = elements.find((el) => el.tag === 'button')
+  assert.ok(button, "Widget's own button must be found as a local element")
+  assert.deepEqual(button.classUnresolvedRefs, [])
+  // `secondary` (the default): its own hover/active classes, never `primary`'s — the "record 1
+  // shows the default configuration" decision `resolveClassParts`'s own top comment states.
+  assert.equal(button.hover, 'hover:bg-surface-sunken')
+  assert.equal(button.active, 'active:bg-background active:ring-2')
+  // `variant === 'primary'` is false for the default — `focusRing`, never `primaryFocusRing`.
+  assert.equal(button.focusVisible, 'focus-visible:outline-2 focus-visible:outline-offset-ring')
+})
+
+test('contrast: the same ElementAccessExpression and conditional stay genuinely unresolved when the component declares no default for the prop they key on — never guessed, the dual-branch-conservative conditional fallback still runs', () => {
+  const noDefaultSource = BUTTON_SHAPE_INDEX_SOURCE.replace(
+    "export function Widget({ variant = 'secondary', size = 'md', className }) {",
+    'export function Widget({ variant, size, className }) {',
+  )
+  const storiesSource = `
+    import { Widget } from './index'
+    const meta = { component: Widget, args: { variant: 'primary', size: 'md' } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/index.tsx'), noDefaultSource],
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/Widget.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Widget')
+  const button = elements.find((el) => el.tag === 'button')
+  // No default for `variant` in source (a story's own `args` is not this mechanism — record 1
+  // resolves against the *component's own* default, per the shared decision, never a story's) —
+  // the `ElementAccessExpression` stays unresolved, and so does the conditional it shares a
+  // condition-prop with, since `evaluateExpr` against an empty default scope cannot settle it
+  // either; both branches of the conditional are kept instead, the pre-T595 conservative behaviour.
+  assert.ok(button.classUnresolvedRefs.includes('<ElementAccessExpression>'))
+  assert.equal(button.hover, null)
+  // Dual-branch fallback: both `primaryFocusRing` (whenTrue) and `focusRing` (whenFalse) show, in
+  // that order, since this pass cannot know which one the caller's own `variant` will pick.
+  assert.equal(
+    button.focusVisible,
+    'focus-visible:outline-2 focus-visible:outline-accent-contrast focus-visible:outline-2 focus-visible:outline-offset-ring',
+  )
+})
+
+const TABLE_HREF_GUARD_INDEX_SOURCE = `
+export function Row({ rows, getHref }) {
+  return (
+    <table>
+      <tbody>
+        {rows.map((row) => {
+          const href = getHref?.(row)
+          return (
+            <tr
+              key={row.id}
+              className={cx('border-b', href && 'hover:bg-surface-sunken active:bg-surface-sunken')}
+            >
+              <td>{row.label}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+`
+
+test("buildElementMatrix (via computeStateCoverage): the left operand of `cond && 'classes'` (Table's own `href &&`) is never pushed into classUnresolvedRefs — only the right-hand class string is a real candidate", () => {
+  const storiesSource = `
+    import { Row } from './index'
+    const meta = { component: Row, args: { rows: [{ id: '1', label: 'x' }] } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Row' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Row/index.tsx'), TABLE_HREF_GUARD_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Row/Row.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Row')
+  const row = elements.find((el) => el.tag === 'tr')
+  assert.ok(row, "Row's own tr must be found as a local element")
+  assert.deepEqual(row.classUnresolvedRefs, [])
+  assert.equal(row.hover, 'hover:bg-surface-sunken')
+  assert.equal(row.active, 'active:bg-surface-sunken')
+  assert.equal(row.focusVisible, null)
+})
+
+const OR_GUARD_INDEX_SOURCE = `
+export function Panel({ emphasis }) {
+  return <div className={cx('rounded-panel', emphasis || 'hover:opacity-75')}>Content</div>
+}
+`
+
+test("contrast: the left operand of `cond || 'classes'` still IS a real candidate and stays pushed into classUnresolvedRefs when it cannot resolve — the && fix does not widen to || (Table's own href shape is && specifically)", () => {
+  const storiesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Panel' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel/index.tsx'), OR_GUARD_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Panel/Panel.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Panel's own div must be found as a local element (it carries a hover: class)")
+  assert.ok(div.classUnresolvedRefs.includes('emphasis'))
+})
+
+const CALLER_CLASSNAME_ONLY_INDEX_SOURCE = `
+export function Region({ className }) {
+  return (
+    <div role="region" tabIndex={0} className={cx('overflow-auto rounded-panel', focusRing, className)}>
+      Content
+    </div>
+  )
+}
+const focusRing = 'focus-visible:outline-ring'
+`
+
+test("buildElementMatrix (via computeStateCoverage): a bare className passthrough (Table's own div shape) contributes no parts and is never pushed into classUnresolvedRefs — the element's own hover/active read a confirmed absence once nothing else paints them", () => {
+  const storiesSource = `
+    import { Region } from './index'
+    const meta = { component: Region, args: {} }
+    export default meta
+    export const FocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'region', name: 'Content' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Region' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Region/index.tsx'), CALLER_CLASSNAME_ONLY_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Region/Region.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Region')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Region's own div must be found as a local element")
+  assert.deepEqual(div.classUnresolvedRefs, [])
+  assert.equal(div.hover, null)
+  assert.equal(div.active, null)
+  assert.equal(div.focusVisible, 'focus-visible:outline-ring')
+})
+
+const CALLER_CLASSNAME_PLUS_CALL_INDEX_SOURCE = `
+export function Region({ className }) {
+  return (
+    <div className={cx('overflow-auto hover:bg-surface-sunken', getExtraClasses(), className)}>
+      Content
+    </div>
+  )
+}
+`
+
+test('contrast: a genuinely unresolvable fragment that is not literally named `className` (an unknown function call) still stays in classUnresolvedRefs — the passthrough rule is narrowly scoped to that one identifier, not a blanket "ignore what this pass cannot read"', () => {
+  const storiesSource = `
+    import { Region } from './index'
+    const meta = { component: Region, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Region' }]
+  const filesByPath = new Map([
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Region/index.tsx'),
+      CALLER_CLASSNAME_PLUS_CALL_INDEX_SOURCE,
+    ],
+    [path.join(REPO_SRC_DIR, 'primitives/Region/Region.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Region')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Region's own div must be found as a local element (it carries a hover: class)")
+  assert.ok(div.classUnresolvedRefs.includes('<call:getExtraClasses>'))
+})
+
 // --- Citation checker (reviewer's third REJECT on PR #80) --------------------------------------
 
 test('parseLineSpec: single line, a range, and a comma list of both', () => {
