@@ -919,7 +919,7 @@ trio depicts a `Contents` entry; `ArchivalControl`'s privacy link has no state s
 level down that `Button.stories.tsx` captures hover for `primary` only, so two screens deferring their
 `secondary` and `destructive` buttons' hover to it were deferring to no frame. These are
 `packages/design-system/specs/README.md`'s register row 8 (H5): T594 sweeps every component rather than
-trusting this list, T598/T599/T595 fix what the sweep finds, and T596 fixes the two anchors
+trusting this list, T595 fixes what the sweep finds, and T596 fixes the two anchors
 after a design decision.
 
 **So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a
