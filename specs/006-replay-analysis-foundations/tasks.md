@@ -189,7 +189,7 @@ the view fails the suite.
 **Story goal (US1)**: a reader can look up any datum and learn whether it can be known.
 **(US3)**: a tier is a property of a value, enforced by a type rather than by a habit.
 
-- [ ] T609 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/tiers.py`: the closed, ordered
+- [x] T609 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/tiers.py`: the closed, ordered
       tier set observed → decoded → reconstructed → derived → inferred → predicted (**FR-008**), as
       an enumeration with a total order, plus the weakest-input combinator that computes a result
       tier from its inputs' tiers. A caller must have **no way** to assert a tier stronger than its
@@ -197,13 +197,13 @@ the view fails the suite.
       deliberately **absent** from this enumeration: it is a register classification and nothing is
       ever published at it, which is why **FR-001** lists seven classifications and **FR-008** six
       tiers. Tiers with no producer in this feature exist from the start so that 007 adds no member
-- [ ] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
+- [x] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
       closed, ordered level set and a mandatory non-empty basis, constructed together. A number is
       **not accepted in any form** — no float field, no numeric coercion, no optional escape hatch —
       because a recording carries no outcome against which a probability could be calibrated, and an
       uncalibrated number is an invented value wearing a measured one's clothes. An empty or
       whitespace basis fails construction
-- [ ] T611 [P] [US3] Write `packages/core/tests/test_truth_types.py` covering T609 and T610 before
+- [x] T611 [P] [US3] Write `packages/core/tests/test_truth_types.py` covering T609 and T610 before
       either is implemented, `xfail(strict=True)`: the order is total; the combinator returns the
       weakest input; a confidence rejects a float, an integer, a numeric string and an empty basis;
       a confidence attached to a value at a tier above inferred is an error, because doubt advertised
