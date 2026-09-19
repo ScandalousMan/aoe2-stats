@@ -232,7 +232,7 @@ the view fails the suite.
       empty requirement set had better mean it. The starting-state data are **blocked** on the named
       decoder, **not non-determinable**: [research.md](./research.md) **D1** measured them present
       in the file, and the register is the one place that distinction has to be right
-- [ ] T615 [US1] Implement `packages/core/src/aoe2stats_core/truth/register.py`: the entry type and
+- [x] T615 [US1] Implement `packages/core/src/aoe2stats_core/truth/register.py`: the entry type and
       a loader that reads the TOML with the standard library, so `packages/core` keeps its
       zero-dependency rule. Loading **fails at import** on any of the eight refusals in
       [contracts/register.md](./contracts/register.md) — duplicate id, value outside a closed set, a
@@ -255,7 +255,7 @@ the view fails the suite.
       `REGISTER.md`, look up unit loss, and confirm — **without opening a Python file** — that it
       says why it cannot be known, what that costs, that the approximation is not acceptable, and
       what would change the answer. If that read needs the source, the renderer is the defect
-- [ ] T619 [US3] Implement `packages/core/src/aoe2stats_core/truth/validate.py` with the ten rules in
+- [x] T619 [US3] Implement `packages/core/src/aoe2stats_core/truth/validate.py` with the ten rules in
       [contracts/analysis-document.md](./contracts/analysis-document.md), against the document shape
       that exists today — the identity, inferred and gap blocks arrive in later phases and their
       rules are written now and exercised against hand-built documents. Rules 1 and 2 are
@@ -271,7 +271,7 @@ the view fails the suite.
       suite, confirm the view test fails and prints the regeneration command, regenerate, confirm
       green, and leave the register as it was. A gate nobody has seen fail is a gate nobody knows
       the shape of
-- [ ] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
+- [x] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
       module docstring and enforce it in T615's loader: a datum id states what was measured, never
       what a reader would like it to mean (**FR-012**) — commands rather than times, ordered rather
       than built. This is 003's **FR-043b** discipline applied to the whole vocabulary, and it is
