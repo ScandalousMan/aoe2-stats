@@ -92,7 +92,50 @@ function tagNameOf(node) {
 
 // --- Same-file string/class resolution ------------------------------------------------------
 
-export function resolveClassParts(expr, constMap, unresolved = []) {
+// T595 (row 8, H5, the `className not fully resolved` family): `resolveClassParts` used to have
+// exactly one namespace to resolve an identifier against — `constMap`, module-top-level `const`s
+// only — so a *function-local* `const` a className expression itself references (`Button`'s own
+// `const classes = cx(...)`, the JSX attribute's real value) was never even attempted: the bare
+// identifier `classes` fell straight to the catch-all, unresolved, and every fragment `classes`
+// itself composes (a real, resolvable object-literal lookup and a real, resolvable conditional
+// among them) stayed invisible behind it. `scopes` (default `null`, so every pre-T595 call site —
+// `buildConstStringMap` below among them — keeps its exact prior behaviour unchanged) threads three
+// additional, independent namespaces through every recursive call:
+//   - `localConsts`: the function-local `const` bindings in scope at the JSX node's own position
+//     (`walkJsxWithContext`'s own map, `context.localConsts` — the same read the dynamic-`role={…}`
+//     resolution already relies on). Checked *before* `constMap`, matching real JS lexical scoping
+//     (a local declaration shadows an outer one of the same name, never observed in this tree today
+//     but the correct order regardless) — resolved by recursing into the local `const`'s own
+//     initializer expression, through this same function, with this same identifier removed from
+//     the scope handed to that recursive call (self-reference protection; no local `const` in this
+//     codebase is self-referential, but a cycle must stay unresolved rather than loop forever).
+//   - `defaultScope`: an `evaluateExpr`-shaped scope (`{ resolved, value }` per name) carrying the
+//     owning component's own **default** `variant`/`size` value, when it destructures one
+//     (`buildVariantSizeDefaultScope`, `findVariantSizeDefaults` reused rather than reinvented —
+//     the exact default Record 3 already resolves an *omitted* prop to for its own axis matrix).
+//     Consulted by two node shapes below, both only when a real default value settles them: an
+//     `ElementAccessExpression` whose key is that prop (`variantClasses[variant]`) and a
+//     `ConditionalExpression` whose condition is a real comparison against that prop
+//     (`variant === 'primary' ? primaryFocusRing : focusRing`). **The decision this closes, stated
+//     once here since both shapes share it**: `variant` is a real axis (record 3's own matrix
+//     already carries every value it can take), and record 1 has no room for one — one row per
+//     element, not one row per element per variant. Resolving `variantClasses[variant]` by
+//     unioning *every* entry the object holds would compile and would be wrong: the combined string
+//     is not the classes any single variant actually renders, which is exactly the "flattened,
+//     true of none of them" shape this task was warned against. Resolving it against the
+//     component's own **default** variant instead is not a guess: it is the one configuration a
+//     bare `<Button className="…">` — the exact call this element's own `className` slot exists
+//     for — actually renders as, the same "resting configuration" Record 3's own doc comment
+//     already names ("resolved against the primitive's own defaults when a prop is omitted").
+//     Record 1 documents that resting configuration; Record 3 still carries the full per-variant
+//     breakdown for anyone who needs the rest. A component with no default for the prop the
+//     expression keys on (`defaultScope` has no entry) leaves both shapes exactly as unresolved as
+//     before — never guessed further.
+//   - `objectConstMap`: every module-top-level `const NAME = { ... }` object literal, keyed by
+//     `NAME` (`buildConstObjectMap`, Button's own `variantClasses`/`sizeClasses`) — the namespace
+//     `ElementAccessExpression` resolves its own object against, parallel to how `constMap` already
+//     serves a plain identifier.
+export function resolveClassParts(expr, constMap, unresolved = [], scopes = null) {
   if (!expr) return []
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
     return [expr.text]
@@ -106,52 +149,172 @@ export function resolveClassParts(expr, constMap, unresolved = []) {
     return parts
   }
   if (ts.isParenthesizedExpression(expr)) {
-    return resolveClassParts(expr.expression, constMap, unresolved)
+    return resolveClassParts(expr.expression, constMap, unresolved, scopes)
   }
   if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
     return [
-      ...resolveClassParts(expr.left, constMap, unresolved),
-      ...resolveClassParts(expr.right, constMap, unresolved),
+      ...resolveClassParts(expr.left, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.right, constMap, unresolved, scopes),
     ]
+  }
+  // T595: `cond && 'classes'` — the left operand is a *condition*, never itself a class-string
+  // fragment (`Table`'s own `href && 'border-l-2 … hover:bg-surface-sunken …'`). Resolving it as if
+  // it might contribute text pushed a bare boolean identifier like `href` into `unresolved` for no
+  // reason: this pass cannot know the condition's runtime value, so the right-hand class string is
+  // already kept unconditionally (dual-branch-conservative, T594's own rule), and the left side was
+  // never going to contribute anything a real capture renders — only ever a false "cannot resolve"
+  // signal. `||`/`??` keep the prior dual-branch treatment: unlike `&&`, *either* side can be the
+  // real rendered value depending on which one is truthy (`a || b`), so both stay real candidates,
+  // the same conservative-superset treatment the ternary below still falls back to.
+  if (
+    ts.isBinaryExpression(expr) &&
+    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+  ) {
+    return resolveClassParts(expr.right, constMap, unresolved, scopes)
   }
   if (
     ts.isBinaryExpression(expr) &&
-    (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+    (expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
       expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
   ) {
     return [
-      ...resolveClassParts(expr.left, constMap, unresolved),
-      ...resolveClassParts(expr.right, constMap, unresolved),
+      ...resolveClassParts(expr.left, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.right, constMap, unresolved, scopes),
     ]
   }
   if (ts.isConditionalExpression(expr)) {
+    // T595: when `scopes.defaultScope` actually settles the condition (`variant === 'primary'`
+    // against the component's own default `variant`), only the branch that default really takes is
+    // real — see this function's own top comment for why the other branch is not also included.
+    if (scopes?.defaultScope) {
+      const cond = evaluateExpr(expr.condition, scopes.defaultScope)
+      if (cond.resolved) {
+        return resolveClassParts(
+          cond.value ? expr.whenTrue : expr.whenFalse,
+          constMap,
+          unresolved,
+          scopes,
+        )
+      }
+    }
     return [
-      ...resolveClassParts(expr.whenTrue, constMap, unresolved),
-      ...resolveClassParts(expr.whenFalse, constMap, unresolved),
+      ...resolveClassParts(expr.whenTrue, constMap, unresolved, scopes),
+      ...resolveClassParts(expr.whenFalse, constMap, unresolved, scopes),
     ]
   }
   if (ts.isArrayLiteralExpression(expr)) {
-    return expr.elements.flatMap((el) => resolveClassParts(el, constMap, unresolved))
+    return expr.elements.flatMap((el) => resolveClassParts(el, constMap, unresolved, scopes))
   }
   if (ts.isCallExpression(expr)) {
     const callee = expr.expression.getText()
     if (callee === 'cx' || callee === 'clsx') {
-      return expr.arguments.flatMap((arg) => resolveClassParts(arg, constMap, unresolved))
+      return expr.arguments.flatMap((arg) => resolveClassParts(arg, constMap, unresolved, scopes))
     }
     unresolved.push(`<call:${callee}>`)
     return []
   }
+  // T595: `variantClasses[variant]` — resolved only when the object is a known module-level object
+  // literal (`scopes.objectConstMap`) *and* the key resolves against the component's own default
+  // (`scopes.defaultScope`, this function's own top comment for the reasoning). Anything else (a
+  // computed object, a key with no default to fall back on) stays unresolved, printed as the same
+  // `<ElementAccessExpression>` shape the pre-T595 catch-all already produced for it — a shape this
+  // pass still cannot reduce, not a guess dressed up as one.
+  if (ts.isElementAccessExpression(expr)) {
+    const objectName = ts.isIdentifier(expr.expression) ? expr.expression.text : null
+    const objectLiteral =
+      objectName && scopes?.objectConstMap ? scopes.objectConstMap.get(objectName) : null
+    const key =
+      objectLiteral && scopes?.defaultScope
+        ? evaluateExpr(expr.argumentExpression, scopes.defaultScope)
+        : UNRESOLVED
+    if (objectLiteral && key.resolved) {
+      const propNode = objectLiteral.properties.find(
+        (p) => ts.isPropertyAssignment(p) && propertyKeyText(p.name) === key.value,
+      )
+      if (propNode) {
+        return resolveClassParts(propNode.initializer, constMap, unresolved, scopes)
+      }
+    }
+    unresolved.push('<ElementAccessExpression>')
+    return []
+  }
   if (ts.isIdentifier(expr)) {
+    // T595: a function-local `const` in scope at this exact JSX position (`Button`'s own `classes`)
+    // — checked before `constMap`, matching real lexical scoping (see this function's own top
+    // comment). Resolved by recursing into its own initializer with itself removed from the scope
+    // handed onward, so a genuine cycle stays unresolved rather than looping.
+    if (scopes?.localConsts?.has(expr.text)) {
+      const initializer = scopes.localConsts.get(expr.text)
+      const nextLocalConsts = new Map(scopes.localConsts)
+      nextLocalConsts.delete(expr.text)
+      return resolveClassParts(initializer, constMap, unresolved, {
+        ...scopes,
+        localConsts: nextLocalConsts,
+      })
+    }
     if (constMap.has(expr.text)) return constMap.get(expr.text)
+    // T595: `className` bare, resolved through neither namespace above, is this design system's
+    // own universal "caller extension slot" — every primitive/composite/screen here declares
+    // `className?: string` and forwards it as the trailing `cx(…, className)` argument (grepping
+    // `className)` across `packages/design-system/src` finds the idiom on 25 of this file's own
+    // sibling components, not a one-off). Its contents belong to the caller, never to this
+    // component's own source, and record 1 already treated it exactly this way for every element
+    // whose *other* fragments supply a real class for a given state (`MatchRow`/`PlayerResultRow`'s
+    // own row link: the unresolved `className` was already invisible to `stateCell`'s own
+    // classText-first priority). This closes the mirror case honestly: when nothing else this
+    // component's own code declares paints a given state either, that is real, positive knowledge
+    // of what this component's own source contributes — the caller-controlled remainder is out of
+    // this register's own scope by the same convention already applied everywhere else, not a new
+    // one invented for this case. Contributes no parts and is never pushed to `unresolved` — the one
+    // identifier this branch does not treat as "this pass does not know".
+    if (expr.text === 'className') return []
     unresolved.push(expr.text)
     return []
   }
   if (ts.isJsxExpression(expr) && expr.expression) {
-    return resolveClassParts(expr.expression, constMap, unresolved)
+    return resolveClassParts(expr.expression, constMap, unresolved, scopes)
   }
   unresolved.push(`<${ts.SyntaxKind[expr.kind] ?? 'expr'}>`)
   return []
+}
+
+function propertyKeyText(name) {
+  if (ts.isIdentifier(name)) return name.text
+  if (ts.isStringLiteral(name)) return name.text
+  return null
+}
+
+// T595: every module-top-level `const NAME = { ... }` object literal (`Button`'s own
+// `variantClasses`/`sizeClasses`), keyed by `NAME` — `resolveClassParts`'s own
+// `ElementAccessExpression` branch resolves its object against this map, parallel to how `constMap`
+// already serves a plain identifier reference. Kept to *object literals* only (never a computed or
+// spread-built object), the same "found, never guessed" bar `buildConstStringMap` already holds
+// its own module scan to.
+export function buildConstObjectMap(sourceFile) {
+  const map = new Map()
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    for (const decl of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
+      if (ts.isObjectLiteralExpression(decl.initializer)) {
+        map.set(decl.name.text, decl.initializer)
+      }
+    }
+  }
+  return map
+}
+
+// T595: an `evaluateExpr`-shaped scope (`{ resolved, value }` per name) carrying only the two names
+// `findVariantSizeDefaults` already extracts from this file's own component — `resolveClassParts`'s
+// own top comment states the reasoning this rests on (record 1 documents the default/resting
+// configuration; record 3 still owns the full per-variant/size axis). A component with no default
+// for either prop leaves that name absent from the scope, not present with a guessed value.
+export function buildVariantSizeDefaultScope(sourceFile) {
+  const { variant, size } = findVariantSizeDefaults(sourceFile)
+  const scope = new Map()
+  if (variant != null) scope.set('variant', { resolved: true, value: variant })
+  if (size != null) scope.set('size', { resolved: true, value: size })
+  return scope
 }
 
 export function buildConstStringMap(sourceFile) {
@@ -284,6 +447,19 @@ function labelWrapsControl(node) {
   ts.forEachChild(node, visit)
   return found
 }
+// T595 (row 8, H5, the `noImpliedRoleReason` family): every tag below carries exactly one ARIA
+// role regardless of its own attributes — the same property that makes a bare per-tag constant
+// honest here, unlike `<input>` (handled separately through `INPUT_TYPE_ROLE`/`deriveStructuralRole`
+// because its role depends on `type`). `h1`-`h6` are always `heading` (`aria-level` follows the
+// number, immaterial to matching a `role`). The table family is extended past the one tag the
+// sweep actually found a local element for (`tr`, `Table`'s own row) to its whole fixed-role
+// group — `table`, `thead`/`tbody`/`tfoot` (`rowgroup`) and `td` (`cell`) — so the next component
+// that puts a hover class on a `<td>` does not reopen this map one tag at a time. `th` is
+// deliberately absent: its own role is `columnheader` or `rowheader` depending on its `scope`
+// attribute (`col`/`colgroup` vs `row`/`rowgroup`) or, lacking one, its position in the table — the
+// same shape as `<input>`'s `type`-dependent role, not a constant this map can hold honestly, and no
+// `th` in this tree carries a pseudo-class today for a `deriveStructuralRole` entry to be written
+// and tested against.
 const INTRINSIC_ROLE = {
   a: 'link',
   button: 'button',
@@ -292,6 +468,18 @@ const INTRINSIC_ROLE = {
   textarea: 'textbox',
   summary: 'button',
   main: 'main',
+  h1: 'heading',
+  h2: 'heading',
+  h3: 'heading',
+  h4: 'heading',
+  h5: 'heading',
+  h6: 'heading',
+  table: 'table',
+  thead: 'rowgroup',
+  tbody: 'rowgroup',
+  tfoot: 'rowgroup',
+  tr: 'row',
+  td: 'cell',
 }
 
 // `<input>`'s accessible role depends on its own `type`, not a fixed intrinsic mapping — an
@@ -595,6 +783,11 @@ export function findLocalElements(
   helperIterationContext = new Map(),
 ) {
   const found = []
+  // T595: computed once per file, not per element — `resolveClassParts`'s own top comment states
+  // what these two feed and why (an `ElementAccessExpression`'s own object namespace, and the
+  // component's default `variant`/`size` two node shapes below resolve against).
+  const constObjectMap = buildConstObjectMap(sourceFile)
+  const defaultScope = buildVariantSizeDefaultScope(sourceFile)
   walkJsxWithContext(sourceFile, (node, context) => {
     const tagName = tagNameOf(node)
     if (!/^[a-z]/.test(tagName)) return
@@ -610,6 +803,7 @@ export function findLocalElements(
             : classAttr.initializer,
           constMap,
           unresolved,
+          { localConsts: context.localConsts, defaultScope, objectConstMap: constObjectMap },
         )
       : []
     const pseudo = extractPseudoClasses(parts)
@@ -669,6 +863,12 @@ export function findLocalElements(
       text: literalTextOf(node) || ariaLabelText(opening),
       hasDisabledAttr,
       attrExprs,
+      // Every local `const` in scope at this exact JSX position (`MenuItemRow`'s own `const role =
+      // variant === 'selection' ? 'menuitemradio' : 'menuitem'`) — the same read
+      // `findPrimitiveInstances` already keeps for a dynamic `disabled`/`loading` expression, needed
+      // here so a dynamic `role={role}` attribute (`attrExprs.get('role').expr`, below) can be
+      // resolved against a specific story's own scope (T595, `noImpliedRoleReason`'s "dynamic role").
+      localConsts: context.localConsts,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
       isInsideIteration: context.inIteration || Boolean(inheritedIteration),
@@ -1369,14 +1569,16 @@ function resolvePlayBody(storyObj, sourceFile) {
   return null
 }
 
-// The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
-// component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
-// shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
-// read `args`. Only the *first* JSX element named `componentName` found in `render`'s own body is
-// read — every real story in this tree renders its subject exactly once.
-export function findRenderJsxProps(storyObj, componentName) {
+// The first JSX element named `componentName` anywhere in a story's own `render: () => (...)`
+// body, or `null` when the story has no `render` at all (the component is then instantiated
+// implicitly from `args`, always "rendered") or when `render` never mounts it — the shape every
+// `*NotApplicable` placeholder story in this tree uses (`Dialog`'s own
+// `EmptyHoverActiveDisabledNotApplicable`, `<p>A dialog with no actions...</p>`, no `<Dialog>` tag
+// anywhere in it). Factored out of `findRenderJsxProps` so `storyRendersComponent` below can ask
+// the same question without re-walking the tree a second way.
+function findRenderComponentTag(storyObj, componentName) {
   const renderExpr = getProp(storyObj, 'render')
-  if (!renderExpr) return new Map()
+  if (!renderExpr) return null
   let body = renderExpr
   if (ts.isArrowFunction(renderExpr) || ts.isFunctionExpression(renderExpr)) body = renderExpr.body
   let found = null
@@ -1389,13 +1591,48 @@ export function findRenderJsxProps(storyObj, componentName) {
     ts.forEachChild(node, visit)
   }
   visit(body)
+  return found
+}
+
+// Whether a story instantiates its own component at all — `true` for every `args`-only story
+// (Storybook renders `<Component {...args} />` implicitly, always) and for a `render:` story that
+// mounts the component somewhere inside its own JSX (`PrivacyNotice`'s own `render: (args) => (<div>
+// ...<PrivacyNotice {...args} /></div>)`, wrapped but still mounted); `false` only for a `render:`
+// story whose own body never mounts it — a `*NotApplicable` placeholder's prose paragraph, T595's
+// own `Dialog:EmptyHoverActiveDisabledNotApplicable`. A story this returns `false` for supplies no
+// data whatsoever about any candidate inside the component — not "this story's own data cannot
+// resolve the expression" (kept `unresolved:`, T594's own rule), but "this story never reaches the
+// component's own render at all", the same exclusion an `'unreached'` guard already gets,
+// generalised to the whole story rather than one branch inside it (T595, `resolveDisabledFromStories`).
+function storyRendersComponent(storyObj, componentName) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return true
+  return findRenderComponentTag(storyObj, componentName) != null
+}
+
+// The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
+// component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
+// shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
+// read `args`. Only the *first* JSX element named `componentName` found in `render`'s own body is
+// read — every real story in this tree renders its subject exactly once. A bare attribute (no
+// `={...}`, `<FavouriteToggle authenticated size="lg" />`) is JSX shorthand for `={true}` — the
+// same reading `attrLiteral` already gives everywhere else in this file — synthesised as a real
+// `true` keyword node so `evaluateExpr` resolves it the same way a written-out literal would
+// (T595: `FavouriteToggle:RealisticProfileHeader`'s own bare `authenticated` used to leave that
+// prop `UNRESOLVED`, which left an unrelated guard elsewhere in the component unresolved too).
+export function findRenderJsxProps(storyObj, componentName) {
+  const found = findRenderComponentTag(storyObj, componentName)
   const props = new Map()
   if (!found) return props
   const opening = openingOf(found)
   for (const attr of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attr)) continue
+    if (!attr.initializer) {
+      props.set(attr.name.getText(), ts.factory.createTrue())
+      continue
+    }
     let expr = attr.initializer
-    if (expr && ts.isJsxExpression(expr)) expr = expr.expression
+    if (ts.isJsxExpression(expr)) expr = expr.expression
     if (expr) props.set(attr.name.getText(), expr)
   }
   return props
@@ -1845,13 +2082,20 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         // Every story — forced or not — can resolve a local `Button`/`Link`/`Field`/`Menu`
         // instance's own dynamic `disabled`/`loading` prop through its own `args` alone
         // (`FavouriteToggle`'s `Bounded`, `AddingInFlight`; `Dialog`'s `PrimaryPending`), so this
-        // runs unconditionally rather than gated on `forced` the way role-based matching is below.
-        pendingDisabledChecks.push({
-          componentKey,
-          file: relPath(filePath),
-          exportName,
-          propsScope,
-        })
+        // runs unconditionally rather than gated on `forced` the way role-based matching is below —
+        // except for a story that never mounts the component at all (`storyRendersComponent`,
+        // T595), which is excluded the same way an `'unreached'` guard already is below: it has
+        // nothing to say about any candidate inside a component it never rendered, so it is never
+        // pushed at all rather than resolved against defaults that are not this story's own data
+        // (`Dialog:EmptyHoverActiveDisabledNotApplicable`'s own `<p>`, no `primaryAction` in sight).
+        if (storyRendersComponent(node, componentDirName)) {
+          pendingDisabledChecks.push({
+            componentKey,
+            file: relPath(filePath),
+            exportName,
+            propsScope,
+          })
+        }
         if (!forced) continue
         const storyStartLine =
           sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
@@ -2148,6 +2392,17 @@ export function resolveDisabledFromStories(pendingStoryScopes, instancesByPrimit
             variant,
             size,
             label,
+            // The candidate's own source position (never the story file above) — `buildAxisMatrix`
+            // reads this the same way it already reads a `composed-story` match's `sourceFile`/
+            // `sourceLine`, so a real, confirmed `disabled` resolution credits this exact `label`
+            // to a call site's own static row wherever this exact story proved it, the one shared
+            // mechanism T595 lifted this into rather than a second copy of the redirect rule here.
+            // `jsx-disabled-unresolved` below carries no such position: an uncertain note about one
+            // story is real only about the row it already sits on, never a fact this pass may pin
+            // on a different row's own call site (the same exclusion an ambiguous role match
+            // already gets from this same mechanism).
+            sourceFile: candidate.file,
+            sourceLine: candidate.line,
           })
         } else if (anyUnresolved) {
           instancesByPrimitive.get(primitive).push({
@@ -2265,23 +2520,68 @@ export function buildAxisMatrix(primitiveName, instances) {
     }
     return rows.get(key)
   }
-  // T594's REJECT on #80, item 2: a JSX candidate's own state can resolve, through a specific
-  // story, to a row keyed *differently* from the row its own static (often dynamic-unresolved)
-  // variant/size key files its `rest` entry under — `FavouriteToggle`'s real button (`ghost`
-  // variant, a dynamic `size` prop no story literal resolves) files `rest` at `ghost|unresolved`,
-  // but `FavouriteToggle:Hover`'s own args default that same `size` to `'md'` and land the *match*
-  // at `ghost|md` instead; `Dialog`'s two `Button` instances the same way, `unresolved|lg` vs.
-  // `destructive|lg`. The same source line lands in two rows, and the row that kept `rest` read a
-  // confirmed `'none'` over a comparison that actually found a match elsewhere — positive knowledge
-  // this pass has, filed under a different key. Recorded once, up front, from every already-matched
-  // `composed-story` instance's own source position, so the row a `rest` line stays on can point at
-  // wherever its own state actually resolved instead of falling to `'none'`.
+  // T594's REJECT on #80, item 2 (widened by T595, item 2 of the orchestrator's own finding on
+  // this task): a JSX candidate's own state can resolve, through a specific story, to a row keyed
+  // *differently* from the row its own static (often dynamic-unresolved) variant/size key files
+  // its `rest` entry under — `FavouriteToggle`'s real button (`ghost` variant, a dynamic `size`
+  // prop no story literal resolves) files `rest` at `ghost|unresolved`, but `FavouriteToggle:Hover`'s
+  // own args default that same `size` to `'md'` and land the *match* at `ghost|md` instead;
+  // `Dialog`'s two `Button` instances the same way — `index.tsx:127` (`primaryAction`) to
+  // `destructive|lg`, `index.tsx:138` (`secondaryAction`) to `secondary|lg`, two *different* target
+  // rows off two different lines of the same `rest` list, both real. The same source line lands in
+  // two rows, and the row that kept `rest` read a confirmed `'none'` over a comparison that
+  // actually found a match elsewhere — positive knowledge this pass has, filed under a different
+  // key.
+  //
+  // **One map, fed from both mechanisms that resolve a candidate's axis per story, not a second
+  // copy of the redirect rule inside `resolveDisabledFromStories` (T595, orchestrator finding):
+  // `disabled` already reads through this exact same `cellFor` below, same as the other four
+  // columns — the gap was never that `disabled` needed its own redirect logic, only that nothing
+  // had ever told this map about a `disabled` resolution's own source line.**
+  //
+  // **Credits the exact story label a match proved, never a whole target row's list (corrected in
+  // this pass — the orchestrator's own review of the first version of this fix).** A first draft
+  // stored the *target row's key* here and had `cellFor` pull that row's entire state list —
+  // correct only by accident, because every target row this tree's `hover`/`focus-visible`/`active`
+  // redirects ever reached happened to carry exactly one contributor. `disabled` breaks that
+  // accident immediately: `unresolved|lg`'s own two call sites resolve to `destructive|lg` and
+  // `secondary|lg`, and `secondary|lg`'s own disabled list also carries
+  // `MatchDetailPanel:DownloadPreparing`/`ArchivalControl:Submitting` — two real Button call sites
+  // in *other* components that only ever share that row by axis coincidence, never a fact about
+  // `Dialog`'s own two buttons. Pulling the whole row would have credited `unresolved|lg` with
+  // stories that prove nothing about either of its own call sites — the same "a per-story
+  // resolution is knowledge about that story, never a claim about the call site in general" bar
+  // this whole mechanism exists to hold. So this map stores the label a match itself established
+  // (`cellName(inst)` for a `composed-story`, `inst.label` for a `jsx-disabled-resolved`) keyed by
+  // the exact source line and state that match belongs to — `cellFor` below credits those labels
+  // directly, never a row lookup. **Only a *confirmed* match feeds it — a `composed-story-
+  // ambiguous-variant` or a `jsx-disabled-unresolved` never does** (the same exclusion the
+  // ambiguity paragraph above already applies to `unresolvedByState`: an uncertain note about one
+  // call site is not a claim this pass may pin on a different one). A `Set` of labels per `(line,
+  // state)`, not one label: two *different* candidates on the same static row (`Dialog`'s two
+  // `Button`s) can each prove a different state real, and crediting only the first found would
+  // silently drop the second (T595, orchestrator finding — `:138` was exactly this).
   const storyResolvedBySourceLine = new Map()
-  for (const inst of instances) {
-    if (inst.kind !== 'composed-story' || inst.sourceLine == null || !inst.sourceFile) continue
-    const lineKey = `${inst.componentKey}|${inst.sourceFile}|${inst.sourceLine}`
+  const addResolvedLabel = (componentKey, sourceFile, sourceLine, state, label) => {
+    if (sourceLine == null || !sourceFile) return
+    const lineKey = `${componentKey}|${sourceFile}|${sourceLine}`
     if (!storyResolvedBySourceLine.has(lineKey)) storyResolvedBySourceLine.set(lineKey, new Map())
-    storyResolvedBySourceLine.get(lineKey).set(inst.forced.state, axisKey(inst))
+    const byState = storyResolvedBySourceLine.get(lineKey)
+    if (!byState.has(state)) byState.set(state, new Set())
+    byState.get(state).add(label)
+  }
+  for (const inst of instances) {
+    if (inst.kind === 'composed-story') {
+      addResolvedLabel(
+        inst.componentKey,
+        inst.sourceFile,
+        inst.sourceLine,
+        inst.forced.state,
+        cellName(inst),
+      )
+    } else if (inst.kind === 'jsx-disabled-resolved') {
+      addResolvedLabel(inst.componentKey, inst.sourceFile, inst.sourceLine, 'disabled', inst.label)
+    }
   }
   for (const inst of instances) {
     if (inst.kind === 'composed-story-unresolved') {
@@ -2359,22 +2659,49 @@ export function buildAxisMatrix(primitiveName, instances) {
   const builtRows = [...rows.values()]
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((row) => {
-      // Before this row's own cell falls all the way to a confirmed `'none'`, check whether one of
-      // its own `rest` lines resolved this exact state to a *different* row through a story — if
-      // so, point there instead of claiming an absence this pass never actually confirmed.
-      const redirectFor = (state) => {
+      // Before this row's own cell falls all the way to a confirmed `'none'`, check whether *any*
+      // of its own `rest` lines proved this exact state real through a story, on whatever row that
+      // story's own axis actually resolves to — every label any of them proved, not only the
+      // first found: two different candidates on the same static row can each prove a *different*
+      // row's worth of coverage (`Dialog`'s `index.tsx:127` proves `destructive|lg`'s
+      // `Dialog:PrimaryPending`, `:138` proves `secondary|lg`'s own, both off `unresolved|lg`'s own
+      // `rest` list, T595 orchestrator finding), and stopping at the first would silently drop the
+      // second. Credits the exact label(s) `storyResolvedBySourceLine` proved for this line and
+      // state — never a target row's own full list (the pollution the orchestrator's review caught:
+      // `secondary|lg`'s own disabled list also carries `MatchDetailPanel:DownloadPreparing`/
+      // `ArchivalControl:Submitting`, real coverage for *their* own call sites, proving nothing
+      // about either of `Dialog`'s two buttons) — so a row's own `rest` line is credited with
+      // exactly what a story proved about *that line*, and nothing a different call site's own
+      // story happened to also prove on a row it coincidentally shares.
+      const creditedFor = (state) => {
+        const labels = new Set()
         for (const inst of row.restInstances) {
           const lineKey = `${inst.componentKey}|${inst.file}|${inst.line}`
-          const target = storyResolvedBySourceLine.get(lineKey)?.get(state)
-          if (target && target !== row.key) return target
+          for (const label of storyResolvedBySourceLine.get(lineKey)?.get(state) ?? []) {
+            labels.add(label)
+          }
         }
-        return null
+        return [...labels].sort()
       }
+      // A label credited here is exactly as real as if a story had matched this row directly — the
+      // same positive-knowledge-outranks-a-note precedence this row's own ambiguity handling
+      // already applies (`unresolvedByState` above, dropped once a real match exists elsewhere on
+      // the *same* row) — so this is checked before `unresolvedList`, not after: real coverage
+      // always outranks a note that a comparison could not be settled, never the reverse.
+      // `storyResolvedBySourceLine` is fed exclusively by confirmed matches (above), so once a
+      // label is credited here it is never a bare pointer needing a separate "unresolved: axis
+      // resolved only per story" fallback — there is nothing left for that fallback to name that
+      // isn't already a real label. **One mechanism, not two:** this is the same `cellFor` every
+      // one of the five columns already goes through, including `disabled` — the redirect map
+      // above is what changed, not a second copy of this rule filed inside
+      // `resolveDisabledFromStories` (T595, orchestrator finding: the disabled column reads
+      // through `cellFor` exactly like the other four already did before this pass; what it lacked
+      // was `storyResolvedBySourceLine` ever hearing about a `disabled` resolution at all).
       const cellFor = (stateList, unresolvedList, state) => {
         if (stateList.length) return [...new Set(stateList)]
+        const credited = creditedFor(state)
+        if (credited.length) return credited
         if (unresolvedList.length) return [`unresolved: ${[...new Set(unresolvedList)].join('; ')}`]
-        const redirect = redirectFor(state)
-        if (redirect) return [`unresolved: axis resolved only per story (→ ${redirect})`]
         return ['none']
       }
       return {
@@ -2483,6 +2810,82 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
       }
     }
   }
+  // T595 (row 8, H5, `noImpliedRoleReason`'s "dynamic role" family): a `role` attribute that is
+  // *present but dynamic* (`el.role === 'unresolved'`, `MenuItemRow`'s own `role={role}`, `role =
+  // variant === 'selection' ? 'menuitemradio' : 'menuitem'`) has no place in the static pool above
+  // — `impliedRoleOf` returns `null` for it on purpose (the comment on that function explains why:
+  // falling back to the tag's own intrinsic role would wrongly pool this element with ones that
+  // really do render that role). But the expression is frequently resolvable *per story*, the same
+  // fold `resolveDisabledFromStories` already applies to a dynamic `disabled`/`loading` prop:
+  // evaluated against that one story's own props/args scope, extended by the element's own local
+  // `const`s in scope (`scopeWithLocalConsts`, below — reused, not a second evaluator). A story
+  // whose own data settles the expression is real, positive knowledge for that story alone, never a
+  // claim about the element's role in general; a story whose data cannot settle it is simply
+  // skipped here (not a negative), the same way a story whose disabled expression cannot be
+  // evaluated is skipped rather than counted as a confirmed absence.
+  if (!el.ariaHidden && el.role === 'unresolved') {
+    const roleExpr = el.attrExprs?.get('role')?.expr ?? null
+    if (roleExpr) {
+      // A story-specific pool: every other element in the component whose own role, *for this same
+      // story*, is also the resolved role — either a plain static role that matches outright, or
+      // another dynamic-role element that resolves to the same string for this same story (none in
+      // this tree today; kept general rather than assuming exactly one dynamic-role element per
+      // component).
+      const roleForStory = (candidate, scope) => {
+        if (candidate.role !== 'unresolved') return impliedRoleOf(candidate)
+        const candidateExpr = candidate.attrExprs?.get('role')?.expr ?? null
+        if (!candidateExpr) return null
+        const v = evaluateExpr(candidateExpr, scopeWithLocalConsts(scope, candidate.localConsts))
+        return v.resolved && typeof v.value === 'string' ? v.value : null
+      }
+      for (const { exportName, forced, playFocus, argsLiterals, scope } of storyObjectsWithMeta) {
+        if (!scope) continue
+        if (evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
+        const resolved = evaluateExpr(roleExpr, scopeWithLocalConsts(scope, el.localConsts))
+        if (!resolved.resolved || typeof resolved.value !== 'string') continue
+        const resolvedRole = resolved.value
+        const poolForStory = elements.filter(
+          (o) => !o.ariaHidden && (o === el || roleForStory(o, scope) === resolvedRole),
+        )
+        if (forced && forced.role && forced.role === resolvedRole) {
+          const verdict = resolveNameMatch({
+            candidate: el,
+            pool: poolForStory,
+            name: forced.name,
+            nth: forced.nth,
+            argsLiterals,
+          })
+          if (verdict === 'match') cells[forced.state].push(exportName)
+          else if (verdict === 'ambiguous') {
+            ambiguousReasons[forced.state].push(
+              `${exportName}: ${poolForStory.length} candidates share role ${JSON.stringify(resolvedRole)} (resolved for this story)${forced.name ? `, name ${JSON.stringify(forced.name)} not literally resolvable` : forced.nth != null ? `, nth ${forced.nth} not orderable` : ''}`,
+            )
+          }
+        } else if (
+          !forced &&
+          playFocus &&
+          (playFocus.role === resolvedRole || playFocus.role === 'unresolved')
+        ) {
+          const verdict = resolveNameMatch({
+            candidate: el,
+            pool: poolForStory,
+            name: playFocus.name,
+            nth: null,
+            argsLiterals,
+          })
+          if (verdict === 'match') {
+            ambiguousReasons['focus-visible'].push(
+              `${exportName} (play-driven; frame not provable statically)`,
+            )
+          } else if (verdict === 'ambiguous') {
+            ambiguousReasons['focus-visible'].push(
+              `${exportName} (play-driven): ${poolForStory.length} candidates share role ${JSON.stringify(resolvedRole)} (resolved for this story)`,
+            )
+          }
+        }
+      }
+    }
+  }
   // A `visualForceState: { selector }` targets an element by its own attribute value directly,
   // never by role — so it applies whether or not this element even has an implied role at all
   // (`MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link, `a[href="..."]`), and is
@@ -2516,30 +2919,56 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
 // `null` for — this pass never even attempted to compare a force-state against `el` (the whole
 // loop in `buildElementCells` is gated on a truthy `impliedRole`), so `'none'` would be reporting
 // an absence this pass never checked for (T594's amendment: `'none'` is positive knowledge or it
-// is not printed). Three shapes, in order:
-//   - `el.role === 'unresolved'`: a dynamic `role={…}` (`MenuItemRow`'s own `role={role}`) — its
-//     real rendered role depends on data this static pass does not evaluate.
-//   - a descendant of `el` (by JSX nesting, `nodeStart`/`nodeEnd` containment within the same
-//     file) was itself matched or left ambiguous for this same `state` — `Table`'s own `<tr>`
-//     wraps the row `<a>` a `hover`/`active` force-state actually resolves against, and the browser
-//     paints `<tr>`'s own `hover:`/`active:` utilities whenever the pointer is over that link too,
-//     but whether the visual harness's own forced-pseudo-state mechanism (`CSS.forcePseudoState`
-//     or equivalent) cascades to an ancestor the way a real pointer does is not knowable from
-//     source — genuinely unresolved, not a confirmed absence and not a confirmed cover either.
-//   - neither of the above: the tag simply carries no role this pass can derive at all (`h2`,
-//     `label`, `tr` — none are in `INTRINSIC_ROLE`, `:281-289`).
+// is not printed). `buildElementCells` already resolves a dynamic `role={…}` per story where a
+// story's own data settles it (T595) — this function is reached only once that path has already
+// run and found nothing for this `el`/`state`, i.e. `el.role === 'unresolved'` genuinely means "no
+// story's own data resolved this element's role", never "this pass didn't try". Likewise,
+// `buildElementMatrix` already credits `hover`/`active` (never `focus-visible`, which does not
+// cascade — see that credit's own comment) from a confirmed descendant match before this function
+// is ever called, so the descendant branch below is reached only for a descendant whose own match
+// was merely *ambiguous* (never a confirmed one, already credited) — still genuinely unresolved,
+// not a confirmed absence and not a confirmed cover either. Two shapes, in order:
+//   - `el.role === 'unresolved'`: a dynamic `role={…}` (`MenuItemRow`'s own `role={role}`) whose
+//     real rendered role no story's own data settles.
+//   - `el` itself carries a real `hover:`/`active:`/`focus-visible:` class for this `state` and a
+//     descendant of `el` (by JSX nesting, `nodeStart`/`nodeEnd` containment within the same file)
+//     was left ambiguous for this same `state` — genuinely unresolved rather than a guess either
+//     way; nothing to credit when `el` carries no such class at all (nothing paints regardless of
+//     what a descendant does), which falls to the last case below instead.
+//   - neither of the above, *and `el` carries a class for this `state`*: the tag simply carries no
+//     role this pass can derive at all. Nothing in this tree reaches this third case today — every
+//     `impliedRole == null` element that carries a class either resolves its role dynamically
+//     (`MenuItemRow`) or is credited by the ancestor-cascade pass above — but a future one might.
+// When `el` carries **no** class for this `state` at all (`AccountErasurePanel`'s own `<label>`,
+// which ARIA gives no role of its own to begin with — `INTRINSIC_ROLE` deliberately has no entry
+// for it, never guessed — and whose own `className` paints no `hover:`/`focus-visible:`/`active:`
+// utility of any kind, confirmed the same way `disabledCell` already confirms a control that carries
+// no disabled-capable attribute at all is a real `'none'`), the caller (`cellFor`, below) never
+// reaches this function in the first place: nothing exists for any story to depict differently,
+// regardless of role, so that comparison needs no role and no story reading to settle — real,
+// positive knowledge of a structural absence, not a claim about a comparison this pass declined.
+// `labelWrapsControl` (used only as this label's own capture gate, above) independently confirms
+// the same shape from the other direction: this specific label wraps its own control directly
+// rather than standing in for a state of its own, consistent with — not the source of — the
+// class-absence fact this rule actually rests on.
+function ownPseudoClass(el, state) {
+  return state === 'hover' ? el.hover : state === 'active' ? el.active : el.focusVisible
+}
 function noImpliedRoleReason(el, state, perElement) {
   if (el.role === 'unresolved') return 'dynamic role'
-  const descendant = perElement.find(
-    ({ el: other, cells, ambiguousReasons }) =>
-      other !== el &&
-      other.file === el.file &&
-      el.nodeStart != null &&
-      other.nodeStart != null &&
-      el.nodeStart <= other.nodeStart &&
-      el.nodeEnd >= other.nodeEnd &&
-      (cells[state].length > 0 || ambiguousReasons[state].length > 0),
-  )
+  const ownClass = ownPseudoClass(el, state)
+  const descendant = ownClass
+    ? perElement.find(
+        ({ el: other, cells, ambiguousReasons }) =>
+          other !== el &&
+          other.file === el.file &&
+          el.nodeStart != null &&
+          other.nodeStart != null &&
+          el.nodeStart <= other.nodeStart &&
+          el.nodeEnd >= other.nodeEnd &&
+          (cells[state].length > 0 || ambiguousReasons[state].length > 0),
+      )
+    : null
   if (descendant) {
     const signal =
       descendant.cells[state].length > 0
@@ -2570,13 +2999,53 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
     ]
   }
   const perElement = elements.map((el) => buildElementCells(el, elements, storyObjectsWithMeta))
+  // T595 (row 8, H5, `noImpliedRoleReason`'s "ancestor of a forced descendant" family): `hover` and
+  // `active` are driven in the visual harness by a real, CDP-backed pointer move and mouse-down
+  // (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment — `locator.hover()`, then
+  // `page.mouse.down()`), never a role-scoped pseudo-class toggle, so a real capture of either state
+  // also matches `:hover`/`:active` on every ancestor whose own box contains the forced descendant —
+  // the same fact `Table`'s own `<tr>` around its row `<a>` used to carry only as hand-written prose
+  // (row 8's F17). Credited here, directly into `cells`, before `cellFor` below ever runs, so a
+  // credited element's own cell reads the descendant's story name(s) exactly like a direct match —
+  // never a special-cased "inherited" value, because the capture the reader opens shows no
+  // difference between the two. `focus-visible` is excluded on purpose: a story drives it with a
+  // plain `element.focus()` targeting one specific element, which does not move a pointer and does
+  // not cascade the way a real hover/press does (row 8's own F17 makes the same distinction). Two
+  // guards keep this from over-crediting: `el` must carry a real `hover:`/`active:` class of its own
+  // for that state (nothing to credit when nothing paints), and only a *confirmed* descendant match
+  // counts — an ambiguous descendant credits nothing, and still falls through to
+  // `noImpliedRoleReason`'s own ancestor wording below for an element with no implied role of its
+  // own, unresolved rather than guessed either way.
+  for (const { el, cells } of perElement) {
+    for (const state of ['hover', 'active']) {
+      if (cells[state].length > 0) continue
+      const ownClass = state === 'hover' ? el.hover : el.active
+      if (!ownClass) continue
+      const descendant = perElement.find(
+        ({ el: other, cells: otherCells }) =>
+          other !== el &&
+          other.file === el.file &&
+          el.nodeStart != null &&
+          other.nodeStart != null &&
+          el.nodeStart <= other.nodeStart &&
+          el.nodeEnd >= other.nodeEnd &&
+          otherCells[state].length > 0,
+      )
+      if (descendant) cells[state] = [...new Set(descendant.cells[state])]
+    }
+  }
   return perElement.map(({ el, impliedRole, cells, ambiguousReasons }) => {
+    // T595: an `impliedRole == null` element that carries no class for this specific `state` at all
+    // (`ownPseudoClass`, shared with `noImpliedRoleReason` above) needs no role and no story
+    // resolved to know its cell — a real, positive `'none'`, never routed through
+    // `noImpliedRoleReason` at all (see that function's own comment for the reasoning this rests
+    // on).
     const cellFor = (state) =>
       cells[state].length > 0
         ? [...new Set(cells[state])]
         : ambiguousReasons[state].length > 0
           ? [`unresolved: ${ambiguousReasons[state].join('; ')}`]
-          : impliedRole == null
+          : impliedRole == null && ownPseudoClass(el, state)
             ? [`unresolved: ${noImpliedRoleReason(el, state, perElement)}`]
             : ['none']
     // `'none'` is confirmed only when this element carries no disabled-capable attribute at all —
@@ -3307,6 +3776,8 @@ export function checkCitations({ readmeText }) {
   let inlineClaimVerifiedCount = 0
   let inlineClaimFailureCount = 0
   let inlineClaimUnresolvableCount = 0
+  let inlineClaimOutOfRangeCount = 0
+  let inlineClaimMalformedLineSpecCount = 0
   for (const claim of inlineClaims) {
     // `LOCATION_ONLY_RE`'s own `location` group (`[\w./-]*`) matches empty, so a genuinely bare
     // `` `:96` `` (no filename at all — F17's own opening parenthetical, "`:96` is the `const
@@ -3339,13 +3810,39 @@ export function checkCitations({ readmeText }) {
       continue
     }
     const ranges = parseLineSpec(claim.lineSpec)
-    if (!ranges) continue
+    // A hole T595 closes: this used to be a bare `continue`, the same silent-drop shape as the
+    // out-of-range branch below — a malformed line spec was dropped from the tally with the run
+    // still exiting 0. It is a failure now, with its own counter, so the sum assertion after this
+    // loop can hold. `claim.lineSpec` is always `LOCATION_ONLY_RE`'s own capture group, built from
+    // exactly the atoms `parseLineSpec`'s per-part regex accepts (see that function's own comment
+    // on its citation-level twin above, `parseCitations`'s `!ranges` branch: "the citation regex
+    // already guarantees digits and dashes only, so this is a belt") — so `!ranges` cannot be
+    // reached through any real `readmeText` today. It stays a real, counted failure rather than a
+    // silent `continue` anyway, so a future widening of that regex cannot reopen this hole unnoticed.
+    if (!ranges) {
+      inlineClaimMalformedLineSpecCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)}: malformed line spec ${JSON.stringify(claim.lineSpec)}`,
+      })
+      continue
+    }
     const fileText = readFileSync(resolved, 'utf8')
     const maxLine = Math.max(...ranges.map(([, end]) => end))
-    // A hole T595 closes, not a duplicate report: `findInlineCodeClaims` skips every span
-    // `CITATION_RE` parsed, so `checkCitations`'s own out-of-range branch never saw this claim and
-    // nothing above reports it. It is dropped here and the run still exits 0.
-    if (maxLine > fileText.split('\n').length) continue
+    const lineCount = fileText.split('\n').length
+    // The hole T595 was written to close: `findInlineCodeClaims` skips every span `CITATION_RE`
+    // already parsed, so `checkCitations`'s own out-of-range branch above (the one for
+    // double-quoted citations) never sees this claim — it has to be caught here or nowhere. It
+    // used to be a bare `continue`, dropped from every count with the run still exiting 0; it is a
+    // failure now, with its own counter, mirroring the double-quoted branch's own reason text.
+    if (maxLine > lineCount) {
+      inlineClaimOutOfRangeCount++
+      failures.push({
+        raw: claim.raw,
+        reason: `inline-code claim ${JSON.stringify(claim.claim)}: ${relPath(resolved)} has ${lineCount} lines, cited up to :${maxLine}`,
+      })
+      continue
+    }
     if (!matchQuoteAgainstText(claim.claim, fileText, ranges)) {
       inlineClaimFailureCount++
       failures.push({
@@ -3356,6 +3853,31 @@ export function checkCitations({ readmeText }) {
     }
     inlineClaimVerifiedCount++
   }
+  // Every branch of the loop above increments exactly one of these five counters before its
+  // `continue` (or falls through to `inlineClaimVerifiedCount++`), so their sum must equal
+  // `inlineClaims.length`. This is not restating that arithmetic for its own sake: it is the
+  // guard against the next silent `continue`. Both branches T595 closed here were a `continue`
+  // added to this loop with no counter and no failure behind it, and the run kept exiting 0 —
+  // this assertion is what makes that shape fail the moment it is written again, instead of
+  // waiting for someone to notice the claim went missing from every count.
+  const inlineClaimCountSum =
+    inlineClaimVerifiedCount +
+    inlineClaimFailureCount +
+    inlineClaimUnresolvableCount +
+    inlineClaimOutOfRangeCount +
+    inlineClaimMalformedLineSpecCount
+  if (inlineClaimCountSum !== inlineClaims.length) {
+    failures.push({
+      raw: '(inline-claim count)',
+      reason:
+        `inline-code claim counts (${inlineClaimVerifiedCount} verified + ` +
+        `${inlineClaimFailureCount} mismatch + ${inlineClaimUnresolvableCount} unresolvable + ` +
+        `${inlineClaimOutOfRangeCount} out of range + ${inlineClaimMalformedLineSpecCount} ` +
+        `malformed line spec = ${inlineClaimCountSum}) do not sum to the ${inlineClaims.length} ` +
+        'claims `findInlineCodeClaims` found — some branch of the loop dropped a claim without ' +
+        'counting it',
+    })
+  }
   return {
     parsedCount: citations.length,
     unparsedQuoteCarryingCount: unparsed.length,
@@ -3363,6 +3885,8 @@ export function checkCitations({ readmeText }) {
     inlineClaimVerifiedCount,
     inlineClaimUnresolvableCount,
     inlineClaimFailureCount,
+    inlineClaimOutOfRangeCount,
+    inlineClaimMalformedLineSpecCount,
     failures,
   }
 }
@@ -3798,16 +4322,20 @@ function runCitationCheck() {
   )
   // T594's REJECT on #80, item 1: this used to print "found and verified" for every claim
   // `findInlineCodeClaims` returned, whether or not this loop actually checked it — a bare
-  // location silently skipped the whole comparison and still reported as verified. Three numbers
+  // location silently skipped the whole comparison and still reported as verified. Five numbers
   // now, none folded into another: `found` is what the extractor returned, `verified` is what this
   // pass actually confirmed matches its own cited line, `unresolvable` is a location this pass
-  // could not resolve to one file at all (a failure above, same as a content mismatch — the two are
-  // kept apart only so a reader can tell "wrong place" from "wrong text").
+  // could not resolve to one file at all, `out of range` is a cited line past the end of its file
+  // (T595) and `malformed line spec` is a line spec that did not parse at all (T595) — the four
+  // failing kinds are kept apart only so a reader can tell "wrong place" from "wrong text" from
+  // "past the end" from "unparseable", and `checkCitations` itself asserts the five sum to `found`.
   log(
     `${result.inlineClaimCount} inline-code claims next to a \`file:line\` found (T594 M2/M3); ` +
       `${result.inlineClaimVerifiedCount} verified, ${result.inlineClaimUnresolvableCount} ` +
-      `unresolvable, ${result.inlineClaimFailureCount} content mismatch (unresolvable and ` +
-      'mismatch are each also a failure above, not merely a count).',
+      `unresolvable, ${result.inlineClaimFailureCount} content mismatch, ` +
+      `${result.inlineClaimOutOfRangeCount} out of range, ` +
+      `${result.inlineClaimMalformedLineSpecCount} malformed line spec (unresolvable, mismatch, ` +
+      'out of range and malformed line spec are each also a failure above, not merely a count).',
   )
   if (result.failures.length > 0 || tally.failures.length > 0 || vocab.failures.length > 0) {
     fail(
