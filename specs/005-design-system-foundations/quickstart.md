@@ -140,11 +140,17 @@ is active — the toggle sets it and styles nothing by it.
 
 ### Result (T537, run 2026-09-06)
 
-All four cases run against `apps/web`'s dev server, each result read back from
-`document.documentElement.dataset.theme`, from the stored override and from `matchMedia` rather than
-by eye. Recorded here rather than left in the commit body that first carried it: a pre-squash commit
-message is not a durable citation on this branch, by this file's own convention, and this is the only
-evidence production-readiness item 4 and SC-005 have.
+Cases 1, 2 and 4 run against `apps/web`'s dev server; case 3 ran against the inline script's exact
+fallback logic instead, for the reason stated under it. That split is the source commit's own
+wording and is kept, because "all four against the dev server" would be the more flattering claim
+and the false one. Each result is read back from `document.documentElement.dataset.theme`, from the
+stored override and from `matchMedia` rather than by eye.
+
+Recorded here rather than left in the commit body that first carried it: a pre-squash commit message
+is not a durable citation on this branch, by this file's own convention. This is the only evidence
+the **first-paint** half of production-readiness item 4 and SC-005 has — the override and
+system-preference halves are also asserted as unit tests in
+`packages/design-system/src/theme/ThemeProvider.test.tsx`, which is what the walk below cites.
 
 1. **System dark, fresh profile** (storage cleared, colour scheme dark, reload): theme `dark`,
    nothing stored, system prefers dark. The application's own error boundary — the backend is
@@ -160,10 +166,16 @@ evidence production-readiness item 4 and SC-005 have.
    where it does not, in both cases completing without the exception escaping. The same fallback
    chain is asserted as a unit test in `packages/design-system/src/theme/ThemeProvider.test.tsx`, so
    the manual check and the automated one agree rather than substitute for each other.
-4. **No override and no system preference**: theme `light`, nothing stored — the defined default.
+4. **No override, and a system preference of light**: theme `light`, nothing stored, system does
+   not prefer dark — the defined default. Scenario 6's step 4 above asks for a system expressing
+   **no** preference; what was exercised is a system expressing light. The two reach the same branch
+   of the inline script — neither is an override and neither prefers dark — so the outcome is the
+   one step 4 predicts, but the absent-preference condition itself was not tested. Left as the
+   narrower true claim rather than widened to the step's wording.
 
-**All four pass.** T577's walk of 2026-09-08 recorded item 4 as "partly met — not run this session";
-it had been run two days earlier, and this record is what that walk had no way to find.
+**All four pass as run**, with case 3's substitution and case 4's condition exactly as stated above.
+T577's walk of 2026-09-08 recorded item 4's behavioural half as not run; it had been run two days
+earlier, and this record is what that walk had no way to find.
 
 ## Scenario 7 — Numbers are legible and comparable (US4)
 
