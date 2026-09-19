@@ -167,7 +167,13 @@ export function buildConstStringMap(sourceFile) {
   return constMap
 }
 
-const PSEUDO_PREFIXES = ['hover', 'focus-visible', 'active']
+// `focus` (real `:focus`, painted whenever the element takes focus by any means — pointer or
+// keyboard) is captured alongside the three state pseudo-classes rather than folded into
+// `focus-visible` at extraction time: `SiteHeader`'s skip link (`focus:not-sr-only focus:fixed …
+// focus:border-border-strong focus:bg-surface-raised`) paints entirely through this prefix and none
+// of it was visible to record 1 before (finding 10) — the regex requires the colon immediately
+// after the prefix, so `focus:` never matches inside `focus-visible:`.
+const PSEUDO_PREFIXES = ['hover', 'focus-visible', 'active', 'focus']
 
 export function extractPseudoClasses(parts) {
   const text = parts.join(' ')
@@ -595,7 +601,7 @@ export function findLocalElements(
         )
       : []
     const pseudo = extractPseudoClasses(parts)
-    const hasPseudo = pseudo.hover || pseudo['focus-visible'] || pseudo.active
+    const hasPseudo = pseudo.hover || pseudo['focus-visible'] || pseudo.active || pseudo.focus
     const isIntrinsicInteractive =
       tagName === 'label' ? labelWrapsControl(node) : INTERACTIVE_TAGS.has(tagName)
     const isRoleInteractive =
@@ -646,6 +652,7 @@ export function findLocalElements(
       hover: pseudo.hover,
       focusVisible: pseudo['focus-visible'],
       active: pseudo.active,
+      focus: pseudo.focus,
       classUnresolvedRefs: unresolved,
       text: literalTextOf(node) || ariaLabelText(opening),
       hasDisabledAttr,
@@ -657,6 +664,12 @@ export function findLocalElements(
       iterationArrayExpr:
         context.iterationArrayExpr ?? inheritedIteration?.iterationArrayExpr ?? null,
       guards: context.guards,
+      // Character offsets of this element's own JSX node — used only to tell whether one local
+      // element's rendered range structurally contains another's (`buildElementMatrix`'s "ancestor
+      // of a forced descendant" reason, `Table`'s own `<tr>` around its row link). Not meaningful
+      // across two different files.
+      nodeStart: node.getStart(sourceFile),
+      nodeEnd: node.getEnd(),
     })
   })
   return found
@@ -1529,6 +1542,12 @@ export function resolveNameMatch({ candidate, pool, name, nth, argsLiterals }) {
     return 'ambiguous'
   }
   if (nth != null) {
+    // The candidate itself is a reusable helper's declaration site (`PrivacyNotice`'s own
+    // `InlineLink`, invoked from several call sites this static pass does not enumerate) — its
+    // real render position relative to the orderable candidates below is unknown, so this pass can
+    // neither place it at `nth` nor rule it out. `'reject'` would be a confirmed exclusion this
+    // pass never actually established (T594 part A); `'ambiguous'` is what it actually knows.
+    if (candidate.isHelper) return 'ambiguous'
     // A real DOM-render-order position. Only the candidates whose own recorded line *is* a render
     // position (not a reusable helper's declaration site, invoked from elsewhere this static pass
     // cannot enumerate) can be ordered this way.
@@ -2069,6 +2088,149 @@ export function buildAxisMatrix(primitiveName, instances) {
 // `'none'` only when *no* force-state of that state shares the element's implied role anywhere in
 // the component's stories; when one does but `resolveNameMatch` cannot settle it on one candidate,
 // the cell is `'unresolved: <reason>'` — never silently folded into `'none'`.
+// A `role` attribute that is *present but dynamic* (`MenuItemRow`'s own
+// `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}`) overrides the tag's intrinsic
+// role at render time, whatever it resolves to — falling back to the intrinsic role here would
+// wrongly pool a `<button role={...}>` whose real role is never `'button'` with elements that
+// really do render as plain buttons (`Menu`'s own trigger), inventing an ambiguity between two
+// elements that can never actually share a role. `null` excludes it from every implied-role pool
+// instead — the caller's own `cellFor` no longer reads that `null` as `'none'` (below): a genuine
+// gap in role resolution is not comparable knowledge either way.
+function impliedRoleOf(el) {
+  return el.role === 'unresolved' ? null : el.role || (INTRINSIC_ROLE[el.tag] ?? null)
+}
+
+// One element's own role-based and selector-based cells/ambiguous-reasons, against every other
+// element in the same component (`elements`) — factored out of `buildElementMatrix` so a second
+// pass can read one element's results while computing another's own `'unresolved'` reason (the
+// ancestor case below), without re-deriving them.
+function buildElementCells(el, elements, storyObjectsWithMeta) {
+  const impliedRole = impliedRoleOf(el)
+  const pool = elements.filter((o) => impliedRoleOf(o) === impliedRole && !o.ariaHidden)
+  const cells = { hover: [], 'focus-visible': [], active: [] }
+  const ambiguousReasons = { hover: [], 'focus-visible': [], active: [] }
+  if (!el.ariaHidden && impliedRole) {
+    for (const { exportName, forced, playFocus, argsLiterals } of storyObjectsWithMeta) {
+      // A `selector`-targeted force-state names no `role` — never a candidate for a local
+      // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
+      // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
+      // be treated as a wildcard match against every role-bearing element in the component).
+      if (forced && forced.role && forced.role === impliedRole) {
+        const verdict = resolveNameMatch({
+          candidate: el,
+          pool,
+          name: forced.name,
+          nth: forced.nth,
+          argsLiterals,
+        })
+        if (verdict === 'match') cells[forced.state].push(exportName)
+        else if (verdict === 'ambiguous') {
+          ambiguousReasons[forced.state].push(
+            `${exportName}: ${pool.length} candidates share role ${JSON.stringify(impliedRole)}${forced.name ? `, name ${JSON.stringify(forced.name)} not literally resolvable` : forced.nth != null ? `, nth ${forced.nth} not orderable` : ''}`,
+          )
+        }
+      } else if (
+        !forced &&
+        playFocus &&
+        (playFocus.role === impliedRole || playFocus.role === 'unresolved')
+      ) {
+        const verdict = resolveNameMatch({
+          candidate: el,
+          pool,
+          name: playFocus.name,
+          nth: null,
+          argsLiterals,
+        })
+        // A play() script can leave a real `:focus-visible` on a fresh page, or the same frame a
+        // preceding story already captured (`Page.stories.tsx`'s own `play()` `.focus()` shares
+        // its frame with `Default` — `tests/visual/stories.spec.ts:92-119`). The script cannot
+        // tell which case a given story is, so a resolved candidate is `unresolved`, never
+        // `'match'` — covered only by a real `visualForceState` (T594's amendment, REJECT on #80).
+        if (verdict === 'match') {
+          ambiguousReasons['focus-visible'].push(
+            `${exportName} (play-driven; frame not provable statically)`,
+          )
+        } else if (verdict === 'ambiguous') {
+          ambiguousReasons['focus-visible'].push(
+            `${exportName} (play-driven): ${pool.length} candidates share role ${JSON.stringify(impliedRole)}`,
+          )
+        }
+      }
+    }
+  }
+  // A `visualForceState: { selector }` targets an element by its own attribute value directly,
+  // never by role — so it applies whether or not this element even has an implied role at all
+  // (`MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link, `a[href="..."]`), and is
+  // matched against every element sharing the selector's own tag rather than `impliedRole`'s pool
+  // (T594's REJECT on #80, item 1 — previously dropped outright, `forced.role` required).
+  if (!el.ariaHidden) {
+    for (const { exportName, forced, scope } of storyObjectsWithMeta) {
+      if (!forced || forced.role || !forced.selector) continue
+      const parsed = parseSelector(forced.selector)
+      if (!parsed) continue
+      const tagPool = elements.filter((o) => o.tag === parsed.tag && !o.ariaHidden)
+      if (el.tag !== parsed.tag) continue
+      const verdict = resolveSelectorMatch({
+        selector: forced.selector,
+        candidate: el,
+        pool: tagPool,
+        scope,
+      })
+      if (verdict === 'match') cells[forced.state].push(exportName)
+      else if (verdict === 'ambiguous') {
+        ambiguousReasons[forced.state].push(
+          `${exportName}: selector ${JSON.stringify(forced.selector)} not resolvable against this element's own ${JSON.stringify(parsed.attr)}`,
+        )
+      }
+    }
+  }
+  return { el, impliedRole, cells, ambiguousReasons }
+}
+
+// Why a given `state` cell cannot be a confirmed `'none'` for an element `impliedRoleOf` returns
+// `null` for — this pass never even attempted to compare a force-state against `el` (the whole
+// loop in `buildElementCells` is gated on a truthy `impliedRole`), so `'none'` would be reporting
+// an absence this pass never checked for (T594's amendment: `'none'` is positive knowledge or it
+// is not printed). Three shapes, in order:
+//   - `el.role === 'unresolved'`: a dynamic `role={…}` (`MenuItemRow`'s own `role={role}`) — its
+//     real rendered role depends on data this static pass does not evaluate.
+//   - a descendant of `el` (by JSX nesting, `nodeStart`/`nodeEnd` containment within the same
+//     file) was itself matched or left ambiguous for this same `state` — `Table`'s own `<tr>`
+//     wraps the row `<a>` a `hover`/`active` force-state actually resolves against, and the browser
+//     paints `<tr>`'s own `hover:`/`active:` utilities whenever the pointer is over that link too,
+//     but whether the visual harness's own forced-pseudo-state mechanism (`CSS.forcePseudoState`
+//     or equivalent) cascades to an ancestor the way a real pointer does is not knowable from
+//     source — genuinely unresolved, not a confirmed absence and not a confirmed cover either.
+//   - neither of the above: the tag simply carries no role this pass can derive at all (`h2`,
+//     `label`, `tr` — none are in `INTRINSIC_ROLE`, `:281-289`).
+function noImpliedRoleReason(el, state, perElement) {
+  if (el.role === 'unresolved') return 'dynamic role'
+  const descendant = perElement.find(
+    ({ el: other, cells, ambiguousReasons }) =>
+      other !== el &&
+      other.file === el.file &&
+      el.nodeStart != null &&
+      other.nodeStart != null &&
+      el.nodeStart <= other.nodeStart &&
+      el.nodeEnd >= other.nodeEnd &&
+      (cells[state].length > 0 || ambiguousReasons[state].length > 0),
+  )
+  if (descendant) {
+    const signal =
+      descendant.cells[state].length > 0
+        ? [...new Set(descendant.cells[state])].join('; ')
+        : [...new Set(descendant.ambiguousReasons[state])].join('; ')
+    return `ancestor of a forced descendant (${descendant.el.tag}@${descendant.el.file}:${descendant.el.line}, ${state}: ${signal})`
+  }
+  return 'no implied role'
+}
+
+// The 13 primitives with no `variant`/`size` axis of their own get one row per distinct local
+// element `findLocalElements` found in their own index.tsx, cross-referenced against that
+// component's own stories.tsx for a `visualForceState`/play-focus match on the same role. A cell is
+// `'none'` only when *no* force-state of that state shares the element's implied role anywhere in
+// the component's stories; when one does but `resolveNameMatch` cannot settle it on one candidate,
+// the cell is `'unresolved: <reason>'` — never silently folded into `'none'`.
 export function buildElementMatrix(elements, storyObjectsWithMeta) {
   if (elements.length === 0) {
     return [
@@ -2082,102 +2244,16 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
       },
     ]
   }
-  // A `role` attribute that is *present but dynamic* (`MenuItemRow`'s own
-  // `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}`) overrides the tag's intrinsic
-  // role at render time, whatever it resolves to — falling back to the intrinsic role here would
-  // wrongly pool a `<button role={...}>` whose real role is never `'button'` with elements that
-  // really do render as plain buttons (`Menu`'s own trigger), inventing an ambiguity between two
-  // elements that can never actually share a role. `null` excludes it from every implied-role pool
-  // instead — correct, and harmless here: a dynamic-role element's own coverage is read from the
-  // primitive's own variant matrix (`forcedRoles`), which is not blind to it, this record-1 view.
-  const impliedRoleOf = (el) =>
-    el.role === 'unresolved' ? null : el.role || (INTRINSIC_ROLE[el.tag] ?? null)
-  return elements.map((el) => {
-    const impliedRole = impliedRoleOf(el)
-    const pool = elements.filter((o) => impliedRoleOf(o) === impliedRole && !o.ariaHidden)
-    const cells = { hover: [], 'focus-visible': [], active: [] }
-    const ambiguousReasons = { hover: [], 'focus-visible': [], active: [] }
-    if (!el.ariaHidden && impliedRole) {
-      for (const { exportName, forced, playFocus, argsLiterals } of storyObjectsWithMeta) {
-        // A `selector`-targeted force-state names no `role` — never a candidate for a local
-        // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
-        // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
-        // be treated as a wildcard match against every role-bearing element in the component).
-        if (forced && forced.role && forced.role === impliedRole) {
-          const verdict = resolveNameMatch({
-            candidate: el,
-            pool,
-            name: forced.name,
-            nth: forced.nth,
-            argsLiterals,
-          })
-          if (verdict === 'match') cells[forced.state].push(exportName)
-          else if (verdict === 'ambiguous') {
-            ambiguousReasons[forced.state].push(
-              `${exportName}: ${pool.length} candidates share role ${JSON.stringify(impliedRole)}${forced.name ? `, name ${JSON.stringify(forced.name)} not literally resolvable` : forced.nth != null ? `, nth ${forced.nth} not orderable` : ''}`,
-            )
-          }
-        } else if (
-          !forced &&
-          playFocus &&
-          (playFocus.role === impliedRole || playFocus.role === 'unresolved')
-        ) {
-          const verdict = resolveNameMatch({
-            candidate: el,
-            pool,
-            name: playFocus.name,
-            nth: null,
-            argsLiterals,
-          })
-          // A play() script can leave a real `:focus-visible` on a fresh page, or the same frame a
-          // preceding story already captured (`Page.stories.tsx`'s own `play()` `.focus()` shares
-          // its frame with `Default` — `tests/visual/stories.spec.ts:92-119`). The script cannot
-          // tell which case a given story is, so a resolved candidate is `unresolved`, never
-          // `'match'` — covered only by a real `visualForceState` (T594's amendment, REJECT on #80).
-          if (verdict === 'match') {
-            ambiguousReasons['focus-visible'].push(
-              `${exportName} (play-driven; frame not provable statically)`,
-            )
-          } else if (verdict === 'ambiguous') {
-            ambiguousReasons['focus-visible'].push(
-              `${exportName} (play-driven): ${pool.length} candidates share role ${JSON.stringify(impliedRole)}`,
-            )
-          }
-        }
-      }
-    }
-    // A `visualForceState: { selector }` targets an element by its own attribute value directly,
-    // never by role — so it applies whether or not this element even has an implied role at all
-    // (`MatchRow`/`FavouritesList`/`PlayerResultRow`'s own row link, `a[href="..."]`), and is
-    // matched against every element sharing the selector's own tag rather than `impliedRole`'s pool
-    // (T594's REJECT on #80, item 1 — previously dropped outright, `forced.role` required).
-    if (!el.ariaHidden) {
-      for (const { exportName, forced, scope } of storyObjectsWithMeta) {
-        if (!forced || forced.role || !forced.selector) continue
-        const parsed = parseSelector(forced.selector)
-        if (!parsed) continue
-        const tagPool = elements.filter((o) => o.tag === parsed.tag && !o.ariaHidden)
-        if (el.tag !== parsed.tag) continue
-        const verdict = resolveSelectorMatch({
-          selector: forced.selector,
-          candidate: el,
-          pool: tagPool,
-          scope,
-        })
-        if (verdict === 'match') cells[forced.state].push(exportName)
-        else if (verdict === 'ambiguous') {
-          ambiguousReasons[forced.state].push(
-            `${exportName}: selector ${JSON.stringify(forced.selector)} not resolvable against this element's own ${JSON.stringify(parsed.attr)}`,
-          )
-        }
-      }
-    }
+  const perElement = elements.map((el) => buildElementCells(el, elements, storyObjectsWithMeta))
+  return perElement.map(({ el, impliedRole, cells, ambiguousReasons }) => {
     const cellFor = (state) =>
       cells[state].length > 0
         ? [...new Set(cells[state])]
         : ambiguousReasons[state].length > 0
           ? [`unresolved: ${ambiguousReasons[state].join('; ')}`]
-          : ['none']
+          : impliedRole == null
+            ? [`unresolved: ${noImpliedRoleReason(el, state, perElement)}`]
+            : ['none']
     // `'none'` is confirmed only when this element carries no disabled-capable attribute at all —
     // it structurally can never render disabled. When it does (`aria-disabled={item.disabled ||
     // ...}`, `MenuItemRow`'s own shape), credit every story whose own args admit a nested
@@ -2249,6 +2325,15 @@ function stateCell(classText, coverageList, classResolved) {
   return `${cls} → ${coverage}`
 }
 
+// The real `focus:` classes an element paints (`SiteHeader`'s skip link, finding 10) alongside
+// whatever `focus-visible:` classes it also carries — both answer the same closed-vocabulary
+// "focus-visible" state, from two different pseudo-classes, so both belong on the one column a
+// reader checks for it rather than one of them staying invisible to record 1.
+function combineFocusClassText(focusText, focusVisibleText) {
+  if (focusText && focusVisibleText) return `${focusText} ${focusVisibleText}`
+  return focusText ?? focusVisibleText
+}
+
 export function renderRecord1(computed) {
   const rows = []
   for (const { componentKey, elements } of computed.localElements) {
@@ -2263,7 +2348,11 @@ export function renderRecord1(computed) {
         `${el.tag}${el.role ? `[role=${el.role}]` : ''}${el.tabIndex !== null ? `[tabIndex=${el.tabIndex}]` : ''}${el.ariaHidden ? '[aria-hidden]' : ''}`,
         `${el.file}:${el.line}`,
         stateCell(el.hover, el.coveredBy.hover, classResolved),
-        stateCell(el.focusVisible, el.coveredBy.focusVisible, classResolved),
+        stateCell(
+          combineFocusClassText(el.focus, el.focusVisible),
+          el.coveredBy.focusVisible,
+          classResolved,
+        ),
         stateCell(el.active, el.coveredBy.active, classResolved),
       ])
     }

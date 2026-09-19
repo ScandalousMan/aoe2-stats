@@ -330,7 +330,19 @@ test('extractPseudoClasses returns null for a state with no matching utility', (
     hover: null,
     'focus-visible': null,
     active: null,
+    focus: null,
   })
+})
+
+// Finding 10: `focus:` (real `:focus`, painted on any focus — pointer or keyboard) is captured
+// alongside the three state pseudo-classes, and is never confused with `focus-visible:` even when
+// both appear back-to-back in the same class string (`SiteHeader`'s skip link shape).
+test('extractPseudoClasses captures focus: separately from focus-visible:, with no cross-match', () => {
+  const result = extractPseudoClasses([
+    'sr-only focus:not-sr-only focus:fixed focus-visible:outline-2 focus-visible:outline-focus-ring',
+  ])
+  assert.equal(result.focus, 'focus:not-sr-only focus:fixed')
+  assert.equal(result['focus-visible'], 'focus-visible:outline-2 focus-visible:outline-focus-ring')
 })
 
 // --- Orchestrator remediation 2a: `aria-hidden` is excluded from every role-based candidate pool,
@@ -431,7 +443,11 @@ test('resolveNameMatch resolves nth against inline candidates sorted by line, ex
   const pool = [helperRecipe, inlineFirst, inlineSecond]
   assert.equal(resolveNameMatch({ candidate: inlineFirst, pool, name: null, nth: 0 }), 'match')
   assert.equal(resolveNameMatch({ candidate: inlineSecond, pool, name: null, nth: 0 }), 'reject')
-  assert.equal(resolveNameMatch({ candidate: helperRecipe, pool, name: null, nth: 0 }), 'reject')
+  // T594 part A: the candidate under test is itself the excluded helper — its own real render
+  // position relative to `inlineFirst`/`inlineSecond` is unknown, so this pass can neither place it
+  // at `nth` nor confirm it is not there. A confident 'reject' overstated that as settled knowledge
+  // this pass never established (`PrivacyNotice`'s own `InlineLink`, `README.md`'s row-8 sweep).
+  assert.equal(resolveNameMatch({ candidate: helperRecipe, pool, name: null, nth: 0 }), 'ambiguous')
 })
 
 test('resolveNameMatch is ambiguous (not none) when nth exceeds the orderable pool', () => {
@@ -553,14 +569,11 @@ test('extractGeneratedRegion/replaceGeneratedRegion round-trip the marker-delimi
   assert.match(replaced, /More prose\./)
 })
 
-test('check mode (region equality after a prettier round-trip) passes when nothing changed and fails when a generated cell is hand-edited', () => {
+test('check mode detects a hand-edited generated cell via extractGeneratedRegion inequality', () => {
   const region = renderGeneratedRegion(FIXTURE_COMPUTED)
   const readme = `# Title\n\n${region}\n`
   const formatted = formatWithPrettier(readme)
   const formattedRegion = extractGeneratedRegion(formatted)
-  // Unchanged: the currently-committed region (after its own prettier pass) matches a fresh render.
-  const currentRegion = extractGeneratedRegion(formatWithPrettier(readme))
-  assert.equal(currentRegion, formattedRegion)
 
   // Hand-edit one generated cell — exactly the shape the orchestrator's review found: the embedded
   // record says `none`/unresolved, the visible text claims otherwise. Everything else (the source
@@ -570,7 +583,7 @@ test('check mode (region equality after a prettier round-trip) passes when nothi
   assert.notEqual(corruptedRegion, formattedRegion)
 })
 
-// The test above only ever proves a region matches *itself* through a second prettier pass — it
+// The test above only ever proves a hand-corrupted region differs from a fixture-derived one — it
 // never runs the real check path, `main()`'s own comparison of a *committed* region against one
 // computed fresh from real source, so a defect in `computeStateCoverage` itself (as opposed to
 // `renderGeneratedRegion`'s formatting) could never fail it. This drives the same pipeline `main()`
@@ -1694,5 +1707,115 @@ test('a dynamic role={…} element is excluded from the plain button’s implied
   ]
   const rows = buildElementMatrix([plainButton, dynamicRoleButton], storyStates)
   assert.deepEqual(rows[0].hover, ['Hover'])
-  assert.deepEqual(rows[1].hover, ['none'])
+  // T594 part A: a dynamic `role={…}` is excluded from every implied-role pool, so this pass never
+  // even compared a force-state against it — 'none' would overstate that as a confirmed absence.
+  assert.equal(rows[1].hover.length, 1)
+  assert.match(rows[1].hover[0], /^unresolved: dynamic role$/)
+})
+
+// --- T594 part A: `impliedRoleOf` returns `null` for a dynamic `role={…}` or a tag `INTRINSIC_ROLE`
+// does not carry (`h2`, `label`, `tr`) — the whole matching loop used to be skipped and the cell
+// fell to a false confirmed `'none'`. Three shapes, one fixture each. --------------------------------
+
+test('buildElementMatrix: a dynamic role={…} element reads "unresolved: dynamic role" on every state, not "none" (Menu shape)', () => {
+  const dynamicRoleButton = {
+    tag: 'button',
+    role: 'unresolved',
+    tabIndex: null,
+    ariaHidden: false,
+    isHelper: false,
+    text: '',
+    file: 'Menu/index.tsx',
+    line: 352,
+  }
+  // No story targets role 'button' or any literal role at all — the dynamic role means this pass
+  // cannot even attempt a comparison, on any of the three states.
+  const storyStates = [
+    {
+      exportName: 'Selection',
+      forced: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt', nth: null },
+      playFocus: null,
+      argsLiterals: new Set(['aoe2alt']),
+    },
+  ]
+  const rows = buildElementMatrix([dynamicRoleButton], storyStates)
+  assert.match(rows[0].hover[0], /^unresolved: dynamic role$/)
+  assert.match(rows[0].focusVisible[0], /^unresolved: dynamic role$/)
+  assert.match(rows[0].active[0], /^unresolved: dynamic role$/)
+})
+
+test('buildElementMatrix: a tag INTRINSIC_ROLE does not carry reads "unresolved: no implied role" when it has no forced descendant (Dialog\'s h2 shape)', () => {
+  const heading = {
+    tag: 'h2',
+    role: null,
+    tabIndex: -1,
+    ariaHidden: false,
+    isHelper: false,
+    text: '',
+    file: 'Dialog/index.tsx',
+    line: 102,
+    nodeStart: 0,
+    nodeEnd: 10,
+  }
+  // A play() ending on `expect(heading).toHaveFocus()` — `findPlayFocusTarget`'s own shape — names
+  // role 'heading', which `h2` cannot be compared against because it has no implied role at all;
+  // this must still surface as unresolved, not as a confirmed absence.
+  const storyStates = [
+    {
+      exportName: 'KeyboardFocusOrderAndTrap',
+      forced: null,
+      playFocus: { role: 'heading', name: 'Turn off replay archival?' },
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix([heading], storyStates)
+  assert.match(rows[0].hover[0], /^unresolved: no implied role$/)
+  assert.match(rows[0].focusVisible[0], /^unresolved: no implied role$/)
+  assert.match(rows[0].active[0], /^unresolved: no implied role$/)
+})
+
+test('buildElementMatrix: an ancestor of a forced descendant reads "unresolved: ancestor of a forced descendant …", never "none" (Table\'s tr/row-link shape)', () => {
+  const row = {
+    tag: 'tr',
+    role: null,
+    tabIndex: null,
+    ariaHidden: false,
+    isHelper: false,
+    text: '',
+    file: 'Table/index.tsx',
+    line: 237,
+    nodeStart: 0,
+    nodeEnd: 100,
+  }
+  const rowLink = {
+    tag: 'a',
+    role: null,
+    tabIndex: null,
+    ariaHidden: false,
+    isHelper: false,
+    text: 'RedBull_Barley',
+    file: 'Table/index.tsx',
+    line: 281,
+    nodeStart: 10,
+    nodeEnd: 20,
+  }
+  const storyStates = [
+    {
+      exportName: 'RowLinkHover',
+      forced: { state: 'hover', role: 'link', name: 'RedBull_Barley', nth: null },
+      playFocus: null,
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix([row, rowLink], storyStates)
+  const trRow = rows.find((r) => r.variantSize.startsWith('tr'))
+  const linkRow = rows.find((r) => r.variantSize.startsWith('a'))
+  assert.deepEqual(linkRow.hover, ['RowLinkHover'])
+  assert.equal(trRow.hover.length, 1)
+  assert.match(trRow.hover[0], /^unresolved: ancestor of a forced descendant/)
+  assert.match(trRow.hover[0], /a@Table\/index\.tsx:281/)
+  assert.match(trRow.hover[0], /RowLinkHover/)
+  // `active` carries no force-state at all in this fixture, on either element — a genuine gap
+  // ('no implied role'), not an ancestor of anything forced.
+  assert.match(trRow.active[0], /^unresolved: no implied role$/)
 })
