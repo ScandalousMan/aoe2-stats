@@ -34,6 +34,12 @@ a provenance spine that keeps a reconstruction from ever being mistaken for an o
 reconstruction engine itself — the time-indexed state, the invariants, the golden fixtures — is
 feature 007, specified separately once this is clarified.
 
+These foundations ship as **working, tested code, not as documents alone**: the register, the
+truth-tier and provenance types, the canonical event vocabulary with an adapter that produces it, the
+queryable knowledge base, the gap machinery and the validators. Every requirement below worded as
+something the system MUST do is enforced by something that executes. The code stops where
+reconstruction begins.
+
 It does **not** re-specify any part of 003's pipeline. Where the two meet, 003 stands.
 
 ### What the reference replays actually proved
@@ -108,6 +114,27 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
 - Q: How should the mission be cut into features? → A: Two. This feature is the versioned knowledge
   base, the canonical event model and the truth-tier and provenance spine. Feature 007 is the
   deterministic reconstruction, its invariants and its golden fixtures.
+- Q: When this feature is merged, what has shipped — written artifacts only, or running code that
+  enforces the rules? → A: Foundations in code. The register, the truth-tier and provenance types, the
+  canonical event vocabulary with a working adapter, a queryable versioned knowledge base, the gap
+  machinery and the validators that reject a mis-tiered value all ship as working, tested code. The
+  code stops at the reconstruction boundary, which is feature 007.
+- Q: Should the determinability register be a machine-readable file, a human-written document, or
+  both? → A: A machine-readable register is the single source of truth, living with the package that
+  enforces it. The human-readable view is generated from it, and a test asserts the two never diverge.
+- Q: What form does a confidence take on an inferred or predicted value? → A: A closed, ordered set of
+  named levels, and each value also states the basis for its level. No numeric probability is
+  published until a calibration source exists, because a recording carries nothing to calibrate
+  against and an uncalibrated number would be an invented value presented as a measured one.
+- Q: How much of the game must the first knowledge snapshot cover for this feature to be done? → A:
+  Whatever the committed reference recordings need. Every entity and civilisation those recordings
+  reference is covered with zero blocking gaps; the rest of what the source provides is imported but
+  validated only to the extent the recorded sampling states, and remaining holes surface as gaps.
+- Q: What severity levels can a knowledge gap carry, and what does each do to publication? → A: Two,
+  and the set is closed. Blocking — at least one publishable value depends on the missing knowledge,
+  and every dependent value is withheld. Informational — no currently published value depends on it,
+  nothing is withheld, and the gap only counts toward the aggregate rate. There is no level under
+  which a value is published despite a missing input.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -269,7 +296,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 ### Edge Cases
 
 - What happens when a recording is from a game build the knowledge base has no snapshot for? The
-  build is not silently mapped to the nearest snapshot; it is a gap with its own severity.
+  build is not silently mapped to the nearest snapshot; it is a gap of blocking severity.
 - What happens when an imported source changes a value for a patch that has already shipped analyses?
   A new snapshot is created; existing analyses keep naming the old one and keep reproducing.
 - What happens when the two knowledge sources disagree about the same field? The disagreement is
@@ -301,7 +328,11 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-005**: The register MUST cover every datum this feature and feature 007 intend to publish, and
   MUST mark as blocked — not as approximate — every datum that depends on the unreadable starting
   state.
-- **FR-006**: A datum MUST NOT be published by any part of the system unless it has a register entry.
+- **FR-006**: A datum MUST NOT be published by any part of the system unless it has a register entry,
+  and an automated check MUST fail when a publishable field has none.
+- **FR-006a**: The register MUST exist as a single machine-readable source of truth, kept with the
+  package that enforces it. The human-readable view MUST be generated from that source, never
+  maintained by hand, and an automated check MUST fail when the two diverge.
 
 ### The truth hierarchy, materialised
 
@@ -313,6 +344,10 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   reader recompute it.
 - **FR-010**: Every value at the inferred or predicted tier MUST carry a confidence, and MUST be named
   and worded so it cannot be read as a measurement.
+- **FR-010a**: A confidence MUST be one of a closed, ordered set of named levels, and MUST state the
+  basis for its level — the evidence that placed it there. A numeric probability MUST NOT be published
+  as a confidence until a calibration source exists and is recorded in the register; a recording
+  carries no outcome against which one could be calibrated.
 - **FR-011**: A value produced by the coaching or expected-trajectory layer MUST NOT be writable into
   a field typed observed, decoded or reconstructed. Validation MUST reject a document that does so.
 - **FR-012**: The naming discipline established by 003 MUST hold across the whole vocabulary: a name
@@ -348,6 +383,12 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-022**: The system MUST provide a knowledge base covering, at minimum: units, buildings,
   technologies, their costs, their training, construction and research times, their age requirements
   and prerequisites, civilisations, and the civilisation bonuses that modify any of the above.
+- **FR-022a**: The first knowledge snapshot MUST cover every entity and every civilisation referenced
+  by each committed reference recording, such that analysing those recordings records no gap of
+  blocking severity. Beyond that set, what the source provides MAY be imported without exhaustive
+  validation, provided the validation actually performed is recorded (FR-030) and any absent field
+  surfaces as a gap rather than as a value. Exhaustive coverage of the game is not a completion
+  condition of this feature.
 - **FR-023**: Every knowledge answer MUST be qualified by game build and by civilisation where the
   game qualifies it, and MUST NOT return a generic value where a civilisation-specific one exists.
 - **FR-024**: A knowledge snapshot MUST have an identity composed of its source, that source's own
@@ -383,8 +424,12 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-035**: The system MUST record a knowledge gap naming the entity, the field, the game build and
   the affected civilisation whenever a required piece of knowledge is absent.
 - **FR-036**: A gap MUST state what it prevents, not merely that something is missing.
-- **FR-037**: A gap MUST carry a severity, and a blocking gap MUST prevent publication of every value
-  that depends on it while leaving independent values unaffected.
+- **FR-037**: A gap MUST carry a severity drawn from a closed set of exactly two levels. A **blocking**
+  gap is one on which at least one publishable value depends; it MUST prevent publication of every
+  value that depends on it while leaving independent values unaffected. An **informational** gap is
+  one on which no currently published value depends; it withholds nothing and counts only toward the
+  aggregate report (FR-039). No severity MAY permit a value to be published while an input it depends
+  on is missing (FR-038).
 - **FR-038**: The system MUST NOT substitute a default, an average or a neighbouring value for missing
   knowledge under any circumstances.
 - **FR-039**: Gaps MUST be reportable in aggregate, so that a pattern of gaps introduced by a game
@@ -428,19 +473,21 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 
 ### Key Entities
 
-- **Determinability entry**: one datum's classification — its tier, source, algorithm, required
-  knowledge, dependencies, validation strategy, and for a non-determinable datum the reason, impact,
-  possible approximation and whether that approximation is acceptable.
+- **Determinability entry**: one record in the machine-readable register, classifying one datum — its
+  tier, source, algorithm, required knowledge, dependencies, validation strategy, and for a
+  non-determinable datum the reason, impact, possible approximation and whether that approximation is
+  acceptable.
 - **Truth tier**: the closed, ordered vocabulary observed → decoded → reconstructed → derived →
   inferred → predicted, carried by every published value.
 - **Provenance**: the tier, the method, the inputs and the versions that produced one value.
-- **Confidence**: the qualification attached to any value at the inferred or predicted tier.
+- **Confidence**: the qualification attached to any value at the inferred or predicted tier — one of a
+  closed, ordered set of named levels, together with the basis for that level. Never a bare number.
 - **Canonical event**: one engine-independent occurrence — match-clock time, participant, kind,
   payload, tier.
 - **Knowledge snapshot**: one immutable, validated body of game rules, identified by source, source
   version, game build and content digest.
-- **Knowledge gap**: one absent required field — entity, field, game build, civilisation, impact,
-  severity.
+- **Knowledge gap**: one absent required field — entity, field, game build, civilisation, impact, and
+  a severity that is either blocking or informational.
 - **Analysis identity**: the full tuple that makes a published analysis reproducible.
 
 ## Success Criteria *(mandatory)*
@@ -449,8 +496,9 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 
 - **SC-001**: Every datum the product intends to publish has a register entry: the count of publishable
   data without one is zero.
-- **SC-002**: No published value lacks a tier, and no value at the inferred or predicted tier lacks a
-  confidence: both counts are zero.
+- **SC-002**: No published value lacks a tier, no value at the inferred or predicted tier lacks a
+  confidence, and no confidence lacks its basis or falls outside the closed set of levels: all three
+  counts are zero.
 - **SC-003**: A document that places a coaching conclusion in a field typed observed, decoded or
   reconstructed is rejected by validation, every time it is attempted.
 - **SC-004**: The same recording analysed twice with identical versions yields a byte-identical
@@ -461,6 +509,8 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   outbound requests is zero.
 - **SC-007**: Removing a required field from a snapshot causes the dependent values to be withheld and
   a gap to be recorded, while every independent value is still produced.
+- **SC-007a**: Analysing each committed reference recording against the first knowledge snapshot
+  records zero gaps of blocking severity.
 - **SC-008**: No value is ever published with a substituted default in place of missing knowledge: the
   count of substitutions is zero, by construction rather than by inspection.
 - **SC-009**: The canonical event stream for a reference recording contains no field specific to the
