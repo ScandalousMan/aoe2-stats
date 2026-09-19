@@ -208,12 +208,12 @@ the view fails the suite.
       weakest input; a confidence rejects a float, an integer, a numeric string and an empty basis;
       a confidence attached to a value at a tier above inferred is an error, because doubt advertised
       where the method admits none misleads in the other direction
-- [ ] T612 [US3] Create `packages/core/src/aoe2stats_core/truth/provenance.py` (**FR-009**): tier,
+- [x] T612 [US3] Create `packages/core/src/aoe2stats_core/truth/provenance.py` (**FR-009**): tier,
       method identifier and version, inputs, optional confidence, optional non-claim, bound to one
       register datum. Confidence is **required** at inferred and predicted and **forbidden** below
       (**FR-010**), enforced at construction. The method must name an algorithm in a form a reader
       can recompute — a free-text sentence is not one, so the field is an identifier plus a version
-- [ ] T613 [US1] Write `packages/core/src/aoe2stats_core/truth/register.toml` with the entry schema
+- [x] T613 [US1] Write `packages/core/src/aoe2stats_core/truth/register.toml` with the entry schema
       in [contracts/register.md](./contracts/register.md) and the entries that contract lists as
       mandatory (**FR-001**, **FR-002**). Every entry states its source, its method, the knowledge
       it requires, what it depends on and how it is validated, and its evidence is a **reference**
@@ -240,7 +240,7 @@ the view fails the suite.
       dependency, a dangling or cyclic dependency, a tier stronger than its weakest dependency, a
       published inferred entry with no confidence method, or empty evidence. Expose the dependency
       graph, which phase 4 reads to compute severity
-- [ ] T616 [P] [US1] Write `packages/core/tests/test_register.py` before T615, `xfail(strict=True)`:
+- [x] T616 [P] [US1] Write `packages/core/tests/test_register.py` before T615, `xfail(strict=True)`:
       one test per refusal, each **planting the defect itself** rather than asserting the happy
       path. A loader test that only loads the good file proves the file is good, not that the loader
       refuses anything — and the refusals are the whole product here
@@ -261,7 +261,7 @@ the view fails the suite.
       rules are written now and exercised against hand-built documents. Rules 1 and 2 are
       **FR-006** and **FR-007**: every leaf resolves to exactly one published datum, and every datum
       present carries a provenance entry. Rule 5 is **FR-010**; rule 6 is **FR-011**
-- [ ] T620 [P] [US3] Write `packages/core/tests/test_validate.py` before T619, `xfail(strict=True)`.
+- [x] T620 [P] [US3] Write `packages/core/tests/test_validate.py` before T619, `xfail(strict=True)`.
       **SC-003** is tested the way it is worded — a coaching-style conclusion placed in a field typed
       observed, decoded and reconstructed, rejected **each time it is attempted**, which is once per
       tier boundary and not once overall. **SC-001**: a document carrying a leaf with no register
