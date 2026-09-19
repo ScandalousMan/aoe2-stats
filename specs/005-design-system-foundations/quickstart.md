@@ -147,10 +147,12 @@ and the false one. Each result is read back from `document.documentElement.datas
 stored override and from `matchMedia` rather than by eye.
 
 Recorded here rather than left in the commit body that first carried it: a pre-squash commit message
-is not a durable citation on this branch, by this file's own convention. This is the only evidence
-the **first-paint** half of production-readiness item 4 and SC-005 has — the override and
-system-preference halves are also asserted as unit tests in
-`packages/design-system/src/theme/ThemeProvider.test.tsx`, which is what the walk below cites.
+is not a durable citation on this branch, by this file's own convention. This is the only evidence the two behavioural halves of production-readiness item 4 and SC-005
+have — the flash-free first paint and the reload-persistence of an override, which are exactly the
+two T577's walk records as un-run. `packages/design-system/src/theme/ThemeProvider.test.tsx` is not
+a substitute for either: its seven tests are jsdom tests of the provider, and nothing anywhere
+exercises `apps/web/index.html`'s inline pre-hydration script or a real reload end to end. Case 2
+below is the only evidence the reload path has.
 
 1. **System dark, fresh profile** (storage cleared, colour scheme dark, reload): theme `dark`,
    nothing stored, system prefers dark. The application's own error boundary — the backend is
@@ -917,7 +919,7 @@ trio depicts a `Contents` entry; `ArchivalControl`'s privacy link has no state s
 level down that `Button.stories.tsx` captures hover for `primary` only, so two screens deferring their
 `secondary` and `destructive` buttons' hover to it were deferring to no frame. These are
 `packages/design-system/specs/README.md`'s register row 8 (H5): T594 sweeps every component rather than
-trusting this list, T595 fixes what the sweep finds, and T596 fixes `ArchivalControl`'s link
+trusting this list, T598/T599/T595 fix what the sweep finds, and T596 fixes the two anchors
 after a design decision.
 
 **So item 15 stays unticked, for these reasons:** T594's sweep, T595's and T596's fixes and a

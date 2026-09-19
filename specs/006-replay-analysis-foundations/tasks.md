@@ -37,7 +37,7 @@ Per [plan.md](./plan.md): `packages/core/src/aoe2stats_core/{truth,replay}/`,
 
 ## Numbering starts at T601, deliberately
 
-001 reaches T110, 002 runs T201–T215, 003 runs T301–T412, 004 runs T401–T458 and 005 runs T501–T596.
+001 reaches T110, 002 runs T201–T215, 003 runs T301–T412, 004 runs T401–T458 and 005 runs T501–T599.
 Ids resolve **across** features: `spec_lint.py`'s `task-refs` check treats an id as defined the
 moment any feature's `tasks.md` says so. 003 and 004 already overlap at T401–T412, which is exactly
 the ambiguity a disjoint range costs nothing to avoid.

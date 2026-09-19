@@ -1155,7 +1155,7 @@ that order so the frame shows the current control; its hover frame closed row 7 
 rejected twice more (PR #80's hand-typed pass, then a second hand-typed pass, both for the same
 partial-set shape one level down) before T594 was amended to require an extractor,
 `scripts/checks/state-coverage.mjs`, and closed with that rebuild (producing findings F1-F20 below
-and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, T596).**
+and the F15/F16-carried-to-consumers finding), and is open on its fix half, split 2026-09-19 into T598 (the checker that decides which cells are real gaps), T599 (the false claims), T595 (the frames and the regeneration) and T596 (the two anchors awaiting a design decision), in that order.**
 
 **State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
 row 8 open. This
@@ -1669,7 +1669,7 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    places** — two of seventeen primitive matrices built, conclusions asserted without their records, a
    grep standing in for "read in full," the `apps/web`-composed handoff dropped, and three generic
    deferrals waved through as "cannot be false" instead of filed. This is the corrected sweep. No
-   source, story or baseline changed in T594; T595 and T596 close what this enumerates.
+   source, story or baseline changed in T594; T598, T599, T595 and T596 close what this enumerates, in that order.
 
    **A second hand-back, on PR #80, was rejected 2026-09-13 for the same shape one level down.** A
    hand-typed sweep — reading every file the Method paragraph below now reads mechanically — fixed the
@@ -2636,7 +2636,7 @@ generated table changed shape, not why a claim above it did.
 
 **Owners: T594 (this sweep — the generated region, 8c's full 29-file tally, 8c-bis's
 eighteen-component story tally and its own vocabulary sweep, 8d, F1-F20 and the F15/F16 consumer
-findings). T595 closes the enumerated set (F11 and the contact-route half of F10 wait on a design
+findings). T599 corrects the false claims and T595 builds the frames (F11 and the contact-route half of F10 are both T596's and wait on a design
 decision, T596). Fix by 2026-09-27.**
 
 Also recorded, not registered here because it is a two-minute fix rather than an open gap, and
