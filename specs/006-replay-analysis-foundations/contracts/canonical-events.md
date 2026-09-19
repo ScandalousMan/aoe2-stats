@@ -30,7 +30,8 @@ Closed. Each kind has one typed payload. Tier is per kind and fixed.
 | --------------------- | ---------- | ----------------------------------------------------------- | ------------ |
 | `match-started`       | observed   | build, map, lobby presets, participants and their civilisations | yes      |
 | `building-placed`     | decoded    | building id, position                                       | yes          |
-| `unit-queued`         | observed   | unit id, producing building object, count                   | yes          |
+| `unit-queued`         | observed   | unit id, building type, producing building object, count    | yes          |
+| `unit-unqueued`       | observed   | unit id, count                                              | yes          |
 | `research-queued`     | observed   | technology id, researching building object                  | yes          |
 | `units-commanded`     | observed   | command class, unit object ids, optional target             | yes          |
 | `market-transaction`  | decoded    | direction, resource, amount                                 | yes — needs a decoder |
@@ -41,6 +42,16 @@ Closed. Each kind has one typed payload. Tier is per kind and fixed.
 | `undecoded`           | observed   | opaque operation label, payload length                      | yes          |
 | `starting-attributes` | decoded    | per-participant attribute values                            | **declared only** |
 | `starting-object`     | decoded    | object id, class, position, owner                           | **declared only** |
+
+**Two additions, each forced by the timeline golden (T628).** `unit-queued` carries the building
+*type* beside the building object: the old timeline publishes each training's building type (a Town
+Center is 109) and an object id cannot recover it; both are game concepts, not engine-shaped fields.
+`unit-unqueued` (unit id, count) is the cancellation counterpart, which the old extractor netted
+against `villagers_ordered`; it is emitted only for a top-level cancellation action whose payload
+carries both an integer unit id and an integer amount, and any other shape stays `undecoded`, so
+nothing is read from a payload whose layout no recording has shown. A command naming several
+producing buildings is still one event carrying the first: the timeline never read a building object,
+so nothing it published is lost, and the one-event-per-operation accounting is unchanged.
 
 **`building-placed` is `decoded`**, not observed: the building identifier is read from a payload by
 this repository's own decoder. The participant on the same event comes from a named field and would

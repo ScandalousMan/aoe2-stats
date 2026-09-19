@@ -49,3 +49,27 @@ def test_the_committed_replay_extracts_to_the_committed_timeline_byte_for_byte(
     serialized = json.dumps(asdict(timeline), indent=2, sort_keys=False) + "\n"
 
     assert serialized == GOLDEN_TIMELINE.read_text()
+
+
+@pytest.mark.parametrize("dropped", ["building-placed", "unit-queued", "research-queued"])
+def test_the_golden_comparison_fails_if_the_fold_loses_one_event(
+    extractor: Aoe2RecExtractor, monkeypatch: pytest.MonkeyPatch, dropped: str
+) -> None:
+    """The golden proves nothing unless it can fail: drop one event and the output must differ."""
+    from aoe2stats_replay_engine import aoe2rec
+    from aoe2stats_replay_engine.canonical import canonical_events
+
+    def lossy(parsed, accounting=None):  # type: ignore[no-untyped-def]
+        skipped = False
+        for event in canonical_events(parsed, accounting):
+            if not skipped and event.kind.value == dropped:
+                skipped = True
+                continue
+            yield event
+
+    monkeypatch.setattr(aoe2rec, "canonical_events", lossy)
+
+    timeline = extractor.extract(REFERENCE_REPLAY.read_bytes())
+
+    serialized = json.dumps(asdict(timeline), indent=2, sort_keys=False) + "\n"
+    assert serialized != GOLDEN_TIMELINE.read_text()

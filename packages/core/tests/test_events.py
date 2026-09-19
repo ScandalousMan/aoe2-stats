@@ -22,6 +22,7 @@ CONTRACT_TIERS = {
     "match-started": "OBSERVED",
     "building-placed": "DECODED",
     "unit-queued": "OBSERVED",
+    "unit-unqueued": "OBSERVED",
     "research-queued": "OBSERVED",
     "units-commanded": "OBSERVED",
     "market-transaction": "DECODED",
@@ -41,7 +42,7 @@ def test_vocabulary_is_closed_and_matches_the_contract() -> None:
     from aoe2stats_core.replay.events import EventKind
 
     assert {k.value for k in EventKind} == set(CONTRACT_TIERS)
-    assert len(EventKind) == 13
+    assert len(EventKind) == 14
 
 
 def test_every_kind_has_the_contract_tier() -> None:

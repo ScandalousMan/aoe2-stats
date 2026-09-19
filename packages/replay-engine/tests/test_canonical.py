@@ -30,6 +30,7 @@ from aoe2stats_core.replay.events import (
     UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
+    UnitUnqueuedPayload,
 )
 from aoe2stats_replay_engine.aoe2rec import _parse_or_raise, _read_member_bytes
 from aoe2stats_replay_engine.canonical import Accounting, canonical_events
@@ -293,7 +294,7 @@ def test_queueing_repeated_identically_is_never_collapsed() -> None:
 
     assert len(events) == 3
     payload = events[0].payload
-    assert payload == UnitQueuedPayload(unit_id=83, building_object=500, count=1)
+    assert payload == UnitQueuedPayload(unit_id=83, building_type=109, building_object=500, count=1)
 
 
 def test_a_movement_command_with_no_decoded_units_keeps_an_empty_list() -> None:
@@ -772,3 +773,26 @@ def test_no_chat_text_reaches_an_event_or_a_log_line_on_a_planted_message(
     assert not any(_leaks(event, {_SECRET}) for event in events)
     assert _SECRET not in caplog.text
     assert caplog.records == []
+
+
+def test_a_top_level_cancellation_is_a_unit_unqueued_event() -> None:
+    stream = _stream(_act("Unqueue", 1, unit_id=83, amount=2))
+    (event,) = canonical_events(stream)
+    assert event.kind is EventKind.UNIT_UNQUEUED
+    assert event.payload == UnitUnqueuedPayload(unit_id=83, count=2)
+
+
+def test_a_cancellation_whose_payload_lacks_the_two_fields_is_undecoded_never_guessed() -> None:
+    stream = _stream(_act("Unqueue", 1, action_length=9), _act("FarmUnqueue", 1, unit_id=83))
+    events = list(canonical_events(stream))
+    assert [e.kind for e in events] == [EventKind.UNDECODED, EventKind.UNDECODED]
+
+
+def test_raw_actions_count_before_collapse_and_before_the_exit_rule() -> None:
+    accounting = Accounting()
+    stream = _stream(
+        _research(1), _research(1), _move(1), _act("Resign", 1), _move(1), _move(2), _move(9)
+    )
+    list(canonical_events(stream, accounting))
+    # Player 9 is unseated: not counted. Player 1's collapsed and post-exit commands are.
+    assert accounting.raw_actions == {1: 5, 2: 1}

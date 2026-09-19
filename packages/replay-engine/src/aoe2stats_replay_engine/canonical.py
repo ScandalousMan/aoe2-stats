@@ -67,7 +67,7 @@ from __future__ import annotations
 import json
 import struct
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 from aoe2stats_core.replay.events import (
@@ -83,6 +83,7 @@ from aoe2stats_core.replay.events import (
     UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
+    UnitUnqueuedPayload,
 )
 from aoe2stats_core.replay.validation import EngineParseError
 
@@ -161,6 +162,10 @@ class Accounting:
     collapsed: int = 0
     after_exit: int = 0
     unseated: int = 0
+    # Every action operation naming a seated participant, before collapse and before the exit rule.
+    # It is a measurement, not a drop reason, so it is left out of equality and of the equation.
+    # The timeline's published `actions` figure is this count, which no event stream can supply.
+    raw_actions: dict[int, int] = field(default_factory=dict, compare=False)
 
 
 class _Exits:
@@ -217,10 +222,30 @@ def _unit_queued(clock: int, player: int, payload: _Payload, _: _Exits) -> Canon
         participant=player,
         payload=UnitQueuedPayload(
             unit_id=cast(int, payload["unit_id"]),
+            building_type=cast(int, payload["building_type"]),
             building_object=building_objects[0],
             count=cast(int, payload["amount"]),
         ),
     )
+
+
+def _unit_unqueued(clock: int, player: int, payload: _Payload, _: _Exits) -> CanonicalEvent:
+    # No recording carries a top-level cancellation, so its payload layout is unproven: read the two
+    # fields the old timeline extractor read, and only when both are integers. Anything else is
+    # `undecoded` rather than a guess.
+    unit_id, amount = payload.get("unit_id"), payload.get("amount")
+    if not (_is_int(unit_id) and _is_int(amount)):
+        return _undecoded("Unqueue", clock, player, payload)
+    return CanonicalEvent(
+        clock_ms=clock,
+        kind=EventKind.UNIT_UNQUEUED,
+        participant=player,
+        payload=UnitUnqueuedPayload(unit_id=cast(int, unit_id), count=cast(int, amount)),
+    )
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _research_queued(
@@ -316,6 +341,9 @@ _ActionMapper = Callable[[int, int, _Payload, _Exits], CanonicalEvent | None]
 _ACTION_MAPPERS: Mapping[str, _ActionMapper] = {
     "Build": _building_placed,
     "DeQueue": _unit_queued,
+    "Unqueue": _unit_unqueued,
+    "FarmUnqueue": _unit_unqueued,
+    "FishtrapUnqueue": _unit_unqueued,
     "Research": _research_queued,
     "Resign": _resigned,
     "Move": _move,
@@ -439,6 +467,7 @@ def canonical_events(
             if player not in seated:
                 tally.unseated += 1
                 continue
+            tally.raw_actions[player] = tally.raw_actions.get(player, 0) + 1
             if state.has_exited(player):
                 tally.after_exit += 1
                 continue
