@@ -121,7 +121,7 @@ neither carries a post-game statistics block; no document names a parser path th
       `## Important unresolved decisions` entry is amended to say which branch was taken. Do not
       soften this into a claim the repository cannot check — an unrepeatable measurement promoted to
       settled is the exact failure `CLAUDE.md`'s filing rule exists to prevent
-- [ ] T606 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` and
+- [x] T606 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` and
       `docs/adr/0001-replay-parser.md` to name the paths that exist (**FR-046**): the adapter at
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and the protocols at
       `packages/core/src/aoe2stats_core/replay/`, in place of the parser application directory that
@@ -141,7 +141,7 @@ neither carries a post-game statistics block; no document names a parser path th
       the phantom parser directory from the `python` paths filter in `.github/workflows/pr.yml` and
       add `apps/analyzer/**`, which is in no filter at all today — a pull request touching only the
       analyzer runs no Python job
-- [ ] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` **and** the 2026-08-24
+- [x] T607 [P] [US1] Correct `.claude/skills/replay-parsing/SKILL.md` **and** the 2026-08-24
       correction note in `docs/adr/0001-replay-parser.md` where each states the placement command
       carries no player identifier (**FR-047**). The pinned wheel supplies it;
       `packages/replay-engine/tests/test_aoe2rec.py` pins that as a currently-passing fact across

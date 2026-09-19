@@ -1,6 +1,6 @@
 ---
 name: replay-parsing
-description: How to parse .aoe2record files — which engine, the known bugs, quarantine and re-parse discipline. Load before any work on apps/parser or on capture-time validation.
+description: How to parse .aoe2record files — which engine, the known bugs, quarantine and re-parse discipline. Load before any work on packages/replay-engine, apps/analyzer or capture-time validation.
 ---
 
 # Parsing AoE2 DE replays
@@ -12,8 +12,11 @@ working discipline.
 
 ## The rule
 
-**`aoe2rec-py` is primary. `aoc-mgz` is secondary.** Both sit behind one Protocol in
-`apps/parser/src/aoe2stats_parser/engines/`. Never import either directly outside its adapter.
+**`aoe2rec-py` is primary. `aoc-mgz` is secondary.** Only the primary sits behind a Protocol: its
+adapter is `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` and the Protocols are in
+`packages/core/src/aoe2stats_core/replay/`. Never import `aoe2rec_py` outside that adapter. The
+secondary has no adapter — the nightly canary installs it ephemerally — and giving both engines one
+Protocol is an open gap (`docs/risks.md`), not something to assume.
 
 That indirection is not architectural decoration: the primary parser has already changed once, when
 a game patch broke `aoc-mgz` and left it broken for six months. Assume it will change again.
@@ -79,19 +82,30 @@ parser's measured memory amplification, not a time budget — see `ANALYSIS_MAX_
 the ceiling and is refused is an **expected outcome**, not an incident: it must not raise a per-item
 alert or get retried on a timer. Only the refusal rate is worth watching.
 
-**`Build` is not decoded by the pinned wheel.** It comes back as `{"action_length", "data": [...]}`
-with no `player_id` field — the player id and building type are inside the raw `data` payload, and
-decoding that is this repository's job, covered by a golden test. Do not treat `Build` as usable
-as-delivered. See [`docs/adr/0001-replay-parser.md`](../../../docs/adr/0001-replay-parser.md) and R4
-in `specs/003-player-search-match-analysis/research.md` for what was measured and why the ADR's
-original claim about `Build` no longer holds.
+**`Build` is half-decoded by the pinned wheel.** It comes back as
+`{"player_id", "action_length", "data": [...]}`. The player identifier is supplied by the wheel, as
+on every other action variant, and `packages/replay-engine/tests/test_aoe2rec.py` pins that across
+every placement in the fixture — read it from the field, never from `data`. Only the **building
+identifier** is undecoded: it lives in the raw `data` payload and decoding it is this repository's
+job (`decode_build_action`), covered by a golden test. See
+[`docs/adr/0001-replay-parser.md`](../../../docs/adr/0001-replay-parser.md) (the 2026-08-24
+correction and its 2026-09-19 amendment) and R4 in
+`specs/003-player-search-match-analysis/research.md` for what was measured.
 
-**Collapse duplicated commands to their first occurrence.** A double-click on an in-game button
-(age-up, research) issues the same command twice, milliseconds apart. Extraction must dedupe on
-`(player_id, technology_type)` — or the equivalent key for the command in question — and keep the
-first occurrence only, or a two-player game reports more age-ups than players. See R5 in
-`specs/003-player-search-match-analysis/research.md` and T355 in that feature's `tasks.md` for the
-rule this was written against.
+**Collapse repeated commands to their first occurrence, on one key.** A double-click on an in-game
+button issues the same command twice, milliseconds apart. `Aoe2RecExtractor` collapses `Research`
+on `(player_id, technology_type)`, first occurrence over the whole match; age-ups are that same set
+filtered to the three age technologies, not a second key. It also keeps only the first `Resign` per
+player. There is **no time window** anywhere. Unit queueing (`DeQueue`) is deliberately not
+collapsed. See R5 in `specs/003-player-search-match-analysis/research.md` and T355 in that
+feature's `tasks.md` for the rule this was written against.
+
+**The initial-state section is not empty, only unexposed.** The pinned wheel returns it as three
+scalars and stops, but the decompressed header does contain each player's starting attributes,
+findable by an anchor without a full grammar, and the lobby presets are already named fields in the
+wheel's output. Do not conclude that the starting state is unreadable: the anchor and what was
+measured are in `specs/006-replay-analysis-foundations/research.md` D1. A repository-local decoder
+is planned for feature 007; none exists yet.
 
 **A `.aoe2record` is a command log, not a state log.** It records what a player told the game to do,
 never the game's derived response — resources, population, units lost. Anything about _state_ is a
