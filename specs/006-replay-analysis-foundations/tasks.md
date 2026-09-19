@@ -244,7 +244,7 @@ the view fails the suite.
       one test per refusal, each **planting the defect itself** rather than asserting the happy
       path. A loader test that only loads the good file proves the file is good, not that the loader
       refuses anything — and the refusals are the whole product here
-- [ ] T617 [US1] Implement the view renderer in `register.py` and commit its output as
+- [x] T617 [US1] Implement the view renderer in `register.py` and commit its output as
       `packages/core/src/aoe2stats_core/truth/REGISTER.md` (**FR-006a**): grouped by classification,
       non-determinable entries first and in full, with a generated-file header naming its source.
       Add the drift test that renders in memory and compares byte for byte, failing with the
