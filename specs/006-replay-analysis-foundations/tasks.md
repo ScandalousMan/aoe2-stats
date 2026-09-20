@@ -537,7 +537,7 @@ committed recording reports no blocking gap.
       An unvalidated snapshot is never promoted, and no source is treated as authoritative without
       validation against the game or a second source, with the validation performed recorded
       (**FR-030**)
-- [ ] T640 [US2] Implement the normaliser producing `rules.json` from a pack: units, buildings,
+- [x] T640 [US2] Implement the normaliser producing `rules.json` from a pack: units, buildings,
       technologies, their costs, their training, construction and research times, their age
       requirements and prerequisites, civilisations, and the civilisation bonuses that modify any of
       the above (**FR-022**). A unit identifier may live in the source's unit table or its upgrade

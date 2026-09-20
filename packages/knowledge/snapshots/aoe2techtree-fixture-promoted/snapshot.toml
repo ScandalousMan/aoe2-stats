@@ -2,16 +2,18 @@
 # sequence end to end (FR-034, FR-030). `aoe2techtree-fixture` is deliberately left unpromoted —
 # its own comment says so — so this directory exists to prove the *other* half: a snapshot that
 # is promoted, carries a non-empty validation record, and is therefore included in
-# `load_resolvable_snapshots`. `describes_build` is a placeholder, exactly like the sibling
-# fixture's, and no real build should resolve to it: `rules.json` and `effects.toml` are stubs.
-# T640-T642 wire a real, promoted snapshot to the build the committed reference recordings need;
-# this fixture's job is narrower — proving the promotion/validation *mechanism*, not carrying real
-# knowledge.
+# `load_resolvable_snapshots`. `describes_build` is still a placeholder, exactly like the sibling
+# fixture's — no real build should resolve to it, since build resolution (T641) and carry-forward
+# (T642) are what would wire this snapshot to the committed recordings' real build (180059). T640
+# replaced `rules.json` with the real `aoe2techtree` normaliser output (units, buildings,
+# technologies, their costs, times, age requirements and prerequisites) and `disagreements.toml`
+# with its FR-028 finding for this pack revision (no disagreement arose); `digest` below is
+# recomputed over that real content. `effects.toml` is still T644's stub.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 1
-digest = "sha256:697260b23d4536b036881c62d314ec06b153b292eaa3c35f088d523f0a194915"
+digest = "sha256:132823b0d42649e9f84a5cdb06d103b417f1c29434ae60ddc0cf7949f45eb8d8"
 promoted = true
 civilisations_modelled = []
 
