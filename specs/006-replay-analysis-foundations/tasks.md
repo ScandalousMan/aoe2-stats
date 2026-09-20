@@ -490,7 +490,7 @@ committed recording reports no blocking gap.
       every later pull request touching only this package runs no Python job at all, the failure that
       file's own comments already record twice. Update the root `pyproject.toml` comment that counts
       the workspace members
-- [ ] T635 [US2] Write `scripts/ops/import_knowledge_pack.py`: reads a **local checkout** of the
+- [x] T635 [US2] Write `scripts/ops/import_knowledge_pack.py`: reads a **local checkout** of the
       source at a stated commit and writes `packages/knowledge/packs/aoe2techtree/`. It opens no
       socket, and its header carries the same warning `scripts/ops/sync_map_thumbnails.py` does,
       plus the statement that automating the download is the moment a provider becomes mandatory
