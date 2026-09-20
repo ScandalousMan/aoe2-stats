@@ -3223,3 +3223,169 @@ story's own missing `visualForceState` never drove — had already landed by the
 `Link.stories.tsx:45-52` "export const StandaloneExternal" now names an unrelated story (line 53 is
 blank, and 54-60 is `Rest`'s own leading comment); `Rest` itself sits at `Link.stories.tsx:61-70`
 "export const Rest".
+
+- **8f. T595's own closing commit — a dated entry for every cell 8e's audit still leaves declining,
+  and the cell gate that now requires one.** Two cells 8e's own Group 1 left open —
+  `Dialog`'s `h2` `focus-visible`, record 1 and record 3 — close as bucket (b) instead, in this same
+  commit: `shared-primitives.md`'s own `focus-visible` bullet already said the heading paints no ring
+  of its own (remediation B5, quoted verbatim in `Dialog/index.tsx`'s own `outline-none` comment); the
+  bullet is reworded into the closed vocabulary ("has no visual form") without losing that sentence's
+  own substance — the dialog's real focus-visible frame, forced onto `primaryAction`, stays exactly as
+  described. `record1` moves 7/31 impossible (24 decline) → 8/31 (23 decline); `record3` moves 14/37
+  (23 decline) → 15/37 (22 decline). The 45 cells that remain are grouped below by cause, never as 45
+  near-identical bullets, but every group still names its own exact cells — the list a reader can
+  check the claim "these are declining for this reason" against, one line per cell, inside the
+  machine-readable block the cell gate (`checkCellGate`, `scripts/checks/state-coverage.mjs`) parses.
+  A block's own shape, and how a cell's identity is compared, is documented at that function's own
+  definition — cited here rather than restated, this Method section's own rule.
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: no task filed as of 2026-09-20 — owed by whoever widens record 3's own per-variant className
+  resolution (`resolveClassParts`'s `scopes.defaultScope`, row 8's own Method section, "Record 1's
+  own class half") past the default-branch reading it deliberately stops at today, for the twelve
+  non-default `variant|size` rows below, or who resolves each row by hand against the real tree and
+  gives it its own story once resolved (`destructive|lg` and `primary|md`'s own hover/press are
+  already known real gaps by 8e's own F13/F14, not merely unread; the other rows here are genuinely
+  unread, never confirmed either way).
+reason: Cause A — a primitive's own record-3 axis row whose class this pass cannot read at all,
+  because it sits behind a non-default `variant`/`size` branch record 1's own class-half
+  deliberately never unions (a `Button` row keyed on a prop the component gives more than one
+  meaning has one row per element, not one row per element per variant, so only the *default*
+  branch's class is ever real knowledge here). Giving one of these a story would assert a variant
+  mapping nobody has traced — the same "never guessed" discipline every `unresolved` cell in this
+  register already holds cells to, applied here to a cell this pass confirms is `'none'` but cannot
+  read the reason for.
+R3 Button hover destructive|lg
+R3 Button hover ghost|lg
+R3 Button hover primary|md
+R3 Button hover unresolved|lg
+R3 Button focus-visible ghost|lg
+R3 Button active destructive|lg
+R3 Button active ghost|lg
+R3 Button active primary|md
+R3 Button active unresolved|lg
+R3 Link hover inline
+R3 Link focus-visible inline
+R3 Menu focus-visible actions
+-->
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: no fixed owner — not a gap. Guard 2 of `classifyRecord1NoneCells`/`classifyRecord3NoneCells`
+  (row 8's own Method section) declines every `'none'` cell in a state's own scope the moment one
+  sibling element or row already carries real, positive coverage for that exact state, on purpose:
+  a spec sentence answering the *scope* cannot be trusted to describe every candidate in it (the
+  Method section's own `Table` example), so this guard never lets a spec rewording flip these cells
+  to `'impossible'`, no matter how the prose is phrased. Filed because T595 requires every declining
+  cell named, never because work remains — a future change to the guard itself is the only thing
+  that could ever move one of these, and nothing here asks for that change.
+reason: Cause B — the flagged element paints no class of its own for this state, but a sibling
+  element (or, for an axis row, another row of the same matrix) in the same component already has
+  real, story-proven coverage for it: the component's real surface for this state is depicted
+  elsewhere, and no honest capture of *this* element would show anything different from its own
+  resting frame.
+R1 composites/SiteHeader hover a@packages/design-system/src/composites/SiteHeader/index.tsx:156
+R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:156
+R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:183
+R1 primitives/Table hover div@packages/design-system/src/primitives/Table/index.tsx:153
+R1 primitives/Table focus-visible tr@packages/design-system/src/primitives/Table/index.tsx:237
+R1 primitives/Table active div@packages/design-system/src/primitives/Table/index.tsx:153
+R1 screens/AccountErasurePanel hover label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel hover input@packages/design-system/src/screens/AccountErasurePanel/index.tsx:270
+R1 screens/AccountErasurePanel focus-visible label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel active label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel active input@packages/design-system/src/screens/AccountErasurePanel/index.tsx:270
+R1 screens/PrivacyNotice hover h2@packages/design-system/src/screens/PrivacyNotice/index.tsx:264
+R1 screens/PrivacyNotice hover a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/PrivacyNotice focus-visible a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/PrivacyNotice active h2@packages/design-system/src/screens/PrivacyNotice/index.tsx:264
+R1 screens/PrivacyNotice active a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/ThirdPartyObjectionForm hover input@packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130
+R1 screens/ThirdPartyObjectionForm active input@packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130
+R3 Button disabled destructive|md
+R3 Button disabled ghost|lg
+R3 Button disabled primary|md
+R3 Field hover lg
+R3 Field focus-visible lg
+R3 Field disabled lg
+R3 Table hover div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153
+R3 Table focus-visible tr @ packages/design-system/src/primitives/Table/index.tsx:237
+R3 Table active div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153
+-->
+
+**Tooltip's own `active` stays a dated entry rather than closing as bucket (b), on the same "verify,
+never assume" instruction Dialog's `h2` above was closed under — checked and the answer is the
+opposite.** `tooltip.md` §4/§10 (quoted in full at the live cell's own `answerText`, printed by
+`classifyImpossiblePerSpec`) describes a real, painted press treatment: `border-2` reserved at rest,
+`border-border-strong` for as long as `pinned` is true (`Tooltip/index.tsx`'s own remediation-B1
+comment, "the trigger shows its own pressed treatment"). That is the literal opposite of "no ring is
+painted" — a real class genuinely changes on press. The reason this pass still reads the cell
+`'none'` is a different, narrower fact: `pinned` drives a plain conditional class
+(`pinned ? 'border-border-strong' : 'border-transparent'`), never the CSS `:active` pseudo-class
+(the trigger's own comment: "not the CSS `:active` pseudo-class ... so the paint is a plain
+conditional class rather than an `active:` variant"), and this pass's own `ownPseudoClass` only
+ever reads a literal `hover:`/`focus-visible:`/`active:`-prefixed utility. So even a real story that
+left `pinned: true` on the page — a genuine, screenshottable frame — would not move this cell to
+`'covered'` under today's extractor: nothing changes what `el.active` resolves to, because nothing
+in `pinned ? … : …` carries the `active:` prefix this pass looks for. Closing this cell for real
+needs two things together, not one: a story that forces `pinned: true` (a real click, since
+`pinned` only flips through `handleActivate`, never a `visualForceState`, which drives no click) and
+this pass's own class-half widened to also read a state-conditional class matched against a
+component's own boolean state, alongside a literal pseudo-class utility. Neither exists yet.
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: no task filed as of 2026-09-20 — owed by whoever gives `Tooltip.stories.tsx` a real
+  `pinned: true` story (a `play()` click, not a `visualForceState`) and widens this extractor's own
+  `active`-class detection to credit a state-conditional class the way it already credits a literal
+  `active:` utility.
+reason: Cause C — the spec's own answer proves a real, painted press treatment exists (the opposite
+  of "no ring is painted"), so this cannot honestly close as bucket (b); it stays open because the
+  paint is state-conditional, not CSS-pseudo-class-conditional, which this pass's own class-half
+  cannot see under any story.
+R1 primitives/Tooltip active button@packages/design-system/src/primitives/Tooltip/index.tsx:259
+R3 Tooltip active button @ packages/design-system/src/primitives/Tooltip/index.tsx:259
+-->
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: T596 (blocked on a `product-designer` decision — this row's own closing paragraph above,
+  "T595 closes the enumerated set ... F11 ... T596's and wait on a design decision").
+reason: Cause D — `ArchivalControl`'s privacy link paints no hover/focus-visible/active class of any
+  kind (F11, above); T596 gives it the `Link` `inline` treatment or the `Link` primitive itself,
+  whichever `product-designer` decides, then an `implementer` gives it real state stories. Not this
+  task's to attempt.
+R1 screens/ArchivalControl hover a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+R1 screens/ArchivalControl focus-visible a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+R1 screens/ArchivalControl active a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+-->
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: no fixed owner — not a gap. `player-search.md`'s own `SearchBox` section (added by T595's
+  earlier extractor slice, this row's own Method section, "Group 2 — SearchBox/PlayerResultRow's
+  shared spec file, structurally") answers `active` with a real, substantive passage — "`Input`: standard
+  text-input interaction" plus `PlayerResultRow`'s own border/ring recipe, which is that sibling's
+  own, not this element's — never the closed impossible vocabulary, and correctly so: forcing it
+  into "has no visual form" would overclaim what a native text input's own browser-drawn press state
+  actually is. No class exists on this element for any story to depict either.
+reason: Cause E — a real, substantive spec answer that simply is not the closed-vocabulary claim
+  "impossible," the one case row 8's own recogniser is required to decline rather than guess a
+  verdict for.
+R1 composites/SearchBox active input@packages/design-system/src/composites/SearchBox/index.tsx:129
+-->
+
+**Owner: T595. Filed 2026-09-20, fix by 2026-09-27 (the same horizon this row itself carries) —
+every entry above is re-checked against the live tree on that date: a cell whose own cause has
+changed (a sibling's coverage removed, a variant's class now read, a real `pinned: true` story
+landed) gets closed for real; the rest are re-dated rather than left to expire silently, the same
+discipline `KNOWN_UNACCOUNTED_FORCE_STATES` and `story-baseline-duplicates-debt.json` already hold
+their own entries to.** `node scripts/checks/state-coverage.mjs` fails on any cell that is none of
+the three closures T595 permits — covered, impossible, or named exactly in a live entry above — the
+cell gate's own completion condition, not a count of cells typed here.

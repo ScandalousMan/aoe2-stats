@@ -5392,14 +5392,261 @@ export function readAllSpecFiles() {
 }
 
 // The whole recogniser, end to end, against the live tree: every confirmed `'none'` cell in both
-// records, classified `'impossible'` or `'decline'` (with a reason) — never wired into `main`'s own
-// exit code by this task (T595's own scoping: "the cell gate... lands in the commit that closes the
-// last [open cell]," a later slice, not this one).
+// records, classified `'impossible'` or `'decline'` (with a reason) — wired into `main`'s own exit
+// code by `checkCellGate` below (T595's own closing commit: "the cell gate... lands in the commit
+// that closes the last [open cell]").
 export function classifyImpossiblePerSpec(computed, { readmeSource, specSourcesByFile }) {
   const vocabulary = deriveVocabulary(readmeSource)
   return {
     record1: classifyRecord1NoneCells(computed, { readmeSource, specSourcesByFile, vocabulary }),
     record3: classifyRecord3NoneCells(computed, { readmeSource, specSourcesByFile, vocabulary }),
+  }
+}
+
+// --- The cell gate (T595's own closing commit) --------------------------------------------------
+//
+// T595's own three closures for a cell still reading `'none'`: closed by a story that depicts the
+// state (this run's own generated region would then read `'covered'`, never reaching this code at
+// all); a state the component's own spec answers as impossible (`classifyImpossiblePerSpec`
+// above); or named in a dated entry in row 8, outside the generated region, saying why it stays and
+// who owes it. This section is the third closure and the gate that requires one of the three for
+// every cell — never wired as a fourth, silent way to close one, and never satisfied by an entry
+// that does not name the exact cell it closes (`cellKey` below is what "name" means: a full,
+// unambiguous identity — never a component name, a reason string or a state alone, any of which
+// would let one entry silently cover every cell that happens to share it).
+//
+// A dated entry lives inside row 8's own prose as an HTML comment
+// (`<!-- state-coverage-debt … -->`) rather than a second file next to it, because T595 names "the
+// register" as row 8 itself: an entry that could drift from the markdown a reader actually opens
+// would be the exact hazard `a11y-allowlist.mjs`'s own single-file steady state, and
+// `story-baseline-duplicates-debt.json`'s deliberate exception to it (a *list* of PNG pairs has no
+// prose home), both already avoid for their own subjects. Comment syntax keeps the entry invisible
+// in the rendered register, the same choice the `state-coverage:begin`/`end` markers already made,
+// and — unlike a `// visual-equivalence: <id>: <reason>` single-line marker, the shape
+// `story-baselines-duplicates.mjs` uses for a *pair* of story ids — a cell identity here carries too
+// many fields (record, component or primitive, element or axis row, state, `file:line` for an
+// element) to fit one line per entry without either truncating a field or inventing per-field
+// escaping; a block comment with one cell per line inside it needs neither.
+//
+// Block shape (fields are `key: value` lines; a cell line starts with `R1 ` or `R3 `; blank lines
+// and any other line are ignored, so a human sentence can sit beside the fields for a reader who
+// never runs the parser):
+//
+//   <!-- state-coverage-debt
+//   date: 2026-09-20
+//   fixBy: 2026-09-27
+//   owner: <free text — a task id, "no fixed owner", or who the entry says still owes the tracing>
+//   R1 <componentKey> <hover|focus-visible|active> <tag>@<file>:<line>
+//   R3 <primitiveName> <hover|focus-visible|active|disabled> <variantSize>
+//   -->
+//
+// `componentKey`/`tag`/`file`/`line` and `primitiveName`/`variantSize` are copied verbatim from the
+// generated region's own row identity (`classifyRecord1NoneCells`/`classifyRecord3NoneCells`'s own
+// `componentKey`/`tag`/`file`/`line` and `primitiveName`/`variantSize` fields) — the same strings a
+// reader can already find in the table above, never a paraphrase, so a cell that ever moves (a
+// line number shifts, a variant is renamed) makes its own entry stop matching rather than silently
+// keep covering the wrong row.
+const ROW8_DEBT_BLOCK_RE = /<!--\s*state-coverage-debt\b([\s\S]*?)-->/g
+const ROW8_DEBT_R1_LINE_RE = /^R1\s+(\S+)\s+(hover|focus-visible|active)\s+([^@\s]+)@(.+):(\d+)$/
+const ROW8_DEBT_R3_LINE_RE = /^R3\s+(\S+)\s+(hover|focus-visible|active|disabled)\s+(.+)$/
+
+// Every `<!-- state-coverage-debt … -->` block in row 8's own prose, parsed into `{ date, fixBy,
+// owner, cells, raw }` — `cells` each carrying `record` plus that record's own identity fields,
+// exactly as `classifyRecord1NoneCells`/`classifyRecord3NoneCells` name them, so `cellKey` (below)
+// can be applied to a parsed entry's cell and a classified cell interchangeably. A field line
+// (`key: value`, case-sensitive key) and a cell line can appear in any order; a line matching
+// neither is silently skipped, which is what lets an entry carry a plain-English sentence next to
+// its own fields without a second, competing syntax to keep that sentence out of the parser's way.
+export function parseRow8DebtEntries(readmeText) {
+  const entries = []
+  for (const m of readmeText.matchAll(ROW8_DEBT_BLOCK_RE)) {
+    const fields = {}
+    const cells = []
+    for (const rawLine of m[1].split('\n')) {
+      const line = rawLine.trim()
+      if (line.length === 0) continue
+      const r1 = line.match(ROW8_DEBT_R1_LINE_RE)
+      if (r1) {
+        const [, componentKey, state, tag, file, lineStr] = r1
+        cells.push({ record: 1, componentKey, state, tag, file, line: Number(lineStr) })
+        continue
+      }
+      const r3 = line.match(ROW8_DEBT_R3_LINE_RE)
+      if (r3) {
+        const [, primitiveName, state, variantSize] = r3
+        cells.push({ record: 3, primitiveName, state, variantSize })
+        continue
+      }
+      const kv = line.match(/^([a-zA-Z]+):\s*(.*)$/)
+      if (kv) fields[kv[1]] = kv[2]
+    }
+    entries.push({ ...fields, cells, raw: m[0] })
+  }
+  return entries
+}
+
+// The one identity a cell is known by across all three sources this gate compares — a classified
+// `'none'` cell, a live cell this run just extracted, and a parsed debt-entry cell — so "does this
+// entry name this cell" is a single string comparison, never a field-by-field guess. Deliberately
+// includes every field row 8's own generated region uses to key a row (`tag` included for record
+// 1, even though `file:line` alone is already unique in this tree today, because the entry's own
+// text is what a reader checks the claim against, and a `tag` mismatch there is exactly the kind of
+// stale entry this gate exists to catch) and deliberately excludes nothing a real cell needs to be
+// told apart from its sibling — a key built from only `componentKey`/state, for instance, would let
+// one entry close every element of a component sharing that state, the "an entry must not close a
+// cell it does not name" failure `state-coverage.test.mjs` plants directly.
+function cellKey(c) {
+  return c.record === 1
+    ? `R1|${c.componentKey}|${c.tag}|${c.file}|${c.line}|${c.state}`
+    : `R3|${c.primitiveName}|${c.variantSize}|${c.state}`
+}
+
+// Record 1's own hover/focus-visible/active cell for every local element, and record 3's own
+// hover/focus-visible/active/disabled cell for every real matrix row (never `rest`, which neither
+// `classifyRecord1NoneCells` nor `classifyRecord3NoneCells` classifies — T595's own scope is the
+// `'none'` cells those two functions already read) — `'covered'`, `'none'` or `'unresolved'`,
+// mirroring `countRecord1Cells`/`countRecord3Cells`'s own per-cell rule exactly (record 1's class
+// half first: an unresolved class expression makes the cell `'unresolved'` regardless of what its
+// story half alone would say) rather than re-deriving it a second way that could drift from the
+// count this file already prints every run.
+function collectRecord1CellStatuses(computed) {
+  const cells = []
+  for (const { componentKey, elements } of computed.localElements) {
+    for (const el of elements) {
+      const classResolved = (el.classUnresolvedRefs ?? []).length === 0
+      const pairs = [
+        ['hover', el.hover, el.coveredBy.hover],
+        [
+          'focus-visible',
+          combineFocusClassText(el.focus, el.focusVisible),
+          el.coveredBy.focusVisible,
+        ],
+        ['active', el.active, el.coveredBy.active],
+      ]
+      for (const [state, classText, coverageList] of pairs) {
+        const classHalf = classifyClassHalf(classText, classResolved)
+        const status = classHalf === 'unresolved' ? 'unresolved' : classifyCoverage(coverageList)
+        cells.push({
+          record: 1,
+          componentKey,
+          tag: el.tag,
+          file: el.file,
+          line: el.line,
+          state,
+          status,
+        })
+      }
+    }
+  }
+  return cells
+}
+
+function collectRecord3CellStatuses(computed) {
+  const cells = []
+  for (const [primitiveName, rows] of Object.entries(computed.matrices)) {
+    for (const row of rows) {
+      if (row.variantSize === '(no local interactive element)') continue
+      if (row.variantSize.startsWith('(unresolved matches')) continue
+      const pairs = [
+        ['hover', row.hover],
+        ['focus-visible', row.focusVisible],
+        ['active', row.active],
+        ['disabled', row.disabled],
+      ]
+      for (const [state, coverageList] of pairs) {
+        cells.push({
+          record: 3,
+          primitiveName,
+          variantSize: row.variantSize,
+          state,
+          status: classifyCoverage(coverageList),
+        })
+      }
+    }
+  }
+  return cells
+}
+
+function describeCell(c) {
+  return c.record === 1
+    ? `record 1's ${c.componentKey} ${c.tag}@${c.file}:${c.line} (${c.state})`
+    : `record 3's ${c.primitiveName} ${c.variantSize} (${c.state})`
+}
+
+// The gate itself: every hover/focus-visible/active(/disabled) cell in the live tree, classified
+// against the three closures T595 permits. `today` is injectable so a test can plant an entry on
+// either side of its own `fixBy` without waiting on the calendar — production code never passes it,
+// so `main` always checks against the real date.
+export function checkCellGate(
+  computed,
+  { readmeSource, specSourcesByFile, today = new Date().toISOString().slice(0, 10) },
+) {
+  const classified = classifyImpossiblePerSpec(computed, { readmeSource, specSourcesByFile })
+  const classifiedByKey = new Map()
+  for (const row of [...classified.record1, ...classified.record3]) {
+    classifiedByKey.set(cellKey(row), row)
+  }
+
+  // Filed exceptions are validated the same way `findUnaccountedForceStates` already validates
+  // `KNOWN_UNACCOUNTED_FORCE_STATES`: a missing or invalid `date`/`fixBy` is malformed regardless of
+  // what it might otherwise have covered, and a well-formed entry whose own `fixBy` has passed is
+  // `expired` rather than quietly kept `known` — an allowlist with no enforced expiry is how a
+  // temporary exception becomes permanent (row 8's own Method section, T598's identical rule for
+  // `KNOWN_UNACCOUNTED_FORCE_STATES`). Neither kind is allowed to keep closing the cells it names.
+  const parsedEntries = parseRow8DebtEntries(readmeSource)
+  const malformedEntries = []
+  const expiredEntries = []
+  const liveEntries = []
+  for (const entry of parsedEntries) {
+    const missing = ['date', 'fixBy'].filter(
+      (f) => typeof entry[f] !== 'string' || entry[f].trim() === '',
+    )
+    const invalid = ['date', 'fixBy'].filter(
+      (f) => !missing.includes(f) && !isValidIsoDate(entry[f]),
+    )
+    const malformed = [...missing, ...invalid]
+    if (malformed.length > 0) {
+      malformedEntries.push({ entry, malformed })
+    } else if (entry.fixBy < today) {
+      expiredEntries.push(entry)
+    } else {
+      liveEntries.push(entry)
+    }
+  }
+  const liveKeys = new Set()
+  for (const entry of liveEntries) for (const c of entry.cells) liveKeys.add(cellKey(c))
+  const expiredKeys = new Set()
+  for (const entry of expiredEntries) for (const c of entry.cells) expiredKeys.add(cellKey(c))
+
+  const unresolved = []
+  const uncovered = []
+  const expiredCovering = []
+  for (const cell of [
+    ...collectRecord1CellStatuses(computed),
+    ...collectRecord3CellStatuses(computed),
+  ]) {
+    if (cell.status === 'covered') continue
+    if (cell.status === 'unresolved') {
+      unresolved.push(cell)
+      continue
+    }
+    // cell.status === 'none'
+    const key = cellKey(cell)
+    if (classifiedByKey.get(key)?.status === 'impossible') continue
+    if (liveKeys.has(key)) continue
+    if (expiredKeys.has(key)) {
+      expiredCovering.push(cell)
+      continue
+    }
+    uncovered.push(cell)
+  }
+  return {
+    unresolved,
+    uncovered,
+    expiredCovering,
+    malformedEntries,
+    expiredEntries,
+    liveEntries,
   }
 }
 
@@ -5511,6 +5758,59 @@ function main() {
       'render — no drift.',
   )
   logCellCounts(computed)
+
+  // T595's own closing commit: every cell in the generated region above is now required to be one
+  // of the three things row 8's own Method section names — covered by a story, answered impossible
+  // by the component's own spec, or named in a live, dated row-8 debt entry — checked only once the
+  // region itself is confirmed to match a fresh render (the comparison above), so a cell gate
+  // failure is never conflated with plain drift.
+  const cellGate = checkCellGate(computed, {
+    readmeSource: readmeText,
+    specSourcesByFile: readAllSpecFiles(),
+  })
+  for (const cell of cellGate.unresolved) {
+    fail(
+      `${describeCell(cell)} is unresolved — T595 requires every cell resolved to 'covered' or ` +
+        "'none' in the extractor; 'unresolved' is not one of the cell gate's three closures.",
+    )
+  }
+  for (const cell of cellGate.uncovered) {
+    fail(
+      `${describeCell(cell)} reads 'none' and is closed by no story, no spec answering it ` +
+        'impossible, and no live row-8 debt entry naming it exactly — file a dated ' +
+        '`<!-- state-coverage-debt -->` entry for it or close it.',
+    )
+  }
+  for (const cell of cellGate.expiredCovering) {
+    fail(
+      `${describeCell(cell)}'s only row-8 debt entry is past its own fixBy — renew the entry ` +
+        '(with a fresh date) or close the cell for real.',
+    )
+  }
+  for (const { entry, malformed } of cellGate.malformedEntries) {
+    fail(
+      `a row-8 debt entry is malformed (${malformed.join(', ')}): ${JSON.stringify(entry.cells.map(cellKey))}`,
+    )
+  }
+  for (const entry of cellGate.expiredEntries) {
+    fail(
+      `a row-8 debt entry filed ${entry.date} is past its own fixBy (${entry.fixBy}), owed to ` +
+        `${entry.owner ?? 'no owner recorded'}: ${JSON.stringify(entry.cells.map(cellKey))}`,
+    )
+  }
+  if (
+    cellGate.unresolved.length === 0 &&
+    cellGate.uncovered.length === 0 &&
+    cellGate.expiredCovering.length === 0 &&
+    cellGate.malformedEntries.length === 0 &&
+    cellGate.expiredEntries.length === 0
+  ) {
+    log(
+      `every cell in row 8's generated region is covered, answered impossible, or named in a live, ` +
+        `dated debt entry (${cellGate.liveEntries.length} live entr` +
+        `${cellGate.liveEntries.length === 1 ? 'y' : 'ies'}).`,
+    )
+  }
 }
 
 function runCitationCheck() {

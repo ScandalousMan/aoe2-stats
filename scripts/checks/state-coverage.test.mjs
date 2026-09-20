@@ -70,6 +70,8 @@ import {
   classifyRecord1NoneCells,
   classifyRecord3NoneCells,
   classifyImpossiblePerSpec,
+  parseRow8DebtEntries,
+  checkCellGate,
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
 
@@ -5949,4 +5951,334 @@ test('classifyImpossiblePerSpec: derives its own vocabulary from readmeSource an
   })
   assert.equal(record1.find((r) => r.state === 'active').status, 'impossible')
   assert.deepEqual(record3, [])
+})
+
+// --- parseRow8DebtEntries / checkCellGate (T595's own closing commit) -------------------------
+//
+// T595's own three closures for a `'none'` cell: a story (the cell reads `'covered'` and this gate
+// never reaches it), the spec answering it impossible (`classifyImpossiblePerSpec`, already
+// covered above), or a dated entry in row 8's own prose naming it exactly. These tests are the
+// third closure and the gate requiring one of the three — the required contrast the task brief
+// itself names twice: an entry must never close a cell it does not name, and an entry past its own
+// `fixBy` must never keep closing anything. Each fixture below plants the shape the gate must catch
+// and is run against the gate to prove it actually catches it, never merely that it can pass.
+
+function readmeWithDebtBlock(blockBody) {
+  return `${IMPOSSIBLE_README_FIXTURE}\n<!-- state-coverage-debt\n${blockBody}\n-->\n`
+}
+
+test('parseRow8DebtEntries: reads date/fixBy/owner fields and R1/R3 cell lines out of a block', () => {
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Widget hover button@f.tsx:10',
+      'R3 Button active destructive|lg',
+    ].join('\n'),
+  )
+  const entries = parseRow8DebtEntries(readmeSource)
+  assert.equal(entries.length, 1)
+  const [entry] = entries
+  assert.equal(entry.date, '2026-09-20')
+  assert.equal(entry.fixBy, '2026-09-27')
+  assert.equal(entry.owner, 'T999')
+  assert.deepEqual(entry.cells, [
+    {
+      record: 1,
+      componentKey: 'primitives/Widget',
+      state: 'hover',
+      tag: 'button',
+      file: 'f.tsx',
+      line: 10,
+    },
+    { record: 3, primitiveName: 'Button', state: 'active', variantSize: 'destructive|lg' },
+  ])
+})
+
+test('parseRow8DebtEntries: a free-text line beside the fields is silently ignored rather than misread as a field or a cell', () => {
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: no fixed owner',
+      'This sentence explains why in plain English and names no cell of its own.',
+      'R1 primitives/Widget active button@f.tsx:10',
+    ].join('\n'),
+  )
+  const [entry] = parseRow8DebtEntries(readmeSource)
+  assert.equal(entry.cells.length, 1)
+  assert.equal(entry.owner, 'no fixed owner')
+})
+
+// `hover`/`focus-visible` are real story coverage on purpose — `Beta`'s own spec (`PAIR_SPEC`)
+// answers only `active`, so leaving the other two states `'none'` would decline them too (no
+// per-component boundary answers them at all) and pollute every assertion below with cells these
+// tests are not about. Isolating `active` as the fixture's one declining cell is what lets each
+// test assert an exact `uncovered`/`unresolved` list rather than filtering it down first.
+function widgetActiveNoneComputed(extraElement) {
+  const elements = [
+    {
+      tag: 'button',
+      file: 'f.tsx',
+      line: 1,
+      hover: null,
+      focus: null,
+      focusVisible: null,
+      active: null,
+      coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['none'] },
+    },
+  ]
+  if (extraElement) elements.push(extraElement)
+  return {
+    localElements: [{ componentKey: 'primitives/Beta', elements }],
+    matrices: {},
+  }
+}
+
+test('checkCellGate: a live entry naming a none cell exactly closes it', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.unresolved, [])
+  assert.equal(gate.liveEntries.length, 1)
+})
+
+// The task's own required boundary: "an entry must not be able to close a cell it does not name."
+// Two `'none'` cells in the same component, same state (`Beta`'s own spec answer for `active` is a
+// real, substantive, non-impossible paragraph, so neither cell is classifiable `impossible`, and
+// neither is a sibling-coverage decline either — both reach the entry check on their own merits).
+// An entry names only the first. The second must still fail the gate even though *an* entry exists
+// in the register — the exact failure a gate satisfied by "some entry exists somewhere" would miss.
+test('checkCellGate: required contrast — an entry never closes a cell it does not name, even when another cell of the same component and state is covered', () => {
+  const secondElement = {
+    tag: 'a',
+    file: 'f.tsx',
+    line: 2,
+    hover: null,
+    focus: null,
+    focusVisible: null,
+    active: null,
+    coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['none'] },
+  }
+  const computed = widgetActiveNoneComputed(secondElement)
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.uncovered[0].line, 2)
+  assert.equal(gate.uncovered[0].tag, 'a')
+})
+
+test('checkCellGate: required contrast — record 3 holds the same boundary as record 1 (an entry names one axis row, never a sibling row it does not)', () => {
+  const computed = {
+    localElements: [],
+    matrices: {
+      Button: [
+        {
+          variantSize: 'destructive|lg',
+          rest: ['f.tsx:1'],
+          hover: ['SomeStory'],
+          focusVisible: ['SomeStory'],
+          active: ['none'],
+          disabled: ['SomeStory'],
+        },
+        {
+          variantSize: 'ghost|lg',
+          rest: ['f.tsx:2'],
+          hover: ['SomeStory'],
+          focusVisible: ['SomeStory'],
+          active: ['none'],
+          disabled: ['SomeStory'],
+        },
+      ],
+    },
+  }
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R3 Button active destructive|lg',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.uncovered[0].variantSize, 'ghost|lg')
+  assert.equal(gate.uncovered[0].state, 'active')
+})
+
+test('checkCellGate: an entry not yet past its own fixBy still closes the cell it names', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-26',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.expiredCovering, [])
+  assert.equal(gate.liveEntries.length, 1)
+})
+
+// The task's own second required boundary: "an expired entry must not silently keep passing."
+test('checkCellGate: required contrast — an entry past its own fixBy stops closing the cell it names, and is reported rather than silently dropped', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-08-01',
+      'fixBy: 2026-09-19',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.equal(gate.expiredCovering.length, 1)
+  assert.equal(gate.expiredCovering[0].line, 1)
+  assert.equal(gate.expiredEntries.length, 1)
+  assert.equal(gate.liveEntries.length, 0)
+})
+
+test('checkCellGate: a malformed entry (missing fixBy) never closes the cell it names', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    ['date: 2026-09-20', 'owner: T999', 'R1 primitives/Beta active button@f.tsx:1'].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['fixBy'])
+})
+
+test('checkCellGate: an unresolved cell fails regardless of any entry or spec answer — unresolved is not one of the three closures', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Beta',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 1,
+            // `hover`/`focus-visible` carry a real, literal class of their own, so their class
+            // half reads `'covered'` regardless of `classUnresolvedRefs` (`classifyClassHalf`
+            // checks a non-null class text first) — isolating the element's one *unresolved*
+            // expression to `active` alone, the state this test is actually about.
+            hover: 'hover:bg-surface-sunken',
+            focus: null,
+            focusVisible: 'focus-visible:outline-2',
+            active: null,
+            // A real class expression this pass could not resolve — `classUnresolvedRefs`
+            // non-empty forces the class half `'unresolved'` regardless of what `coveredBy` says
+            // (`countRecord1Cells`'s own rule, mirrored here on purpose).
+            classUnresolvedRefs: ['someDynamicExpr'],
+            coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.unresolved.length, 1)
+  assert.equal(gate.unresolved[0].state, 'active')
+  assert.deepEqual(gate.uncovered, [])
+})
+
+test('checkCellGate: a covered cell and an impossible cell need no entry at all', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: 'focus-visible:outline-2',
+            active: null,
+            coveredBy: {
+              hover: ['none'],
+              focusVisible: ['SomeStory'],
+              active: ['none'],
+            },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  // No `state-coverage-debt` block at all — `focus-visible` is real story coverage and `active`
+  // resolves `impossible` from `WIDGET_SPEC`'s own "active — never" (`Widget`'s own bullet); `hover`
+  // is a real, substantive answer ("the control lifts with a soft shadow") and would need its own
+  // entry, so this fixture only asserts the two cells that need none.
+  const gate = checkCellGate(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(
+    gate.uncovered.find((c) => c.state === 'active'),
+    undefined,
+  )
+  assert.equal(
+    gate.uncovered.find((c) => c.state === 'focus-visible'),
+    undefined,
+  )
 })

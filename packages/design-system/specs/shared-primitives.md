@@ -538,20 +538,20 @@ slot, exactly two actions — rather than generalised further than either consum
 
 - **default** — backdrop `overlay`, surface `surface`, elevation `modal`, radius `xl` (`t-xl` on the
   sheet's top corners only below `md`, all four corners from `md` up).
-- **focus-visible** — real, but its mount-time frame is not the one the still-image obligation
-  (FR-037) is met with: opening the dialog moves focus straight to the heading (`tabIndex={-1}`) on
-  mount, and the heading paints no ring of its own — its focus is for the accessible-name
-  announcement, not a visible indicator — so that frame is byte-identical to `default` and
-  documents nothing. The `FocusVisible` story instead forces the state a real Tab from the heading
-  reaches next (`tests/visual/stories.spec.ts`'s `visualForceState`, driving Playwright's actual
-  keyboard rather than a synthetic event neither Chromium's `:focus-visible` nor its own would
-  match): focus on `primaryAction`, rendered first in the action row. That is the one visually
-  distinct frame this state has to show, and it is a real stop on the trap's own path, not a
-  fabricated one — Tab from there reaches `secondaryAction` and wraps from the last action back to
-  the first without ever escaping to the page behind the backdrop, the one trap FR-049 permits and
-  the trap this dialog owns rather than delegating. The visible ring at every step of that trap
-  paints on whichever `Button` currently holds focus, per that component's own `focus-visible`
-  answer above.
+- **focus-visible** — the heading itself has no visual form on focus: it paints no ring of its
+  own (`outline-none`, remediation B5), so opening the dialog moving focus straight to it
+  (`tabIndex={-1}`) on mount leaves a frame byte-identical to `default`, documenting nothing —
+  the heading's own focus is for the accessible-name announcement, not a visible indicator. The
+  dialog's own focus-visible state is real elsewhere, though: the `FocusVisible` story forces the
+  state a real Tab from the heading reaches next (`tests/visual/stories.spec.ts`'s
+  `visualForceState`, driving Playwright's actual keyboard rather than a synthetic event neither
+  Chromium's `:focus-visible` nor its own would match): focus on `primaryAction`, rendered first
+  in the action row. That is the one visually distinct frame this state has to show, and it is a
+  real stop on the trap's own path, not a fabricated one — Tab from there reaches
+  `secondaryAction` and wraps from the last action back to the first without ever escaping to the
+  page behind the backdrop, the one trap FR-049 permits and the trap this dialog owns rather than
+  delegating. The visible ring at every step of that trap paints on whichever `Button` currently
+  holds focus, per that component's own `focus-visible` answer above.
 - **loading** — the action in flight sets `loading` and `loadingLabel` on its own `Button`; the
   other action disables via its own `disabled` rather than a dialog-wide flag, so a caller can
   disable one without the other.
