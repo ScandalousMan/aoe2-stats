@@ -524,7 +524,7 @@ committed recording reports no blocking gap.
       claim the artifacts make is true of its label and false of its gate. **Prove it bites,
       twice**: drop one licence field, confirm the check names the pack, restore it; then replace
       the ruling's verdict with a stray word, confirm the refusal, restore it
-- [ ] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
+- [x] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
       source, source version, described build, content digest (**FR-024**) — loaded through
       `importlib.resources` so it works identically from a serverless bundle and a virtual
       environment. The digest is recomputed on load and a mismatch **refuses to load**. Publishing a

@@ -1,0 +1,16 @@
+# A fixture snapshot for T638's identity-and-digest mechanism.
+#
+# `source_version` is the real pinned commit `packages/knowledge/packs/aoe2techtree/MANIFEST.json`
+# vendors. `describes_build` is a placeholder, not a real game build — T641 (build resolution) and
+# T642 (carry-forward) wire a real snapshot to the build the committed reference recordings need;
+# this fixture's `rules.json` and `effects.toml` are stubs, so no real build should resolve to it.
+# `promoted` is false: an unvalidated fixture is never resolvable by build (contracts/
+# knowledge-base.md, "Promotion"), and this snapshot carries no validation record at all — T639
+# adds the promotion sequence this table's `promoted` flag is checked against.
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 0
+digest = "sha256:42c5d9c7aec493025882a669f5e7ab6eb1db1681b7a40269b181427256e67537"
+promoted = false
+civilisations_modelled = []

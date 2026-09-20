@@ -16,3 +16,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aoe2stats_knowledge"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"snapshots" = "aoe2stats_knowledge/snapshots"

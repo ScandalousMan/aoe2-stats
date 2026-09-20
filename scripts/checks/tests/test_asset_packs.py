@@ -485,7 +485,7 @@ def test_a_fully_compliant_tree_passes_every_check(tmp_path: Path) -> None:
 def test_font_shaped_pack_with_all_fields_and_matching_docs_row_passes(tmp_path: Path) -> None:
     """A pack shaped like a real font pack (`LICENCE.md` plus one `.woff2`), all five fields
     present, correctly mirrored — `check_asset_roots` must report nothing for it."""
-    from scripts.checks.asset_packs import check_asset_roots
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
 
     fonts_root = tmp_path / "fonts"
     fields = _valid_fields()
@@ -495,7 +495,7 @@ def test_font_shaped_pack_with_all_fields_and_matching_docs_row_passes(tmp_path:
     docs_file.write_text(_docs_table([_docs_row_for("a-typeface", fields)]), encoding="utf-8")
 
     failures = check_asset_roots(
-        roots=((fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+        roots=(AssetRoot(fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
     )
 
     assert failures == []
@@ -504,7 +504,7 @@ def test_font_shaped_pack_with_all_fields_and_matching_docs_row_passes(tmp_path:
 def test_font_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path: Path) -> None:
     """The failure case: one field dropped from the font pack's `LICENCE.md`. The aggregate must
     fail, and the failure string must name the pack directory — not just "a pack somewhere"."""
-    from scripts.checks.asset_packs import check_asset_roots
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
 
     fonts_root = tmp_path / "fonts"
     fields = _valid_fields()
@@ -515,7 +515,7 @@ def test_font_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path: Pat
     docs_file.write_text(_docs_table([]), encoding="utf-8")
 
     failures = check_asset_roots(
-        roots=((fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+        roots=(AssetRoot(fonts_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
     )
 
     assert failures, "a font pack missing a required field must fail check_asset_roots"
@@ -525,7 +525,7 @@ def test_font_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path: Pat
 def test_two_roots_are_each_held_to_their_own_size_budget(tmp_path: Path) -> None:
     """A 1.5 MB fonts root fails against a 1 MB-shaped budget while a 1.5 MB game-assets root
     passes against a 10 MB-shaped budget — each root's own budget applies, never the other's."""
-    from scripts.checks.asset_packs import check_asset_roots
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
 
     one_and_half_mb = 1_572_864  # 1.5 MiB
 
@@ -554,8 +554,9 @@ def test_two_roots_are_each_held_to_their_own_size_budget(tmp_path: Path) -> Non
 
     failures = check_asset_roots(
         roots=(
-            (game_assets_root, 10 * 1024 * 1024),  # 10 MiB budget — 1.5 MiB comfortably passes
-            (fonts_root, 1024 * 1024),  # 1 MiB budget — 1.5 MiB fails
+            # 10 MiB budget — 1.5 MiB comfortably passes
+            AssetRoot(game_assets_root, 10 * 1024 * 1024),
+            AssetRoot(fonts_root, 1024 * 1024),  # 1 MiB budget — 1.5 MiB fails
         ),
         docs_file=docs_file,
         readme_file=_REAL_README,
@@ -575,7 +576,7 @@ def test_knowledge_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path
     payload, modelled on `packages/knowledge/packs/aoe2techtree/`) with one required field dropped
     must fail `check_asset_roots`, naming the pack — same drill as the font-shaped proof above,
     applied to the third assets root T637 adds."""
-    from scripts.checks.asset_packs import check_asset_roots
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
 
     knowledge_root = tmp_path / "packs"
     fields = _valid_fields()
@@ -586,7 +587,9 @@ def test_knowledge_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path
     docs_file.write_text(_docs_table([]), encoding="utf-8")
 
     failures = check_asset_roots(
-        roots=((knowledge_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+        roots=(AssetRoot(knowledge_root, 1024 * 1024),),
+        docs_file=docs_file,
+        readme_file=_REAL_README,
     )
 
     assert failures, "a knowledge pack missing a required field must fail check_asset_roots"
@@ -597,7 +600,7 @@ def test_disclaimer_failure_is_reported_once_across_two_roots(tmp_path: Path) ->
     """The disclaimer is a repository-wide anchor, not a per-root one (typography-tokens.md §9.2
     point 3): calling `check_asset_packs` once per root would report a missing disclaimer twice.
     `check_asset_roots` must report it exactly once regardless of how many roots are checked."""
-    from scripts.checks.asset_packs import check_asset_roots
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
 
     game_assets_root = tmp_path / "game-assets"
     fonts_root = tmp_path / "fonts"
@@ -619,7 +622,10 @@ def test_disclaimer_failure_is_reported_once_across_two_roots(tmp_path: Path) ->
     empty_readme.write_text("no disclaimer here\n", encoding="utf-8")
 
     failures = check_asset_roots(
-        roots=((game_assets_root, 10 * 1024 * 1024), (fonts_root, 1024 * 1024)),
+        roots=(
+            AssetRoot(game_assets_root, 10 * 1024 * 1024),
+            AssetRoot(fonts_root, 1024 * 1024),
+        ),
         docs_file=docs_file,
         readme_file=empty_readme,
     )
@@ -628,3 +634,106 @@ def test_disclaimer_failure_is_reported_once_across_two_roots(tmp_path: Path) ->
     assert len(disclaimer_failures) == 1, (
         f"expected exactly one disclaimer failure across two roots, got {disclaimer_failures!r}"
     )
+
+
+# --------------------------------------- (i) packages/knowledge/snapshots — derived, no LICENCE.md
+
+
+def test_snapshot_shaped_root_with_no_licence_md_passes_under_budget(tmp_path: Path) -> None:
+    """contracts/knowledge-base.md's "On disk" section: a snapshot directory holds
+    `snapshot.toml`, `rules.json`, `effects.toml` and `disagreements.toml` — never a `LICENCE.md`;
+    its "Licence gate" section never discusses a per-snapshot one either, because a snapshot's
+    provenance is its own `snapshot.toml` identity, not a licence record. `requires_licence=False`
+    must not demand one, and a snapshot-shaped root comfortably under its size budget must pass."""
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
+
+    snapshots_root = tmp_path / "snapshots"
+    snapshot_dir = snapshots_root / "example-source-v1"
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / "snapshot.toml").write_text('source = "example"\n', encoding="utf-8")
+    (snapshot_dir / "rules.json").write_bytes(b"{}")
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=(AssetRoot(snapshots_root, 1024 * 1024, requires_licence=False),),
+        docs_file=docs_file,
+        readme_file=_REAL_README,
+    )
+
+    assert failures == []
+
+
+def test_snapshot_shaped_root_over_budget_still_fails(tmp_path: Path) -> None:
+    """The size-budget half of the gate still applies to a snapshot root — T637's own reasoning
+    for giving this append-only root a ceiling at all does not depend on whether a `LICENCE.md` is
+    required, and the failure must not be mistaken for a missing-licence one."""
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
+
+    snapshots_root = tmp_path / "snapshots"
+    snapshot_dir = snapshots_root / "oversized-snapshot"
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / "rules.json").write_bytes(b"x" * 20)
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=(AssetRoot(snapshots_root, 10, requires_licence=False),),
+        docs_file=docs_file,
+        readme_file=_REAL_README,
+    )
+
+    assert failures, "a snapshot root over its size budget must still fail"
+    assert any("budget" in failure.lower() for failure in failures)
+    assert not any("LICENCE.md" in failure for failure in failures)
+
+
+def test_pack_shaped_root_licence_requirement_is_unchanged(tmp_path: Path) -> None:
+    """The contrast case proving this fix did not weaken the packs-root side: a pack-shaped root
+    (`requires_licence` defaults to `True`) with a subdirectory holding no `LICENCE.md` must still
+    fail `check_asset_roots`, exactly as before this change added `requires_licence`."""
+    from scripts.checks.asset_packs import AssetRoot, check_asset_roots
+
+    packs_root = tmp_path / "packs"
+    _write_pack(packs_root, "unrecorded-pack", fields=None, extra_files=["data.json"])
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=(AssetRoot(packs_root, 1024 * 1024),),
+        docs_file=docs_file,
+        readme_file=_REAL_README,
+    )
+
+    assert failures, "a pack-shaped root must still require a LICENCE.md per subdirectory"
+    assert any("LICENCE.md" in failure for failure in failures)
+
+
+# ------------------------------------------- (j) the real committed knowledge roots — sanity check
+
+
+def test_real_knowledge_roots_pass_the_gate() -> None:
+    """Real, non-synthetic sanity check, the `test_real_readme_carries_the_disclaimer` pattern
+    applied to the two knowledge-base roots this change concerns: running the actual check over the
+    real, committed `packages/knowledge/packs/` and `packages/knowledge/snapshots/` must report zero
+    failures. This is exactly the case that slipped through T637 and T638 with both agents reporting
+    green suites — every other test in this file runs against a synthetic fixture tree, never the
+    real one, so a bug specific to the real committed content had nothing here to catch it."""
+    from scripts.checks.asset_packs import ASSET_ROOTS, check_asset_roots
+
+    real_docs_file = _REPO_ROOT / "docs" / "asset-packs.md"
+    knowledge_roots = tuple(
+        asset_root for asset_root in ASSET_ROOTS if asset_root.path.parent.name == "knowledge"
+    )
+    assert len(knowledge_roots) == 2, (
+        f"expected exactly the packs and snapshots knowledge roots, got {knowledge_roots!r}"
+    )
+
+    failures = check_asset_roots(
+        roots=knowledge_roots, docs_file=real_docs_file, readme_file=_REAL_README
+    )
+
+    assert failures == []
