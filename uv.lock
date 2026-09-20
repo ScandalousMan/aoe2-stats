@@ -9,6 +9,7 @@ members = [
     "aoe2stats-api",
     "aoe2stats-core",
     "aoe2stats-ingester",
+    "aoe2stats-knowledge",
     "aoe2stats-providers",
     "aoe2stats-replay-engine",
     "aoe2stats-storage",
@@ -183,6 +184,17 @@ source = { editable = "packages/core" }
 name = "aoe2stats-ingester"
 version = "0.1.0"
 source = { editable = "apps/ingester" }
+dependencies = [
+    { name = "aoe2stats-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aoe2stats-core", editable = "packages/core" }]
+
+[[package]]
+name = "aoe2stats-knowledge"
+version = "0.1.0"
+source = { editable = "packages/knowledge" }
 dependencies = [
     { name = "aoe2stats-core" },
 ]
