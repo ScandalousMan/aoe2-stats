@@ -626,7 +626,7 @@ committed recording reports no blocking gap.
       field, build and civilisation, and every independent value is still produced. **SC-007a**: the
       pass over each committed recording reports zero blocking gaps. **FR-039**'s aggregate is
       asserted in T652
-- [ ] T650 [P] [US5] Write the structural tests that make refusal a property of the code rather than
+- [x] T650 [P] [US5] Write the structural tests that make refusal a property of the code rather than
       a habit: introspect every public query in the package and assert its return type is the
       answer-or-gap union (**SC-008**); assert no module in `packages/knowledge` imports a network
       library; and assert the whole package's tests pass with the network blocked (**SC-006**,
