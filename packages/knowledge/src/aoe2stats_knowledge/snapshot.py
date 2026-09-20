@@ -28,9 +28,22 @@ with `SnapshotPromotionError` — FR-034's "MUST NOT promote an unvalidated snap
 enforced here, not a convention left to whoever writes the next `snapshot.toml`. Only a promoted
 snapshot is resolvable by build: `load_resolvable_snapshots` is the set `snapshot_for(build)`
 resolves against, distinct from `load_all_snapshots`, which loads every digest-verified snapshot
-whether or not it is promoted. This module does not yet implement carry-forward's specific
-per-build attestation content (T642) — `ValidationRecord.details` is the extension point T642 adds
-its per-build note list into, without redesigning the promotion invariant enforced here.
+whether or not it is promoted.
+
+**Carry-forward (T642, research.md D4, FR-030, FR-034)**: a `[validation]` table whose `method` is
+`"carry-forward"` carries, inside `ValidationRecord.details["carry_forward"]`, the source's own
+last-implemented build, the evidence for that claim, and the ordered list of every build between it
+and `describes_build` (inclusive) — `intervening_builds` — each with a matching per-build
+attestation in `builds`: the notes consulted, where they were read, the date, and the reading
+(`_CARRY_FORWARD_BUILD_FIELDS`). `_check_carry_forward_completeness` enforces this structurally, at
+parse time, the same way `parse_promotion` already refuses an empty `[validation]` table regardless
+of `promoted` — a carry-forward record naming a build with no attestation, or attesting a build it
+never declared, is malformed, not merely unfinished, and raises `SnapshotCarryForwardIncomplete`
+(a `SnapshotPromotionError`) or `SnapshotError` rather than loading a record that looks complete but
+has a hole a later build could hide behind. What this cannot check is whether `intervening_builds`
+itself is true to the game's real build history — that is the transcriber's claim, carried as data
+(`source_last_implemented_build_evidence`) and reviewed like any other FR-031 transcription, not a
+fact this module has an independent way to verify.
 
 **Build resolution (FR-027, T641)**: `snapshot_for(build)` is an exact match on `describes_build`
 among `load_resolvable_snapshots()` — promotion still gates resolvability, so an unpromoted
@@ -92,6 +105,14 @@ class SnapshotPromotionError(SnapshotError):
     whoever writes the next `snapshot.toml` to remember."""
 
 
+class SnapshotCarryForwardIncomplete(SnapshotPromotionError):
+    """A `[validation]` table with `method = "carry-forward"` does not attest every build between
+    the source revision's own last-implemented build and `describes_build` (research.md D4: "a
+    build with no entry in that list makes the snapshot unpromotable"). Raised, like a missing
+    `[validation]` table, regardless of `promoted` — a carry-forward record with a hole is
+    malformed for its own declared method, not merely a validation not yet performed."""
+
+
 #: The FR-030 fields every validation record must carry, regardless of `method`. Anything else a
 #: `[validation]` table carries (T642's per-build carry-forward note list, for one) lands in
 #: `ValidationRecord.details` instead of a dedicated field, so a new validation method never
@@ -101,6 +122,16 @@ _VALIDATION_REQUIRED_FIELDS: Final[tuple[str, str, str, str]] = (
     "checked_against",
     "performed_by",
     "performed_at",
+)
+
+#: research.md D4's four per-build attestation fields, inside each
+#: `[[validation.carry_forward.builds]]` entry: the notes consulted, where they were read, the
+#: date, and the reading (what the notes said — did anything the pack carries change?).
+_CARRY_FORWARD_BUILD_FIELDS: Final[tuple[str, str, str, str]] = (
+    "notes_consulted",
+    "read_at",
+    "date_read",
+    "reading",
 )
 
 
@@ -278,6 +309,131 @@ def _parse_validation_record(table: Mapping[str, Any]) -> ValidationRecord:
     )
 
 
+def _require_carry_forward_build_list(value: Any, *, key: str) -> tuple[int, ...]:
+    """`[validation.carry_forward].intervening_builds` (or any similarly-shaped list): a non-empty,
+    strictly ascending, duplicate-free tuple of build numbers. Raised as `SnapshotError` — this is
+    a shape problem, not the "a declared build has no attestation" problem
+    `SnapshotCarryForwardIncomplete` names."""
+    if not isinstance(value, list) or not value:
+        raise SnapshotError(
+            f"[validation.carry_forward].{key} must be a non-empty list of build numbers, "
+            f"got {value!r}"
+        )
+    builds: list[int] = []
+    for item in value:
+        if not isinstance(item, int) or isinstance(item, bool):
+            raise SnapshotError(
+                f"[validation.carry_forward].{key} entries must be integers, got {item!r}"
+            )
+        builds.append(item)
+    if builds != sorted(builds) or len(set(builds)) != len(builds):
+        raise SnapshotError(
+            f"[validation.carry_forward].{key} must be strictly ascending with no duplicates, "
+            f"got {builds!r}"
+        )
+    return tuple(builds)
+
+
+def _check_carry_forward_completeness(validation: ValidationRecord, describes_build: int) -> None:
+    """research.md D4's invariant, enforced structurally, for a `method = "carry-forward"`
+    validation record (T642).
+
+    A carry-forward record must declare, in `details["carry_forward"]`:
+
+    - `source_last_implemented_build` (int): the source revision's own newest build.
+    - `intervening_builds` (list[int]): every build between it and `describes_build`, ascending,
+      ending in `describes_build` itself — the set this carry-forward has to cover.
+    - `builds` (list of tables): one per-build attestation for each entry in `intervening_builds`,
+      each carrying `_CARRY_FORWARD_BUILD_FIELDS` — the notes consulted, where they were read, the
+      date, and the reading — all non-blank.
+
+    A build declared in `intervening_builds` with no matching `builds` entry raises
+    `SnapshotCarryForwardIncomplete` naming which build is missing. A `builds` entry for a build
+    *not* declared in `intervening_builds` is equally refused (as a plain `SnapshotError`): an
+    attestation the record does not also claim as required proves nothing about completeness.
+
+    This does not, and cannot, verify that `intervening_builds` is itself the *true* complete set
+    of builds the source has not implemented — that is the transcriber's own claim, carried as data
+    (`source_last_implemented_build_evidence`) for a reviewer to check, exactly as FR-031 already
+    expects of any human transcription. What is enforced here is that the record cannot claim
+    coverage it does not also attest.
+    """
+    if validation.method != "carry-forward":
+        return
+    carry_forward = validation.details.get("carry_forward")
+    if not isinstance(carry_forward, dict):
+        raise SnapshotCarryForwardIncomplete(
+            '[validation] method = "carry-forward" requires a [validation.carry_forward] table '
+            "naming source_last_implemented_build, intervening_builds and a per-build builds list "
+            "(research.md D4)"
+        )
+    source_last_implemented_build = carry_forward.get("source_last_implemented_build")
+    if not isinstance(source_last_implemented_build, int) or isinstance(
+        source_last_implemented_build, bool
+    ):
+        raise SnapshotError(
+            "[validation.carry_forward].source_last_implemented_build must be an integer, got "
+            f"{source_last_implemented_build!r}"
+        )
+    intervening_builds = _require_carry_forward_build_list(
+        carry_forward.get("intervening_builds"), key="intervening_builds"
+    )
+    if intervening_builds[0] <= source_last_implemented_build:
+        raise SnapshotError(
+            "[validation.carry_forward].intervening_builds must all be later than "
+            f"source_last_implemented_build ({source_last_implemented_build}), "
+            f"got {intervening_builds!r}"
+        )
+    if intervening_builds[-1] != describes_build:
+        raise SnapshotError(
+            "[validation.carry_forward].intervening_builds must end with describes_build "
+            f"({describes_build}), got {intervening_builds!r}"
+        )
+    builds_table = carry_forward.get("builds")
+    if not isinstance(builds_table, list) or not builds_table:
+        raise SnapshotCarryForwardIncomplete(
+            "[validation.carry_forward].builds must be a non-empty list of per-build attestations"
+        )
+    attested: dict[int, Mapping[str, Any]] = {}
+    for entry in builds_table:
+        if not isinstance(entry, dict):
+            raise SnapshotError("[validation.carry_forward].builds entries must be tables")
+        build = entry.get("build")
+        if not isinstance(build, int) or isinstance(build, bool):
+            raise SnapshotError(
+                "[validation.carry_forward].builds entries must carry an integer 'build', "
+                f"got {build!r}"
+            )
+        if build in attested:
+            raise SnapshotError(
+                f"[validation.carry_forward].builds carries more than one entry for build {build}"
+            )
+        for field_name in _CARRY_FORWARD_BUILD_FIELDS:
+            value = entry.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise SnapshotCarryForwardIncomplete(
+                    f"[validation.carry_forward].builds entry for build {build} is missing a "
+                    f"non-blank {field_name!r} (research.md D4: the notes consulted, where they "
+                    "were read, the date, and the reading)"
+                )
+        attested[build] = entry
+    missing = [build for build in intervening_builds if build not in attested]
+    if missing:
+        raise SnapshotCarryForwardIncomplete(
+            f"carry-forward validation record is missing an attestation for build(s) {missing} "
+            f"— every build between source_last_implemented_build "
+            f"({source_last_implemented_build}) and describes_build ({describes_build}) must be "
+            "listed with its notes consulted, where, when and the reading (research.md D4)"
+        )
+    extra = sorted(set(attested) - set(intervening_builds))
+    if extra:
+        raise SnapshotError(
+            f"[validation.carry_forward].builds attests build(s) {extra} not declared in "
+            "intervening_builds — an attestation for a build the record does not also claim as "
+            "required to cover is not evidence of completeness"
+        )
+
+
 def parse_promotion(snapshot_toml_text: str) -> tuple[bool, ValidationRecord | None]:
     """Parse `snapshot.toml`'s FR-034 promotion flag and its FR-030 validation record.
 
@@ -285,7 +441,10 @@ def parse_promotion(snapshot_toml_text: str) -> tuple[bool, ValidationRecord | N
     A `[validation]` table that is absent, or present with no keys at all, is "no validation
     recorded" and parses to `None`; a `[validation]` table that is present but missing one of the
     four required fields is malformed and raises `SnapshotError` regardless of `promoted`, because
-    a partial validation record is not the same thing as none at all. Setting `promoted = true`
+    a partial validation record is not the same thing as none at all. `method = "carry-forward"`
+    is checked the same way, by the same discipline (T642, research.md D4): its
+    `[validation.carry_forward]` content must attest every build it declares as needing coverage,
+    regardless of `promoted` — see `_check_carry_forward_completeness`. Setting `promoted = true`
     together with `validation is None` raises `SnapshotPromotionError`: FR-034's "MUST NOT promote
     an unvalidated snapshot" is enforced here, at the one place both are read together.
     """
@@ -304,6 +463,14 @@ def parse_promotion(snapshot_toml_text: str) -> tuple[bool, ValidationRecord | N
         raise SnapshotError("snapshot.toml: [validation] must be a table")
     else:
         validation = _parse_validation_record(validation_table)
+        if validation.method == "carry-forward":
+            describes_build = table.get("describes_build")
+            if not isinstance(describes_build, int) or isinstance(describes_build, bool):
+                raise SnapshotError(
+                    "snapshot.toml: [snapshot].describes_build must be an integer before a "
+                    "carry-forward [validation] record can be checked for completeness"
+                )
+            _check_carry_forward_completeness(validation, describes_build)
     if promoted and validation is None:
         raise SnapshotPromotionError(
             "snapshot.toml: promoted = true requires a non-empty [validation] record (FR-034); "
