@@ -2,14 +2,16 @@
 # (`tests/fixtures/replays/README.md`: game build 180059, both fixtures). `describes_build` is no
 # longer the T639/T641 placeholder — T642 wires it to the real build the recordings report, and
 # the `[validation]` table below is the carry-forward attestation research.md D4 requires to get
-# there, not the T639 `method = "second-source"` placeholder it replaces. `rules.json` and
-# `effects.toml` are unchanged by this task (`describes_build` and `[validation]` live only in
-# this file), so `digest` below is untouched from T640/T644's normalisation.
+# there, not the T639 `method = "second-source"` placeholder it replaces. `rules.json` is
+# unchanged by this task; `effects.toml` is not — T644 replaced its empty placeholder with the
+# real, hand-transcribed Byzantine and Korean effects (research.md D5), so `digest` below is
+# T644's recomputed digest over `rules.json` and the real `effects.toml`, not T640's.
+# `civilisations_modelled` stays `[]` here: T645, not T644, is what populates it.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:132823b0d42649e9f84a5cdb06d103b417f1c29434ae60ddc0cf7949f45eb8d8"
+digest = "sha256:3524558dac7d44e7e48d335fc68cc3eada6e8d52ecfeb1c0c39f21fa056c98ac"
 promoted = true
 civilisations_modelled = []
 
