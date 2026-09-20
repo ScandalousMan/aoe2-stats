@@ -35,6 +35,7 @@ from aoe2stats_knowledge import snapshot as snapshot_module
 from aoe2stats_knowledge.snapshot import (
     NoSnapshotForBuild,
     Snapshot,
+    SnapshotCarryForwardIncomplete,
     SnapshotDigestMismatch,
     SnapshotError,
     SnapshotIdentity,
@@ -96,7 +97,7 @@ def _identity_toml(
 
 def _validation_toml(
     *,
-    method: str | None = '"carry-forward"',
+    method: str | None = '"second-source"',
     checked_against: str | None = '"the game client, directly"',
     performed_by: str | None = '"a test author"',
     performed_at: str | None = '"2026-01-01"',
@@ -104,7 +105,10 @@ def _validation_toml(
 ) -> str:
     """A `[validation]` table's text. Any of the four FR-030 fields passed as `None` is omitted,
     to test a partial (malformed) validation record; a TOML value must be passed already quoted
-    (e.g. `'"a"'`), mirroring `_identity_toml`'s convention."""
+    (e.g. `'"a"'`), mirroring `_identity_toml`'s convention. `method` defaults to a generic,
+    non-`"carry-forward"` placeholder on purpose: `"carry-forward"` now carries T642's own
+    completeness invariant (`_check_carry_forward_completeness`), so a test that only wants a
+    generic, method-agnostic validation record must not spell that string by accident."""
     lines = ["[validation]"]
     if method is not None:
         lines.append(f"method = {method}")
@@ -261,7 +265,7 @@ def test_parse_promotion_reads_a_promoted_snapshot_with_its_validation_record() 
     text = _identity_toml(
         extra="promoted = true\n\n"
         + _validation_toml(
-            method='"carry-forward"',
+            method='"game-comparison"',
             checked_against='"the game client, directly"',
             performed_by='"a test author"',
             performed_at='"2026-01-01"',
@@ -270,7 +274,7 @@ def test_parse_promotion_reads_a_promoted_snapshot_with_its_validation_record() 
     promoted, validation = parse_promotion(text)
     assert promoted is True
     assert validation == ValidationRecord(
-        method="carry-forward",
+        method="game-comparison",
         checked_against="the game client, directly",
         performed_by="a test author",
         performed_at="2026-01-01",
@@ -287,7 +291,7 @@ def test_parse_promotion_reads_an_unset_validation_record_alongside_an_unpromote
     promoted, validation = parse_promotion(text)
     assert promoted is False
     assert validation is not None
-    assert validation.method == "carry-forward"
+    assert validation.method == "second-source"
 
 
 def test_parse_promotion_keeps_extra_validation_keys_in_details() -> None:
@@ -335,6 +339,129 @@ def test_parse_promotion_raises_when_validation_is_not_a_table() -> None:
     text = "validation = 1\n\n" + _identity_toml(extra="promoted = false")
     with pytest.raises(SnapshotError, match="validation"):
         parse_promotion(text)
+
+
+# ------------------------------------------ carry-forward completeness (T642, research.md D4)
+
+
+def _carry_forward_entry(build: int) -> str:
+    """One `[[validation.carry_forward.builds]]` table, all four D4 fields present and non-blank,
+    for a synthetic `build`."""
+    return (
+        "[[validation.carry_forward.builds]]\n"
+        f"build = {build}\n"
+        f'notes_consulted = "patch notes for build {build}"\n'
+        f'read_at = "https://example.test/patch-notes/{build}"\n'
+        'date_read = "2026-01-01"\n'
+        'reading = "no field this pack carries changed"\n'
+    )
+
+
+def _carry_forward_toml(
+    *,
+    describes_build: int = 105,
+    source_last_implemented_build: int = 100,
+    intervening_builds: str = "[102, 105]",
+    entries: str,
+) -> str:
+    """A complete `snapshot.toml`, `promoted = true`, `method = "carry-forward"`, with the given
+    `[validation.carry_forward]` declarations and `entries` as the `[[...builds]]` tables text."""
+    return _identity_toml(
+        describes_build=str(describes_build),
+        extra=(
+            "promoted = true\n\n"
+            + _validation_toml(method='"carry-forward"')
+            + "\n\n[validation.carry_forward]\n"
+            f"source_last_implemented_build = {source_last_implemented_build}\n"
+            f"intervening_builds = {intervening_builds}\n\n" + entries
+        ),
+    )
+
+
+def test_parse_promotion_accepts_a_complete_carry_forward_record() -> None:
+    """(a) every intervening build (102 and the target, 105) is attested: promotes cleanly and the
+    per-build detail survives into `ValidationRecord.details`."""
+    text = _carry_forward_toml(
+        entries=_carry_forward_entry(102) + "\n" + _carry_forward_entry(105),
+    )
+    promoted, validation = parse_promotion(text)
+    assert promoted is True
+    assert validation is not None
+    carry_forward = validation.details["carry_forward"]
+    assert carry_forward["intervening_builds"] == [102, 105]
+    assert {entry["build"] for entry in carry_forward["builds"]} == {102, 105}
+
+
+def test_parse_promotion_raises_when_a_carry_forward_record_is_missing_one_intervening_build() -> (
+    None
+):
+    """(b) 105 (the target build itself) is declared in `intervening_builds` but never attested in
+    `builds` — refused, naming the missing build, not silently accepted as "close enough"."""
+    text = _carry_forward_toml(entries=_carry_forward_entry(102))
+    with pytest.raises(SnapshotCarryForwardIncomplete, match=r"\b105\b"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_raises_when_a_carry_forward_build_entry_is_missing_a_required_field() -> (
+    None
+):
+    """A `builds` entry for a declared build with a blank `reading` is not "attested, just
+    incomplete" — it is the same refusal as an entry that is entirely absent."""
+    incomplete_entry = (
+        "[[validation.carry_forward.builds]]\n"
+        "build = 105\n"
+        'notes_consulted = "patch notes for build 105"\n'
+        'read_at = "https://example.test/patch-notes/105"\n'
+        'date_read = "2026-01-01"\n'
+        'reading = "   "\n'
+    )
+    text = _carry_forward_toml(entries=_carry_forward_entry(102) + "\n" + incomplete_entry)
+    with pytest.raises(SnapshotCarryForwardIncomplete, match="reading"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_raises_when_carry_forward_attests_a_build_not_declared() -> None:
+    """The inverse gap: an attestation exists for build 999, which `intervening_builds` never
+    named as needing coverage — proves nothing about completeness, so it is refused too."""
+    text = _carry_forward_toml(
+        entries=(
+            _carry_forward_entry(102)
+            + "\n"
+            + _carry_forward_entry(105)
+            + "\n"
+            + _carry_forward_entry(999)
+        ),
+    )
+    with pytest.raises(SnapshotError, match=r"\b999\b"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_raises_when_carry_forward_has_no_carry_forward_table() -> None:
+    """`method = "carry-forward"` with no `[validation.carry_forward]` table at all is the same
+    "no attestation" refusal as one missing a specific build."""
+    text = _identity_toml(extra="promoted = true\n\n" + _validation_toml(method='"carry-forward"'))
+    with pytest.raises(SnapshotCarryForwardIncomplete, match="carry_forward"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_raises_when_intervening_builds_does_not_end_at_describes_build() -> None:
+    text = _carry_forward_toml(
+        describes_build=105,
+        intervening_builds="[102, 104]",
+        entries=_carry_forward_entry(102) + "\n" + _carry_forward_entry(104),
+    )
+    with pytest.raises(SnapshotError, match="describes_build"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_does_not_check_carry_forward_completeness_for_another_method() -> None:
+    """A `[validation.carry_forward]`-shaped invariant is specific to `method = "carry-forward"` —
+    a `"second-source"` validation with no such table at all is unaffected by this task."""
+    text = _identity_toml(extra="promoted = true\n\n" + _validation_toml(method='"second-source"'))
+    promoted, validation = parse_promotion(text)
+    assert promoted is True
+    assert validation is not None
+    assert validation.details == {}
 
 
 # ---------------------------------------------- promoted = true with no validation record (FR-034)
@@ -687,12 +814,35 @@ def test_snapshot_for_raises_when_two_promoted_snapshots_describe_the_same_build
 
 
 def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build() -> None:
-    """Against the real, unpatched, committed tree: `aoe2techtree-fixture-promoted` currently
-    `describes_build = 1` (a placeholder — T641/T642 do not wire it to a real game build; that
-    remains T642's carry-forward work), and resolving that exact build returns it."""
-    result = snapshot_for(1)
+    """Against the real, unpatched, committed tree: `aoe2techtree-fixture-promoted` now
+    `describes_build = 180059`, the game build the committed reference recordings actually report
+    (`tests/fixtures/replays/README.md`), wired there by T642's carry-forward validation record —
+    resolving that exact build returns it."""
+    result = snapshot_for(180059)
     assert isinstance(result, Snapshot)
     assert result.directory == "aoe2techtree-fixture-promoted"
+
+
+def test_the_committed_promoted_fixtures_validation_record_is_a_complete_carry_forward() -> None:
+    """(c) "make it real": the committed fixture's own `[validation]` record is not a synthetic
+    example — its `carry_forward` details name the real source revision's last-implemented build
+    (177723, research.md D3's commit-message reading), the real intervening builds the committed
+    recordings' build (180059) forced (research.md D4: "two further builds unimplemented in
+    between" — 178524 and 179158), and a per-build attestation for all three, each carrying its
+    weakest-link statement as data (research.md D4's "record ... in the validation record, not in
+    a comment") rather than a placeholder string."""
+    promoted = load_snapshot("aoe2techtree-fixture-promoted")
+    assert promoted.validation is not None
+    assert promoted.validation.method == "carry-forward"
+    carry_forward = promoted.validation.details["carry_forward"]
+    assert carry_forward["source_last_implemented_build"] == 177723
+    assert carry_forward["intervening_builds"] == [178524, 179158, 180059]
+    assert carry_forward["weakest_link"]
+    attested_builds = {entry["build"] for entry in carry_forward["builds"]}
+    assert attested_builds == {178524, 179158, 180059}
+    for entry in carry_forward["builds"]:
+        for field_name in ("notes_consulted", "read_at", "date_read", "reading"):
+            assert entry[field_name].strip(), (entry["build"], field_name)
 
 
 def test_snapshot_for_returns_a_gap_for_the_committed_unpromoted_fixtures_build() -> None:

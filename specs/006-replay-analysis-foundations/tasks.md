@@ -550,7 +550,7 @@ committed recording reports no blocking gap.
       no fallback parameter** — the function must not accept one, because an argument that exists
       will be passed. A recording from a build with no snapshot is a gap with its own severity, not
       an analysis against a neighbouring snapshot
-- [ ] T642 [US2] Implement carry-forward in `snapshot.py` per [research.md](./research.md) **D4**:
+- [x] T642 [US2] Implement carry-forward in `snapshot.py` per [research.md](./research.md) **D4**:
       a snapshot may describe a build later than the revision it was imported from, only when its
       validation record lists **every** intervening build with the notes consulted, where they were
       read, the date, and the reading. A build missing from that list makes the snapshot
