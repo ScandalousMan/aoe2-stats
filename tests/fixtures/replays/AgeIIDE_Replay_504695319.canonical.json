@@ -1,4 +1,5 @@
-{"format":1,"recording":"AgeIIDE_Replay_504695319","event_count":5800,"events":[
+{"format":1,"recording":"AgeIIDE_Replay_504695319","event_count":5801,"events":[
+{"clock_ms":0,"kind":"match-started","participant":null,"payload":{"build":180059,"map_name":"73","lobby_presets":{"starting_resources_id":"0","starting_age_id":"2","map_size":"168"},"participants":[{"slot":1,"civilisation":2},{"slot":2,"civilisation":8},{"slot":3,"civilisation":4},{"slot":4,"civilisation":33}]}},
 {"clock_ms":416,"kind":"undecoded","participant":1,"payload":{"operation":"FarmAutoqueue","payload_length":16}},
 {"clock_ms":416,"kind":"undecoded","participant":1,"payload":{"operation":"FishtrapAutoqueue","payload_length":16}},
 {"clock_ms":416,"kind":"undecoded","participant":2,"payload":{"operation":"FarmAutoqueue","payload_length":16}},

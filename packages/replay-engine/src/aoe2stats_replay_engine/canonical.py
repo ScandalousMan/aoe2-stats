@@ -77,7 +77,9 @@ from aoe2stats_core.replay.events import (
     EventKind,
     MarketTransactionPayload,
     MatchEndedPayload,
+    MatchStartedPayload,
     ObjectDeletedPayload,
+    ParticipantEntry,
     Position,
     ResearchQueuedPayload,
     UndecodedPayload,
@@ -421,13 +423,56 @@ def _seated(parsed: Mapping[str, object]) -> frozenset[int]:
     return frozenset(cast(int, player["player_number"]) for player in players)
 
 
+# The lobby presets research.md D1 found already named in the wheel's own output, beside the
+# resolved map (which gets `MatchStartedPayload.map_name`, T629a). Carried as decimal strings, like
+# the chat channel above: naming what these integers mean is the knowledge base's job, not this
+# adapter's, so nothing here is translated, only read.
+_LOBBY_PRESET_FIELDS: tuple[str, ...] = ("starting_resources_id", "starting_age_id", "map_size")
+
+
+def _match_started(parsed: Mapping[str, object]) -> CanonicalEvent:
+    """`match-started`: the header's own event, at clock zero, corresponding to no operation.
+
+    Build, the resolved map, the lobby presets and the seated participants are read unchanged from
+    the same `zheader`/`game_settings` fields `_seated` already reads (FR-016) — never derived,
+    never guessed. Observers and empty slots are absent from `participants`, not present and
+    silent: `game_settings["players"]` already excludes both (`_seated`'s own docstring).
+    Civilisations are carried as the game's integer identifier, never a name — naming is the
+    knowledge base's job.
+    """
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    participants = tuple(
+        ParticipantEntry(
+            slot=cast(int, player["player_number"]),
+            civilisation=cast(int, player["civ_id"]),
+        )
+        for player in sorted(raw_players, key=lambda player: cast(int, player["player_number"]))
+    )
+    lobby_presets = {field: str(game_settings[field]) for field in _LOBBY_PRESET_FIELDS}
+    return CanonicalEvent(
+        clock_ms=0,
+        kind=EventKind.MATCH_STARTED,
+        payload=MatchStartedPayload(
+            build=cast(int, zheader["build"]),
+            map_name=str(cast(int, game_settings["resolved_map_id"])),
+            lobby_presets=lobby_presets,
+            participants=participants,
+        ),
+    )
+
+
 def canonical_events(
     parsed: Mapping[str, object], accounting: Accounting | None = None
 ) -> Iterator[CanonicalEvent]:
     """Yield the canonical events of one parsed replay, in stream order, in one pass.
 
     Pass an `Accounting` to have every deliberately dropped operation counted by reason.
+    `match-started` (T629a) is always first, at clock zero: it comes from the header and
+    corresponds to no operation, so it is never counted in `tally`.
     """
+    yield _match_started(parsed)
     tally = accounting if accounting is not None else Accounting()
     seated = _seated(parsed)
     state = _Exits()

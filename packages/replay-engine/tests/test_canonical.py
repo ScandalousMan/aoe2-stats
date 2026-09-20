@@ -25,6 +25,7 @@ from aoe2stats_core.replay.events import (
     EventKind,
     MarketTransactionPayload,
     MatchEndedPayload,
+    MatchStartedPayload,
     ObjectDeletedPayload,
     ResearchQueuedPayload,
     UndecodedPayload,
@@ -39,6 +40,9 @@ _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _RECORDINGS = sorted(_FIXTURES.glob("AgeIIDE_Replay_*.zip"))
 
 _Parsed = Mapping[str, object]
+
+# Both committed recordings are on this build (tests/fixtures/replays/README.md).
+_FIXTURE_BUILD = 180059
 
 
 def _parse(path: Path) -> _Parsed:
@@ -55,8 +59,39 @@ def _operations(parsed: _Parsed) -> Sequence[Mapping[str, object]]:
     return cast(Sequence[Mapping[str, object]], parsed["operations"])
 
 
+def _drop_match_started(events: Iterator[CanonicalEvent]) -> list[CanonicalEvent]:
+    """Every event but the header-derived `match-started` lead (T629a).
+
+    Most tests below are about what one operation becomes, not about the event every stream now
+    opens with; this keeps them from having to know that on top of what they actually test.
+    """
+    return [e for e in events if e.kind is not EventKind.MATCH_STARTED]
+
+
 def test_the_committed_recordings_are_found() -> None:
     assert len(_RECORDINGS) >= 2
+
+
+def test_the_first_event_of_every_stream_is_match_started(parsed: _Parsed) -> None:
+    """T629a: `match-started` comes from the header and corresponds to no operation (it is
+    excluded from the conservation equation by name, not by a widened tolerance — see
+    `test_conservation_every_operation_is_an_event_or_a_counted_category`). Its participants equal
+    the seated slots and its build is the one the fixtures README records."""
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    seated = {
+        (cast(int, player["player_number"]), cast(int, player["civ_id"])) for player in raw_players
+    }
+
+    first = next(iter(canonical_events(parsed)))
+
+    assert first.kind is EventKind.MATCH_STARTED
+    assert first.clock_ms == 0
+    assert first.participant is None
+    assert isinstance(first.payload, MatchStartedPayload)
+    assert {(p.slot, p.civilisation) for p in first.payload.participants} == seated
+    assert first.payload.build == _FIXTURE_BUILD
 
 
 # --- the clock ----------------------------------------------------------------------------------
@@ -181,14 +216,28 @@ def test_view_lock_and_sync_operations_yield_no_event(parsed: _Parsed) -> None:
         "zheader": parsed["zheader"],
         "operations": [op for op in _operations(parsed) if "Sync" in op or "Viewlock" in op],
     }
-    assert list(canonical_events(stream)) == []
+    assert _drop_match_started(canonical_events(stream)) == []
 
 
 # --- synthetic streams --------------------------------------------------------------------------
 
 
 def _settings(*numbers: int) -> dict[str, object]:
-    return {"zheader": {"game_settings": {"players": [{"player_number": n} for n in numbers]}}}
+    # `civ_id`, `build`, `resolved_map_id` and the lobby preset fields exist only so
+    # `_match_started` (T629a) has something to read on a synthetic stream: no test below asserts
+    # on their values, they only need to be present and well-typed.
+    return {
+        "zheader": {
+            "build": _FIXTURE_BUILD,
+            "game_settings": {
+                "resolved_map_id": 9,
+                "starting_resources_id": 0,
+                "starting_age_id": 2,
+                "map_size": 120,
+                "players": [{"player_number": n, "civ_id": n} for n in numbers],
+            },
+        }
+    }
 
 
 def _sync(ms: int) -> dict[str, object]:
@@ -237,7 +286,7 @@ def test_exit_rule_on_a_synthetic_stream_where_the_match_runs_on() -> None:
         _move(2),
     )
 
-    events = list(canonical_events(stream))
+    events = _drop_match_started(canonical_events(stream))
 
     by_player = [(e.participant, e.kind, e.clock_ms) for e in events]
     assert by_player == [
@@ -251,14 +300,14 @@ def test_exit_rule_on_a_synthetic_stream_where_the_match_runs_on() -> None:
 def test_an_action_from_an_unseated_slot_yields_no_participant_and_no_event() -> None:
     stream = _stream(_sync(10), _move(3), _move(0), _move(1), players=(1, 2))
 
-    events = list(canonical_events(stream))
+    events = _drop_match_started(canonical_events(stream))
 
     assert [e.participant for e in events] == [1]
 
 
 def test_the_seated_list_alone_decides_who_can_be_a_participant() -> None:
     stream = _stream(_move(3), players=(3,))
-    assert [e.participant for e in canonical_events(stream)] == [3]
+    assert [e.participant for e in _drop_match_started(canonical_events(stream))] == [3]
 
 
 def test_repeated_research_collapses_but_a_different_technology_does_not() -> None:
@@ -275,6 +324,7 @@ def test_repeated_research_collapses_but_a_different_technology_does_not() -> No
     got = [
         (e.participant, cast(ResearchQueuedPayload, e.payload).technology_id, e.clock_ms)
         for e in canonical_events(stream)
+        if e.kind is EventKind.RESEARCH_QUEUED
     ]
 
     assert got == [(1, 101, 100), (2, 101, 308), (1, 102, 308)]
@@ -282,7 +332,7 @@ def test_repeated_research_collapses_but_a_different_technology_does_not() -> No
 
 def test_resignation_collapses_to_the_first_occurrence_only() -> None:
     stream = _stream(_act("Resign", 1, data=[0]), _act("Resign", 1, data=[0]))
-    kinds = [e.kind for e in canonical_events(stream)]
+    kinds = [e.kind for e in _drop_match_started(canonical_events(stream))]
     assert kinds == [EventKind.PARTICIPANT_RESIGNED]
 
 
@@ -290,7 +340,7 @@ def test_queueing_repeated_identically_is_never_collapsed() -> None:
     queue = _act("DeQueue", 1, building_type=109, unit_id=83, amount=1, building_ids=[500, 501])
     stream = _stream(_sync(1), queue, _sync(1), queue, queue)
 
-    events = list(canonical_events(stream))
+    events = _drop_match_started(canonical_events(stream))
 
     assert len(events) == 3
     payload = events[0].payload
@@ -299,14 +349,14 @@ def test_queueing_repeated_identically_is_never_collapsed() -> None:
 
 def test_a_movement_command_with_no_decoded_units_keeps_an_empty_list() -> None:
     stream = _stream(_act("Move", 1, x=1.0, y=2.0, unit_ids=[]))
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert isinstance(event.payload, UnitsCommandedPayload)
     assert event.payload.unit_objects == ()
 
 
 def test_an_order_naming_no_building_has_no_target() -> None:
     stream = _stream(_act("Order", 1, building_id=-1, object_ids=[9]))
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert isinstance(event.payload, UnitsCommandedPayload)
     assert event.payload.target is None
 
@@ -316,7 +366,7 @@ def test_placement_decodes_position_and_building_from_the_raw_bytes() -> None:
         struct.pack("<I", 1) + struct.pack("<ff", 12.0, 69.0) + struct.pack("<I", 70) + bytes(4)
     )
     stream = _stream(_act("Build", 1, data=data))
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert event.kind is EventKind.BUILDING_PLACED
     assert event.payload == BuildingPlacedPayload(
         building_id=70, position=cast(BuildingPlacedPayload, event.payload).position
@@ -332,15 +382,20 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
 
     The two left-hand counts the wheel reports come from the raw operation list; the rest come from
     the generator's own `Accounting`, so a new way to lose an operation has to be named to pass.
+    `match-started` (T629a) comes from the header and corresponds to no operation: it is
+    subtracted from the event count by name, never folded in by widening the equation's tolerance.
     """
     accounting = Accounting()
     events = list(canonical_events(parsed, accounting))
+    match_started = sum(1 for e in events if e.kind is EventKind.MATCH_STARTED)
     operations = _operations(parsed)
     syncs = sum(1 for op in operations if "Sync" in op)
     viewlocks = sum(1 for op in operations if "Viewlock" in op)
 
+    assert match_started == 1
     assert (
         len(events)
+        - match_started
         + syncs
         + viewlocks
         + accounting.collapsed
@@ -367,7 +422,7 @@ def test_every_recorded_action_is_an_event_or_a_named_drop(parsed: _Parsed) -> N
 def test_a_collapsed_research_is_counted_as_collapsed() -> None:
     accounting = Accounting()
     stream = _stream(_research(1, 101), _research(1, 101), _research(1, 102))
-    assert len(list(canonical_events(stream, accounting))) == 2
+    assert len(_drop_match_started(canonical_events(stream, accounting))) == 2
     assert accounting == Accounting(collapsed=1)
 
 
@@ -429,7 +484,7 @@ def test_command_kinds_without_decoded_ids_are_commanded_with_an_empty_list(
 
 def test_a_game_command_is_undecoded_under_the_wheels_inner_name() -> None:
     stream = _stream(_act("Game", 1, game_command={"FarmUnqueue": {}}, action_length=16))
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert event.payload == UndecodedPayload(operation="FarmUnqueue", payload_length=16)
 
 
@@ -444,7 +499,7 @@ def test_an_unmapped_action_from_an_exited_or_unseated_slot_is_counted_not_emitt
         _chat(9, "hello"),  # names no seated slot
         players=(1, 2),
     )
-    events = list(canonical_events(stream, accounting))
+    events = _drop_match_started(canonical_events(stream, accounting))
     assert [e.kind for e in events] == [EventKind.PARTICIPANT_RESIGNED]
     # The second resignation is after the first exit, so it is an after-exit action, not a collapse.
     assert accounting == Accounting(after_exit=3, unseated=2)
@@ -456,7 +511,7 @@ def test_a_queue_command_naming_no_building_is_undecoded_not_dropped() -> None:
             "DeQueue", 1, building_type=109, unit_id=83, amount=1, building_ids=[], action_length=6
         )
     )
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert event.payload == UndecodedPayload(operation="DeQueue", payload_length=6)
 
 
@@ -621,7 +676,7 @@ def test_a_deleted_object_id_is_never_named_by_a_later_command(named: tuple[str,
 def test_a_market_command_is_exact_on_a_synthetic_stream() -> None:
     sell = _act("Sell", 1, data=list(struct.pack("<hhI", 1, 5, 4321)), action_length=8)
     buy = _act("Buy", 2, data=list(struct.pack("<hhI", 2, 1, 4321)), action_length=8)
-    first, second = canonical_events(_stream(sell, buy))
+    first, second = _drop_match_started(canonical_events(_stream(sell, buy)))
     assert first.payload == MarketTransactionPayload("sell", "wood", 500)
     assert second.payload == MarketTransactionPayload("buy", "stone", 100)
     assert first.tier.value == "decoded"
@@ -640,13 +695,17 @@ def test_a_market_command_is_exact_on_a_synthetic_stream() -> None:
 def test_a_market_payload_that_does_not_fit_the_layout_is_undecoded_never_guessed(
     data: list[int],
 ) -> None:
-    (event,) = canonical_events(_stream(_act("Sell", 1, data=data, action_length=len(data))))
+    (event,) = _drop_match_started(
+        canonical_events(_stream(_act("Sell", 1, data=data, action_length=len(data))))
+    )
     assert event.kind is EventKind.UNDECODED
     assert event.payload == UndecodedPayload(operation="Sell", payload_length=len(data))
 
 
 def test_a_delete_payload_that_does_not_fit_the_layout_is_undecoded_never_guessed() -> None:
-    (event,) = canonical_events(_stream(_act("Delete", 1, data=[1, 2, 3], action_length=3)))
+    (event,) = _drop_match_started(
+        canonical_events(_stream(_act("Delete", 1, data=[1, 2, 3], action_length=3)))
+    )
     assert event.kind is EventKind.UNDECODED
     assert event.payload == UndecodedPayload(operation="Delete", payload_length=3)
 
@@ -706,7 +765,7 @@ def _leaks(event: CanonicalEvent, texts: set[str]) -> bool:
 def test_a_seated_participants_chat_is_an_event_with_channel_and_no_text() -> None:
     accounting = Accounting()
     stream = _stream(_sync(300), _chat(2, _SECRET, channel=3), players=(1, 2))
-    (event,) = canonical_events(stream, accounting)
+    (event,) = _drop_match_started(canonical_events(stream, accounting))
     assert event.kind is EventKind.CHAT
     assert event.participant == 2
     assert event.clock_ms == 300  # chat has no time of its own: it takes the accumulated clock
@@ -718,7 +777,7 @@ def test_a_seated_participants_chat_is_an_event_with_channel_and_no_text() -> No
 def test_chat_from_an_unseated_sender_or_after_exit_is_counted_not_emitted() -> None:
     accounting = Accounting()
     stream = _stream(_chat(7, _SECRET), _act("Resign", 1, data=[0]), _chat(1, _SECRET))
-    events = list(canonical_events(stream, accounting))
+    events = _drop_match_started(canonical_events(stream, accounting))
     assert [e.kind for e in events] == [EventKind.PARTICIPANT_RESIGNED]
     assert accounting == Accounting(unseated=1, after_exit=1)
 
@@ -741,7 +800,7 @@ def test_malformed_chat_is_counted_unseated_and_never_raises_or_leaks(
     accounting = Accounting()
     stream = _stream(_sync(50), {"Chat": {"padding": (0,), "text": text}})
     with caplog.at_level(logging.DEBUG):
-        events = list(canonical_events(stream, accounting))
+        events = _drop_match_started(canonical_events(stream, accounting))
     assert events == []
     assert accounting == Accounting(unseated=1)
     assert _SECRET not in caplog.text
@@ -768,7 +827,7 @@ def test_no_chat_text_reaches_an_event_or_a_log_line_on_a_planted_message(
 ) -> None:
     stream = _stream(_chat(1, _SECRET), _chat(1, _SECRET, channel=2), _chat(8, _SECRET))
     with caplog.at_level(logging.DEBUG):
-        events = list(canonical_events(stream))
+        events = _drop_match_started(canonical_events(stream))
     assert len(events) == 2
     assert not any(_leaks(event, {_SECRET}) for event in events)
     assert _SECRET not in caplog.text
@@ -777,14 +836,14 @@ def test_no_chat_text_reaches_an_event_or_a_log_line_on_a_planted_message(
 
 def test_a_top_level_cancellation_is_a_unit_unqueued_event() -> None:
     stream = _stream(_act("Unqueue", 1, unit_id=83, amount=2))
-    (event,) = canonical_events(stream)
+    (event,) = _drop_match_started(canonical_events(stream))
     assert event.kind is EventKind.UNIT_UNQUEUED
     assert event.payload == UnitUnqueuedPayload(unit_id=83, count=2)
 
 
 def test_a_cancellation_whose_payload_lacks_the_two_fields_is_undecoded_never_guessed() -> None:
     stream = _stream(_act("Unqueue", 1, action_length=9), _act("FarmUnqueue", 1, unit_id=83))
-    events = list(canonical_events(stream))
+    events = _drop_match_started(canonical_events(stream))
     assert [e.kind for e in events] == [EventKind.UNDECODED, EventKind.UNDECODED]
 
 
