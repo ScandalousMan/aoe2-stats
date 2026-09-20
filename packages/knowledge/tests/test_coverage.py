@@ -1,4 +1,13 @@
-"""T649: the coverage pass over a canonical stream, before `coverage.py` (T648) exists.
+"""T649: the coverage pass over a canonical stream. Written before `coverage.py` (T648) existed;
+T648 has since implemented it, `test_removing_a_required_field_withholds_only_its_dependent_values`
+(SC-007) genuinely passes and its marker is removed, and
+`test_each_committed_recording_reports_zero_blocking_gaps` (SC-007a) is parametrized per recording:
+the first committed recording (Byzantines/Koreans) genuinely passes, with no marker at all, since a
+remediation of T648's hand-back (2026-09-20) found and corrected a real misclassification in
+`effects.toml` — Koreans' "Archer armor and tower upgrades free" is unconditional, not
+conditional-on-state (see `effects.toml`'s own `validated_by` on that entry for the evidence). The
+second committed recording's own case is still `xfail`, for three real, permanent-for-this-feature
+reasons recorded on that one parametrized case's own marker below, not "T648 not implemented yet".
 
 Contract: [contracts/knowledge-base.md](../../../specs/006-replay-analysis-foundations/contracts/
 knowledge-base.md), "Gaps" — "The coverage pass (`coverage.py`) takes a canonical stream, collects
@@ -10,11 +19,12 @@ which T647 already proved; this file only checks that a real, missing field prod
 Data model: [data-model.md](../../../specs/006-replay-analysis-foundations/data-model.md) §7
 ("Knowledge gap").
 
-Every test below is `xfail(strict=True, reason="T648 not implemented yet")` and imports
-`aoe2stats_knowledge.coverage` **inside its own body**, never at module scope — a module-scope
-import of a module that does not exist yet is a collection error that takes the whole workspace
-suite down with it (`implementer-dispatch` skill). `strict=True` is what turns this file red again,
-forcing the marker off, the moment T648 makes any one of these pass for a wrong reason.
+Every test below imports `aoe2stats_knowledge.coverage` **inside its own body**, never at module
+scope — a module-scope import of a module that did not exist yet, when this file was written before
+T648, would have been a collection error that took the whole workspace suite down with it
+(`implementer-dispatch` skill); kept that way now that `coverage.py` exists, both for consistency
+and because it costs nothing. `strict=True` on the one test still marked `xfail` is what turns this
+file red again, forcing the marker off, the moment whatever it is still waiting on lands.
 
 **Field vocabulary.** `register.toml`'s real `requires_knowledge` values are `cost`,
 `production_time`, `produced_at`, `age_requirement`, `prerequisites`, `available_to` and
@@ -214,10 +224,68 @@ def _real_rules_for(directory: str) -> dict[str, Any]:
 # ------------------------------------------------------------------------------------- SC-007a
 
 
-@pytest.mark.xfail(strict=True, reason="T648 not implemented yet")
+#: Recording 2's own, permanent-for-this-feature reasons SC-007a cannot pass for it, established by
+#: a remediation of T648's hand-back (2026-09-20), which re-examined every blocking gap the pass
+#: reports against this recording and confirmed each is a real, honest limit rather than a
+#: transcription error (FR-038/CLAUDE.md: "never substitute a value for missing knowledge... if a
+#: task seems to require one, the task is wrong — stop and say so"):
+#:
+#:   - **Franks' "Castles cost -15/25% in Castle/Imperial Age"** (building 82, the Castle the
+#:     Franks participant trains Throwing Axemen from) is genuinely age-scaled: its magnitude
+#:     depends on which age the Castle was built in, and this static, per-build knowledge base's
+#:     query surface (`query.py`'s six functions) carries no "current age"/match-state argument at
+#:     all — an architecture question (the effect model's own signature), not a fixable
+#:     transcription, and out of this remediation's scope.
+#:   - **Gurjaras' Team Bonus "Camel and Elephant Units train +25% faster"** (units 1755, 239) is,
+#:     by the pack's own text, a **Team Bonus** — granted to every allied player from a Gurjaras
+#:     ally, not only to Gurjaras-controlled units — so it is correctly excluded from this
+#:     civilisation-scoped effect model, exactly like every other team bonus this feature has ever
+#:     modelled (`effects.toml`'s own "Team Bonus:" entries throughout).
+#:   - **Two building ids (490, 673)**, referenced by `building-placed` events in this recording,
+#:     are absent from the vendored `aoe2techtree` pack entirely — real, age-upgraded visual
+#:     variants the pack's tech-tree UI source never enumerates a second id for
+#:     (`test_normalise.py`'s `_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK`, first named by T640). A
+#:     genuine third-party source coverage hole, not a decoding or civilisation-assignment error;
+#:     vendoring a second source to close it is explicitly rejected by research.md D3 for this
+#:     feature.
+_RECORDING_2_XFAIL_REASON = (
+    "Recording 2 (AgeIIDE_Replay_504695319) cannot report zero blocking gaps within this "
+    "feature's current architecture and single-source decision, for three independent, permanent "
+    "reasons (each re-examined and confirmed real by a remediation of T648's hand-back, "
+    "2026-09-20; this is not the general 'T648 not implemented' placeholder this marker started "
+    "as): (1) Franks' 'Castles cost -15/25% in Castle/Imperial Age' (building 82) is age-scaled — "
+    "its value depends on which age a building was constructed in, and this static knowledge "
+    "base's query surface (query.py) has no age/match-state argument to resolve that against; "
+    "closing this means adding one, an architecture change out of scope here, not an effects.toml "
+    "transcription fix. (2) Gurjaras' 'Team Bonus: Camel and Elephant Units train +25% faster' "
+    "(units 1755, 239) is, by the pack's own text, a Team Bonus — granted through an ally, not to "
+    "Gurjaras' own units — and correctly stays unmodelled by this feature's own design, the same "
+    "as every other team bonus effects.toml records. (3) Two building ids this recording's own "
+    "building-placed events name, 490 and 673, are absent from the vendored aoe2techtree pack "
+    "entirely (test_normalise.py's _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK, first found and "
+    "named by T640) — a genuine gap in the single vendored third-party source, and research.md D3 "
+    "explicitly rejects vendoring a second source to close it. None of the three is a "
+    "coverage.py defect, a civilisation-assignment error or a fixable effects.toml "
+    "misclassification (contrast recording 1's own former blocker, Koreans' archer-armor "
+    "bonus, which this same remediation confirmed WAS a misclassification and corrected — see "
+    "effects.toml's own validated_by on that entry); each is a real, honest limit of this "
+    "feature's static, single-source, age-blind effect model, left in place rather than worked "
+    "around or fabricated around (FR-038). XPASS(strict=True) if a later feature closes any of "
+    "these — an age/match-state query parameter, a second vendored source, or Gurjaras' bonus "
+    "being reclassified as non-team-wide, none of which this remediation found evidence for — so "
+    "that a silent regression cannot hide."
+)
+
+
 @pytest.mark.parametrize(
     "golden_path",
-    _GOLDEN_CANONICAL_STREAMS,
+    [
+        _GOLDEN_CANONICAL_STREAMS[0],
+        pytest.param(
+            _GOLDEN_CANONICAL_STREAMS[1],
+            marks=pytest.mark.xfail(strict=True, reason=_RECORDING_2_XFAIL_REASON),
+        ),
+    ],
     ids=[path.stem for path in _GOLDEN_CANONICAL_STREAMS],
 )
 def test_each_committed_recording_reports_zero_blocking_gaps(golden_path: Path) -> None:
@@ -235,6 +303,13 @@ def test_each_committed_recording_reports_zero_blocking_gaps(golden_path: Path) 
     informational gaps "count only toward the aggregate report" and are expected to exist wherever
     this snapshot's coverage is real but partial (e.g. entities neither committed recording trains
     a discount for). Only **blocking** severity is SC-007a's claim.
+
+    **Recording 1 genuinely passes, with no marker at all**: a remediation of T648's hand-back
+    (2026-09-20) found that Koreans' "Archer armor and tower upgrades free" — the one effect
+    blocking this recording — had been misclassified as conditional on state, when the
+    recording's own use is unconditional (see `effects.toml`'s own `validated_by` on that entry).
+    **Recording 2 stays `xfail`**, for three real, permanent reasons named on that one
+    parametrized case's own marker (`_RECORDING_2_XFAIL_REASON` above), not this docstring.
     """
     from aoe2stats_knowledge import coverage, gaps
 
@@ -272,7 +347,6 @@ _PIKEMAN_ID = "358"
 _CROSSBOWMAN_ID = "24"
 
 
-@pytest.mark.xfail(strict=True, reason="T648 not implemented yet")
 def test_removing_a_required_field_withholds_only_its_dependent_values() -> None:
     """**SC-007**: "Removing a required field from a snapshot causes the dependent values to be
     withheld and a gap to be recorded, while every independent value is still produced." Also

@@ -224,6 +224,7 @@ source = { editable = "packages/replay-engine" }
 dependencies = [
     { name = "aoe2rec-py" },
     { name = "aoe2stats-core" },
+    { name = "aoe2stats-knowledge" },
     { name = "packaging" },
 ]
 
@@ -231,6 +232,7 @@ dependencies = [
 requires-dist = [
     { name = "aoe2rec-py", specifier = "==0.1.21" },
     { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
     { name = "packaging" },
 ]
 
