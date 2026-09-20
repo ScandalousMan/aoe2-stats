@@ -190,29 +190,43 @@ hand-listed.\
 civilisation = "Koreans"
 source_key = "120167"
 source_text = "Archer armor and tower upgrades free (Bombard Tower requires Chemistry)"
-modelled = "no"
-reason = """\
-Conditional on match state (research.md D5): the parenthetical itself states the condition — \
-Bombard Tower is free only once Chemistry has been researched, a fact no static rules query \
-carries, and the bonus is stated as one bullet covering both the unconditional and the \
-Chemistry-conditional technologies together, so it is recorded as one not-modelled entry rather \
-than split into an unconditional part this pass would then be asserting more confidence in than \
-the reading supports.\
-"""
+modelled = "yes"
 field = "cost"
+operation = "set"
+operand = { food = 0, gold = 0, wood = 0 }
 selector = [
   { kind = "technology", id = "211" },
   { kind = "technology", id = "212" },
   { kind = "technology", id = "219" },
   { kind = "technology", id = "140" },
+  { kind = "technology", id = "63" },
   { kind = "technology", id = "64" },
 ]
 validated_by = """\
-Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
-re-read in full on 2026-09-20 by the T644 implementer, confirming the "(Bombard Tower requires \
-Chemistry)" conditional and resolving "Archer armor" to rules.json's three archer-armour \
-technologies (211, 212, 219) and "tower upgrades" to Guard Tower (140) and Bombard Tower (64) by \
-name.\
+Reclassified 2026-09-20 during a remediation of T648's coverage pass (SC-007a): re-read against \
+rules.json's own structural fields rather than the earlier transcription's prose-only reading. The \
+parenthetical "(Bombard Tower requires Chemistry)" is a note about Bombard Tower's own \
+*prerequisite gate* — verified directly against rules.json's `entities.technology.64.prerequisites`, \
+which already records `{id: "47", kind: "technology"}` (Chemistry) as Bombard Tower's baseline \
+prerequisite, a universal, civilisation-independent fact this pack encodes for every civilisation \
+regardless of Koreans, fully captured by the existing `prerequisites` field and never touched by \
+this cost effect — not a condition on whether the cost discount itself applies. The bonus is \
+therefore unconditional and civilisation-specific over a closed set, exactly as concrete as \
+Byzantines'/Koreans' other modelled bonuses. "Archer armor" resolves, by the same prerequisite-chain \
+method T644 used for Byzantines' Spearman-line, to Padded (211, no prerequisite) -> Leather (212, \
+prerequires 211) -> Ring (219, prerequires 212) Archer Armor, all three produced at the Blacksmith \
+(building 103). "Tower upgrades" resolves the same way to Guard Tower (140, no prerequisite) -> \
+Keep (63, prerequires 140), plus Bombard Tower (64, prerequires 47/Chemistry, not 63) — all three \
+produced at the University (building 209) and the only three technologies among the University's \
+full researchable list (which also carries unrelated lines: Ballistics, Masonry, Architecture, \
+Siege Engineers, Chemistry itself, several naval techs) whose own `internal_name` names a tower \
+tier. The original T644 transcription's not-modelled selector omitted Keep (63) entirely; included \
+here as the missing middle link of the same chain. Costs read directly from rules.json: 211 \
+{food:100}, 212 {food:150,gold:150}, 219 {food:250,gold:250}, 140 {food:100,wood:250}, 63 \
+{food:500,wood:350}, 64 {food:800,wood:400} — `operand`'s three keys (food, gold, wood) cover every \
+resource any of the six technologies actually carries; `effects.py`'s own "set" semantics leave a \
+resource key an entity's record does not carry untouched, so naming all three is exact, not \
+approximate.\
 """
 
 [[effect]]

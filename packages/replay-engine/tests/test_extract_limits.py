@@ -38,6 +38,11 @@ written out there — and assert FR-020's declared-only kinds are never emitted,
 measured path, inside the same `tracemalloc` region, and re-derives the ceiling from a fresh
 measurement rather than assuming the old one still holds — see the derivation comment above
 `_PEAK_ALLOCATION_CEILING_BYTES` for what that re-measurement found.
+
+**T648** adds `aoe2stats_knowledge.coverage.coverage` — the knowledge-coverage pass over the same
+fully-materialised `events` list — as the third and last accumulator that measurement names,
+inside the same `tracemalloc` region, and re-derives the ceiling from a fresh measurement the same
+way T633 did rather than assuming either earlier one still holds.
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ import io
 import os
 import tracemalloc
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
 
@@ -57,6 +63,8 @@ from aoe2stats_core.replay.analysis import MatchTimeline, ParticipantTimeline
 from aoe2stats_core.replay.events import CanonicalEvent, EventKind
 from aoe2stats_core.replay.validation import EngineParseError, MalformedArchiveError
 from aoe2stats_core.truth.confidence import ConfidenceLevel
+from aoe2stats_knowledge import coverage as knowledge_coverage
+from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 
@@ -287,9 +295,25 @@ def test_extract_never_returns_the_operation_stream() -> None:
 # per this task). The ceiling is kept at 900 MB, at the same ~3.2x headroom, re-derived from this
 # run's own peak rather than carried over unverified from T632's.
 #
-# This ceiling is a FLOOR, not the feature's final number. T648 adds the knowledge-coverage pass to
-# this same path and re-runs this measurement with it live, raising this constant with a new
-# derivation written out the same way if that accumulator's cost turns out not to be negligible too.
+# T648 re-derivation: `aoe2stats_knowledge.coverage.coverage` — the knowledge-coverage pass — is
+# now on this same path too, live inside the `tracemalloc` region below via the `measurement`
+# fixture, over the same fully-materialised `events` list, run *after* the group-silence
+# accumulator so both live simultaneously in the traced region exactly as they would on a real
+# request. Measured the same way (three repeated runs each, stable to well under 1%):
+#   - AgeIIDE_Replay_500546441.zip: peak ~282 MB (295,482,641 to 295,782,413 bytes across runs; 3
+#     knowledge gaps produced)
+#   - AgeIIDE_Replay_504695319.zip: peak ~152 MB (159,842,261 bytes, identical across all three
+#     runs; 15 knowledge gaps produced)
+# Both ranges sit inside T633's own measured range for the same two recordings above. This pass's
+# own state — the small per-slot entity sets it collects while walking the stream, and a result
+# list of at most a few dozen small `KnowledgeGap` dataclasses (3 and 15 here; see `coverage.py`'s
+# own module docstring for what they are and why they are real, not a defect) — is negligible next
+# to the ~484,542 and ~232,503 raw parsed operations that dominate the peak, the same finding T633
+# already made for the accumulator before this one. This is the last of the three accumulators
+# T632's own task text named ("the stream's consumers, the group-silence state and the coverage
+# pass"), and the honest finding, again, is that it does not move the ceiling — not that a number
+# should be bumped for its own sake. The ceiling is kept at 900 MB, at the same ~3.2x headroom,
+# re-derived from this run's own peak rather than carried over unverified from T633's.
 _PEAK_ALLOCATION_CEILING_BYTES = 900 * 1024 * 1024
 
 # Generous relative to both committed recordings' extracted size (~6.9 MB and ~4.0 MB per
@@ -310,15 +334,17 @@ _DECLARED_ONLY_KINDS = frozenset({EventKind.STARTING_ATTRIBUTES, EventKind.START
 class _Measurement:
     events: list[CanonicalEvent]
     episodes: tuple[GroupSilenceEpisode, ...]
+    knowledge_gaps: Sequence[KnowledgeGap]
     peak_bytes: int
 
 
 @pytest.fixture(scope="module", params=_COMMITTED_RECORDINGS, ids=lambda p: p.stem)
 def measurement(request: pytest.FixtureRequest) -> _Measurement:
     """Drive one committed recording through the full canonical path (`events()`, fully consumed),
-    then the group-silence accumulator (T633) over the same events, tracing peak Python allocation
-    over the whole call. Module-scoped and parametrized so each recording is parsed and measured
-    exactly once and shared between the tests below, rather than reparsed per assertion."""
+    then the group-silence accumulator (T633) and the knowledge-coverage pass (T648) over the same
+    events, tracing peak Python allocation over the whole call. Module-scoped and parametrized so
+    each recording is parsed and measured exactly once and shared between the tests below, rather
+    than reparsed per assertion."""
     zip_bytes = request.param.read_bytes()
     extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
 
@@ -326,11 +352,14 @@ def measurement(request: pytest.FixtureRequest) -> _Measurement:
     try:
         events = list(extractor.events(zip_bytes))
         episodes = compute_group_silence_episodes(events)
+        knowledge_gaps = knowledge_coverage.coverage(events)
         _current, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
 
-    return _Measurement(events=events, episodes=episodes, peak_bytes=peak)
+    return _Measurement(
+        events=events, episodes=episodes, knowledge_gaps=knowledge_gaps, peak_bytes=peak
+    )
 
 
 def test_the_committed_recordings_are_found() -> None:
@@ -344,10 +373,10 @@ def test_peak_allocation_over_the_full_canonical_path_stays_under_the_measured_c
     assert measurement.peak_bytes <= _PEAK_ALLOCATION_CEILING_BYTES, (
         f"peak Python allocation {measurement.peak_bytes} bytes "
         f"({measurement.peak_bytes / 1024 / 1024:.1f} MB) exceeds the "
-        f"{_PEAK_ALLOCATION_CEILING_BYTES / 1024 / 1024:.0f} MB ceiling derived above — the "
-        "group-silence accumulator (T633) is already live on this path, so this ceiling is now a "
-        "floor for T648 only; crossing it here means either a real regression or that the "
-        "derivation above needs redoing before T648 builds on it"
+        f"{_PEAK_ALLOCATION_CEILING_BYTES / 1024 / 1024:.0f} MB ceiling derived above — all three "
+        "accumulators this measurement names (T633's group-silence, T648's knowledge-coverage) are "
+        "already live on this path, so crossing it here means either a real regression or that the "
+        "derivation above needs redoing"
     )
 
 
@@ -359,6 +388,15 @@ def test_group_silence_episodes_are_computed_on_the_measured_path(
     assert isinstance(measurement.episodes, tuple)
     for episode in measurement.episodes:
         assert episode.confidence.level is not ConfidenceLevel.HIGH
+
+
+def test_knowledge_coverage_is_computed_on_the_measured_path(measurement: _Measurement) -> None:
+    """T648: the knowledge-coverage pass this measurement now includes actually ran and produced
+    its result — a silent no-op here would make the memory measurement above meaningless as
+    evidence for it (the same reasoning as T633's sibling test above, for the third accumulator)."""
+    assert isinstance(measurement.knowledge_gaps, tuple)
+    for gap in measurement.knowledge_gaps:
+        assert isinstance(gap, KnowledgeGap)
 
 
 def test_the_declared_only_kinds_are_never_emitted(measurement: _Measurement) -> None:

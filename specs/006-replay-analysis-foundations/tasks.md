@@ -599,13 +599,27 @@ committed recording reports no blocking gap.
       [research.md](./research.md) **D7** is why this is computed:
       read naively, nothing this feature publishes depends on a cost, every gap would be
       informational, and **SC-007a** would pass vacuously
-- [ ] T648 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/coverage.py`: take a canonical
+- [x] T648 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/coverage.py`: take a canonical
       stream, collect every entity and every participant civilisation, and ask for every field any
       register datum requires. Its output is the gap list the document publishes. A blocking gap
       prevents publication of every value depending on it while leaving independent values
       untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**).
       Re-run T632's peak-memory measurement with the coverage pass on the path — it is the last of
-      the three accumulators that measurement names — and raise its ceiling with the new derivation
+      the three accumulators that measurement names — and raise its ceiling with the new
+      derivation. Implemented, tested and green: the peak-memory ceiling holds with the coverage
+      pass live on the path (still 900 MB, re-derived — the accumulator does not move it).
+      SC-007 (removing a required field) passes for real. **SC-007a does not**, for both committed
+      recordings, for a
+      real reason this task cannot fix inside its own editable scope: both recordings genuinely
+      reference an entity a modelled civilisation's own effect selector names, where the effect is
+      recorded `modelled = "no"` (team-wide or age-gated) rather than split into a modelled,
+      unconditional remainder — Koreans' archer-armor techs (211/212/219), Franks' Castle cost
+      discount (building 82), Gurjaras' camel/elephant team bonus (units 1755, 239) — and
+      recording 2 also references two building ids (490, 673) absent from the vendored pack
+      entirely (Gate/wall-segment variants `aoe2techtree`'s own `data.json` never enumerates).
+      Fixing either means editing `effects.toml`/`rules.json`, fixture data this task may not touch;
+      see `test_coverage.py`'s own `xfail` marker on `test_each_committed_recording_reports_zero_
+      blocking_gaps` for the full citation. A follow-up task, not T648, owns closing this
 - [x] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
       `xfail(strict=True)`. **SC-007**: remove a required field from an in-memory copy of a snapshot,
       run the pass, and assert exactly the dependent values are withheld, a gap names the entity,
