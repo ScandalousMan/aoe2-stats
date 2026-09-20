@@ -177,6 +177,38 @@ class _OrderCheckingObjectStore(ObjectStore):
         await super().put(key, body, content_type=content_type)
 
 
+class _ConcurrencyRendezvous:
+    """A two-party rendezvous `_FakeReplayProvider` uses to *prove* that two independent
+    `run_once` calls genuinely overlapped on the event loop, instead of inferring it from how long
+    they took together.
+
+    Each side calls `arrive` once, on its first `fetch_replay`: it signals its own arrival, then
+    waits for the other side's. If the two cycles are truly interleaved, both providers get their
+    first call scheduled before either cycle has finished, so both signals are already set (or set
+    within microseconds of each other) and `arrive` returns immediately — with no dependency on how
+    fast the machine is. If one cycle is instead fully serialized before the other starts, the first
+    side's `arrive` blocks forever, because the second cycle's `run_once` — and with it the second
+    provider's first `fetch_replay` — cannot run until the first cycle's `run_once` has already
+    returned. `timeout` only bounds that failure case so it raises a readable assertion instead of
+    hanging the suite; it is not a measurement and is intentionally far looser than any real delay.
+    """
+
+    def __init__(self) -> None:
+        self._events = {"a": asyncio.Event(), "b": asyncio.Event()}
+
+    async def arrive(self, side: str, *, timeout: float) -> None:
+        other = "b" if side == "a" else "a"
+        self._events[side].set()
+        try:
+            await asyncio.wait_for(self._events[other].wait(), timeout=timeout)
+        except TimeoutError as exc:
+            raise AssertionError(
+                f"cycle {side!r} reached its first fetch_replay call but cycle {other!r} never "
+                f"did within {timeout}s — the two run_once calls did not overlap, which means one "
+                "blocked on the other instead of running concurrently"
+            ) from exc
+
+
 class _FakeReplayProvider:
     """A `ReplayProvider` (`packages/providers/src/aoe2stats_providers/base.py`) that always
     answers 200 with deterministic bytes per `(game_id, profile_id)`, and records every call so a
@@ -185,6 +217,8 @@ class _FakeReplayProvider:
     `clock`/`clock_advance_seconds` drive the deterministic budget test (`FakeClock`, above);
     `delay_seconds` drives real concurrency instead, where genuine overlap between two independent
     event loops' work is exactly what is under test and a fake clock cannot produce it.
+    `rendezvous`/`rendezvous_side` are how a test observes that overlap directly — see
+    `_ConcurrencyRendezvous`.
     """
 
     def __init__(
@@ -193,14 +227,25 @@ class _FakeReplayProvider:
         delay_seconds: float = 0.0,
         clock: FakeClock | None = None,
         clock_advance_seconds: float = 0.0,
+        rendezvous: _ConcurrencyRendezvous | None = None,
+        rendezvous_side: str | None = None,
+        rendezvous_timeout: float = 5.0,
     ) -> None:
         self._delay_seconds = delay_seconds
         self._clock = clock
         self._clock_advance_seconds = clock_advance_seconds
+        self._rendezvous = rendezvous
+        self._rendezvous_side = rendezvous_side
+        self._rendezvous_timeout = rendezvous_timeout
+        self._rendezvous_done = False
         self.calls: list[tuple[int, int]] = []
 
     async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob:
         self.calls.append((game_id, profile_id))
+        if self._rendezvous is not None and not self._rendezvous_done:
+            self._rendezvous_done = True
+            assert self._rendezvous_side is not None
+            await self._rendezvous.arrive(self._rendezvous_side, timeout=self._rendezvous_timeout)
         if self._clock is not None:
             self._clock.advance(self._clock_advance_seconds)
         if self._delay_seconds:
@@ -632,9 +677,19 @@ async def test_two_concurrent_cycles_claim_disjoint_captures_and_neither_blocks_
         await session.commit()
 
     delay = 0.2  # real time: genuine overlap between two independent event-loop tasks is the point
+    # A wall-clock budget here (assert elapsed < N * delay) cannot separate "serialized" from
+    # "concurrent but slow" — on a loaded CI runner doing six real Postgres claims, the two cases'
+    # elapsed times get close enough to be indistinguishable (observed: 1.124s against a 1.0s budget
+    # meant to catch >=1.2s serial runs). `_ConcurrencyRendezvous` proves overlap directly instead:
+    # each provider's first `fetch_replay` call blocks until the *other* provider's first call has
+    # also been reached, which is only possible if both cycles' `run_once` calls are genuinely
+    # interleaved on the event loop. If one cycle fully serializes before the other starts, the
+    # first provider's rendezvous never completes and the test fails fast with a clear message
+    # instead of a timing coincidence. Do not go back to a wall-clock multiplier here.
+    rendezvous = _ConcurrencyRendezvous()
     provider_a, provider_b = (
-        _FakeReplayProvider(delay_seconds=delay),
-        _FakeReplayProvider(delay_seconds=delay),
+        _FakeReplayProvider(delay_seconds=delay, rendezvous=rendezvous, rendezvous_side="a"),
+        _FakeReplayProvider(delay_seconds=delay, rendezvous=rendezvous, rendezvous_side="b"),
     )
     stage_a = CaptureStage(
         session_factory=session_factory,
@@ -653,12 +708,10 @@ async def test_two_concurrent_cycles_claim_disjoint_captures_and_neither_blocks_
         max_claim_age_seconds=_MAX_CLAIM_AGE_SECONDS,
     )
 
-    started = asyncio.get_event_loop().time()
     await asyncio.gather(
         run_once(30, trigger="cycle-a", stages=[stage_a], session_factory=session_factory),
         run_once(30, trigger="cycle-b", stages=[stage_b], session_factory=session_factory),
     )
-    elapsed = asyncio.get_event_loop().time() - started
 
     all_calls = provider_a.calls + provider_b.calls
     assert sorted(all_calls) == sorted(seeds)
@@ -667,9 +720,6 @@ async def test_two_concurrent_cycles_claim_disjoint_captures_and_neither_blocks_
     assert len(all_calls) == len(set(all_calls)) == len(seeds)
     assert provider_a.calls, "the concurrent cycle claimed nothing, which proves nothing here"
     assert provider_b.calls, "the concurrent cycle claimed nothing, which proves nothing here"
-    # Neither blocked on the other: six items at `delay` each run fully sequentially would take
-    # ~6 * delay; two cycles genuinely overlapping finish close to the slower one alone.
-    assert elapsed < 5 * delay
 
     rows = await _all_capture_rows(session_factory)
     assert all(row.status == CaptureStatus.STORED for row in rows)
