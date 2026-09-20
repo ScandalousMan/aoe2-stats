@@ -13,19 +13,27 @@ committed content.
 
 contracts/knowledge-base.md, "Promotion": `promoted = true` is refused unless `[validation]` is a
 non-empty table; an unpromoted snapshot loads fine as data but is excluded from
-`load_resolvable_snapshots`, the set T641's `snapshot_for(build)` resolves against. Two committed
+`load_resolvable_snapshots`, the set `snapshot_for(build)` resolves against. Two committed
 fixtures exercise this end to end without monkeypatching: `aoe2techtree-fixture` (unpromoted) and
 `aoe2techtree-fixture-promoted` (promoted, with a real validation record).
+
+contracts/knowledge-base.md, "Resolution by build" (T641, FR-027): `snapshot_for(build)` is an
+exact match on `describes_build` among `load_resolvable_snapshots()`, or `NoSnapshotForBuild` — no
+nearest, no latest, no fallback parameter.
+`test_snapshot_for_accepts_exactly_one_required_parameter` makes that a structural property of the
+signature, not a habit a future edit could quietly break.
 """
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
 
 from aoe2stats_knowledge import snapshot as snapshot_module
 from aoe2stats_knowledge.snapshot import (
+    NoSnapshotForBuild,
     Snapshot,
     SnapshotDigestMismatch,
     SnapshotError,
@@ -39,6 +47,7 @@ from aoe2stats_knowledge.snapshot import (
     load_snapshot,
     parse_identity,
     parse_promotion,
+    snapshot_for,
 )
 
 _RULES_JSON = b'{"entities": {}}'
@@ -581,3 +590,120 @@ def test_the_committed_promoted_fixture_is_promoted_and_resolvable() -> None:
     assert promoted.validation.performed_at
     resolvable_directories = {snapshot.directory for snapshot in load_resolvable_snapshots()}
     assert "aoe2techtree-fixture-promoted" in resolvable_directories
+
+
+# --------------------------------------------------------------------------------- snapshot_for
+
+
+def test_snapshot_for_accepts_exactly_one_required_parameter() -> None:
+    """FR-027: "no nearest, no latest and no fallback parameter — the function must not accept
+    one, because an argument that exists will be passed." Asserted structurally so a later edit
+    that adds a `strategy=`/`allow_nearest=`/default-snapshot parameter fails this test loudly,
+    rather than silently reintroducing the substitution FR-027 and FR-038 forbid."""
+    parameters = list(inspect.signature(snapshot_for).parameters.values())
+    assert len(parameters) == 1, f"snapshot_for must take exactly one parameter, got {parameters}"
+    (build_parameter,) = parameters
+    assert build_parameter.name == "build"
+    assert build_parameter.default is inspect.Parameter.empty, (
+        "snapshot_for's build parameter must be required, not defaulted — a default is itself a "
+        "fallback"
+    )
+    assert build_parameter.kind in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+
+def test_snapshot_for_returns_the_promoted_snapshot_describing_the_exact_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    promoted_toml = _identity_toml(
+        describes_build="101102", extra="promoted = true\n\n" + _validation_toml()
+    )
+    _write_snapshot_dir(tmp_path, "promoted", snapshot_toml=promoted_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+
+    result = snapshot_for(101102)
+
+    assert isinstance(result, Snapshot)
+    assert result.directory == "promoted"
+    assert result.identity.describes_build == 101102
+
+
+def test_snapshot_for_returns_a_gap_when_no_promoted_snapshot_describes_the_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    promoted_toml = _identity_toml(
+        describes_build="101102", extra="promoted = true\n\n" + _validation_toml()
+    )
+    _write_snapshot_dir(tmp_path, "promoted", snapshot_toml=promoted_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+
+    result = snapshot_for(999999)
+
+    assert result == NoSnapshotForBuild(build=999999)
+    assert result.cause == "no-snapshot-for-build"
+
+
+def test_snapshot_for_returns_a_gap_when_only_an_unpromoted_snapshot_describes_the_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Promotion still gates resolvability: an unpromoted snapshot whose `describes_build`
+    matches the requested build is never returned — the caller receives the gap, not the
+    unvalidated snapshot, exactly as it would if no snapshot at all described that build."""
+    unpromoted_toml = _identity_toml(describes_build="101102")
+    _write_snapshot_dir(tmp_path, "unpromoted", snapshot_toml=unpromoted_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+
+    result = snapshot_for(101102)
+
+    assert result == NoSnapshotForBuild(build=101102)
+
+
+def test_snapshot_for_raises_when_two_promoted_snapshots_describe_the_same_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two promoted snapshots claiming the same `describes_build` is a data-integrity violation,
+    not a normal case with a value to silently pick from — it is not a gap either, since a gap
+    means "no promoted snapshot describes this build", the opposite of what happened here."""
+    first_rules = b'{"entities": {"first": 1}}'
+    second_rules = b'{"entities": {"second": 1}}'
+    first_toml = _identity_toml(
+        describes_build="101102",
+        digest=compute_digest(first_rules, _EFFECTS_TOML),
+        extra="promoted = true\n\n" + _validation_toml(),
+    )
+    second_toml = _identity_toml(
+        describes_build="101102",
+        digest=compute_digest(second_rules, _EFFECTS_TOML),
+        extra="promoted = true\n\n" + _validation_toml(),
+    )
+    _write_snapshot_dir(tmp_path, "first", rules_json=first_rules, snapshot_toml=first_toml)
+    _write_snapshot_dir(tmp_path, "second", rules_json=second_rules, snapshot_toml=second_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+
+    with pytest.raises(SnapshotError, match="more than one promoted snapshot"):
+        snapshot_for(101102)
+
+
+def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build() -> None:
+    """Against the real, unpatched, committed tree: `aoe2techtree-fixture-promoted` currently
+    `describes_build = 1` (a placeholder — T641/T642 do not wire it to a real game build; that
+    remains T642's carry-forward work), and resolving that exact build returns it."""
+    result = snapshot_for(1)
+    assert isinstance(result, Snapshot)
+    assert result.directory == "aoe2techtree-fixture-promoted"
+
+
+def test_snapshot_for_returns_a_gap_for_the_committed_unpromoted_fixtures_build() -> None:
+    """`aoe2techtree-fixture` (unpromoted) `describes_build = 0` — resolving build 0 must return
+    a gap, never the unpromoted snapshot: promotion gates resolvability even when the build
+    matches exactly (contracts/knowledge-base.md, "Promotion")."""
+    result = snapshot_for(0)
+    assert result == NoSnapshotForBuild(build=0)
+
+
+def test_snapshot_for_returns_a_gap_for_a_clearly_absent_build() -> None:
+    """No committed snapshot, promoted or not, describes this build."""
+    result = snapshot_for(999_999_999)
+    assert result == NoSnapshotForBuild(build=999_999_999)
