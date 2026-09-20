@@ -545,7 +545,7 @@ committed recording reports no blocking gap.
       space and record which table each came from. Where the vendored pack and any second reading
       disagree on a field, record the disagreement and carry which source the stored value came from
       (**FR-028**) in `disagreements.toml`, rather than resolving it by precedence alone
-- [ ] T641 [US2] Implement build resolution (**FR-027**): exact match on the described build among
+- [x] T641 [US2] Implement build resolution (**FR-027**): exact match on the described build among
       promoted snapshots, or a gap with the no-snapshot cause. There is **no nearest, no latest and
       no fallback parameter** — the function must not accept one, because an argument that exists
       will be passed. A recording from a build with no snapshot is a gap with its own severity, not

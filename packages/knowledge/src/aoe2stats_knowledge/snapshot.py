@@ -26,12 +26,30 @@ checked, against what, by whom and when (FR-030's "the validation performed MUST
 Setting `promoted = true` with no `[validation]` table, or an empty one, is refused at load time
 with `SnapshotPromotionError` — FR-034's "MUST NOT promote an unvalidated snapshot" is an invariant
 enforced here, not a convention left to whoever writes the next `snapshot.toml`. Only a promoted
-snapshot is resolvable by build: `load_resolvable_snapshots` is the set T641's `snapshot_for(build)`
+snapshot is resolvable by build: `load_resolvable_snapshots` is the set `snapshot_for(build)`
 resolves against, distinct from `load_all_snapshots`, which loads every digest-verified snapshot
-whether or not it is promoted. This module does not yet implement build resolution (T641) or
-carry-forward's specific per-build attestation content (T642) — `ValidationRecord.details` is the
-extension point T642 adds its per-build note list into, without redesigning the promotion
-invariant enforced here.
+whether or not it is promoted. This module does not yet implement carry-forward's specific
+per-build attestation content (T642) — `ValidationRecord.details` is the extension point T642 adds
+its per-build note list into, without redesigning the promotion invariant enforced here.
+
+**Build resolution (FR-027, T641)**: `snapshot_for(build)` is an exact match on `describes_build`
+among `load_resolvable_snapshots()` — promotion still gates resolvability, so an unpromoted
+snapshot never resolves even when its `describes_build` matches. There is no nearest, no latest and
+no fallback parameter: the function takes exactly one required parameter, and
+`test_snapshot_for_accepts_exactly_one_required_parameter` asserts that structurally, so a later
+edit adding a `strategy=`/`allow_nearest=` parameter fails loudly rather than silently reintroducing
+the substitution FR-027 forbids. A build with no promoted snapshot returns `NoSnapshotForBuild`
+rather than `None` or a raised exception — a gap is data, not a control-flow signal.
+
+`NoSnapshotForBuild` is a **deliberately minimal, interim** gap value, not the `KnowledgeGap` FR-035
+to FR-037 describe (entity, field, affected civilisation, "what it prevents", a computed severity).
+`snapshot_for` is asked only for a build — it has no entity, field or civilisation to name — so it
+cannot construct that richer record itself. **T647, when it implements `gaps.py`'s full
+`KnowledgeGap`, must decide how this call site's result folds into that type** (wrapping it,
+subsuming its one field, or replacing this class outright) rather than leaving two parallel gap
+vocabularies in the package. `cause="no-snapshot-for-build"` is the literal
+contracts/knowledge-base.md, "Resolution by build" already names, so T647's closed cause set must
+include it unchanged.
 """
 
 from __future__ import annotations
@@ -338,10 +356,62 @@ def load_all_snapshots() -> tuple[Snapshot, ...]:
 
 def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
     """Every packaged snapshot that is **promoted** — the set FR-034's "only a promoted snapshot
-    is resolvable by build" describes, and the set T641's `snapshot_for(build)` resolves against.
+    is resolvable by build" describes, and the set `snapshot_for(build)` resolves against.
 
     An unpromoted snapshot loads without error through `load_all_snapshots` (it is not corrupt,
     merely not yet validated) but never appears here: promotion, not mere presence on disk, is
     what makes a snapshot answerable.
     """
     return tuple(snapshot for snapshot in load_all_snapshots() if snapshot.promoted)
+
+
+@dataclass(frozen=True, slots=True)
+class NoSnapshotForBuild:
+    """`snapshot_for(build)` found no promoted snapshot describing `build` (FR-027).
+
+    This is an **interim** gap value, not the full `KnowledgeGap` FR-035 to FR-037 describe (entity,
+    field, affected civilisation, what it prevents, a computed severity) — see this module's
+    docstring, "Build resolution (FR-027, T641)". `cause` is fixed to the literal
+    contracts/knowledge-base.md, "Resolution by build" names, `"no-snapshot-for-build"`; it is
+    still a field, not a bare string return, so a caller pattern-matching on this type does not
+    need to know the literal to detect "this is a gap, and this is which one".
+
+    **For T647**: fold this into `gaps.py`'s `KnowledgeGap` rather than leaving it as a second,
+    parallel gap vocabulary — `build` is the one fact this call site has to offer.
+    """
+
+    build: int
+    cause: str = "no-snapshot-for-build"
+
+
+def snapshot_for(build: int) -> Snapshot | NoSnapshotForBuild:
+    """FR-027's build resolution: an exact match on `describes_build` among
+    `load_resolvable_snapshots()`, or a gap.
+
+    Exactly one parameter, no more: there is no nearest, no latest and no fallback parameter,
+    because an argument that exists will eventually be passed
+    (`test_snapshot_for_accepts_exactly_one_required_parameter` asserts this structurally, not
+    only by review). A recording from a build with no promoted snapshot is
+    `NoSnapshotForBuild(build)`, never the nearest promoted snapshot and never the unpromoted
+    snapshot that happens to share the same `describes_build` — promotion still gates
+    resolvability (contracts/knowledge-base.md, "Promotion").
+
+    More than one promoted snapshot claiming the same `describes_build` is not a gap and not
+    silently resolved by picking one: it is a data-integrity violation this module has no business
+    papering over, so it raises `SnapshotError` instead. Nothing upstream of promotion (T639) or
+    carry-forward (T642) currently prevents two promoted snapshots from describing the same build,
+    so this is checked here, at the one place both would be read together.
+    """
+    matches = tuple(
+        snapshot
+        for snapshot in load_resolvable_snapshots()
+        if snapshot.identity.describes_build == build
+    )
+    if not matches:
+        return NoSnapshotForBuild(build=build)
+    if len(matches) > 1:
+        raise SnapshotError(
+            f"more than one promoted snapshot describes build {build}: "
+            f"{[snapshot.directory for snapshot in matches]}"
+        )
+    return matches[0]
