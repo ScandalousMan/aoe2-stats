@@ -1155,7 +1155,10 @@ that order so the frame shows the current control; its hover frame closed row 7 
 rejected twice more (PR #80's hand-typed pass, then a second hand-typed pass, both for the same
 partial-set shape one level down) before T594 was amended to require an extractor,
 `scripts/checks/state-coverage.mjs`, and closed with that rebuild (producing findings F1-F20 below
-and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, and T596 for the two anchors that await a design decision).**
+and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, and T596 for the
+two anchors that await a design decision). T598, the record-1 cross-component matching gap
+`findUnaccountedForceStates` found on T595's own first run, closed 2026-09-20 — see this Method
+section's own entry below.**
 
 **State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
 row 8 open. This
@@ -2112,6 +2115,50 @@ ProfileSummary:BoardLongAliasFlagHoverRevealed` — labelled by the _story file'
    no expiry is how a temporary exception becomes permanent; this one cannot become that without
    failing CI first.
 
+   **Record 1's own cross-component matching path, closing the gap the paragraph above filed
+   (T598).** `KNOWN_UNACCOUNTED_FORCE_STATES` is empty again — `ProfileSummary`'s own
+   `SwitcherFocusVisibleAndOpen` is credited directly on `MenuItemRow`'s own row now, alongside
+   `Menu`'s own `FocusVisible` story. **Deliberately not a second `Tooltip`-shaped hop**, on the
+   orchestrator's own instruction: that mechanism resolves an accessible _name_ produced one hop
+   away and credits an untracked primitive's own trigger, pre-confirming a singleton target pool
+   itself before ever crediting anything, because `Tooltip` carries no ordinary per-story matching
+   of its own to defer to. This gap was the wider question — a story in one component reaching a
+   _local element declared inside a tracked primitive's own file_ through a JSX instance of that
+   primitive the story's own component composes — so `injectComposedPrimitiveLocalCredits`
+   (`scripts/checks/state-coverage.mjs`) answers it differently: `forced` (`name`/`nth` included) is
+   carried through unchanged, and `primitives/Menu`'s own ordinary `buildElementCells`/
+   `resolveNameMatch` machinery — already exercised by `Menu`'s own stories — decides
+   match/ambiguous/nothing from a synthetic story entry this pass injects per reachable call site,
+   never a credit this pass pre-confirms itself. That reuse is also what keeps the two mechanisms
+   from being the same shape twice: nothing in the new one reads `Tooltip` or `MenuItemRow` by name,
+   so a future primitive with its own record-1 local element gets the same path for free.
+   **The hop-depth decision this task owed: the walk stays inside T595's own one-hop limit** — a
+   tracked primitive P a story's own component composes _directly_, never a primitive P composes in
+   turn. Nothing in this tree needs a second hop today, and widening it before a real case needs one
+   would be guessing at a shape this pass cannot check, the same restraint T595's own one-hop
+   `Tooltip` read already argued for. The required contrast — a force-state whose target a composed
+   component does not render must never be credited by proximity — is guarded three ways before any
+   credit is even attempted: a role no tracked primitive's own top-level instance could ever carry
+   (`PRIMITIVE_INSTANCE_ROLES`, derived from `impliedRoleForPrimitiveInstance` itself, never a
+   second, hand-written list), a candidate local element that could plausibly carry it, and a call
+   site this story's own guards do not rule out (`evaluateGuards`, the same reachability check
+   `resolveComposedStoryMatches` already applies to a primitive's own top-level candidates) — pinned
+   by `state-coverage.test.mjs`'s own contrast fixture, a composed primitive the forcing story's own
+   guard confirms it never renders. Record 1's own cell counts hold exactly steady across this fix
+   (44 none / 1 unresolved / 51 covered, 96 cells) — the credit lands on a cell `Menu`'s own
+   `FocusVisible` story had already covered, so the fix closes an accounting gap, not a coverage one,
+   exactly this task's own completion condition. **The one remaining `unresolved` cell in record 1 is
+   not this gap and this task does not close it**: `Menu`'s own trigger (`index.tsx:144`) reads
+   `unresolved: EscapeReturnsFocusToTrigger (play-driven; frame not provable statically)` —
+   `buildElementCells`'s own play-focus branch marks _every_ play-driven match `unresolved` by
+   design (T594's amendment: a script's own `.focus()` cannot prove which frame a screenshot lands
+   on, so a resolved candidate is never credited as `'match'`), independent of whether the candidate
+   itself is ambiguous. Closing it needs a real `visualForceState` on `Menu`'s own
+   `EscapeReturnsFocusToTrigger` story (or an equivalent policy change to the play-driven branch
+   itself) — T595's own closing commit, not a cross-component matching gap this task's own mechanism
+   could ever reach, since the candidate here is `Menu`'s own local element matched against `Menu`'s
+   own story, nothing composed.
+
    **Records 2 and 4 stay read, not extracted, and Record 2's spec side has no mechanical
    completeness guard of its own (a residual `reviewer` noted while verifying this pass, not one this
    pass closes).** `findDeferralHitsInStories` (8c-bis, below) scans every `*.stories.tsx` under this
@@ -2188,7 +2235,7 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 | primitives/Link                   | a                                            | packages/design-system/src/primitives/Link/index.tsx:140                 | hover:text-link-hover hover:decoration-2 → Hover                                                                                           | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                            | active:text-link-hover active:decoration-2 active:underline-offset-4 → ActiveStandalone; ActiveInline                     |
 | primitives/Menu                   | button                                       | packages/design-system/src/primitives/Menu/index.tsx:144                 | hover:bg-surface-sunken → none                                                                                                             | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → unresolved: EscapeReturnsFocusToTrigger (play-driven; frame not provable statically)                                                                                                                                                                       | active:bg-background active:ring-2 active:ring-border-strong → none                                                       |
 | primitives/Menu                   | button[role=menuitem][tabIndex=unresolved]   | packages/design-system/src/primitives/Menu/index.tsx:242                 | hover:bg-surface-sunken → none                                                                                                             | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardNavigation                                                                                                                                                                                                                                         | active:border-l-border-strong active:bg-background → none                                                                 |
-| primitives/Menu                   | button[role=unresolved][tabIndex=unresolved] | packages/design-system/src/primitives/Menu/index.tsx:352                 | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                   | active:border-l-border-strong active:bg-background → Active                                                               |
+| primitives/Menu                   | button[role=unresolved][tabIndex=unresolved] | packages/design-system/src/primitives/Menu/index.tsx:352                 | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible; ProfileSummary:SwitcherFocusVisibleAndOpen                                                                                                                                                                                       | active:border-l-border-strong active:bg-background → Active                                                               |
 | primitives/Page                   | main[tabIndex=-1]                            | packages/design-system/src/primitives/Page/index.tsx:64                  | none → none                                                                                                                                | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                            | none → none                                                                                                               |
 | primitives/Panel                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
 | primitives/Section                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |

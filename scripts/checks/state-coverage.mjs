@@ -1019,6 +1019,24 @@ export function findPrimitiveInstances(
     const opening = openingOf(node)
     const defaults = defaultsByPrimitive[tagName] ?? {}
     const spread = hasSpreadAttr(opening)
+    // Every attribute's own value, literal or not — the same generic read `findLocalElements`
+    // already keeps for a record-1 local element's own attributes, needed here for exactly the
+    // same reason (T598): a component composing this primitive (`ProfileSummary`'s own `<Menu
+    // variant="selection">`) passes this exact call site's own real prop values, which a
+    // cross-component credit into the primitive's *own* record-1 local elements
+    // (`injectComposedPrimitiveLocalCredits`, below) needs to resolve a dynamic role
+    // (`MenuItemRow`'s own `role={role}`, `role = variant === 'selection' ? ... : ...`) against —
+    // never guessed from the composing component's own unrelated scope.
+    const attrExprs = new Map()
+    for (const attr of opening.attributes.properties) {
+      if (!ts.isJsxAttribute(attr)) continue
+      const attrName = attr.name.getText()
+      const lit = attrLiteral(attr)
+      let expr = null
+      if (attr.initializer && ts.isJsxExpression(attr.initializer))
+        expr = attr.initializer.expression
+      attrExprs.set(attrName, { literal: lit.present && lit.literal, value: lit.value, expr })
+    }
     const resolveProp = (propName) => {
       const attr = getAttr(opening, propName)
       const lit = attrLiteral(attr)
@@ -1063,6 +1081,9 @@ export function findPrimitiveInstances(
         (loadingLit.literal && loadingLit.value === true),
       disabledExpr: disabledLit.present && !disabledLit.literal ? attrExprOf(disabledAttr) : null,
       loadingExpr: loadingLit.present && !loadingLit.literal ? attrExprOf(loadingAttr) : null,
+      // Every attribute this exact call site passes, literal or dynamic (T598, above) — this
+      // primitive's own name as the caller wrote it, not resolved against anything yet.
+      attrExprs,
       // Every local `const` in scope at this exact JSX position (`FavouriteToggle`'s own `const
       // bounded = atLimit && !favourited`) — `disabledExpr`/`loadingExpr` above are frequently a
       // bare reference to one of these, never resolvable against a story's own args without it.
@@ -2144,6 +2165,150 @@ function componentHasOwnCandidateForRole(
   )
 }
 
+// --- Record 1's cross-component matching path (T598) --------------------------------------------
+//
+// A different, wider question from the one above: not a story in component A reaching an
+// accessible *name* composed one hop away (T595's `Tooltip`-qualifier hop, which credits an
+// untracked primitive's own trigger and pre-confirms a singleton target pool itself, because
+// `Tooltip` carries no ordinary per-story matching of its own at all) — a story in A reaching a
+// *local element declared inside a tracked primitive's own file* (record 1 of `primitives/Menu`,
+// `MenuItemRow`'s own dynamic-role element), through a JSX instance of that primitive A composes
+// directly (record 3). `resolveComposedStoryMatches` above already gives record 3's own tracked
+// primitives a composed-story credit for the role `impliedRoleForPrimitiveInstance` returns for
+// their own top-level instance (`Menu`'s trigger, always `'button'`) — but never for a role that
+// only one of *that primitive's own* local elements can ever carry, which record 1 had no path to
+// at all before this task (`ProfileSummary`'s own `SwitcherFocusVisibleAndOpen`, `role:
+// 'menuitemradio'` — a role `impliedRoleForPrimitiveInstance` never returns for any tracked
+// primitive, so it can only ever belong to something composed one hop inside one of them).
+//
+// Decision this task owes row 8's own Method section (see there): the walk stays inside T595's
+// same one-hop limit — a tracked primitive P a story's own component composes *directly* (record
+// 3's own 'jsx' instances), never a primitive P composes in turn. Nothing in this tree needs a
+// second hop today, and widening it before a real case needs it would be guessing at a shape this
+// pass cannot check.
+//
+// Deliberately not a pre-confirmed credit the way the `Tooltip` hop is: `forced` (`name`/`nth`
+// included) is carried through unchanged, and `primitives/${P}`'s own ordinary
+// `buildElementCells`/`resolveNameMatch` machinery — already exercised by that primitive's own
+// stories — is what decides match/ambiguous/nothing, via a synthetic story entry
+// (`storyStatesByComponent`, `synthetic: true`) injected once per call site this story's own scope
+// confirms is reachable. That reuse is what keeps this a general mechanism rather than a shape
+// hard-coded for `Menu`/`MenuItemRow`: nothing here reads either name, and a future primitive with
+// its own record-1 local element gets the same path for free, guarded the same three ways below —
+// a role no tracked primitive's own top-level instance could ever carry, a candidate local element
+// that could plausibly carry it, and a call site this story's own guards do not rule out.
+const PRIMITIVE_INSTANCE_ROLES = new Set(
+  PRIMITIVE_NAMES.flatMap((primitive) => [
+    impliedRoleForPrimitiveInstance(primitive, { hasHref: false }),
+    impliedRoleForPrimitiveInstance(primitive, { hasHref: true }),
+  ]),
+)
+
+// The scope a composed primitive's own dynamic expression (`MenuItemRow`'s own `role={role}`,
+// through its own local `const role = variant === 'selection' ? ... : ...`) is resolved against
+// for *this* call site: the primitive's own file-level consts and its own component's prop
+// defaults (the same two layers `buildStoryPropsScope` already gives that primitive's *own*
+// stories), then overridden by this exact JSX tag's own attributes — literal ones resolved
+// directly, dynamic ones (`variant={x}`) evaluated against the *composing* story's own scope,
+// never the primitive's. Deliberately never seeded from the composing component's own scope
+// otherwise: an identifier this primitive's own source refers to names one of *its* props, not
+// whatever the composing component happens to also call that name.
+function buildComposedCallSiteScope(
+  primitiveKey,
+  instance,
+  forcingPropsScope,
+  componentPropDefaultsByKey,
+  componentFileScopeByKey,
+) {
+  const fileScope = componentFileScopeByKey.get(primitiveKey) ?? new Map()
+  const scope = new Map(fileScope)
+  for (const [name, defaultExpr] of componentPropDefaultsByKey.get(primitiveKey) ?? []) {
+    scope.set(
+      name,
+      defaultExpr ? evaluateExpr(defaultExpr, fileScope) : { resolved: true, value: undefined },
+    )
+  }
+  for (const [attrName, { literal, value, expr }] of instance.attrExprs ?? []) {
+    if (literal) scope.set(attrName, { resolved: true, value })
+    else if (expr) scope.set(attrName, evaluateExpr(expr, forcingPropsScope))
+  }
+  return scope
+}
+
+// `pending`: `pendingComposedMatches`, the same role-bearing force-states
+// `resolveComposedStoryMatches` reads. For each, and for each tracked primitive P the forcing
+// component composes directly whose own record-1 pool could plausibly carry the force-state's
+// role, injects one synthetic story entry per call site this story's own guards do not rule out —
+// `primitives/${P}`'s own record-1 matrix (built later, from `storyStatesByComponent`) resolves it
+// from there using the same machinery it already uses for P's own stories. A call site a story
+// never reaches (`evaluateGuards`'s own `'unreached'`) contributes nothing — the boundary
+// `state-coverage.test.mjs`'s own contrast plants: a composed component this story's own data
+// confirms it does not render is never credited by proximity.
+export function injectComposedPrimitiveLocalCredits(
+  pending,
+  instancesByPrimitive,
+  localElementsByComponent,
+  componentPropDefaultsByKey,
+  componentFileScopeByKey,
+  storyStatesByComponent,
+) {
+  for (const entry of pending) {
+    if (!entry.forced.role || PRIMITIVE_INSTANCE_ROLES.has(entry.forced.role)) continue
+    for (const primitive of PRIMITIVE_NAMES) {
+      const primitiveKey = `primitives/${primitive}`
+      const targetElements = localElementsByComponent.get(primitiveKey) ?? []
+      if (targetElements.length === 0) continue
+      // A cheap, honest pre-filter, never a guess: an element whose own role is statically known
+      // and provably not this force-state's role can never match, so only a dynamic-role element
+      // (genuinely unresolved without a per-call-site scope) or a static match keeps this
+      // primitive in play.
+      const maybeRelevant = targetElements.some(
+        (el) =>
+          !el.ariaHidden && (el.role === 'unresolved' || impliedRoleOf(el) === entry.forced.role),
+      )
+      if (!maybeRelevant) continue
+      let candidates = (instancesByPrimitive.get(primitive) ?? []).filter(
+        (i) => i.kind === 'jsx' && i.componentKey === entry.componentKey && !i.ariaHidden,
+      )
+      if (entry.storyLineRange && candidates.some((c) => c.file === entry.file)) {
+        const inRange = candidates.filter(
+          (c) =>
+            c.file === entry.file &&
+            c.line >= entry.storyLineRange[0] &&
+            c.line <= entry.storyLineRange[1],
+        )
+        if (inRange.length > 0) candidates = inRange
+      }
+      const reachable = candidates.filter(
+        (c) => evaluateGuards(c.guards ?? [], entry.propsScope) !== 'unreached',
+      )
+      if (reachable.length === 0) continue
+      const label = `${path.basename(entry.file, '.stories.tsx')}:${entry.exportName}`
+      for (const instance of reachable) {
+        const scope = buildComposedCallSiteScope(
+          primitiveKey,
+          instance,
+          entry.propsScope,
+          componentPropDefaultsByKey,
+          componentFileScopeByKey,
+        )
+        storyStatesByComponent.set(primitiveKey, [
+          ...(storyStatesByComponent.get(primitiveKey) ?? []),
+          {
+            exportName: label,
+            forced: entry.forced,
+            playFocus: null,
+            argsLiterals: entry.argsLiterals,
+            argsHasDisabledTrue: false,
+            scope,
+            synthetic: true,
+          },
+        ])
+      }
+    }
+  }
+}
+
 // --- Directory / file plumbing --------------------------------------------------------------
 
 const TIER_SEGMENTS = ['primitives', 'composites', 'screens']
@@ -2200,31 +2365,12 @@ function isValidIsoDate(value) {
 // also on anything *inside* it that is malformed or past its own `fixBy` — an allowlist with no
 // expiry is how a temporary exception becomes permanent, and this project already enforces exactly
 // that date shape elsewhere (`a11y-allowlist.mjs`, `story-baselines-duplicates.test.mjs`'s own debt
-// entries, T591). One entry today: `ProfileSummary`'s own `SwitcherFocusVisibleAndOpen` (`role:
-// 'menuitemradio', name: 'aoe2guy'`) targets `MenuItemRow`'s own dynamic-role element
-// (`primitives/Menu/index.tsx`'s own local element, record 1) through a `Menu` instance
-// `ProfileSummary` composes — a real, different mechanism from mechanism 3's `Tooltip`-qualifier
-// hop (that one composes an accessible *name* through a literal prop; this one needs `MenuItemRow`'s
-// own `role={variant === 'selection' ? 'menuitemradio' : 'menuitem'}` resolved against the specific
-// `Menu` call site's own `variant` prop, then a record-1 local element in one component matched
-// against a *different* component's own story — record 1 has no cross-component matching path at
-// all today, the same gap `resolveComposedStoryMatches` closes for record 3's tracked primitives
-// but record 1 has never had). Found by this same check, 2026-09-19 — **owned by T598**, which
-// deletes this entry outright in the commit that closes it, never leaves it behind as a passing
-// allowlist row: building the cross-component path correctly needs the same care mechanism 3 itself
-// just needed, and rushing it under the review that found this is how the next false credit gets
-// shipped instead of the next honest gap.
-export const KNOWN_UNACCOUNTED_FORCE_STATES = [
-  {
-    componentKey: 'screens/ProfileSummary',
-    exportName: 'SwitcherFocusVisibleAndOpen',
-    date: '2026-09-19',
-    fixOwed: 'T598',
-    fixBy: '2026-09-27',
-    reason:
-      "targets MenuItemRow's own dynamic-role element (primitives/Menu, record 1) through a Menu instance — record 1 has no cross-component matching path yet",
-  },
-]
+// entries, T591). Empty today: the one entry this list ever carried (`ProfileSummary`'s own
+// `SwitcherFocusVisibleAndOpen`, filed 2026-09-19) is closed by
+// `injectComposedPrimitiveLocalCredits` above (T598, row 8's own Method section) — deleted outright
+// here, never left behind as a passing allowlist row, the same discipline `a11y-allowlist.mjs`'s
+// own empty-list steady state already models.
+export const KNOWN_UNACCOUNTED_FORCE_STATES = []
 
 // Every real `visualForceState` in every story under this package's three tiers is either credited
 // on some cell (a real match) or named in some cell's own `unresolved: <reason>` text — the two
@@ -2650,6 +2796,19 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     confirmedComposedElsewhereByKey,
   )
   resolveDisabledFromStories(pendingDisabledChecks, instancesByPrimitive)
+  // Record 1's own cross-component matching path (T598, above) — reads `instancesByPrimitive`'s
+  // own 'jsx' call sites (never the 'composed-story'/'jsx-disabled-*' entries the two calls above
+  // just added), so the order relative to them does not matter; placed after both only to keep
+  // every `instancesByPrimitive`/`storyStatesByComponent` mutation in this function in one
+  // sequence, not because either resolution above feeds this one.
+  injectComposedPrimitiveLocalCredits(
+    pendingComposedMatches,
+    instancesByPrimitive,
+    localElementsByComponent,
+    componentPropDefaultsByKey,
+    componentFileScopeByKey,
+    storyStatesByComponent,
+  )
 
   // One line per component directory, the ones with nothing to report included, so Record 1 can be
   // counted against `story-docs.mjs`'s own directory count (T594's own text) — previously only the

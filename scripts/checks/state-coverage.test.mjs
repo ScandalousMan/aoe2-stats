@@ -1479,6 +1479,156 @@ test("contrast: resolveNameMatch (via computeStateCoverage) never routes a role-
   assert.deepEqual(flag.elements[0].coveredBy.hover, ['FlagHoverRevealed'])
 })
 
+// --- Record 1's own cross-component matching path (T598): a story in component A reaching a
+// *local element declared inside a tracked primitive's own file* (record 1 of `primitives/Menu`)
+// through a JSX instance of that primitive A composes directly (record 3) — a different, wider
+// question from the `Tooltip`-qualifier hop above, which resolves an accessible name one hop away
+// and credits an *untracked* primitive's own trigger, pre-confirming a singleton pool itself.
+// `Menu`/`MenuItemRow` here are fixtures, not the real component — the mechanism only ever walks
+// `PRIMITIVE_NAMES`, so the fixture must use one of those four names to be reachable at all. -------
+
+const MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE = `
+export function Menu({ variant, items }) {
+  return (
+    <div>
+      <button type="button" className="hover:bg-surface-sunken">Trigger</button>
+      {items.map((item) => (
+        <MenuItemRow key={item.id} item={item} variant={variant} />
+      ))}
+    </div>
+  )
+}
+
+function MenuItemRow({ item, variant }) {
+  const role = variant === 'selection' ? 'menuitemradio' : 'menuitem'
+  return (
+    <button
+      type="button"
+      role={role}
+      className="hover:bg-surface-sunken focus-visible:outline-2 active:bg-background"
+    >
+      {item.label}
+    </button>
+  )
+}
+`
+
+const PANEL_WITH_SELECTION_MENU_INDEX_SOURCE = `
+import { Menu } from '../../primitives/Menu'
+export function Panel({ subject, items }) {
+  return (
+    <div>
+      {subject === 'self' && <Menu variant="selection" items={items} />}
+    </div>
+  )
+}
+`
+
+const PANEL_SWITCHER_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel, args: { subject: 'self', items: [{ id: 'p1', label: 'aoe2guy' }] } }
+export default meta
+export const RowFocusVisible = {
+  args: {},
+  parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+}
+`
+
+test("injectComposedPrimitiveLocalCredits (via computeStateCoverage): a story in one component reaches a local element declared inside a tracked primitive's own file, through a JSX instance that component composes directly — forced (name included) carried through unchanged, unlike T595's own Tooltip-qualifier hop which drops the name and pre-confirms a singleton pool itself (T598, ProfileSummary/MenuItemRow shape)", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), PANEL_WITH_SELECTION_MENU_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), PANEL_SWITCHER_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  // `MenuItemRow`'s own button: the one local element of `primitives/Menu` whose own `role`
+  // attribute is dynamic (`role={role}`), never literal — the trigger button right above it is
+  // `role: null` (its intrinsic role), not `'unresolved'`.
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  assert.deepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+})
+
+test("contrast: injectComposedPrimitiveLocalCredits (via computeStateCoverage) never credits a composed primitive's local element by proximity when the exact call site the forcing story renders could not have produced the forced role — a reachable Menu instance whose own variant never resolves to 'menuitemradio' stays unresolved, not falsely credited (T598)", () => {
+  const panelWithActionsOnlyMenuSource = `
+    import { Menu } from '../../primitives/Menu'
+    export function Panel({ items }) {
+      return (
+        <div>
+          <Menu variant="actions" items={items} />
+        </div>
+      )
+    }
+  `
+  const panelActionsStoriesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { items: [{ id: 'p1', label: 'aoe2guy' }] } }
+    export default meta
+    export const RowFocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), panelWithActionsOnlyMenuSource],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), panelActionsStoriesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  // `Menu` is genuinely composed and genuinely reachable here (no guard at all) — the boundary this
+  // contrast plants is not "never rendered", it is "rendered, but never as the forced role": the
+  // only Menu instance Panel composes always resolves `variant === 'actions'`, so `MenuItemRow`'s
+  // own dynamic role can never be `'menuitemradio'` for this story, and the credit must never land
+  // on the strength of "some Menu instance is reachable" alone.
+  assert.notDeepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+  assert.ok(
+    menuItemRow.coveredBy.focusVisible[0] === 'none' ||
+      menuItemRow.coveredBy.focusVisible[0].startsWith('unresolved:'),
+  )
+})
+
+test("contrast: injectComposedPrimitiveLocalCredits (via computeStateCoverage) never credits a composed primitive's local element when the forcing story's own guard confirms that call site does not render at all (T598, 'a composed component this story's own data does not render')", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const panelHiddenStoriesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { subject: 'other', items: [{ id: 'p1', label: 'aoe2guy' }] } }
+    export default meta
+    export const RowFocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), PANEL_WITH_SELECTION_MENU_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), panelHiddenStoriesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  // `subject: 'other'` means this story's own guard (`subject === 'self'`) never reaches the
+  // `<Menu>` call site at all — `evaluateGuards` reports `'unreached'`, so no synthetic credit is
+  // ever injected for it, and the real force-state stays uncredited on this element rather than
+  // guessed onto it because *some* Menu, somewhere in this tree, would have matched.
+  assert.notDeepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+})
+
 // --- The invariant itself: every real `visualForceState` is credited or named somewhere in the
 // region, or the run fails — the coordinator's own instruction, T595. --------------------------
 
@@ -1539,23 +1689,14 @@ test('contrast: findUnaccountedForceStates does not flag a force-state that is g
   assert.deepEqual(expired, [])
 })
 
-test('findUnaccountedForceStates (via computeStateCoverage): the one live, filed exception is reported as known, never as missing or expired (T595, KNOWN_UNACCOUNTED_FORCE_STATES)', () => {
+test("findUnaccountedForceStates (via computeStateCoverage): KNOWN_UNACCOUNTED_FORCE_STATES is empty and the whole real tree reports zero missing, zero known and zero expired — T598's own completion condition, not a cell count (T595's own exception, ProfileSummary's SwitcherFocusVisibleAndOpen, closed by injectComposedPrimitiveLocalCredits)", () => {
   const { componentDirs, filesByPath } = readAllSourceFiles()
   const computed = computeStateCoverage({ componentDirs, filesByPath })
   const { missing, known, expired } = computed.unaccountedForceStates
   assert.deepEqual(missing, [])
+  assert.deepEqual(known, [])
   assert.deepEqual(expired, [])
-  assert.deepEqual(
-    known.map((k) => k.exportName),
-    KNOWN_UNACCOUNTED_FORCE_STATES.map((k) => k.exportName),
-  )
-  // Every field the report line reads must actually be there — an owner and a deadline, not only
-  // a reason (the coordinator's own finding: a dated entry with no owner is a record nobody updates).
-  for (const entry of known) {
-    assert.equal(typeof entry.date, 'string')
-    assert.equal(typeof entry.fixOwed, 'string')
-    assert.equal(typeof entry.fixBy, 'string')
-  }
+  assert.deepEqual(KNOWN_UNACCOUNTED_FORCE_STATES, [])
 })
 
 // --- An allowlist with no expiry is how a temporary exception becomes permanent (the coordinator's
