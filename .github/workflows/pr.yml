@@ -111,6 +111,13 @@ jobs:
               # line a font pack could be added, changed or stripped of its record without the gate
               # constitution X requires ever running.
               - 'packages/design-system/tokens/fonts/**'
+              # 006 T637: the third and fourth assets roots. The `python` filter above already
+              # fires on `packages/knowledge/**` (T634), but the licence-gate job is gated on
+              # `asset-packs` alone, so without these two lines a knowledge pack or snapshot could
+              # be added, changed or stripped of its record without the gate constitution X
+              # requires ever running.
+              - 'packages/knowledge/packs/**'
+              - 'packages/knowledge/snapshots/**'
               # 004 T403, load-bearing: the Game Content Usage Rules disclaimer anchor
               # (constitution X) can be removed by a pull request that touches no asset at all,
               # and this job has to run on exactly that pull request.
@@ -141,7 +148,7 @@ jobs:
           exit $status
 
   asset-packs:
-    name: Asset packs — the licence gate over game-assets and fonts (constitution X, FR-011, SC-003)
+    name: Asset packs — the licence gate over game-assets, fonts and knowledge (constitution X, FR-011, SC-003)
     needs: changes
     if: needs.changes.outputs.asset-packs == 'true'
     runs-on: ubuntu-latest
@@ -150,13 +157,15 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      # Read-only, no network, stdlib only — every pack under packages/game-assets/ and, since
-      # feature 005 T523, packages/design-system/tokens/fonts/ must carry a complete LICENCE.md, a
-      # `READ ONLY` ruling must hold no payload file, each root must stay under its own size
-      # budget, docs/asset-packs.md must mirror every LICENCE.md, and README.md must still carry
-      # the Game Content Usage Rules disclaimer. Removing either anchor — the non-commercial
-      # condition or the disclaimer — lapses the permission constitution X grants, which is why
-      # this job's own path filter (above) includes README.md and not only the packs.
+      # Read-only, no network, stdlib only — every pack under packages/game-assets/, since
+      # feature 005 T523 packages/design-system/tokens/fonts/, and since feature 006 T637
+      # packages/knowledge/packs/ and packages/knowledge/snapshots/, must carry a complete
+      # LICENCE.md whose `Ruling` leads with one of exactly two verdicts (`COPY IN` or
+      # `READ ONLY`); a `READ ONLY` ruling must hold no payload file; each root must stay under its
+      # own size budget; docs/asset-packs.md must mirror every LICENCE.md; and README.md must
+      # still carry the Game Content Usage Rules disclaimer. Removing either anchor — the
+      # non-commercial condition or the disclaimer — lapses the permission constitution X grants,
+      # which is why this job's own path filter (above) includes README.md and not only the packs.
       - run: uv run scripts/checks/asset_packs.py
 
   config:
