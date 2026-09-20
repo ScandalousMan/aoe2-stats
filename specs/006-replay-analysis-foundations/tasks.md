@@ -606,7 +606,7 @@ committed recording reports no blocking gap.
       untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**).
       Re-run T632's peak-memory measurement with the coverage pass on the path — it is the last of
       the three accumulators that measurement names — and raise its ceiling with the new derivation
-- [ ] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
+- [x] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
       `xfail(strict=True)`. **SC-007**: remove a required field from an in-memory copy of a snapshot,
       run the pass, and assert exactly the dependent values are withheld, a gap names the entity,
       field, build and civilisation, and every independent value is still produced. **SC-007a**: the
