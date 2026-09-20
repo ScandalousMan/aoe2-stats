@@ -3274,6 +3274,33 @@ blank, and 54-60 is `Rest`'s own leading comment); `Rest` itself sits at `Link.s
   Cause A, C and D stay `state-coverage-debt`, each naming a real task in its own `owner:` field
   rather than "no task filed."
 
+- **8h. A gap the generated region's own coverage credit cannot see, found 2026-09-20 by a
+  different checker, against T595's own newly captured baseline.** Record 1's and record 3's
+  `Table` row-link `focus-visible` cell (`a @ packages/design-system/src/primitives/Table/index.tsx:281`)
+  reads `covered` above, correctly by this extractor's own rule: `RowLinkFocusVisible`
+  (`Table.stories.tsx:333`, T595's own new story) is a real `visualForceState` naming that exact
+  role and name, and `state-coverage.mjs` asks only whether a story exists forcing a state, never
+  whether its captured pixels differ from anything else. `scripts/checks/story-baselines-
+duplicates.mjs` — a sibling checker this register's own rows 1-7 already govern — reads the
+  baseline bytes that story produced once CI captured them, and found all six indistinguishable,
+  at its own tolerance, from `primitives-table--row-links`'s unforced resting frame: the ring
+  `focusRing` (`index.tsx:96-97`) forces never actually paints in this table's `border-collapse`
+  stacking, the same mechanism T591 fixed for `active`/`hover` by moving the press ring onto the
+  anchor's own `::after` pseudo-element and never extended to `focus-visible`. The target itself is
+  not in doubt — `RowLinkHover`/`RowLinkActive` force the identical `role: 'link', name:
+'RedBull_Barley'` target and both paint visibly — so this is a real component defect, not a
+  misaimed story. Filed as a dated debt entry in `scripts/visual/story-baseline-duplicates-
+debt.json` naming `primitives-table--row-link-focus-visible = primitives-table--row-links`, and
+  as T672, which owes both the `product-designer` decision on the ring's shape and the component
+  fix that follows it. **This cell's `covered` reading above is not wrong by `state-coverage.mjs`'s
+  own rule — a story exists, targeted correctly — but "a story exists" and "a keyboard user can see
+  this row is focused" are different claims, and a reader taking the generated table's word for the
+  second would be wrong.** `state-coverage.mjs`'s own generated region is unchanged by this
+  entry, deliberately: its extractor answers "does a story exist," not "does the pixel differ,"
+  and widening it to decode pixels would duplicate `story-baselines-duplicates.mjs` rather than
+  close the gap between what each checker actually asks. No source, story or baseline changes in
+  this task.
+
 <!-- state-coverage-debt
 date: 2026-09-20
 fixBy: 2026-09-27
