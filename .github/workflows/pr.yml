@@ -38,6 +38,13 @@ jobs:
               - 'packages/providers/**'
               - 'packages/replay-engine/**'
               - 'packages/storage/**'
+              # 006 T634: a new workspace member left out of a path filter is exactly the failure
+              # this file's own comments already record twice, both under the `web` filter below —
+              # the `scripts/checks/*.mjs`/`scripts/visual/**` entry (004 T403/T510) and the
+              # `.github/workflows/pr.yml` self-reference (S6, 2026-09-12): an edit that changes
+              # what a job verifies must be able to trigger that job. Without this line, a pull
+              # request touching only `packages/knowledge/` runs no Python job at all.
+              - 'packages/knowledge/**'
               - 'api/**'
               - 'scripts/**'
               - 'pyproject.toml'

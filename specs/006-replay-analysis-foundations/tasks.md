@@ -475,7 +475,7 @@ committed recording reports no blocking gap.
 **Story goal (US2)**: the engine can ask the rules a question for a stated build and civilisation.
 **(US5)**: a missing rule stops the analysis instead of corrupting it.
 
-- [ ] T634 [US2] Create `packages/knowledge/` as a workspace member — `pyproject.toml` depending on
+- [x] T634 [US2] Create `packages/knowledge/` as a workspace member — `pyproject.toml` depending on
       `aoe2stats-core` only — and register it in the root `pyproject.toml` workspace list, its
       `testpaths`, its mypy settings and the `known-first-party` list under the ruff isort settings —
       the seven module names are enumerated there, and an eighth left out turns `ruff check` red on
