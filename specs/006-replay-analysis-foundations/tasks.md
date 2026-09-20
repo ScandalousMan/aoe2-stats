@@ -496,7 +496,7 @@ committed recording reports no blocking gap.
       plus the statement that automating the download is the moment a provider becomes mandatory
       (**FR-032**). Nothing in the running system, the build or the tests fetches a knowledge source,
       and the way that is guaranteed here is that no code performs a fetch at all
-- [ ] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
+- [x] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
       named **exactly** as `scripts/checks/asset_packs.py` matches them — `Source`, `Licence`,
       `Permitted usage`, `Ruling`, `Checked` (**FR-033**); a field written any other way fails the
       gate as missing. The ruling leads with **COPY IN**, one of the two verdicts T637 makes the
