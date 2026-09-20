@@ -297,19 +297,37 @@ export const ErrorNotApplicable: Story = {
 // `outline-none focus-visible:outline-…` ring rather than suppressing it (remediation, B5), a real
 // class painted with no frame of its own before this story. It carries no `hover:` or `active:`
 // class at all: a heading is not a pointer target, and `Hover`/`Active` above already depict this
-// component's real hover/press surface, on the first `Contents` link. `role: 'heading'` is shared
-// by all nine `SectionHeading` instances this render mounts, but every one resolves to the same
-// declared element (`state-coverage.mjs` tracks the declaration site, not a render position), so
-// `nth: 2` — the first `SectionHeading` reached, right after the page's own `<h2>` title and the
-// `Contents` nav heading (`nth: 0`/`nth: 1`) — names it as unambiguously as any other slot in that
-// same nine-wide range would.
-const SECTION_HEADING_CLIP = { parts: [{ role: 'heading' as const, nth: 2 }], pad: '2' }
+// component's real hover/press surface, on the first `Contents` link.
+//
+// Fixed after a captured baseline showed no ring at all: `nth: 2` used to be picked by counting
+// `<h2>`s in this file's own source, which starts at `Page`'s own visible title — but `Page` (this
+// screen's own composed primitive, `titleHidden` here) renders its own `<h1>` first, `sr-only`
+// (visually hidden, still in the accessibility tree, so it still occupies a `role="heading"` slot
+// Playwright's `getByRole('heading')` counts). Counting from source missed that `<h1>`, so `nth: 2`
+// actually resolved to the `Contents` nav heading, which carries no ring at all — exactly the
+// blank frame the baseline showed. Verified empirically against the built Storybook DOM
+// (`storybook-static/`, `getByRole('heading')` enumerated in order): position 0, `Page`'s own
+// `sr-only` `<h1>` ("Privacy notice"); position 1, this article's own visible `<h2>` title
+// ("Privacy notice"); position 2, the `Contents` nav `<h2>`; position 3, the first real
+// `SectionHeading`, "Who we are and what this is" — confirmed `<h2>`, not `sr-only`.
+//
+// `nth: 3` also still satisfies `state-coverage.mjs`'s own static extractor, which cannot see
+// `Page`'s `<h1>` at all — it is declared in a different file, and this file's own local-element
+// pool only ever walks `PrivacyNotice/index.tsx`'s own JSX. That pool's `role: 'heading'` order is:
+// the article's own `<h2>` title (position 0), the `Contents` nav `<h2>` (position 1), then
+// `SectionHeading` — shared by all nine instances this render mounts, every one resolving to the
+// same declared element (`state-coverage.mjs` tracks the declaration site, not a render position),
+// placed at its own earliest call site and spanning nine wide (positions 2 through 10). `nth: 3`
+// lands inside that same nine-wide range exactly as `nth: 2` used to, and is credited to the same
+// declaration site (`index.tsx:264`) either way — it is the real browser DOM position, counting
+// `Page`'s own `<h1>`, that `nth: 2` got wrong.
+const SECTION_HEADING_CLIP = { parts: [{ role: 'heading' as const, nth: 3 }], pad: '2' }
 
 export const SectionHeadingFocusVisible: Story = {
   name: 'focus-visible on a SectionHeading ("Who we are and what this is")',
   args: { lastUpdated: '2026-08-30', hrefs },
   parameters: {
-    visualForceState: { state: 'focus-visible', role: 'heading', nth: 2 },
+    visualForceState: { state: 'focus-visible', role: 'heading', nth: 3 },
     visualCaptureClip: SECTION_HEADING_CLIP,
   },
 }
