@@ -631,7 +631,7 @@ committed recording reports no blocking gap.
       answer-or-gap union (**SC-008**); assert no module in `packages/knowledge` imports a network
       library; and assert the whole package's tests pass with the network blocked (**SC-006**,
       **FR-026**), which `tests/conftest.py` already enforces at the socket workspace-wide
-- [ ] T651 [US2] Add the source assessments to `docs/data-sources.md` as a new section, one
+- [x] T651 [US2] Add the source assessments to `docs/data-sources.md` as a new section, one
       subsection per source assessed in [research.md](./research.md) **D3** (**FR-029**): scope,
       reliability, update mechanism, version identifier, coverage, known limitations and the date the
       assessment was made. Record the rejections and **why**, including that the two community
