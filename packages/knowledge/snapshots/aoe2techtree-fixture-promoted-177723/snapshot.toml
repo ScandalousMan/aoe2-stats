@@ -1,0 +1,37 @@
+# A second, real promoted snapshot (T646), added as test infrastructure for
+# `packages/knowledge/tests/test_query.py`'s "two snapshots answer from their own contents and
+# neither is silently upgraded to the other" (US2 scenario 2). Same pack, same `source_version`,
+# same normalised `rules.json` as `aoe2techtree-fixture-promoted` — copied byte for byte, and
+# reproduced independently by re-running `aoe2stats_knowledge.normalise.normalise_pack()` against
+# the identical vendored pack, so this is real normalised content, not hand-written data. The one
+# thing that differs is `describes_build`.
+#
+# `describes_build = 177723` is deliberately **not** a carry-forward build. It is the exact build
+# `aoe2techtree-fixture-promoted`'s own `[validation.carry_forward]` record already names as
+# `source_last_implemented_build`: the newest "Implement DE Update <build>" commit reachable from
+# the pinned commit `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0` is `daf5fa18de`, dated 2026-06-03,
+# message "Implement DE Update 177723" — so the vendored pack's own data directly reflects this
+# build, with no intervening, unattested build to carry forward across. This is the second, real
+# validation basis T646 asked for in place of a second carry-forward record: simpler, and no less
+# real, because it rests on evidence already read and recorded for the sibling fixture.
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 177723
+digest = "sha256:12effb74e238677dfabdf52698415fee5bdc5ec3c1b49e7808b1aefca6c703ba"
+promoted = true
+civilisations_modelled = []
+
+# FR-030's validation record. `method` is deliberately not "carry-forward": this build is not
+# carried forward from an earlier revision at all, it is the exact build the pinned revision
+# implements, so there is no intervening-build gap for a carry-forward record to attest.
+[validation]
+method = "source-implements-build"
+checked_against = """\
+the source's own commit history: daf5fa18de, dated 2026-06-03, message "Implement DE Update \
+177723" — the newest "Implement DE Update <build>" commit reachable from the pinned commit \
+b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0 (2026-06-21), already read and recorded by T642 for \
+aoe2techtree-fixture-promoted's own carry-forward basis\
+"""
+performed_by = "the T646 implementer, by direct reading of the source's own commit history"
+performed_at = "2026-09-20"

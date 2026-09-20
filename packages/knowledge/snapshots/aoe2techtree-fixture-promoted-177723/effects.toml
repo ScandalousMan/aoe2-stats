@@ -1,0 +1,8 @@
+# Placeholder civilisation effects for the T646 second promoted fixture (describes_build =
+# 177723). T644 replaces this with hand-transcribed effects (research.md D5): the civilisation,
+# the verbatim source sentence and key, whether it is modelled, an explicit entity identifier
+# list, the field, a closed operation, the operand, and the second reading that validated it.
+# Empty here, exactly like `aoe2techtree-fixture-promoted`'s own placeholder — this fixture exists
+# so `test_query.py` (T646) has a second, real, differently-identified promoted snapshot to prove
+# "two snapshots answer from their own contents" against, before T644 populates either one's real
+# effects.
