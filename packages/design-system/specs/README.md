@@ -3239,10 +3239,45 @@ blank, and 54-60 is `Rest`'s own leading comment); `Rest` itself sits at `Link.s
   A block's own shape, and how a cell's identity is compared, is documented at that function's own
   definition — cited here rather than restated, this Method section's own rule.
 
+- **8g. A second, non-expiring entry kind — found and fixed 2026-09-20, verifying `863f111a`, 8f's
+  own first attempt at this closing commit.** Running `checkCellGate` with its own injectable `today`
+  past every block's `fixBy` (`2026-09-28`) turned all five entries below `expired`, failing the run
+  on all 45 cells 8f's own accounting names. That is the right answer for three of the five — Cause A,
+  Cause C and Cause D really are owed work by a real owner (T600, T671 and T596, in that order) — and
+  the wrong one for the other two: Cause B (27 cells) and Cause E (1 cell) already read
+  "no fixed owner — not a gap" in their own `owner` field before this pass, because neither is debt
+  at all. Guard 2's own decline (Cause B) and a real, substantive, non-impossible spec answer
+  painting no class at all (Cause E) are both structural facts about what this package's real
+  surface is and what this extractor can ever read from it — no commit, ever, clears either, so no
+  `fixBy` for them could be chosen honestly.
+  Keeping them as `state-coverage-debt` would mean re-dating both forever to stay green, which is
+  `checkCellGate`'s own comment turned against itself: "an allowlist with no enforced expiry is how a
+  temporary exception becomes permanent" is exactly what a `fixBy` bumped on a schedule, rather than
+  earned by a real fix, already is — a perpetually renewed exception is the same failure as an
+  unenforced one, both being a record nobody actually has to keep true. **Decision: a new block kind,
+  `state-coverage-permanent` (same HTML-comment shape as `state-coverage-debt`, named below rather
+  than spelled out here so this sentence cannot itself be mistaken for a third block by the parser),
+  for exactly this shape — a structural reason, no `fixBy`, no `owner`, because nothing is owed.**
+  This is a refinement of T595's own third closure ("named in a
+  dated entry in row 8, outside the generated region, saying why it stays and who owes it"), not a
+  fourth one: a permanent entry still names its cells exactly, inside the identical machine-readable
+  block shape 8f already describes, and still says why the cell stays; it differs only in what it
+  says is owed, and says it precisely because Cause B's and Cause E's own reasons already said so
+  before this pass ever ran. `checkCellGate` enforces the split both ways, not merely by convention:
+  a permanent entry carrying a `fixBy` or an `owner` is malformed, exactly as a debt entry missing
+  either now is (debt previously required only `date`/`fixBy`; `owner` was free text nobody actually
+  checked was present — closed in the same commit, since "who owes it" was never optional under
+  T595's own wording). `scripts/checks/state-coverage.test.mjs` plants both shapes against the gate:
+  a permanent entry still closing its cell at a date far past today (`2027-01-01`), a debt entry
+  still expiring past its own `fixBy` with a permanent entry beside it, and each forbidden/missing
+  field combination failing the run. Cause B and Cause E below are now `state-coverage-permanent`;
+  Cause A, C and D stay `state-coverage-debt`, each naming a real task in its own `owner:` field
+  rather than "no task filed."
+
 <!-- state-coverage-debt
 date: 2026-09-20
 fixBy: 2026-09-27
-owner: no task filed as of 2026-09-20 — owed by whoever widens record 3's own per-variant className
+owner: T600 — widens record 3's own per-variant className
   resolution (`resolveClassParts`'s `scopes.defaultScope`, row 8's own Method section, "Record 1's
   own class half") past the default-branch reading it deliberately stops at today, for the twelve
   non-default `variant|size` rows below, or who resolves each row by hand against the real tree and
@@ -3271,22 +3306,21 @@ R3 Link focus-visible inline
 R3 Menu focus-visible actions
 -->
 
-<!-- state-coverage-debt
+<!-- state-coverage-permanent
 date: 2026-09-20
-fixBy: 2026-09-27
-owner: no fixed owner — not a gap. Guard 2 of `classifyRecord1NoneCells`/`classifyRecord3NoneCells`
-  (row 8's own Method section) declines every `'none'` cell in a state's own scope the moment one
-  sibling element or row already carries real, positive coverage for that exact state, on purpose:
-  a spec sentence answering the *scope* cannot be trusted to describe every candidate in it (the
-  Method section's own `Table` example), so this guard never lets a spec rewording flip these cells
-  to `'impossible'`, no matter how the prose is phrased. Filed because T595 requires every declining
-  cell named, never because work remains — a future change to the guard itself is the only thing
-  that could ever move one of these, and nothing here asks for that change.
 reason: Cause B — the flagged element paints no class of its own for this state, but a sibling
   element (or, for an axis row, another row of the same matrix) in the same component already has
   real, story-proven coverage for it: the component's real surface for this state is depicted
   elsewhere, and no honest capture of *this* element would show anything different from its own
-  resting frame.
+  resting frame. Guard 2 of `classifyRecord1NoneCells`/`classifyRecord3NoneCells` (row 8's own
+  Method section) declines every `'none'` cell in a state's own scope the moment one sibling
+  element or row already carries real, positive coverage for that exact state, on purpose: a spec
+  sentence answering the *scope* cannot be trusted to describe every candidate in it (the Method
+  section's own `Table` example), so this guard never lets a spec rewording flip these cells to
+  `'impossible'`, no matter how the prose is phrased. Nothing is owed here — filed because T595
+  (and 8g, above) requires every declining cell named, never because work remains; only a future
+  change to the guard itself could ever move one of these, and nothing here asks for that change,
+  which is exactly why this entry carries no `fixBy` and no `owner`.
 R1 composites/SiteHeader hover a@packages/design-system/src/composites/SiteHeader/index.tsx:156
 R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:156
 R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:183
@@ -3334,15 +3368,15 @@ in `pinned ? … : …` carries the `active:` prefix this pass looks for. Closin
 needs two things together, not one: a story that forces `pinned: true` (a real click, since
 `pinned` only flips through `handleActivate`, never a `visualForceState`, which drives no click) and
 this pass's own class-half widened to also read a state-conditional class matched against a
-component's own boolean state, alongside a literal pseudo-class utility. Neither exists yet.
+component's own boolean state, alongside a literal pseudo-class utility. Neither exists yet. Filed
+as T671, which owes both halves together.
 
 <!-- state-coverage-debt
 date: 2026-09-20
 fixBy: 2026-09-27
-owner: no task filed as of 2026-09-20 — owed by whoever gives `Tooltip.stories.tsx` a real
-  `pinned: true` story (a `play()` click, not a `visualForceState`) and widens this extractor's own
-  `active`-class detection to credit a state-conditional class the way it already credits a literal
-  `active:` utility.
+owner: T671 — gives `Tooltip.stories.tsx` a real `pinned: true` story (a `play()` click, not a
+  `visualForceState`) and widens this extractor's own `active`-class detection to credit a
+  state-conditional class the way it already credits a literal `active:` utility.
 reason: Cause C — the spec's own answer proves a real, painted press treatment exists (the opposite
   of "no ring is painted"), so this cannot honestly close as bucket (b); it stays open because the
   paint is state-conditional, not CSS-pseudo-class-conditional, which this pass's own class-half
@@ -3365,27 +3399,33 @@ R1 screens/ArchivalControl focus-visible a@packages/design-system/src/screens/Ar
 R1 screens/ArchivalControl active a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
 -->
 
-<!-- state-coverage-debt
+<!-- state-coverage-permanent
 date: 2026-09-20
-fixBy: 2026-09-27
-owner: no fixed owner — not a gap. `player-search.md`'s own `SearchBox` section (added by T595's
-  earlier extractor slice, this row's own Method section, "Group 2 — SearchBox/PlayerResultRow's
-  shared spec file, structurally") answers `active` with a real, substantive passage — "`Input`: standard
-  text-input interaction" plus `PlayerResultRow`'s own border/ring recipe, which is that sibling's
-  own, not this element's — never the closed impossible vocabulary, and correctly so: forcing it
-  into "has no visual form" would overclaim what a native text input's own browser-drawn press state
-  actually is. No class exists on this element for any story to depict either.
 reason: Cause E — a real, substantive spec answer that simply is not the closed-vocabulary claim
   "impossible," the one case row 8's own recogniser is required to decline rather than guess a
-  verdict for.
+  verdict for. `player-search.md`'s own `SearchBox` section (added by T595's earlier extractor
+  slice, this row's own Method section, "Group 2 — SearchBox/PlayerResultRow's shared spec file,
+  structurally") answers `active` with a real, substantive passage — "`Input`: standard text-input
+  interaction" plus `PlayerResultRow`'s own border/ring recipe, which is that sibling's own, not
+  this element's — never the closed impossible vocabulary, and correctly so: forcing it into "has
+  no visual form" would overclaim what a native text input's own browser-drawn press state actually
+  is. No class exists on this element for any story to depict either, so no story could ever move
+  this cell to `covered` — nothing is owed, which is why this entry carries no `fixBy` and no
+  `owner`; only the spec answer itself changing could ever move it.
 R1 composites/SearchBox active input@packages/design-system/src/composites/SearchBox/index.tsx:129
 -->
 
-**Owner: T595. Filed 2026-09-20, fix by 2026-09-27 (the same horizon this row itself carries) —
-every entry above is re-checked against the live tree on that date: a cell whose own cause has
-changed (a sibling's coverage removed, a variant's class now read, a real `pinned: true` story
-landed) gets closed for real; the rest are re-dated rather than left to expire silently, the same
-discipline `KNOWN_UNACCOUNTED_FORCE_STATES` and `story-baseline-duplicates-debt.json` already hold
-their own entries to.** `node scripts/checks/state-coverage.mjs` fails on any cell that is none of
-the three closures T595 permits — covered, impossible, or named exactly in a live entry above — the
-cell gate's own completion condition, not a count of cells typed here.
+**Owner: T595 (Cause A's own owner is T600, Cause C's is T671, Cause D's stays T596 — 8g, above).
+Filed 2026-09-20; the three `state-coverage-debt` entries (Cause A, C, D) fix by 2026-09-27 (the
+same horizon this row itself carries) — each is re-checked against the live tree on that date: a
+cell whose own cause has changed (a sibling's coverage removed, a variant's class now read, a real
+`pinned: true` story landed) gets closed for real; the rest are re-dated rather than left to expire
+silently, the same discipline `KNOWN_UNACCOUNTED_FORCE_STATES` and
+`story-baseline-duplicates-debt.json` already hold their own entries to. The two
+`state-coverage-permanent` entries (Cause B, E) carry no `fixBy` and are never re-checked on a
+calendar by construction — 8g's own decision — only a change to Guard 2 itself (Cause B) or to
+`player-search.md`'s own spec answer (Cause E) could ever move either, and this task's own read of
+both on 2026-09-20 found neither changed.** `node scripts/checks/state-coverage.mjs` fails on any
+cell that is none of the three closures T595 permits — covered, impossible, or named exactly in a
+live debt or permanent entry above — the cell gate's own completion condition, not a count of cells
+typed here.

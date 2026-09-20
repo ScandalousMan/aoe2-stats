@@ -71,6 +71,7 @@ import {
   classifyRecord3NoneCells,
   classifyImpossiblePerSpec,
   parseRow8DebtEntries,
+  parseRow8PermanentEntries,
   checkCellGate,
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
@@ -6190,6 +6191,180 @@ test('checkCellGate: a malformed entry (missing fixBy) never closes the cell it 
   assert.equal(gate.uncovered.length, 1)
   assert.equal(gate.malformedEntries.length, 1)
   assert.deepEqual(gate.malformedEntries[0].malformed, ['fixBy'])
+  assert.equal(gate.malformedEntries[0].kind, 'debt')
+})
+
+test('checkCellGate: a debt entry missing owner (date and fixBy both present) never closes the cell it names — a debt entry must carry all three', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    ['date: 2026-09-20', 'fixBy: 2026-09-27', 'R1 primitives/Beta active button@f.tsx:1'].join(
+      '\n',
+    ),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['owner'])
+  assert.equal(gate.malformedEntries[0].kind, 'debt')
+})
+
+// --- parseRow8PermanentEntries / checkCellGate's permanent-entry half (this branch's own fix) ---
+//
+// A `<!-- state-coverage-debt -->` entry is time-boxed by construction: a well-formed one always
+// expires once `today` passes its own `fixBy`, proven above. Some declining cells (row 8's own
+// Cause B and Cause E, `packages/design-system/specs/README.md`) are never owed any work at all —
+// the guard that declines them, or the spec answer it defers to, is a structural fact, not debt —
+// so no `fixBy` could ever be chosen honestly. `<!-- state-coverage-permanent -->` is the distinct
+// entry kind that closes those without expiring, and these tests are its own required contrasts:
+// it still closes exactly the cell it names, at any date, and the gate rejects either shape
+// carrying the other's fields.
+
+function readmeWithPermanentBlock(blockBody) {
+  return `${IMPOSSIBLE_README_FIXTURE}\n<!-- state-coverage-permanent\n${blockBody}\n-->\n`
+}
+
+test('parseRow8PermanentEntries: reads date/reason fields and R1/R3 cell lines out of a block, and carries no fixBy/owner at all', () => {
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'reason: a sibling already carries real coverage for this state — nothing is owed.',
+      'R1 primitives/Widget hover button@f.tsx:10',
+    ].join('\n'),
+  )
+  const [entry] = parseRow8PermanentEntries(readmeSource)
+  assert.equal(entry.date, '2026-09-20')
+  assert.equal(
+    entry.reason,
+    'a sibling already carries real coverage for this state — nothing is owed.',
+  )
+  assert.equal(entry.fixBy, undefined)
+  assert.equal(entry.owner, undefined)
+  assert.deepEqual(entry.cells, [
+    {
+      record: 1,
+      componentKey: 'primitives/Widget',
+      state: 'hover',
+      tag: 'button',
+      file: 'f.tsx',
+      line: 10,
+    },
+  ])
+})
+
+// The defect this branch fixes, planted directly against the pre-fix shape: a permanent entry read
+// as a debt entry would read `today: '2027-01-01'` as past every real `fixBy` this register has
+// ever carried and fail. Proves the entry closes its cell at a date far past today, not merely not
+// yet expired the way a debt entry's own "not yet past fixBy" test already shows.
+test('checkCellGate: a permanent entry still closes its cell at a date far past today (2027-01-01) — it never expires', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage for this state.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2027-01-01',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.expiredCovering, [])
+  assert.deepEqual(gate.expiredEntries, [])
+  assert.equal(gate.malformedEntries.length, 0)
+  assert.equal(gate.permanentEntries.length, 1)
+})
+
+// Required contrast: a debt entry past its own fixBy must still expire and still fail, even once a
+// permanent entry kind exists beside it — the new kind must not blunt the old one's own enforcement.
+test('checkCellGate: required contrast — a debt entry past its own fixBy still expires and still fails, permanent entries notwithstanding', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-08-01',
+      'fixBy: 2026-09-19',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-28',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.equal(gate.expiredCovering.length, 1)
+  assert.equal(gate.expiredEntries.length, 1)
+  assert.equal(gate.liveEntries.length, 0)
+  assert.equal(gate.permanentEntries.length, 0)
+})
+
+test('checkCellGate: a permanent entry carrying a fixBy is malformed and fails, even with a real reason and date', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, [
+    'fixBy (a permanent entry may not carry fixBy)',
+  ])
+  assert.equal(gate.permanentEntries.length, 0)
+})
+
+test('checkCellGate: a permanent entry carrying an owner is malformed and fails (contrast — the other forbidden field)', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'owner: T999',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, [
+    'owner (a permanent entry may not carry owner)',
+  ])
+})
+
+test('checkCellGate: a permanent entry missing its reason is malformed and fails', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    ['date: 2026-09-20', 'R1 primitives/Beta active button@f.tsx:1'].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['reason'])
 })
 
 test('checkCellGate: an unresolved cell fails regardless of any entry or spec answer — unresolved is not one of the three closures', () => {

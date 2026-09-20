@@ -5415,18 +5415,37 @@ export function classifyImpossiblePerSpec(computed, { readmeSource, specSourcesB
 // unambiguous identity — never a component name, a reason string or a state alone, any of which
 // would let one entry silently cover every cell that happens to share it).
 //
-// A dated entry lives inside row 8's own prose as an HTML comment
-// (`<!-- state-coverage-debt … -->`) rather than a second file next to it, because T595 names "the
-// register" as row 8 itself: an entry that could drift from the markdown a reader actually opens
-// would be the exact hazard `a11y-allowlist.mjs`'s own single-file steady state, and
-// `story-baseline-duplicates-debt.json`'s deliberate exception to it (a *list* of PNG pairs has no
-// prose home), both already avoid for their own subjects. Comment syntax keeps the entry invisible
-// in the rendered register, the same choice the `state-coverage:begin`/`end` markers already made,
-// and — unlike a `// visual-equivalence: <id>: <reason>` single-line marker, the shape
-// `story-baselines-duplicates.mjs` uses for a *pair* of story ids — a cell identity here carries too
-// many fields (record, component or primitive, element or axis row, state, `file:line` for an
-// element) to fit one line per entry without either truncating a field or inventing per-field
-// escaping; a block comment with one cell per line inside it needs neither.
+// A dated entry lives inside row 8's own prose as an HTML comment rather than a second file next to
+// it, because T595 names "the register" as row 8 itself: an entry that could drift from the
+// markdown a reader actually opens would be the exact hazard `a11y-allowlist.mjs`'s own single-file
+// steady state, and `story-baseline-duplicates-debt.json`'s deliberate exception to it (a *list* of
+// PNG pairs has no prose home), both already avoid for their own subjects. Comment syntax keeps the
+// entry invisible in the rendered register, the same choice the `state-coverage:begin`/`end`
+// markers already made, and — unlike a `// visual-equivalence: <id>: <reason>` single-line marker,
+// the shape `story-baselines-duplicates.mjs` uses for a *pair* of story ids — a cell identity here
+// carries too many fields (record, component or primitive, element or axis row, state, `file:line`
+// for an element) to fit one line per entry without either truncating a field or inventing
+// per-field escaping; a block comment with one cell per line inside it needs neither.
+//
+// **Two block kinds, not one (row 8's own Method section, "8g" — found and fixed 2026-09-20,
+// verifying T595's first attempt at this closing commit, `863f111a`).** `<!-- state-coverage-debt
+// … -->` is time-boxed by construction: every well-formed entry expires on its own `fixBy`, on
+// purpose, so a real gap cannot be closed once and forgotten. But not every declining cell this
+// closure names is a gap — Guard 2 of `classifyRecord1NoneCells`/`classifyRecord3NoneCells` (row
+// 8's own Method section) and a real, substantive, non-impossible spec answer painting no class at
+// all are both structural facts about what this extractor can ever read, never debt a future commit
+// clears; forcing either through a `fixBy` means the entry must be re-dated forever to stay green,
+// which is exactly "an allowlist with no enforced expiry is how a temporary exception becomes
+// permanent" (this file's own comment on `KNOWN_UNACCOUNTED_FORCE_STATES`, below) in the other
+// direction — a *perpetually renewed* exception is the same failure as an unenforced one, both being
+// a record nobody actually has to keep true. `<!-- state-coverage-permanent … -->` is the second
+// kind: no `fixBy`, no `owner` — nothing is owed — and a `reason` stating the structural fact rather
+// than a deadline. It is a refinement of T595's third closure, not a fourth one: it still names the
+// cell exactly, inside the same machine-readable block shape, and still says why it stays; it
+// differs only in what it says is owed. `checkCellGate` enforces the split both ways: a permanent
+// entry carrying a `fixBy` or an `owner`, or a debt entry missing its `date`, `fixBy` or `owner`, is
+// malformed and fails the run exactly as a debt entry missing only `fixBy` already did — so the two
+// shapes cannot blur back into one that silently stops requiring either its expiry or its reason.
 //
 // Block shape (fields are `key: value` lines; a cell line starts with `R1 ` or `R3 `; blank lines
 // and any other line are ignored, so a human sentence can sit beside the fields for a reader who
@@ -5435,7 +5454,14 @@ export function classifyImpossiblePerSpec(computed, { readmeSource, specSourcesB
 //   <!-- state-coverage-debt
 //   date: 2026-09-20
 //   fixBy: 2026-09-27
-//   owner: <free text — a task id, "no fixed owner", or who the entry says still owes the tracing>
+//   owner: <free text — a task id that owes the fix>
+//   R1 <componentKey> <hover|focus-visible|active> <tag>@<file>:<line>
+//   R3 <primitiveName> <hover|focus-visible|active|disabled> <variantSize>
+//   -->
+//
+//   <!-- state-coverage-permanent
+//   date: 2026-09-20
+//   reason: <free text — the structural fact that means nothing is, or ever could be, owed>
 //   R1 <componentKey> <hover|focus-visible|active> <tag>@<file>:<line>
 //   R3 <primitiveName> <hover|focus-visible|active|disabled> <variantSize>
 //   -->
@@ -5447,39 +5473,58 @@ export function classifyImpossiblePerSpec(computed, { readmeSource, specSourcesB
 // line number shifts, a variant is renamed) makes its own entry stop matching rather than silently
 // keep covering the wrong row.
 const ROW8_DEBT_BLOCK_RE = /<!--\s*state-coverage-debt\b([\s\S]*?)-->/g
+const ROW8_PERMANENT_BLOCK_RE = /<!--\s*state-coverage-permanent\b([\s\S]*?)-->/g
 const ROW8_DEBT_R1_LINE_RE = /^R1\s+(\S+)\s+(hover|focus-visible|active)\s+([^@\s]+)@(.+):(\d+)$/
 const ROW8_DEBT_R3_LINE_RE = /^R3\s+(\S+)\s+(hover|focus-visible|active|disabled)\s+(.+)$/
+
+// The field/cell parsing both block kinds share — a field line (`key: value`, case-sensitive key)
+// and a cell line (`R1 …`/`R3 …`) can appear in any order; a line matching neither is silently
+// skipped, which is what lets an entry carry a plain-English sentence next to its own fields
+// without a second, competing syntax to keep that sentence out of the parser's way.
+function parseRow8Block(blockBody) {
+  const fields = {}
+  const cells = []
+  for (const rawLine of blockBody.split('\n')) {
+    const line = rawLine.trim()
+    if (line.length === 0) continue
+    const r1 = line.match(ROW8_DEBT_R1_LINE_RE)
+    if (r1) {
+      const [, componentKey, state, tag, file, lineStr] = r1
+      cells.push({ record: 1, componentKey, state, tag, file, line: Number(lineStr) })
+      continue
+    }
+    const r3 = line.match(ROW8_DEBT_R3_LINE_RE)
+    if (r3) {
+      const [, primitiveName, state, variantSize] = r3
+      cells.push({ record: 3, primitiveName, state, variantSize })
+      continue
+    }
+    const kv = line.match(/^([a-zA-Z]+):\s*(.*)$/)
+    if (kv) fields[kv[1]] = kv[2]
+  }
+  return { fields, cells }
+}
 
 // Every `<!-- state-coverage-debt … -->` block in row 8's own prose, parsed into `{ date, fixBy,
 // owner, cells, raw }` — `cells` each carrying `record` plus that record's own identity fields,
 // exactly as `classifyRecord1NoneCells`/`classifyRecord3NoneCells` name them, so `cellKey` (below)
-// can be applied to a parsed entry's cell and a classified cell interchangeably. A field line
-// (`key: value`, case-sensitive key) and a cell line can appear in any order; a line matching
-// neither is silently skipped, which is what lets an entry carry a plain-English sentence next to
-// its own fields without a second, competing syntax to keep that sentence out of the parser's way.
+// can be applied to a parsed entry's cell and a classified cell interchangeably.
 export function parseRow8DebtEntries(readmeText) {
   const entries = []
   for (const m of readmeText.matchAll(ROW8_DEBT_BLOCK_RE)) {
-    const fields = {}
-    const cells = []
-    for (const rawLine of m[1].split('\n')) {
-      const line = rawLine.trim()
-      if (line.length === 0) continue
-      const r1 = line.match(ROW8_DEBT_R1_LINE_RE)
-      if (r1) {
-        const [, componentKey, state, tag, file, lineStr] = r1
-        cells.push({ record: 1, componentKey, state, tag, file, line: Number(lineStr) })
-        continue
-      }
-      const r3 = line.match(ROW8_DEBT_R3_LINE_RE)
-      if (r3) {
-        const [, primitiveName, state, variantSize] = r3
-        cells.push({ record: 3, primitiveName, state, variantSize })
-        continue
-      }
-      const kv = line.match(/^([a-zA-Z]+):\s*(.*)$/)
-      if (kv) fields[kv[1]] = kv[2]
-    }
+    const { fields, cells } = parseRow8Block(m[1])
+    entries.push({ ...fields, cells, raw: m[0] })
+  }
+  return entries
+}
+
+// Every `<!-- state-coverage-permanent … -->` block, parsed the same way into `{ date, reason,
+// cells, raw }` — the non-expiring counterpart above ("8g" of row 8's own Method section): no
+// `fixBy`, no `owner`, because nothing here is owed.
+export function parseRow8PermanentEntries(readmeText) {
+  const entries = []
+  for (const m of readmeText.matchAll(ROW8_PERMANENT_BLOCK_RE)) {
+    const { fields, cells } = parseRow8Block(m[1])
     entries.push({ ...fields, cells, raw: m[0] })
   }
   return entries
@@ -5589,16 +5634,17 @@ export function checkCellGate(
 
   // Filed exceptions are validated the same way `findUnaccountedForceStates` already validates
   // `KNOWN_UNACCOUNTED_FORCE_STATES`: a missing or invalid `date`/`fixBy` is malformed regardless of
-  // what it might otherwise have covered, and a well-formed entry whose own `fixBy` has passed is
-  // `expired` rather than quietly kept `known` — an allowlist with no enforced expiry is how a
+  // what it might otherwise have covered, and a well-formed debt entry whose own `fixBy` has passed
+  // is `expired` rather than quietly kept `known` — an allowlist with no enforced expiry is how a
   // temporary exception becomes permanent (row 8's own Method section, T598's identical rule for
-  // `KNOWN_UNACCOUNTED_FORCE_STATES`). Neither kind is allowed to keep closing the cells it names.
-  const parsedEntries = parseRow8DebtEntries(readmeSource)
+  // `KNOWN_UNACCOUNTED_FORCE_STATES`). No debt entry is allowed to keep closing the cells it names
+  // past its own `fixBy`.
+  const parsedDebtEntries = parseRow8DebtEntries(readmeSource)
   const malformedEntries = []
   const expiredEntries = []
   const liveEntries = []
-  for (const entry of parsedEntries) {
-    const missing = ['date', 'fixBy'].filter(
+  for (const entry of parsedDebtEntries) {
+    const missing = ['date', 'fixBy', 'owner'].filter(
       (f) => typeof entry[f] !== 'string' || entry[f].trim() === '',
     )
     const invalid = ['date', 'fixBy'].filter(
@@ -5606,15 +5652,40 @@ export function checkCellGate(
     )
     const malformed = [...missing, ...invalid]
     if (malformed.length > 0) {
-      malformedEntries.push({ entry, malformed })
+      malformedEntries.push({ entry, malformed, kind: 'debt' })
     } else if (entry.fixBy < today) {
       expiredEntries.push(entry)
     } else {
       liveEntries.push(entry)
     }
   }
+
+  // `<!-- state-coverage-permanent … -->` (row 8's own Method section, "8g"): a structural fact, not
+  // debt, so it carries `date`/`reason` and never `fixBy`/`owner` — the split `checkCellGate`
+  // enforces both ways, so a `fixBy`/`owner` sitting on a permanent entry (still time-boxed in
+  // substance, whatever its marker says) is exactly as malformed as a debt entry missing one.
+  const parsedPermanentEntries = parseRow8PermanentEntries(readmeSource)
+  const permanentEntries = []
+  for (const entry of parsedPermanentEntries) {
+    const missing = ['date', 'reason'].filter(
+      (f) => typeof entry[f] !== 'string' || entry[f].trim() === '',
+    )
+    const invalidDate =
+      !missing.includes('date') && !isValidIsoDate(entry.date) ? ['date'] : []
+    const forbidden = ['fixBy', 'owner'].filter(
+      (f) => typeof entry[f] === 'string' && entry[f].trim() !== '',
+    ).map((f) => `${f} (a permanent entry may not carry ${f})`)
+    const malformed = [...missing, ...invalidDate, ...forbidden]
+    if (malformed.length > 0) {
+      malformedEntries.push({ entry, malformed, kind: 'permanent' })
+    } else {
+      permanentEntries.push(entry)
+    }
+  }
+
   const liveKeys = new Set()
   for (const entry of liveEntries) for (const c of entry.cells) liveKeys.add(cellKey(c))
+  for (const entry of permanentEntries) for (const c of entry.cells) liveKeys.add(cellKey(c))
   const expiredKeys = new Set()
   for (const entry of expiredEntries) for (const c of entry.cells) expiredKeys.add(cellKey(c))
 
@@ -5647,6 +5718,7 @@ export function checkCellGate(
     malformedEntries,
     expiredEntries,
     liveEntries,
+    permanentEntries,
   }
 }
 
@@ -5777,19 +5849,22 @@ function main() {
   for (const cell of cellGate.uncovered) {
     fail(
       `${describeCell(cell)} reads 'none' and is closed by no story, no spec answering it ` +
-        'impossible, and no live row-8 debt entry naming it exactly — file a dated ' +
-        '`<!-- state-coverage-debt -->` entry for it or close it.',
+        'impossible, and no live row-8 debt or permanent entry naming it exactly — file a dated ' +
+        '`<!-- state-coverage-debt -->` or `<!-- state-coverage-permanent -->` entry for it or ' +
+        'close it.',
     )
   }
   for (const cell of cellGate.expiredCovering) {
     fail(
       `${describeCell(cell)}'s only row-8 debt entry is past its own fixBy — renew the entry ` +
-        '(with a fresh date) or close the cell for real.',
+        '(with a fresh date), close the cell for real, or refile it as ' +
+        '`<!-- state-coverage-permanent -->` if nothing is actually owed.',
     )
   }
-  for (const { entry, malformed } of cellGate.malformedEntries) {
+  for (const { entry, malformed, kind } of cellGate.malformedEntries) {
     fail(
-      `a row-8 debt entry is malformed (${malformed.join(', ')}): ${JSON.stringify(entry.cells.map(cellKey))}`,
+      `a row-8 ${kind ?? 'debt'} entry is malformed (${malformed.join(', ')}): ` +
+        `${JSON.stringify(entry.cells.map(cellKey))}`,
     )
   }
   for (const entry of cellGate.expiredEntries) {
@@ -5806,9 +5881,10 @@ function main() {
     cellGate.expiredEntries.length === 0
   ) {
     log(
-      `every cell in row 8's generated region is covered, answered impossible, or named in a live, ` +
-        `dated debt entry (${cellGate.liveEntries.length} live entr` +
-        `${cellGate.liveEntries.length === 1 ? 'y' : 'ies'}).`,
+      `every cell in row 8's generated region is covered, answered impossible, or named in a live ` +
+        `debt or permanent entry (${cellGate.liveEntries.length} live debt entr` +
+        `${cellGate.liveEntries.length === 1 ? 'y' : 'ies'}, ${cellGate.permanentEntries.length} ` +
+        `permanent entr${cellGate.permanentEntries.length === 1 ? 'y' : 'ies'}).`,
     )
   }
 }
