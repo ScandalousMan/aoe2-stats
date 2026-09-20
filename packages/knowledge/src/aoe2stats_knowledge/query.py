@@ -24,13 +24,15 @@ able to trigger it, precisely so that a future change adding a civilisation to
 silently answering with the un-adjusted baseline.
 
 **Two return branches, never a third.** Every public function below returns `Answer[X]` or a
-`KnowledgeGap` member — never a bare value, never a default parameter, never a caught-and-continued
-gap. `KnowledgeGap` is a **type alias**, not the full record FR-035 to FR-037 describe (entity,
-field, `prevents`, computed `severity`) — see `snapshot.NoSnapshotForBuild`'s own docstring for the
-precedent this follows. `EntityAbsent`, `CivilisationNotModelled` and `EffectNotModelled` are this
-task's own interim gap values, for the same reason: **T647**, when it implements `gaps.py`'s full
-`KnowledgeGap`, must fold all of these interim shapes into it rather than leaving several parallel
-gap vocabularies in the package.
+`gaps.KnowledgeGap` — never a bare value, never a default parameter, never a caught-and-continued
+gap. **T647** implemented `gaps.KnowledgeGap`, the full FR-035 to FR-037 record (entity, field,
+build, civilisation, closed `cause`, computed `prevents`/`severity`); this module's `KnowledgeGap`
+is that real type, imported directly, not a local alias over several interim shapes. The interim
+`EntityAbsent`/`CivilisationNotModelled`/`EffectNotModelled` values this module used to define are
+gone — every branch below that used to construct one now constructs `gaps.KnowledgeGap` directly,
+naming its `cause` exactly as those interim types did (`"entity-absent"`,
+`"civilisation-not-modelled"`, `"effect-not-modelled"`), so nothing that only inspected `.cause`
+observes a difference.
 
 **T644 (`effects.py`) now implements effect application** (contracts/knowledge-base.md,
 "Civilisation qualification" steps 2-3): once a civilisation is modelled (step 1),
@@ -63,7 +65,8 @@ from importlib import resources
 from typing import Any, Final
 
 from aoe2stats_knowledge import effects, snapshot
-from aoe2stats_knowledge.snapshot import NoSnapshotForBuild, Snapshot, SnapshotIdentity
+from aoe2stats_knowledge.gaps import KnowledgeGap
+from aoe2stats_knowledge.snapshot import Snapshot, SnapshotIdentity
 
 #: The package this module's data is anchored to — the same anchor `snapshot.py` and
 #: `normalise.py` use, so a snapshot is resolved identically from a wheel or an editable checkout.
@@ -105,62 +108,6 @@ class Answer[T]:
     effects: Sequence[Any] = field(default_factory=tuple)
 
 
-@dataclass(frozen=True, slots=True)
-class EntityAbsent:
-    """`entity.id` is not present in the resolved snapshot's `rules.json` under `entity.kind` at
-    all — a genuinely unknown identifier, distinct from an unmodelled civilisation (data-model.md
-    §7's closed cause `entity-absent`). **Interim** — see this module's docstring; T647 must fold
-    this into the full `KnowledgeGap`.
-    """
-
-    kind: str
-    id: str
-    build: int
-    cause: str = "entity-absent"
-
-
-@dataclass(frozen=True, slots=True)
-class CivilisationNotModelled:
-    """research.md D5's conservative rule: `civilisation` is not in the resolved snapshot's
-    `civilisations_modelled`, so which fields its bonuses touch is not known and every
-    civilisation-qualified cost or time for it refuses (data-model.md §7's closed cause
-    `civilisation-not-modelled`). **Interim** — see `EntityAbsent`.
-    """
-
-    civilisation: str
-    kind: str
-    id: str
-    field: str
-    build: int
-    cause: str = "civilisation-not-modelled"
-
-
-@dataclass(frozen=True, slots=True)
-class EffectNotModelled:
-    """contracts/knowledge-base.md, "Civilisation qualification" step 2: `civilisation` **is**
-    modelled, but an effect of theirs touches this entity and field and is itself
-    `modelled = "no"` (data-model.md §7's closed cause `effect-not-modelled`) — carries the
-    transcribed `reason` from `effects.py`'s `EffectNotModelled` so a caller need not re-open
-    `effects.toml` to explain the refusal. **Interim** — see `EntityAbsent`.
-    """
-
-    civilisation: str
-    kind: str
-    id: str
-    field: str
-    build: int
-    reason: str
-    cause: str = "effect-not-modelled"
-
-
-#: Every civilisation-qualified query's gap union, until T647 replaces this name with the full
-#: `KnowledgeGap` record (entity, field, build, civilisation, computed `prevents`/`severity` —
-#: data-model.md §7). Kept as one name so a function's `-> Answer[X] | KnowledgeGap` reads exactly
-#: as contracts/knowledge-base.md spells it, and so T647 can retarget this alias without touching
-#: any query function's signature.
-KnowledgeGap = NoSnapshotForBuild | EntityAbsent | CivilisationNotModelled | EffectNotModelled
-
-
 @functools.cache
 def _rules(directory: str) -> Mapping[str, Any]:
     """`rules.json`'s parsed content for one packaged snapshot directory, read directly through
@@ -191,19 +138,31 @@ def _civilisations_modelled(directory: str) -> frozenset[str]:
 
 
 def _resolve_entity(
-    entity: EntityRef,
-) -> tuple[Snapshot, Mapping[str, Any]] | NoSnapshotForBuild | EntityAbsent:
+    entity: EntityRef, *, civilisation: str, field_name: str
+) -> tuple[Snapshot, Mapping[str, Any]] | KnowledgeGap:
     """`entity.build` to a promoted snapshot (`snapshot.snapshot_for`, FR-027), then `entity.id`
     within that snapshot's `rules.json` under `entity.kind` — the two steps every query in this
     module shares, whether or not it goes on to be civilisation-qualified.
+
+    `civilisation` and `field_name` are not used to resolve anything here — they are threaded
+    through only so a `"entity-absent"` gap (data-model.md §7) can name the full FR-035 shape (the
+    field the caller actually asked for, and the civilisation the query was qualified by), rather
+    than the bare `kind`/`id`/`build` the interim `EntityAbsent` used to carry before T647.
     """
     resolved = snapshot.snapshot_for(entity.build)
-    if isinstance(resolved, NoSnapshotForBuild):
+    if isinstance(resolved, KnowledgeGap):
         return resolved
     kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
     record = kind_table.get(entity.id)
     if record is None:
-        return EntityAbsent(kind=entity.kind, id=entity.id, build=entity.build)
+        return KnowledgeGap(
+            cause="entity-absent",
+            build=entity.build,
+            entity_kind=entity.kind,
+            entity_id=entity.id,
+            field=field_name,
+            civilisation=civilisation,
+        )
     return resolved, record
 
 
@@ -249,17 +208,18 @@ def _civilisation_qualified(
     still gaps at step 1 today, exactly as before this task; that remains the correct, honest state
     until T645 populates the modelled set, not a shortcut this function takes.
     """
-    resolved = _resolve_entity(entity)
+    resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
         return resolved
     snap, record = resolved
     if civilisation not in _civilisations_modelled(snap.directory):
-        return CivilisationNotModelled(
-            civilisation=civilisation,
-            kind=entity.kind,
-            id=entity.id,
-            field=field_name,
+        return KnowledgeGap(
+            cause="civilisation-not-modelled",
             build=entity.build,
+            entity_kind=entity.kind,
+            entity_id=entity.id,
+            field=field_name,
+            civilisation=civilisation,
         )
     baseline = _raw_value_for_field(record, field_name)
     applied = effects.apply(
@@ -271,13 +231,14 @@ def _civilisation_qualified(
         value=baseline,
     )
     if isinstance(applied, effects.EffectNotModelled):
-        return EffectNotModelled(
-            civilisation=civilisation,
-            kind=entity.kind,
-            id=entity.id,
-            field=field_name,
+        return KnowledgeGap(
+            cause="effect-not-modelled",
             build=entity.build,
-            reason=applied.reason,
+            entity_kind=entity.kind,
+            entity_id=entity.id,
+            field=field_name,
+            civilisation=civilisation,
+            detail=applied.reason,
         )
     value, applied_effects = applied
     return Answer(
@@ -337,12 +298,12 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
     civilisation-qualified. An identifier the resolved snapshot does not recognise degrades to the
     bare identifier at the presentation boundary (003 FR-043a: "a confident wrong name is worse
     than a bare id") rather than gapping — contracts/knowledge-base.md, "Civilisation
-    qualification": "it never gaps an analysis". A build with no promoted snapshot still gaps
-    (`NoSnapshotForBuild`, the only member of `KnowledgeGap` this function can actually produce):
-    there is no snapshot to even attempt a lookup against.
+    qualification": "it never gaps an analysis". A build with no promoted snapshot still gaps, with
+    `cause="no-snapshot-for-build"` (the only cause this function can actually produce): there is
+    no snapshot to even attempt a lookup against.
     """
     resolved = snapshot.snapshot_for(entity.build)
-    if isinstance(resolved, NoSnapshotForBuild):
+    if isinstance(resolved, KnowledgeGap):
         return resolved
     kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
     record = kind_table.get(entity.id)

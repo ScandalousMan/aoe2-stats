@@ -221,6 +221,18 @@ def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the
     )
     assert result.cause == "civilisation-not-modelled"
 
+    from aoe2stats_knowledge import gaps
+
+    # T647: the gap query.py returns is the real FR-035 record, not an interim, two-field shape —
+    # it names the entity, the field actually asked for and the civilisation that failed to
+    # answer, and carries a computed severity/prevents rather than nothing at all.
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.entity_kind == "unit"
+    assert result.entity_id == _PIKEMAN_ID
+    assert result.field == "cost"
+    assert result.civilisation == "Britons"
+    assert result.severity in gaps.SEVERITIES
+
 
 # --------------------------------------------------------------------- a build with no snapshot
 
@@ -237,6 +249,17 @@ def test_a_build_one_higher_than_every_snapshot_describes_gaps() -> None:
 
     assert not hasattr(result, "value")
     assert result.cause == "no-snapshot-for-build"
+
+    from aoe2stats_knowledge import gaps
+
+    # A whole-build gap names no entity, field or civilisation — nothing about the build is known,
+    # not one field of it (gaps.py's `_WHOLE_BUILD_CAUSES`).
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.entity_kind is None
+    assert result.entity_id is None
+    assert result.field is None
+    assert result.civilisation is None
+    assert result.build == too_high
 
 
 # ------------------------------------------------------------------------ civilisation is forced
@@ -323,6 +346,14 @@ def test_an_entity_id_absent_from_the_snapshot_entirely_gaps_and_never_crashes()
 
     assert not hasattr(result, "value"), f"an unknown entity id must gap, got {result!r}"
     assert result.cause == "entity-absent"
+
+    from aoe2stats_knowledge import gaps
+
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.entity_kind == "unit"
+    assert result.entity_id == _UNKNOWN_UNIT_ID
+    assert result.field == "cost"
+    assert result.civilisation == "Byzantines"
 
 
 # ------------------------------------------------------------------------------------- name()

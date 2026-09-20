@@ -172,8 +172,12 @@ class EffectNotModelled:
     civilisation touches this entity and field and is `modelled = "no"`. Carries the transcribed
     `reason` so a caller does not have to re-open `effects.toml` to explain the refusal.
 
-    **Interim**, like `query.EntityAbsent`/`query.CivilisationNotModelled` — T647 folds this into
-    `gaps.py`'s full `KnowledgeGap` (data-model.md §7's closed cause `effect-not-modelled`).
+    This stays the return type of `apply`/`apply_matched` — the pure, file-free half of
+    civilisation qualification these functions implement has no `build` to report and no register
+    to consult, so it cannot construct the full `gaps.KnowledgeGap` itself. **T647**: `query.py`'s
+    `_civilisation_qualified` is the one caller, and it folds this value into a real
+    `gaps.KnowledgeGap` (`cause="effect-not-modelled"`, `detail=` this `reason`) before returning
+    to its own caller — no parallel gap vocabulary reaches outside this module.
     """
 
     civilisation: str

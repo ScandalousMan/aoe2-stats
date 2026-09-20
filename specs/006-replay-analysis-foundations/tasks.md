@@ -589,7 +589,7 @@ committed recording reports no blocking gap.
       baseline**; a build one higher than any snapshot describes returns a gap; asking without a
       civilisation is a type error. Two snapshots answer from their own contents and neither is
       silently upgraded to the other (**US2** scenario 2)
-- [ ] T647 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/gaps.py`: the gap record with
+- [x] T647 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/gaps.py`: the gap record with
       entity, field, build and affected civilisation (**FR-035**), a closed cause set, what it
       prevents by register datum id (**FR-036** — what it stops, not that something is missing), and
       a severity **computed** from the register's dependency graph, never supplied by a caller

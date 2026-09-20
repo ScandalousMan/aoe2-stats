@@ -18,8 +18,9 @@ fixtures exercise this end to end without monkeypatching: `aoe2techtree-fixture`
 `aoe2techtree-fixture-promoted` (promoted, with a real validation record).
 
 contracts/knowledge-base.md, "Resolution by build" (T641, FR-027): `snapshot_for(build)` is an
-exact match on `describes_build` among `load_resolvable_snapshots()`, or `NoSnapshotForBuild` — no
-nearest, no latest, no fallback parameter.
+exact match on `describes_build` among `load_resolvable_snapshots()`, or a
+`gaps.KnowledgeGap(cause="no-snapshot-for-build")` (T647) — no nearest, no latest, no fallback
+parameter.
 `test_snapshot_for_accepts_exactly_one_required_parameter` makes that a structural property of the
 signature, not a habit a future edit could quietly break.
 """
@@ -32,8 +33,8 @@ from pathlib import Path
 import pytest
 
 from aoe2stats_knowledge import snapshot as snapshot_module
+from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.snapshot import (
-    NoSnapshotForBuild,
     Snapshot,
     SnapshotCarryForwardIncomplete,
     SnapshotDigestMismatch,
@@ -768,7 +769,7 @@ def test_snapshot_for_returns_a_gap_when_no_promoted_snapshot_describes_the_buil
 
     result = snapshot_for(999999)
 
-    assert result == NoSnapshotForBuild(build=999999)
+    assert result == KnowledgeGap(cause="no-snapshot-for-build", build=999999)
     assert result.cause == "no-snapshot-for-build"
 
 
@@ -784,7 +785,7 @@ def test_snapshot_for_returns_a_gap_when_only_an_unpromoted_snapshot_describes_t
 
     result = snapshot_for(101102)
 
-    assert result == NoSnapshotForBuild(build=101102)
+    assert result == KnowledgeGap(cause="no-snapshot-for-build", build=101102)
 
 
 def test_snapshot_for_raises_when_two_promoted_snapshots_describe_the_same_build(
@@ -850,10 +851,10 @@ def test_snapshot_for_returns_a_gap_for_the_committed_unpromoted_fixtures_build(
     a gap, never the unpromoted snapshot: promotion gates resolvability even when the build
     matches exactly (contracts/knowledge-base.md, "Promotion")."""
     result = snapshot_for(0)
-    assert result == NoSnapshotForBuild(build=0)
+    assert result == KnowledgeGap(cause="no-snapshot-for-build", build=0)
 
 
 def test_snapshot_for_returns_a_gap_for_a_clearly_absent_build() -> None:
     """No committed snapshot, promoted or not, describes this build."""
     result = snapshot_for(999_999_999)
-    assert result == NoSnapshotForBuild(build=999_999_999)
+    assert result == KnowledgeGap(cause="no-snapshot-for-build", build=999_999_999)
