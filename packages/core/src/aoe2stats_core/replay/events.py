@@ -78,7 +78,9 @@ class ParticipantEntry:
     """One participant in ``match-started``. Observers and empty slots never appear."""
 
     slot: int
-    civilisation: str
+    # The game's integer civilisation identifier, never a name: naming is the knowledge base's
+    # job, not the adapter's (T629a).
+    civilisation: int
 
 
 @dataclass(frozen=True, slots=True)
