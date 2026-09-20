@@ -26,9 +26,12 @@ day someone adds the module without making these tests pass.
 
     def check_pack(pack_dir: Path) -> list[str]:
         One pack directory's own checks: `LICENCE.md` present; every one of `REQUIRED_FIELDS`
-        present in it (one failure string per missing field, not one failure for the file); and,
-        when `Ruling` reads as `READ ONLY`, the directory holds no file besides `LICENCE.md`
-        itself. Returns human-readable failure strings, `[]` when the pack is clean.
+        present in it (one failure string per missing field, not one failure for the file); a
+        non-empty `Ruling` leads with one of exactly two verdicts, `COPY IN` or `READ ONLY` — any
+        other leading text, a typo of either included, is its own failure naming the pack and the
+        actual text found (T637); and, when `Ruling` leads with `READ ONLY`, the directory holds no
+        file besides `LICENCE.md` itself. Returns human-readable failure strings, `[]` when the
+        pack is clean.
 
     def check_size_budget(assets_root: Path, size_budget_bytes: int) -> list[str]:
         Total on-disk size of every file under `assets_root`, recursively; one failure when it
@@ -258,6 +261,62 @@ def test_read_only_ruling_with_no_files_besides_licence_passes(tmp_path: Path) -
     failures = check_pack(pack_dir)
 
     assert failures == []
+
+
+# ------------------------------------------------------- (c2) the closed-set ruling verdict (T637)
+
+
+def test_ruling_leading_with_neither_verdict_fails_and_names_pack_and_ruling(
+    tmp_path: Path,
+) -> None:
+    """T637's second proof that the gate bites: before this task the enforcement was a substring
+    test for `READ ONLY` alone — `COPY IN` was display-only in `_ruling_label`, so any other
+    leading text, a typo of either verdict included, passed silently. contracts/knowledge-base.md's
+    "Licence gate" section and every ruling column in research.md D3 name exactly two verdicts;
+    a `Ruling` leading with neither must fail, and the failure must name both the pack and the
+    actual text found, not merely "invalid"."""
+    from scripts.checks.asset_packs import check_pack
+
+    fields = _valid_fields()
+    fields["Ruling"] = "PROBABLY FINE — nobody checked closely"
+    pack_dir = _write_pack(tmp_path, "typo-ruling-pack", fields, extra_files=["data.json"])
+
+    failures = check_pack(pack_dir)
+
+    assert failures, "a Ruling leading with neither COPY IN nor READ ONLY must fail"
+    assert any("typo-ruling-pack" in failure and "PROBABLY FINE" in failure for failure in failures)
+
+
+def test_ruling_leading_with_a_typo_of_a_verdict_fails(tmp_path: Path) -> None:
+    """The exact failure mode named in T637: "a typo included" must not pass on a technicality —
+    `COPY INN` shares a prefix with the real verdict but is not it."""
+    from scripts.checks.asset_packs import check_pack
+
+    fields = _valid_fields()
+    fields["Ruling"] = "COPY INN. MIT grants this directly."
+    pack_dir = _write_pack(tmp_path, "typo-verdict-pack", fields, extra_files=["data.json"])
+
+    failures = check_pack(pack_dir)
+
+    assert failures, "a typo'd verdict must not pass the closed-set check"
+    assert any("typo-verdict-pack" in failure for failure in failures)
+
+
+def test_ruling_leading_with_copy_in_and_read_only_both_pass(tmp_path: Path) -> None:
+    """The contrast case: both real verdicts, and only those two, must be accepted — the
+    two-verdict claim the artifacts make must be true of the gate, not only of the label."""
+    from scripts.checks.asset_packs import check_pack
+
+    copy_in_fields = _valid_fields()
+    copy_in_fields["Ruling"] = "**COPY IN**. MIT grants this directly."
+    copy_in_dir = _write_pack(tmp_path, "copy-in-pack", copy_in_fields, extra_files=["data.json"])
+
+    read_only_fields = _valid_fields()
+    read_only_fields["Ruling"] = "**READ ONLY** — no redistribution licence."
+    read_only_dir = _write_pack(tmp_path, "read-only-pack-2", read_only_fields, extra_files=[])
+
+    assert check_pack(copy_in_dir) == []
+    assert check_pack(read_only_dir) == []
 
 
 # ---------------------------------------------------------------------- (d) the size budget
@@ -509,6 +568,29 @@ def test_two_roots_are_each_held_to_their_own_size_budget(tmp_path: Path) -> Non
     assert not any(
         "game-assets" in failure and "budget" in failure.lower() for failure in failures
     ), f"the game-assets root must not fail its own, larger budget: {failures!r}"
+
+
+def test_knowledge_shaped_pack_missing_a_field_fails_and_names_the_pack(tmp_path: Path) -> None:
+    """T637's first proof that the gate bites: a knowledge-shaped pack (`LICENCE.md` plus a JSON
+    payload, modelled on `packages/knowledge/packs/aoe2techtree/`) with one required field dropped
+    must fail `check_asset_roots`, naming the pack — same drill as the font-shaped proof above,
+    applied to the third assets root T637 adds."""
+    from scripts.checks.asset_packs import check_asset_roots
+
+    knowledge_root = tmp_path / "packs"
+    fields = _valid_fields()
+    del fields["Checked"]
+    _write_pack(knowledge_root, "incomplete-knowledge-pack", fields, extra_files=["data.json"])
+
+    docs_file = tmp_path / "asset-packs.md"
+    docs_file.write_text(_docs_table([]), encoding="utf-8")
+
+    failures = check_asset_roots(
+        roots=((knowledge_root, 1024 * 1024),), docs_file=docs_file, readme_file=_REAL_README
+    )
+
+    assert failures, "a knowledge pack missing a required field must fail check_asset_roots"
+    assert any("incomplete-knowledge-pack" in failure for failure in failures)
 
 
 def test_disclaimer_failure_is_reported_once_across_two_roots(tmp_path: Path) -> None:

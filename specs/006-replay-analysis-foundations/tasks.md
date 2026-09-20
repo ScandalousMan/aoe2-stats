@@ -510,7 +510,7 @@ committed recording reports no blocking gap.
       and the risk register's R7 records the residual — so cite both and restate neither. The flags
       pack records no such risk because it has no game-derived content; this pack is not in that
       position
-- [ ] T637 [US2] Extend the list of roots in `scripts/checks/asset_packs.py` and the `asset-packs`
+- [x] T637 [US2] Extend the list of roots in `scripts/checks/asset_packs.py` and the `asset-packs`
       paths filter in `.github/workflows/pr.yml`. That list holds **(root, size budget) pairs**, not
       bare paths, so each new root needs its own named budget constant with its own stated
       justification, as the two existing roots have. Add **two**: `packages/knowledge/packs`, and
