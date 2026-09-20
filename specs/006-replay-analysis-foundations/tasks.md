@@ -531,7 +531,7 @@ committed recording reports no blocking gap.
       new snapshot never modifies or removes an existing one (**FR-025**), and a test walks every
       committed snapshot directory asserting each file matches its recorded digest — which is how
       immutability is asserted rather than merely requested
-- [ ] T639 [US2] Implement the promotion sequence in `snapshot.py` (**FR-034**): source change, new
+- [x] T639 [US2] Implement the promotion sequence in `snapshot.py` (**FR-034**): source change, new
       pack revision, new unvalidated snapshot, recorded validation, promoted. Only a promoted
       snapshot is resolvable, and a promotion flag set with an empty validation record is refused.
       An unvalidated snapshot is never promoted, and no source is treated as authoritative without

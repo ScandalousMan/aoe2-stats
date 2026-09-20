@@ -1,0 +1,26 @@
+# A second fixture snapshot, alongside `aoe2techtree-fixture`, exercising T639's promotion
+# sequence end to end (FR-034, FR-030). `aoe2techtree-fixture` is deliberately left unpromoted —
+# its own comment says so — so this directory exists to prove the *other* half: a snapshot that
+# is promoted, carries a non-empty validation record, and is therefore included in
+# `load_resolvable_snapshots`. `describes_build` is a placeholder, exactly like the sibling
+# fixture's, and no real build should resolve to it: `rules.json` and `effects.toml` are stubs.
+# T640-T642 wire a real, promoted snapshot to the build the committed reference recordings need;
+# this fixture's job is narrower — proving the promotion/validation *mechanism*, not carrying real
+# knowledge.
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 1
+digest = "sha256:697260b23d4536b036881c62d314ec06b153b292eaa3c35f088d523f0a194915"
+promoted = true
+civilisations_modelled = []
+
+# FR-030's validation record. `method` is open text (contracts/knowledge-base.md, "Promotion");
+# "second-source" here means exactly what `checked_against` states, nothing more elaborate —
+# carry-forward's own per-build note list (research.md D4) is T642's content, added to this same
+# table without redesigning it.
+[validation]
+method = "second-source"
+checked_against = "a second, independent reading of the vendored aoe2techtree pack's own values"
+performed_by = "the T639 implementer, by direct inspection"
+performed_at = "2026-09-20"
