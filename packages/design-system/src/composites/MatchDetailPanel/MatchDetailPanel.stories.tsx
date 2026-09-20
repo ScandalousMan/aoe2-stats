@@ -519,17 +519,21 @@ export const NotFound: Story = {
 
 // match-history.md §5 "hover / focus-visible / active... `DownloadAction`: per `Button`." The
 // panel itself is not a link and carries no hover, focus or active rendering of its own — only its
-// `DownloadAction` button does, already covered by `Button`'s own stories. Known false for hover:
-// `DownloadAction` is `variant="secondary"` and `Button.stories.tsx` captures hover for `primary`
-// only, so the rendered text below defers hover to a story `Button.stories.tsx` does not have. Recorded in README's
-// gap register row 8 and owed by T595; the rendered text is left as-is so its baseline moves once,
-// with the fix.
+// `DownloadAction` button does, and `DownloadAction` is `secondary|lg`. All three states are real,
+// but none of them by `Button.stories.tsx`'s own per-variant stories — those force `secondary` at
+// `Button`'s own default size (`md`), never `lg`. `secondary|lg`'s own hover, focus-visible and
+// press cells are `ReplayAvailabilityList:Hover`, `ReplayAvailabilityList:FocusVisible;
+// UploadControl:FocusVisible` and `ReplayAvailabilityList:Active` — real, just never `Button`'s
+// own stories, the shape README's gap register row 8 (F7) records. Corrected here (T595's own
+// known item (c)): the rendered text below used to defer all three to "`Button`'s stories," true
+// only for the button's fact of deferring somewhere, false for which story actually proves it.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel itself is not a link or a control: no hover, focus or active rendering of its own.
-        Its `DownloadAction` button carries its own, per `Button`'s stories.
+        Its `DownloadAction` button is real — hover, focus-visible and press all paint — but the
+        frames that prove it are `ReplayAvailabilityList`'s own stories, not `Button`'s.
       </p>
       <MatchDetailPanel {...args} match={baseMatch} />
     </div>

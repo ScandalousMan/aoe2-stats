@@ -48,7 +48,7 @@ a tier and a surface class.
 
 ## The baseline set, as it stands
 
-**549 stories, 3,316 baseline PNGs** under `__screenshots__/`: 3,294 story captures — every story at
+**572 stories, 3,454 baseline PNGs** under `__screenshots__/`: 3,432 story captures — every story at
 {light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
 stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
 trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers**,
@@ -1155,7 +1155,10 @@ that order so the frame shows the current control; its hover frame closed row 7 
 rejected twice more (PR #80's hand-typed pass, then a second hand-typed pass, both for the same
 partial-set shape one level down) before T594 was amended to require an extractor,
 `scripts/checks/state-coverage.mjs`, and closed with that rebuild (producing findings F1-F20 below
-and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, and T596 for the two anchors that await a design decision).**
+and the F15/F16-carried-to-consumers finding), and is open on its fix half (T595, and T596 for the
+two anchors that await a design decision). T598, the record-1 cross-component matching gap
+`findUnaccountedForceStates` found on T595's own first run, closed 2026-09-20 — see this Method
+section's own entry below.**
 
 **State of this register, enumerated rather than summarised:** rows 1, 2, 3, 4, 5, 6 and 7 closed;
 row 8 open. This
@@ -1741,19 +1744,77 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
 
    A cell is `'none'` only when the candidate carries an implied role **and** no force-state of that
    state shares it anywhere in its own component's stories — a confirmed absence, over a real
-   comparison this pass actually ran. When one does share it, but `resolveNameMatch` cannot settle
-   it on exactly one candidate, the cell is `'unresolved: <reason>'` instead — printed, never
-   guessed, and never folded into `'none'`, which used to make an unresolved case indistinguishable
-   from a real gap. A candidate with **no implied role at all** — `impliedRoleOf` returns `null` for
-   a dynamic `role={…}` and for any tag `INTRINSIC_ROLE` does not carry (`tr`, `h2`, `label` among
-   them) — never runs that comparison in the first place, so `'none'` would overstate an absence
-   this pass never checked for; the cell is `'unresolved: <reason>'` instead, one of three: `dynamic role`
-   (the attribute is present but not a literal), `ancestor of a forced descendant` (a nested
-   local element, by JSX containment, was itself matched or left ambiguous for this same state —
-   `Table`'s own `<tr>` around its row `<a>`, where the browser's real cascade would paint the row's
-   own `hover:`/`active:` utilities too, but whether the visual harness's forced-pseudo-state
-   mechanism cascades the same way is not knowable from source), or `no implied role` (neither of
-   the above — the tag simply carries no role this pass can derive).
+   comparison this pass actually ran; the same confirmed absence stands, unconditionally and without
+   needing a role at all, for a candidate that carries no `hover:`/`focus-visible:`/`active:` class
+   for this state in the first place (T595 — `ownPseudoClass`, read by `cellFor` before it ever asks
+   about role: `AccountErasurePanel`'s own `<label>`, which ARIA gives no role of its own and whose
+   `className` paints none of the three). When a force-state does share the role, but
+   `resolveNameMatch` cannot settle it on exactly one candidate, the cell is `'unresolved: <reason>'`
+   instead — printed, never guessed, and never folded into `'none'`, which used to make an unresolved
+   case indistinguishable from a real gap.
+
+   **`INTRINSIC_ROLE` (`scripts/checks/state-coverage.mjs`) carries the heading family (`h1`-`h6` →
+   `heading`) and the table family with a fixed role regardless of attributes (`table`,
+   `thead`/`tbody`/`tfoot` → `rowgroup`, `tr` → `row`, `td` → `cell`; `th` deliberately absent — its
+   own role depends on its `scope` attribute, the same shape `<input>`'s `type` already takes, never
+   a constant this map can hold honestly) beside the seven tags it started with (T595, closing row
+   8's own "no implied role"/"ancestor of a forced descendant" cells) — so `h2` and `tr` carry a real
+   implied role today.** A candidate with **no implied role at all** left after that — `impliedRoleOf`
+   returns `null` for a dynamic `role={…}` and for any tag `INTRINSIC_ROLE` still does not carry
+   (`label` among them, ARIA gives it none) — never runs the role-based comparison above. Two more
+   comparisons run before this pass gives up on such a candidate, both T595's own: a dynamic
+   `role={…}` is resolved _per story_, against that story's own props/args scope extended by the
+   element's own local `const`s in scope (`MenuItemRow`'s `role={role}`, the same fold
+   `resolveDisabledFromStories` already applies to a dynamic `disabled`); and `hover`/`active`
+   (never `focus-visible`, which does not cascade) are credited from a _confirmed_ descendant match,
+   because the visual harness drives both with a real, CDP-backed pointer move and mouse-down
+   (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment), which matches every ancestor
+   whose own box contains the forced descendant the same way a real pointer would (`Table`'s own
+   `<tr>` around its row `<a>`, row 8's own F17). Only once none of these settles it does the cell
+   read `'unresolved: <reason>'`, one of three: `dynamic role` (no story's own data resolves the
+   expression), `ancestor of a forced descendant` (a nested local element, by JSX containment, was
+   itself matched or left _ambiguous_ — never a confirmed match, already credited above — for this
+   same state), or `no implied role` (neither of the above — the tag simply carries no role this
+   pass can derive, and does carry a class for this state, or the ambiguous-descendant case would not
+   apply either).
+
+   **Record 1's own class half, when a candidate's `className` expression resolves through an object
+   literal indexed by a prop the component itself gives more than one meaning across its own callers
+   (`Button`'s own `variantClasses[variant]`, `sizeClasses[size]`), renders that prop's own _default_
+   value, never a union of every entry the object holds (T595 — `resolveClassParts`'s own
+   `scopes.defaultScope`, built from `findVariantSizeDefaults`, the identical default record 3's own
+   axis matrix already resolves an _omitted_ instance to, reused rather than reinvented).** `Button`'s
+   own `button` row (index.tsx:207) reads `hover:bg-surface-sunken` because `Button` itself
+   destructures `variant = 'secondary'` — `secondary`'s own hover fill, never `primary`'s
+   `hover:bg-accent-hover` or either of `ghost`/`destructive`'s, none of which the row shows. A
+   conditional keyed on the same prop (`variant === 'primary' ? primaryFocusRing : focusRing`)
+   resolves the identical way, taking only the branch the default actually reaches. Unioning every
+   value the object holds instead would compile and would be a worse answer than the `unresolved`
+   this pass used to print: the combined string is not the classes any one `Button` instance actually
+   renders, true of no variant at all — record 1 has one row per element, not one per element per
+   variant, so it states the one configuration that row's own element genuinely has by default rather
+   than pretending to state all of them. Record 3's own axis matrix (`#Button` below) is where the
+   per-variant truth already lives — every `variant|size` combination this tree renders, its own row
+   — so the two records are not in conflict: a `none` in a `primary|md` or `ghost|lg` hover row still
+   reads there is a real, uncorrected gap even on a component whose record 1 row for the same element
+   reads a real class, because that class is the _default_ variant's, not that row's. A component
+   that destructures the keyed prop with no default at all leaves both the object-literal lookup and
+   the conditional exactly as unresolved as this pass left every dynamic expression before T595 —
+   `state-coverage.test.mjs`'s own contrast fixture for this shape resolves neither, on purpose, and
+   the dual-branch-conservative conditional reading (both branches kept, T594's own rule) still
+   applies once there is no default to settle it.
+
+   **A caller's own `className` (the trailing argument of `cx(..., className)`, the shape every
+   primitive/composite/screen here that accepts one forwards it through) is read as contributing no
+   class of its own, ever, rather than as an expression this pass failed to resolve.** Record 1's own
+   subject is the element's _own_ source, stated at the top of this Method section — a class a caller
+   might someday supply is a fact about the caller, not about this component, and record 1 already
+   treated it this way for every row whose _other_ fragments supply a real class for a given state
+   (nothing on the left half of `stateCell` ever showed the caveat). T595 closes the mirror case:
+   `Table`'s own scroll region (index.tsx:153) reads a confirmed `none` on hover, not `unresolved`,
+   once `overflow-auto rounded-panel border border-border bg-surface`/`focusRing` are checked and
+   neither carries one — a caller's own `className` was never going to be this component's own answer
+   to that question, whatever it might someday hold.
 
    **Record 3's own ambiguity precedence, stated rather than left implied (T594's REJECT on #80,
    item 4).** An ambiguous composed-story match — several candidates share a force-state's role and
@@ -1762,23 +1823,80 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    itself dropped from a given row's own state cell whenever that exact row already carries a real,
    unambiguous match for that state from elsewhere — another story, another candidate: a state known
    to be covered is positive knowledge in its own right, and outranks noting that a _different_
-   comparison could not be settled — `Menu`'s own `actions` row is one cell this leaves with nothing
-   else to show, so it keeps the note; most tainted cells resolve to a real match on their own row
-   and drop it instead. The exact split, over every ambiguity live in this tree today, is
+   comparison could not be settled. `Menu`'s own `actions` row used to be the one cell this left with
+   nothing else to show, keeping the note, until T595's own composed-elsewhere tracing (below) ruled
+   both of `ProfileSummary`'s `Menu` instances out directly — the tally this paragraph describes is
+   zero, live in this tree today, and this is no longer a real example of a kept note, only of the
+   mechanism that would keep one. The exact split, over every ambiguity live in this tree today, is
    `node scripts/checks/state-coverage.mjs`'s own printed "record 3 ambiguity tally" line
    (`summarizeAmbiguities`, `scripts/checks/state-coverage.mjs`) — cited here rather than restated,
    this paragraph's own rule below: a hand count written directly into this prose was wrong twice
    (T594's row 8 sweep, item 2 — six ambiguities read as one story-name count where the real
    comparison is over tainted `(row, state)` cells, of which there are more than twice that many).
    **Record 3's own axis-mismatch redirect (item 2 of the
-   same REJECT).** A JSX candidate's own statically-resolved axis (a dynamic `size`/`variant`, no
-   literal to key a row on) and the axis its own force-state resolves to _per story_ can disagree —
-   the same source line then owns a `rest` entry on one row and a real match on another. Before
-   either row's own state cell falls to `'none'`, it is checked against every source line in its own
-   `rest` list for a story-resolved match elsewhere; if one exists, the cell reads `'unresolved: axis
-resolved only per story (→ <row>)'` naming the row that actually carries it, rather than a
-   confirmed absence the pass never established (`ghost|unresolved`'s hover, `unresolved|lg`'s
-   focus-visible, both below).
+   same REJECT), and the multi-row credit it settles on (T595) — one mechanism, reaching all five
+   columns, corrected once already during this task's own review.** A JSX candidate's own
+   statically-resolved axis (a dynamic `size`/`variant`, no literal to key a row on) and the axis its
+   own force-state resolves to _per story_ can disagree — the same source line then owns a `rest`
+   entry on one row and a real match on another (`FavouriteToggle`'s own `size={size}`, a bare prop of
+   the composite, resolves to `'md'` under most of its own stories and to `'lg'` under
+   `RealisticProfileHeader`; `Dialog`'s own `variant={primaryAction.variant ?? 'destructive'}`, a
+   nested property access behind a `??` default, resolves the same way). **The call site is credited
+   to every row its own stories resolve it to, never to one** — the same source line's own state is
+   real knowledge on whichever row a story actually established it, and a row a call site's static
+   parse cannot key at all is not a reason to withhold that knowledge from the row _the same call site
+   resolves to elsewhere_.
+
+   Concretely: `storyResolvedBySourceLine` (`scripts/checks/state-coverage.mjs`) is one map, keyed by
+   `(source line, state)`, holding the **exact label** a confirmed match proved there — never a
+   target row's key. It is fed by every `composed-story` match (`hover`/`focus-visible`/`active`) and
+   by every `jsx-disabled-resolved` match (`disabled`, `resolveDisabledFromStories`'s own real,
+   positive resolution — an `'unresolved'` or ambiguous one never feeds it, the same exclusion the
+   ambiguity paragraph below already applies to `unresolvedByState`). Before a row's own state cell
+   falls to `'none'`, every source line in its own `rest` list is checked against this map for that
+   state; the labels found — there can be more than one, when two different call sites on the same
+   static row settle to two different target rows — are credited directly, the same
+   positive-knowledge-outranks-a-note precedence the ambiguity paragraph already states, applied
+   across rows rather than within one.
+
+   **Crediting the exact label, never a target row's whole list, is the fix over this task's own
+   first draft (orchestrator finding on the hand-back): a first version stored the target row's key
+   and had `cellFor` pull that row's entire state list, which was correct only by accident — every
+   target `ghost|unresolved`'s own redirects ever reached happened to carry exactly one contributor.**
+   `disabled` broke that accident immediately: `unresolved|lg`'s own two call sites (`Dialog`'s
+   `index.tsx:127`/`:138`) resolve to `destructive|lg` and `secondary|lg`, and `secondary|lg`'s own
+   disabled list also carries `MatchDetailPanel:DownloadPreparing`/`ArchivalControl:Submitting` — real
+   coverage for two wholly unrelated Button call sites that only share that row by axis coincidence,
+   never a fact about either of `Dialog`'s own buttons. Pulling the whole row would have credited
+   `unresolved|lg` with stories that prove nothing about its own call sites — the exact "a per-story
+   resolution is knowledge about that story, never a claim about the call site in general" bar this
+   whole mechanism exists to hold, and the reason the map stores a label rather than a row.
+
+   Because the map is fed exclusively by confirmed matches, a credited label is never a bare pointer
+   needing a fallback note: there is nothing left for an `'unresolved: axis resolved only per story (→
+…)'` phrasing to name that is not already real, printed coverage — so that phrasing, T594's own
+   fix, is now dead by construction rather than merely rare, and `cellFor` no longer emits it.
+
+   **The rows this redirect targets (`ghost|unresolved`, `unresolved|lg`) do not disappear once every
+   occurrence on them resolves, and are not redistributed into the rows their stories resolve to.**
+   They stay because their own `rest` list is real, independent information — the exact source
+   positions whose axis genuinely cannot be read from a literal prop or the primitive's own default —
+   and no mechanism here moves a `rest` entry between rows; only the state cells (which are never
+   claims about the source line's own static axis, only about what some story renders) borrow coverage
+   from wherever a story actually proved it. A row that never resolves through any story at all keeps
+   reading its own `'unresolved: <reason>'` on every state, exactly as before — T595 closed the seven
+   cells where a story's own data _did_ settle it: `ghost|unresolved`'s hover (`FavouriteToggle:Hover`),
+   focus-visible (`FavouriteToggle:FocusVisible`), active (`FavouriteToggle:Active`) and disabled
+   (`FavouriteToggle:AddingInFlight; FavouriteToggle:Bounded; FavouriteToggle:RemovingInFlight` — the
+   seventh cell, found only once the redirect reached `disabled` too, the same defect class as
+   `unresolved|lg`'s and closed by the same fix rather than a second one); `unresolved|lg`'s
+   focus-visible (`Dialog:FocusVisible`) and disabled (`Dialog:PrimaryPending`) — never a case where no
+   story provides one. `ghost|unresolved`'s own focus-visible/active cells no longer also read
+   `Button:GhostFocusVisible`/`Button:GhostActive` (a side effect of the same correction, not a
+   separate one): those are `Button.stories.tsx`'s own literal `ghost|md` instance, a call site with
+   no relation to `FavouriteToggle`'s, and the whole-row-pull draft was crediting `ghost|unresolved`
+   with them purely because they shared `ghost|md` as their axis bucket — the identical pollution the
+   `secondary|lg` case caught, one row earlier, before `Dialog`'s own shape forced the fix.
 
    **`disabled` is not read from a `visualForceState` at all — there is no pseudo-class to force —
    so it is resolved differently from the other three states (T594's row 8 sweep, item 1: this
@@ -1800,7 +1918,387 @@ resolved only per story (→ <row>)'` naming the row that actually carries it, r
    exclusion role-based matching already applies; a guard, or the `disabled`/`loading` expression
    itself, that cannot be resolved from that one story's own data leaves the cell `'unresolved:
 disabled not statically resolvable (<story>)'` rather than a confirmed `'none'` — positive
-   knowledge or unresolved, never guessed, the same rule the other four states already carry.
+   knowledge or unresolved, never guessed, the same rule the other four states already carry. Each
+   `jsx-disabled-resolved` match also carries the candidate's own `sourceFile`/`sourceLine` (never
+   the story file), so a real match feeds `storyResolvedBySourceLine` above exactly the way a
+   `composed-story` match already does — the redirect this section opens with reaches `disabled`
+   because this is where it learns to, not through a second copy of the rule.
+
+   **A story that never mounts the component at all supplies no data, and is excluded before this
+   runs at all rather than left to read `'unresolved'` (T595).** `storyRendersComponent`
+   (`scripts/checks/state-coverage.mjs`) is `true` for every `args`-only story — Storybook always
+   instantiates `<Component {...args} />` implicitly — and for a `render:` story that mounts the
+   component anywhere in its own body, however wrapped (`PrivacyNotice`'s own
+   `render: (args) => (<div>...<PrivacyNotice {...args} /></div>)`); `false` only for a `render:`
+   story whose body never does, the shape every `*NotApplicable` placeholder in this tree uses
+   (`Dialog:EmptyHoverActiveDisabledNotApplicable`'s own `<p>A dialog with no actions...</p>`, no
+   `<Dialog>` tag anywhere in it). A story this excludes has nothing to say about any candidate
+   inside the component it never rendered — not "this story's own data cannot resolve the
+   expression" (kept `unresolved:`, the paragraph above), which is a check that ran and could not
+   settle, but a story that never reached the component's own render at all, the same exclusion an
+   `'unreached'` guard already gets on one branch, generalised here to the whole story. Removes the
+   one spurious `'unresolved: disabled not statically resolvable
+(Dialog:EmptyHoverActiveDisabledNotApplicable)'` reason `unresolved|lg`'s own disabled cell used
+   to carry (`primitives/Dialog/index.tsx:127,138`): no other `Dialog` story ever leaves
+   `primaryAction`/`secondaryAction` themselves unresolved (every one that does render `Dialog`
+   supplies both, even when a given field inside them is absent — `Default`'s own `primaryAction: {
+label: 'Turn it off' }` resolves `primaryAction.disabled` to a real `undefined`, not
+   `UNRESOLVED`), so excluding the one story that supplies neither leaves nothing behind it. **This
+   alone would settle the cell at a confirmed `'none'`** — the reading an earlier draft of this task
+   left it at — **but the redirect above now reaches `disabled` too, and finds real coverage there
+   instead**: `index.tsx:127`'s own `primaryAction.disabled`/`.loading` and `index.tsx:138`'s own
+   `secondaryAction.disabled`/`.loading` both resolve real under `Dialog:PrimaryPending`
+   (`loading: true`, `disabled: true` respectively), crediting `destructive|lg` and `secondary|lg`
+   directly and, through the redirect, `unresolved|lg` itself — so the cell reads `Dialog:
+PrimaryPending`, not `'none'`; the two fixes compose rather than each doing the whole job alone.
+
+   **A bare JSX attribute in a `render:` story (`<FavouriteToggle authenticated size="lg" />`, no
+   `={...}`) is shorthand for `={true}`, and `findRenderJsxProps` now reads it that way rather than
+   dropping it (T595).** It used to carry no initializer to evaluate at all, so the prop was simply
+   never added to that story's own scope — invisible, not `false` — which left an unrelated guard
+   elsewhere in the same component unresolved by omission: `FavouriteToggle:RealisticProfileHeader`'s
+   own `authenticated` (bare, meaning `true`) never reached `FavouriteToggle`'s own guard on
+   `if (!authenticated) return <SignedOutControl />`, so every candidate reached only past that guard
+   — both real buttons, `index.tsx:115,126` — read `'unresolved'` regardless of whether their own
+   `disabled`/`loading` expressions resolved. Fixed generally (a synthesised `ts.factory.createTrue()`
+   node, evaluated the same way a written-out `={true}` already would be), not by special-casing this
+   one attribute or this one story. Closes `ghost|lg`'s own disabled cell
+   (`composites/FavouriteToggle/index.tsx:126`) — **and the guard resolving is not, on its own, the
+   claim that closes it; what closes it is that the two values the guard used to block from being
+   checked at all both evaluate to a real, checked `false` once it does (orchestrator finding on the
+   hand-back: "the guard now resolves" is not the same claim as "no story renders it disabled",
+   verified rather than assumed here).** `RealisticProfileHeader`'s own render passes
+   `favourited={false} authenticated size="lg"` and nothing else — no `atLimit`, no `loading` — so
+   both default to `FavouriteToggle`'s own destructured defaults (`atLimit = false`, `loading =
+false`), real values, not absences. `bounded = atLimit && !favourited` short-circuits on
+   `atLimit`'s own `false` without needing `favourited` at all, resolving to a real `false`;
+   `loading` resolves to its own real default, `false`. Both are `evaluateExpr` results with
+   `resolved: true`, not gaps this pass declined to check — the story is checked and found
+   negative, not skipped. `ghost|lg`'s only other contributor, `Button:RealisticPageActions`
+   (`rest`, above), carries no `disabled`/`loading` attribute in its own source at all — real
+   incapacity, not an unresolved guard either. `ghost|lg`'s `'none'` is the union of two confirmed
+   checks, not the absence of one: `RealisticProfileHeader`'s real story renders this exact
+   configuration and never shows it disabled, and `RealisticPageActions`'s own control cannot be
+   disabled by construction. This does not generalise past `FavouriteToggle`'s own stories — a
+   caller elsewhere passing `size="lg"` (`FavouritesList/index.tsx:298`, F19 below) is invisible to
+   this pass by the same scope limit `Dialog`'s own redirect above and F19's own finding both
+   already name: only a component's own stories resolve its own candidates, never a consumer's.
+
+   **A bare `nth` against a reusable local helper is no longer unconditionally `ambiguous`
+   (T595).** `resolveNameMatch`'s own `nth` branch used to exclude every helper candidate outright —
+   correct for a helper this pass cannot enumerate in full, but not for one it can. A helper this file
+   never `export`s cannot be invoked from anywhere a single-file pass does not already see, so every
+   one of its real call sites is enumerable (`findHelperCallSites`): each with its own line and its own
+   guards. `PrivacyNotice`'s own `InlineLink` (`index.tsx:242`, invoked five times: four unconditional,
+   one behind `hrefs.processingRegister &&`) is placed by whichever of its own call sites is reached
+   for a specific story's own scope, the earliest one standing in for the helper's own render
+   position — the same one-slot-per-candidate approximation the existing line sort already makes for a
+   `.map()`-rendered candidate (one AST node standing for every real instance it renders; every real
+   `nth` in this tree is `0`, so only "which candidate renders first" ever needs deciding). A call site
+   whose own guard a story's scope cannot resolve leaves the whole pool unorderable for that story —
+   real uncertainty, never guessed past — and an `export`ed helper, or one with no `scope` supplied at
+   all, keeps the original, unconditional exclusion. `PrivacyNotice`'s three cells (F10, above) close
+   this way: `InlineLink`'s earliest call site (`:646`) sorts after the `Contents` entry's own
+   (`:490`), so it is positively `reject`ed at `nth: 0`, not merely left unplaceable, and the region now
+   reads `none` where it used to decline to say.
+
+   **A composed primitive instance declared directly in its own owning component's body was
+   `isHelper: true` unconditionally — a second, unrelated defect the same `nth` family exposed
+   (T595).** `findPrimitiveInstances` set `isHelper` from `context.fnName != null` alone, never
+   excluding the component's _own_ name the way `findLocalElements` already does for record 1
+   (`context.fnName != null && context.fnName !== mainComponentName`, this file's own established
+   pattern) — so a `Button`/`Link`/`Field`/`Menu` instance sitting directly in its owning component's
+   return, not behind a second, nested helper, was `isHelper: true` regardless, and `resolveNameMatch`'s
+   `nth` branch excluded it the same way it excludes a real, unorderable helper. Nothing in this tree
+   depended on this being wrong except `Footer` (composites/Footer/Footer.stories.tsx's `Hover`/
+   `FocusVisible`/`Active`, `role: 'link', nth: 0`, the only other `nth`-driven composed match in the
+   package): both of its own `Link` instances (`index.tsx:45`, `:50`) carried `isHelper: true` although
+   neither sits behind any helper at all, so `nth: 0` could never place either. Fixed the same way
+   record 1 already was — `mainComponentName` threaded through, `isHelper` false for the owning
+   component itself — and `nth: 0` now correctly lands on `index.tsx:45` (the privacy-notice link,
+   the first in source order for `Hover`'s own args, which supply both hrefs): `Footer`'s own three
+   states now credit `standalone`'s row directly, alongside `Link`'s own pre-existing `Hover`/
+   `FocusVisible`/`ActiveStandalone` stories, and the composed-story ambiguity tally's three Footer
+   events (of nine live before this task) drop to zero along with it.
+
+   **A `visualForceState`'s own `name` can be produced by a primitive Record 3 does not even track,
+   composed one hop away from the target component — traced there, every candidate Record 3 _does_
+   track for that component is positively `reject`ed, and the frame itself is credited on the real
+   target's own row, never left uncredited (T595, the composition-scope decision this row's own
+   Method section owes, corrected once already during this same task — see below).**
+   `ProfileSummary`'s `BoardFlagHoverRevealed`/`BoardFlagKeyboardFocusRevealed`/
+   `BoardLongAliasFlagHoverRevealed` each force `role: 'button', name: 'Country:'` — a name neither
+   of `ProfileSummary`'s own two `Menu` instances, nor any of its `Button` instances, carries
+   literally or through its own args. The name is real: `ProfileSummary/index.tsx` composes
+   `<CountryFlag>` directly, and `CountryFlag/index.tsx:71` composes `<Tooltip content={countryName}
+qualifier="Country:">` — `Tooltip`'s own `qualifier` prop prepends the trigger's accessible name
+   (`Tooltip/index.tsx`'s own doc, §8; `CountryFlag.test.tsx:15` asserts the rendered name is
+   `"Country: France"`). `Tooltip` is not one of the four primitives `PRIMITIVE_NAMES` tracks, so this
+   name can never be literally resolved by reading `ProfileSummary`'s own file alone — every candidate
+   fell to the final, unconditional `'ambiguous'` before this task, the correct reading under the rule
+   that an unaccounted-for name is never silently `'reject'`ed (above). `findComposedElsewhereNames`
+   reads exactly one hop past that rule's own boundary: every capitalised JSX tag a component's source
+   invokes directly, resolved to its own `index.tsx` by name (the same directory-name convention every
+   other JSX-tag-to-file lookup in this pass already relies on), read once for a literal `<Tooltip
+qualifier="...">`. Only `Tooltip`'s own `qualifier` is read this way — the one documented mechanism
+   this tree uses to compose an accessible name across a file boundary — and only that one hop: a tag
+   this pass cannot resolve to a file, or whose own `Tooltip` usage carries no literal qualifier,
+   contributes nothing, and a name found this way is never walked a second hop through whatever _that_
+   file itself composes. **This does widen "only a component's own stories resolve its own
+   candidates, never a consumer's" from the paragraph above** — the composition being read is a
+   callee's own source, not a consumer's.
+
+   **The orchestrator's own review of this task's first hand-back found the first version of this
+   mechanism false: rejecting every wrong candidate is not the same as crediting the right one, and
+   the first draft only ever did the former.** `resolveComposedElsewhereCredits` (folded into
+   `computeStateCoverage` directly, not a separate exported step) resolves the credit itself, once,
+   after every component's own local elements are known: a composed-elsewhere name is only ever
+   _confirmed_ — and only then does `resolveComposedStoryMatches` get to `reject` every candidate in
+   the forcing component — when the _target_ component's own local-element pool for the force-state's
+   role resolves to exactly one candidate, the same "sole candidate needs no further disambiguation"
+   bar `resolveNameMatch`'s own final branch already holds for a force-state with neither `name` nor
+   `nth`. A target pool of zero or more than one stays unconfirmed: nothing is credited anywhere, and
+   the forcing component's own candidates fall back to the ordinary "unaccounted name" `'ambiguous'`.
+   Confirmed, the credit lands directly on the target's own cell — `Tooltip`'s own `button` row now
+   reads `HoverRevealed; CountryFlag:FlagHoverRevealed; ProfileSummary:BoardFlagHoverRevealed;
+ProfileSummary:BoardLongAliasFlagHoverRevealed` — labelled by the _story file's_ own basename, the
+   same convention Record 3's own composed-story credits already use (`Footer:Hover`), so a reader
+   sees exactly which story forced the frame. The injected credit carries no `name` of its own: the
+   target pool's own single-candidate confirmation already settled which element it is, so
+   re-attempting a literal name/args match against `Tooltip`'s own file (where `"Country:"` appears
+   nowhere — it is `CountryFlag`'s own literal, a fact about the composition, never about `Tooltip`'s
+   own source) would only manufacture a fresh, false `'ambiguous'` on an already-settled match.
+   `Menu`'s own `actions` row and every affected `Button` row read a confirmed `none` for
+   hover/focus-visible now — grounded in the credit landing on `Tooltip`'s own row, not merely in
+   nothing else claiming it — and the ambiguity tally's remaining six events (of nine) drop with it.
+
+   **The same mechanism also reaches a role-only force-state with no `name` at all
+   (`CountryFlag.stories.tsx`'s own `FlagHoverRevealed`/`FlagKeyboardFocusRevealed`/
+   `FlagDismissedAfterEscape`, `role: 'button'` alone) and a _zero_-hop composition
+   (`CountryFlag/index.tsx` composes `<Tooltip>` directly, not through a second component) — both
+   found only because `findUnaccountedForceStates` (below) is unconditional and does not stop at the
+   six cells this task was scoped to.** The zero-hop case needed `findComposedElsewhereNames` itself
+   widened: its own first version excluded a direct `<Tooltip>` usage from the walk outright (guarding
+   against reading a `Tooltip` usage as a candidate one hop _further_), which incidentally excluded
+   reading a real, direct usage at all. Routing a _nameless_ force-state to `Tooltip` needs a second
+   guard `componentHasOwnCandidateForRole` supplies: safe only when the forcing component has no
+   candidate of its own for the role a bare role-only force-state could otherwise mean
+   (`CountryFlag`'s own shape — it has no local interactive element at all) — never when it does
+   (a component with its own real button for that role keeps the ordinary "sole candidate" reading of
+   _that_ button, and `Tooltip` is correctly left uncredited; `state-coverage.test.mjs`'s own contrast
+   plants exactly this shape).
+
+   **`findUnaccountedForceStates` is the invariant this mechanism's own first failure should not have
+   needed a second reviewer to catch: every real `visualForceState` under this package's three tiers
+   is either credited on some cell or named in some `unresolved: <reason>`, checked against the
+   region's own rendered text, or the run fails.** A story whose own `render:` never mounts the
+   component (`rendersComponent`) is excluded — it has nothing to say about any candidate, the same
+   exclusion `pendingDisabledChecks` already applies. A `synthetic` entry (a credit this mechanism
+   manufactured on another component's behalf) is excluded too — the real story it originated from is
+   checked under its own name in its own component's own list. One gap this check found is not
+   `Tooltip`-shaped at all and is not closed by anything above: `ProfileSummary`'s own
+   `SwitcherFocusVisibleAndOpen` (`role: 'menuitemradio', name: 'aoe2guy'`) targets `MenuItemRow`'s
+   own dynamic-role element (`primitives/Menu/index.tsx`, a record-1 local element) through a `Menu`
+   instance `ProfileSummary` composes — record 1 has no cross-component matching path at all today,
+   the gap `resolveComposedStoryMatches` closes for record 3's four tracked primitives but never had
+   for a primitive's own internal local elements. Filed in `KNOWN_UNACCOUNTED_FORCE_STATES`
+   (`scripts/checks/state-coverage.mjs`), dated 2026-09-19, reported on every run and never silent,
+   the reporting convention `a11y-allowlist.mjs`'s own empty-list pattern already carries — **owned
+   by T598 (fix by 2026-09-27, the same deadline this row itself carries), which deletes the entry
+   outright in the commit that closes it.** The `a11y-allowlist.mjs` comparison holds for how the
+   exception is reported, not for how long it may live: unlike that file's own steady state (empty,
+   nothing suppressed), this entry is not permitted to persist as a passing allowlist row past its
+   own `fixBy` — `findUnaccountedForceStates` now enforces the date itself, the same way
+   `a11y-allowlist.mjs` and `story-baseline-duplicates-debt.json` (T591) already enforce theirs: a
+   filed exception missing `date`/`fixOwed`/`fixBy`, or carrying a `fixBy` earlier than today, fails
+   the run exactly like an unfiled loss, never lingers as a quietly-passing entry. An allowlist with
+   no expiry is how a temporary exception becomes permanent; this one cannot become that without
+   failing CI first.
+
+   **Record 1's own cross-component matching path, closing the gap the paragraph above filed
+   (T598).** `KNOWN_UNACCOUNTED_FORCE_STATES` is empty again — `ProfileSummary`'s own
+   `SwitcherFocusVisibleAndOpen` is credited directly on `MenuItemRow`'s own row now, alongside
+   `Menu`'s own `FocusVisible` story. **Deliberately not a second `Tooltip`-shaped hop**, on the
+   orchestrator's own instruction: that mechanism resolves an accessible _name_ produced one hop
+   away and credits an untracked primitive's own trigger, pre-confirming a singleton target pool
+   itself before ever crediting anything, because `Tooltip` carries no ordinary per-story matching
+   of its own to defer to. This gap was the wider question — a story in one component reaching a
+   _local element declared inside a tracked primitive's own file_ through a JSX instance of that
+   primitive the story's own component composes — so `injectComposedPrimitiveLocalCredits`
+   (`scripts/checks/state-coverage.mjs`) answers it differently: `forced` (`name`/`nth` included) is
+   carried through unchanged, and `primitives/Menu`'s own ordinary `buildElementCells`/
+   `resolveNameMatch` machinery — already exercised by `Menu`'s own stories — decides
+   match/ambiguous/nothing from a synthetic story entry this pass injects per reachable call site,
+   never a credit this pass pre-confirms itself. That reuse is also what keeps the two mechanisms
+   from being the same shape twice: nothing in the new one reads `Tooltip` or `MenuItemRow` by name,
+   so a future primitive with its own record-1 local element gets the same path for free.
+   **The hop-depth decision this task owed: the walk stays inside T595's own one-hop limit** — a
+   tracked primitive P a story's own component composes _directly_, never a primitive P composes in
+   turn. Nothing in this tree needs a second hop today, and widening it before a real case needs one
+   would be guessing at a shape this pass cannot check, the same restraint T595's own one-hop
+   `Tooltip` read already argued for. The required contrast — a force-state whose target a composed
+   component does not render must never be credited by proximity — is guarded three ways before any
+   credit is even attempted: a role no tracked primitive's own top-level instance could ever carry
+   (`PRIMITIVE_INSTANCE_ROLES`, derived from `impliedRoleForPrimitiveInstance` itself, never a
+   second, hand-written list), a candidate local element that could plausibly carry it, and a call
+   site this story's own guards do not rule out (`evaluateGuards`, the same reachability check
+   `resolveComposedStoryMatches` already applies to a primitive's own top-level candidates) — pinned
+   by `state-coverage.test.mjs`'s own contrast fixture, a composed primitive the forcing story's own
+   guard confirms it never renders. Record 1's own cell counts hold exactly steady across this fix
+   (44 none / 1 unresolved / 51 covered, 96 cells) — the credit lands on a cell `Menu`'s own
+   `FocusVisible` story had already covered, so the fix closes an accounting gap, not a coverage one,
+   exactly this task's own completion condition. **The one remaining `unresolved` cell in record 1 is
+   not this gap and this task does not close it**: `Menu`'s own trigger (`index.tsx:144`) reads
+   `unresolved: EscapeReturnsFocusToTrigger (play-driven; frame not provable statically)` —
+   `buildElementCells`'s own play-focus branch marks _every_ play-driven match `unresolved` by
+   design (T594's amendment: a script's own `.focus()` cannot prove which frame a screenshot lands
+   on, so a resolved candidate is never credited as `'match'`), independent of whether the candidate
+   itself is ambiguous. Closing it needs a real `visualForceState` on `Menu`'s own
+   `EscapeReturnsFocusToTrigger` story (or an equivalent policy change to the play-driven branch
+   itself) — T595's own closing commit, not a cross-component matching gap this task's own mechanism
+   could ever reach, since the candidate here is `Menu`'s own local element matched against `Menu`'s
+   own story, nothing composed.
+
+   **Record 1's last `unresolved` cell, closed (T595's extractor slice).** The decision: give
+   `Menu`'s own `EscapeReturnsFocusToTrigger` a real `visualForceState`, never widen the play-focus
+   branch's own policy. `buildElementCells`'s reason for marking every play-driven match `unresolved`
+   is not that a play-driven focus is fake — it is that the extractor cannot tell, from source alone,
+   whether a story's captured frame is the fresh page its own `play()` left, or the frame a
+   _preceding_ story already captured (the ambiguity T594's amendment names). That reason does not
+   bear on this one story more or less than any other play-driven story in the tree, so a policy
+   change narrow enough to answer only this cell would be the special case T595 forbids; a policy
+   change wide enough to answer it honestly would have to resolve the general ambiguity, which no
+   change landing in this slice attempts. The honest, already-precedented answer for _this_ story is
+   narrower: `CountryFlag`'s `FlagDismissedAfterEscape` is the identical shape — an overlay dismissed
+   by `Escape`, focus handed back to the trigger by a script call inside the component's own close
+   handler, on a page nothing has yet clicked with a _trusted_ pointer — and it is already resolved
+   with a real `visualForceState` rather than left to the play-focus branch, per
+   `tests/visual/stories.spec.ts`'s own measured `VisualForceState` comment (a script `.focus()` on
+   such a page reliably matches `:focus-visible` in Chromium). `Menu`'s own trigger has no other
+   `button`-role candidate in `Menu/index.tsx` (the footer item takes `role="menuitem"`), so the
+   force needs no `name`/`nth` to disambiguate, the same shape `CountryFlag`'s own force carries.
+   Record 1's cell counts move for the first time in this row's history: 44 none / 0 unresolved / 52
+   covered (96 cells) — the credit lands on the cell the play function's own final assertion
+   (`toHaveFocus()`) already named, so this closes a provability gap, not a coverage one. No new
+   story, no rendered-content change: the added parameter drives an explicit `.focus()` at capture
+   time on the same element the play function's own trusted script call already left focused, so the
+   frame this force produces is the same frame the unforced capture already rendered — confirmed, not
+   assumed, by `state-coverage.test.mjs`'s own new contrast case, which plants the pre-fix shape (a
+   play-driven match with no `visualForceState`) and asserts it still resolves to `unresolved` even
+   when the candidate is unambiguous, so this fix cannot be read as the play-focus branch quietly
+   losing its own general rule.
+
+   **Bucket (b)'s own recogniser (T595's own first decision, this task's own recogniser slice): "a
+   state the component's own spec answers as impossible" is answered by code, never a hand-typed
+   list of component shapes.** `spec-completeness.mjs` already asserts that a spec _answers_ every
+   one of the ten vocabulary states; it never reads what the answer _says_.
+   `findVocabularyBoundarySpans`/`resolveSpecAnswerForState`/`classifyRecord1NoneCells`/
+   `classifyRecord3NoneCells` (`scripts/checks/state-coverage.mjs`) read the same bold-label
+   convention that file already parses (`isClauseLeadingBoldSpan`, `normaliseStateToken`, exported
+   there and reused here rather than re-derived) and test the matched label's own answer text —
+   scoped to the component's own section first, for a multi-component file, and declining outright
+   when no such per-component boundary exists (`match-history.md`'s own shared, inline "States"
+   section, among others) — against a five-phrase closed vocabulary (`never`, `none;`, `is not
+interactive`, `has no visual form`, `has no active state`), each cited once, verbatim, in the
+   script's own header comment rather than restated here.
+
+   The mapping from a `'none'` cell to the right bullet is the hard part, not the shape, and three
+   guards keep a wrong bullet from silently turning a real gap into a false "impossible". First,
+   only the answer's own **leading sentence** is tested — a coincidental match later in a long
+   paragraph answers something else entirely: `tooltip.md`'s own `active` bullet says, three
+   sentences in, that an old sentence in this very file "was never true," which is about the file's
+   own history, not about the trigger's own pressed state (which the clauses right after it go on to
+   describe as a real, painted press treatment) — reading the whole paragraph credited this as
+   "impossible" on the first pass, and `state-coverage.test.mjs`'s own contrast plants that exact
+   shape. Second, a real class painted on the exact record-1 element — or on any of a primitive's own
+   record-1 elements, for a record-3 axis row that has no single element of its own to check
+   directly — is never overridden by a spec sentence: a painted class is proof the component
+   visually responds to this state. Third, a `'none'` cell is only eligible when _every_ sibling row
+   or element in the same scope also reads `'none'` for that exact state — one sibling with real
+   story coverage is proof the spec's own wording cannot describe every candidate the cell's own
+   component carries (`structural-tier.md`'s own `Table` — "the table itself has no active state" is
+   real only of the scroll region, never of the row link one row down, which already carries
+   `RowLinkActive` — so this declines both rather than guess which one the sentence meant).
+   Declining is the expected outcome here, not a shortfall, the same discipline `'unresolved'`
+   already holds record 1 and record 3's own cells to. Run today against every live `'none'` cell
+   (`classifyImpossiblePerSpec`, not wired into the gate by this task — that is the cell gate's own,
+   later commit), it classifies 0 of record 1's 44 cells and 7 of record 3's 40 cells "impossible"
+   and declines the rest, each with a reason, for that later commit or a dated register entry to
+   resolve.
+
+   **T595's own row-8 closure slice (2026-09-20), the cells this task closes without a new story or a
+   baseline: three groups, none of them the cell gate itself.** Before this slice: record 1 0/44
+   impossible (44 decline); record 3 7/40 impossible (33 decline). After: record 1 7/44 impossible
+   (37 decline); record 3 14/40 impossible (26 decline) — eleven cells closed, all by making an
+   existing decline reason either true or unambiguous, never by relaxing the recogniser itself.
+
+   _Group 1 — phrasing, not meaning._ Thirteen `'none'` cells declined only because their own spec
+   answer used a real, house-established "impossible" claim in a phrasing outside the five-phrase
+   closed vocabulary. `shared-primitives.md`'s `Dialog` bullet ("empty / hover / active / disabled —
+   not applicable; a dialog with no actions is a malformed call site...") became "— none; ..." with
+   the rest of its own sentence untouched, closing `Dialog`'s `h2` hover/active (record 1) and
+   hover/active/disabled (record 3) — its own `focus-visible` bullet is a different, real answer and
+   was not touched. `structural-tier.md`'s `Page` bullet ("hover / active — none. A page is not a
+   control.") became "— none; a page is not a control.", closing `Page`'s `main` hover/active in both
+   records. `structural-tier.md`'s `Field` bullet ("active — the control's own text-entry state; no
+   separate paint.") became "...; it has no visual form. A press on a text input is
+   indistinguishable..." (the same claim the deleted "no separate paint" wording already made,
+   rephrased into the closed vocabulary's own "has no visual form" clause), closing `Field`'s `active`
+   row for both `lg` and `md` in record 3. **`Dialog`'s `h2` `focus-visible`** and **`Tooltip`'s own
+   `active`** were checked against their full spec text and left exactly as they read: both describe a
+   real, painted frame no story yet depicts, and neither answer was touched. Every edit here kept the
+   file's own line count unchanged (only the words within a line moved), so no citation into either
+   file needed a matching fix.
+
+   _Group 2 — `SearchBox`/`PlayerResultRow`'s shared spec file, structurally._
+   `player-search.md`'s States section answers `hover`/`active`/`disabled`/`selection`/`expansion` in
+   one shared prose passage covering both components at once (the same shape
+   `spec-completeness.mjs`'s own file header names for `match-history.md` and
+   `privacy-data-rights.md` too, and correctly so — the passage genuinely reads as one continuous
+   comparison between `Input` and `PlayerResultRow`, not two answers that happen to share a
+   paragraph), so `mapComponentKeyToSpecFile`/`findComponentSection` had nowhere to scope `SearchBox`
+   to and `composites/SearchBox`'s own `input` `active` cell declined on the ambiguity alone. Fixed as
+   a spec edit, not a resolver heuristic: two new level-3 headings, one named `SearchBox` and one
+   named `PlayerResultRow`, now bound each component's own section — `SearchBox`'s carrying every
+   bullet that was already exclusively its own (idle/loading/found/empty×2/error) plus the five
+   shared bullets verbatim, `PlayerResultRow`'s carrying the same five shared bullets verbatim plus
+   its own `default`/`loading`/`error`/`empty` answers (newly written, each grounded in what
+   §2/§4/§6 already state or in the anatomy fact that `PlayerResultRow` renders zero instances during
+   `ResultsRegion`'s loading/error/empty states) — a note at the top of the section records why the
+   shared bullets are quoted twice rather than split, so a later reader does not mistake the
+   duplication for drift. A resolver-side alternative (reading a per-component sub-clause inside the
+   shared answer, introduced by a backtick'd element name) was considered and rejected: the file's own
+   convention for introducing a sub-clause is inconsistent — the `Input` clause is colon-labelled, the
+   `PlayerResultRow` clause is not — and reusing `isClauseLeadingBoldSpan`'s own line-start rule
+   against backtick code, used constantly and mid-sentence throughout this prose, risked a wrapped
+   line's own leading token being read as a false component boundary; the spec edit needed no new
+   parsing rule and could not make that mistake. The cell still declines after the fix (`Input`'s own
+   "standard text-input interaction" is a real, substantive answer, not a closed-vocabulary one) —
+   removing the ambiguity was the goal, not forcing a verdict, exactly as this task's brief allows.
+
+   _Group 3 — `UploadControl`'s hidden file input, a source-level rule rather than a spec question._
+   `composites/UploadControl/index.tsx`'s own file input carries `hidden` and `tabIndex={-1}`, both
+   literal, and no `hover:`/`focus-visible:`/`active:` class of its own — three cells that used to
+   decline on `manual-upload.md`'s own real, multi-sentence deferral (a true answer, just not a
+   closed-vocabulary one). **Decision: this is not a spec question at all.** `hidden` is the UA
+   stylesheet's own `display: none` — an element the browser never gives a box to cannot be hovered,
+   focused or pressed in any frame a real pointer or keyboard could produce, which is true regardless
+   of what any spec sentence says about it, the same way a physical fact is never something a spec
+   could contradict. Implemented as `isInertByConstruction` (`scripts/checks/state-coverage.mjs`), a
+   new guard in `classifyRecord1NoneCells` checked before the spec lookup and after the painted-class
+   guard (positive knowledge — a real class, or a real physical incapacity — always outranks a spec
+   sentence, never the reverse): true only when the element carries **both** a literal `hidden`
+   (bare or `={true}`, never a dynamic `hidden={condition}` — a condition might resolve `false` in
+   some story) **and** a literal `tabIndex={-1}`. Neither alone is sufficient, on purpose and by the
+   two required contrasts `state-coverage.test.mjs` plants: `tabIndex={-1}` alone says nothing about
+   hover or press and nothing about focus either once the element is not hidden (`Page`'s own `main`
+   and `Dialog`'s own `h2` are both real, script-focused `tabIndex={-1}` targets with a genuine
+   `focus-visible` frame, and a `tabIndex={-1}` element carrying a `hover:` class in the same fixture
+   set stays hoverable); a dynamically `hidden` element stays a real candidate too, since it may render
+   visible under some story's own data. This is a general, tested rule keyed to the element's own
+   shape, not a named exception for `UploadControl`'s own directory — nothing in the guard reads a
+   component name. `UploadControl`'s own hover/focus-visible/active cells for this element now read
+   `'impossible'` directly, crediting no spec sentence at all.
 
    **Records 2 and 4 stay read, not extracted, and Record 2's spec side has no mechanical
    completeness guard of its own (a residual `reviewer` noted while verifying this pass, not one this
@@ -1846,63 +2344,63 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 **Record 1 — every local interactive element (41 component directories scanned).**
 
-| Component                         | Element                                      | File:Line                                                                | Hover (class → story)                                                                                                                                    | Focus-visible (class → story)                                                                                                                                                                                                                                                                                                                           | Active (class → story)                                                                                                                                                                    |
-| --------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| composites/AnalysisTimeline       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/CaptureStateBadge      | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/CivilisationIcon       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/CountryFlag            | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/FavouritesList         | a                                            | packages/design-system/src/composites/FavouritesList/index.tsx:244       | hover:bg-surface-sunken → Hover                                                                                                                          | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active                                                                 |
-| composites/FavouriteToggle        | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/Footer                 | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/MapThumbnail           | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/MatchDetailPanel       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/MatchRow               | a                                            | packages/design-system/src/composites/MatchRow/index.tsx:397             | hover:bg-surface-sunken → Hover                                                                                                                          | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active                                                                 |
-| composites/PlayerAvatar           | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/PlayerColourSwatch     | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/PlayerResultRow        | a                                            | packages/design-system/src/composites/PlayerResultRow/index.tsx:54       | hover:bg-surface-sunken → Hover                                                                                                                          | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active                                                                 |
-| composites/ReplayAvailabilityList | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| composites/SearchBox              | input[role=searchbox]                        | packages/design-system/src/composites/SearchBox/index.tsx:129            | hover:border-border-strong → Hover                                                                                                                       | focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                            | none → none                                                                                                                                                                               |
-| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:156           | none → none                                                                                                                                              | focus:not-sr-only focus:fixed focus:top-2 focus:left-4 focus:z-50 focus:rounded-control focus:border focus:border-border-strong focus:bg-surface-raised focus:px-3 focus:py-3 focus:font-sans focus:text-sm focus:font-normal focus:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none | none → none                                                                                                                                                                               |
-| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:183           | hover:underline → none                                                                                                                                   | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                                                                                                                                                                                                                                       | none → none                                                                                                                                                                               |
-| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:209           | hover:bg-surface-sunken hover:text-text-primary → Hover                                                                                                  | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                               | active:border-border-strong active:bg-background active:text-text-primary → Active                                                                                                        |
-| composites/UploadControl          | input[tabIndex=-1]                           | packages/design-system/src/composites/UploadControl/index.tsx:274        | none → none                                                                                                                                              | none → none                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                                                                                               |
-| primitives/Badge                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Button                 | a                                            | packages/design-system/src/primitives/Button/index.tsx:189               | unresolved: className not fully resolved → none                                                                                                          | unresolved: className not fully resolved → none                                                                                                                                                                                                                                                                                                         | unresolved: className not fully resolved → none                                                                                                                                           |
-| primitives/Button                 | button                                       | packages/design-system/src/primitives/Button/index.tsx:207               | unresolved: className not fully resolved → Hover                                                                                                         | unresolved: className not fully resolved → FocusVisible; SecondaryFocusVisible; GhostFocusVisible; DestructiveFocusVisible                                                                                                                                                                                                                              | unresolved: className not fully resolved → Active; SecondaryActive; DestructiveActive; GhostActive                                                                                        |
-| primitives/Callout                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Dialog                 | h2[tabIndex=-1]                              | packages/design-system/src/primitives/Dialog/index.tsx:102               | none → unresolved: no implied role                                                                                                                       | none → unresolved: no implied role                                                                                                                                                                                                                                                                                                                      | none → unresolved: no implied role                                                                                                                                                        |
-| primitives/EmptyState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/ErrorState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Field                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Link                   | a                                            | packages/design-system/src/primitives/Link/index.tsx:140                 | hover:text-link-hover hover:decoration-2 → Hover                                                                                                         | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                            | active:text-link-hover active:decoration-2 → ActiveStandalone; ActiveInline                                                                                                               |
-| primitives/Menu                   | button                                       | packages/design-system/src/primitives/Menu/index.tsx:144                 | hover:bg-surface-sunken → none                                                                                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → unresolved: EscapeReturnsFocusToTrigger (play-driven; frame not provable statically)                                                                                                                                                                       | active:bg-background active:ring-2 active:ring-border-strong → none                                                                                                                       |
-| primitives/Menu                   | button[role=menuitem][tabIndex=unresolved]   | packages/design-system/src/primitives/Menu/index.tsx:242                 | hover:bg-surface-sunken → none                                                                                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardNavigation                                                                                                                                                                                                                                         | active:border-l-border-strong active:bg-background → none                                                                                                                                 |
-| primitives/Menu                   | button[role=unresolved][tabIndex=unresolved] | packages/design-system/src/primitives/Menu/index.tsx:352                 | hover:bg-surface-sunken → unresolved: dynamic role                                                                                                       | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → unresolved: dynamic role                                                                                                                                                                                                                       | active:border-l-border-strong active:bg-background → unresolved: dynamic role                                                                                                             |
-| primitives/Page                   | main[tabIndex=-1]                            | packages/design-system/src/primitives/Page/index.tsx:64                  | none → none                                                                                                                                              | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                            | none → none                                                                                                                                                                               |
-| primitives/Panel                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Section                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Skeleton               | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/StatValue              | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Table                  | div[role=region][tabIndex=0]                 | packages/design-system/src/primitives/Table/index.tsx:153                | unresolved: className not fully resolved → none                                                                                                          | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                            | unresolved: className not fully resolved → none                                                                                                                                           |
-| primitives/Table                  | tr                                           | packages/design-system/src/primitives/Table/index.tsx:237                | hover:bg-surface-sunken → unresolved: ancestor of a forced descendant (a@packages/design-system/src/primitives/Table/index.tsx:281, hover: RowLinkHover) | unresolved: className not fully resolved → unresolved: no implied role                                                                                                                                                                                                                                                                                  | active:bg-surface-sunken active:border-l-border-strong → unresolved: ancestor of a forced descendant (a@packages/design-system/src/primitives/Table/index.tsx:281, active: RowLinkActive) |
-| primitives/Table                  | a                                            | packages/design-system/src/primitives/Table/index.tsx:281                | none → RowLinkHover                                                                                                                                      | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                                                                                                                                                                                                                                    | active:after:ring-2 active:after:ring-inset active:after:ring-border-strong → RowLinkActive                                                                                               |
-| primitives/Text                   | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| primitives/Tooltip                | button                                       | packages/design-system/src/primitives/Tooltip/index.tsx:259              | none → HoverRevealed                                                                                                                                     | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardFocusRevealed; DismissedAfterEscape                                                                                                                                                                                                                | none → none                                                                                                                                                                               |
-| screens/AccountErasurePanel       | label                                        | packages/design-system/src/screens/AccountErasurePanel/index.tsx:269     | none → unresolved: no implied role                                                                                                                       | none → unresolved: no implied role                                                                                                                                                                                                                                                                                                                      | none → unresolved: no implied role                                                                                                                                                        |
-| screens/AccountErasurePanel       | input[role=checkbox]                         | packages/design-system/src/screens/AccountErasurePanel/index.tsx:270     | none → none                                                                                                                                              | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                                                                                                                                                                                                                                       | none → none                                                                                                                                                                               |
-| screens/AccountErasurePanel       | a                                            | packages/design-system/src/screens/AccountErasurePanel/index.tsx:304     | hover:text-link-hover hover:decoration-2 → ErasedScreenHover                                                                                             | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → ErasedScreenFocusVisible                                                                                                                                                                                                                                   | active:text-link-hover active:decoration-2 active:underline-offset-4 → ErasedScreenActive                                                                                                 |
-| screens/ArchivalControl           | a                                            | packages/design-system/src/screens/ArchivalControl/index.tsx:137         | none → none                                                                                                                                              | none → none                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                                                                                               |
-| screens/DataExportPanel           | a                                            | packages/design-system/src/screens/DataExportPanel/index.tsx:149         | hover:bg-accent-hover hover:underline hover:decoration-2 hover:underline-offset-2 → ReadyHover                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast → ReadyFocusVisible                                                                                                                                                                                                                               | active:bg-accent-active active:underline-offset-4 → ReadyActive                                                                                                                           |
-| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:242           | hover:text-link-hover hover:decoration-2 → unresolved: Hover: 4 candidates share role "link", nth 0 not orderable                                        | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → unresolved: FocusVisible: 4 candidates share role "link", nth 0 not orderable                                                                                                                                                                              | active:text-link-hover active:decoration-2 active:underline-offset-4 → unresolved: Active: 4 candidates share role "link", nth 0 not orderable                                            |
-| screens/PrivacyNotice             | h2[tabIndex=-1]                              | packages/design-system/src/screens/PrivacyNotice/index.tsx:264           | none → unresolved: no implied role                                                                                                                       | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → unresolved: no implied role                                                                                                                                                                                                                             | none → unresolved: no implied role                                                                                                                                                        |
-| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:490           | hover:text-link-hover → Hover                                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                               | active:text-link-hover active:bg-surface-sunken active:ring-2 active:ring-border-strong active:rounded-control → Active                                                                   |
-| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:740           | hover:bg-surface-sunken → none                                                                                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                                                                                                                                                                                                                                       | active:bg-background active:ring-2 active:ring-border-strong → none                                                                                                                       |
-| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:797           | none → none                                                                                                                                              | none → none                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                                                                                               |
-| screens/ProfileSummary            | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| screens/SignInScreen              | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                      | N/A                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                                                                                       |
-| screens/ThirdPartyObjectionForm   | input                                        | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130 | none → none                                                                                                                                              | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → none                                                                                                                                                                                                                                                       | none → none                                                                                                                                                                               |
-| screens/ThirdPartyObjectionForm   | a                                            | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:223 | hover:text-link-hover hover:decoration-2 → Hover                                                                                                         | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                               | active:text-link-hover active:decoration-2 active:underline-offset-4 → Active                                                                                                             |
+| Component                         | Element                                      | File:Line                                                                | Hover (class → story)                                                                                                                      | Focus-visible (class → story)                                                                                                                                                                                                                                                                                                                                           | Active (class → story)                                                                                                    |
+| --------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| composites/AnalysisTimeline       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/CaptureStateBadge      | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/CivilisationIcon       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/CountryFlag            | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/FavouritesList         | a                                            | packages/design-system/src/composites/FavouritesList/index.tsx:244       | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active |
+| composites/FavouriteToggle        | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/Footer                 | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/MapThumbnail           | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/MatchDetailPanel       | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/MatchRow               | a                                            | packages/design-system/src/composites/MatchRow/index.tsx:397             | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active |
+| composites/PlayerAvatar           | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/PlayerColourSwatch     | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/PlayerResultRow        | a                                            | packages/design-system/src/composites/PlayerResultRow/index.tsx:54       | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                   | active:bg-surface-sunken active:border-l-border-strong active:ring-2 active:ring-inset active:ring-border-strong → Active |
+| composites/ReplayAvailabilityList | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| composites/SearchBox              | input[role=searchbox]                        | packages/design-system/src/composites/SearchBox/index.tsx:129            | hover:border-border-strong → Hover                                                                                                         | focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                            | none → none                                                                                                               |
+| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:156           | none → none                                                                                                                                | focus:not-sr-only focus:fixed focus:top-2 focus:left-4 focus:z-50 focus:rounded-control focus:border focus:border-border-strong focus:bg-surface-raised focus:px-3 focus:py-3 focus:font-sans focus:text-sm focus:font-normal focus:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → SkipLinkFocusVisible | none → none                                                                                                               |
+| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:183           | hover:underline → BrandHover                                                                                                               | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → BrandFocusVisible                                                                                                                                                                                                                                                          | none → none                                                                                                               |
+| composites/SiteHeader             | a                                            | packages/design-system/src/composites/SiteHeader/index.tsx:209           | hover:bg-surface-sunken hover:text-text-primary → Hover                                                                                    | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                               | active:border-border-strong active:bg-background active:text-text-primary → Active                                        |
+| composites/UploadControl          | input[tabIndex=-1]                           | packages/design-system/src/composites/UploadControl/index.tsx:274        | none → none                                                                                                                                | none → none                                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                               |
+| primitives/Badge                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Button                 | a                                            | packages/design-system/src/primitives/Button/index.tsx:189               | hover:bg-surface-sunken → AsLinkHover                                                                                                      | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → AsLinkFocusVisible                                                                                                                                                                                                                                                         | active:bg-background active:ring-2 active:ring-border-strong → AsLinkActive                                               |
+| primitives/Button                 | button                                       | packages/design-system/src/primitives/Button/index.tsx:207               | hover:bg-surface-sunken → Hover; SecondaryHover; GhostHover; DestructiveHover                                                              | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible; SecondaryFocusVisible; GhostFocusVisible; DestructiveFocusVisible                                                                                                                                                                                            | active:bg-background active:ring-2 active:ring-border-strong → Active; SecondaryActive; DestructiveActive; GhostActive    |
+| primitives/Callout                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Dialog                 | h2[tabIndex=-1]                              | packages/design-system/src/primitives/Dialog/index.tsx:102               | none → none                                                                                                                                | none → none                                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                               |
+| primitives/EmptyState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/ErrorState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Field                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Link                   | a                                            | packages/design-system/src/primitives/Link/index.tsx:140                 | hover:text-link-hover hover:decoration-2 → Hover                                                                                           | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                            | active:text-link-hover active:decoration-2 active:underline-offset-4 → ActiveStandalone; ActiveInline                     |
+| primitives/Menu                   | button                                       | packages/design-system/src/primitives/Menu/index.tsx:144                 | hover:bg-surface-sunken → TriggerHover                                                                                                     | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → EscapeReturnsFocusToTrigger                                                                                                                                                                                                                                                | active:bg-background active:ring-2 active:ring-border-strong → TriggerActive                                              |
+| primitives/Menu                   | button[role=menuitem][tabIndex=unresolved]   | packages/design-system/src/primitives/Menu/index.tsx:242                 | hover:bg-surface-sunken → FooterItemHover                                                                                                  | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardNavigation                                                                                                                                                                                                                                                         | active:border-l-border-strong active:bg-background → FooterItemActive                                                     |
+| primitives/Menu                   | button[role=unresolved][tabIndex=unresolved] | packages/design-system/src/primitives/Menu/index.tsx:352                 | hover:bg-surface-sunken → Hover                                                                                                            | focus-visible:outline-2 focus-visible:outline-offset-ring-inset-flush focus-visible:outline-focus-ring → FocusVisible; ProfileSummary:SwitcherFocusVisibleAndOpen                                                                                                                                                                                                       | active:border-l-border-strong active:bg-background → Active                                                               |
+| primitives/Page                   | main[tabIndex=-1]                            | packages/design-system/src/primitives/Page/index.tsx:64                  | none → none                                                                                                                                | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                            | none → none                                                                                                               |
+| primitives/Panel                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Section                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Skeleton               | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/StatValue              | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Table                  | div[role=region][tabIndex=0]                 | packages/design-system/src/primitives/Table/index.tsx:153                | none → none                                                                                                                                | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                            | none → none                                                                                                               |
+| primitives/Table                  | tr                                           | packages/design-system/src/primitives/Table/index.tsx:237                | hover:bg-surface-sunken → RowLinkHover                                                                                                     | none → none                                                                                                                                                                                                                                                                                                                                                             | active:bg-surface-sunken active:border-l-border-strong → RowLinkActive                                                    |
+| primitives/Table                  | a                                            | packages/design-system/src/primitives/Table/index.tsx:281                | none → RowLinkHover                                                                                                                        | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → RowLinkFocusVisible                                                                                                                                                                                                                                                     | active:after:ring-2 active:after:ring-inset active:after:ring-border-strong → RowLinkActive                               |
+| primitives/Text                   | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| primitives/Tooltip                | button                                       | packages/design-system/src/primitives/Tooltip/index.tsx:259              | none → HoverRevealed; CountryFlag:FlagHoverRevealed; ProfileSummary:BoardFlagHoverRevealed; ProfileSummary:BoardLongAliasFlagHoverRevealed | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → KeyboardFocusRevealed; DismissedAfterEscape; CountryFlag:FlagKeyboardFocusRevealed; CountryFlag:FlagDismissedAfterEscape; ProfileSummary:BoardFlagKeyboardFocusRevealed                                                                                                    | none → none                                                                                                               |
+| screens/AccountErasurePanel       | label                                        | packages/design-system/src/screens/AccountErasurePanel/index.tsx:269     | none → none                                                                                                                                | none → none                                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                               |
+| screens/AccountErasurePanel       | input[role=checkbox]                         | packages/design-system/src/screens/AccountErasurePanel/index.tsx:270     | none → none                                                                                                                                | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → AcknowledgementCheckboxFocusVisible                                                                                                                                                                                                                                        | none → none                                                                                                               |
+| screens/AccountErasurePanel       | a                                            | packages/design-system/src/screens/AccountErasurePanel/index.tsx:304     | hover:text-link-hover hover:decoration-2 → ErasedScreenHover                                                                               | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → ErasedScreenFocusVisible                                                                                                                                                                                                                                                   | active:text-link-hover active:decoration-2 active:underline-offset-4 → ErasedScreenActive                                 |
+| screens/ArchivalControl           | a                                            | packages/design-system/src/screens/ArchivalControl/index.tsx:137         | none → none                                                                                                                                | none → none                                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                               |
+| screens/DataExportPanel           | a                                            | packages/design-system/src/screens/DataExportPanel/index.tsx:149         | hover:bg-accent-hover hover:underline hover:decoration-2 hover:underline-offset-2 → ReadyHover                                             | focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast → ReadyFocusVisible                                                                                                                                                                                                                                               | active:bg-accent-active active:underline-offset-4 → ReadyActive                                                           |
+| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:242           | hover:text-link-hover hover:decoration-2 → InlineLinkHover                                                                                 | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → InlineLinkFocusVisible                                                                                                                                                                                                                                                     | active:text-link-hover active:decoration-2 active:underline-offset-4 → InlineLinkActive                                   |
+| screens/PrivacyNotice             | h2[tabIndex=-1]                              | packages/design-system/src/screens/PrivacyNotice/index.tsx:264           | none → none                                                                                                                                | focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring → SectionHeadingFocusVisible                                                                                                                                                                                                                                              | none → none                                                                                                               |
+| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:490           | hover:text-link-hover → Hover                                                                                                              | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                               | active:text-link-hover active:bg-surface-sunken active:ring-2 active:ring-border-strong active:rounded-control → Active   |
+| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:740           | hover:bg-surface-sunken → ObjectionCallToActionHover                                                                                       | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → ObjectionCallToActionFocusVisible                                                                                                                                                                                                                                          | active:bg-background active:ring-2 active:ring-border-strong → ObjectionCallToActionActive                                |
+| screens/PrivacyNotice             | a                                            | packages/design-system/src/screens/PrivacyNotice/index.tsx:797           | none → none                                                                                                                                | none → none                                                                                                                                                                                                                                                                                                                                                             | none → none                                                                                                               |
+| screens/ProfileSummary            | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| screens/SignInScreen              | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                        | N/A                                                                                                                                                                                                                                                                                                                                                                     | N/A                                                                                                                       |
+| screens/ThirdPartyObjectionForm   | input                                        | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130 | none → none                                                                                                                                | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → InputFocusVisible                                                                                                                                                                                                                                                          | none → none                                                                                                               |
+| screens/ThirdPartyObjectionForm   | a                                            | packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:223 | hover:text-link-hover hover:decoration-2 → Hover                                                                                           | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible                                                                                                                                                                                                                                                               | active:text-link-hover active:decoration-2 active:underline-offset-4 → Active                                             |
 
 **Record 3 — every primitive matrix.**
 
@@ -1914,19 +2412,18 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 #### `Button`
 
-| Row                                                        | Rest                                                                                                                                                                                                                                                                                                 | Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Focus-visible                                                   | Press (active)                                         | Disabled                                                                                           |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| destructive\|lg                                            | screens/AccountErasurePanel (packages/design-system/src/screens/AccountErasurePanel/index.tsx:218)                                                                                                                                                                                                   | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Dialog:FocusVisible                                             | none                                                   | Dialog:PrimaryPending                                                                              |
-| destructive\|md                                            | Button:Destructive; Button:AllVariants                                                                                                                                                                                                                                                               | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Button:DestructiveFocusVisible                                  | Button:DestructiveActive                               | none                                                                                               |
-| ghost\|lg                                                  | Button:RealisticPageActions                                                                                                                                                                                                                                                                          | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | none                                                            | none                                                   | unresolved: disabled not statically resolvable (FavouriteToggle:RealisticProfileHeader)            |
-| ghost\|md                                                  | Button:Ghost; Button:AllVariants; screens/ProfileSummary (packages/design-system/src/screens/ProfileSummary/ProfileSummary.stories.tsx:100)                                                                                                                                                          | FavouriteToggle:Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active             | FavouriteToggle:Bounded; FavouriteToggle:AddingInFlight; FavouriteToggle:RemovingInFlight          |
-| ghost\|unresolved                                          | composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:115); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:126); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:171) | unresolved: axis resolved only per story (→ ghost\|md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | unresolved: axis resolved only per story (→ ghost\|md)          | unresolved: axis resolved only per story (→ ghost\|md) | none                                                                                               |
-| primary\|lg                                                | 22 real call sites                                                                                                                                                                                                                                                                                   | Button:Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Button:FocusVisible                                             | Button:Active                                          | Button:Disabled; SignInScreen:Leaving; SignInScreen:Unavailable                                    |
-| primary\|md                                                | 8 real call sites                                                                                                                                                                                                                                                                                    | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Callout:FocusVisible                                            | none                                                   | none                                                                                               |
-| secondary\|lg                                              | 17 real call sites                                                                                                                                                                                                                                                                                   | ReplayAvailabilityList:Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active                          | MatchDetailPanel:DownloadPreparing; Dialog:PrimaryPending; ArchivalControl:Submitting              |
-| secondary\|md                                              | 19 real call sites                                                                                                                                                                                                                                                                                   | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Button:SecondaryFocusVisible                                    | Button:SecondaryActive                                 | primitives/ErrorState (packages/design-system/src/primitives/ErrorState/ErrorState.stories.tsx:57) |
-| unresolved\|lg                                             | primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:127); primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:138)                                                                                                                                       | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | unresolved: axis resolved only per story (→ destructive\|lg)    | none                                                   | unresolved: disabled not statically resolvable (Dialog:EmptyHoverActiveDisabledNotApplicable)      |
-| (unresolved matches — no row, printed rather than dropped) | N/A                                                                                                                                                                                                                                                                                                  | unresolved: screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagHoverRevealed — state "hover": 3 Button instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagKeyboardFocusRevealed — state "focus-visible": 3 Button instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| screens/ProfileSummary/ProfileSummary.stories.tsx:BoardLongAliasFlagHoverRevealed — state "hover": 3 Button instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) | N/A                                                             | N/A                                                    | N/A                                                                                                |
+| Row               | Rest                                                                                                                                                                                                                                                                                                 | Hover                                     | Focus-visible                                                   | Press (active)                              | Disabled                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| destructive\|lg   | screens/AccountErasurePanel (packages/design-system/src/screens/AccountErasurePanel/index.tsx:218)                                                                                                                                                                                                   | none                                      | Dialog:FocusVisible                                             | none                                        | Dialog:PrimaryPending                                                                              |
+| destructive\|md   | Button:Destructive; Button:AllVariants                                                                                                                                                                                                                                                               | Button:DestructiveHover                   | Button:DestructiveFocusVisible                                  | Button:DestructiveActive                    | none                                                                                               |
+| ghost\|lg         | Button:RealisticPageActions                                                                                                                                                                                                                                                                          | none                                      | none                                                            | none                                        | none                                                                                               |
+| ghost\|md         | Button:Ghost; Button:AllVariants; screens/ProfileSummary (packages/design-system/src/screens/ProfileSummary/ProfileSummary.stories.tsx:100)                                                                                                                                                          | Button:GhostHover; FavouriteToggle:Hover  | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active  | FavouriteToggle:Bounded; FavouriteToggle:AddingInFlight; FavouriteToggle:RemovingInFlight          |
+| ghost\|unresolved | composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:115); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:126); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:171) | FavouriteToggle:Hover                     | FavouriteToggle:FocusVisible                                    | FavouriteToggle:Active                      | FavouriteToggle:AddingInFlight; FavouriteToggle:Bounded; FavouriteToggle:RemovingInFlight          |
+| primary\|lg       | 22 real call sites                                                                                                                                                                                                                                                                                   | Button:Hover                              | Button:FocusVisible                                             | Button:Active                               | Button:Disabled; SignInScreen:Leaving; SignInScreen:Unavailable                                    |
+| primary\|md       | 8 real call sites                                                                                                                                                                                                                                                                                    | none                                      | Callout:FocusVisible                                            | none                                        | none                                                                                               |
+| secondary\|lg     | 17 real call sites                                                                                                                                                                                                                                                                                   | ReplayAvailabilityList:Hover              | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active               | MatchDetailPanel:DownloadPreparing; Dialog:PrimaryPending; ArchivalControl:Submitting              |
+| secondary\|md     | 19 real call sites                                                                                                                                                                                                                                                                                   | Button:SecondaryHover; Button:AsLinkHover | Button:SecondaryFocusVisible; Button:AsLinkFocusVisible         | Button:SecondaryActive; Button:AsLinkActive | primitives/ErrorState (packages/design-system/src/primitives/ErrorState/ErrorState.stories.tsx:57) |
+| unresolved\|lg    | primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:127); primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:138)                                                                                                                                       | none                                      | Dialog:FocusVisible                                             | none                                        | Dialog:PrimaryPending                                                                              |
 
 #### `Callout`
 
@@ -1936,9 +2433,9 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 #### `Dialog`
 
-| Row                                                             | Rest                                                       | Hover                       | Focus-visible               | Press (active)              | Disabled |
-| --------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------- | --------------------------- | --------------------------- | -------- |
-| h2 @ packages/design-system/src/primitives/Dialog/index.tsx:102 | packages/design-system/src/primitives/Dialog/index.tsx:102 | unresolved: no implied role | unresolved: no implied role | unresolved: no implied role | none     |
+| Row                                                             | Rest                                                       | Hover | Focus-visible | Press (active) | Disabled |
+| --------------------------------------------------------------- | ---------------------------------------------------------- | ----- | ------------- | -------------- | -------- |
+| h2 @ packages/design-system/src/primitives/Dialog/index.tsx:102 | packages/design-system/src/primitives/Dialog/index.tsx:102 | none  | none          | none           | none     |
 
 #### `EmptyState`
 
@@ -1961,19 +2458,17 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 #### `Link`
 
-| Row                                                        | Rest              | Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Focus-visible     | Press (active)        | Disabled |
-| ---------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------------- | -------- |
-| inline                                                     | 7 real call sites | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | none              | Link:ActiveInline     | none     |
-| standalone                                                 | 5 real call sites | Link:Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Link:FocusVisible | Link:ActiveStandalone | none     |
-| (unresolved matches — no row, printed rather than dropped) | N/A               | unresolved: composites/Footer/Footer.stories.tsx:Hover — state "hover": 2 Link instances in composites/Footer match role "link" / nth 0, none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| composites/Footer/Footer.stories.tsx:FocusVisible — state "focus-visible": 2 Link instances in composites/Footer match role "link" / nth 0, none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| composites/Footer/Footer.stories.tsx:Active — state "active": 2 Link instances in composites/Footer match role "link" / nth 0, none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) | N/A               | N/A                   | N/A      |
+| Row        | Rest              | Hover                    | Focus-visible                          | Press (active)                       | Disabled |
+| ---------- | ----------------- | ------------------------ | -------------------------------------- | ------------------------------------ | -------- |
+| inline     | 7 real call sites | none                     | none                                   | Link:ActiveInline                    | none     |
+| standalone | 5 real call sites | Link:Hover; Footer:Hover | Link:FocusVisible; Footer:FocusVisible | Link:ActiveStandalone; Footer:Active | none     |
 
 #### `Menu`
 
-| Row                                                        | Rest              | Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Focus-visible                                                                                                                                                                                                                                                                                                     | Press (active) | Disabled                     |
-| ---------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ---------------------------- |
-| actions                                                    | 6 real call sites | unresolved: screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagHoverRevealed — state "hover": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args); screens/ProfileSummary/ProfileSummary.stories.tsx:BoardLongAliasFlagHoverRevealed — state "hover": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args)                                                                                                                                                                                                                                                                                                            | unresolved: screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagKeyboardFocusRevealed — state "focus-visible": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) | none           | Menu:ActionsWithDisabledItem |
-| selection                                                  | 7 real call sites | Menu:Hover                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Menu:FocusVisible; Menu:KeyboardNavigation                                                                                                                                                                                                                                                                        | Menu:Active    | Menu:LoadingItem             |
-| (unresolved matches — no row, printed rather than dropped) | N/A               | unresolved: screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagHoverRevealed — state "hover": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| screens/ProfileSummary/ProfileSummary.stories.tsx:BoardFlagKeyboardFocusRevealed — state "focus-visible": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) \| screens/ProfileSummary/ProfileSummary.stories.tsx:BoardLongAliasFlagHoverRevealed — state "hover": 2 Menu instances in screens/ProfileSummary match role "button" / name "Country:", none uniquely resolved (at least one candidate's own guard could not be evaluated from this story's args) | N/A                                                                                                                                                                                                                                                                                                               | N/A            | N/A                          |
+| Row       | Rest              | Hover                            | Focus-visible                                                                | Press (active)                     | Disabled                     |
+| --------- | ----------------- | -------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------- | ---------------------------- |
+| actions   | 6 real call sites | Menu:TriggerHover                | none                                                                         | Menu:TriggerActive                 | Menu:ActionsWithDisabledItem |
+| selection | 7 real call sites | Menu:Hover; Menu:FooterItemHover | Menu:FocusVisible; Menu:KeyboardNavigation; Menu:EscapeReturnsFocusToTrigger | Menu:Active; Menu:FooterItemActive | Menu:LoadingItem             |
 
 #### `Page`
 
@@ -2007,11 +2502,11 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 #### `Table`
 
-| Row                                                                          | Rest                                                      | Hover                                                                                                                          | Focus-visible               | Press (active)                                                                                                                   | Disabled |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153 | packages/design-system/src/primitives/Table/index.tsx:153 | none                                                                                                                           | FocusVisible                | none                                                                                                                             | none     |
-| tr @ packages/design-system/src/primitives/Table/index.tsx:237               | packages/design-system/src/primitives/Table/index.tsx:237 | unresolved: ancestor of a forced descendant (a@packages/design-system/src/primitives/Table/index.tsx:281, hover: RowLinkHover) | unresolved: no implied role | unresolved: ancestor of a forced descendant (a@packages/design-system/src/primitives/Table/index.tsx:281, active: RowLinkActive) | none     |
-| a @ packages/design-system/src/primitives/Table/index.tsx:281                | packages/design-system/src/primitives/Table/index.tsx:281 | RowLinkHover                                                                                                                   | none                        | RowLinkActive                                                                                                                    | none     |
+| Row                                                                          | Rest                                                      | Hover        | Focus-visible       | Press (active) | Disabled |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------- | ------------ | ------------------- | -------------- | -------- |
+| div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153 | packages/design-system/src/primitives/Table/index.tsx:153 | none         | FocusVisible        | none           | none     |
+| tr @ packages/design-system/src/primitives/Table/index.tsx:237               | packages/design-system/src/primitives/Table/index.tsx:237 | RowLinkHover | none                | RowLinkActive  | none     |
+| a @ packages/design-system/src/primitives/Table/index.tsx:281                | packages/design-system/src/primitives/Table/index.tsx:281 | RowLinkHover | RowLinkFocusVisible | RowLinkActive  | none     |
 
 #### `Text`
 
@@ -2021,9 +2516,9 @@ _Generated by `scripts/checks/state-coverage.mjs --write`. Do not hand-edit betw
 
 #### `Tooltip`
 
-| Row                                                                  | Rest                                                        | Hover         | Focus-visible                               | Press (active) | Disabled |
-| -------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- | ------------------------------------------- | -------------- | -------- |
-| button @ packages/design-system/src/primitives/Tooltip/index.tsx:259 | packages/design-system/src/primitives/Tooltip/index.tsx:259 | HoverRevealed | KeyboardFocusRevealed; DismissedAfterEscape | none           | none     |
+| Row                                                                  | Rest                                                        | Hover                                                                                                                               | Focus-visible                                                                                                                                                           | Press (active) | Disabled |
+| -------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------- |
+| button @ packages/design-system/src/primitives/Tooltip/index.tsx:259 | packages/design-system/src/primitives/Tooltip/index.tsx:259 | HoverRevealed; CountryFlag:FlagHoverRevealed; ProfileSummary:BoardFlagHoverRevealed; ProfileSummary:BoardLongAliasFlagHoverRevealed | KeyboardFocusRevealed; DismissedAfterEscape; CountryFlag:FlagKeyboardFocusRevealed; CountryFlag:FlagDismissedAfterEscape; ProfileSummary:BoardFlagKeyboardFocusRevealed | none           | none     |
 
 <!-- state-coverage:end -->
 
@@ -2156,31 +2651,32 @@ component whose story it is, and
 judged the same way as 8c — every citation here immediately followed by its own quote, so the
 checker can verify it the same way it verifies 8c's own table.
 
-| Component                 | Quotes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AnalysisTimeline`        | `:176` "follow `Button`'s own states" (comment, quoting the spec) and `:183` "follow `Button`'s own states." (rendered text) — target `secondary\|lg`, no own hover — **false, same as F1** (the story's own rendered text repeats the spec's claim verbatim, so it is false for the identical reason).                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `MatchDetailPanel`        | `:522` "already covered by `Button`'s own stories" (comment) and `:532` "carries its own, per `Button`'s stories" (rendered text) — target `secondary\|lg` — **the comment already flags hover; this audit widens it**: focus-visible is also false here (`secondary\|lg`'s own fv cell is `ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible`, never `Button.stories.tsx`) and so is press (`ReplayAvailabilityList:Active`) — all three states are covered elsewhere, none by "`Button`'s own stories" as both the comment and the rendered text claim. T595's own known item (c) is this rendered text; this audit's correction is that the gap is three states wide, not one.                                                           |
-| `ReplayAvailabilityList`  | `:266` "`DownloadAction`: per `Button`" (comment, quoting the spec) on the `Hover` story itself — not a deferral, context for why the story exists — **not counted** (this is the story that supplies `secondary\|lg`'s own coverage, not a claim of absence).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `FavouriteToggle`         | `:103` "owned entirely by `Button/ghost`" (comment, quoting the spec) on the `Hover` story itself — the same shape as `ReplayAvailabilityList`'s own `:266` above — not a deferral, context for why `Hover`/`FocusVisible`/`Active` are captured directly here — **not counted** (found only once the vocabulary sweep admitted `owned entirely by`, `reviewer`'s fourth REJECT on PR #80).                                                                                                                                                                                                                                                                                                                                                               |
-| `SignInScreen`            | `:79` "owned entirely by `Button`" (comment, quoting the spec) and `:86` "carries its own, per `Button`'s stories" (rendered text) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ThirdPartyObjectionForm` | `:68` "the submit button (per `Button`)" (comment on the `Hover` story) and `:91` "the button per `Button`" (comment on the `Active` story) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `AccountErasurePanel`     | `:106` "covered by `Button.stories.tsx`'s per-variant `FocusVisible`/`Active` stories" (comment) and `:123-124` "already covered by `Button.stories.tsx`'s per-variant stories" (rendered text) both claim the dialog's `destructive` action has press **false, same claim as F20, quoted twice**: `DestructiveActive` resolves to `destructive\|md`, never the `lg` this screen renders. Focus-visible is true in outcome but attributed to the wrong story by both quotes (`DestructiveFocusVisible`, itself `md`) — the real `lg` coverage is `Dialog:FocusVisible`, a story neither quote names (F20's own "true, by a different route than the one named").                                                                                          |
-| `ProfileSummary`          | `:496` "The switcher's own hover/focus/active are `Menu`'s stories" (comment) and `:572-573` "carry theirs, per `Menu`" (rendered text, `RatingEntryHoverNotApplicable`) — **false for hover, same shape as F15**: `Menu`'s own trigger has no hover frame anywhere in the tree (F15), so neither quote's claim holds for hover; both are added to the F15/F16-carried finding below as this component's own story-level echo of the spec's `profile-summary.md:134` claim, not a new, separate false claim.                                                                                                                                                                                                                                              |
-| `ArchivalControl`         | `:80` "carr[ies] its own hover, focus and active states" (comment) already flags the rendered claim below it as known-false; `:90` "carry their own hover, focus and active states" (rendered text) — **false for the privacy link (F11) and for the button's hover (F2, `secondary\|lg`)** — the comment's own self-correction is accurate; the rendered text it describes is the false artifact, left uncorrected pending T596's design decision, exactly as the comment says.                                                                                                                                                                                                                                                                          |
-| `DataExportPanel`         | `:131` "already covered by their own components' stories" (comment) and `:147-148` "already covered by `Button.stories.tsx`'s per-variant stories" (rendered text) — **true**: this pair was corrected by a prior remediation (row 5/H2, row 7/H4) and now states exactly what the generated `secondary\|lg` row shows (`hover: none`, `focus-visible`/`active` covered elsewhere) — the one component in this sweep whose own comment history shows the correction this audit asks for elsewhere.                                                                                                                                                                                                                                                        |
-| `Dialog`                  | `:130` "hover, active and disabled all belong to the `Button`s inside it" (comment) and `:138` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim.                                                                                                                                                                                                                                                                                           |
-| `Section`                 | `:124` "the components inside it carry their own" (comment, quoting `structural-tier.md` §6) and `:130` "The components inside it carry their own." (rendered text) — target: none, the same no-fixed-owner shape N2 already files — **true as a blanket statement**: `Section` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no child to falsify the claim against, the same reason `Dialog`'s blanket claim above is true.                                                                                                                                                                                                                                           |
-| `Callout`                 | `:97` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:242-243`) and `:103` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:108`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                        |
-| `Text`                    | `:134` "none of its own. `Text` is not focusable" (comment, quoting `structural-tier.md` §8, reused from N3/8c's own `:552`) and `:142-143` "that ring belongs to the caller, not to this component." (rendered text) — target: none, the same no-fixed-owner shape N3 already files — **true as a blanket statement**: this story renders `<Text role="display">Recent matches</Text>` with no `tabIndex` at all, so there is no focused instance here to falsify the claim against, the same reason `Section`'s and `Dialog`'s blanket claims above are true.                                                                                                                                                                                           |
-| `Panel`                   | `:167` "hover — none. A `Panel` is never itself interactive" (comment, quoting `structural-tier.md` §7) and `:175` "that link owns its own hover, focus and active states." (rendered text) — target: none, the same no-fixed-owner shape N2/N3 already file — **true as a blanket statement**: `Panel` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no real link to falsify the claim against, the same reason `Section`'s, `Dialog`'s and `Text`'s blanket claims above are (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`).                                                                                                           |
-| `CivilisationIcon`        | `:120` "the enclosing row link owns interaction, this mark never does." (comment, quoting `civilisation-icon.md` §4) and `:126` "The enclosing row's own link owns the hover fill." (rendered text) — target: none, the same shape `FavouriteToggle`'s and `ReplayAvailabilityList`'s own "owned entirely by" rows above are — **true**: generated Record 1 lists `composites/CivilisationIcon` with `(no local interactive element)`, and its own consumers (`MatchRow` `index.tsx:397`, `PlayerResultRow` `index.tsx:54`, `FavouritesList` `index.tsx:244`) each carry a real row-link hover/focus-visible/active of their own — the enclosing link genuinely does own it (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`). |
-| `MapThumbnail`            | `:146` "the enclosing row link owns interaction, this mark never does." (comment, quoting `map-thumbnail.md` §4) and `:152` "The enclosing row's own link owns the hover fill." (rendered text) — same shape and same verdict as `CivilisationIcon` immediately above — **true** (added 2026-09-19, T594 B3).                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `PlayerColourSwatch`      | `:144` "the enclosing row link owns interaction, this chip never does." (comment, quoting `player-colour-swatch.md` §4) and `:150` "The enclosing row's own link owns the hover fill." (rendered text) — same shape and same verdict as `CivilisationIcon` above — **true** (added 2026-09-19, T594 B3).                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Component                 | Quotes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AnalysisTimeline`        | `:176` "follow `Button`'s own states" (comment, quoting the spec) and `:183` "follow `Button`'s own states." (rendered text) — target `secondary\|lg`, no own hover — **false, same as F1** (the story's own rendered text repeats the spec's claim verbatim, so it is false for the identical reason).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `MatchDetailPanel`        | `:520` "`DownloadAction`: per `Button`." (comment, quoting the spec) and `:535-536` "Its `DownloadAction` button is real — hover, focus-visible and press all paint — but the frames that prove it are `ReplayAvailabilityList`'s own stories, not `Button`'s." (rendered text) — target `secondary\|lg` — **corrected 2026-09-19 (T595's own known item (c)): the rendered text used to read "carries its own, per `Button`'s stories," false for all three states (this audit's own widening — focus-visible and press, not only the hover the comment already flagged).** Now true: `secondary\|lg`'s own hover, focus-visible and press cells are `ReplayAvailabilityList:Hover`, `ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible` and `ReplayAvailabilityList:Active`, none of them `Button.stories.tsx`'s own.                                                                                                                                                                                                                                                |
+| `ReplayAvailabilityList`  | `:266` "`DownloadAction`: per `Button`" (comment, quoting the spec) on the `Hover` story itself — not a deferral, context for why the story exists — **not counted** (this is the story that supplies `secondary\|lg`'s own coverage, not a claim of absence).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `Button`                  | `:87` "`ghost\|md`'s own hover was already covered elsewhere" (comment, on the new `GhostHover` story) — not a deferral, context for why the story exists despite `ghost\|md`'s own hover already being real elsewhere (`FavouriteToggle:Hover`) — **not counted**, the same shape as `ReplayAvailabilityList`'s own `:266` and `FavouriteToggle`'s own `:103` above (added 2026-09-19, T595, gap (c): `SecondaryHover`/`GhostHover`/`DestructiveHover` close `secondary\|md` and `destructive\|md`'s own hover, real gaps F13 names; `ghost\|md`'s was already covered before this trio, and this comment says so rather than claiming a gap that was not one).                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `FavouriteToggle`         | `:103` "owned entirely by `Button/ghost`" (comment, quoting the spec) on the `Hover` story itself — the same shape as `ReplayAvailabilityList`'s own `:266` above — not a deferral, context for why `Hover`/`FocusVisible`/`Active` are captured directly here — **not counted** (found only once the vocabulary sweep admitted `owned entirely by`, `reviewer`'s fourth REJECT on PR #80).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `SignInScreen`            | `:79` "owned entirely by `Button`" (comment, quoting the spec) and `:86` "carries its own, per `Button`'s stories" (rendered text) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ThirdPartyObjectionForm` | `:68` "the submit button (per `Button`)" (comment on the `Hover` story) and `:91` "the button per `Button`" (comment on the `Active` story) — target `primary\|lg`, fully covered — **true**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `AccountErasurePanel`     | `:122-124` "owned by the `Button`s, the … `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the … `Acknowledgement` checkbox" (comment, quoting the spec) and `:150-151` "dialog's actions (`destructive`, `secondary`) defer hover, focus-visible and press to … `Button` — real, though not always by `Button.stories.tsx`'s own stories" (rendered text) — **corrected 2026-09-19 (T595, F20 closed)**: both used to claim the dialog's `destructive` action had press covered by `DestructiveActive` (`destructive\|md`, never this screen's own `lg`), the shape F20 found false. The rewritten text is **true**: `destructive\|lg`'s own focus-visible is real via `Dialog:FocusVisible`, never `Button.stories.tsx`'s own story; its hover and press have no frame anywhere at `lg` (F14, still open, not this task's); `secondary\|lg`'s hover, focus-visible and press are all real too, but via `ReplayAvailabilityList`/`UploadControl`, never `Button`'s own per-variant stories — the same "true elsewhere" shape as F1/F2/F4/F6/F7. |
+| `ProfileSummary`          | `:496` "The switcher's own hover/focus/active are `Menu`'s stories" (comment) and `:572-573` "carry theirs, per `Menu`" (rendered text, `RatingEntryHoverNotApplicable`) — **false for hover, same shape as F15**: `Menu`'s own trigger has no hover frame anywhere in the tree (F15), so neither quote's claim holds for hover; both are added to the F15/F16-carried finding below as this component's own story-level echo of the spec's `profile-summary.md:134` claim, not a new, separate false claim.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `ArchivalControl`         | `:80` "carr[ies] its own hover, focus and active states" (comment) already flags the rendered claim below it as known-false; `:90` "carry their own hover, focus and active states" (rendered text) — **false for the privacy link (F11) and for the button's hover (F2, `secondary\|lg`)** — the comment's own self-correction is accurate; the rendered text it describes is the false artifact, left uncorrected pending T596's design decision, exactly as the comment says.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `DataExportPanel`         | `:126` "owned by the `Button`s, the `DownloadLink`… the sections" (comment, quoting the spec) and `:150-151` "its hover, focus-visible and press are all real, but the frames that prove them are `ReplayAvailabilityList`'s and `UploadControl`'s own" (rendered text) — **corrected 2026-09-19 (T595)**: the pair used to read "already covered by `Button.stories.tsx`'s per-variant stories," true for the ownership fact and false for the story named — `RequestButton` is `secondary\|lg` (`index.tsx:118-119,215`), and `Button.stories.tsx`'s own per-variant stories force `md`, never `lg`, the same shape F20 found in `AccountErasurePanel` and this audit found in `MatchDetailPanel`. The generated `secondary\|lg` row's own hover, focus-visible and press cells all read `ReplayAvailabilityList`/`UploadControl`, never `Button.stories.tsx`'s own — the rewritten text now states exactly that.                                                                                                                                                                  |
+| `Dialog`                  | `:130` "hover, active and disabled all belong to the `Button`s inside it" (comment) and `:138` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `Section`                 | `:124` "the components inside it carry their own" (comment, quoting `structural-tier.md` §6) and `:130` "The components inside it carry their own." (rendered text) — target: none, the same no-fixed-owner shape N2 already files — **true as a blanket statement**: `Section` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no child to falsify the claim against, the same reason `Dialog`'s blanket claim above is true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `Callout`                 | `:97` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:242-243`) and `:103` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:108`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                                                                                                                                                                                                                                                                                                                                                   |
+| `Text`                    | `:134` "none of its own. `Text` is not focusable" (comment, quoting `structural-tier.md` §8, reused from N3/8c's own `:552`) and `:142-143` "that ring belongs to the caller, not to this component." (rendered text) — target: none, the same no-fixed-owner shape N3 already files — **true as a blanket statement**: this story renders `<Text role="display">Recent matches</Text>` with no `tabIndex` at all, so there is no focused instance here to falsify the claim against, the same reason `Section`'s and `Dialog`'s blanket claims above are true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `Panel`                   | `:167` "hover — none. A `Panel` is never itself interactive" (comment, quoting `structural-tier.md` §7) and `:175` "that link owns its own hover, focus and active states." (rendered text) — target: none, the same no-fixed-owner shape N2/N3 already file — **true as a blanket statement**: `Panel` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no real link to falsify the claim against, the same reason `Section`'s, `Dialog`'s and `Text`'s blanket claims above are (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`).                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `CivilisationIcon`        | `:120` "the enclosing row link owns interaction, this mark never does." (comment, quoting `civilisation-icon.md` §4) and `:126` "The enclosing row's own link owns the hover fill." (rendered text) — target: none, the same shape `FavouriteToggle`'s and `ReplayAvailabilityList`'s own "owned entirely by" rows above are — **true**: generated Record 1 lists `composites/CivilisationIcon` with `(no local interactive element)`, and its own consumers (`MatchRow` `index.tsx:397`, `PlayerResultRow` `index.tsx:54`, `FavouritesList` `index.tsx:244`) each carry a real row-link hover/focus-visible/active of their own — the enclosing link genuinely does own it (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`).                                                                                                                                                                                                                                                                                                                            |
+| `MapThumbnail`            | `:146` "the enclosing row link owns interaction, this mark never does." (comment, quoting `map-thumbnail.md` §4) and `:152` "The enclosing row's own link owns the hover fill." (rendered text) — same shape and same verdict as `CivilisationIcon` immediately above — **true** (added 2026-09-19, T594 B3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `PlayerColourSwatch`      | `:144` "the enclosing row link owns interaction, this chip never does." (comment, quoting `player-colour-swatch.md` §4) and `:150` "The enclosing row's own link owns the hover fill." (rendered text) — same shape and same verdict as `CivilisationIcon` above — **true** (added 2026-09-19, T594 B3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 **Excluded — grep hits outside this list, named rather than left silent, none of them a
 hover/focus-visible/active deferral (Record 1's own tracked axes):** `PlayerResultRow.stories.tsx:65-66`
 ("Those states belong to `SearchBox`'s own `ResultsRegion`") is a disabled/loading/error/empty
-provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:131-132` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
+provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:257-258` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
 `disabled` vocabulary entry, not hover/focus-visible/active; `SiteHeader.stories.tsx:189` ("that
 state belongs to `Menu`") is about the `expansion` vocabulary entry (`Menu`'s own disclosure state,
 not `SiteHeader`'s hover/focus/active); `ProfileSummary.stories.tsx:551` ("carries its own mark
@@ -2189,13 +2685,18 @@ signal — a different sense of "carries its own" than the one this row tracks.
 `PrivacyNotice.stories.tsx:27` ("renders nothing, per `Callout`'s own empty rule") is about the
 `empty` vocabulary entry, not hover/focus-visible/active.
 `AccountErasurePanel.stories.tsx:65-66` ("not a `Button` instance and not owned by any dialog
-or … checkbox") is its own, separate comment block from the row's `:106`/`:123-124` citations above (no
+or … checkbox") is its own, separate comment block from the row's `:122-124`/`:150-151` citations above (no
 blank line separates a comment from the code or rendered text immediately below it, so those two
 share one block; this one, about `ErasedScreen`'s link, is a block of its own, whose own last line
 is the `const erasedScreenLinkClip = …` declaration at `:72` (corrected 2026-09-19 — M5: the prior
 text named `:72` itself as the blank line; the blank line that actually closes the block is `:73`))
 — it states the link is **not** deferred, the opposite of a deferral, so it is read and excluded
-rather than filed as a claim to judge. `Text.stories.tsx:156` ("Text never paints the
+rather than filed as a claim to judge. **Added 2026-09-19 (T595, gap (b)).**
+`AccountErasurePanel.stories.tsx:102` ("owned by no component with its own") is a third,
+separate block from the same file — `AcknowledgementCheckboxFocusVisible`'s own comment (lines
+101-110) — stating the acknowledgement checkbox is **not** owned by any other component either, the
+same shape as the `:65-66` entry immediately above: read and excluded, not filed as a claim to
+judge. `Text.stories.tsx:156` ("Text never paints the
 disabled ink — that belongs to a disabled control's own label.", `:150`'s comment quoting the same
 sentence) is a second, separate block from the row's own `:134`/`:142-143` citations above (the
 `disabled` vocabulary entry, not hover/focus-visible/active — the same shape row 8's own `Badge`/
@@ -2206,8 +2707,8 @@ itself surfaced these; none is a hover/focus-visible/active deferral).** `SiteHe
 ("owns internally) ever mounts") is about which component mounts/instantiates another (`SiteHeader`
 and the `ThemeProvider` it owns internally, `:104-105`), not which one paints a state.
 `Callout.stories.tsx:77` ("the same shape `Dialog`'s heading owns") is a cross-reference to a shared
-_pattern_, not a state handoff. `Menu.stories.tsx:310` ("already owns.") says which _story_ (this
-one's own preceding sentence: which `Selection` above already depicts, `:308-309`) is about the
+_pattern_, not a state handoff. `Menu.stories.tsx:329` ("already owns.") says which _story_ (this
+one's own preceding sentence: which `Selection` above already depicts, `:328-329`) is about the
 `selection`/`expansion` vocabulary entry, not which component paints hover/focus/active.
 `Page.stories.tsx:306` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
 ("owns the space between the components inside it", the component's own Storybook description) and
@@ -2274,8 +2775,9 @@ generated region now settles on its own, and left two of them honestly `unresolv
 - **F2.** `ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` — false for hover on the
   button half (`secondary|lg`, same elsewhere pointer as F1); the privacy-link half is F11.
 - **F3 (citation corrected 2026-09-19 — M2/M3: `:127,138` is each `<Button` tag's own opening line;
-  each `variant` prop is one line below it).** `shared-primitives.md:560` and `Dialog.stories.tsx`'s
-  `EmptyHoverActiveDisabledNotApplicable`
+  each `variant` prop is one line below it; corrected again 2026-09-20 — the `destructive` half of
+  the supporting parenthetical went stale, the verdict itself did not).** `shared-primitives.md:560`
+  and `Dialog.stories.tsx`'s `EmptyHoverActiveDisabledNotApplicable`
   — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:127-128,138-139`,
   `variant={primaryAction.variant ?? 'destructive'}`/`?? 'secondary'`) now resolve mechanically per
   story rather than staying `unresolved`: the generator substitutes each story's own merged `args`
@@ -2285,14 +2787,25 @@ generated region now settles on its own, and left two of them honestly `unresolv
   `'Turn it off'`, identifies `primaryAction`, and evaluates `primaryAction.variant ?? 'destructive'`
   (no `variant` in this story's own args) to `'destructive'` — the generated `destructive|lg` row's
   own focus-visible cell now reads `Dialog:FocusVisible` directly. `destructive`'s own hover has no
-  frame anywhere (generated `destructive|md` row, the only other `destructive` combination in the
-  tree); `secondary`'s exists elsewhere (`secondary|lg`) but is not what "belong to the `Button`s
-  inside it" points a reader toward, and no story forces `secondaryAction`'s own state at all.
-- **F4.** `structural-tier.md:1036,1125` and `EmptyState`/`ErrorState`'s own
-  `HoverFocusActiveNotApplicable` stories — false for hover. Both actions are `secondary|md`
-  (generated Record 3 confirms the size directly — `EmptyState.stories.tsx:33`,
-  `ErrorState.stories.tsx:26` etc.), and `secondary|md`'s own hover cell is `none` — the `lg` row's
-  elsewhere pointer does not apply at this size.
+  frame anywhere **at `lg`**, the size `Dialog` actually renders (still true — unaffected by this
+  task); the parenthetical this finding used to add for support, "the only other `destructive`
+  combination in the tree," no longer proves the stronger claim it was reaching for, because
+  `destructive|md` now has a real one (`Button:DestructiveHover`, T595's own gap (c)) — `destructive`
+  has a hover frame somewhere in the tree, just not at the size `Dialog` renders, which is what the
+  verdict was always judged against and remains true at. `secondary`'s exists elsewhere
+  (`secondary|lg`) but is not what "belong to the `Button`s inside it" points a reader toward, and no
+  story forces `secondaryAction`'s own state at all.
+- **F4 (closed 2026-09-19, T595).** `structural-tier.md:1036,1125` and `EmptyState`/`ErrorState`'s own
+  `HoverFocusActiveNotApplicable` stories — both actions are `secondary|md` (generated Record 3
+  confirms the size directly — `EmptyState.stories.tsx:33`, `ErrorState.stories.tsx:26` etc.).
+  Neither story's own sentence ever names a specific story — both say only "carries `Button`'s
+  [states]," an ownership claim, true regardless — so the gap this finding named was the cell
+  itself, `secondary|md`'s own hover reading `none` (the `lg` row's elsewhere pointer does not
+  apply at this size, F13). `Button.stories.tsx`'s new `SecondaryHover` (T595, gap (c)) closes
+  exactly that cell — the generated `secondary|md` row's hover now reads `Button:SecondaryHover`
+  directly — so `structural-tier.md`'s and both stories' own "carries `Button`'s" is true in fact
+  now, not only in ownership. No source or story text needed changing: neither ever misattributed
+  the state to a specific story the way F1/F2/F6/F7 do.
 - **F5.** `sign-in-screen.md:69` ("owned entirely by `Button`") is true of the `default` state's
   primary button (`primary|lg`, fully covered) but also covers several `secondary|lg` outcome-state
   buttons the blanket sentence does not distinguish. Spec imprecision, not a story-level false claim.
@@ -2300,17 +2813,20 @@ generated region now settles on its own, and left two of them honestly `unresolv
   `Choose file`/`Refresh` are `secondary|lg` (elsewhere: `ReplayAvailabilityList:Hover`,
   unnamed here). `:192` (active) is true: `secondary|lg`'s press is covered.
 - **F7 (widened in the row-8 audit: `match-history.md` carries a third citation this finding did not
-  read).** `match-history.md:169,171`, as consumed by `MatchDetailPanel` — its own
-  `HoverFocusActiveNotApplicable` _rendered_ text ("carries its own, per `Button`'s stories") is
-  still false for a Storybook-only reader; `DownloadAction` is `secondary|lg`, no own hover. The
-  same spec sentence, consumed by `ReplayAvailabilityList` instead, is true — that file's own
-  `DownloadAction` is exactly the `secondary|lg` row's `Hover`/`FocusVisible`/`Active` elsewhere
-  pointer for F1, F2, F4 (at `lg`), F6 and F7 alike. **The active state carries the identical shape,
-  one clause the prior sweep's `:169,171` citation missed**: `match-history.md:186-187`
-  ("`DownloadAction`: per `Button`") defers press the same way, four paragraphs below the
-  hover/focus-visible bullets, past an intervening remediation note — `secondary|lg`'s own press cell
-  is `ReplayAvailabilityList:Active`, so the same reader-facing gap (true elsewhere, false for
-  `MatchDetailPanel`'s own Storybook-only reader) holds for press too.
+  read; closed 2026-09-20, T595's own known item (c)).** `match-history.md:169,171`, as consumed by
+  `MatchDetailPanel` — its own `HoverFocusActiveNotApplicable` _rendered_ text used to read "carries
+  its own, per `Button`'s stories," false for a Storybook-only reader: `DownloadAction` is
+  `secondary|lg`, no own hover. **The active state carried the identical shape, one clause the prior
+  sweep's `:169,171` citation missed**: `match-history.md:186-187` ("`DownloadAction`: per `Button`")
+  deferred press the same way, four paragraphs below the hover/focus-visible bullets, past an
+  intervening remediation note. The rendered text is now fixed (8c-bis's own `MatchDetailPanel` row
+  above carries the current quote): it states the real route directly, "the frames that prove it are
+  `ReplayAvailabilityList`'s own stories, not `Button`'s" — a Storybook-only reader of
+  `MatchDetailPanel`'s own stories now reaches the truth without needing `match-history.md` or
+  `ReplayAvailabilityList` at all. The same spec sentence, consumed by `ReplayAvailabilityList`
+  instead, was always true — that file's own `DownloadAction` is exactly the `secondary|lg` row's
+  `Hover`/`FocusVisible`/`Active` elsewhere pointer F1, F2 and F6 still name (F4's own subject was
+  always `md`, never this `lg` pointer, and is closed on its own terms above).
 - **F8.** `Link`'s own matrix gap (generated `Link` matrix, `inline` row) — hover and focus-visible
   both `none`, even though `structural-tier.md` §9 documents `inline`'s hover as visually distinct
   from `standalone`'s. `ActiveInline` covers press; nothing depicts the other two. FR-042's own
@@ -2327,54 +2843,91 @@ generated region now settles on its own, and left two of them honestly `unresolv
   anywhere depicts it — the state that matters most, since it is invisible until focused. Missed by
   every sweep before this one because a `<a ` line grep never matches `<a\n      href=…`
   (`scripts/checks/state-coverage.test.mjs`'s own first fixture is modelled on this element).
-- **F10 (corrected 2026-09-19).** `PrivacyNotice`'s local anchors, as the generated Record 1 region
-  reads them: the `Contents` entry (`index.tsx:490`) is covered on all three states, by `Hover`,
-  `FocusVisible` and `Active`; the objection-form anchor (`index.tsx:740`) and the contact-route
-  link (`index.tsx:797`) read `none` on every state; the `InlineLink` recipe (`index.tsx:242`) reads
-  `unresolved` on every state, because it is a helper declared once and invoked many times and the
-  script cannot order a helper's call sites against the inline candidates, so it declines to say
-  which link a bare `nth` reaches. **The script declining does not leave the question open here; a
-  check by hand settles it.** Every `visualForceState` in `PrivacyNotice.stories.tsx` names
-  `role: 'link'` with `nth: 0`, and the `Contents` entry sorts before the first `<InlineLink` call
-  site in `index.tsx`, so all three state stories depict the `Contents` entry and no story depicts
-  `InlineLink`. T595 owes `InlineLink` its three frames, and owes the extractor whatever lets the
-  region say so itself. The contact-route link additionally paints **zero** state classes of any
-  kind (Record 1's own class columns) — a rendering defect, not only a missing frame, which is why
-  that half of this finding is T596's. `privacy-notice.md`'s handoff for the objection-form anchor
-  (8c's row for that file) is accurate about the classes — the anchor paints the same
-  `hover:bg-surface-sunken` that `Button`'s `secondary` variant does. Judged at the size the anchor
-  renders (its `px-6` and `text-md` are `lg`'s), the target is `secondary|lg`, and that row's own
-  hover cell is `ReplayAvailabilityList:Hover`, unnamed by that spec — the same elsewhere pointer
-  as F1, a frame that exists and not a missing one. The anchor's own hover cell reading `none` is
-  the separate record 1 gap stated above: it is a local anchor, not a `Button` instance, so
-  `Button`'s frame does not depict it.
-- **F10a (corrected 2026-09-19).** `PrivacyNotice`'s `SectionHeading` (generated Record 1,
-  `index.tsx:264-266`, `tabIndex={-1}`) carries a real focus ring, and the region reads its cells
-  `unresolved: no implied role`, the script declining. Settled by hand the same way as F10: no
-  `visualForceState` in `PrivacyNotice.stories.tsx` targets anything but `role: 'link'`, and no
-  story there has a `play()`, so no story depicts the heading's focus ring and T595 owes it a
-  frame. The same shape as F9a: a `tabIndex={-1}` heading carrying a same-file focus-ring constant
-  is `state-coverage.test.mjs`'s second fixture.
+- **F10 (closed 2026-09-19, T595, then fully closed 2026-09-20, T599 — the third half's own cell
+  narrowed twice by T595, then closed at the root by T599's package-wide `buildStoryPropsScope`
+  fix).** `PrivacyNotice`'s local anchors, as the
+  generated Record 1 region reads them: the `Contents` entry (`index.tsx:490`) is covered on all
+  three states, by `Hover`, `FocusVisible` and `Active`; the `InlineLink` recipe (`index.tsx:242`)
+  is now covered by its own `InlineLinkHover`/`InlineLinkFocusVisible`/`InlineLinkActive` trio,
+  forced at `nth: 9` — its own real DOM position under this component's default `hrefs`, past the
+  nine `Contents` entries. `resolveNameMatch`'s own `nth` branch could not place that `nth` at
+  first: the candidate pool held one declaration-site slot per `.map()` group regardless of its
+  real cardinality, so nine real `Contents` entries occupied exactly one slot and no `nth` past the
+  pool's own small size could ever be placed anywhere on this page — closed at the root, not worked
+  around: a helper's own real call-site count and a `.map()` group's own resolved array length both
+  now contribute their real width to the ordering. The objection-form anchor (`index.tsx:740`) is
+  now covered the same way, by `ObjectionCallToActionHover`/`FocusVisible`/`Active`, targeted by
+  `selector` rather than `nth` (its own `href={hrefs.objectionForm}` is a literal in every story's
+  own args, unique in the whole render). The contact-route link (`index.tsx:797`) reads `none` for
+  the class half (it paints no state class at all, T596's own subject, unaffected by this task) and,
+  as of T599, `none` for the story half too, not `unresolved`: first, the `nth` fix above correctly
+  rules this element out of `InlineLinkHover`'s own range (a clean `reject`, not `ambiguous`);
+  second, `resolveSelectorMatch`'s own caller excludes a candidate this story's scope confirms
+  `'unreached'` before ever attempting its own attribute, the same guard-fold — and, third,
+  `buildStoryPropsScope` (`scripts/checks/state-coverage.mjs`) no longer seeds a component prop with
+  no destructuring default as `UNRESOLVED` merely because a story's own merged `args` do not name
+  it. `ObjectionCallToActionHover`/`FocusVisible`/`Active`'s own args are `{ lastUpdated, hrefs }`,
+  no `controllerContact` — evaluated against those stories' own scope, `controllerContact` now
+  resolves to the real value it has at that render, `undefined` (Storybook's own `args` are the
+  complete prop set, and a key absent from it is genuinely `undefined`, not unknown), so this
+  anchor's guard, `controllerContact ? <a…> : …`, evaluates `'unreached'` rather than `'unresolved'`
+  — a confirmed exclusion, not a decline to decide. `WithPublishedContact`
+  (`PrivacyNotice.stories.tsx:39-50`) does set `controllerContact.contactRoute` to `/contact` and
+  genuinely renders this anchor, but it forces no state at all, so it never enters this comparison
+  either way — the gap was never "no story sets `controllerContact`," it was that the one story that
+  does carries no `visualForceState`, and the three that do never set it; T599 closes it by making
+  their own scope say so, rather than stay silent. `privacy-notice.md`'s handoff for the
+  objection-form anchor (8c's row for that file) is accurate about the classes — the anchor paints
+  the same `hover:bg-surface-sunken` that `Button`'s `secondary` variant does. Judged at the size
+  the anchor renders (its `px-6` and `text-md` are `lg`'s), the target is `secondary|lg`, and that
+  row's own hover cell is `ReplayAvailabilityList:Hover`, unnamed by that spec — the same elsewhere
+  pointer as F1, a frame that exists and not a missing one; the anchor's own frame is
+  `ObjectionCallToActionHover` now, not that elsewhere pointer, since a local anchor is never a
+  `Button` instance regardless of which variant its classes echo.
+- **F10a (corrected 2026-09-19; the cell itself resolved by T595's own extractor work, `h1`-`h6`
+  added to `INTRINSIC_ROLE`).** `PrivacyNotice`'s `SectionHeading` (generated Record 1,
+  `index.tsx:264-266`, `tabIndex={-1}`) carries a real focus ring, and the region's own focus-visible
+  cell for it now reads a confirmed `none` — no `visualForceState` in `PrivacyNotice.stories.tsx`
+  targets anything but `role: 'link'`, and no story there has a `play()`, so no story depicts the
+  heading's focus ring, exactly as this finding concluded by hand before the extractor could say so
+  itself. `none` is a real gap, not the script declining, so this finding stands: T595's own further
+  scope (a new story, not the extractor) still owes `SectionHeading` a frame. The same shape as F9a:
+  a `tabIndex={-1}` heading carrying a same-file focus-ring constant is `state-coverage.test.mjs`'s
+  second fixture.
 - **F11 (pre-existing).** `ArchivalControl`'s privacy link (generated Record 1,
   `screens/ArchivalControl`, `index.tsx:137`) — zero state classes of any kind, confirmed directly.
-- **F12 (pre-existing).** `AccountErasurePanel`'s acknowledgement checkbox (`index.tsx:270`) — a
-  real focus ring, `coveredBy: none`; hover/active are correctly not applicable (no class painted).
-- **F13 (root cause of F1-F4, F6-F7; corrected in this pass).** The generated `Button` matrix's own
-  rows: `secondary|md` and `destructive|md` both show `hover: none` — no story anywhere depicts
-  either. `secondary|lg` does not belong beside them: its own row reads `hover:
-ReplayAvailabilityList:Hover`, exactly F1's own "elsewhere" pointer — real, just not an _own_
-  story of `secondary|lg` (the region carries no separate "own story" column to distinguish that
-  with; F1, F2, F4, F6 and F7 all name the same `ReplayAvailabilityList:Hover` cell as coverage
-  elsewhere, never as a gap). `ghost/md`'s own
-  hover **is** covered — `ghost|md`'s row now reads `FavouriteToggle:Hover` directly: the generator
+- **F12 (pre-existing; closed 2026-09-20, T595's own gap (b)).** `AccountErasurePanel`'s
+  acknowledgement checkbox (`index.tsx:270`) — a real focus ring, `coveredBy` used to read `none`;
+  the generated region now reads `AcknowledgementCheckboxFocusVisible` directly. Hover/active remain
+  correctly not applicable (no class painted) — that half never was a gap and this task left it
+  exactly as it was.
+- **F13 (root cause of F1-F4, F6-F7; corrected 2026-09-19; closed in part 2026-09-20, T595's own
+  Button hover trio, gap (c) — the `secondary|md`/`destructive|md` half this finding names as its
+  own root cause is exactly what that trio closes).** Before that trio, the generated `Button`
+  matrix's own rows read: `secondary|md` and `destructive|md` both `hover: none` — no story anywhere
+  depicted either. Both now have their own frame: `secondary|md`'s row reads `Button:SecondaryHover`
+  directly, `destructive|md`'s reads `Button:DestructiveHover`. `secondary|lg` never belonged beside
+  them and still does not: its own row reads `hover: ReplayAvailabilityList:Hover`, exactly F1's own
+  "elsewhere" pointer — real, just not an _own_ story of `secondary|lg` (the region carries no
+  separate "own story" column to distinguish that with; F1, F2 and F6 still name this same
+  `ReplayAvailabilityList:Hover` cell as coverage elsewhere, never as a gap — F4 and F7, the other
+  two findings this root cause carried, are closed on their own terms above, F4 because its own
+  subject was `secondary|md` itself and F7 because its own story text is fixed, neither because
+  `secondary|lg` changed). `ghost/md`'s own hover **is** covered, and was already before this
+  task's own trio — `ghost|md`'s row read `FavouriteToggle:Hover` directly: the generator
   substitutes `FavouriteToggle.stories.tsx`'s own `args: { favourited: false, authenticated: true }`
   into `FavouriteToggle`'s guard tree (`if (!authenticated) return <SignedOutControl />`), which
   resolves `!authenticated` to `false` and excludes `SignedOutControl`'s own `Button/ghost`
   (guarded the opposite way) from the candidate pool — the one non-hidden `Button/ghost` left is the
-  real control this story renders, unambiguous, `size="md"` by the component's own default.
-  `secondary`'s hover elsewhere is `ReplayAvailabilityList:Hover`, but only at `lg` — `secondary/md`
-  (F4's subject) has none anywhere. `destructive`'s hover has no frame anywhere in the tree at any
-  size.
+  real control this story renders, unambiguous, `size="md"` by the component's own default. This
+  task's own `GhostHover` (T595, gap (c)) adds `Button`'s own first-party frame alongside it — the
+  row now reads `Button:GhostHover; FavouriteToggle:Hover` — for parity with the
+  `Hover`/`FocusVisible`/`Active` convention every other variant carries, not because the cell was
+  open. `secondary`'s hover elsewhere is still `ReplayAvailabilityList:Hover`, but only at `lg` —
+  `secondary/md` (F4's own subject) used to have none anywhere and is closed, above.
+  `destructive`'s hover used to have no frame anywhere in the tree at any size; it now has one at
+  `md` (`Button:DestructiveHover`) and still has none at `lg` — `destructive/lg` is F14's own
+  subject, left open, a different row from the one this finding's own root cause names.
 - **F14 (corrected against the generated `Button` matrix).** `primary/md` has a real **rest** frame
   (the generated `Button` matrix's own `primary|md` row cites the count and the call sites —
   `Callout`'s own stories, `Field.stories.tsx:146,276` — not restated here) and a real **focus-visible**
@@ -2422,15 +2975,23 @@ index.tsx:426` is the `<Menu` tag's own opening line, in `ProfileSummary`'s own 
   `triggerLabel="Manage"`) composes `Menu`'s
   **`actions`** variant instead — the generated `Menu` matrix's `actions` row now resolves a
   `Disabled` frame (`Menu:ActionsWithDisabledItem`, item 4 of this remediation) and has **no
-  `hover`/`focus-visible`/`active` frame confirmed** — corrected from "no … frame of any kind": the
-  same matrix's own unresolved row names `BoardFlagHoverRevealed`/`BoardFlagKeyboardFocusRevealed`/
-  `BoardLongAliasFlagHoverRevealed`, each targeting `role: 'button', name: 'Country:'` against
-  ProfileSummary's exactly two `Menu` instances (the switcher and this "Manage" menu, `index.tsx:299`
-  and `:426`) — neither carries that name literally, so `resolveNameMatch` cannot rule this menu out
-  either, and the cell is genuinely `unresolved`, not a confirmed absence (T594's amendment: `'none'`
-  is positive knowledge or it is not claimed). `profile-summary.md:134,141` do not distinguish the
-  switcher (`selection`, partially covered) from the "Manage" menu (`actions`, no state confirmed
-  and one hover/focus-visible pair left unresolved rather than ruled out). **Carried further, into the
+  `hover`/`focus-visible`/`active` frame confirmed** — corrected from "no … frame of any kind", and
+  corrected again 2026-09-19 (this task): `BoardFlagHoverRevealed`/`BoardFlagKeyboardFocusRevealed`/
+  `BoardLongAliasFlagHoverRevealed` each target `role: 'button', name: 'Country:'`, and used to leave
+  this row's cell reading `unresolved` because neither of ProfileSummary's own two `Menu` instances
+  (the switcher and this "Manage" menu, `index.tsx:299` and `:426`) carries that name literally.
+  `resolveNameMatch` now traces the name instead of only failing to place it: `CountryFlag`
+  (`ProfileSummary/index.tsx`'s own `<CountryFlag>`, composed directly in its source) itself composes
+  `<Tooltip qualifier="Country:">` (`CountryFlag/index.tsx:71`), and `Tooltip`'s own `qualifier`
+  prepends the trigger's accessible name (`Tooltip/index.tsx`'s own doc, §8) — one hop from
+  `ProfileSummary`'s own source (`findComposedElsewhereNames`), the single documented mechanism this
+  tree uses to compose a name across a file boundary. `Tooltip` is not one of the four primitives
+  Record 3 tracks at all, so once the name is traced there, neither `Menu` instance can be the
+  target: both are positively excluded, and the cell reads a confirmed `none` (T594's amendment still
+  holds — this is exactly the positive knowledge it asks for, not a guess past it).
+  `profile-summary.md:134,141` do not distinguish the switcher (`selection`, partially covered) from
+  the "Manage" menu (`actions`, no state anywhere — now confirmed, not merely unresolved). **Carried
+  further, into the
   story file itself (8c-bis):** `ProfileSummary.stories.tsx:496`'s own comment ("The switcher's
   own hover/focus/active are `Menu`'s stories" — corrected in this pass from `:493-495`, which
   pointed at the leading spec-quote lines rather than the sentence itself) and
@@ -2455,15 +3016,21 @@ focus-visible:outline-focus-ring`), and the generated region's own left-hand cla
   generated region (its name, "Recent matches", comes from a literal `caption` prop the `FocusVisible`
   story's own `render` passes, not from `args`). The row's reserve-then-paint hover/press classes
   live on the `<tr>` (`index.tsx:237`); with part A's own fix to `impliedRoleOf`, the generated
-  region now reads that row's hover and active coverage as `unresolved: ancestor of a forced
-descendant (a@…/Table/index.tsx:281, hover: RowLinkHover)` (and `active: RowLinkActive`) directly —
-  the hand-written account this finding used to carry (a real hover/mouse-down on the row's own
-  descendant link paints the `tr`'s fill too, which the script could not attribute to a story
-  because nothing here names the `tr` by role) is now the generated reason string itself, not prose
-  standing in for what the script could not say. `focus-visible` on the `tr` has no forced descendant
-  (the row link's own focus-visible is a confirmed `none`, not a match or an ambiguity), so it reads
-  `unresolved: no implied role` instead — a `tr` genuinely carries no state of its own there, only
-  the reserved-but-unconfirmed hover/active band above.
+  region used to read that row's hover and active coverage as `unresolved: ancestor of a forced
+descendant (a@…/Table/index.tsx:281, hover: RowLinkHover)` (and `active: RowLinkActive`) — the
+  hand-written account this finding used to carry (a real hover/mouse-down on the row's own
+  descendant link paints the `tr`'s fill too, which the script could not yet attribute to a story
+  because nothing there named the `tr` by role) was the generated reason string itself, not prose
+  standing in for what the script could not say. **T595 closes exactly this**: `tr` now carries the
+  `row` role `INTRINSIC_ROLE` gives every table row, and the same real hover/mouse-down fact this
+  finding names is now credited directly rather than merely quoted — the generated region reads
+  `RowLinkHover` and `RowLinkActive` on the `tr`'s own hover/active cells, covered, not unresolved
+  (`buildElementMatrix`'s own ancestor-cascade credit, gated on `tr` carrying a real class of its own
+  for that state and the descendant's match being confirmed rather than ambiguous). `focus-visible`
+  on the `tr` has no forced descendant to credit (the row link's own focus-visible is a confirmed
+  `none`, not a match or an ambiguity), and no story forces `role: 'row'` directly either, so it
+  reads a confirmed `none` — a `tr` genuinely carries no state of its own there, only the
+  reserve-then-paint hover/active band above.
 - **F18.** `Field`'s own matrix (generated Record 3): `md`'s row has a real `Hover`/`FocusVisible`;
   `lg`'s row (`Field:SizeLg`, rest only) has neither. Matches `structural-tier.md` §11's own sizing
   rule ("to match `Button`'s").
@@ -2496,26 +3063,23 @@ descendant (a@…/Table/index.tsx:281, hover: RowLinkHover)` (and `active: RowLi
   REJECT**) reads `hover: none`, `focus-visible: none`, `active: none`; every one of those three
   states has a frame only at `ghost|md`. The deferral is real in kind (the states are `Button`'s own
   paint) and false in size (no frame proves it at `lg`).
-- **F20 (new, 2026-09-18 remediation, same size-grain judgment; citation corrected 2026-09-19 — B2:
-  the prior quote stitched line 107's four story names down to two and mis-cited the joined clause
-  to line 106 alone — a line that carries neither the "focus-visible and press" clause (that is the
-  rendered text's own wording, not the comment's) nor those four names in full; a scan that stops at
-  the first backtick in the gap missed both).**
-  `AccountErasurePanel.stories.tsx:106` "covered by `Button.stories.tsx`'s per-variant
-  `FocusVisible`/`Active` stories" (comment) and `AccountErasurePanel.stories.tsx:123-124` "already
-  covered by `Button.stories.tsx`'s per-variant stories" (rendered text) both claim the dialog's
-  `destructive`
-  action has its focus-visible and press covered by `Button`'s own stories. `index.tsx:218-220`
-  renders the button `destructive`/`size="lg"`;
-  `AccountErasurePanel/index.tsx:224` "Erase my account" (corrected in this pass: the label sits at
-  `:224`, not within the `:218-220`
-  span, which carries only `variant`/`size`) is the button's own accessible name. The
+- **F20 (new, 2026-09-18 remediation, same size-grain judgment; citation corrected 2026-09-19 — B2;
+  closed 2026-09-19, T595).** `AccountErasurePanel.stories.tsx`'s own `HoverFocusActiveNotApplicable`
+  used to claim, in both its comment and its rendered text, that the dialog's `destructive` action
+  had its focus-visible and press covered by `Button.stories.tsx`'s per-variant `DestructiveFocusVisible`/
+  `DestructiveActive` stories. `index.tsx:218-220` renders the button `destructive`/`size="lg"`;
+  `AccountErasurePanel/index.tsx:224` "Erase my account" is the button's own accessible name. The
   generated `Button` matrix's `destructive|lg` row reads `hover: none`, `focus-visible:
-Dialog:FocusVisible` (real, composed through `Dialog`'s own `destructive`/`lg` confirm action —
-  this half of the claim holds), `active: none` — `DestructiveActive` itself resolves to
-  `destructive|md` (no `size` in its own args), never `lg`. The press half of the claim is false at
-  this component's actual size; the focus-visible half is true, by a different route than the one
-  named.
+Dialog:FocusVisible` (real, composed through `Dialog`'s own `destructive`/`lg` confirm action), `active: none`
+  — `DestructiveActive` itself resolves to `destructive|md` (no `size` in its own args), never `lg`.
+  The press half of the old claim was false at this component's actual size; the focus-visible half
+  was true, by a different route than the one named. **Fixed, not merely re-attributed**: the story's
+  comment and rendered text now state the real routes directly — `destructive|lg`'s focus-visible is
+  `Dialog:FocusVisible`, its hover and press have no frame anywhere at `lg` (F14, left open — a
+  different row from what T595's own Button hover trio closed, `secondary|md`/`destructive|md`),
+  and `secondary|lg` (`Dialog`'s own secondary action) is covered by `ReplayAvailabilityList`/
+  `UploadControl`, never `Button`'s own per-variant stories — see the 8c-bis table's own
+  `AccountErasurePanel` row above for the current citations.
 
 **Cell counts are printed by the script, never written into this prose — T594's own rule, breached
 by every triple this paragraph used to carry** (each of six historical counts here was wrong, three
@@ -2574,9 +3138,25 @@ stays genuinely unresolved is the _row itself_ — a JSX candidate's own static 
 `size`/`variant`, no literal to key a shared row on) and the axis its own force-state resolves to
 _per story_ disagree, so the same source line's own `rest` entry and its own resolved state used to
 land on two different rows, the second confirming `none` on the first over a comparison that
-actually found a match. `buildAxisMatrix` now points each of these rows' own state cells at wherever
-that resolution actually landed instead (`unresolved: axis resolved only per story (→ ghost|md)`,
-`(→ destructive|lg)`), rather than leaving them read a `none` the pass never actually established.
+actually found a match. `buildAxisMatrix` used to point each of these rows' own state cells at
+wherever that resolution actually landed instead (`unresolved: axis resolved only per story (→
+ghost|md)`, `(→ destructive|lg)`), rather than leaving them read a `none` the pass never actually
+established. **Superseded 2026-09-19 (T595), twice in the same day.** The first correction read the
+target row's own cell directly and credited this row's cell with that same match rather than the
+pointer — a description already superseded by the second, an orchestrator finding on this same
+task's own hand-back: reading the target row's _whole_ cell rather than the specific label a story
+proved was correct only by accident (every target this description's own two rows reached happened
+to carry exactly one contributor), and `disabled` broke that accident immediately once the redirect
+was made to reach it at all — `unresolved|lg`'s own two call sites share `secondary|lg` with two
+wholly unrelated Button call sites in other components, and a whole-row read would have credited
+`unresolved|lg` with stories that prove nothing about either of `Dialog`'s own buttons. `cellFor`
+now credits the exact label `storyResolvedBySourceLine` proved for that line and state, never a row
+lookup, and that map is fed by `disabled`'s own confirmed matches too, not only the three states
+`composed-story` covers — `ghost|unresolved`'s hover/focus-visible/active/disabled and
+`unresolved|lg`'s focus-visible/disabled all read real story names today (the generated region
+above, cited there rather than restated here), and the pointer note itself is gone: fed exclusively
+by confirmed matches, the map never has a target with nothing to show. Row 8's own Method section
+states the current mechanism, both corrections, and the decision behind it in full.
 `RealisticProfileHeader` itself — `FavouriteToggle`'s own `lg` story, carrying no `visualForceState`
 at all — is unrelated to this shape: it renders `<FavouriteToggle size="lg" />`, never a `<Button>`
 directly, so it produces no `Button` instance and is invisible to this matrix altogether (F14/F19
@@ -2610,8 +3190,10 @@ confirmed absence), and a finding that only ever claimed "no story proves this s
 same under either word. None of the four turns out to overturn its own finding, but **an `unresolved`
 cell is never itself the evidence**: where a finding keeps its gap over one, the finding states the
 check by hand that establishes it. F10a (`PrivacyNotice`'s `SectionHeading`) and F10
-(`PrivacyNotice`'s `InlineLink`) both do, in their own bullets above, and both are owed frames by
-T595. F12
+(`PrivacyNotice`'s `InlineLink`) both did, in their own bullets — **as of this paragraph's own
+writing**; F10 is since closed in full by T595's own story work, F10a still open and still owed a
+frame (see each finding's own bullet above for the current state, not this historical paragraph).
+F12
 (`AccountErasurePanel`'s checkbox) rests on `index.tsx:270`, the checkbox itself, never `:269`'s
 `label` — a different element in the same pair, untouched by this commit. F17 (`Table`'s row link
 and its `tr`) already narrates the `tr`'s own ancestor-of-a-forced-descendant reason as its own
@@ -2641,3 +3223,254 @@ story's own missing `visualForceState` never drove — had already landed by the
 `Link.stories.tsx:45-52` "export const StandaloneExternal" now names an unrelated story (line 53 is
 blank, and 54-60 is `Rest`'s own leading comment); `Rest` itself sits at `Link.stories.tsx:61-70`
 "export const Rest".
+
+- **8f. T595's own closing commit — a dated entry for every cell 8e's audit still leaves declining,
+  and the cell gate that now requires one.** Two cells 8e's own Group 1 left open —
+  `Dialog`'s `h2` `focus-visible`, record 1 and record 3 — close as bucket (b) instead, in this same
+  commit: `shared-primitives.md`'s own `focus-visible` bullet already said the heading paints no ring
+  of its own (remediation B5, quoted verbatim in `Dialog/index.tsx`'s own `outline-none` comment); the
+  bullet is reworded into the closed vocabulary ("has no visual form") without losing that sentence's
+  own substance — the dialog's real focus-visible frame, forced onto `primaryAction`, stays exactly as
+  described. `record1` moves 7/31 impossible (24 decline) → 8/31 (23 decline); `record3` moves 14/37
+  (23 decline) → 15/37 (22 decline). The 45 cells that remain are grouped below by cause, never as 45
+  near-identical bullets, but every group still names its own exact cells — the list a reader can
+  check the claim "these are declining for this reason" against, one line per cell, inside the
+  machine-readable block the cell gate (`checkCellGate`, `scripts/checks/state-coverage.mjs`) parses.
+  A block's own shape, and how a cell's identity is compared, is documented at that function's own
+  definition — cited here rather than restated, this Method section's own rule.
+
+- **8g. A second, non-expiring entry kind — found and fixed 2026-09-20, verifying `863f111a`, 8f's
+  own first attempt at this closing commit.** Running `checkCellGate` with its own injectable `today`
+  past every block's `fixBy` (`2026-09-28`) turned all five entries below `expired`, failing the run
+  on all 45 cells 8f's own accounting names. That is the right answer for three of the five — Cause A,
+  Cause C and Cause D really are owed work by a real owner (T600, T671 and T596, in that order) — and
+  the wrong one for the other two: Cause B (27 cells) and Cause E (1 cell) already read
+  "no fixed owner — not a gap" in their own `owner` field before this pass, because neither is debt
+  at all. Guard 2's own decline (Cause B) and a real, substantive, non-impossible spec answer
+  painting no class at all (Cause E) are both structural facts about what this package's real
+  surface is and what this extractor can ever read from it — no commit, ever, clears either, so no
+  `fixBy` for them could be chosen honestly.
+  Keeping them as `state-coverage-debt` would mean re-dating both forever to stay green, which is
+  `checkCellGate`'s own comment turned against itself: "an allowlist with no enforced expiry is how a
+  temporary exception becomes permanent" is exactly what a `fixBy` bumped on a schedule, rather than
+  earned by a real fix, already is — a perpetually renewed exception is the same failure as an
+  unenforced one, both being a record nobody actually has to keep true. **Decision: a new block kind,
+  `state-coverage-permanent` (same HTML-comment shape as `state-coverage-debt`, named below rather
+  than spelled out here so this sentence cannot itself be mistaken for a third block by the parser),
+  for exactly this shape — a structural reason, no `fixBy`, no `owner`, because nothing is owed.**
+  This is a refinement of T595's own third closure ("named in a
+  dated entry in row 8, outside the generated region, saying why it stays and who owes it"), not a
+  fourth one: a permanent entry still names its cells exactly, inside the identical machine-readable
+  block shape 8f already describes, and still says why the cell stays; it differs only in what it
+  says is owed, and says it precisely because Cause B's and Cause E's own reasons already said so
+  before this pass ever ran. `checkCellGate` enforces the split both ways, not merely by convention:
+  a permanent entry carrying a `fixBy` or an `owner` is malformed, exactly as a debt entry missing
+  either now is (debt previously required only `date`/`fixBy`; `owner` was free text nobody actually
+  checked was present — closed in the same commit, since "who owes it" was never optional under
+  T595's own wording). `scripts/checks/state-coverage.test.mjs` plants both shapes against the gate:
+  a permanent entry still closing its cell at a date far past today (`2027-01-01`), a debt entry
+  still expiring past its own `fixBy` with a permanent entry beside it, and each forbidden/missing
+  field combination failing the run. Cause B and Cause E below are now `state-coverage-permanent`;
+  Cause A, C and D stay `state-coverage-debt`, each naming a real task in its own `owner:` field
+  rather than "no task filed."
+
+- **8h. A gap the generated region's own coverage credit cannot see, found 2026-09-20 by a
+  different checker, against T595's own newly captured baseline; corrected 2026-09-20 after a
+  misdiagnosis of its cause was filed, caught the same day by `visual-reviewer` reading the
+  captured frames directly rather than trusting the checker's silence.** Record 1's and record 3's
+  `Table` row-link `focus-visible` cell (`a @ packages/design-system/src/primitives/Table/index.tsx:281`)
+  reads `covered` above, correctly by this extractor's own rule: `RowLinkFocusVisible`
+  (`Table.stories.tsx:333`, T595's own new story) is a real `visualForceState` naming that exact
+  role and name, and `state-coverage.mjs` asks only whether a story exists forcing a state, never
+  whether its captured pixels differ from anything else. `scripts/checks/story-baselines-
+duplicates.mjs` — a sibling checker this register's own rows 1-7 already govern — read the
+  baseline bytes that story produced once CI captured them, and found all six indistinguishable, at
+  its own tolerance, from `primitives-table--row-links`'s unforced resting frame. **The first
+  reading of that finding — filed as T672 and as a debt entry naming a `border-collapse` rendering
+  defect the same mechanism T591 fixed for `active`/`hover` — was wrong.** The ring does paint: a
+  real, human-visible, token-blue boxed outline around "RedBull_Barley" in every one of the six
+  captures, a geometry-shaped delta of roughly 500px, 0.15-0.47% of the frame depending on width.
+  The cause is framing, not rendering. `DUPLICATE_MAX_DIFF_RATIO` in `story-baselines-
+duplicates.mjs` is `0.01`, deliberately the same `maxDiffPixelRatio` `playwright.config.ts` sets
+  for every story capture; a real ring occupying under 1% of an **unclipped full-table frame** is
+  therefore invisible both to the duplicate checker and, the point that matters, to the actual
+  visual suite, which could not fail if this baseline were swapped for the resting one. That part of
+  the original finding was correct — this baseline defended nothing — and is the miss T595's own
+  rule already names: "every new state story on a large frame is clipped to its control
+  (`visualCaptureClip`, the rule row 3 leaves behind)." `RowLinkFocusVisible` had no
+  `visualCaptureClip` at all; its siblings `RowLinkHover`/`RowLinkActive` escaped the finding only
+  because they paint a row-wide treatment that clears 1% unclipped. Fixed here, in this task, by
+  clipping `RowLinkFocusVisible` to the row link (`ROW_LINK_CLIP`, `Table.stories.tsx`, the same
+  `parts`/`pad` shape `PrivacyNotice`'s `FIRST_LINK_CLIP`/`INLINE_LINK_CLIP` and
+  `AccountErasurePanel`'s `checkboxClip` already use) — no component or token change, because none
+  was needed. The debt entry naming this pair is removed from `scripts/visual/story-baseline-
+duplicates-debt.json` (that file's own discipline: a stale entry fails the run, so a passing
+  allowlist is not left behind); the baselines the clip now produces are captured in CI, never
+  locally, so `story-baselines-duplicates.mjs` and `story-baselines.mjs` stay red against this
+  branch's pre-recapture baselines until that capture lands — expected, not a regression. T672 is
+  withdrawn below rather than pursued: its premise (a component defect needing a `product-designer`
+  decision) does not survive this correction. **What is still worth keeping from the first pass:**
+  this cell's `covered` reading in the generated region above is not wrong by `state-coverage.mjs`'s
+  own rule — a story exists, targeted correctly — but "a story exists" and "a keyboard user can see
+  this row is focused" are different claims, and a reader taking the generated table's word for the
+  second alone, before this fix, would have been wrong. `state-coverage.mjs`'s own generated region
+  stays unchanged by this entry, deliberately: its extractor answers "does a story exist," not "does
+  the pixel differ, at a scale a reader would notice," and widening it to decode pixels would
+  duplicate `story-baselines-duplicates.mjs` rather than close the gap between what each checker
+  actually asks.
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: T600 — widens record 3's own per-variant className
+  resolution (`resolveClassParts`'s `scopes.defaultScope`, row 8's own Method section, "Record 1's
+  own class half") past the default-branch reading it deliberately stops at today, for the twelve
+  non-default `variant|size` rows below, or who resolves each row by hand against the real tree and
+  gives it its own story once resolved (`destructive|lg` and `primary|md`'s own hover/press are
+  already known real gaps by 8e's own F13/F14, not merely unread; the other rows here are genuinely
+  unread, never confirmed either way).
+reason: Cause A — a primitive's own record-3 axis row whose class this pass cannot read at all,
+  because it sits behind a non-default `variant`/`size` branch record 1's own class-half
+  deliberately never unions (a `Button` row keyed on a prop the component gives more than one
+  meaning has one row per element, not one row per element per variant, so only the *default*
+  branch's class is ever real knowledge here). Giving one of these a story would assert a variant
+  mapping nobody has traced — the same "never guessed" discipline every `unresolved` cell in this
+  register already holds cells to, applied here to a cell this pass confirms is `'none'` but cannot
+  read the reason for.
+R3 Button hover destructive|lg
+R3 Button hover ghost|lg
+R3 Button hover primary|md
+R3 Button hover unresolved|lg
+R3 Button focus-visible ghost|lg
+R3 Button active destructive|lg
+R3 Button active ghost|lg
+R3 Button active primary|md
+R3 Button active unresolved|lg
+R3 Link hover inline
+R3 Link focus-visible inline
+R3 Menu focus-visible actions
+-->
+
+<!-- state-coverage-permanent
+date: 2026-09-20
+reason: Cause B — the flagged element paints no class of its own for this state, but a sibling
+  element (or, for an axis row, another row of the same matrix) in the same component already has
+  real, story-proven coverage for it: the component's real surface for this state is depicted
+  elsewhere, and no honest capture of *this* element would show anything different from its own
+  resting frame. Guard 2 of `classifyRecord1NoneCells`/`classifyRecord3NoneCells` (row 8's own
+  Method section) declines every `'none'` cell in a state's own scope the moment one sibling
+  element or row already carries real, positive coverage for that exact state, on purpose: a spec
+  sentence answering the *scope* cannot be trusted to describe every candidate in it (the Method
+  section's own `Table` example), so this guard never lets a spec rewording flip these cells to
+  `'impossible'`, no matter how the prose is phrased. Nothing is owed here — filed because T595
+  (and 8g, above) requires every declining cell named, never because work remains; only a future
+  change to the guard itself could ever move one of these, and nothing here asks for that change,
+  which is exactly why this entry carries no `fixBy` and no `owner`.
+R1 composites/SiteHeader hover a@packages/design-system/src/composites/SiteHeader/index.tsx:156
+R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:156
+R1 composites/SiteHeader active a@packages/design-system/src/composites/SiteHeader/index.tsx:183
+R1 primitives/Table hover div@packages/design-system/src/primitives/Table/index.tsx:153
+R1 primitives/Table focus-visible tr@packages/design-system/src/primitives/Table/index.tsx:237
+R1 primitives/Table active div@packages/design-system/src/primitives/Table/index.tsx:153
+R1 screens/AccountErasurePanel hover label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel hover input@packages/design-system/src/screens/AccountErasurePanel/index.tsx:270
+R1 screens/AccountErasurePanel focus-visible label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel active label@packages/design-system/src/screens/AccountErasurePanel/index.tsx:269
+R1 screens/AccountErasurePanel active input@packages/design-system/src/screens/AccountErasurePanel/index.tsx:270
+R1 screens/PrivacyNotice hover h2@packages/design-system/src/screens/PrivacyNotice/index.tsx:264
+R1 screens/PrivacyNotice hover a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/PrivacyNotice focus-visible a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/PrivacyNotice active h2@packages/design-system/src/screens/PrivacyNotice/index.tsx:264
+R1 screens/PrivacyNotice active a@packages/design-system/src/screens/PrivacyNotice/index.tsx:797
+R1 screens/ThirdPartyObjectionForm hover input@packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130
+R1 screens/ThirdPartyObjectionForm active input@packages/design-system/src/screens/ThirdPartyObjectionForm/index.tsx:130
+R3 Button disabled destructive|md
+R3 Button disabled ghost|lg
+R3 Button disabled primary|md
+R3 Field hover lg
+R3 Field focus-visible lg
+R3 Field disabled lg
+R3 Table hover div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153
+R3 Table focus-visible tr @ packages/design-system/src/primitives/Table/index.tsx:237
+R3 Table active div[role=region] @ packages/design-system/src/primitives/Table/index.tsx:153
+-->
+
+**Tooltip's own `active` stays a dated entry rather than closing as bucket (b), on the same "verify,
+never assume" instruction Dialog's `h2` above was closed under — checked and the answer is the
+opposite.** `tooltip.md` §4/§10 (quoted in full at the live cell's own `answerText`, printed by
+`classifyImpossiblePerSpec`) describes a real, painted press treatment: `border-2` reserved at rest,
+`border-border-strong` for as long as `pinned` is true (`Tooltip/index.tsx`'s own remediation-B1
+comment, "the trigger shows its own pressed treatment"). That is the literal opposite of "no ring is
+painted" — a real class genuinely changes on press. The reason this pass still reads the cell
+`'none'` is a different, narrower fact: `pinned` drives a plain conditional class
+(`pinned ? 'border-border-strong' : 'border-transparent'`), never the CSS `:active` pseudo-class
+(the trigger's own comment: "not the CSS `:active` pseudo-class ... so the paint is a plain
+conditional class rather than an `active:` variant"), and this pass's own `ownPseudoClass` only
+ever reads a literal `hover:`/`focus-visible:`/`active:`-prefixed utility. So even a real story that
+left `pinned: true` on the page — a genuine, screenshottable frame — would not move this cell to
+`'covered'` under today's extractor: nothing changes what `el.active` resolves to, because nothing
+in `pinned ? … : …` carries the `active:` prefix this pass looks for. Closing this cell for real
+needs two things together, not one: a story that forces `pinned: true` (a real click, since
+`pinned` only flips through `handleActivate`, never a `visualForceState`, which drives no click) and
+this pass's own class-half widened to also read a state-conditional class matched against a
+component's own boolean state, alongside a literal pseudo-class utility. Neither exists yet. Filed
+as T671, which owes both halves together.
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: T671 — gives `Tooltip.stories.tsx` a real `pinned: true` story (a `play()` click, not a
+  `visualForceState`) and widens this extractor's own `active`-class detection to credit a
+  state-conditional class the way it already credits a literal `active:` utility.
+reason: Cause C — the spec's own answer proves a real, painted press treatment exists (the opposite
+  of "no ring is painted"), so this cannot honestly close as bucket (b); it stays open because the
+  paint is state-conditional, not CSS-pseudo-class-conditional, which this pass's own class-half
+  cannot see under any story.
+R1 primitives/Tooltip active button@packages/design-system/src/primitives/Tooltip/index.tsx:259
+R3 Tooltip active button @ packages/design-system/src/primitives/Tooltip/index.tsx:259
+-->
+
+<!-- state-coverage-debt
+date: 2026-09-20
+fixBy: 2026-09-27
+owner: T596 (blocked on a `product-designer` decision — this row's own closing paragraph above,
+  "T595 closes the enumerated set ... F11 ... T596's and wait on a design decision").
+reason: Cause D — `ArchivalControl`'s privacy link paints no hover/focus-visible/active class of any
+  kind (F11, above); T596 gives it the `Link` `inline` treatment or the `Link` primitive itself,
+  whichever `product-designer` decides, then an `implementer` gives it real state stories. Not this
+  task's to attempt.
+R1 screens/ArchivalControl hover a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+R1 screens/ArchivalControl focus-visible a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+R1 screens/ArchivalControl active a@packages/design-system/src/screens/ArchivalControl/index.tsx:137
+-->
+
+<!-- state-coverage-permanent
+date: 2026-09-20
+reason: Cause E — a real, substantive spec answer that simply is not the closed-vocabulary claim
+  "impossible," the one case row 8's own recogniser is required to decline rather than guess a
+  verdict for. `player-search.md`'s own `SearchBox` section (added by T595's earlier extractor
+  slice, this row's own Method section, "Group 2 — SearchBox/PlayerResultRow's shared spec file,
+  structurally") answers `active` with a real, substantive passage — "`Input`: standard text-input
+  interaction" plus `PlayerResultRow`'s own border/ring recipe, which is that sibling's own, not
+  this element's — never the closed impossible vocabulary, and correctly so: forcing it into "has
+  no visual form" would overclaim what a native text input's own browser-drawn press state actually
+  is. No class exists on this element for any story to depict either, so no story could ever move
+  this cell to `covered` — nothing is owed, which is why this entry carries no `fixBy` and no
+  `owner`; only the spec answer itself changing could ever move it.
+R1 composites/SearchBox active input@packages/design-system/src/composites/SearchBox/index.tsx:129
+-->
+
+**Owner: T595 (Cause A's own owner is T600, Cause C's is T671, Cause D's stays T596 — 8g, above).
+Filed 2026-09-20; the three `state-coverage-debt` entries (Cause A, C, D) fix by 2026-09-27 (the
+same horizon this row itself carries) — each is re-checked against the live tree on that date: a
+cell whose own cause has changed (a sibling's coverage removed, a variant's class now read, a real
+`pinned: true` story landed) gets closed for real; the rest are re-dated rather than left to expire
+silently, the same discipline `KNOWN_UNACCOUNTED_FORCE_STATES` and
+`story-baseline-duplicates-debt.json` already hold their own entries to. The two
+`state-coverage-permanent` entries (Cause B, E) carry no `fixBy` and are never re-checked on a
+calendar by construction — 8g's own decision — only a change to Guard 2 itself (Cause B) or to
+`player-search.md`'s own spec answer (Cause E) could ever move either, and this task's own read of
+both on 2026-09-20 found neither changed.** `node scripts/checks/state-coverage.mjs` fails on any
+cell that is none of the three closures T595 permits — covered, impossible, or named exactly in a
+live debt or permanent entry above — the cell gate's own completion condition, not a count of cells
+typed here.

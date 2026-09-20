@@ -217,3 +217,56 @@ export const DisabledLoadingErrorNotApplicable: Story = {
   ),
   args: { items, currentPath: '/dashboard' },
 }
+
+// README's gap register row 8 (H5): the skip link (`index.tsx:156`) is a local anchor, distinct
+// from `PrimaryNav`'s own items, and paints a real `focus:`-prefixed set (`focus:not-sr-only
+// focus:fixed …`, plus `focusRing`'s own `focus-visible:` trio) — the mark that pulls it from
+// `sr-only` onto the page the moment it takes focus, which the record-1 extractor treats as a
+// painted `focus-visible` signal the same way it does every other `focus-visible:`/`focus:` pair.
+// It carries no `hover:` or `active:` class of any kind, so it has no frame for either — `Hover`
+// and `Active` above already depict this component's real hover/press surface, on a `PrimaryNav`
+// item, and that coverage is what a reader should reach for it, not a story forcing a state this
+// exact anchor never paints. `role: 'link', name: 'Skip to content'` is unambiguous: no other
+// link in this render carries that text.
+const SKIP_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'Skip to content' }], pad: '2' }
+
+export const SkipLinkFocusVisible: Story = {
+  name: 'focus-visible on the skip-to-content link',
+  args: { items, currentPath: '/dashboard' },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'Skip to content' },
+    visualCaptureClip: SKIP_LINK_CLIP,
+  },
+}
+
+// README's gap register row 8 (H5): `Brand`'s wordmark link (`index.tsx:183`) is a second local
+// anchor, styled directly in this file rather than through `PrimaryNav`'s own item recipe —
+// `hover:underline` on the wordmark text, plus the shared `focusRing`'s `focus-visible:` trio,
+// both real classes with no frame of their own before this pair. It carries no `active:` class —
+// pressing it changes nothing this component paints beyond what the browser itself does — so
+// press has no frame here either; `Active` above already depicts this component's real press
+// surface, on a `PrimaryNav` item. `role: 'link', name: 'aoe2-stats'` (`WORDMARK`) would not
+// resolve on its own — `{WORDMARK}` is a JSX expression, not a literal, so the extractor's own
+// text match cannot see it — so `nth` breaks the tie instead: the wordmark is the only other
+// `role="link"` element this render ever mounts besides the skip link and the five `PrimaryNav`
+// items, and with `items` fixed above it is confirmed the render's `nth: 1` link (`nth: 0` is the
+// skip link, always first in DOM order).
+const BRAND_CLIP = { parts: [{ role: 'link' as const, nth: 1 }], pad: '2' }
+
+export const BrandHover: Story = {
+  name: 'hover on the Brand wordmark link',
+  args: { items, currentPath: '/dashboard' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', nth: 1 },
+    visualCaptureClip: BRAND_CLIP,
+  },
+}
+
+export const BrandFocusVisible: Story = {
+  name: 'focus-visible on the Brand wordmark link',
+  args: { items, currentPath: '/dashboard' },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', nth: 1 },
+    visualCaptureClip: BRAND_CLIP,
+  },
+}

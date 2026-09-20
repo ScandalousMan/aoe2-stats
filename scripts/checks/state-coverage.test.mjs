@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   parseTsx,
   buildConstStringMap,
@@ -40,6 +41,10 @@ import {
   parseSelector,
   resolveSelectorMatch,
   findRenderJsxProps,
+  getComponentPropDefaults,
+  evaluateMergedArgsObject,
+  buildStoryPropsScope,
+  buildFileValueScope,
   impliedRoleForPrimitiveInstance,
   computeStateCoverage,
   checkCitations,
@@ -55,11 +60,42 @@ import {
   checkDeferralVocabularyCoverage,
   countRecord1Cells,
   countRecord3Cells,
+  findUnaccountedForceStates,
+  KNOWN_UNACCOUNTED_FORCE_STATES,
+  readAllSourceFiles,
+  answerSaysImpossible,
+  findVocabularyBoundarySpans,
+  resolveSpecAnswerForState,
+  mapComponentKeyToSpecFile,
+  classifyRecord1NoneCells,
+  classifyRecord3NoneCells,
+  classifyImpossiblePerSpec,
+  parseRow8DebtEntries,
+  parseRow8PermanentEntries,
+  checkCellGate,
 } from './state-coverage.mjs'
+import { deriveVocabulary } from './spec-completeness.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
   return parseTsx(fileName, code)
 }
+
+// `computeStateCoverage`'s own `componentKeyForFile` (state-coverage.mjs) keys `localElements` by a
+// path *relative to the real* `packages/design-system/src`, not by whatever prefix a fixture
+// happens to use — a fixture path outside that real tree (e.g. the `/repo/...` prefix several
+// `computed.matrices` fixtures below use) still drives `resolveDisabledFromStories`/`buildAxisMatrix`
+// correctly, because those match `componentKey` against itself internally, but it can never key
+// `computed.localElements` under the label a test expects (`primitives/Dialog`, and so on) — that
+// grouping is looked up by the real relative path. Any fixture that reads `computed.localElements`
+// needs its own files placed under this real directory instead.
+const REPO_SRC_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'packages',
+  'design-system',
+  'src',
+)
 
 function naiveTagGrepFinds(source, tag) {
   return source.includes(`<${tag} `)
@@ -525,16 +561,70 @@ test("buildAxisMatrix (red first, pre-fix shape): a story-resolved match must no
   )
 })
 
-test("buildAxisMatrix: the unresolved row's hover cell points at the row the story actually resolved to, not a bare 'unresolved' with no destination", () => {
+test("buildAxisMatrix: the unresolved row's hover cell credits the row the story actually resolved to directly, not a bare pointer note (T595)", () => {
   const matrix = buildAxisMatrix('Button', redirectFixtureInstances())
   const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
   const resolvedRow = matrix.find((r) => r.variantSize === 'ghost|md')
   assert.ok(resolvedRow, "the story's own resolved axis ('md') gets its own row")
   assert.deepEqual(resolvedRow.hover, ['Widget:Hover'])
-  assert.deepEqual(unresolvedRow.hover, ['unresolved: axis resolved only per story (→ ghost|md)'])
+  // T595: real coverage the story already established on the target row is credited here too —
+  // the same story name, not a `'unresolved: axis resolved only per story (→ ghost|md)'` pointer a
+  // reader would otherwise have to follow by hand.
+  assert.deepEqual(unresolvedRow.hover, ['Widget:Hover'])
   // The states the story never forced stay a genuine, uncontested `'none'` — the fix is scoped to
   // the one state that actually resolved elsewhere, not a blanket redirect for the whole row.
   assert.deepEqual(unresolvedRow.active, ['none'])
+})
+
+test('buildAxisMatrix: a call site is credited to every row its own stories resolve it to, never only one (T595, FavouriteToggle/Dialog shape)', () => {
+  // The same source line — one dynamic `size`/`variant` no literal can key a row on — resolves to
+  // `ghost|md` under one story (hover) and to `ghost|lg` under a different one (active), exactly
+  // `FavouriteToggle`'s own three call sites against `Hover`/`FocusVisible`/`Active` (all default
+  // `size` to `'md'`) versus `RealisticProfileHeader` (`size="lg"`, no force-state at all — so it
+  // never appears here, only in `rest`). Crediting only the *first* redirect found would silently
+  // drop the second story's own real knowledge; both must show up on their own state.
+  const instances = [
+    {
+      kind: 'jsx',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/index.tsx',
+      line: 6,
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: null, resolved: 'unresolved' },
+      disabled: false,
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'Hover',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'md', resolved: 'resolved-from-story' },
+      forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+    {
+      kind: 'composed-story',
+      componentKey: 'composites/Widget',
+      file: 'composites/Widget/Widget.stories.tsx',
+      storyName: 'RealisticHeader',
+      variant: { value: 'ghost', resolved: 'explicit' },
+      size: { value: 'lg', resolved: 'resolved-from-story' },
+      forced: { state: 'active', role: 'button', name: 'Toggle', selector: null, nth: null },
+      playFocus: null,
+      sourceLine: 6,
+      sourceFile: 'composites/Widget/index.tsx',
+    },
+  ]
+  const matrix = buildAxisMatrix('Button', instances)
+  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
+  assert.deepEqual(unresolvedRow.hover, ['Widget:Hover'])
+  assert.deepEqual(unresolvedRow.active, ['Widget:RealisticHeader'])
+  // Contrast within the same row: no story anywhere forces focus-visible on this source line, so
+  // it stays a genuine, uncontested `'none'` rather than borrowing either neighbour's credit.
+  assert.deepEqual(unresolvedRow.focusVisible, ['none'])
 })
 
 test('contrast: a JSX candidate with no story resolving it anywhere still reads a genuine none, not a manufactured redirect', () => {
@@ -628,6 +718,78 @@ function Widget() {
   const constMap = buildConstStringMap(sourceFile)
   const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
   assert.ok(found.some((el) => el.tag === 'label'))
+})
+
+// --- T595 (row 8, group 3): `inertByConstruction` — an element that is `hidden` and
+// `tabIndex={-1}`, both literal, cannot receive a hover, a focus-visible ring or a press in any
+// frame (`UploadControl`'s own hidden file input). Both required contrasts from the task brief:
+// a `hidden` element that is genuinely reachable in another state (a dynamic `hidden={…}`) must
+// not be swallowed, and a `tabIndex={-1}` element that IS hoverable must not be swallowed either. ---
+
+test('findLocalElements marks a hidden, tabIndex={-1} input as inert by construction (UploadControl shape)', () => {
+  const source = `
+function UploadControl() {
+  return (
+    <input
+      type="file"
+      accept=".aoe2record"
+      hidden
+      tabIndex={-1}
+      disabled={isUploading}
+      onChange={handleInputChange}
+    />
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, true)
+})
+
+test('required contrast: a dynamically hidden element (hidden={condition}) is never inert by construction, even with tabIndex={-1}', () => {
+  const source = `
+function Panel({ collapsed }) {
+  return (
+    <div hidden={collapsed} tabIndex={-1} className="hover:bg-surface-sunken">
+      Detail
+    </div>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
+})
+
+test('required contrast: a tabIndex={-1} element that IS hoverable is never inert by construction (no hidden attribute at all)', () => {
+  const source = `
+function SectionHeading({ id, children }) {
+  return (
+    <h2 id={id} tabIndex={-1} className="hover:text-text-primary">
+      {children}
+    </h2>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
+  assert.equal(found.hover, 'hover:text-text-primary')
+})
+
+test('a hidden element that is not tabIndex={-1} is never inert by construction either (hidden alone is not the rule)', () => {
+  const source = `
+function Widget() {
+  return <input type="file" hidden onChange={handleChange} />
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
 })
 
 test('extractPseudoClasses returns null for a state with no matching utility', () => {
@@ -758,6 +920,965 @@ test('resolveNameMatch resolves nth against inline candidates sorted by line, ex
 test('resolveNameMatch is ambiguous (not none) when nth exceeds the orderable pool', () => {
   const only = { isHelper: false, line: 100 }
   assert.equal(resolveNameMatch({ candidate: only, pool: [only], name: null, nth: 5 }), 'ambiguous')
+})
+
+// --- T595 (row 8, H5): closing the `nth`/`name` family's own remaining `unresolved` cells —
+// PrivacyNotice's `InlineLink`, Footer's two `Link` instances, and ProfileSummary's composed
+// `Tooltip` name. Routed through `computeStateCoverage` end to end, the newest tests' own style,
+// since each mechanism reads real guards/call sites/composed files a hand-built object cannot carry
+// honestly. Each mechanism gets its own resolving case and its own contrast. -----------------------
+
+const INLINE_LINK_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      <InlineLink href={hrefs.a}>A</InlineLink>
+      <InlineLink href={hrefs.b}>B</InlineLink>
+    </div>
+  )
+}
+`
+
+const INLINE_LINK_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a', b: '/b' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test("resolveNameMatch (via computeStateCoverage): a non-exported helper's own real call sites are enumerated and the earliest reached for this story stands in for its render position (PrivacyNotice/InlineLink shape, T595)", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), INLINE_LINK_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'), INLINE_LINK_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const contents = elements.find((el) => el.text === 'Contents')
+  const inlineLink = elements.find((el) => el.isHelper)
+  assert.ok(
+    contents && inlineLink,
+    'both the inline Contents link and the InlineLink recipe must be found',
+  )
+  // `Contents` sorts before InlineLink's own earliest call site — nth: 0 is `Contents`, confirmed.
+  assert.deepEqual(contents.coveredBy.hover, ['Hover'])
+  // InlineLink's own declaration is not the nth: 0 target — a real, positive `none`, not the old
+  // unconditional `unresolved` this pass used to print for every helper candidate.
+  assert.deepEqual(inlineLink.coveredBy.hover, ['none'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves an exported helper's nth cell unresolved — its call sites elsewhere are invisible to a single-file pass (T595)", () => {
+  const exportedHelperSource = INLINE_LINK_INDEX_SOURCE.replace(
+    'function InlineLink(',
+    'export function InlineLink(',
+  )
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), exportedHelperSource],
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'), INLINE_LINK_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  assert.equal(inlineLink.coveredBy.hover.length, 1)
+  assert.match(inlineLink.coveredBy.hover[0], /^unresolved:/)
+})
+
+const GUARDED_CALL_SITE_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs, extra }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      {isExtraAllowed(extra) && <InlineLink href={hrefs.a}>A</InlineLink>}
+    </div>
+  )
+}
+`
+
+const GUARDED_CALL_SITE_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a' } } }
+export default meta
+export const Hover = {
+  args: { extra: {} },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves the whole pool unresolved when a helper's own call-site guard is a function call no story's scope can evaluate (T595, 'a guard no story settles')", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), GUARDED_CALL_SITE_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'),
+      GUARDED_CALL_SITE_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  // `isExtraAllowed(extra)` is a function call — `evaluateExpr` never evaluates one, so this
+  // story's own scope cannot tell whether `InlineLink`'s own call site is even reached. Genuinely
+  // unknown whether `InlineLink` renders at all, so it is neither placed at `nth: 0` nor ruled out
+  // — `'ambiguous'`, never guessed into a `'reject'` this pass has not earned (`Contents` itself
+  // still resolves normally: only the candidate whose own position is genuinely unknown is affected,
+  // the same one-candidate-at-a-time contract every other `resolveNameMatch` call already has).
+  assert.equal(inlineLink.coveredBy.hover.length, 1)
+  assert.match(inlineLink.coveredBy.hover[0], /^unresolved:/)
+})
+
+// --- T595 (row 8, H5), coordinator's own finding on this task's second hand-back: the candidate
+// pool above holds one AST node per declaration site, so a `.map()`-rendered group (`Contents`,
+// nine real elements) used to collapse to exactly one slot in the `nth` ordering, regardless of
+// how many real elements it actually renders — `nth` itself counts real, rendered elements, the
+// same number Playwright's own `getByRole(...).nth(n)` resolves against at capture time. Three
+// cases, matching the coordinator's own three: a `.map()` group whose backing array this story's
+// own scope settles contributes that many real slots; the same shape where the array is not
+// settleable keeps the whole ordering past it unresolved rather than guessing a width of one; and
+// an element positioned after either shape, never the `nth` target either way, must still resolve
+// to a confirmed `none` — not be dragged into `unresolved` merely because an unrelated `nth` this
+// pass cannot place shares its own component's pool. ---------------------------------------------
+
+const MAP_CARDINALITY_INDEX_SOURCE = `
+const ITEMS = [
+  { id: 'a', label: 'A' },
+  { id: 'b', label: 'B' },
+  { id: 'c', label: 'C' },
+]
+export function Nav({ hrefs }) {
+  return (
+    <nav>
+      {ITEMS.map((item) => (
+        <a href={'#' + item.id} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+          {item.label}
+        </a>
+      ))}
+      <a href={hrefs.extra} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Extra
+      </a>
+    </nav>
+  )
+}
+`
+
+const MAP_CARDINALITY_STORIES_SOURCE = `
+import { Nav } from './index'
+const meta = { component: Nav, args: { hrefs: { extra: '/extra' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 3 } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): nth past a .map() group whose backing array this story settles lands on the real element after it, not stalled at the group’s own single AST slot (T595, coordinator’s own finding)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Nav' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/index.tsx'), MAP_CARDINALITY_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/Nav.stories.tsx'), MAP_CARDINALITY_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Nav')
+  const items = elements.find((el) => el.isInsideIteration)
+  const extra = elements.find((el) => el.text === 'Extra')
+  assert.ok(
+    items && extra,
+    'both the ITEMS-mapped anchor and the trailing Extra link must be found',
+  )
+  // `ITEMS` resolves to a real, three-element array (a file-level literal, evaluated once into
+  // every story's own scope) — its own group occupies real positions 0-2, so `nth: 3` is `Extra`,
+  // confirmed, never the group itself.
+  assert.deepEqual(extra.coveredBy.hover, ['Hover'])
+  assert.deepEqual(items.coveredBy.hover, ['none'])
+})
+
+const UNSETTLEABLE_MAP_INDEX_SOURCE = `
+const ITEMS = buildItems()
+export function Nav({ hrefs }) {
+  return (
+    <nav>
+      {ITEMS.map((item) => (
+        <a href={'#' + item.id} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+          {item.label}
+        </a>
+      ))}
+      <a href={hrefs.extra} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Extra
+      </a>
+    </nav>
+  )
+}
+`
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves the whole ordering past an unsettleable .map() array unresolved, never guessing a width of one the way the pre-T595 model silently did (T595, 'a .map() array no story settles')", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Nav' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/index.tsx'), UNSETTLEABLE_MAP_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/Nav.stories.tsx'), MAP_CARDINALITY_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Nav')
+  const extra = elements.find((el) => el.text === 'Extra')
+  assert.ok(extra, 'the trailing Extra link must be found')
+  // `buildItems()` is a function call — `evaluateExpr` never evaluates one, so this story's own
+  // scope cannot tell how many real slots `ITEMS.map(...)` actually occupies. Genuinely unknown
+  // whether `nth: 3` falls inside that group or past it into `Extra` — `unresolved`, never a guess
+  // either way.
+  assert.equal(extra.coveredBy.hover.length, 1)
+  assert.match(extra.coveredBy.hover[0], /^unresolved:/)
+})
+
+const INLINE_LINK_WITH_TRAILING_LINK_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      <InlineLink href={hrefs.a}>A</InlineLink>
+      <InlineLink href={hrefs.b}>B</InlineLink>
+      <a href={hrefs.after} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        After
+      </a>
+    </div>
+  )
+}
+`
+
+const INLINE_LINK_WITH_TRAILING_LINK_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a', b: '/b', after: '/after' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 1 } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): an element after an nth-targeted helper stays a confirmed none, not dragged into unresolved merely because it shares that helper’s own pool (T595, coordinator’s own finding — PrivacyNotice’s contact-route link shape)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'),
+      INLINE_LINK_WITH_TRAILING_LINK_INDEX_SOURCE,
+    ],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'),
+      INLINE_LINK_WITH_TRAILING_LINK_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  const after = elements.find((el) => el.text === 'After')
+  assert.ok(
+    inlineLink && after,
+    'both the InlineLink recipe and the trailing After link must be found',
+  )
+  // `Contents` occupies real position 0; `InlineLink`'s own two call sites (both unconditional,
+  // both reached) occupy positions 1-2 — `nth: 1` is `InlineLink`'s own first real call site,
+  // confirmed. `After`, at real position 3, is never the target either way, and every candidate
+  // before it resolved to an exact, known width, so its own hover cell is a confirmed `none`.
+  // This is worse than an `unresolved` regression, and pins exactly that: the pre-T595 code
+  // excluded every *other* helper from the ordering outright rather than counting its own real
+  // width, which shifted every position after `InlineLink` down by one — `After` (real position 3)
+  // fell into the slot `orderable[1]` actually pointed at, and the old code confidently `'match'`ed
+  // it. Run against the pre-fix `resolveNameMatch`, this exact assertion fails with
+  // `after.coveredBy.hover` reading `['Hover']`, not `['none']` — a silently wrong credit, not an
+  // `unresolved` cell a reader would know to distrust (the coordinator's own finding on this task's
+  // second hand-back, restated in `resolveNameMatch`'s own comment above).
+  assert.deepEqual(inlineLink.coveredBy.hover, ['Hover'])
+  assert.deepEqual(after.coveredBy.hover, ['none'])
+})
+
+// --- T595 (row 8, H5), coordinator's own second finding on this task's third hand-back:
+// `resolveSelectorMatch`'s own caller never consulted a candidate's own guards, so a
+// conditionally-rendered element this story's own scope confirms does *not* render could still
+// have its own attribute value attempted and wrongly credited — the same "excluded from the
+// ordering" family of defect the `nth` fix above closes, one mechanism over. `PrivacyNotice`'s own
+// contact-route link (`controllerContact ? <a…> : …`) is real but this exact shape: its guard is
+// `'unresolved'`, not `'unreached'` (no story here ever settles `controllerContact` either way), so
+// closing this one alone does not return that specific cell to `none` — the fixture below proves
+// the mechanism against a guard this pass *can* settle, which is the case this fix actually owns. --
+
+const GUARDED_SELECTOR_INDEX_SOURCE = `
+export function Panel({ showA, hrefA, hrefB }) {
+  return (
+    <div>
+      {showA && (
+        <a href={hrefA} className="hover:underline focus-visible:outline-2 active:underline">
+          A
+        </a>
+      )}
+      <a href={hrefB} className="hover:underline focus-visible:outline-2 active:underline">
+        B
+      </a>
+    </div>
+  )
+}
+`
+
+const GUARDED_SELECTOR_UNREACHED_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel }
+export default meta
+export const Hover = {
+  args: { showA: false, hrefA: '/a', hrefB: '/b' },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/a"]' } },
+}
+`
+
+test("resolveSelectorMatch (via computeStateCoverage): a conditionally-rendered candidate this story's own scope confirms unreached is excluded before its own attribute is ever attempted (T595, coordinator's own second finding)", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Panel2' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel2/index.tsx'), GUARDED_SELECTOR_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Panel2/Panel2.stories.tsx'),
+      GUARDED_SELECTOR_UNREACHED_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel2')
+  const a = elements.find((el) => el.text === 'A')
+  assert.ok(a, 'the conditionally-rendered A link must be found')
+  // `showA: false` confirms this story never renders `A` at all — before this fix,
+  // `resolveSelectorMatch` never checked that, resolved `hrefA` to the literal `'/a'` from this
+  // story's own args, and matched it anyway: a real element that does not render this state (it
+  // does not render *at all*) credited with a frame it never paints. `a.coveredBy.hover` reads
+  // `['Hover']` against the pre-fix code; `['none']` is the confirmed, positive absence this
+  // story's own data actually proves.
+  assert.deepEqual(a.coveredBy.hover, ['none'])
+})
+
+const GUARDED_SELECTOR_REACHED_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel }
+export default meta
+export const Hover = {
+  args: { showA: true, hrefA: '/a', hrefB: '/b' },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/a"]' } },
+}
+`
+
+test('contrast: resolveSelectorMatch (via computeStateCoverage) still matches a conditionally-rendered candidate a story genuinely reaches — having a guard at all is never, on its own, an exclusion (T595)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Panel2' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel2/index.tsx'), GUARDED_SELECTOR_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Panel2/Panel2.stories.tsx'),
+      GUARDED_SELECTOR_REACHED_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel2')
+  const a = elements.find((el) => el.text === 'A')
+  assert.ok(a, 'the conditionally-rendered A link must be found')
+  // `showA: true` this time — the same guard, now confirmed reached, so `A` really does render and
+  // really is the `nth`-free selector target. `evaluateGuards` returning `'reached'` (not
+  // `'unreached'`) must never be folded into the same exclusion as `'unreached'` — this is the
+  // boundary that keeps the fix above from over-excluding.
+  assert.deepEqual(a.coveredBy.hover, ['Hover'])
+})
+
+const FOOTER_LIKE_INDEX_SOURCE = `
+import { Link } from '../../primitives/Link'
+export function TwoLinkFooter({ aHref, bHref }) {
+  const hasLinks = Boolean(aHref || bHref)
+  return (
+    <footer>
+      {hasLinks && (
+        <div>
+          {aHref && <Link href={aHref} variant="standalone">A</Link>}
+          {bHref && <Link href={bHref} variant="standalone">B</Link>}
+        </div>
+      )}
+    </footer>
+  )
+}
+`
+
+const FOOTER_LIKE_STORIES_SOURCE = `
+import { TwoLinkFooter } from './index'
+const meta = { component: TwoLinkFooter }
+export default meta
+export const Hover = {
+  args: { aHref: '/a', bHref: '/b' },
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+}
+`
+
+test('resolveComposedStoryMatches (via computeStateCoverage): a Link instance declared directly in its own owning component is no longer isHelper: true, so nth: 0 places it correctly (Footer shape, T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Link' },
+    { segment: 'composites', name: 'TwoLinkFooter' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'composites/TwoLinkFooter/index.tsx'), FOOTER_LIKE_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'composites/TwoLinkFooter/TwoLinkFooter.stories.tsx'),
+      FOOTER_LIKE_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Link.find((r) => r.variantSize === 'standalone')
+  assert.ok(row, 'the standalone row must exist')
+  assert.deepEqual(row.hover, ['TwoLinkFooter:Hover'])
+})
+
+test('contrast (findPrimitiveInstances): a primitive instance declared behind a real, nested local helper still reads isHelper: true — only the owning component itself is excluded (T595)', () => {
+  const nestedHelperSource = `
+    function Decoy({ href }) {
+      return <Link href={href} variant="standalone">Decoy</Link>
+    }
+    export function TwoLinkFooter({ href }) {
+      return <div><Decoy href={href} /></div>
+    }
+  `
+  const sourceFile = parse(nestedHelperSource)
+  const found = findPrimitiveInstances(
+    sourceFile,
+    'fixture.tsx',
+    {},
+    [],
+    new Map(),
+    'TwoLinkFooter',
+  )
+  assert.equal(found.length, 1)
+  assert.equal(found[0].isHelper, true)
+})
+
+const TOOLTIP_LIKE_INDEX_SOURCE = `
+export function Tooltip({ children }) {
+  return (
+    <span>
+      <button type="button" className="hover:bg-surface-sunken focus-visible:outline-2">
+        {children}
+      </button>
+    </span>
+  )
+}
+`
+
+const COUNTRY_FLAG_LIKE_INDEX_SOURCE = `
+import { Tooltip } from '../../primitives/Tooltip'
+export function Flag({ countryName }) {
+  return (
+    <Tooltip content={countryName} qualifier="Country:">
+      <span>flag</span>
+    </Tooltip>
+  )
+}
+`
+
+const PROFILE_BOARD_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+import { Flag } from '../../composites/Flag'
+export function ProfileBoard({ countryName, onRetry }) {
+  return (
+    <div>
+      <Flag countryName={countryName} />
+      <Button variant="secondary" size="lg" onClick={onRetry}>Retry</Button>
+    </div>
+  )
+}
+`
+
+const PROFILE_BOARD_STORIES_SOURCE = `
+import { ProfileBoard } from './index'
+const meta = { component: ProfileBoard, args: { countryName: 'France' } }
+export default meta
+export const FlagHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+}
+`
+
+test("resolveNameMatch (via computeStateCoverage): a name composed one hop away through a locally-rendered component's own Tooltip qualifier positively rejects every candidate Record 3 tracks, and credits Tooltip's own local button instead (ProfileSummary/CountryFlag shape, T595 — coordinator's own finding on this task's first hand-back)", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+    { segment: 'screens', name: 'ProfileBoard' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), COUNTRY_FLAG_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/ProfileBoard/index.tsx'), PROFILE_BOARD_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'screens/ProfileBoard/ProfileBoard.stories.tsx'),
+      PROFILE_BOARD_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.ok(row, 'the secondary|lg row must exist')
+  // Before T595: `resolveNameMatch` could not place "Country:" anywhere and left this row
+  // `unresolved: ... none uniquely resolved`. `Button`'s own Retry instance carries no such name and
+  // is positively `reject`ed once the name is traced to `Flag`'s own composed `Tooltip`, so the row
+  // reads a confirmed `none` instead — `Tooltip` is not one of `PRIMITIVE_NAMES` at all.
+  assert.deepEqual(row.hover, ['none'])
+  // The coordinator's own finding on this task's first hand-back: rejecting every wrong candidate
+  // is not the same as crediting the right one. `Tooltip`'s own local `<button>` (record 1) is that
+  // candidate — its own pool for role `button` has exactly one member, so the credit lands there,
+  // labelled by the story file that forced it, the same convention `Footer:Hover` already uses.
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['ProfileBoard:FlagHoverRevealed'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) stays ambiguous when the composed Tooltip's own qualifier is not a literal — a name this pass cannot trace is never guessed into a reject, and nothing is credited either (T595, 'a composed name that is not derivable')", () => {
+  const dynamicQualifierSource = COUNTRY_FLAG_LIKE_INDEX_SOURCE.replace(
+    'qualifier="Country:"',
+    'qualifier={qualifierLabel}',
+  )
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+    { segment: 'screens', name: 'ProfileBoard' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), dynamicQualifierSource],
+    [path.join(REPO_SRC_DIR, 'screens/ProfileBoard/index.tsx'), PROFILE_BOARD_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'screens/ProfileBoard/ProfileBoard.stories.tsx'),
+      PROFILE_BOARD_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.ok(row, 'the secondary|lg row must exist')
+  assert.equal(row.hover.length, 1)
+  assert.match(row.hover[0], /^unresolved:/)
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['none'])
+})
+
+// --- The coordinator's own review of this task's first hand-back, part two: a role-only
+// force-state (no `name` at all, `CountryFlag`'s own `FlagHoverRevealed`) needs the *zero-hop*
+// case — a component's own source composes `<Tooltip>` directly, not through a second component —
+// and needs `componentHasOwnCandidateForRole`'s own guard: routing a role-only force-state
+// elsewhere is only safe when the forcing component has no candidate of its own for that role. ----
+
+const FLAG_LIKE_DIRECT_INDEX_SOURCE = `
+import { Tooltip } from '../../primitives/Tooltip'
+export function Flag({ countryName }) {
+  return (
+    <Tooltip content={countryName} qualifier="Country:">
+      <span>flag</span>
+    </Tooltip>
+  )
+}
+`
+
+const FLAG_LIKE_STORIES_SOURCE = `
+import { Flag } from './index'
+const meta = { component: Flag, args: { countryName: 'France' } }
+export default meta
+export const FlagHoverRevealed = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): a role-only force-state (no name, no nth) on a component that directly composes Tooltip and has no candidate of its own routes to Tooltip too (CountryFlag shape, zero-hop, T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), FLAG_LIKE_DIRECT_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/Flag.stories.tsx'), FLAG_LIKE_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(elements[0].coveredBy.hover, ['Flag:FlagHoverRevealed'])
+})
+
+test("contrast: resolveNameMatch (via computeStateCoverage) never routes a role-only force-state elsewhere when the forcing component has a candidate of its own for that role — 'no name' is not 'no ambiguity' (T595, componentHasOwnCandidateForRole)", () => {
+  const flagWithOwnButtonSource = `
+    import { Tooltip } from '../../primitives/Tooltip'
+    export function Flag({ countryName }) {
+      return (
+        <div>
+          <button type="button" className="hover:bg-surface-sunken">Own button</button>
+          <Tooltip content={countryName} qualifier="Country:">
+            <span>flag</span>
+          </Tooltip>
+        </div>
+      )
+    }
+  `
+  const componentDirs = [
+    { segment: 'primitives', name: 'Tooltip' },
+    { segment: 'composites', name: 'Flag' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), flagWithOwnButtonSource],
+    [path.join(REPO_SRC_DIR, 'composites/Flag/Flag.stories.tsx'), FLAG_LIKE_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  // `Flag` has a candidate of its own for role `button`, so `componentHasOwnCandidateForRole`
+  // blocks the composed-elsewhere route entirely — `Tooltip`'s own row stays a confirmed `none`,
+  // never credited on the strength of a role this pass cannot tell apart from `Flag`'s own.
+  const tooltip = computed.localElements.find((c) => c.componentKey === 'primitives/Tooltip')
+  assert.deepEqual(tooltip.elements[0].coveredBy.hover, ['none'])
+  // `Flag`'s own button is real, positive knowledge by the *pre-existing*, unrelated "sole
+  // candidate needs no further disambiguation" rule — record 1's own pool is always scoped to one
+  // file, so `Flag`'s own resolution never even sees `Tooltip`'s candidate as competition. This is
+  // the correct outcome, not a second bug: crediting both would be the real defect.
+  const flag = computed.localElements.find((c) => c.componentKey === 'composites/Flag')
+  assert.deepEqual(flag.elements[0].coveredBy.hover, ['FlagHoverRevealed'])
+})
+
+// --- Record 1's own cross-component matching path (T598): a story in component A reaching a
+// *local element declared inside a tracked primitive's own file* (record 1 of `primitives/Menu`)
+// through a JSX instance of that primitive A composes directly (record 3) — a different, wider
+// question from the `Tooltip`-qualifier hop above, which resolves an accessible name one hop away
+// and credits an *untracked* primitive's own trigger, pre-confirming a singleton pool itself.
+// `Menu`/`MenuItemRow` here are fixtures, not the real component — the mechanism only ever walks
+// `PRIMITIVE_NAMES`, so the fixture must use one of those four names to be reachable at all. -------
+
+const MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE = `
+export function Menu({ variant, items }) {
+  return (
+    <div>
+      <button type="button" className="hover:bg-surface-sunken">Trigger</button>
+      {items.map((item) => (
+        <MenuItemRow key={item.id} item={item} variant={variant} />
+      ))}
+    </div>
+  )
+}
+
+function MenuItemRow({ item, variant }) {
+  const role = variant === 'selection' ? 'menuitemradio' : 'menuitem'
+  return (
+    <button
+      type="button"
+      role={role}
+      className="hover:bg-surface-sunken focus-visible:outline-2 active:bg-background"
+    >
+      {item.label}
+    </button>
+  )
+}
+`
+
+const PANEL_WITH_SELECTION_MENU_INDEX_SOURCE = `
+import { Menu } from '../../primitives/Menu'
+export function Panel({ subject, items }) {
+  return (
+    <div>
+      {subject === 'self' && <Menu variant="selection" items={items} />}
+    </div>
+  )
+}
+`
+
+const PANEL_SWITCHER_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel, args: { subject: 'self', items: [{ id: 'p1', label: 'aoe2guy' }] } }
+export default meta
+export const RowFocusVisible = {
+  args: {},
+  parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+}
+`
+
+test("injectComposedPrimitiveLocalCredits (via computeStateCoverage): a story in one component reaches a local element declared inside a tracked primitive's own file, through a JSX instance that component composes directly — forced (name included) carried through unchanged, unlike T595's own Tooltip-qualifier hop which drops the name and pre-confirms a singleton pool itself (T598, ProfileSummary/MenuItemRow shape)", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), PANEL_WITH_SELECTION_MENU_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), PANEL_SWITCHER_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  // `MenuItemRow`'s own button: the one local element of `primitives/Menu` whose own `role`
+  // attribute is dynamic (`role={role}`), never literal — the trigger button right above it is
+  // `role: null` (its intrinsic role), not `'unresolved'`.
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  assert.deepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+})
+
+test("contrast: injectComposedPrimitiveLocalCredits (via computeStateCoverage) never credits a composed primitive's local element by proximity when the exact call site the forcing story renders could not have produced the forced role — a reachable Menu instance whose own variant never resolves to 'menuitemradio' stays unresolved, not falsely credited (T598)", () => {
+  const panelWithActionsOnlyMenuSource = `
+    import { Menu } from '../../primitives/Menu'
+    export function Panel({ items }) {
+      return (
+        <div>
+          <Menu variant="actions" items={items} />
+        </div>
+      )
+    }
+  `
+  const panelActionsStoriesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { items: [{ id: 'p1', label: 'aoe2guy' }] } }
+    export default meta
+    export const RowFocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), panelWithActionsOnlyMenuSource],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), panelActionsStoriesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  // `Menu` is genuinely composed and genuinely reachable here (no guard at all) — the boundary this
+  // contrast plants is not "never rendered", it is "rendered, but never as the forced role": the
+  // only Menu instance Panel composes always resolves `variant === 'actions'`, so `MenuItemRow`'s
+  // own dynamic role can never be `'menuitemradio'` for this story, and the credit must never land
+  // on the strength of "some Menu instance is reachable" alone.
+  assert.notDeepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+  assert.ok(
+    menuItemRow.coveredBy.focusVisible[0] === 'none' ||
+      menuItemRow.coveredBy.focusVisible[0].startsWith('unresolved:'),
+  )
+})
+
+test("contrast: injectComposedPrimitiveLocalCredits (via computeStateCoverage) never credits a composed primitive's local element when the forcing story's own guard confirms that call site does not render at all (T598, 'a composed component this story's own data does not render')", () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Menu' },
+    { segment: 'screens', name: 'Panel' },
+  ]
+  const panelHiddenStoriesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { subject: 'other', items: [{ id: 'p1', label: 'aoe2guy' }] } }
+    export default meta
+    export const RowFocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), PANEL_WITH_SELECTION_MENU_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), panelHiddenStoriesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.ok(menuItemRow, 'MenuItemRow local element must be found')
+  // `subject: 'other'` means this story's own guard (`subject === 'self'`) never reaches the
+  // `<Menu>` call site at all — `evaluateGuards` reports `'unreached'`, so no synthetic credit is
+  // ever injected for it, and the real force-state stays uncredited on this element rather than
+  // guessed onto it because *some* Menu, somewhere in this tree, would have matched.
+  assert.notDeepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+})
+
+// --- The invariant itself: every real `visualForceState` is credited or named somewhere in the
+// region, or the run fails — the coordinator's own instruction, T595. --------------------------
+
+test('findUnaccountedForceStates catches a real force-state that is credited nowhere and named in no unresolved reason (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Lost',
+      [{ exportName: 'ForcedButNeverShown', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const { missing, known, expired } = findUnaccountedForceStates(
+    storyStatesByComponent,
+    '| Lost | button | none | none | none |',
+  )
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.equal(missing.length, 1)
+  assert.equal(missing[0].exportName, 'ForcedButNeverShown')
+})
+
+test('contrast: findUnaccountedForceStates does not flag a force-state that is genuinely credited, named in an unresolved reason, from a story that never renders the component, or manufactured by this pass itself (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Credited',
+      [{ exportName: 'RealHover', forced: { state: 'hover', role: 'button' } }],
+    ],
+    [
+      'composites/Named',
+      [{ exportName: 'AmbiguousHover', forced: { state: 'hover', role: 'button' } }],
+    ],
+    [
+      'composites/NeverRenders',
+      [
+        {
+          exportName: 'NotApplicablePlaceholder',
+          forced: { state: 'hover', role: 'button' },
+          rendersComponent: false,
+        },
+      ],
+    ],
+    [
+      'primitives/Tooltip',
+      [
+        {
+          exportName: 'Flag:FlagHoverRevealed',
+          forced: { state: 'hover', role: 'button' },
+          synthetic: true,
+        },
+      ],
+    ],
+  ])
+  const regionText =
+    '| Credited | button | RealHover | none | none |\n' +
+    '| Named | button | unresolved: AmbiguousHover: 2 candidates share role "button" | none | none |'
+  const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, regionText)
+  assert.deepEqual(missing, [])
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+})
+
+test("findUnaccountedForceStates (via computeStateCoverage): KNOWN_UNACCOUNTED_FORCE_STATES is empty and the whole real tree reports zero missing, zero known and zero expired — T598's own completion condition, not a cell count (T595's own exception, ProfileSummary's SwitcherFocusVisibleAndOpen, closed by injectComposedPrimitiveLocalCredits)", () => {
+  const { componentDirs, filesByPath } = readAllSourceFiles()
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { missing, known, expired } = computed.unaccountedForceStates
+  assert.deepEqual(missing, [])
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.deepEqual(KNOWN_UNACCOUNTED_FORCE_STATES, [])
+})
+
+// --- An allowlist with no expiry is how a temporary exception becomes permanent (the coordinator's
+// own question, answered): a filed exception whose own `fixBy` has passed, or that is missing a
+// required field, fails the run exactly like an unfiled loss — the same shape `a11y-allowlist.mjs`
+// already enforces for its own file. ------------------------------------------------------------
+
+test('findUnaccountedForceStates fails a filed exception once its own fixBy has passed, rather than reporting it as known forever (T595)', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Overdue',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push({
+    componentKey: 'composites/Overdue',
+    exportName: 'StillLost',
+    date: '2020-01-01',
+    fixOwed: 'T000',
+    fixBy: '2020-01-08',
+    reason: 'test fixture, deliberately expired',
+  })
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(known, [])
+    assert.equal(expired.length, 1)
+    assert.equal(expired[0].exportName, 'StillLost')
+    assert.equal(expired[0].fixBy, '2020-01-08')
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
+})
+
+test('contrast: findUnaccountedForceStates keeps reporting a filed exception as known while its own fixBy is still in the future', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/NotYetDue',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const farFuture = new Date()
+  farFuture.setFullYear(farFuture.getFullYear() + 10)
+  const filed = [
+    {
+      componentKey: 'composites/NotYetDue',
+      exportName: 'StillLost',
+      date: '2026-09-19',
+      fixOwed: 'T000',
+      fixBy: farFuture.toISOString().slice(0, 10),
+      reason: 'test fixture, not yet due',
+    },
+  ]
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push(...filed)
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(expired, [])
+    assert.equal(known.length, 1)
+    assert.equal(known[0].exportName, 'StillLost')
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
+})
+
+test('findUnaccountedForceStates fails a malformed filed exception (missing fixOwed, invalid fixBy) rather than treating it as a valid, permanent exception', () => {
+  const storyStatesByComponent = new Map([
+    [
+      'composites/Malformed',
+      [{ exportName: 'StillLost', forced: { state: 'hover', role: 'button' } }],
+    ],
+  ])
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push({
+    componentKey: 'composites/Malformed',
+    exportName: 'StillLost',
+    date: '2026-09-19',
+    fixOwed: '',
+    fixBy: 'not-a-date',
+    reason: 'test fixture, malformed',
+  })
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, '')
+    assert.deepEqual(missing, [])
+    assert.deepEqual(known, [])
+    assert.equal(expired.length, 1)
+    assert.ok(expired[0].malformed.includes('fixOwed'))
+    assert.ok(expired[0].malformed.some((m) => m.startsWith('fixBy')))
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
 })
 
 // T594's REJECT on #80, item 5: two candidates both literally carrying the forced name used to
@@ -1020,6 +2141,95 @@ test('contrast: a guard whose operand comes from a function call (never a litera
   // simply absent from the scope a real story's own args would ever populate this way.
   const scope = new Map([['authenticated', { resolved: false, value: undefined }]])
   assert.equal(evaluateGuards(real.guards, scope), 'unresolved')
+})
+
+// T599: `buildStoryPropsScope` seeds a component prop that has no destructuring default as
+// `UNRESOLVED` for a story unless that story's own merged `args` names it explicitly — wrong about
+// what Storybook renders. A story renders `<Component {...args} />`; `args` *is* the complete prop
+// set, so a name absent from it is genuinely `undefined` at render, not unknown, and
+// `evaluateGuards` must read `'unreached'` there, not `'unresolved'`. `PrivacyNotice`'s own
+// `controllerContact ? <a…> : null` (`index.tsx:797`) is the live shape this reproduces.
+
+const CONTROLLER_CONTACT_SOURCE = `
+function Widget({ controllerContact }) {
+  return (
+    <div>
+      {controllerContact ? <a href={controllerContact.contactRoute}>Contact</a> : null}
+    </div>
+  )
+}
+`
+
+test('buildStoryPropsScope resolves an optional, default-less prop a story never names in its own args to a real, confirmed undefined — and the guard it gates evaluates unreached, not unresolved (T599)', () => {
+  const sourceFile = parse(CONTROLLER_CONTACT_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap, 'Widget')
+  const anchor = found.find((f) => f.tag === 'a')
+  assert.ok(anchor)
+
+  const defaults = getComponentPropDefaults(sourceFile, 'Widget')
+  // No destructuring default for `controllerContact` — a `null` default expression, the same shape
+  // `PrivacyNotice`'s own optional prop carries.
+  assert.equal(defaults.get('controllerContact'), null)
+
+  // A story whose own merged `args` never name `controllerContact` at all — the exact shape
+  // `PrivacyNotice`'s own `ObjectionCallToActionHover`/`FocusVisible`/`Active` stories carry.
+  const mergedArgs = { resolved: true, value: { lastUpdated: '2026-08-30' } }
+  const scope = buildStoryPropsScope(defaults, mergedArgs, new Map())
+
+  assert.deepEqual(scope.get('controllerContact'), { resolved: true, value: undefined })
+  assert.equal(evaluateGuards(anchor.guards, scope), 'unreached')
+})
+
+test('contrast: an optional prop supplied through render() as an explicit JSX prop still resolves to its real, supplied value, never to undefined merely because args does not name it (T599, MatchRow-shaped)', () => {
+  const componentSourceFile = parse(
+    `
+function MatchRow({ match }) {
+  return (
+    <div>
+      {match ? <a href={match.href}>Link</a> : null}
+    </div>
+  )
+}
+`,
+    'MatchRow/index.tsx',
+  )
+  const constMap = buildConstStringMap(componentSourceFile)
+  const found = findLocalElements(componentSourceFile, 'MatchRow/index.tsx', constMap, 'MatchRow')
+  const anchor = found.find((f) => f.tag === 'a')
+  assert.ok(anchor)
+  const defaults = getComponentPropDefaults(componentSourceFile, 'MatchRow')
+  assert.equal(defaults.get('match'), null)
+
+  const storySourceFile = parse(
+    `
+const base = { href: '/real' }
+export const Real = {
+  render: () => <MatchRow match={base} />,
+}
+`,
+    'MatchRow.stories.tsx',
+  )
+  const [{ node: storyNode }] = findExportedStoryObjects(storySourceFile)
+  const storyFileScope = buildFileValueScope(storySourceFile)
+  // No meta object at all, and this story's own `args` never mention `match` — `render:`'s explicit
+  // JSX prop is the only signal for it.
+  const mergedArgs = evaluateMergedArgsObject(null, storyNode, storyFileScope)
+  assert.deepEqual(mergedArgs.value, {})
+
+  const scope = buildStoryPropsScope(defaults, mergedArgs, storyFileScope)
+  // `buildStoryPropsScope` alone (the `args`-only view) reads `match` as the real, confirmed
+  // `undefined` a bare `{...args}` render would give it — the T599 fix, exercised here too.
+  assert.deepEqual(scope.get('match'), { resolved: true, value: undefined })
+
+  // The caller applies `findRenderJsxProps`'s own override *after* `buildStoryPropsScope`, the same
+  // order `computeStateCoverage`'s own two call sites use — the real, explicit JSX value must win,
+  // not the `args`-absent `undefined` above.
+  for (const [propName, exprNode] of findRenderJsxProps(storyNode, 'MatchRow')) {
+    scope.set(propName, evaluateExpr(exprNode, storyFileScope))
+  }
+  assert.deepEqual(scope.get('match'), { resolved: true, value: { href: '/real' } })
+  assert.equal(evaluateGuards(anchor.guards, scope), 'reached')
 })
 
 // 2. A nested-object arg label matched by name, end to end through `resolveComposedStoryMatches` —
@@ -1362,6 +2572,76 @@ test('buildAxisMatrix renders a play-driven focus-visible match as unresolved, n
   assert.match(row.focusVisible[0], /^unresolved:/)
   assert.match(row.focusVisible[0], /play-driven; frame not provable statically/)
   assert.match(row.focusVisible[0], /EscapeReturnsFocusToTrigger/)
+})
+
+// --- T595 (row 8, H5): the real `Menu` trigger shape (a script `.focus()` after an `Escape`-driven
+// close, no `visualForceState`) resolves to `unresolved` through the same pipeline
+// `computeStateCoverage` runs the real tree through — never a hand-built `buildElementCells` call —
+// and resolves to `covered` once the story carries the real `visualForceState` T595 adds. Planted
+// against this exact contrast (not just asserted after the fact): the "before" half below is the
+// unfixed shape `Menu.stories.tsx`'s own `EscapeReturnsFocusToTrigger` carried before this task, and
+// it fails the "after" half's own assertion — confirmed by running it against the pre-fix story text
+// before adding the parameter. ------------------------------------------------------------------
+
+const TRIGGER_INDEX_SOURCE = `
+export function Trigger({ triggerLabel }) {
+  return (
+    <button
+      type="button"
+      className="outline-none focus-visible:outline-2 focus-visible:outline-focus-ring"
+    >
+      {triggerLabel}
+    </button>
+  )
+}
+`
+
+function triggerStoriesSource(forced) {
+  return `
+import { within, userEvent, expect } from '@storybook/test'
+import { Trigger } from './index'
+const meta = { component: Trigger, args: {} }
+export default meta
+
+export const EscapeReturnsFocusToTrigger = {
+  ${forced ? "parameters: { visualForceState: { state: 'focus-visible', role: 'button' } }," : ''}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    trigger.focus()
+    await userEvent.keyboard('{Escape}')
+    await expect(trigger).toHaveFocus()
+  },
+  args: { triggerLabel: 'aoe2guy' },
+}
+`
+}
+
+test('contrast: a Menu-trigger-shaped play-driven focus-after-Escape stays unresolved with no visualForceState (the pre-T595 shape, planted), and resolves to covered once the story carries one (real computeStateCoverage pipeline, record 1)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Trigger' }]
+
+  const beforeFiles = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/index.tsx'), TRIGGER_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'),
+      triggerStoriesSource(false),
+    ],
+  ])
+  const before = computeStateCoverage({ componentDirs, filesByPath: beforeFiles })
+  const beforeRow = before.localElements.find((c) => c.componentKey === 'primitives/Trigger')
+    .elements[0]
+  assert.equal(beforeRow.coveredBy.focusVisible.length, 1)
+  assert.match(beforeRow.coveredBy.focusVisible[0], /^unresolved:/)
+  assert.match(beforeRow.coveredBy.focusVisible[0], /play-driven; frame not provable statically/)
+
+  const afterFiles = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/index.tsx'), TRIGGER_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'), triggerStoriesSource(true)],
+  ])
+  const after = computeStateCoverage({ componentDirs, filesByPath: afterFiles })
+  const afterRow = after.localElements.find((c) => c.componentKey === 'primitives/Trigger')
+    .elements[0]
+  assert.deepEqual(afterRow.coveredBy.focusVisible, ['EscapeReturnsFocusToTrigger'])
 })
 
 // --- REJECT on #80, item 4: own story files skip their JSX and take axis values from args only,
@@ -1732,6 +3012,229 @@ test('resolveDisabledFromStories skips a candidate whose own guard is unreached 
   assert.deepEqual(ghostRow.disabled, ['none'])
 })
 
+// T595: a story built entirely from `render:` and never mounting its own component at all (a
+// `*NotApplicable` placeholder's own `<p>...</p>`, the shape `Dialog:EmptyHoverActiveDisabledNot
+// Applicable` uses) supplies no data whatsoever about any candidate inside it — excluded before
+// `resolveDisabledFromStories` runs at all (`storyRendersComponent`), never left to read
+// `'unresolved'` by omission the way an ordinary story with unresolvable data correctly does
+// (Fixture C / the contrast test above, `UNRESOLVABLE_WIDGET_*`). No `size` literal on the call
+// site either (`Dialog`'s own `variant={...}`/no matching `size`, both dynamic) — the same
+// `unresolved|lg`-shaped row a masking positive match on a *plain* `ghost` row could not prove this
+// against: the only story in this fixture is the one that never renders `Widget` at all, so the
+// row's own `disabled` cell has nothing else to fall back on, and the assertion actually
+// distinguishes "skipped" from "happened to be outranked by real knowledge elsewhere".
+const NOT_APPLICABLE_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction }) {
+  return <Button variant={primaryAction.variant ?? 'ghost'} size="lg" disabled={primaryAction.disabled}>{primaryAction.label}</Button>
+}
+`
+const NOT_APPLICABLE_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const EmptyNotApplicable = {
+  render: () => <p>No candidate is ever mounted by this story.</p>,
+}
+`
+
+test('resolveDisabledFromStories (via computeStateCoverage): a story that never mounts the component at all is skipped outright, not left to read unresolved by omission (T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      NOT_APPLICABLE_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      NOT_APPLICABLE_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row, "the candidate's own static rest entry still exists on its unresolved-variant row")
+  // `EmptyNotApplicable` is this fixture's *only* story, and it never renders `Widget` — no
+  // `primaryAction` in sight, real or otherwise — so it must contribute nothing at all: no
+  // `unresolved: disabled not statically resolvable (Widget:EmptyNotApplicable)` note, real or
+  // otherwise, and the cell falls to the same confirmed `'none'` every other information-free cell
+  // in this matrix already reads.
+  assert.deepEqual(row.disabled, ['none'])
+})
+
+// Contrast, in one fixture, so the two cannot be conflated: a story that genuinely renders the
+// component but whose own data cannot resolve the expression (`Default`, a function call over a
+// prop) must still read `'unresolved'` — a check that ran and could not settle, never a skip —
+// while the one that never mounts the component at all (`EmptyNotApplicable`) contributes nothing,
+// not even a second `'unresolved'` reason.
+const CONTRAST_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ status }) {
+  return <Button variant="ghost" disabled={computeDisabled(status)}>Toggle</Button>
+}
+`
+const CONTRAST_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Default = { args: { status: 'idle' } }
+export const EmptyNotApplicable = {
+  render: () => <p>No candidate is ever mounted by this story.</p>,
+}
+`
+
+test('contrast: resolveDisabledFromStories (via computeStateCoverage) keeps `unresolved` for a story that renders the component but cannot settle the expression, and adds nothing for the sibling that never renders it at all (T595)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    ['/repo/packages/design-system/src/composites/Widget/index.tsx', CONTRAST_WIDGET_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      CONTRAST_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'ghost')
+  assert.ok(row)
+  // Exactly one unresolved reason, and it names `Default` — the story that actually rendered
+  // `Widget` and left `computeDisabled(status)` unresolvable — never `EmptyNotApplicable`, which
+  // never got the chance to be either resolved or unresolved.
+  assert.deepEqual(row.disabled, [
+    'unresolved: disabled not statically resolvable (Widget:Default)',
+  ])
+})
+
+// --- Orchestrator finding on T595's own hand-back: the redirect credit `cellFor` already applies
+// to hover/focus-visible/active did not reach `disabled` at all, and the fix must be a property of
+// the row (every column), never a second copy of the rule filed inside
+// `resolveDisabledFromStories`. `Dialog`'s real shape, reproduced generally: two call sites with a
+// dynamic `variant` (no literal to key a row on) and a literal `size`, each resolving to a
+// *different* target row (`primaryAction` to `destructive|lg`-shaped, `secondaryAction` to
+// `secondary|lg`-shaped) — plus `Button`'s own literal, unrelated `secondary|lg` story that shares
+// `secondaryAction`'s own target row by axis coincidence, the exact pollution the orchestrator's
+// review caught in the first version of this fix. `Button`'s own story, not a second composite: a
+// `componentKeyForFile` quirk this suite's own fixtures already lean on (every other multi-component
+// fixture here pairs exactly one composite with `Button`) collapses two *composite* fixtures under
+// this fabricated `/repo/...` root into the same key, which would make the two indistinguishable to
+// `resolveDisabledFromStories`'s own componentKey filter and prove nothing about the row credit this
+// test targets. ------------------------------------------------------------------------------------
+
+const REDIRECT_DIALOG_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction, secondaryAction }) {
+  return (
+    <div>
+      <Button variant={primaryAction.variant ?? 'destructive'} size="lg" disabled={primaryAction.disabled} loading={primaryAction.loading}>{primaryAction.label}</Button>
+      <Button variant={secondaryAction.variant ?? 'secondary'} size="lg" disabled={secondaryAction.disabled} loading={secondaryAction.loading}>{secondaryAction.label}</Button>
+    </div>
+  )
+}
+`
+const REDIRECT_DIALOG_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const PrimaryPending = {
+  args: { primaryAction: { label: 'Go', loading: true }, secondaryAction: { label: 'Cancel' } },
+}
+export const SecondaryPending = {
+  args: { primaryAction: { label: 'Go' }, secondaryAction: { label: 'Cancel', disabled: true } },
+}
+`
+// `Button`'s own literal `secondary|lg`, disabled directly in its own args — real coverage for
+// *its own* call site (an `own-story` instance, credited independently of
+// `resolveDisabledFromStories` entirely), never a fact about `Widget`'s `secondaryAction`, which
+// only shares `secondary|lg` by axis coincidence.
+const REDIRECT_BUTTON_OWN_STORIES_SOURCE = `
+import { Button } from './index'
+const meta = { component: Button, args: {} }
+export default meta
+export const SecondaryLgDisabled = { args: { variant: 'secondary', size: 'lg', disabled: true } }
+`
+
+test('resolveDisabledFromStories redirect (via computeStateCoverage): a row whose two call sites settle disabled on two different target rows is credited with both, not just the first (T595, orchestrator finding)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/primitives/Button/Button.stories.tsx',
+      REDIRECT_BUTTON_OWN_STORIES_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      REDIRECT_DIALOG_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      REDIRECT_DIALOG_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row, "both call sites' own static axis is unresolved — the row still exists")
+  const secondaryLgRow = computed.matrices.Button.find((r) => r.variantSize === 'secondary|lg')
+  assert.deepEqual(
+    secondaryLgRow.disabled,
+    ['Button:SecondaryLgDisabled', 'Widget:SecondaryPending'].sort(),
+    "sanity check: secondary|lg itself carries both — Button's own and Widget's own",
+  )
+  // Both of `Widget`'s own call sites are credited on the static row — `primaryAction` proves
+  // `Widget:PrimaryPending` on its own target row, `secondaryAction` proves `Widget:SecondaryPending`
+  // on a *different* one — and `Button:SecondaryLgDisabled`, real coverage for a wholly unrelated
+  // call site that only shares `secondary|lg` by axis coincidence, never leaks in.
+  assert.deepEqual(row.disabled, ['Widget:PrimaryPending', 'Widget:SecondaryPending'])
+})
+
+// Contrast: a call site whose story resolves the axis to a real target row, but whose own
+// `disabled`/`loading` genuinely evaluates `false` there (real negative knowledge, nothing to
+// credit) must not manufacture coverage on the static row either.
+const REDIRECT_NEVER_DISABLED_WIDGET_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+export function Widget({ primaryAction }) {
+  return <Button variant={primaryAction.variant ?? 'destructive'} size="lg" disabled={primaryAction.disabled}>{primaryAction.label}</Button>
+}
+`
+const REDIRECT_NEVER_DISABLED_WIDGET_STORIES_SOURCE = `
+import { Widget } from './index'
+const meta = { component: Widget, args: {} }
+export default meta
+export const Default = { args: { primaryAction: { label: 'Go' } } }
+`
+
+test('contrast: resolveDisabledFromStories redirect (via computeStateCoverage) never manufactures coverage when the redirect target itself has none (T595, orchestrator finding)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Button' },
+    { segment: 'composites', name: 'Widget' },
+  ]
+  const filesByPath = new Map([
+    ['/repo/packages/design-system/src/primitives/Button/index.tsx', BUTTON_INDEX_SOURCE],
+    [
+      '/repo/packages/design-system/src/composites/Widget/index.tsx',
+      REDIRECT_NEVER_DISABLED_WIDGET_INDEX_SOURCE,
+    ],
+    [
+      '/repo/packages/design-system/src/composites/Widget/Widget.stories.tsx',
+      REDIRECT_NEVER_DISABLED_WIDGET_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'unresolved|lg')
+  assert.ok(row)
+  // `Default` genuinely renders `Widget` and resolves `primaryAction.disabled` to a real `false` —
+  // the target row (`destructive|lg`-shaped) itself has nothing to show, so the static row must not
+  // invent a `'unresolved: axis resolved only per story (→ …)'` note or any other coverage either.
+  assert.deepEqual(row.disabled, ['none'])
+})
+
 // --- REJECT on #80, item 1: selector targets for local elements (a script `visualForceState:
 // { selector }` was dropped entirely for local elements — MatchRow/FavouritesList/PlayerResultRow's
 // own row link — read as a false 'none' on hover/focus/active). -----------------------------------
@@ -1991,6 +3494,40 @@ test('findRenderJsxProps reads the explicit JSX props a render() passes to the c
   const props = findRenderJsxProps(node, 'MatchRow')
   assert.ok(props.has('match'))
   assert.equal(props.get('match').getText(), 'base')
+})
+
+// T595: a bare JSX attribute (`<FavouriteToggle authenticated size="lg" />`, no `={...}`) is JSX
+// shorthand for `={true}` — `RealisticProfileHeader`'s own shape. It used to carry no initializer
+// at all, so it was never added to the props map — invisible, not `false` — which left an
+// unrelated guard elsewhere in the same component (`if (!authenticated) return <SignedOutControl
+// />`) unresolved by omission.
+const BARE_ATTR_RENDER_SOURCE = `
+export const RealisticProfileHeader = {
+  render: () => <FavouriteToggle authenticated size="lg" enabled={false} />,
+}
+`
+
+test('findRenderJsxProps reads a bare boolean attribute (no initializer) as `={true}`, not as absent (T595)', () => {
+  const sourceFile = parse(BARE_ATTR_RENDER_SOURCE, 'FavouriteToggle.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const props = findRenderJsxProps(node, 'FavouriteToggle')
+  assert.ok(props.has('authenticated'), 'a bare attribute is a real prop, not an absent one')
+  assert.deepEqual(evaluateExpr(props.get('authenticated'), new Map()), {
+    resolved: true,
+    value: true,
+  })
+})
+
+test('contrast: findRenderJsxProps never invents a value for a genuinely absent attribute, and still reads an explicit `={false}` as false, not as the bare-attribute shorthand (T595)', () => {
+  const sourceFile = parse(BARE_ATTR_RENDER_SOURCE, 'FavouriteToggle.stories.tsx')
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const props = findRenderJsxProps(node, 'FavouriteToggle')
+  // `loading` is never written on this call site at all — absent, not `false`.
+  assert.ok(!props.has('loading'))
+  // `enabled={false}` is a real, explicit initializer — read through the ordinary path, never
+  // mistaken for the bare-attribute shape just because it also resolves falsy-adjacent.
+  assert.ok(props.has('enabled'))
+  assert.deepEqual(evaluateExpr(props.get('enabled'), new Map()), { resolved: true, value: false })
 })
 
 test('buildElementMatrix positively resolves a selector-targeted force-state against a story-arg-derived href, end to end (MatchRow shape)', () => {
@@ -2271,6 +3808,13 @@ test('a dynamic role={…} element is excluded from the plain button’s implied
     text: '',
     file: 'f.tsx',
     line: 20,
+    // A real class on every state, matching what a production `MenuItemRow`-shaped element always
+    // carries — `cellFor` (state-coverage.mjs) only routes a null-implied-role element to
+    // `noImpliedRoleReason` at all when it carries a class for that state (T595); an empty fixture
+    // would instead trip the confirmed-`'none'` shortcut this test is not about.
+    hover: 'hover:bg-surface-sunken',
+    focusVisible: 'focus-visible:outline-2',
+    active: 'active:bg-background',
   }
   const storyStates = [
     {
@@ -2288,9 +3832,11 @@ test('a dynamic role={…} element is excluded from the plain button’s implied
   assert.match(rows[1].hover[0], /^unresolved: dynamic role$/)
 })
 
-// --- T594 part A: `impliedRoleOf` returns `null` for a dynamic `role={…}` or a tag `INTRINSIC_ROLE`
-// does not carry (`h2`, `label`, `tr`) — the whole matching loop used to be skipped and the cell
-// fell to a false confirmed `'none'`. Three shapes, one fixture each. --------------------------------
+// --- T594 part A (still true, unaffected by T595 below): a hand-built fixture that carries no
+// `attrExprs`/`localConsts` at all never reaches T595's per-story dynamic-role resolution (gated on
+// `el.attrExprs?.get('role')?.expr`, absent here), so `impliedRoleOf` returning `null` for a dynamic
+// `role={…}` still means the whole matching loop is skipped and the cell reads `'unresolved: dynamic
+// role'`, never a false confirmed `'none'`. -----------------------------------------------------
 
 test('buildElementMatrix: a dynamic role={…} element reads "unresolved: dynamic role" on every state, not "none" (Menu shape)', () => {
   const dynamicRoleButton = {
@@ -2302,6 +3848,10 @@ test('buildElementMatrix: a dynamic role={…} element reads "unresolved: dynami
     text: '',
     file: 'Menu/index.tsx',
     line: 352,
+    // Real classes on every state, the same reason the sibling fixture above now carries them.
+    hover: 'hover:bg-surface-sunken',
+    focusVisible: 'focus-visible:outline-2',
+    active: 'active:bg-background',
   }
   // No story targets role 'button' or any literal role at all — the dynamic role means this pass
   // cannot even attempt a comparison, on any of the three states.
@@ -2319,80 +3869,553 @@ test('buildElementMatrix: a dynamic role={…} element reads "unresolved: dynami
   assert.match(rows[0].active[0], /^unresolved: dynamic role$/)
 })
 
-test('buildElementMatrix: a tag INTRINSIC_ROLE does not carry reads "unresolved: no implied role" when it has no forced descendant (Dialog\'s h2 shape)', () => {
-  const heading = {
-    tag: 'h2',
-    role: null,
-    tabIndex: -1,
-    ariaHidden: false,
-    isHelper: false,
-    text: '',
-    file: 'Dialog/index.tsx',
-    line: 102,
-    nodeStart: 0,
-    nodeEnd: 10,
-  }
-  // A play() ending on `expect(heading).toHaveFocus()` — `findPlayFocusTarget`'s own shape — names
-  // role 'heading', which `h2` cannot be compared against because it has no implied role at all;
-  // this must still surface as unresolved, not as a confirmed absence.
-  const storyStates = [
-    {
-      exportName: 'KeyboardFocusOrderAndTrap',
-      forced: null,
-      playFocus: { role: 'heading', name: 'Turn off replay archival?' },
-      argsLiterals: new Set(),
-    },
-  ]
-  const rows = buildElementMatrix([heading], storyStates)
-  assert.match(rows[0].hover[0], /^unresolved: no implied role$/)
-  assert.match(rows[0].focusVisible[0], /^unresolved: no implied role$/)
-  assert.match(rows[0].active[0], /^unresolved: no implied role$/)
+// --- T595 (row 8, H5): closing the three `noImpliedRoleReason` shapes — `INTRINSIC_ROLE` widened
+// to the heading and table families, a dynamic `role={…}` resolved per story, and `hover`/`active`
+// credited from a confirmed descendant match. Routed through `computeStateCoverage`, not hand-built
+// instances, wherever a fixture needs `attrExprs`/`localConsts`/`guards`/`nodeStart`/`nodeEnd` —
+// none of which a hand-built object can carry honestly. Each mechanism gets its own resolving case
+// and its own contrast (boundary) case, run against the pre-T595 code first (see the task hand-back
+// for the failing output). ------------------------------------------------------------------------
+
+const HEADING_INDEX_SOURCE = `
+export function Dialog({ heading }) {
+  return (
+    <div role="dialog">
+      <h2 tabIndex={-1} className="outline-none">
+        {heading}
+      </h2>
+    </div>
+  )
+}
+`
+
+test('buildElementMatrix (via computeStateCoverage): INTRINSIC_ROLE now resolves h2 to "heading" — no story targets it, so the cell is a confirmed "none", never "unresolved: no implied role" (Dialog shape)', () => {
+  const storiesSource = `
+    import { Dialog } from './index'
+    const meta = { component: Dialog, args: { heading: 'Turn off replay archival?' } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Dialog' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Dialog/index.tsx'), HEADING_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Dialog/Dialog.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Dialog')
+  const heading = elements.find((el) => el.tag === 'h2')
+  assert.ok(heading, "Dialog's own h2 must be found as a local element")
+  assert.deepEqual(heading.coveredBy.hover, ['none'])
+  assert.deepEqual(heading.coveredBy.focusVisible, ['none'])
+  assert.deepEqual(heading.coveredBy.active, ['none'])
 })
 
-test('buildElementMatrix: an ancestor of a forced descendant reads "unresolved: ancestor of a forced descendant …", never "none" (Table\'s tr/row-link shape)', () => {
-  const row = {
-    tag: 'tr',
-    role: null,
-    tabIndex: null,
-    ariaHidden: false,
-    isHelper: false,
-    text: '',
-    file: 'Table/index.tsx',
-    line: 237,
-    nodeStart: 0,
-    nodeEnd: 100,
-  }
-  const rowLink = {
-    tag: 'a',
-    role: null,
-    tabIndex: null,
-    ariaHidden: false,
-    isHelper: false,
-    text: 'RedBull_Barley',
-    file: 'Table/index.tsx',
-    line: 281,
-    nodeStart: 10,
-    nodeEnd: 20,
-  }
-  const storyStates = [
-    {
-      exportName: 'RowLinkHover',
-      forced: { state: 'hover', role: 'link', name: 'RedBull_Barley', nth: null },
-      playFocus: null,
-      argsLiterals: new Set(),
-    },
-  ]
-  const rows = buildElementMatrix([row, rowLink], storyStates)
-  const trRow = rows.find((r) => r.variantSize.startsWith('tr'))
-  const linkRow = rows.find((r) => r.variantSize.startsWith('a'))
-  assert.deepEqual(linkRow.hover, ['RowLinkHover'])
-  assert.equal(trRow.hover.length, 1)
-  assert.match(trRow.hover[0], /^unresolved: ancestor of a forced descendant/)
-  assert.match(trRow.hover[0], /a@Table\/index\.tsx:281/)
-  assert.match(trRow.hover[0], /RowLinkHover/)
-  // `active` carries no force-state at all in this fixture, on either element — a genuine gap
-  // ('no implied role'), not an ancestor of anything forced.
-  assert.match(trRow.active[0], /^unresolved: no implied role$/)
+test("buildElementMatrix (via computeStateCoverage): a role: 'heading' force-state now actually matches h2 (the resolution working, not only the fallback)", () => {
+  const indexSource = `
+    export function Dialog({ heading }) {
+      return (
+        <div role="dialog">
+          <h2 tabIndex={-1} className="outline-none focus-visible:outline-2">
+            Turn off replay archival?
+          </h2>
+        </div>
+      )
+    }
+  `
+  const storiesSource = `
+    import { Dialog } from './index'
+    const meta = { component: Dialog, args: {} }
+    export default meta
+    export const FocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'heading', name: 'Turn off replay archival?' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Dialog' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Dialog/index.tsx'), indexSource],
+    [path.join(REPO_SRC_DIR, 'primitives/Dialog/Dialog.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Dialog')
+  const heading = elements.find((el) => el.tag === 'h2')
+  assert.deepEqual(heading.coveredBy.focusVisible, ['FocusVisible'])
+  assert.deepEqual(heading.coveredBy.hover, ['none'])
+  assert.deepEqual(heading.coveredBy.active, ['none'])
+})
+
+const TABLE_ROW_LINK_INDEX_SOURCE = `
+export function Table({ rows }) {
+  return (
+    <table>
+      <tbody>
+        {rows.map((row) => (
+          <tr
+            key={row.id}
+            className="hover:bg-surface-sunken active:bg-surface-sunken active:border-l-border-strong"
+          >
+            <td>
+              <a href={row.href} className="focus-visible:outline-ring">
+                {row.label}
+              </a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+`
+
+test('buildElementMatrix (via computeStateCoverage): hover/active cascade from a confirmed descendant match to the tr that wraps it, and focus-visible does not (Table row-link shape)', () => {
+  const storiesSource = `
+    import { Table } from './index'
+    const meta = { component: Table, args: {} }
+    export default meta
+    export const RowLinkHover = {
+      args: { rows: [{ id: '1', href: '/matches/1', label: 'RedBull_Barley' }] },
+      parameters: { visualForceState: { state: 'hover', role: 'link', name: 'RedBull_Barley' } },
+    }
+    export const RowLinkActive = {
+      args: { rows: [{ id: '1', href: '/matches/1', label: 'RedBull_Barley' }] },
+      parameters: { visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Table' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Table/index.tsx'), TABLE_ROW_LINK_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Table/Table.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Table')
+  const row = elements.find((el) => el.tag === 'tr')
+  assert.ok(row, "Table's own tr must be found as a local element")
+  // `hover`/`active`: a real, CDP-backed pointer move/mouse-down on the row link also matches the
+  // ancestor `tr` in a real capture — credited directly, not left as an unresolved ancestor note.
+  assert.deepEqual(row.coveredBy.hover, ['RowLinkHover'])
+  assert.deepEqual(row.coveredBy.active, ['RowLinkActive'])
+  // `focus-visible`: the `tr` itself carries no `focus-visible:` class of its own (only the link
+  // does), so there is nothing for a cascade to credit — a confirmed `none`, not an ancestor note.
+  assert.deepEqual(row.coveredBy.focusVisible, ['none'])
+})
+
+const AMBIGUOUS_SIBLING_LINKS_INDEX_SOURCE = `
+export function Widget() {
+  return (
+    <span className="hover:bg-surface-sunken">
+      <a href="/x" className="hover:underline">One</a>
+      <a href="/y" className="hover:underline">Two</a>
+    </span>
+  )
+}
+`
+
+test('contrast: buildElementMatrix does not credit an ancestor from a merely ambiguous descendant match — stays "unresolved: ancestor of a forced descendant …", never "none" and never covered', () => {
+  const storiesSource = `
+    import { Widget } from './index'
+    const meta = { component: Widget, args: {} }
+    export default meta
+    export const Hover = {
+      args: {},
+      parameters: { visualForceState: { state: 'hover', role: 'link' } },
+    }
+  `
+  const componentDirs = [{ segment: 'composites', name: 'Widget' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'composites/Widget/index.tsx'), AMBIGUOUS_SIBLING_LINKS_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'composites/Widget/Widget.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'composites/Widget')
+  const span = elements.find((el) => el.tag === 'span')
+  assert.ok(span, "Widget's own span must be found as a local element (it carries a hover: class)")
+  assert.equal(span.coveredBy.hover.length, 1)
+  assert.match(span.coveredBy.hover[0], /^unresolved: ancestor of a forced descendant/)
+  assert.match(span.coveredBy.hover[0], /a@.*index\.tsx:\d+/)
+})
+
+const LABEL_WRAPS_CHECKBOX_INDEX_SOURCE = `
+export function Panel({ acknowledged, onChange }) {
+  return (
+    <label className="mt-6 flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={acknowledged}
+        onChange={onChange}
+        className="focus-visible:outline-2"
+      />
+      <span>I understand this cannot be undone.</span>
+    </label>
+  )
+}
+`
+
+test('buildElementMatrix (via computeStateCoverage): a <label> ARIA gives no role of its own reads a confirmed "none" on every state once it carries no class for any of them, never guessing a role (AccountErasurePanel shape)', () => {
+  const storiesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { acknowledged: false } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'screens', name: 'Panel' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), LABEL_WRAPS_CHECKBOX_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'screens/Panel')
+  const label = elements.find((el) => el.tag === 'label')
+  assert.ok(label, 'the label must be captured (it wraps its own checkbox as a direct JSX child)')
+  assert.equal(label.role, null, 'ARIA gives <label> no role — never invented here')
+  assert.deepEqual(label.coveredBy.hover, ['none'])
+  assert.deepEqual(label.coveredBy.focusVisible, ['none'])
+  assert.deepEqual(label.coveredBy.active, ['none'])
+})
+
+const HEADER_CELL_INDEX_SOURCE = `
+export function Grid() {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th className="hover:underline">Name</th>
+        </tr>
+      </thead>
+    </table>
+  )
+}
+`
+
+test('contrast: a <th> stays "unresolved: no implied role" — INTRINSIC_ROLE\'s table family deliberately excludes it, and the no-class-is-none rule does not apply because it does carry a class', () => {
+  const storiesSource = `
+    import { Grid } from './index'
+    const meta = { component: Grid, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Grid' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Grid/index.tsx'), HEADER_CELL_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Grid/Grid.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Grid')
+  const th = elements.find((el) => el.tag === 'th')
+  assert.ok(th, 'the th must be captured (it carries a hover: class)')
+  assert.deepEqual(th.coveredBy.hover, ['unresolved: no implied role'])
+})
+
+const DYNAMIC_ROLE_INDEX_SOURCE = `
+function RosterItemRow({ item, variant }) {
+  const role = variant === 'selection' ? 'menuitemradio' : 'menuitem'
+  return (
+    <button
+      role={role}
+      className="hover:bg-surface-sunken focus-visible:outline-2 active:bg-background"
+    >
+      {item.label}
+    </button>
+  )
+}
+
+export function Roster({ variant, items }) {
+  return (
+    <div>
+      {items.map((item) => (
+        <RosterItemRow key={item.id} item={item} variant={variant} />
+      ))}
+    </div>
+  )
+}
+`
+
+test("buildElementMatrix (via computeStateCoverage): a dynamic role={…} resolves per story against that story's own scope, matching hover/focus-visible/active (MenuItemRow shape)", () => {
+  const args = `{
+      variant: 'selection',
+      items: [{ id: 'p1', label: 'aoe2guy' }, { id: 'p2', label: 'aoe2alt' }],
+    }`
+  const storiesSource = `
+    import { Roster } from './index'
+    const meta = { component: Roster, args: {} }
+    export default meta
+    export const Hover = {
+      args: ${args},
+      parameters: { visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' } },
+    }
+    export const FocusVisible = {
+      args: ${args},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2alt' } },
+    }
+    export const Active = {
+      args: ${args},
+      parameters: { visualForceState: { state: 'active', role: 'menuitemradio', name: 'aoe2alt' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Roster' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Roster/index.tsx'), DYNAMIC_ROLE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Roster/Roster.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Roster')
+  const row = elements.find((el) => el.tag === 'button')
+  assert.ok(row, "RosterItemRow's own button must be found as a local element")
+  assert.deepEqual(row.coveredBy.hover, ['Hover'])
+  assert.deepEqual(row.coveredBy.focusVisible, ['FocusVisible'])
+  assert.deepEqual(row.coveredBy.active, ['Active'])
+})
+
+test('contrast: a dynamic role={…} stays "unresolved: dynamic role" when no story ever supplies the data the expression needs (never a blanket resolution)', () => {
+  const storiesSource = `
+    import { Roster } from './index'
+    const meta = { component: Roster, args: {} }
+    export default meta
+    export const NoVariantSet = {
+      args: { items: [{ id: 'p1', label: 'aoe2guy' }] },
+      parameters: { visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Roster' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Roster/index.tsx'), DYNAMIC_ROLE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Roster/Roster.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Roster')
+  const row = elements.find((el) => el.tag === 'button')
+  assert.deepEqual(row.coveredBy.hover, ['unresolved: dynamic role'])
+  assert.deepEqual(row.coveredBy.focusVisible, ['unresolved: dynamic role'])
+  assert.deepEqual(row.coveredBy.active, ['unresolved: dynamic role'])
+})
+
+// --- T595 (row 8, H5): closing the `unresolved: className not fully resolved` family — a
+// function-local `const` (`Button`'s own `classes`) resolveClassParts previously never looked up at
+// all, an `ElementAccessExpression` into a module-level object literal keyed by the component's own
+// default `variant`/`size` (never every value the prop can take — a real axis record 3 already
+// owns), the left operand of `cond && 'classes'` no longer pushed into `unresolved` as if it were
+// itself class text, and the bare `className` passthrough prop treated as the caller-controlled
+// slot it is rather than a genuinely unknown fragment. Each mechanism gets its own resolving case
+// and its own contrast (boundary) case below, run against the pre-T595 code first (see the task
+// hand-back for the failing output this file's own history records). --------------------------------
+
+const BUTTON_SHAPE_INDEX_SOURCE = `
+const variantClasses = {
+  primary: 'bg-accent hover:bg-accent-hover active:bg-accent-active',
+  secondary: 'bg-surface hover:bg-surface-sunken active:bg-background active:ring-2',
+}
+const sizeClasses = {
+  md: 'h-10 px-4',
+  lg: 'h-12 px-6',
+}
+const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-ring'
+const primaryFocusRing = 'focus-visible:outline-2 focus-visible:outline-accent-contrast'
+
+export function Widget({ variant = 'secondary', size = 'md', className }) {
+  const classes = cx(
+    'inline-flex items-center',
+    sizeClasses[size],
+    variantClasses[variant],
+    variant === 'primary' ? primaryFocusRing : focusRing,
+    className,
+  )
+  return <button className={classes}>Go</button>
+}
+`
+
+test("buildElementMatrix (via computeStateCoverage): a function-local const (Button's own `classes`) fully resolves through an ElementAccessExpression keyed on the component's own default variant, a conditional on that same prop, and the className passthrough — classUnresolvedRefs empty, class text is the DEFAULT variant's own (Button shape)", () => {
+  const storiesSource = `
+    import { Widget } from './index'
+    const meta = { component: Widget, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/index.tsx'), BUTTON_SHAPE_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/Widget.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Widget')
+  const button = elements.find((el) => el.tag === 'button')
+  assert.ok(button, "Widget's own button must be found as a local element")
+  assert.deepEqual(button.classUnresolvedRefs, [])
+  // `secondary` (the default): its own hover/active classes, never `primary`'s — the "record 1
+  // shows the default configuration" decision `resolveClassParts`'s own top comment states.
+  assert.equal(button.hover, 'hover:bg-surface-sunken')
+  assert.equal(button.active, 'active:bg-background active:ring-2')
+  // `variant === 'primary'` is false for the default — `focusRing`, never `primaryFocusRing`.
+  assert.equal(button.focusVisible, 'focus-visible:outline-2 focus-visible:outline-offset-ring')
+})
+
+test('contrast: the same ElementAccessExpression and conditional stay genuinely unresolved when the component declares no default for the prop they key on — never guessed, the dual-branch-conservative conditional fallback still runs', () => {
+  const noDefaultSource = BUTTON_SHAPE_INDEX_SOURCE.replace(
+    "export function Widget({ variant = 'secondary', size = 'md', className }) {",
+    'export function Widget({ variant, size, className }) {',
+  )
+  const storiesSource = `
+    import { Widget } from './index'
+    const meta = { component: Widget, args: { variant: 'primary', size: 'md' } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Widget' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/index.tsx'), noDefaultSource],
+    [path.join(REPO_SRC_DIR, 'primitives/Widget/Widget.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Widget')
+  const button = elements.find((el) => el.tag === 'button')
+  // No default for `variant` in source (a story's own `args` is not this mechanism — record 1
+  // resolves against the *component's own* default, per the shared decision, never a story's) —
+  // the `ElementAccessExpression` stays unresolved, and so does the conditional it shares a
+  // condition-prop with, since `evaluateExpr` against an empty default scope cannot settle it
+  // either; both branches of the conditional are kept instead, the pre-T595 conservative behaviour.
+  assert.ok(button.classUnresolvedRefs.includes('<ElementAccessExpression>'))
+  assert.equal(button.hover, null)
+  // Dual-branch fallback: both `primaryFocusRing` (whenTrue) and `focusRing` (whenFalse) show, in
+  // that order, since this pass cannot know which one the caller's own `variant` will pick.
+  assert.equal(
+    button.focusVisible,
+    'focus-visible:outline-2 focus-visible:outline-accent-contrast focus-visible:outline-2 focus-visible:outline-offset-ring',
+  )
+})
+
+const TABLE_HREF_GUARD_INDEX_SOURCE = `
+export function Row({ rows, getHref }) {
+  return (
+    <table>
+      <tbody>
+        {rows.map((row) => {
+          const href = getHref?.(row)
+          return (
+            <tr
+              key={row.id}
+              className={cx('border-b', href && 'hover:bg-surface-sunken active:bg-surface-sunken')}
+            >
+              <td>{row.label}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+`
+
+test("buildElementMatrix (via computeStateCoverage): the left operand of `cond && 'classes'` (Table's own `href &&`) is never pushed into classUnresolvedRefs — only the right-hand class string is a real candidate", () => {
+  const storiesSource = `
+    import { Row } from './index'
+    const meta = { component: Row, args: { rows: [{ id: '1', label: 'x' }] } }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Row' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Row/index.tsx'), TABLE_HREF_GUARD_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Row/Row.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Row')
+  const row = elements.find((el) => el.tag === 'tr')
+  assert.ok(row, "Row's own tr must be found as a local element")
+  assert.deepEqual(row.classUnresolvedRefs, [])
+  assert.equal(row.hover, 'hover:bg-surface-sunken')
+  assert.equal(row.active, 'active:bg-surface-sunken')
+  assert.equal(row.focusVisible, null)
+})
+
+const OR_GUARD_INDEX_SOURCE = `
+export function Panel({ emphasis }) {
+  return <div className={cx('rounded-panel', emphasis || 'hover:opacity-75')}>Content</div>
+}
+`
+
+test("contrast: the left operand of `cond || 'classes'` still IS a real candidate and stays pushed into classUnresolvedRefs when it cannot resolve — the && fix does not widen to || (Table's own href shape is && specifically)", () => {
+  const storiesSource = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Panel' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel/index.tsx'), OR_GUARD_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Panel/Panel.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Panel's own div must be found as a local element (it carries a hover: class)")
+  assert.ok(div.classUnresolvedRefs.includes('emphasis'))
+})
+
+const CALLER_CLASSNAME_ONLY_INDEX_SOURCE = `
+export function Region({ className }) {
+  return (
+    <div role="region" tabIndex={0} className={cx('overflow-auto rounded-panel', focusRing, className)}>
+      Content
+    </div>
+  )
+}
+const focusRing = 'focus-visible:outline-ring'
+`
+
+test("buildElementMatrix (via computeStateCoverage): a bare className passthrough (Table's own div shape) contributes no parts and is never pushed into classUnresolvedRefs — the element's own hover/active read a confirmed absence once nothing else paints them", () => {
+  const storiesSource = `
+    import { Region } from './index'
+    const meta = { component: Region, args: {} }
+    export default meta
+    export const FocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'region', name: 'Content' } },
+    }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Region' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Region/index.tsx'), CALLER_CLASSNAME_ONLY_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Region/Region.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Region')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Region's own div must be found as a local element")
+  assert.deepEqual(div.classUnresolvedRefs, [])
+  assert.equal(div.hover, null)
+  assert.equal(div.active, null)
+  assert.equal(div.focusVisible, 'focus-visible:outline-ring')
+})
+
+const CALLER_CLASSNAME_PLUS_CALL_INDEX_SOURCE = `
+export function Region({ className }) {
+  return (
+    <div className={cx('overflow-auto hover:bg-surface-sunken', getExtraClasses(), className)}>
+      Content
+    </div>
+  )
+}
+`
+
+test('contrast: a genuinely unresolvable fragment that is not literally named `className` (an unknown function call) still stays in classUnresolvedRefs — the passthrough rule is narrowly scoped to that one identifier, not a blanket "ignore what this pass cannot read"', () => {
+  const storiesSource = `
+    import { Region } from './index'
+    const meta = { component: Region, args: {} }
+    export default meta
+    export const Default = { args: {} }
+  `
+  const componentDirs = [{ segment: 'primitives', name: 'Region' }]
+  const filesByPath = new Map([
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Region/index.tsx'),
+      CALLER_CLASSNAME_PLUS_CALL_INDEX_SOURCE,
+    ],
+    [path.join(REPO_SRC_DIR, 'primitives/Region/Region.stories.tsx'), storiesSource],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Region')
+  const div = elements.find((el) => el.tag === 'div')
+  assert.ok(div, "Region's own div must be found as a local element (it carries a hover: class)")
+  assert.ok(div.classUnresolvedRefs.includes('<call:getExtraClasses>'))
 })
 
 // --- Citation checker (reviewer's third REJECT on PR #80) --------------------------------------
@@ -2819,6 +4842,105 @@ test('checkCitations: a bare inline-code claim whose location resolves to no fil
   assert.match(result.failures[0].reason, /did not resolve to exactly one file/)
 })
 
+// --- T595: the out-of-range hole in `--check-citations` mode ---------------------------------
+// `findInlineCodeClaims` skips every span `CITATION_RE` already parsed, so the out-of-range branch
+// a few lines above (the one guarding double-quoted citations) never sees an inline-code claim —
+// it has to be caught in this loop or nowhere. Before this fix it was a bare `continue`: dropped
+// from every printed count, and `--check-citations` still exited 0.
+
+test('checkCitations: an inline-code claim whose cited line is past the end of its real file fails, naming the real line count (T595, was silently skipped and still exited 0)', () => {
+  const filePath = path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx')
+  const lineCount = readFileSync(filePath, 'utf8').split('\n').length
+  const outOfRangeLine = lineCount + 1000
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:${outOfRangeLine}\`) opens with \`size="lg"\` and more prose after it.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 1)
+  assert.equal(result.inlineClaimVerifiedCount, 0)
+  assert.equal(result.inlineClaimFailureCount, 0)
+  assert.equal(result.inlineClaimUnresolvableCount, 0)
+  const failure = result.failures.find((f) => f.reason.includes('inline-code claim'))
+  assert.ok(failure, 'expected an inline-code-claim failure')
+  assert.match(failure.reason, new RegExp(`has ${lineCount} lines, cited up to :${outOfRangeLine}`))
+})
+
+test('contrast: the same inline-code claim shape, cited in range with the text really on that line, still passes and is counted as verified — the fix is a boundary, not a blanket rejection', () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:1\`) opens with \`${firstLine}\` and more prose after it.\n\n` +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.inlineClaimCount, 1)
+  assert.equal(result.inlineClaimVerifiedCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 0)
+})
+
+// The inline loop's own malformed-line-spec branch (`if (!ranges) continue`, now a counted
+// failure) cannot be exercised the same end-to-end way: `claim.lineSpec` is always
+// `LOCATION_ONLY_RE`'s own capture group (`` `([\w./-]*):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)`` `` —
+// see `scripts/checks/state-coverage.mjs`), built from exactly the atoms `parseLineSpec`'s
+// per-part regex accepts, so `parseLineSpec` can never return `null` for a `lineSpec` that regex
+// produced — confirmed here directly, the same unreachable-by-construction shape `parseLineSpec`'s
+// own comment already documents for its citation-level twin (`parseCitations`'s `!ranges` branch:
+// "the citation regex already guarantees digits and dashes only, so this is a belt"). No
+// `readmeText` reaches the inline loop's `!ranges` branch today, so no end-to-end `checkCitations`
+// test can turn it red — one written to "prove" that would pass before the fix too, on both sides
+// of it, and prove nothing. The fix (a counted failure instead of a silent `continue`) is still
+// correct defence against a future widening of that regex; this is what the regex guarantees today.
+test("parseLineSpec never returns null for output shaped by LOCATION_ONLY_RE — the inline loop's malformed-line-spec branch is unreachable through any real citation text, the same as its citation-level twin", () => {
+  assert.deepEqual(parseLineSpec('39'), [[39, 39]])
+  assert.deepEqual(parseLineSpec('550-551'), [[550, 551]])
+  assert.deepEqual(parseLineSpec('441,344-345'), [
+    [441, 441],
+    [344, 345],
+  ])
+  // Genuinely malformed input parseLineSpec was written to reject — never producible by
+  // LOCATION_ONLY_RE, but this is the contract the unreachable branch defends.
+  assert.equal(parseLineSpec('abc'), null)
+  assert.equal(parseLineSpec('1-'), null)
+  assert.equal(parseLineSpec(''), null)
+})
+
+test('checkCitations: the inline-claim counts it returns always sum to the number of claims found (sum invariant, T595) — a fixture mixing a verified and a failing claim', () => {
+  const firstLine = readFileSync(
+    path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx'),
+    'utf8',
+  )
+    .split('\n')[0]
+    .trim()
+  const filePath = path.join('packages', 'design-system', 'src', 'primitives', 'Text', 'index.tsx')
+  const lineCount = readFileSync(filePath, 'utf8').split('\n').length
+  const outOfRangeLine = lineCount + 1000
+  const readmeText =
+    '**8c. Record 2 — every handoff.**\n\n' +
+    `- **F1.** \`Text\`'s own file (\`index.tsx:1\`) opens with \`${firstLine}\` and more prose after it.\n` +
+    `- **F2.** \`Text\`'s own file (\`index.tsx:${outOfRangeLine}\`) opens with \`size="lg"\` and more prose after it.\n` +
+    "- **F3.** `NoSuchComponentAnywhere`'s own file opens with `:1` is the `whatever=1` line.\n\n" +
+    '**Cell counts,'
+  const result = checkCitations({ readmeText })
+  assert.equal(result.inlineClaimCount, 3)
+  const sum =
+    result.inlineClaimVerifiedCount +
+    result.inlineClaimFailureCount +
+    result.inlineClaimUnresolvableCount +
+    result.inlineClaimOutOfRangeCount +
+    result.inlineClaimMalformedLineSpecCount
+  assert.equal(sum, result.inlineClaimCount)
+  assert.equal(result.inlineClaimVerifiedCount, 1)
+  assert.equal(result.inlineClaimOutOfRangeCount, 1)
+  assert.equal(result.inlineClaimUnresolvableCount, 1)
+})
+
 test('checkHandoffTally: passes when every row (row-8-scoped) agrees with its own citation count', () => {
   const readme =
     '**8c. Record 2 — every handoff.**\n\n' +
@@ -3146,4 +5268,1192 @@ test('countRecord1Cells/countRecord3Cells: never folds an unresolved reason into
   // `covered` (focus-visible) — a distinct 2/2/1 shape from Record 1's 1/1/1, on purpose, so the
   // two records cannot pass by accidentally sharing one counter.
   assert.deepEqual(countRecord3Cells(computed), { none: 2, unresolved: 2, covered: 1 })
+})
+
+// --- T595 (row 8, H5, bucket b): "a state the component's own spec answers as impossible" -------
+//
+// A small `## Index` (`parseIndexTable`'s own fixture shape, `spec-completeness.test.mjs`) plus the
+// closed state vocabulary sentence `deriveVocabulary` needs, covering the three scoping shapes this
+// recogniser has to tell apart: `widget.md` (one component, whole document is its own scope),
+// `pair.md` (two components, each under its own `##` heading — `findComponentSection` can isolate
+// them), `shared-inline.md` (two components, one shared numbered section naming each inline — no
+// heading boundary exists at all, `match-history.md`'s own real shape).
+const IMPOSSIBLE_README_FIXTURE = `## Index
+
+| Spec | Component directory | Feature |
+| --- | --- | --- |
+| [\`widget.md\`](./widget.md) | \`src/primitives/Widget/\` | 001 |
+| [\`pair.md\`](./pair.md) | \`src/primitives/{Alpha,Beta}/\` | 001 |
+| [\`shared-inline.md\`](./shared-inline.md) | \`src/primitives/{Gamma,Delta}/\` | 001 |
+
+## Every spec has nine sections
+
+The state vocabulary is closed: **default, hover, focus-visible, active, disabled, loading,
+error, empty, selection, expansion**. Every spec answers all ten, even when the answer is "this
+part is never disabled".
+`
+
+const WIDGET_SPEC = `## Widget
+
+**States**
+
+- **hover** — the control lifts with a soft shadow.
+- **focus-visible** — a ring appears around the control.
+- **active** — never. A widget cannot be pressed; pressing it does nothing because nothing here
+  reacts.
+- **disabled** — inapplicable today; see the open question below.
+`
+
+// The unrelated-clause regression fixture (`answerSaysImpossible`'s own header comment): a real,
+// substantive first sentence with no closed-vocabulary phrase in it, followed by a *second*
+// sentence that happens to contain "never" about something else entirely — the shape
+// `tooltip.md:139`'s own "this used to say 'its `Button` state,' which was never true" lives in.
+const WIDGET_UNRELATED_NEVER_SPEC = `## Widget
+
+- **active** — the trigger shows a pressed ring while held. This used to say the control never
+  pressed anything, which was never true.
+`
+
+const PAIR_SPEC = `## Alpha
+
+- **active** — none; the root is not interactive.
+
+## Beta
+
+- **active** — a real pressed ring appears on every press, clearly painted.
+`
+
+const SHARED_INLINE_SPEC = `## 5. States
+
+- **active** — \`Gamma\`: none; the root is not interactive. \`Delta\`: a real pressed ring appears on
+  every press.
+`
+
+function fixtureVocabulary() {
+  return deriveVocabulary(IMPOSSIBLE_README_FIXTURE)
+}
+
+// --- answerSaysImpossible / leadingSentence ------------------------------------------------------
+
+test('answerSaysImpossible: matches a closed-vocabulary phrase in the leading sentence', () => {
+  assert.equal(
+    answerSaysImpossible('none; the root is not interactive. Actions have their own.'),
+    true,
+  )
+  assert.equal(
+    answerSaysImpossible('— never. A table whose data is stale says so elsewhere.'),
+    true,
+  )
+  assert.equal(answerSaysImpossible('The table itself has no active state.'), true)
+})
+
+test('answerSaysImpossible: declines a real answer that never uses the closed vocabulary', () => {
+  assert.equal(
+    answerSaysImpossible('the control’s own text-entry state; no separate paint.'),
+    false,
+  )
+  assert.equal(answerSaysImpossible('inapplicable today; see the open question below.'), false)
+})
+
+test('answerSaysImpossible: a coincidental match outside the leading sentence never counts (the false positive this task found live)', () => {
+  // Mirrors `tooltip.md:139` exactly: the state's own first sentence is real prose with no closed
+  // phrase in it, and only a *later*, unrelated sentence contains "never" — about a stale sentence
+  // in the spec itself, not about whether this state happens. Without `leadingSentence`'s own
+  // restriction to the first sentence, this string reads `true` (a bare pattern scan finds "never"
+  // twice); this recogniser must read `false`.
+  const text =
+    'the trigger shows a pressed ring while held. This used to say the control never pressed ' +
+    'anything, which was never true: the trigger clearly presses.'
+  assert.equal(answerSaysImpossible(text), false)
+})
+
+// --- findVocabularyBoundarySpans ------------------------------------------------------------------
+
+test('findVocabularyBoundarySpans: finds one span per bold state label, splitting a combined label into its own tokens', () => {
+  const spans = findVocabularyBoundarySpans(
+    '- **hover / active** — none; the root is not interactive.\n- **focus-visible** — a ring appears.',
+    fixtureVocabulary(),
+  )
+  assert.deepEqual(
+    spans.map((s) => s.tokens),
+    [['hover', 'active'], ['focus-visible']],
+  )
+})
+
+test('findVocabularyBoundarySpans: a nested, clause-leading bold span whose own token is not a vocabulary word is not a boundary', () => {
+  // `structural-tier.md:667`'s own shape: "— **a link is never disabled.**" is itself a
+  // clause-leading bold span (preceded by an em dash), but its own first token is "a", not a
+  // vocabulary word — it must not be read as the *next* state's own label and truncate the real
+  // answer before "never".
+  const spans = findVocabularyBoundarySpans(
+    '- **disabled** — **a link is never disabled.** A destination renders as `Text` instead.\n' +
+      '- **loading** — none.',
+    fixtureVocabulary(),
+  )
+  assert.deepEqual(
+    spans.map((s) => s.tokens),
+    [['disabled'], ['loading']],
+  )
+})
+
+// --- resolveSpecAnswerForState ---------------------------------------------------------------------
+
+test('resolveSpecAnswerForState: the passing case — a genuine closed-vocabulary "impossible" answer', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'impossible')
+  assert.match(result.answerText, /never/)
+})
+
+test('resolveSpecAnswerForState: declines a real answer that does not use the closed vocabulary', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'disabled',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /not with the closed impossible vocabulary/)
+})
+
+test('resolveSpecAnswerForState: declines when the state is never answered in scope at all', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'loading',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /never answers "loading"/)
+})
+
+test('resolveSpecAnswerForState: required contrast — a bullet whose "never" is about a different state than the cell’s', () => {
+  // `disabled` reads its own bullet ("inapplicable today"), never `active`'s "never" — proven by
+  // asking for `disabled` against `WIDGET_SPEC`, whose `active` bullet is the one that says "never".
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'disabled',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.notEqual(result.status, 'impossible')
+})
+
+test('resolveSpecAnswerForState: the unrelated-later-sentence regression (mirrors tooltip.md:139)', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_UNRELATED_NEVER_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+})
+
+test('resolveSpecAnswerForState: required contrast — a bullet in a different component’s own section must not be borrowed across', () => {
+  const forAlpha = resolveSpecAnswerForState({
+    specSource: PAIR_SPEC,
+    components: [
+      { name: 'Alpha', segment: 'primitives' },
+      { name: 'Beta', segment: 'primitives' },
+    ],
+    componentName: 'Alpha',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  const forBeta = resolveSpecAnswerForState({
+    specSource: PAIR_SPEC,
+    components: [
+      { name: 'Alpha', segment: 'primitives' },
+      { name: 'Beta', segment: 'primitives' },
+    ],
+    componentName: 'Beta',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  // Alpha's own section says "none; the root is not interactive" — impossible, for Alpha only.
+  assert.equal(forAlpha.status, 'impossible')
+  // Beta's own section says a real ring appears — Alpha's own "none" must never leak across into
+  // Beta's own verdict, which is exactly what a whole-document (unscoped) read would do.
+  assert.equal(forBeta.status, 'decline')
+})
+
+test('resolveSpecAnswerForState: a multi-component file with no per-component heading boundary declines rather than reading the whole document unscoped', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: SHARED_INLINE_SPEC,
+    components: [
+      { name: 'Gamma', segment: 'primitives' },
+      { name: 'Delta', segment: 'primitives' },
+    ],
+    componentName: 'Gamma',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /no per-component heading to scope to/)
+})
+
+// --- mapComponentKeyToSpecFile ----------------------------------------------------------------------
+
+test('mapComponentKeyToSpecFile: resolves a componentKey to its own Index row', () => {
+  const mapping = mapComponentKeyToSpecFile(IMPOSSIBLE_README_FIXTURE, 'primitives/Widget')
+  assert.equal(mapping.specFile, 'widget.md')
+  assert.equal(mapping.componentName, 'Widget')
+  assert.equal(mapping.components.length, 1)
+})
+
+test('mapComponentKeyToSpecFile: declines (null) for a component the Index never names', () => {
+  assert.equal(mapComponentKeyToSpecFile(IMPOSSIBLE_README_FIXTURE, 'primitives/Ghost'), null)
+})
+
+test('mapComponentKeyToSpecFile: declines (null) when more than one Index row claims the same componentKey', () => {
+  const readme = `## Index
+
+| Spec | Component directory | Feature |
+| --- | --- | --- |
+| [\`one.md\`](./one.md) | \`src/primitives/Widget/\` | 001 |
+| [\`two.md\`](./two.md) | \`src/primitives/Widget/\` | 001 |
+
+## Every spec has nine sections
+`
+  assert.equal(mapComponentKeyToSpecFile(readme, 'primitives/Widget'), null)
+})
+
+// --- classifyRecord1NoneCells / classifyRecord3NoneCells --------------------------------------------
+
+const SPEC_SOURCES = new Map([
+  ['widget.md', WIDGET_SPEC],
+  ['pair.md', PAIR_SPEC],
+  ['shared-inline.md', SHARED_INLINE_SPEC],
+])
+
+test('classifyRecord1NoneCells: the passing case end to end — one element, one confirmed-impossible state', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'impossible')
+})
+
+test('classifyRecord1NoneCells: required contrast — a real class painted on the exact element is never classifiable as impossible', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // A real `active:` utility is painted on this exact element, even though `WIDGET_SPEC`'s
+            // own `active` bullet says "never" — the class is proof the component visually responds,
+            // so this must decline, never read `impossible`.
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /a real class is painted/)
+})
+
+test('classifyRecord1NoneCells: a sibling element with real coverage for the same state declines every none cell of that state in the component', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'a',
+            file: 'f.tsx',
+            line: 1,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 5,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            // This sibling's own `active` state IS covered by a real story — proof `WIDGET_SPEC`'s
+            // own "active — never" cannot describe every candidate in this component.
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const firstElementActive = results.find((r) => r.line === 1 && r.state === 'active')
+  assert.equal(firstElementActive.status, 'decline')
+  assert.match(firstElementActive.reason, /another local element/)
+})
+
+test('classifyRecord1NoneCells: a multi-component file with no per-component boundary declines rather than crediting the wrong component', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Gamma',
+        elements: [
+          {
+            tag: 'button',
+            file: 'g.tsx',
+            line: 1,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(results[0].status, 'decline')
+})
+
+// --- T595 (row 8, group 3): `inertByConstruction` closes a cell directly, with no spec lookup at
+// all — `componentKey: 'composites/Unmapped'` deliberately maps to no `## Index` row here (unlike
+// every other fixture above, which resolves through `IMPOSSIBLE_README_FIXTURE`), so a passing
+// result can only come from the inert-by-construction guard itself, never from the ordinary spec
+// path this task's other guards already cover.
+test('classifyRecord1NoneCells: an inert-by-construction element (UploadControl shape) is impossible with no spec lookup at all', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'composites/Unmapped',
+        elements: [
+          {
+            tag: 'input',
+            file: 'f.tsx',
+            line: 274,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: true,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  for (const state of ['hover', 'focus-visible', 'active']) {
+    const cell = results.find((r) => r.state === state)
+    assert.equal(cell.status, 'impossible')
+    assert.match(cell.reason, /inert by construction/)
+  }
+})
+
+// Required contrast: a sibling that is NOT inert by construction, and does not carry a painted
+// class either, still goes through the ordinary spec-mapping path (declining here, since
+// `composites/Unmapped` maps to no Index row) — the inert guard must never leak from one element
+// onto another in the same component.
+test('classifyRecord1NoneCells: inertByConstruction on one element never swallows a sibling that is not inert', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'composites/Unmapped',
+        elements: [
+          {
+            tag: 'input',
+            file: 'f.tsx',
+            line: 274,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: true,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 290,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: false,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const inertCell = results.find((r) => r.line === 274 && r.state === 'active')
+  const realCell = results.find((r) => r.line === 290 && r.state === 'active')
+  assert.equal(inertCell.status, 'impossible')
+  assert.equal(realCell.status, 'decline')
+  assert.equal(realCell.reason, 'component does not map to exactly one Index row')
+})
+
+test('classifyRecord3NoneCells: the passing case end to end — a non-axis row (Table-shaped), one confirmed-impossible state', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'button @ f.tsx:10',
+          rest: ['f.tsx:10'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'impossible')
+})
+
+test('classifyRecord3NoneCells: a non-axis row cross-references its own exact record-1 element, never a component-wide guess', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // Painted on the exact element this row is about.
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'button @ f.tsx:10',
+          rest: ['f.tsx:10'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /a real class is painted/)
+})
+
+test('classifyRecord3NoneCells: an axis row (no single element to pin a class to) declines when the primitive’s own record-1 element paints the class elsewhere', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // The primitive's own local element paints `active:` — real evidence the DOM responds
+            // to this state somewhere, even though this specific axis row's own default class is
+            // unresolved (record 1's own Method: only the default variant's class is ever known).
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'ghost|lg',
+          rest: ['x.tsx:1'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          // No axis-row sibling covers `active` either — only the primitive-own-class guard should
+          // be the reason this declines, not the sibling guard.
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /own local element paints a class/)
+})
+
+test('classifyRecord3NoneCells: another row of the same primitive matrix with real coverage declines every none row for that state', () => {
+  const computed = {
+    localElements: [],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'ghost|lg',
+          rest: ['x.tsx:1'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+        {
+          variantSize: 'primary|md',
+          rest: ['y.tsx:2'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          // A sibling axis row DOES have real `active` coverage.
+          active: ['SomeStory'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const ghostActive = results.find((r) => r.variantSize === 'ghost|lg' && r.state === 'active')
+  assert.equal(ghostActive.status, 'decline')
+  assert.match(ghostActive.reason, /another row of this primitive matrix/)
+})
+
+test('classifyImpossiblePerSpec: derives its own vocabulary from readmeSource and returns both records', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const { record1, record3 } = classifyImpossiblePerSpec(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+  })
+  assert.equal(record1.find((r) => r.state === 'active').status, 'impossible')
+  assert.deepEqual(record3, [])
+})
+
+// --- parseRow8DebtEntries / checkCellGate (T595's own closing commit) -------------------------
+//
+// T595's own three closures for a `'none'` cell: a story (the cell reads `'covered'` and this gate
+// never reaches it), the spec answering it impossible (`classifyImpossiblePerSpec`, already
+// covered above), or a dated entry in row 8's own prose naming it exactly. These tests are the
+// third closure and the gate requiring one of the three — the required contrast the task brief
+// itself names twice: an entry must never close a cell it does not name, and an entry past its own
+// `fixBy` must never keep closing anything. Each fixture below plants the shape the gate must catch
+// and is run against the gate to prove it actually catches it, never merely that it can pass.
+
+function readmeWithDebtBlock(blockBody) {
+  return `${IMPOSSIBLE_README_FIXTURE}\n<!-- state-coverage-debt\n${blockBody}\n-->\n`
+}
+
+test('parseRow8DebtEntries: reads date/fixBy/owner fields and R1/R3 cell lines out of a block', () => {
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Widget hover button@f.tsx:10',
+      'R3 Button active destructive|lg',
+    ].join('\n'),
+  )
+  const entries = parseRow8DebtEntries(readmeSource)
+  assert.equal(entries.length, 1)
+  const [entry] = entries
+  assert.equal(entry.date, '2026-09-20')
+  assert.equal(entry.fixBy, '2026-09-27')
+  assert.equal(entry.owner, 'T999')
+  assert.deepEqual(entry.cells, [
+    {
+      record: 1,
+      componentKey: 'primitives/Widget',
+      state: 'hover',
+      tag: 'button',
+      file: 'f.tsx',
+      line: 10,
+    },
+    { record: 3, primitiveName: 'Button', state: 'active', variantSize: 'destructive|lg' },
+  ])
+})
+
+test('parseRow8DebtEntries: a free-text line beside the fields is silently ignored rather than misread as a field or a cell', () => {
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: no fixed owner',
+      'This sentence explains why in plain English and names no cell of its own.',
+      'R1 primitives/Widget active button@f.tsx:10',
+    ].join('\n'),
+  )
+  const [entry] = parseRow8DebtEntries(readmeSource)
+  assert.equal(entry.cells.length, 1)
+  assert.equal(entry.owner, 'no fixed owner')
+})
+
+// `hover`/`focus-visible` are real story coverage on purpose — `Beta`'s own spec (`PAIR_SPEC`)
+// answers only `active`, so leaving the other two states `'none'` would decline them too (no
+// per-component boundary answers them at all) and pollute every assertion below with cells these
+// tests are not about. Isolating `active` as the fixture's one declining cell is what lets each
+// test assert an exact `uncovered`/`unresolved` list rather than filtering it down first.
+function widgetActiveNoneComputed(extraElement) {
+  const elements = [
+    {
+      tag: 'button',
+      file: 'f.tsx',
+      line: 1,
+      hover: null,
+      focus: null,
+      focusVisible: null,
+      active: null,
+      coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['none'] },
+    },
+  ]
+  if (extraElement) elements.push(extraElement)
+  return {
+    localElements: [{ componentKey: 'primitives/Beta', elements }],
+    matrices: {},
+  }
+}
+
+test('checkCellGate: a live entry naming a none cell exactly closes it', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.unresolved, [])
+  assert.equal(gate.liveEntries.length, 1)
+})
+
+// The task's own required boundary: "an entry must not be able to close a cell it does not name."
+// Two `'none'` cells in the same component, same state (`Beta`'s own spec answer for `active` is a
+// real, substantive, non-impossible paragraph, so neither cell is classifiable `impossible`, and
+// neither is a sibling-coverage decline either — both reach the entry check on their own merits).
+// An entry names only the first. The second must still fail the gate even though *an* entry exists
+// in the register — the exact failure a gate satisfied by "some entry exists somewhere" would miss.
+test('checkCellGate: required contrast — an entry never closes a cell it does not name, even when another cell of the same component and state is covered', () => {
+  const secondElement = {
+    tag: 'a',
+    file: 'f.tsx',
+    line: 2,
+    hover: null,
+    focus: null,
+    focusVisible: null,
+    active: null,
+    coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['none'] },
+  }
+  const computed = widgetActiveNoneComputed(secondElement)
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.uncovered[0].line, 2)
+  assert.equal(gate.uncovered[0].tag, 'a')
+})
+
+test('checkCellGate: required contrast — record 3 holds the same boundary as record 1 (an entry names one axis row, never a sibling row it does not)', () => {
+  const computed = {
+    localElements: [],
+    matrices: {
+      Button: [
+        {
+          variantSize: 'destructive|lg',
+          rest: ['f.tsx:1'],
+          hover: ['SomeStory'],
+          focusVisible: ['SomeStory'],
+          active: ['none'],
+          disabled: ['SomeStory'],
+        },
+        {
+          variantSize: 'ghost|lg',
+          rest: ['f.tsx:2'],
+          hover: ['SomeStory'],
+          focusVisible: ['SomeStory'],
+          active: ['none'],
+          disabled: ['SomeStory'],
+        },
+      ],
+    },
+  }
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R3 Button active destructive|lg',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.uncovered[0].variantSize, 'ghost|lg')
+  assert.equal(gate.uncovered[0].state, 'active')
+})
+
+test('checkCellGate: an entry not yet past its own fixBy still closes the cell it names', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-26',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.expiredCovering, [])
+  assert.equal(gate.liveEntries.length, 1)
+})
+
+// The task's own second required boundary: "an expired entry must not silently keep passing."
+test('checkCellGate: required contrast — an entry past its own fixBy stops closing the cell it names, and is reported rather than silently dropped', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-08-01',
+      'fixBy: 2026-09-19',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.equal(gate.expiredCovering.length, 1)
+  assert.equal(gate.expiredCovering[0].line, 1)
+  assert.equal(gate.expiredEntries.length, 1)
+  assert.equal(gate.liveEntries.length, 0)
+})
+
+test('checkCellGate: a malformed entry (missing fixBy) never closes the cell it names', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    ['date: 2026-09-20', 'owner: T999', 'R1 primitives/Beta active button@f.tsx:1'].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['fixBy'])
+  assert.equal(gate.malformedEntries[0].kind, 'debt')
+})
+
+test('checkCellGate: a debt entry missing owner (date and fixBy both present) never closes the cell it names — a debt entry must carry all three', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    ['date: 2026-09-20', 'fixBy: 2026-09-27', 'R1 primitives/Beta active button@f.tsx:1'].join(
+      '\n',
+    ),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['owner'])
+  assert.equal(gate.malformedEntries[0].kind, 'debt')
+})
+
+// --- parseRow8PermanentEntries / checkCellGate's permanent-entry half (this branch's own fix) ---
+//
+// A `<!-- state-coverage-debt -->` entry is time-boxed by construction: a well-formed one always
+// expires once `today` passes its own `fixBy`, proven above. Some declining cells (row 8's own
+// Cause B and Cause E, `packages/design-system/specs/README.md`) are never owed any work at all —
+// the guard that declines them, or the spec answer it defers to, is a structural fact, not debt —
+// so no `fixBy` could ever be chosen honestly. `<!-- state-coverage-permanent -->` is the distinct
+// entry kind that closes those without expiring, and these tests are its own required contrasts:
+// it still closes exactly the cell it names, at any date, and the gate rejects either shape
+// carrying the other's fields.
+
+function readmeWithPermanentBlock(blockBody) {
+  return `${IMPOSSIBLE_README_FIXTURE}\n<!-- state-coverage-permanent\n${blockBody}\n-->\n`
+}
+
+test('parseRow8PermanentEntries: reads date/reason fields and R1/R3 cell lines out of a block, and carries no fixBy/owner at all', () => {
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'reason: a sibling already carries real coverage for this state — nothing is owed.',
+      'R1 primitives/Widget hover button@f.tsx:10',
+    ].join('\n'),
+  )
+  const [entry] = parseRow8PermanentEntries(readmeSource)
+  assert.equal(entry.date, '2026-09-20')
+  assert.equal(
+    entry.reason,
+    'a sibling already carries real coverage for this state — nothing is owed.',
+  )
+  assert.equal(entry.fixBy, undefined)
+  assert.equal(entry.owner, undefined)
+  assert.deepEqual(entry.cells, [
+    {
+      record: 1,
+      componentKey: 'primitives/Widget',
+      state: 'hover',
+      tag: 'button',
+      file: 'f.tsx',
+      line: 10,
+    },
+  ])
+})
+
+// The defect this branch fixes, planted directly against the pre-fix shape: a permanent entry read
+// as a debt entry would read `today: '2027-01-01'` as past every real `fixBy` this register has
+// ever carried and fail. Proves the entry closes its cell at a date far past today, not merely not
+// yet expired the way a debt entry's own "not yet past fixBy" test already shows.
+test('checkCellGate: a permanent entry still closes its cell at a date far past today (2027-01-01) — it never expires', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage for this state.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2027-01-01',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.deepEqual(gate.expiredCovering, [])
+  assert.deepEqual(gate.expiredEntries, [])
+  assert.equal(gate.malformedEntries.length, 0)
+  assert.equal(gate.permanentEntries.length, 1)
+})
+
+// Required contrast: a debt entry past its own fixBy must still expire and still fail, even once a
+// permanent entry kind exists beside it — the new kind must not blunt the old one's own enforcement.
+test('checkCellGate: required contrast — a debt entry past its own fixBy still expires and still fails, permanent entries notwithstanding', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-08-01',
+      'fixBy: 2026-09-19',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-28',
+  })
+  assert.deepEqual(gate.uncovered, [])
+  assert.equal(gate.expiredCovering.length, 1)
+  assert.equal(gate.expiredEntries.length, 1)
+  assert.equal(gate.liveEntries.length, 0)
+  assert.equal(gate.permanentEntries.length, 0)
+})
+
+test('checkCellGate: a permanent entry carrying a fixBy is malformed and fails, even with a real reason and date', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, [
+    'fixBy (a permanent entry may not carry fixBy)',
+  ])
+  assert.equal(gate.permanentEntries.length, 0)
+})
+
+test('checkCellGate: a permanent entry carrying an owner is malformed and fails (contrast — the other forbidden field)', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    [
+      'date: 2026-09-20',
+      'owner: T999',
+      'reason: Guard 2 — a sibling element already carries real, story-proven coverage.',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, [
+    'owner (a permanent entry may not carry owner)',
+  ])
+})
+
+test('checkCellGate: a permanent entry missing its reason is malformed and fails', () => {
+  const computed = widgetActiveNoneComputed()
+  const readmeSource = readmeWithPermanentBlock(
+    ['date: 2026-09-20', 'R1 primitives/Beta active button@f.tsx:1'].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.uncovered.length, 1)
+  assert.equal(gate.malformedEntries.length, 1)
+  assert.equal(gate.malformedEntries[0].kind, 'permanent')
+  assert.deepEqual(gate.malformedEntries[0].malformed, ['reason'])
+})
+
+test('checkCellGate: an unresolved cell fails regardless of any entry or spec answer — unresolved is not one of the three closures', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Beta',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 1,
+            // `hover`/`focus-visible` carry a real, literal class of their own, so their class
+            // half reads `'covered'` regardless of `classUnresolvedRefs` (`classifyClassHalf`
+            // checks a non-null class text first) — isolating the element's one *unresolved*
+            // expression to `active` alone, the state this test is actually about.
+            hover: 'hover:bg-surface-sunken',
+            focus: null,
+            focusVisible: 'focus-visible:outline-2',
+            active: null,
+            // A real class expression this pass could not resolve — `classUnresolvedRefs`
+            // non-empty forces the class half `'unresolved'` regardless of what `coveredBy` says
+            // (`countRecord1Cells`'s own rule, mirrored here on purpose).
+            classUnresolvedRefs: ['someDynamicExpr'],
+            coveredBy: { hover: ['SomeStory'], focusVisible: ['SomeStory'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const readmeSource = readmeWithDebtBlock(
+    [
+      'date: 2026-09-20',
+      'fixBy: 2026-09-27',
+      'owner: T999',
+      'R1 primitives/Beta active button@f.tsx:1',
+    ].join('\n'),
+  )
+  const gate = checkCellGate(computed, {
+    readmeSource,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(gate.unresolved.length, 1)
+  assert.equal(gate.unresolved[0].state, 'active')
+  assert.deepEqual(gate.uncovered, [])
+})
+
+test('checkCellGate: a covered cell and an impossible cell need no entry at all', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: 'focus-visible:outline-2',
+            active: null,
+            coveredBy: {
+              hover: ['none'],
+              focusVisible: ['SomeStory'],
+              active: ['none'],
+            },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  // No `state-coverage-debt` block at all — `focus-visible` is real story coverage and `active`
+  // resolves `impossible` from `WIDGET_SPEC`'s own "active — never" (`Widget`'s own bullet); `hover`
+  // is a real, substantive answer ("the control lifts with a soft shadow") and would need its own
+  // entry, so this fixture only asserts the two cells that need none.
+  const gate = checkCellGate(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    today: '2026-09-20',
+  })
+  assert.equal(
+    gate.uncovered.find((c) => c.state === 'active'),
+    undefined,
+  )
+  assert.equal(
+    gate.uncovered.find((c) => c.state === 'focus-visible'),
+    undefined,
+  )
 })

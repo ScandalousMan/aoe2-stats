@@ -255,8 +255,27 @@ export const KeyboardNavigation: Story = {
 // documented state, not a leftover. No `visual-full-page` tag — like `Empty` and `ClosedTrigger`,
 // nothing here escapes the trigger's own layout box, so the default clipped capture already
 // reaches it.
+// T595 (row 8, H5): forced rather than left play-driven. `buildElementCells`'s play-focus branch
+// (`state-coverage.mjs`) marks every play-driven match `unresolved` on principle, because a script
+// cannot tell a fresh `:focus-visible` apart from a frame a *preceding* story already captured —
+// but this story's own final frame is exactly `CountryFlag`'s `FlagDismissedAfterEscape` shape
+// (`CountryFlag.stories.tsx`): Escape closes an overlay and hands focus back to the trigger via a
+// script call inside the component's own close handler, never through a real keyboard event, on a
+// page nothing has yet clicked with a *trusted* pointer — `tests/visual/stories.spec.ts`'s own
+// `VisualForceState` comment establishes that shape reliably matches `:focus-visible` in Chromium.
+// `CountryFlag` already resolves the identical case this way rather than by widening the play-focus
+// branch's own policy, so this follows the existing precedent instead of special-casing the branch
+// to one story. `role: 'button'` needs no `name`/`nth`: the trigger is the only `button`-role
+// element `Menu/index.tsx` renders (the footer item takes `role="menuitem"`, `MenuItemRow`'s own
+// items are role `menuitem(radio|checkbox)`), so there is exactly one candidate before the menu
+// even closes. The explicit `.focus()` this parameter drives at capture time lands on the element
+// the play function's own final assertion (`toHaveFocus()`) already names — same element, same
+// frame, now provable rather than merely asserted.
 export const EscapeReturnsFocusToTrigger: Story = {
   name: 'Escape closes the surface and returns focus to the trigger',
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const trigger = canvas.getByRole('button')
@@ -347,6 +366,83 @@ export const Active: Story = {
   play: openMenu,
   parameters: {
     visualForceState: { state: 'active', role: 'menuitemradio', name: 'aoe2alt' },
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// README's gap register row 8 (H5): the trigger itself (index.tsx:144) paints `hover:bg-
+// surface-sunken` (T560's own comment there) — the same resting/border recipe `Button` `secondary`
+// carries, but as a local `<button>`, not a `Button` instance, so no `Button` story ever credits
+// it. `Hover`/`Active` above force a state on a `menuitemradio` row, never on the trigger; no other
+// story on this page does either. `role: 'button'` needs no `name`/`nth`: the trigger is the only
+// `button`-role element this component renders (`EscapeReturnsFocusToTrigger`'s own comment makes
+// the same point). No clip: like `ClosedTrigger`/`EscapeReturnsFocusToTrigger`, nothing here
+// escapes the trigger's own layout box.
+export const TriggerHover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
+// The trigger's own press (T591): `active:bg-background active:ring-2 active:ring-border-strong`,
+// `Button` `secondary`'s own recipe.
+export const TriggerActive: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
+// The footer item (index.tsx:242) is its own `role="menuitem"` `<button>`, not a `MenuItemRow` —
+// `Hover`/`Active` above only ever force a state on a `menuitemradio` row, never on this one.
+// `role: 'menuitem'` needs no `name`: for the `selection` variant rendered here, every row item
+// carries `role="menuitemradio"` (`MenuItemRow`'s own `variant === 'selection'` branch) — the
+// footer item is the sole `menuitem`-role candidate.
+export const FooterItemHover: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'menuitem' },
+    visualCaptureClip: MENU_CLIP,
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// The footer item's own press (T591): fill moves to `bg-background` (`Button` `ghost`'s own
+// recipe) with the inline-start `border-strong` boundary already reserved at rest.
+export const FooterItemActive: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'active', role: 'menuitem' },
+    visualCaptureClip: MENU_CLIP,
   },
   args: {
     variant: 'selection',

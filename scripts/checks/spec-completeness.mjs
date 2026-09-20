@@ -350,7 +350,10 @@ export function checkNineSections(specSource, sections) {
 // discovered when C1 of the T571 remediation scoped the vocabulary scan to each component's own
 // section and found this shape had never been exercised on its own before (previously it only ever
 // had to share a file with a sibling component using the bulleted form, which supplied the match).
-function isClauseLeadingBoldSpan(text, matchIndex) {
+// Exported (T595) so `state-coverage.mjs`'s own bucket-b recogniser can find a bold state label's
+// own answer clause the identical way this file already finds the label itself, rather than a
+// second, hand-written copy of the same boundary rule drifting from this one.
+export function isClauseLeadingBoldSpan(text, matchIndex) {
   let i = matchIndex - 1
   while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1
   if (i < 0) return true
@@ -392,7 +395,10 @@ export function extractLineLeadingBoldSpans(specSource) {
 // "**active (open, pinned)**" — so this takes the leading run of letters/hyphens rather than
 // stripping non-letters everywhere, which would otherwise glue "default" and "(closed)" into one
 // unmatched word).
-function normaliseStateToken(token) {
+// Exported (T595) for the same reason `isClauseLeadingBoldSpan` above is: `state-coverage.mjs`'s
+// own bucket-b recogniser splits a combined label (`hover / active`) into per-word state tokens the
+// identical way `checkVocabulary` below already does.
+export function normaliseStateToken(token) {
   const trimmed = token
     .trim()
     .toLowerCase()

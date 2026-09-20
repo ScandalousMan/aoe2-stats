@@ -127,28 +127,31 @@ export const Empty: Story = {
 // themselves are not interactive." / "disabled — the `RequestButton` disables while a request is
 // in flight or a job is preparing" (already shown by `Requesting`/`Preparing` above).
 //
-// Corrected twice (README's gap register row 5/H2, then row 7/H4): this story used to claim hover,
-// focus and active were "already covered by their own components' stories" for both interactive
-// elements the `idle` state shows here — true only for focus-visible and press of the
-// `RequestButton`, an unmodified `Button` with `variant="secondary"`, whose own `Button.stories.tsx`
-// file carries those two states per variant (`SecondaryFocusVisible`, `SecondaryActive`). Not its
-// hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story), so
-// `secondary` has no hover story there — a gap recorded in README's gap register row 8, owed by
-// T595. `DownloadLink` is not a `Button` instance; it is a local anchor styled directly inside this
-// screen (`index.tsx`'s `ready` branch), so nothing outside this file ever drives its own hover,
-// focus-visible or active — the `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are
-// that coverage, all three now present, added here rather than claimed elsewhere.
+// Corrected 2026-09-19 (T595): this story used to claim hover, focus-visible and press were
+// "already covered by `Button.stories.tsx`'s per-variant stories" for the `RequestButton`, real
+// only for the ownership fact and false for the story named — `RequestButton` is `secondary|lg`
+// (`index.tsx:118-119,215`, T561's own `size="lg"` comment), and `Button.stories.tsx`'s per-variant
+// stories (`SecondaryHover`/`SecondaryFocusVisible`/`SecondaryActive`) force `Button`'s own default
+// size, `md`, never `lg`. All three states are real, but via `ReplayAvailabilityList`'s and
+// `UploadControl`'s own stories — `secondary|lg`'s generated hover, focus-visible and press cells
+// read `ReplayAvailabilityList:Hover`, `ReplayAvailabilityList:FocusVisible;
+// UploadControl:FocusVisible` and `ReplayAvailabilityList:Active` — the same "true elsewhere, not
+// `Button`'s own" shape row 8's F1/F2/F4/F6/F7 close for other consumers. `DownloadLink` is not a
+// `Button` instance; it is a local anchor styled directly inside this screen (`index.tsx`'s `ready`
+// branch), so nothing outside this file ever drives its own hover, focus-visible or active — the
+// `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` stories above are that coverage, all three
+// present, added here rather than claimed elsewhere.
 export const HoverFocusActiveNotApplicable: Story = {
   name: 'hover / focus / active — not applicable to the idle sections themselves',
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel's own sections are not interactive. The `RequestButton` shown here is an
-        unmodified `Button` (`secondary`); its focus-visible and press are already covered by
-        `Button.stories.tsx`'s per-variant stories, but not its hover — that file only forces hover
-        for `primary` (owed by task T595). The download link only exists in the `ready` state — see
-        `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` above for its own coverage of all three
-        states.
+        unmodified `Button` (`secondary`, `lg`); its hover, focus-visible and press are all real,
+        but the frames that prove them are `ReplayAvailabilityList`'s and `UploadControl`'s own
+        stories, not `Button.stories.tsx`'s. The download link only exists in the `ready` state —
+        see `ReadyHover`, `ReadyFocusVisible` and `ReadyActive` above for its own coverage of all
+        three states.
       </p>
       <DataExportPanel {...args} />
     </div>

@@ -106,3 +106,21 @@ export const DisabledNotApplicable: Story = {
   ),
   args: { ...noopHandlers, initialState: 'idle' },
 }
+
+// README's gap register row 8 (H5): §5's own "focus-visible" sentence above names three
+// elements — "the input, the submit button and the privacy-notice link" — but `FocusVisible`
+// only ever forced the link (`LINK_CLIP`'s own `role: 'link'`). The input (`index.tsx:130`)
+// paints the same `focusRing` trio and had no frame of its own before this story. It carries no
+// `hover:` or `active:` class — `Hover` and `Active` above already depict this form's real
+// hover/press surface, on the privacy-notice link, and this input has nothing of its own for
+// either. `role: 'textbox'` is unambiguous: the form renders exactly one.
+const INPUT_CLIP = { parts: [{ role: 'textbox' as const }], pad: '2' }
+
+export const InputFocusVisible: Story = {
+  name: 'focus-visible on the profile-id field',
+  args: { ...noopHandlers, initialState: 'idle' },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'textbox' },
+    visualCaptureClip: INPUT_CLIP,
+  },
+}

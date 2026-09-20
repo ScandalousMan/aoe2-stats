@@ -147,12 +147,28 @@ to (§5's `DegradedBanner`), rather than inventing a per-row badge the contract 
 
 ## 5. States
 
-### `SearchBox` / `ResultsRegion` — the three named empty states, and the three that are not empty
+### The three named empty states, and the three that are not empty
 
 FR-003 requires "found nothing" and "search is unavailable" to never look the same, and US1 scenario 2
 and 4 both describe an _empty state_ — a state with zero rows — but the interface owes a **third**
 one that is not about row count at all: before any query has been asked. `ResultsRegion` renders
 exactly one of the six states below; none may combine or stack with another.
+
+**T595 note on this section's own shape.** `SearchBox` and `PlayerResultRow` share one prose States
+narrative rather than each carrying its own — the shape
+[`spec-completeness.mjs`](../../../scripts/checks/state-coverage.mjs)'s own file header names
+alongside `match-history.md` and `privacy-data-rights.md`, because `hover`/`active`/`disabled`/
+`selection`/`expansion` genuinely answer both components in one breath (`Input`'s own clause and
+`PlayerResultRow`'s own clause read as one continuous comparison, not two answers that happen to sit
+near each other). The two `###` headings below exist only to give
+[`mapComponentKeyToSpecFile`](../../../scripts/checks/state-coverage.mjs)'s per-component boundary
+lookup (`findComponentSection`) something real to scope to for each component's own record-1 local
+elements — `SearchBox`'s own `Input`, `PlayerResultRow`'s own row link — rather than to assert the
+prose is naturally two documents; the five states both components share are therefore quoted in full
+under both headings, verbatim, rather than split by hand into two answers neither component's own
+text actually gives on its own.
+
+### `SearchBox`
 
 **default / idle — no query yet.** Plain text below `Input`, `text-secondary`: _"Search for a player
 by name."_ **Deliberately not a `Callout`**: `Callout`'s own purpose (`shared-primitives.md`) is to
@@ -203,6 +219,69 @@ changes") undersells it in the other direction less than `danger`'s ("something 
    distinct from FR-003's "search is unavailable", which is a **successful** response carrying
    `degraded: true` — a request that never completed is not the same claim as one that completed with
    a reduced answer, and the two must never share a `Callout` tone or a sentence.
+
+**hover / focus-visible** — `Input`: standard text-input interaction, focus ring per DS-4.
+`PlayerResultRow`: whole-row hover fill `surface-sunken`, exactly `match-history.md`'s own
+`MatchRow` rule (nothing inside the row — including `Standing` — has its own hover); focus ring on the
+row's own link wrapper, inset so it never crops `Standing`'s digits, following `profile-summary.md`'s
+identical rule for rating figures.
+
+**active** — `Input`: standard text-input interaction. `PlayerResultRow` keeps the `surface-sunken`
+hover fill and reserves its inline-start edge at rest, at a constant width across every viewport
+(`border-l-2 border-l-transparent`, plus `md:border-l-2` restoring the width `md:border-x-0` would
+otherwise zero from `md` up — `index.tsx`), solidifying to `border-strong` on press
+(`active:border-l-border-strong`, colour only: the width is reserved unconditionally, so a press
+never grows the row or shifts the alias/clan group beside it) — the same reserved-border technique
+`Table` and `MatchRow` share for their own row links. (Fifth-pass review, finding M3: an earlier
+version of this fix re-asserted the width at `active:` too, `active:border-l-2
+active:border-l-border-strong`, which was the one thing fighting `md:border-x-0` back to a width at
+`md`+ and produced a 2px reflow on press; the unconditional reservation above replaced it and this
+passage is corrected to match.) Repainting the hover fill alone, with no border reservation at all,
+answered nothing (fourth-pass review remediation, FR-037: two states of one component must be
+distinguishable by more than colour, in a still image); this passage itself still described that
+pre-fix, colour-only behaviour — folded into the hover/focus-visible rule above as if it were the
+same signal — until the fifth-pass review caught it, finding B2. T591: that inline-start rule alone
+was still too weak a mark for the duplicate check to tell press apart from hover at this row's size
+(`story-baseline-duplicates-debt.json`) — press now additionally draws a full inset boundary,
+`active:ring-2 active:ring-inset active:ring-border-strong`, on top of the fill and the inline-start
+rule, the same "a press is a boundary" signal `Button` `secondary`/`destructive` and `Link`
+`standalone` already carry (T583).
+
+**disabled** — `Input` only, and only during the rate-limited countdown above; there is no other
+disabled condition for either component.
+
+**selection** — not applicable to either component. A result row is not marked current within the
+list; the reader leaves the list by following the row's own link rather than by selecting it in
+place.
+
+**expansion** — not applicable. Neither component collapses or reveals a second surface; every field
+a row carries (§4) either renders or is absent, which is presence, not disclosure.
+
+### `PlayerResultRow`
+
+`PlayerResultRow` has no interaction state of its own that `SearchBox`'s own section above does not
+already state in full — the five interaction bullets below are the same text, quoted again rather
+than summarised or split, for the structural reason the note above gives. The four vocabulary states
+`ResultsRegion` owns outright (§2's own anatomy: exactly one of `IdlePrompt`, `ResultsSkeleton`,
+`ResultsList`, `NotFoundState` or `FailureState` renders at a time) are answered here too, so this
+section is complete on its own rather than silently relying on `SearchBox`'s.
+
+**default** — the row's own resting paint is stated in full in §2 (Anatomy) and §6 (Tokens) above:
+`Alias` `text-primary`; `Clan`, `CountryLabel`, `UnverifiedSteamClaim` `text-secondary`; `Standing`
+`text-primary`, `type-numeric`. Restated here only so this vocabulary slot is not left unanswered by
+a component whose real default is written elsewhere in this same file.
+
+**loading** — none; a query in flight replaces the whole `ResultsList` with `ResultsSkeleton`
+(`SearchBox`'s own loading bullet above), so zero `PlayerResultRow` instances render during this
+state.
+
+**error** — none; a failed request replaces the whole `ResultsList` with `FailureState`
+(`SearchBox`'s own error bullet above), so zero `PlayerResultRow` instances render during this
+state.
+
+**empty** — none; a `results: []` response renders `NotFoundState` in place of `ResultsList`
+(`SearchBox`'s own empty 1/2 bullets above), so zero `PlayerResultRow` instances render during this
+state either.
 
 **hover / focus-visible** — `Input`: standard text-input interaction, focus ring per DS-4.
 `PlayerResultRow`: whole-row hover fill `surface-sunken`, exactly `match-history.md`'s own

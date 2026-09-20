@@ -98,35 +98,64 @@ export const ErasedScreenActive: Story = {
   },
 }
 
+// README's gap register row 8 (H5), F12: the acknowledgement checkbox (`index.tsx:270`) is a
+// plain `<input type="checkbox">` styled locally in this file, owned by no component with its own
+// stories — a real `focus-visible` ring painted and, before this story, captured nowhere.
+// `initialState: 'confirming'` opens `Dialog` so the checkbox exists to force focus onto. Hover
+// and active get no story of their own beside this one: F12 confirms both are correctly not
+// applicable — the input paints no `hover:`/`active:` class of any kind, so there is no state for
+// either to depict. The dialog backdrop is `position: fixed inset-0` (`Dialog/index.tsx`), so the
+// captured frame is the full viewport behind a small centred card; the ring itself is a mark well
+// under 1% of that frame (rule row 3 of README's contrast-signal register), so this story clips to
+// the checkbox the same way `PrivacyNotice`'s own link trio and `ErasedScreenHover` above do.
+const checkboxClip = { parts: [{ role: 'checkbox' as const }], pad: '2' }
+
+export const AcknowledgementCheckboxFocusVisible: Story = {
+  name: 'confirming — focus-visible on the acknowledgement checkbox',
+  args: { ...noopHandlers, initialState: 'confirming' },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'checkbox' },
+    visualCaptureClip: checkboxClip,
+  },
+}
+
 // privacy-data-rights.md §5 "hover / focus-visible / active — owned by the `Button`s, the
 // `DownloadLink`, the `ErasedScreen`'s privacy-notice link, the `Dialog`'s actions and the
 // `Acknowledgement` checkbox; the sections themselves are not interactive." This story defers the
-// focus-visible and press of the `Button` this screen renders directly (`Erase my account`,
-// `destructive`) and of the `Dialog`'s own primary (`destructive`) and secondary (`secondary`)
-// actions — each covered by `Button.stories.tsx`'s per-variant `FocusVisible`/`Active` stories
-// (`DestructiveFocusVisible`, `DestructiveActive`, `SecondaryFocusVisible`, `SecondaryActive`). Not
-// their hover: `Button.stories.tsx` only forces hover for `variant: 'primary'` (its `Hover` story),
-// so neither `destructive` nor `secondary` has a hover story there — a gap recorded in README's
-// gap register row 8, owed by T595. It does not defer the acknowledgement checkbox: a plain
+// hover, focus-visible and press of the `Button` this screen renders directly (`Erase my account`,
+// `destructive`, `lg`) and of `Dialog`'s own primary (`destructive`, `lg`) and secondary
+// (`secondary`, `lg`) actions to `Button` — real, but not all of it by `Button.stories.tsx`'s own
+// per-variant stories, which force `secondary`/`ghost`/`destructive` at `Button`'s own default size
+// (`md`), never `lg` (README's gap register row 8/H5, F13, F20). `destructive|lg`'s own
+// focus-visible is `Dialog:FocusVisible`, not `Button.stories.tsx`'s `DestructiveFocusVisible`
+// (itself `md`); its hover and press have no frame anywhere in the tree at `lg` (F14, still open —
+// a different row from the one T595's own Button hover trio closed). `secondary|lg`'s hover,
+// focus-visible and press are all real too, but elsewhere —
+// `ReplayAvailabilityList:Hover`/`:FocusVisible`/`:Active` and `UploadControl:FocusVisible` — never
+// `Button`'s own per-variant stories, the same "true elsewhere, not `Button`'s own" shape row 8's
+// F1/F2/F4/F6/F7 close for other consumers. It does not defer the acknowledgement checkbox: a plain
 // `<input type="checkbox">` styled locally in this file (`focusRing`, `index.tsx`), owned by no
-// component with its own stories. Its focus-visible is not yet captured anywhere; that capture is
-// owed by T595 (README's gap register row 8). Corrected (README's gap register row 7/H4): it used
-// to defer `ErasedScreen`'s link too, a local anchor styled inside this same file that none of those
-// components own. That link's own hover, focus-visible and active are not deferred to anyone; they
-// are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above, judged against
-// §5's own paragraph on that link.
+// component with its own stories — its focus-visible is `AcknowledgementCheckboxFocusVisible`
+// above (F12, closed by this task), and hover/active are correctly absent from that story too,
+// since the input paints no class for either. Corrected (README's gap register row 7/H4): it used
+// to defer `ErasedScreen`'s link too, a local anchor styled inside this same file that none of
+// those components own. That link's own hover, focus-visible and active are not deferred to
+// anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above,
+// judged against §5's own paragraph on that link.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
       <p className="type-supporting text-sm text-text-secondary">
         The panel's own sections are not interactive. The erase button (`destructive`) and the
-        dialog's actions (`destructive`, `secondary`) have their focus-visible and press already
-        covered by `Button.stories.tsx`'s per-variant stories — their hover is not: that file only
-        forces hover for `primary` (owed by task T595). Two other things are not covered here: the
-        acknowledgement checkbox is a local control of this screen whose focus-visible no story
-        captures yet (owed by task T595), and `ErasedScreen`'s privacy-notice link is a local anchor
-        styled inside this screen — see `ErasedScreenHover`, `ErasedScreenFocusVisible` and
-        `ErasedScreenActive` above for its own coverage.
+        dialog's actions (`destructive`, `secondary`) defer hover, focus-visible and press to
+        `Button` — real, though not always by `Button.stories.tsx`'s own stories: some of it is
+        covered elsewhere (`ReplayAvailabilityList`, `UploadControl`, `Dialog`'s own
+        `FocusVisible`), and the erase button's own hover and press at this size have no frame
+        anywhere yet. One other thing is not covered here: `ErasedScreen`'s privacy-notice link is a
+        local anchor styled inside this screen — see `ErasedScreenHover`, `ErasedScreenFocusVisible`
+        and `ErasedScreenActive` above for its own coverage. The acknowledgement checkbox is also a
+        local control of this screen, not deferred to anyone; its focus-visible is
+        `AcknowledgementCheckboxFocusVisible` above, and it paints no hover or active class at all.
       </p>
       <AccountErasurePanel {...args} />
     </div>

@@ -326,6 +326,41 @@ export const FocusVisible: Story = {
   },
 }
 
+// §10 "focus-visible ... a focusable element inside a cell shows its own ring": the row link's own
+// ring (`focusRing`, index.tsx:281-286), real and undepicted until now — `RowLinkHover`/
+// `RowLinkActive` above force the other two states on this exact anchor, but no story forced this
+// one.
+//
+// README's gap register row 8 (H5), 8h: this ring paints — `visual-reviewer` confirmed a real,
+// token-blue boxed outline around "RedBull_Barley" in every captured frame — the finding that
+// `story-baselines-duplicates.mjs` flagged this story as a full-set duplicate of `RowLinks` was a
+// framing gap, not a rendering one: an unclipped full-table frame puts the ring's own geometry at
+// roughly 0.15-0.47% of the page, under both that checker's `DUPLICATE_MAX_DIFF_RATIO` and
+// `playwright.config.ts`'s own `maxDiffPixelRatio` (both 0.01), the same "rule row 3" ceiling every
+// other single-control ring in this package clips against (`PrivacyNotice`'s `FIRST_LINK_CLIP`/
+// `INLINE_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`). `RowLinkHover`/`RowLinkActive` above
+// escape that ceiling unclipped only because they paint a row-wide fill/edge treatment, not a
+// single anchor's outline, so they stay full-frame — clipping them would only move their baselines
+// with nothing to gain. `role: 'link', name: 'RedBull_Barley'` is unambiguous: exactly one anchor
+// in this table carries that name.
+const ROW_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'RedBull_Barley' }], pad: '2' }
+
+export const RowLinkFocusVisible: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'RedBull_Barley' },
+    visualCaptureClip: ROW_LINK_CLIP,
+  },
+}
+
 // §10 "disabled — never. A table whose data is stale says so in a `Callout` above it; a greyed
 // table is unreadable and still on screen."
 export const DisabledNotApplicable: Story = {
