@@ -122,7 +122,8 @@ recording resolves.
 
 `packs/aoe2techtree/LICENCE.md` carries the five fields `scripts/checks/asset_packs.py` enforces,
 named exactly as it matches them: `Source`, `Licence`, `Permitted usage`, `Ruling`, `Checked`. The
-ruling leads with **COPY IN**, the one verdict besides READ ONLY the gate recognises.
+ruling leads with **COPY IN**, the one verdict besides READ ONLY the gate accepts once the change
+that adds the roots has taught it to refuse a third — today it tests for READ ONLY alone.
 
 That check scopes itself by a list of **(root, size budget) pairs**. Two pairs are added in the
 change that adds the pack — `packages/knowledge/packs` and `packages/knowledge/snapshots`, each with

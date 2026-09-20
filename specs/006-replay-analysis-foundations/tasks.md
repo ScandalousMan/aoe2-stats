@@ -426,13 +426,16 @@ after being produced through the new stream.
       committed recording rather than one, and assert the inverse too: repeated unit-queue commands
       are **not** collapsed, because a test that only checks collapse cannot see over-collapse
 - [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point T629b
-      creates, **and add a real peak-memory measurement beside it**. The existing test is named for the memory ceiling
-      and measures no memory: it asserts that an oversized input is refused, which says nothing
-      about what an accepted input consumes. This feature puts three accumulators on that path — the
-      stream's consumers, the group-silence state and the coverage pass — and the second recording's
-      object-id space is several times the first's. Measure peak allocation over every committed
-      recording through the full canonical path and record the ceiling the test asserts against,
-      with its derivation, in the test itself. Also assert the declared-only kinds are never emitted
+      creates, **and add a real peak-memory measurement beside it**. The existing test is named for
+      the memory ceiling and measures no memory: it asserts that an oversized input is refused,
+      which says nothing about what an accepted input consumes. This feature puts three accumulators
+      on that path — the stream's consumers, the group-silence state and the coverage pass — and
+      the second recording's object-id space is several times the first's. **Only the first exists
+      at this task**: T633 and T648 each re-run this measurement when they add theirs and raise the
+      ceiling with the derivation, so a ceiling recorded here is a floor for two later tasks, not
+      the feature's. Measure peak allocation over every committed recording through the full
+      canonical path and record the ceiling the test asserts against, with its derivation, in the
+      test itself. Also assert the declared-only kinds are never emitted
       (**FR-020**): that is what makes the reserved vocabulary honest — the day a producer lands,
       this test is what changes, and no type does
 - [ ] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
@@ -447,7 +450,13 @@ after being produced through the new stream.
       deletion and no market event and is never summed with either (**FR-014**). Its banding lives
       in the register entry's method, so changing it is a register change with a regenerated view,
       not a constant edit. **This is the datum a reader is most likely to misread as a loss
-      figure**, which is why the non-claim is a required field of the type and not a comment near it
+      figure**, which is why the non-claim is a required field of the type and not a comment near it.
+      Re-run T632's peak-memory measurement with this accumulator on the path and raise its ceiling
+      with the new derivation. In the same register edit, add `event.unit_unqueued.unit_id` and
+      `event.unit_unqueued.count` at observed and planned —
+      [contracts/register.md](./contracts/register.md) requires every kind's payload fields and T614
+      missed this one. Neither recording produces a cancellation, so its validation names the
+      synthetic cancellation test, not a golden
 
 **Checkpoint**: one vocabulary, no engine-shaped field, nothing dropped, and the golden timeline
 proves nothing was lost.
@@ -468,7 +477,9 @@ committed recording reports no blocking gap.
 
 - [ ] T634 [US2] Create `packages/knowledge/` as a workspace member — `pyproject.toml` depending on
       `aoe2stats-core` only — and register it in the root `pyproject.toml` workspace list, its
-      `testpaths` and its mypy settings. **In the same change, narrow the two format globs in
+      `testpaths`, its mypy settings and the `known-first-party` list under the ruff isort settings —
+      the seven module names are enumerated there, and an eighth left out turns `ruff check` red on
+      this task's own commit. **In the same change, narrow the two format globs in
       `package.json`** to exclude `packages/knowledge/packs` and `packages/knowledge/snapshots`. The
       workspace format script globs every JSON file under `packages/` and ignores only what
       `.gitignore` names — a `.prettierignore` is not consulted, because the script passes its own
@@ -488,8 +499,8 @@ committed recording reports no blocking gap.
 - [ ] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
       named **exactly** as `scripts/checks/asset_packs.py` matches them — `Source`, `Licence`,
       `Permitted usage`, `Ruling`, `Checked` (**FR-033**); a field written any other way fails the
-      gate as missing. The ruling leads with **COPY IN**, one of the two verdicts the gate
-      recognises. Only a source whose licence permits it is vendored (**FR-031**): this one is MIT.
+      gate as missing. The ruling leads with **COPY IN**, one of the two verdicts T637 makes the
+      gate require. Only a source whose licence permits it is vendored (**FR-031**): this one is MIT.
       Add a **third section** to `docs/asset-packs.md` for knowledge packs, as feature 005 added one
       for typefaces — the row does not belong in the game-assets table — and widen that document's
       opening scope sentence, which names game assets only. **State the residual risk once and do
@@ -507,8 +518,12 @@ committed recording reports no blocking gap.
       the package, so it is the one that most needs a ceiling and had none. Size each budget from
       the measured payload with stated headroom. The check is scoped by root today, so until both
       are added it neither sees the new pack nor runs when it changes, and constitution X is
-      enforced only where the gate looks. **Prove it bites**: drop one licence field, confirm the
-      check names the pack, restore it
+      enforced only where the gate looks. **Also make the gate refuse a ruling that leads with
+      neither verdict**: today its enforcement is a substring test for READ ONLY, the COPY IN
+      pattern is display-only, and any other string — a typo included — passes, so the two-verdict
+      claim the artifacts make is true of its label and false of its gate. **Prove it bites,
+      twice**: drop one licence field, confirm the check names the pack, restore it; then replace
+      the ruling's verdict with a stray word, confirm the refusal, restore it
 - [ ] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
       source, source version, described build, content digest (**FR-024**) — loaded through
       `importlib.resources` so it works identically from a serverless bundle and a virtual
@@ -578,15 +593,19 @@ committed recording reports no blocking gap.
       entity, field, build and affected civilisation (**FR-035**), a closed cause set, what it
       prevents by register datum id (**FR-036** — what it stops, not that something is missing), and
       a severity **computed** from the register's dependency graph, never supplied by a caller
-      (**FR-037**). Blocking when at least one register datum that is not itself blocked requires the
-      field; informational otherwise. [research.md](./research.md) **D7** is why this is computed:
+      (**FR-037**). Blocking when at least one register datum that is neither blocked nor
+      non-determinable requires the field, as **D7** words it; informational otherwise. The two
+      readings agree today only because no non-determinable entry names any knowledge.
+      [research.md](./research.md) **D7** is why this is computed:
       read naively, nothing this feature publishes depends on a cost, every gap would be
       informational, and **SC-007a** would pass vacuously
 - [ ] T648 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/coverage.py`: take a canonical
       stream, collect every entity and every participant civilisation, and ask for every field any
       register datum requires. Its output is the gap list the document publishes. A blocking gap
       prevents publication of every value depending on it while leaving independent values
-      untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**)
+      untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**).
+      Re-run T632's peak-memory measurement with the coverage pass on the path — it is the last of
+      the three accumulators that measurement names — and raise its ceiling with the new derivation
 - [ ] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
       `xfail(strict=True)`. **SC-007**: remove a required field from an in-memory copy of a snapshot,
       run the pass, and assert exactly the dependent values are withheld, a gap names the entity,
@@ -614,7 +633,14 @@ committed recording reports no blocking gap.
       analyzer has no run, no counters and no logger to attach one to; inventing a run concept for
       this would be a second table the data model says this feature does not have. A pattern of gaps
       introduced by a game patch must be visible as a rate, not discovered one analysis at a time.
-      The table holds no personal data: a participant is not a column
+      The table holds no personal data: a participant is not a column. **Two consequences of the
+      migration living in T663 and not here, recorded rather than discovered**: this phase is green
+      and mergeable — the revision test compares the expected revision to the migrations head, not
+      the models to the database — but the repository function and the check script are dead code
+      in production until T663's revision is applied, and nothing may call either before then.
+      That is also why the script is wired into the nightly workflow by T663 and not by this task:
+      a nightly job against a table that does not exist would fail for the whole gap between the
+      two phases
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -724,7 +750,12 @@ after everything underneath it moves.
       health endpoint answers 503, so **merge and apply in one sitting**. Follow
       `docs/runbooks/database-migrations.md` exactly — the direct, unpooled endpoint; its single
       prompted command; and unsetting the variable afterwards. `.env.local` points at production and
-      no task here runs a migration from a developer machine by any other route
+      no task here runs a migration from a developer machine by any other route. **In the same
+      change, wire T652's gap-rate script into `.github/workflows/nightly.yml`** beside the capture
+      audit, reporting and never failing on a rate: **FR-039** asks for a pattern to be *visible*,
+      and a script nobody schedules is a rate nobody sees. There is no threshold yet — the first
+      patch that moves the rate is what sets one, and a job that fails on an unmeasured number
+      would cry wolf from its first run
 - [ ] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
       next-version document fixture with **no source change**. The reader already requires only the
       existing fields, accepts any numeric schema version and ignores unknown keys — this test is
@@ -757,7 +788,9 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       parser as a fallback although [research.md](./research.md) **D1** measured that it cannot open
       the current build; and add a row for the dependency class this feature creates —
       community-maintained knowledge sources that may stop, one of which already has, plus the
-      standing hand-transcription of civilisation bonuses and patch notes. Add the
+      standing hand-transcription of civilisation bonuses and patch notes. Widen R7's mitigation,
+      which names `packages/game-assets/` as the only root carrying a `LICENCE.md` and checked by
+      `scripts/checks/asset_packs.py` — T637 added two, and `docs/` must be true today. Add the
       verification-checklist line for T603's assertion under parsing. Tick no existing checklist
       item
 - [ ] T668 [P] Record the starting-state finding in `docs/data-sources.md` §2, which is where a
