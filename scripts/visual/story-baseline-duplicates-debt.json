@@ -1,8 +1,1 @@
-[
-  {
-    "storyIds": ["primitives-table--row-link-focus-visible", "primitives-table--row-links"],
-    "found": "2026-09-20",
-    "fixOwed": "RowLinkFocusVisible should paint the row link's own focus-visible ring (structural-tier.md §10 'focus-visible ... a focusable element inside a cell shows its own ring'), but the baseline is indistinguishable from RowLinks's unforced resting frame at this check's tolerance. The ring is still a literal `outline-*` utility on the anchor itself (`focusRing`, Table/index.tsx:96-97), which never reliably paints against this table's `border-collapse` stacking — the same mechanism T591 diagnosed and fixed for `active`/`hover` by moving the press ring onto the anchor's own `::after` pseudo-element (Table/index.tsx:274-287); `focus-visible` was never given that treatment. `RowLinkHover` and `RowLinkActive` force the identical target (`role: 'link', name: 'RedBull_Barley'`) and both paint visibly, so the target resolves and this is a real rendering gap, not a story defect. Owed by T672, which needs a `product-designer` decision on the ring's shape before an implementer moves it onto `::after` and regenerates baselines from CI.",
-    "fixBy": "2026-09-27"
-  }
-]
+[]

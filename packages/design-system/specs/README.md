@@ -3275,31 +3275,49 @@ blank, and 54-60 is `Rest`'s own leading comment); `Rest` itself sits at `Link.s
   rather than "no task filed."
 
 - **8h. A gap the generated region's own coverage credit cannot see, found 2026-09-20 by a
-  different checker, against T595's own newly captured baseline.** Record 1's and record 3's
+  different checker, against T595's own newly captured baseline; corrected 2026-09-20 after a
+  misdiagnosis of its cause was filed, caught the same day by `visual-reviewer` reading the
+  captured frames directly rather than trusting the checker's silence.** Record 1's and record 3's
   `Table` row-link `focus-visible` cell (`a @ packages/design-system/src/primitives/Table/index.tsx:281`)
   reads `covered` above, correctly by this extractor's own rule: `RowLinkFocusVisible`
   (`Table.stories.tsx:333`, T595's own new story) is a real `visualForceState` naming that exact
   role and name, and `state-coverage.mjs` asks only whether a story exists forcing a state, never
   whether its captured pixels differ from anything else. `scripts/checks/story-baselines-
-duplicates.mjs` — a sibling checker this register's own rows 1-7 already govern — reads the
-  baseline bytes that story produced once CI captured them, and found all six indistinguishable,
-  at its own tolerance, from `primitives-table--row-links`'s unforced resting frame: the ring
-  `focusRing` (`index.tsx:96-97`) forces never actually paints in this table's `border-collapse`
-  stacking, the same mechanism T591 fixed for `active`/`hover` by moving the press ring onto the
-  anchor's own `::after` pseudo-element and never extended to `focus-visible`. The target itself is
-  not in doubt — `RowLinkHover`/`RowLinkActive` force the identical `role: 'link', name:
-'RedBull_Barley'` target and both paint visibly — so this is a real component defect, not a
-  misaimed story. Filed as a dated debt entry in `scripts/visual/story-baseline-duplicates-
-debt.json` naming `primitives-table--row-link-focus-visible = primitives-table--row-links`, and
-  as T672, which owes both the `product-designer` decision on the ring's shape and the component
-  fix that follows it. **This cell's `covered` reading above is not wrong by `state-coverage.mjs`'s
+duplicates.mjs` — a sibling checker this register's own rows 1-7 already govern — read the
+  baseline bytes that story produced once CI captured them, and found all six indistinguishable, at
+  its own tolerance, from `primitives-table--row-links`'s unforced resting frame. **The first
+  reading of that finding — filed as T672 and as a debt entry naming a `border-collapse` rendering
+  defect the same mechanism T591 fixed for `active`/`hover` — was wrong.** The ring does paint: a
+  real, human-visible, token-blue boxed outline around "RedBull_Barley" in every one of the six
+  captures, a geometry-shaped delta of roughly 500px, 0.15-0.47% of the frame depending on width.
+  The cause is framing, not rendering. `DUPLICATE_MAX_DIFF_RATIO` in `story-baselines-
+duplicates.mjs` is `0.01`, deliberately the same `maxDiffPixelRatio` `playwright.config.ts` sets
+  for every story capture; a real ring occupying under 1% of an **unclipped full-table frame** is
+  therefore invisible both to the duplicate checker and, the point that matters, to the actual
+  visual suite, which could not fail if this baseline were swapped for the resting one. That part of
+  the original finding was correct — this baseline defended nothing — and is the miss T595's own
+  rule already names: "every new state story on a large frame is clipped to its control
+  (`visualCaptureClip`, the rule row 3 leaves behind)." `RowLinkFocusVisible` had no
+  `visualCaptureClip` at all; its siblings `RowLinkHover`/`RowLinkActive` escaped the finding only
+  because they paint a row-wide treatment that clears 1% unclipped. Fixed here, in this task, by
+  clipping `RowLinkFocusVisible` to the row link (`ROW_LINK_CLIP`, `Table.stories.tsx`, the same
+  `parts`/`pad` shape `PrivacyNotice`'s `FIRST_LINK_CLIP`/`INLINE_LINK_CLIP` and
+  `AccountErasurePanel`'s `checkboxClip` already use) — no component or token change, because none
+  was needed. The debt entry naming this pair is removed from `scripts/visual/story-baseline-
+duplicates-debt.json` (that file's own discipline: a stale entry fails the run, so a passing
+  allowlist is not left behind); the baselines the clip now produces are captured in CI, never
+  locally, so `story-baselines-duplicates.mjs` and `story-baselines.mjs` stay red against this
+  branch's pre-recapture baselines until that capture lands — expected, not a regression. T672 is
+  withdrawn below rather than pursued: its premise (a component defect needing a `product-designer`
+  decision) does not survive this correction. **What is still worth keeping from the first pass:**
+  this cell's `covered` reading in the generated region above is not wrong by `state-coverage.mjs`'s
   own rule — a story exists, targeted correctly — but "a story exists" and "a keyboard user can see
   this row is focused" are different claims, and a reader taking the generated table's word for the
-  second would be wrong.** `state-coverage.mjs`'s own generated region is unchanged by this
-  entry, deliberately: its extractor answers "does a story exist," not "does the pixel differ,"
-  and widening it to decode pixels would duplicate `story-baselines-duplicates.mjs` rather than
-  close the gap between what each checker actually asks. No source, story or baseline changes in
-  this task.
+  second alone, before this fix, would have been wrong. `state-coverage.mjs`'s own generated region
+  stays unchanged by this entry, deliberately: its extractor answers "does a story exist," not "does
+  the pixel differ, at a scale a reader would notice," and widening it to decode pixels would
+  duplicate `story-baselines-duplicates.mjs` rather than close the gap between what each checker
+  actually asks.
 
 <!-- state-coverage-debt
 date: 2026-09-20
