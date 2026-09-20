@@ -71,7 +71,7 @@ Expected:
 - The golden timeline is **byte-identical** to the committed one, now produced through the
   canonical stream. `git status` shows the golden file untouched.
 - The doubled age-up command in the fixture appears once (SC-010).
-- Emitted events plus deliberately consumed operations equal the operation count (no silent drop).
+- Every operation is an emitted event or is counted in a named drop category (no silent drop).
 - No payload field name appears in the wheel-derived deny-list (SC-009).
 - The input-size refusal holds through the new entry point, and the separate peak-memory measurement
   over every committed recording stays under its recorded ceiling (FR-021). The first proves nothing
