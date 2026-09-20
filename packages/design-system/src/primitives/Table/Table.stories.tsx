@@ -326,6 +326,25 @@ export const FocusVisible: Story = {
   },
 }
 
+// §10 "focus-visible ... a focusable element inside a cell shows its own ring": the row link's own
+// ring (`focusRing`, index.tsx:281-286), real and undepicted until now — `RowLinkHover`/
+// `RowLinkActive` above force the other two states on this exact anchor, but no story forced this
+// one.
+export const RowLinkFocusVisible: Story = {
+  render: () => (
+    <Table
+      caption="Recent matches"
+      columns={columns}
+      rows={matches}
+      getRowKey={(row) => row.gameId}
+      getRowHref={(row) => (row.gameId === 'g-2' ? undefined : `/matches/${row.gameId}`)}
+    />
+  ),
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'RedBull_Barley' },
+  },
+}
+
 // §10 "disabled — never. A table whose data is stale says so in a `Callout` above it; a greyed
 // table is unreadable and still on screen."
 export const DisabledNotApplicable: Story = {

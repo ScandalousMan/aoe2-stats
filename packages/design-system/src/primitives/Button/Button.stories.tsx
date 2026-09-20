@@ -216,3 +216,25 @@ export const RealisticPageActions: Story = {
     </div>
   ),
 }
+
+// README's gap register row 8 (H5): the `href`-rendered `<a>` form (index.tsx:189) shares
+// `variantClasses`/`focusRing` with the `<button>` form, but no story before this trio ever forced
+// a state on it — `AsLink` above renders it at rest only, and every `Hover`/`FocusVisible`/`Active`
+// story elsewhere on this page targets `role: 'button'`, which an anchor never carries. `role:
+// 'link'` needs no `name`: this story's own anchor is the only link `Button` renders. Appended
+// here, after every other export, so it never shifts this file's own cited line numbers in
+// README.md's row 8 (H5) table.
+export const AsLinkHover: Story = {
+  args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+}
+
+export const AsLinkFocusVisible: Story = {
+  args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+}
+
+export const AsLinkActive: Story = {
+  args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
+}

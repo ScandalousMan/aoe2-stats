@@ -290,3 +290,26 @@ export const ErrorNotApplicable: Story = {
   ),
   args: { lastUpdated: '2026-08-30', hrefs },
 }
+
+// README's gap register row 8 (H5): `SectionHeading` (`index.tsx:264`) is a real Tab/click
+// destination — the in-page `Contents` links and the "Restrict processing" right's own
+// `href="#how-to-reach-us"` link both move focus here (`scrollAndFocus`) — and keeps its
+// `outline-none focus-visible:outline-…` ring rather than suppressing it (remediation, B5), a real
+// class painted with no frame of its own before this story. It carries no `hover:` or `active:`
+// class at all: a heading is not a pointer target, and `Hover`/`Active` above already depict this
+// component's real hover/press surface, on the first `Contents` link. `role: 'heading'` is shared
+// by all nine `SectionHeading` instances this render mounts, but every one resolves to the same
+// declared element (`state-coverage.mjs` tracks the declaration site, not a render position), so
+// `nth: 2` — the first `SectionHeading` reached, right after the page's own `<h2>` title and the
+// `Contents` nav heading (`nth: 0`/`nth: 1`) — names it as unambiguously as any other slot in that
+// same nine-wide range would.
+const SECTION_HEADING_CLIP = { parts: [{ role: 'heading' as const, nth: 2 }], pad: '2' }
+
+export const SectionHeadingFocusVisible: Story = {
+  name: 'focus-visible on a SectionHeading ("Who we are and what this is")',
+  args: { lastUpdated: '2026-08-30', hrefs },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'heading', nth: 2 },
+    visualCaptureClip: SECTION_HEADING_CLIP,
+  },
+}

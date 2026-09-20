@@ -377,3 +377,80 @@ export const Active: Story = {
     footerItem: { id: 'link', label: 'Link another Steam account' },
   },
 }
+
+// README's gap register row 8 (H5): the trigger itself (index.tsx:144) paints `hover:bg-
+// surface-sunken` (T560's own comment there) — the same resting/border recipe `Button` `secondary`
+// carries, but as a local `<button>`, not a `Button` instance, so no `Button` story ever credits
+// it. `Hover`/`Active` above force a state on a `menuitemradio` row, never on the trigger; no other
+// story on this page does either. `role: 'button'` needs no `name`/`nth`: the trigger is the only
+// `button`-role element this component renders (`EscapeReturnsFocusToTrigger`'s own comment makes
+// the same point). No clip: like `ClosedTrigger`/`EscapeReturnsFocusToTrigger`, nothing here
+// escapes the trigger's own layout box.
+export const TriggerHover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
+// The trigger's own press (T591): `active:bg-background active:ring-2 active:ring-border-strong`,
+// `Button` `secondary`'s own recipe.
+export const TriggerActive: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
+// The footer item (index.tsx:242) is its own `role="menuitem"` `<button>`, not a `MenuItemRow` —
+// `Hover`/`Active` above only ever force a state on a `menuitemradio` row, never on this one.
+// `role: 'menuitem'` needs no `name`: for the `selection` variant rendered here, every row item
+// carries `role="menuitemradio"` (`MenuItemRow`'s own `variant === 'selection'` branch) — the
+// footer item is the sole `menuitem`-role candidate.
+export const FooterItemHover: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'menuitem' },
+    visualCaptureClip: MENU_CLIP,
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
+
+// The footer item's own press (T591): fill moves to `bg-background` (`Button` `ghost`'s own
+// recipe) with the inline-start `border-strong` boundary already reserved at rest.
+export const FooterItemActive: Story = {
+  tags: ['visual-full-page'],
+  play: openMenu,
+  parameters: {
+    visualForceState: { state: 'active', role: 'menuitem' },
+    visualCaptureClip: MENU_CLIP,
+  },
+  args: {
+    variant: 'selection',
+    triggerLabel: 'aoe2guy — profile ▾',
+    items: [
+      { id: 'p1', label: 'aoe2guy', checked: true, badge: <span>Primary</span> },
+      { id: 'p2', label: 'aoe2alt', checked: false },
+    ],
+    footerItem: { id: 'link', label: 'Link another Steam account' },
+  },
+}
