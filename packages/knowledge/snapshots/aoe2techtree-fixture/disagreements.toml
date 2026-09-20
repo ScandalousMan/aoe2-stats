@@ -1,0 +1,3 @@
+# Source disagreements (FR-028). T640 populates this when the normaliser's second reading
+# disagrees with the vendored pack on a field. Empty here: this fixture's rules.json is a
+# placeholder with no fields yet to disagree over.

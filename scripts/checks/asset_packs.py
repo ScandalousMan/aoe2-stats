@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -62,18 +63,42 @@ KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 12 * 1024 * 1024
 #: never edited) and is the one root this feature adds that had no ceiling at all before T637.
 KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES = 8 * 1024 * 1024
 
-#: Every assets root this gate covers, paired with its own size budget. Constitution X's "a pack
-#: whose licence is not recorded MUST NOT be added" is enforced only where this gate looks — until
-#: feature 005 T523 that was exactly one directory, so a font (or any future asset kind) landing
-#: anywhere else was covered by nothing and did not even trigger the CI job. Feature 006 T637 adds
-#: the two knowledge-base roots for the same reason: each holds files this gate has to keep
-#: honest, and until both are listed here the gate neither sees a knowledge pack nor runs when one
-#: changes.
-ASSET_ROOTS: tuple[tuple[Path, int], ...] = (
-    (REPO / "packages" / "game-assets", SIZE_BUDGET_BYTES),
-    (REPO / "packages" / "design-system" / "tokens" / "fonts", FONT_SIZE_BUDGET_BYTES),
-    (REPO / "packages" / "knowledge" / "packs", KNOWLEDGE_PACK_SIZE_BUDGET_BYTES),
-    (REPO / "packages" / "knowledge" / "snapshots", KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES),
+
+@dataclass(frozen=True)
+class AssetRoot:
+    """One root this gate covers, and how much of the gate applies to it.
+
+    Every root gets the size-budget check — that half is unconditional. Whether the rest (a
+    `LICENCE.md` per pack, the closed-set `Ruling`, the `docs/asset-packs.md` mirror) applies
+    depends on what a subdirectory under the root *is*: a vendored pack under its own licence, or
+    a snapshot derived from one and already carrying its own provenance in `snapshot.toml`
+    (contracts/knowledge-base.md's "On disk" section lists no `LICENCE.md` in a snapshot's layout,
+    and its "Licence gate" section never discusses one). `requires_licence=False` is that
+    distinction, not a per-root-name special case threaded through every check function.
+    """
+
+    path: Path
+    size_budget_bytes: int
+    requires_licence: bool = True
+
+
+#: Every assets root this gate covers. Constitution X's "a pack whose licence is not recorded MUST
+#: NOT be added" is enforced only where this gate looks — until feature 005 T523 that was exactly
+#: one directory, so a font (or any future asset kind) landing anywhere else was covered by nothing
+#: and did not even trigger the CI job. Feature 006 T637 adds the two knowledge-base roots for the
+#: same reason: each holds files this gate has to keep honest, and until both are listed here the
+#: gate neither sees a knowledge pack nor runs when one changes. `packages/knowledge/snapshots` is
+#: `requires_licence=False`: a snapshot's provenance lives in its own `snapshot.toml` identity, not
+#: in a per-snapshot `LICENCE.md` that the on-disk layout never has.
+ASSET_ROOTS: tuple[AssetRoot, ...] = (
+    AssetRoot(REPO / "packages" / "game-assets", SIZE_BUDGET_BYTES),
+    AssetRoot(REPO / "packages" / "design-system" / "tokens" / "fonts", FONT_SIZE_BUDGET_BYTES),
+    AssetRoot(REPO / "packages" / "knowledge" / "packs", KNOWLEDGE_PACK_SIZE_BUDGET_BYTES),
+    AssetRoot(
+        REPO / "packages" / "knowledge" / "snapshots",
+        KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES,
+        requires_licence=False,
+    ),
 )
 
 #: Directories under `packages/game-assets/` that hold package plumbing rather than an asset pack
@@ -337,21 +362,25 @@ def check_asset_packs(
 
 
 def check_asset_roots(
-    roots: tuple[tuple[Path, int], ...], docs_file: Path, readme_file: Path
+    roots: tuple[AssetRoot, ...], docs_file: Path, readme_file: Path
 ) -> list[str]:
     """The multi-root composition `main()` actually runs (typography-tokens.md §9.2 point 3):
-    `check_pack`, `check_size_budget` (with that root's own budget) and `check_docs_mirror` for
-    every pack in every one of `roots`, plus `check_disclaimer` **exactly once** — the disclaimer
-    is a repository-wide anchor, not a per-root one, so calling `check_asset_packs` once per root
-    would report its failure once per root too. Composed alongside `check_asset_packs`, not in
-    place of it: that aggregate's signature and behaviour stay untouched for its existing
-    single-root callers."""
+    `check_size_budget` (with that root's own budget) for every one of `roots`, plus
+    `check_disclaimer` **exactly once** — the disclaimer is a repository-wide anchor, not a
+    per-root one, so calling `check_asset_packs` once per root would report its failure once per
+    root too. `check_pack` and `check_docs_mirror` only run for a root whose `requires_licence` is
+    true: a snapshot root (contracts/knowledge-base.md's "Licence gate" section) is derived data
+    whose provenance lives in its own `snapshot.toml`, not a per-directory `LICENCE.md`, so holding
+    it to that half of the gate would fail it for a file it was never meant to carry. Composed
+    alongside `check_asset_packs`, not in place of it: that aggregate's signature and behaviour
+    stay untouched for its existing single-root callers."""
     failures: list[str] = []
-    for assets_root, size_budget_bytes in roots:
-        for pack_dir in _pack_dirs(assets_root):
-            failures.extend(check_pack(pack_dir))
-        failures.extend(check_size_budget(assets_root, size_budget_bytes))
-        failures.extend(check_docs_mirror(assets_root, docs_file))
+    for asset_root in roots:
+        if asset_root.requires_licence:
+            for pack_dir in _pack_dirs(asset_root.path):
+                failures.extend(check_pack(pack_dir))
+            failures.extend(check_docs_mirror(asset_root.path, docs_file))
+        failures.extend(check_size_budget(asset_root.path, asset_root.size_budget_bytes))
     failures.extend(check_disclaimer(readme_file))
     return failures
 
@@ -363,14 +392,17 @@ def main() -> int:
     docs_file = REPO / "docs" / "asset-packs.md"
     readme_file = REPO / "README.md"
 
-    for assets_root, _size_budget_bytes in ASSET_ROOTS:
-        print(f"asset_packs: {assets_root.relative_to(REPO)}\n")
-        for pack_dir in _pack_dirs(assets_root):
-            licence_path = pack_dir / "LICENCE.md"
-            fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
-            ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
-            checked = fields.get("Checked") or "UNRECORDED"
-            print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+    for asset_root in ASSET_ROOTS:
+        print(f"asset_packs: {asset_root.path.relative_to(REPO)}\n")
+        for pack_dir in _pack_dirs(asset_root.path):
+            if asset_root.requires_licence:
+                licence_path = pack_dir / "LICENCE.md"
+                fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
+                ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
+                checked = fields.get("Checked") or "UNRECORDED"
+                print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+            else:
+                print(f"  {pack_dir.name}: derived, no licence record required")
         print()
 
     failures = check_asset_roots(roots=ASSET_ROOTS, docs_file=docs_file, readme_file=readme_file)
