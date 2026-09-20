@@ -425,7 +425,7 @@ after being produced through the new stream.
       issued twice by double-clicking appears once in the canonical stream. Assert over every
       committed recording rather than one, and assert the inverse too: repeated unit-queue commands
       are **not** collapsed, because a test that only checks collapse cannot see over-collapse
-- [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point T629b
+- [x] T632 [US4] Extend the existing input-size refusal test to the canonical entry point T629b
       creates, **and add a real peak-memory measurement beside it**. The existing test is named for
       the memory ceiling and measures no memory: it asserts that an oversized input is refused,
       which says nothing about what an accepted input consumes. This feature puts three accumulators
@@ -438,7 +438,7 @@ after being produced through the new stream.
       test itself. Also assert the declared-only kinds are never emitted
       (**FR-020**): that is what makes the reserved vocabulary honest — the day a producer lands,
       this test is what changes, and no type does
-- [ ] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
+- [x] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
       group-silence observable — register datum `participant.group_silence_episodes` — computed
       from commanded-unit events only, published at the
       **inferred** tier with a confidence whose basis states the command intensity and the silence
