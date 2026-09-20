@@ -52,10 +52,18 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { listComponentDirs } from './story-docs.mjs'
+import {
+  parseIndexTable,
+  findComponentSection,
+  isClauseLeadingBoldSpan,
+  normaliseStateToken,
+  deriveVocabulary,
+} from './spec-completeness.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const dsDir = path.join(rootDir, 'packages', 'design-system')
 const srcDir = path.join(dsDir, 'src')
+const specsDir = path.join(dsDir, 'specs')
 const readmePath = path.join(dsDir, 'specs', 'README.md')
 const prettierBin = path.join(rootDir, 'node_modules', '.bin', 'prettier')
 
@@ -4949,6 +4957,409 @@ export function logCellCounts(computed, logFn = log) {
       `${amb.dropped} drop it (a real match elsewhere on the same row covers that state instead)`,
   )
   return { record1: r1, record3: r3, ambiguity: amb }
+}
+
+// --- T595 (row 8, H5): bucket (b), "a state the component's own spec answers as impossible,
+// which no frame can depict" ----------------------------------------------------------------------
+//
+// Row 8's own closing rule (T595's own words) needs a cell that is not covered by any story to be
+// one of exactly two other things: a spec-confirmed impossibility, or a dated register entry.
+// `spec-completeness.mjs` already asserts that a spec *answers* every one of the ten vocabulary
+// states — it never reads what the answer *says*, so it cannot tell "never disabled" from "always
+// disabled on hover" apart. This section is that missing read, built the same way every other
+// mechanical reading in this row already is: reusing the bold-label convention
+// `spec-completeness.mjs` itself parses (`isClauseLeadingBoldSpan`, `normaliseStateToken`, imported
+// rather than re-derived — CLAUDE.md's own rule against a fact living in two files) rather than a
+// hand-maintained list of component shapes, which T595 forbids outright.
+//
+// The closed vocabulary of phrasings that count as "impossible" is exactly the five the row 8
+// survey found repeated, verbatim, across the 25 bullets sharing this convention — never widened by
+// a sixth phrasing that merely *sounds* negative (`state-coverage.test.mjs`'s own contrast: a real,
+// substantive answer like `structural-tier.md`'s own Field "active — the control's own text-entry
+// state; no separate paint" is not a closed-vocabulary answer, and this recogniser declines it
+// rather than guessing a sixth phrase into existence):
+//   - `never`              — `structural-tier.md:667`, "a link is never disabled."
+//   - `none;`              — `shared-primitives.md:242`, "hover / active — none; the root is not
+//     interactive."
+//   - `is not interactive` — the same bullet, a second, independent phrase.
+//   - `has no visual form` — `shared-primitives.md:252`, "The heading's own frame therefore has no
+//     visual form for this state."
+//   - `has no active state` — `structural-tier.md:827-828`, "The table itself has no active state."
+const IMPOSSIBLE_ANSWER_PATTERNS = [
+  /\bnever\b/i,
+  /\bnone;/i,
+  /\bis not interactive\b/i,
+  /\bhas no visual form\b/i,
+  /\bhas no active state\b/i,
+]
+
+// Only the answer's own *leading* sentence is tested against the closed vocabulary above — never
+// the whole, often paragraph-long, answer text. Every real citation above states its verdict in the
+// clause immediately after the state's own label; what follows is justification, history or a
+// correction, and a coincidental match buried in it can answer something else entirely rather than
+// this state (found live: `tooltip.md:139`'s own "this used to say 'its `Button` state,' which was
+// never true" is a correction about a stale sentence in this very file, not about the trigger's own
+// `active` state, which the clauses right after it go on to describe as a real, painted press
+// treatment; `manual-upload.md:184`'s own focus-visible answer names three composed controls' own
+// rings in full and only says "never" four sentences later, about the ring's relationship to a
+// boundary, not about whether this state happens; `archival-control.md`'s own hover answer opens
+// "owned by `Button` and by the privacy link" and only reaches "is not interactive" in its *second*
+// sentence, about the section wrapping the link, immediately followed by "**Not true of the shipped
+// link today**" — the exact opposite of impossible. All three are `state-coverage.test.mjs`'s own
+// contrast fixtures for this rule.) A trailing `**` is swallowed with the sentence's own closing
+// mark (`structural-tier.md:667`'s own "— **a link is never disabled.**") rather than treated as
+// prose that continues past it.
+function leadingSentence(answerText) {
+  const m = answerText.match(/^[\s\S]*?[.!?]\*{0,2}(?=\s|$)/)
+  return m ? m[0] : answerText
+}
+
+export function answerSaysImpossible(answerText) {
+  const lead = leadingSentence(answerText)
+  return IMPOSSIBLE_ANSWER_PATTERNS.some((re) => re.test(lead))
+}
+
+// Every clause-leading bold span (`isClauseLeadingBoldSpan`) whose own split-and-normalised tokens
+// (`normaliseStateToken`, applied per `/`- or `,`-separated part, the same fold `checkVocabulary`
+// already applies) include at least one word from the closed state vocabulary — both a candidate
+// *label* for a target state and a *boundary* the next label's own answer text stops at, the same
+// dual role `checkVocabulary`'s own scan already gives a bold span, just kept as positions here
+// instead of being reduced to a presence check.
+export function findVocabularyBoundarySpans(specSource, vocabulary) {
+  const vocabularySet = new Set(vocabulary)
+  const spans = []
+  for (const m of specSource.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+    if (!isClauseLeadingBoldSpan(specSource, m.index)) continue
+    const tokens = m[1]
+      .split(/[/,]/)
+      .map((part) => normaliseStateToken(part))
+      .filter((token) => vocabularySet.has(token))
+    if (tokens.length === 0) continue
+    spans.push({ raw: m[1], tokens, start: m.index, end: m.index + m[0].length })
+  }
+  return spans
+}
+
+// The one state label in `specSource` (scoped to `componentName`'s own section first, for a
+// multi-component file) that answers `state`, and what its own answer text says — `'impossible'`
+// only when that text matches the closed vocabulary above; `'decline'` for every other outcome,
+// named with a reason rather than guessed: no per-component boundary to scope to (the "one shared
+// numbered States section naming every component inline" shape `spec-completeness.mjs`'s own file
+// header names — `match-history.md`, `player-search.md`, `privacy-data-rights.md` — has no such
+// boundary, and reading the whole document unscoped risks crediting one component's clause to
+// another's cell, the exact cross-component leak row 8 warns against, so this recognises the same
+// shape `spec-completeness.mjs` falls back on but declines instead of falling back), the state
+// answered zero or more than once in scope, or a real answer that simply does not use the closed
+// vocabulary. The answer text runs from the end of the matched label to the start of the *next*
+// vocabulary-boundary span (any span `findVocabularyBoundarySpans` found, not only this state's own
+// label) — this is what keeps a *nested* emphasis inside the same answer (`structural-tier.md:667`'s
+// own "— **a link is never disabled.**", itself a clause-leading bold span whose own token is "a",
+// not a vocabulary word) from being mistaken for the *next* state's label and truncating the answer
+// before the very phrase that answers it.
+export function resolveSpecAnswerForState({
+  specSource,
+  components,
+  componentName,
+  state,
+  vocabulary,
+}) {
+  let scopeText
+  if (components.length === 1) {
+    scopeText = specSource
+  } else {
+    const section = findComponentSection(specSource, componentName)
+    if (section == null) {
+      return {
+        status: 'decline',
+        reason:
+          'multi-component file with no per-component heading to scope to (row 8 Method, "Records 2 and 4… no mechanical completeness guard")',
+      }
+    }
+    scopeText = section
+  }
+  const spans = findVocabularyBoundarySpans(scopeText, vocabulary)
+  const matches = spans.filter((s) => s.tokens.includes(state))
+  if (matches.length === 0) {
+    return {
+      status: 'decline',
+      reason: `spec never answers "${state}" in ${componentName}'s own scope`,
+    }
+  }
+  if (matches.length > 1) {
+    return {
+      status: 'decline',
+      reason: `"${state}" is answered more than once in ${componentName}'s own scope`,
+    }
+  }
+  const [span] = matches
+  const next = spans.find((s) => s.start > span.start)
+  const answerText = scopeText.slice(span.end, next ? next.start : scopeText.length).trim()
+  return answerSaysImpossible(answerText)
+    ? { status: 'impossible', answerText }
+    : {
+        status: 'decline',
+        reason: 'spec answers this state, but not with the closed impossible vocabulary',
+        answerText,
+      }
+}
+
+// The one `## Index` row (`parseIndexTable`, `spec-completeness.mjs`) whose own component cell
+// names this `componentKey` (`"primitives/Link"` — `segment/name`, the same key
+// `computed.localElements`/`computed.matrices` already use) — `null` when zero or more than one row
+// claims it, never guessed (the Index is the single source `spec-completeness.mjs` itself already
+// trusts for this, not a second, hand-written map).
+export function mapComponentKeyToSpecFile(readmeSource, componentKey) {
+  const [segment, name] = componentKey.split('/')
+  const rows = parseIndexTable(readmeSource)
+  const matches = rows.filter((row) =>
+    row.components.some((c) => c.name === name && c.segment === segment),
+  )
+  if (matches.length !== 1) return null
+  return { specFile: matches[0].specFile, components: matches[0].components, componentName: name }
+}
+
+// Record 1's own class half, read for exactly the state being judged — never `disabled`, which is
+// not a pseudo-class at all (`disabledCell`'s own `hasDisabledAttr` fact answers that structurally
+// already, and needs no spec confirmation the way a pseudo-class does).
+const RECORD1_STATE_CLASS_TEXT = {
+  hover: (el) => el.hover,
+  'focus-visible': (el) => combineFocusClassText(el.focus, el.focusVisible),
+  active: (el) => el.active,
+}
+
+// Guard 1 (T595's own required contrast): a real `hover:`/`focus-visible:`/`active:` utility
+// painted on the exact element is proof the component visually responds to this state — the cell is
+// a story gap, never an impossibility, whatever a nearby spec sentence says. Checked before spec
+// text is even read, the same "positive knowledge first" precedence row 8's own Method section
+// already holds for `'none'` itself.
+function record1CellIsPainted(el, state) {
+  const classTextOf = RECORD1_STATE_CLASS_TEXT[state]
+  return classTextOf ? classTextOf(el) != null : false
+}
+
+// A `record3` row's own local-element identity, when it is one (`"tag @ file:line"`, the shape
+// `Table`/`Page`/`Dialog`/`Tooltip` — every primitive *outside* `PRIMITIVE_NAMES` — render, sharing
+// record 1's own elements exactly rather than a second, axis-keyed set); `null` for an axis row
+// (`"destructive|lg"`), which has no single element to pin a class check to at all.
+function findRecord1ElementForRow(row, record1Elements) {
+  const m = row.variantSize.match(/ @ (.+):(\d+)$/)
+  if (!m) return null
+  const [, file, lineStr] = m
+  const line = Number(lineStr)
+  return record1Elements.find((el) => el.file === file && el.line === line) ?? null
+}
+
+// Guard 2: a `'none'` cell is only eligible for an "impossible" verdict when *every* sibling row in
+// the same scope reads `'none'` for this exact state too — a single sibling with real, positive
+// coverage is proof the spec's own answer cannot describe every candidate the cell's own component
+// carries, whatever wording it uses (`Table`'s own "the table itself has no active state" is real
+// only of the scroll region, never of the row link one row down, which already carries
+// `RowLinkActive`) — so this declines *every* `'none'` cell in the scope for that state rather than
+// guess which one the spec sentence was really about, T595's own answer to the mapping risk this
+// task's brief names explicitly.
+function anySiblingCovered(cellsForState) {
+  return cellsForState.some((coverageList) => classifyCoverage(coverageList) !== 'none')
+}
+
+export function classifyRecord1NoneCells(
+  computed,
+  { readmeSource, specSourcesByFile, vocabulary },
+) {
+  const results = []
+  const STATES = ['hover', 'focus-visible', 'active']
+  const coverageOf = (el, state) =>
+    state === 'hover'
+      ? el.coveredBy.hover
+      : state === 'focus-visible'
+        ? el.coveredBy.focusVisible
+        : el.coveredBy.active
+  for (const { componentKey, elements } of computed.localElements) {
+    for (const state of STATES) {
+      const siblingCovered = anySiblingCovered(elements.map((el) => coverageOf(el, state)))
+      for (const el of elements) {
+        if (classifyCoverage(coverageOf(el, state)) !== 'none') continue
+        const base = { record: 1, componentKey, tag: el.tag, file: el.file, line: el.line, state }
+        if (record1CellIsPainted(el, state)) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason:
+              'a real class is painted for this state on this exact element — a story gap, never impossible',
+          })
+          continue
+        }
+        if (siblingCovered) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: 'another local element in this component has real coverage for this same state',
+          })
+          continue
+        }
+        const mapping = mapComponentKeyToSpecFile(readmeSource, componentKey)
+        if (!mapping) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: 'component does not map to exactly one Index row',
+          })
+          continue
+        }
+        const specSource = specSourcesByFile.get(mapping.specFile)
+        if (!specSource) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: `spec file ${mapping.specFile} was not read`,
+          })
+          continue
+        }
+        const answer = resolveSpecAnswerForState({
+          specSource,
+          components: mapping.components,
+          componentName: mapping.componentName,
+          state,
+          vocabulary,
+        })
+        results.push({
+          ...base,
+          status: answer.status,
+          reason: answer.status === 'decline' ? answer.reason : undefined,
+          answerText: answer.answerText,
+        })
+      }
+    }
+  }
+  return results
+}
+
+export function classifyRecord3NoneCells(
+  computed,
+  { readmeSource, specSourcesByFile, vocabulary },
+) {
+  const results = []
+  const STATES = ['hover', 'focus-visible', 'active', 'disabled']
+  const coverageOf = (row, state) =>
+    state === 'hover'
+      ? row.hover
+      : state === 'focus-visible'
+        ? row.focusVisible
+        : state === 'active'
+          ? row.active
+          : row.disabled
+  for (const [primitiveName, rows] of Object.entries(computed.matrices)) {
+    const realRows = rows.filter(
+      (row) =>
+        row.variantSize !== '(no local interactive element)' &&
+        !row.variantSize.startsWith('(unresolved matches'),
+    )
+    const componentKey = `primitives/${primitiveName}`
+    const record1Elements =
+      computed.localElements.find((x) => x.componentKey === componentKey)?.elements ?? []
+    for (const state of STATES) {
+      const siblingCovered = anySiblingCovered(realRows.map((row) => coverageOf(row, state)))
+      // Guard 3, axis rows only (`PRIMITIVE_NAMES` — `Button`/`Link`/`Field`/`Menu` — the shape
+      // `buildAxisMatrix` produces, one row per `variant|size` rather than per element): a class is
+      // never resolved per axis row at all (record 1's own Method section: "renders that prop's own
+      // *default* value, never a union of every entry" — a non-default variant's own class is
+      // genuinely unknown here), so the only safe reading of "does this primitive ever paint a
+      // class for this state" is whether *any* of the primitive's own record-1 local elements do —
+      // real, positive evidence the DOM responds to this pseudo-class somewhere in this component,
+      // which a spec's "never" cannot survive regardless of which variant painted it. Never applied
+      // to `disabled`, which record 1 does not track at all (the same exclusion `RECORD1_STATE_CLASS_TEXT`
+      // already holds).
+      const anyOwnElementPainted =
+        state === 'disabled' ? false : record1Elements.some((el) => record1CellIsPainted(el, state))
+      for (const row of realRows) {
+        if (classifyCoverage(coverageOf(row, state)) !== 'none') continue
+        const base = { record: 3, primitiveName, variantSize: row.variantSize, state }
+        const ownElement = findRecord1ElementForRow(row, record1Elements)
+        if (ownElement && record1CellIsPainted(ownElement, state)) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason:
+              'a real class is painted for this state on this exact element — a story gap, never impossible',
+          })
+          continue
+        }
+        if (!ownElement && anyOwnElementPainted) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason:
+              "this primitive's own local element paints a class for this state elsewhere in its default rendering — a non-default variant's own class is unresolved here, never assumed absent",
+          })
+          continue
+        }
+        if (siblingCovered) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: 'another row of this primitive matrix has real coverage for this same state',
+          })
+          continue
+        }
+        const mapping = mapComponentKeyToSpecFile(readmeSource, componentKey)
+        if (!mapping) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: 'component does not map to exactly one Index row',
+          })
+          continue
+        }
+        const specSource = specSourcesByFile.get(mapping.specFile)
+        if (!specSource) {
+          results.push({
+            ...base,
+            status: 'decline',
+            reason: `spec file ${mapping.specFile} was not read`,
+          })
+          continue
+        }
+        const answer = resolveSpecAnswerForState({
+          specSource,
+          components: mapping.components,
+          componentName: mapping.componentName,
+          state,
+          vocabulary,
+        })
+        results.push({
+          ...base,
+          status: answer.status,
+          reason: answer.status === 'decline' ? answer.reason : undefined,
+          answerText: answer.answerText,
+        })
+      }
+    }
+  }
+  return results
+}
+
+// I/O: every `.md` file directly under `packages/design-system/specs/`, by its own basename (the
+// same key `## Index` rows and `mapComponentKeyToSpecFile`'s own `specFile` already use) — the spec
+// analogue of `readAllSourceFiles` above, kept separate because a fixture-driven test never needs a
+// real filesystem read for the pure functions above it.
+export function readAllSpecFiles() {
+  const files = new Map()
+  for (const entry of readdirSync(specsDir)) {
+    if (!entry.endsWith('.md')) continue
+    files.set(entry, readFileSync(path.join(specsDir, entry), 'utf8'))
+  }
+  return files
+}
+
+// The whole recogniser, end to end, against the live tree: every confirmed `'none'` cell in both
+// records, classified `'impossible'` or `'decline'` (with a reason) — never wired into `main`'s own
+// exit code by this task (T595's own scoping: "the cell gate... lands in the commit that closes the
+// last [open cell]," a later slice, not this one).
+export function classifyImpossiblePerSpec(computed, { readmeSource, specSourcesByFile }) {
+  const vocabulary = deriveVocabulary(readmeSource)
+  return {
+    record1: classifyRecord1NoneCells(computed, { readmeSource, specSourcesByFile, vocabulary }),
+    record3: classifyRecord3NoneCells(computed, { readmeSource, specSourcesByFile, vocabulary }),
+  }
 }
 
 // --- main --------------------------------------------------------------------------------------

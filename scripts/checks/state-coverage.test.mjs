@@ -63,7 +63,15 @@ import {
   findUnaccountedForceStates,
   KNOWN_UNACCOUNTED_FORCE_STATES,
   readAllSourceFiles,
+  answerSaysImpossible,
+  findVocabularyBoundarySpans,
+  resolveSpecAnswerForState,
+  mapComponentKeyToSpecFile,
+  classifyRecord1NoneCells,
+  classifyRecord3NoneCells,
+  classifyImpossiblePerSpec,
 } from './state-coverage.mjs'
+import { deriveVocabulary } from './spec-completeness.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
   return parseTsx(fileName, code)
@@ -2545,24 +2553,19 @@ test('contrast: a Menu-trigger-shaped play-driven focus-after-Escape stays unres
     ],
   ])
   const before = computeStateCoverage({ componentDirs, filesByPath: beforeFiles })
-  const beforeRow = before.localElements.find(
-    (c) => c.componentKey === 'primitives/Trigger',
-  ).elements[0]
+  const beforeRow = before.localElements.find((c) => c.componentKey === 'primitives/Trigger')
+    .elements[0]
   assert.equal(beforeRow.coveredBy.focusVisible.length, 1)
   assert.match(beforeRow.coveredBy.focusVisible[0], /^unresolved:/)
   assert.match(beforeRow.coveredBy.focusVisible[0], /play-driven; frame not provable statically/)
 
   const afterFiles = new Map([
     [path.join(REPO_SRC_DIR, 'primitives/Trigger/index.tsx'), TRIGGER_INDEX_SOURCE],
-    [
-      path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'),
-      triggerStoriesSource(true),
-    ],
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'), triggerStoriesSource(true)],
   ])
   const after = computeStateCoverage({ componentDirs, filesByPath: afterFiles })
-  const afterRow = after.localElements.find(
-    (c) => c.componentKey === 'primitives/Trigger',
-  ).elements[0]
+  const afterRow = after.localElements.find((c) => c.componentKey === 'primitives/Trigger')
+    .elements[0]
   assert.deepEqual(afterRow.coveredBy.focusVisible, ['EscapeReturnsFocusToTrigger'])
 })
 
@@ -5190,4 +5193,600 @@ test('countRecord1Cells/countRecord3Cells: never folds an unresolved reason into
   // `covered` (focus-visible) — a distinct 2/2/1 shape from Record 1's 1/1/1, on purpose, so the
   // two records cannot pass by accidentally sharing one counter.
   assert.deepEqual(countRecord3Cells(computed), { none: 2, unresolved: 2, covered: 1 })
+})
+
+// --- T595 (row 8, H5, bucket b): "a state the component's own spec answers as impossible" -------
+//
+// A small `## Index` (`parseIndexTable`'s own fixture shape, `spec-completeness.test.mjs`) plus the
+// closed state vocabulary sentence `deriveVocabulary` needs, covering the three scoping shapes this
+// recogniser has to tell apart: `widget.md` (one component, whole document is its own scope),
+// `pair.md` (two components, each under its own `##` heading — `findComponentSection` can isolate
+// them), `shared-inline.md` (two components, one shared numbered section naming each inline — no
+// heading boundary exists at all, `match-history.md`'s own real shape).
+const IMPOSSIBLE_README_FIXTURE = `## Index
+
+| Spec | Component directory | Feature |
+| --- | --- | --- |
+| [\`widget.md\`](./widget.md) | \`src/primitives/Widget/\` | 001 |
+| [\`pair.md\`](./pair.md) | \`src/primitives/{Alpha,Beta}/\` | 001 |
+| [\`shared-inline.md\`](./shared-inline.md) | \`src/primitives/{Gamma,Delta}/\` | 001 |
+
+## Every spec has nine sections
+
+The state vocabulary is closed: **default, hover, focus-visible, active, disabled, loading,
+error, empty, selection, expansion**. Every spec answers all ten, even when the answer is "this
+part is never disabled".
+`
+
+const WIDGET_SPEC = `## Widget
+
+**States**
+
+- **hover** — the control lifts with a soft shadow.
+- **focus-visible** — a ring appears around the control.
+- **active** — never. A widget cannot be pressed; pressing it does nothing because nothing here
+  reacts.
+- **disabled** — inapplicable today; see the open question below.
+`
+
+// The unrelated-clause regression fixture (`answerSaysImpossible`'s own header comment): a real,
+// substantive first sentence with no closed-vocabulary phrase in it, followed by a *second*
+// sentence that happens to contain "never" about something else entirely — the shape
+// `tooltip.md:139`'s own "this used to say 'its `Button` state,' which was never true" lives in.
+const WIDGET_UNRELATED_NEVER_SPEC = `## Widget
+
+- **active** — the trigger shows a pressed ring while held. This used to say the control never
+  pressed anything, which was never true.
+`
+
+const PAIR_SPEC = `## Alpha
+
+- **active** — none; the root is not interactive.
+
+## Beta
+
+- **active** — a real pressed ring appears on every press, clearly painted.
+`
+
+const SHARED_INLINE_SPEC = `## 5. States
+
+- **active** — \`Gamma\`: none; the root is not interactive. \`Delta\`: a real pressed ring appears on
+  every press.
+`
+
+function fixtureVocabulary() {
+  return deriveVocabulary(IMPOSSIBLE_README_FIXTURE)
+}
+
+// --- answerSaysImpossible / leadingSentence ------------------------------------------------------
+
+test('answerSaysImpossible: matches a closed-vocabulary phrase in the leading sentence', () => {
+  assert.equal(
+    answerSaysImpossible('none; the root is not interactive. Actions have their own.'),
+    true,
+  )
+  assert.equal(
+    answerSaysImpossible('— never. A table whose data is stale says so elsewhere.'),
+    true,
+  )
+  assert.equal(answerSaysImpossible('The table itself has no active state.'), true)
+})
+
+test('answerSaysImpossible: declines a real answer that never uses the closed vocabulary', () => {
+  assert.equal(
+    answerSaysImpossible('the control’s own text-entry state; no separate paint.'),
+    false,
+  )
+  assert.equal(answerSaysImpossible('inapplicable today; see the open question below.'), false)
+})
+
+test('answerSaysImpossible: a coincidental match outside the leading sentence never counts (the false positive this task found live)', () => {
+  // Mirrors `tooltip.md:139` exactly: the state's own first sentence is real prose with no closed
+  // phrase in it, and only a *later*, unrelated sentence contains "never" — about a stale sentence
+  // in the spec itself, not about whether this state happens. Without `leadingSentence`'s own
+  // restriction to the first sentence, this string reads `true` (a bare pattern scan finds "never"
+  // twice); this recogniser must read `false`.
+  const text =
+    'the trigger shows a pressed ring while held. This used to say the control never pressed ' +
+    'anything, which was never true: the trigger clearly presses.'
+  assert.equal(answerSaysImpossible(text), false)
+})
+
+// --- findVocabularyBoundarySpans ------------------------------------------------------------------
+
+test('findVocabularyBoundarySpans: finds one span per bold state label, splitting a combined label into its own tokens', () => {
+  const spans = findVocabularyBoundarySpans(
+    '- **hover / active** — none; the root is not interactive.\n- **focus-visible** — a ring appears.',
+    fixtureVocabulary(),
+  )
+  assert.deepEqual(
+    spans.map((s) => s.tokens),
+    [['hover', 'active'], ['focus-visible']],
+  )
+})
+
+test('findVocabularyBoundarySpans: a nested, clause-leading bold span whose own token is not a vocabulary word is not a boundary', () => {
+  // `structural-tier.md:667`'s own shape: "— **a link is never disabled.**" is itself a
+  // clause-leading bold span (preceded by an em dash), but its own first token is "a", not a
+  // vocabulary word — it must not be read as the *next* state's own label and truncate the real
+  // answer before "never".
+  const spans = findVocabularyBoundarySpans(
+    '- **disabled** — **a link is never disabled.** A destination renders as `Text` instead.\n' +
+      '- **loading** — none.',
+    fixtureVocabulary(),
+  )
+  assert.deepEqual(
+    spans.map((s) => s.tokens),
+    [['disabled'], ['loading']],
+  )
+})
+
+// --- resolveSpecAnswerForState ---------------------------------------------------------------------
+
+test('resolveSpecAnswerForState: the passing case — a genuine closed-vocabulary "impossible" answer', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'impossible')
+  assert.match(result.answerText, /never/)
+})
+
+test('resolveSpecAnswerForState: declines a real answer that does not use the closed vocabulary', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'disabled',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /not with the closed impossible vocabulary/)
+})
+
+test('resolveSpecAnswerForState: declines when the state is never answered in scope at all', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'loading',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /never answers "loading"/)
+})
+
+test('resolveSpecAnswerForState: required contrast — a bullet whose "never" is about a different state than the cell’s', () => {
+  // `disabled` reads its own bullet ("inapplicable today"), never `active`'s "never" — proven by
+  // asking for `disabled` against `WIDGET_SPEC`, whose `active` bullet is the one that says "never".
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'disabled',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.notEqual(result.status, 'impossible')
+})
+
+test('resolveSpecAnswerForState: the unrelated-later-sentence regression (mirrors tooltip.md:139)', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: WIDGET_UNRELATED_NEVER_SPEC,
+    components: [{ name: 'Widget', segment: 'primitives' }],
+    componentName: 'Widget',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+})
+
+test('resolveSpecAnswerForState: required contrast — a bullet in a different component’s own section must not be borrowed across', () => {
+  const forAlpha = resolveSpecAnswerForState({
+    specSource: PAIR_SPEC,
+    components: [
+      { name: 'Alpha', segment: 'primitives' },
+      { name: 'Beta', segment: 'primitives' },
+    ],
+    componentName: 'Alpha',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  const forBeta = resolveSpecAnswerForState({
+    specSource: PAIR_SPEC,
+    components: [
+      { name: 'Alpha', segment: 'primitives' },
+      { name: 'Beta', segment: 'primitives' },
+    ],
+    componentName: 'Beta',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  // Alpha's own section says "none; the root is not interactive" — impossible, for Alpha only.
+  assert.equal(forAlpha.status, 'impossible')
+  // Beta's own section says a real ring appears — Alpha's own "none" must never leak across into
+  // Beta's own verdict, which is exactly what a whole-document (unscoped) read would do.
+  assert.equal(forBeta.status, 'decline')
+})
+
+test('resolveSpecAnswerForState: a multi-component file with no per-component heading boundary declines rather than reading the whole document unscoped', () => {
+  const result = resolveSpecAnswerForState({
+    specSource: SHARED_INLINE_SPEC,
+    components: [
+      { name: 'Gamma', segment: 'primitives' },
+      { name: 'Delta', segment: 'primitives' },
+    ],
+    componentName: 'Gamma',
+    state: 'active',
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(result.status, 'decline')
+  assert.match(result.reason, /no per-component heading to scope to/)
+})
+
+// --- mapComponentKeyToSpecFile ----------------------------------------------------------------------
+
+test('mapComponentKeyToSpecFile: resolves a componentKey to its own Index row', () => {
+  const mapping = mapComponentKeyToSpecFile(IMPOSSIBLE_README_FIXTURE, 'primitives/Widget')
+  assert.equal(mapping.specFile, 'widget.md')
+  assert.equal(mapping.componentName, 'Widget')
+  assert.equal(mapping.components.length, 1)
+})
+
+test('mapComponentKeyToSpecFile: declines (null) for a component the Index never names', () => {
+  assert.equal(mapComponentKeyToSpecFile(IMPOSSIBLE_README_FIXTURE, 'primitives/Ghost'), null)
+})
+
+test('mapComponentKeyToSpecFile: declines (null) when more than one Index row claims the same componentKey', () => {
+  const readme = `## Index
+
+| Spec | Component directory | Feature |
+| --- | --- | --- |
+| [\`one.md\`](./one.md) | \`src/primitives/Widget/\` | 001 |
+| [\`two.md\`](./two.md) | \`src/primitives/Widget/\` | 001 |
+
+## Every spec has nine sections
+`
+  assert.equal(mapComponentKeyToSpecFile(readme, 'primitives/Widget'), null)
+})
+
+// --- classifyRecord1NoneCells / classifyRecord3NoneCells --------------------------------------------
+
+const SPEC_SOURCES = new Map([
+  ['widget.md', WIDGET_SPEC],
+  ['pair.md', PAIR_SPEC],
+  ['shared-inline.md', SHARED_INLINE_SPEC],
+])
+
+test('classifyRecord1NoneCells: the passing case end to end — one element, one confirmed-impossible state', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'impossible')
+})
+
+test('classifyRecord1NoneCells: required contrast — a real class painted on the exact element is never classifiable as impossible', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // A real `active:` utility is painted on this exact element, even though `WIDGET_SPEC`'s
+            // own `active` bullet says "never" — the class is proof the component visually responds,
+            // so this must decline, never read `impossible`.
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /a real class is painted/)
+})
+
+test('classifyRecord1NoneCells: a sibling element with real coverage for the same state declines every none cell of that state in the component', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'a',
+            file: 'f.tsx',
+            line: 1,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 5,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            // This sibling's own `active` state IS covered by a real story — proof `WIDGET_SPEC`'s
+            // own "active — never" cannot describe every candidate in this component.
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const firstElementActive = results.find((r) => r.line === 1 && r.state === 'active')
+  assert.equal(firstElementActive.status, 'decline')
+  assert.match(firstElementActive.reason, /another local element/)
+})
+
+test('classifyRecord1NoneCells: a multi-component file with no per-component boundary declines rather than crediting the wrong component', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Gamma',
+        elements: [
+          {
+            tag: 'button',
+            file: 'g.tsx',
+            line: 1,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  assert.equal(results[0].status, 'decline')
+})
+
+test('classifyRecord3NoneCells: the passing case end to end — a non-axis row (Table-shaped), one confirmed-impossible state', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'button @ f.tsx:10',
+          rest: ['f.tsx:10'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'impossible')
+})
+
+test('classifyRecord3NoneCells: a non-axis row cross-references its own exact record-1 element, never a component-wide guess', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // Painted on the exact element this row is about.
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'button @ f.tsx:10',
+          rest: ['f.tsx:10'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /a real class is painted/)
+})
+
+test('classifyRecord3NoneCells: an axis row (no single element to pin a class to) declines when the primitive’s own record-1 element paints the class elsewhere', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            // The primitive's own local element paints `active:` — real evidence the DOM responds
+            // to this state somewhere, even though this specific axis row's own default class is
+            // unresolved (record 1's own Method: only the default variant's class is ever known).
+            active: 'active:bg-surface-sunken',
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['SomeStory'] },
+          },
+        ],
+      },
+    ],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'ghost|lg',
+          rest: ['x.tsx:1'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          // No axis-row sibling covers `active` either — only the primitive-own-class guard should
+          // be the reason this declines, not the sibling guard.
+          active: ['none'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const activeCell = results.find((r) => r.state === 'active')
+  assert.equal(activeCell.status, 'decline')
+  assert.match(activeCell.reason, /own local element paints a class/)
+})
+
+test('classifyRecord3NoneCells: another row of the same primitive matrix with real coverage declines every none row for that state', () => {
+  const computed = {
+    localElements: [],
+    matrices: {
+      Widget: [
+        {
+          variantSize: 'ghost|lg',
+          rest: ['x.tsx:1'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          active: ['none'],
+          disabled: ['none'],
+        },
+        {
+          variantSize: 'primary|md',
+          rest: ['y.tsx:2'],
+          hover: ['none'],
+          focusVisible: ['none'],
+          // A sibling axis row DOES have real `active` coverage.
+          active: ['SomeStory'],
+          disabled: ['none'],
+        },
+      ],
+    },
+  }
+  const results = classifyRecord3NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const ghostActive = results.find((r) => r.variantSize === 'ghost|lg' && r.state === 'active')
+  assert.equal(ghostActive.status, 'decline')
+  assert.match(ghostActive.reason, /another row of this primitive matrix/)
+})
+
+test('classifyImpossiblePerSpec: derives its own vocabulary from readmeSource and returns both records', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 10,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const { record1, record3 } = classifyImpossiblePerSpec(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+  })
+  assert.equal(record1.find((r) => r.state === 'active').status, 'impossible')
+  assert.deepEqual(record3, [])
 })

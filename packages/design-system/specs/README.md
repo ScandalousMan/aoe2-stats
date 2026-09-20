@@ -2188,6 +2188,44 @@ ProfileSummary:BoardLongAliasFlagHoverRevealed` — labelled by the _story file'
    when the candidate is unambiguous, so this fix cannot be read as the play-focus branch quietly
    losing its own general rule.
 
+   **Bucket (b)'s own recogniser (T595's own first decision, this task's own recogniser slice): "a
+   state the component's own spec answers as impossible" is answered by code, never a hand-typed
+   list of component shapes.** `spec-completeness.mjs` already asserts that a spec _answers_ every
+   one of the ten vocabulary states; it never reads what the answer _says_.
+   `findVocabularyBoundarySpans`/`resolveSpecAnswerForState`/`classifyRecord1NoneCells`/
+   `classifyRecord3NoneCells` (`scripts/checks/state-coverage.mjs`) read the same bold-label
+   convention that file already parses (`isClauseLeadingBoldSpan`, `normaliseStateToken`, exported
+   there and reused here rather than re-derived) and test the matched label's own answer text —
+   scoped to the component's own section first, for a multi-component file, and declining outright
+   when no such per-component boundary exists (`match-history.md`'s own shared, inline "States"
+   section, among others) — against a five-phrase closed vocabulary (`never`, `none;`, `is not
+interactive`, `has no visual form`, `has no active state`), each cited once, verbatim, in the
+   script's own header comment rather than restated here.
+
+   The mapping from a `'none'` cell to the right bullet is the hard part, not the shape, and three
+   guards keep a wrong bullet from silently turning a real gap into a false "impossible". First,
+   only the answer's own **leading sentence** is tested — a coincidental match later in a long
+   paragraph answers something else entirely: `tooltip.md`'s own `active` bullet says, three
+   sentences in, that an old sentence in this very file "was never true," which is about the file's
+   own history, not about the trigger's own pressed state (which the clauses right after it go on to
+   describe as a real, painted press treatment) — reading the whole paragraph credited this as
+   "impossible" on the first pass, and `state-coverage.test.mjs`'s own contrast plants that exact
+   shape. Second, a real class painted on the exact record-1 element — or on any of a primitive's own
+   record-1 elements, for a record-3 axis row that has no single element of its own to check
+   directly — is never overridden by a spec sentence: a painted class is proof the component
+   visually responds to this state. Third, a `'none'` cell is only eligible when _every_ sibling row
+   or element in the same scope also reads `'none'` for that exact state — one sibling with real
+   story coverage is proof the spec's own wording cannot describe every candidate the cell's own
+   component carries (`structural-tier.md`'s own `Table` — "the table itself has no active state" is
+   real only of the scroll region, never of the row link one row down, which already carries
+   `RowLinkActive` — so this declines both rather than guess which one the sentence meant).
+   Declining is the expected outcome here, not a shortfall, the same discipline `'unresolved'`
+   already holds record 1 and record 3's own cells to. Run today against every live `'none'` cell
+   (`classifyImpossiblePerSpec`, not wired into the gate by this task — that is the cell gate's own,
+   later commit), it classifies 0 of record 1's 44 cells and 7 of record 3's 40 cells "impossible"
+   and declines the rest, each with a reason, for that later commit or a dated register entry to
+   resolve.
+
    **Records 2 and 4 stay read, not extracted, and Record 2's spec side has no mechanical
    completeness guard of its own (a residual `reviewer` noted while verifying this pass, not one this
    pass closes).** `findDeferralHitsInStories` (8c-bis, below) scans every `*.stories.tsx` under this
