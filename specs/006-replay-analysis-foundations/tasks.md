@@ -330,8 +330,10 @@ after being produced through the new stream.
       carrying the engine's own label and the payload length, never dropped and never guessed at
       (**FR-019**). Command kinds that arrive without decoded unit ids — formation, stance, patrol,
       stop and the rest — are emitted as `units-commanded` with an **empty** id list, never an
-      inferred one. Add the conservation test over every committed recording: emitted events, plus
-      sync and view-lock operations, equal the operation count the wheel reports. The second
+      inferred one. Add the conservation test over every committed recording: every operation the
+      wheel reports is an emitted event or is counted in a named drop category — sync, view-lock,
+      collapsed, after-exit, unseated. Two terms cannot balance it, because **FR-018**'s collapse
+      and the exit rule both remove operations by design. The second
       recording carries an action kind the wheel itself cannot name, so this rule has a live
       instance to assert on. A silent drop is the failure mode that cannot be found later, because
       nothing downstream knows to miss it
@@ -378,6 +380,41 @@ after being produced through the new stream.
       `tests/fixtures/replays/`, following the regeneration discipline the README already states for
       the timeline: regenerate only on an engine upgrade or a deliberate logic change, never by hand,
       and read and explain every diff it produces
+- [ ] T629a [US4] Emit `match-started` from the adapter in
+      `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, as the first event of every
+      stream, at clock zero. [contracts/canonical-events.md](./contracts/canonical-events.md) lists
+      it as produced and nothing produces it: neither committed golden carries one, and the four
+      `event.match_started.*` register entries name a golden stream as their validation that does
+      not contain them. **Phase 4 cannot start without it** — the coverage pass collects every
+      participant's civilisation from the stream, every rule query requires one, and build
+      resolution needs the build; the only other route to those three is the wheel's header, read
+      from above the adapter, which **FR-015** forbids. Read the build, the resolved map, the lobby
+      presets and the seated participants from the header fields the timeline fold already reads,
+      unchanged (**FR-016**). Carry each civilisation as **the game's integer identifier, never a
+      name** — naming is the knowledge base's job — and change `ParticipantEntry.civilisation` in
+      `packages/core/src/aoe2stats_core/replay/events.py` to an integer to match: nothing
+      constructs that type today, so the change is free now and costs a golden regeneration later.
+      Observers and empty slots are absent, not present and silent. The event comes from the
+      header and corresponds to **no operation**, so the conservation test subtracts it by name;
+      do not let it pass by widening a tolerance. This is a deliberate logic change, so both
+      canonical goldens are regenerated under the README's discipline — the expected diff is one
+      event at the head of each file and its count, and anything else is a defect. **The timeline
+      golden stays byte-identical**: the fold ignores the new kind. Test first,
+      `xfail(strict=True)`: the first event of every committed recording's stream is
+      `match-started`, its participants equal the seated slots, and its build equals the one
+      `tests/fixtures/replays/README.md` records
+- [ ] T629b [US4] Bind the adapter to the protocol
+      [contracts/canonical-events.md](./contracts/canonical-events.md) names as the seam
+      (**FR-015**). The protocol has no implementation and no importer today: the stream's entry
+      point takes an already-parsed recording, and the engine's name, version and dependency
+      record live in three places. Give `Aoe2RecExtractor` in
+      `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` the dependency record from
+      T627 and an `events` method taking the archive's bytes — the same well-formedness and
+      input-size refusals as `extract`, then the parse, then the stream, never returning the
+      operations. Assert the binding with the protocol's own runtime check, so a drifted signature
+      fails a test and not a reader. **This is the entry point T632 extends the refusal test to**,
+      and the one object T653, T655 and T658 read the parser's three identity components from.
+      Test first, `xfail(strict=True)`
 - [ ] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
       names and assert none appears in a deny-list **generated from the wheel's own output keys** across
       **every committed recording** — the two expose different action kinds, so a list built from one
@@ -388,8 +425,8 @@ after being produced through the new stream.
       issued twice by double-clicking appears once in the canonical stream. Assert over every
       committed recording rather than one, and assert the inverse too: repeated unit-queue commands
       are **not** collapsed, because a test that only checks collapse cannot see over-collapse
-- [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point, **and add
-      a real peak-memory measurement beside it**. The existing test is named for the memory ceiling
+- [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point T629b
+      creates, **and add a real peak-memory measurement beside it**. The existing test is named for the memory ceiling
       and measures no memory: it asserts that an oversized input is refused, which says nothing
       about what an accepted input consumes. This feature puts three accumulators on that path — the
       stream's consumers, the group-silence state and the coverage pass — and the second recording's
@@ -399,7 +436,8 @@ after being produced through the new stream.
       (**FR-020**): that is what makes the reserved vocabulary honest — the day a producer lands,
       this test is what changes, and no type does
 - [ ] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
-      group-control-lost observable, computed from commanded-unit events only, published at the
+      group-silence observable — register datum `participant.group_silence_episodes` — computed
+      from commanded-unit events only, published at the
       **inferred** tier with a confidence whose basis states the command intensity and the silence
       length for that instance (**FR-013**). **State its blind spot in the datum's method**: only
       move, interact and order carry decoded unit ids; formation, stance, patrol and stop do not, so
@@ -597,9 +635,13 @@ after everything underneath it moves.
 - [ ] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
-      serialisation. Reconstruction engine and analytics carry an explicit not-applicable marker
-      until 007 ships, so the tuple's **shape never changes** — retrofitting identity onto published
-      artifacts is far harder than designing it in, which is why US6 is specified now
+      serialisation. The reconstruction engine carries an explicit not-applicable marker until 007
+      ships; **analytics does not** — it is this feature's own version for the coverage pass and
+      the group-silence method ([data-model.md](./data-model.md) §8), and marking it not-applicable
+      would let a banding change keep the same digest and never trigger T657a's recompute
+      (**FR-042**). Both components exist from the start, so the tuple's **shape never changes** —
+      retrofitting identity onto published artifacts is far harder than designing it in, which is
+      why US6 is specified now
 - [ ] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
       the digest is stable across processes and insensitive to field ordering; two identities
       differing in any one component produce different digests; an empty dependency record is
@@ -617,7 +659,13 @@ after everything underneath it moves.
       so a coaching conclusion cannot occupy a field typed observed, decoded or reconstructed
       (**FR-011**) by construction, with T619's validator as the second lock. Run the validator
       **before** the object is written: a failing document is not published and the analysis fails
-      through 003's existing failure path
+      through 003's existing failure path. **Promote `participant.group_silence_episodes` from
+      planned to published in `packages/core/src/aoe2stats_core/truth/register.toml` in this same
+      change**, and regenerate the view: the validator rejects an inferred datum whose register
+      status is not published, so without the move no document carrying this feature's one
+      inferred datum can pass. The move belongs here and not in T633 — a status is earned by the
+      change that publishes, and until this task nothing does. The `event.*` entries stay planned:
+      the stream is never persisted
 - [ ] T657 [US6] Make the published object's key carry the identity digest, and keep
       `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object
       per match is overwritten on recompute, which destroys an existing analysis — a new parser,
@@ -649,7 +697,9 @@ after everything underneath it moves.
       because the web reader requires it there, and it joins the excluded set
 - [ ] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
       `xfail(strict=True)`. **SC-004**: the same recording analysed twice with identical versions
-      yields a byte-identical result, with the second run **in a fresh process** so that dictionary
+      yields a byte-identical result **outside the wall-clock set** — the envelope and the legacy
+      top-level extraction time, which T659 excludes; a whole-document comparison fails on every
+      run and proves nothing — with the second run **in a fresh process** so that dictionary
       ordering or a cached clock cannot pass by accident. **SC-005**: publish, record the identity,
       promote a second snapshot, recompute, then fetch by the first identity and confirm it
       reproduces exactly and the newer snapshot was not substituted — and that the previous version

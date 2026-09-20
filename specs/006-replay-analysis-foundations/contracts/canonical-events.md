@@ -84,8 +84,11 @@ what changes, and no type does.
    never collapse. SC-010 is asserted on the doubled age-up command.
 3. **No silent drop** (FR-019). Any **action** the adapter does not map becomes `undecoded`. Sync is
    consumed for the clock; view-lock is a camera position and is excluded because it carries no
-   intent. A test asserts that emitted events plus those two excluded kinds equal the operation count
-   the wheel reports. The second recording carries an action kind the wheel itself cannot name, so
+   intent. A test asserts that **every operation is an emitted event or is counted in a named
+   category** — sync, view-lock, collapsed by obligation 2, attributed after an exit by obligation
+   4, or naming no seated participant — so a new way to lose an operation has to be named to pass.
+   `match-started` comes from the header and corresponds to no operation; it sits outside the
+   count. The second recording carries an action kind the wheel itself cannot name, so
    this rule has a live instance.
 4. **Exit discipline.** No event is attributed to a participant after their `participant-resigned`.
 5. **No participant timeline for an observer or an empty slot** — they are absent from
@@ -114,15 +117,14 @@ regeneration rules the fixtures README already states for the timeline.
 
 Computed in `packages/replay-engine`, from `units-commanded` events only.
 
-- **Datum**: `participant.group_control_lost` — a set of unit objects commanded together repeatedly,
+- **Datum**: `participant.group_silence_episodes` — a set of unit objects commanded together repeatedly,
   then never named again before the participant's exit.
 - **Tier**: `inferred`. Structurally published under the document's `inferred` block only.
 - **Confidence**: level banded from how intensively the group was commanded before the silence and
   how long the silence lasted relative to the remaining match; `basis` states both figures for the
   instance. The bands live in the register entry's method.
-- **Non-claim**, verbatim on every instance: *not a casualty count — a group can fall silent
-  because it was garrisoned, left idle, told to hold, patrol or change formation, or simply not
-  re-selected*.
+- **Non-claim**, verbatim on every instance: the register entry's own `non_claim`. It is not
+  restated here — a sentence quoted in two files is verbatim in one of them.
 - **Blind spot, stated in the method.** Only move, interact and order carry decoded unit ids. Formation,
   stance, patrol and stop do not, so exactly the commands that park a military group are invisible,
   and a parked group reads as silent. This caps the level the banding may assign.
