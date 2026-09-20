@@ -5,10 +5,10 @@
 # reproduced independently by re-running `aoe2stats_knowledge.normalise.normalise_pack()` against
 # the identical vendored pack, so this is real normalised content, not hand-written data. The
 # `[snapshot].digest` below is consequently identical to its sibling's, not by coincidence: T644's
-# `effects.toml` is the same real, hand-transcribed content in both directories too (the carry-
-# forward record `aoe2techtree-fixture-promoted` itself carries already attests that nothing this
-# pack describes — including the civilisation bonus prose T644 transcribes from — changed across
-# 177723, 178524, 179158 or 180059), and `compute_digest` hashes only `rules.json` and
+# and T645's `effects.toml` is the same real, hand-transcribed content in both directories too (the
+# carry-forward record `aoe2techtree-fixture-promoted` itself carries already attests that nothing
+# this pack describes — including the civilisation bonus prose T644/T645 transcribe from — changed
+# across 177723, 178524, 179158 or 180059), and `compute_digest` hashes only `rules.json` and
 # `effects.toml`, never `describes_build`. The two snapshots stay distinguishable regardless: FR-024
 # identity is the four fields together, and `describes_build` is the one that differs here. The
 # thing that differs between these two `snapshot.toml` files is `describes_build` and how that
@@ -26,9 +26,9 @@
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 177723
-digest = "sha256:3524558dac7d44e7e48d335fc68cc3eada6e8d52ecfeb1c0c39f21fa056c98ac"
+digest = "sha256:7af287868a93eac55c204f178667ed4a72aedbb86a7fee711624ae4c72c13376"
 promoted = true
-civilisations_modelled = []
+civilisations_modelled = ["Byzantines", "Koreans", "Franks", "Persians", "Teutons", "Gurjaras"]
 
 # FR-030's validation record. `method` is deliberately not "carry-forward": this build is not
 # carried forward from an earlier revision at all, it is the exact build the pinned revision

@@ -234,3 +234,313 @@ Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_stri
 re-read in full on 2026-09-20 by the T644 implementer, confirming the "Team Bonus:" heading and \
 resolving "Villagers" to rules.json unit id 83 ("Villager").\
 """
+
+# T645: hand-transcribed civilisation effects for the four civilisations the SECOND committed
+# recording (`AgeIIDE_Replay_504695319.zip`) needs (research.md D11: "four civilisations, none
+# shared with the first fixture", bringing the snapshot's total to six, per plan.md's "six
+# hand-modelled civilisations in the first snapshot"). The first fixture's civilisations
+# (Byzantines, Koreans) were named directly by research.md D5/D11 during specification; the second
+# fixture's were not, and T645 is the task that had to determine them for real.
+#
+# **How the four names were established — not guessed, not read off any numeric table.** The
+# replay's own `civilisation` integer (2, 8, 4, 33 for slots 1-4, from `match-started`'s payload)
+# is, empirically, **a different numbering space from every other one this repository already
+# uses** — not Relic's `civilization_id` (`apps/api/.../civilizations.py`'s
+# `KNOWN_CIVILISATION_NAMES`), and not `aoe2techtree`'s own alphabetical ordering (`data.json`'s
+# `civs` key order), which happen to agree with each other but not with the replay. This was
+# proven, not assumed: slot 3 (raw id 4) trained unit **25, "Teutonic Knight"** — Teutons' unique
+# unit, held by no other civilisation in `data.json`'s per-civilisation `Unit` arrays — while raw
+# id 4 in both of the other tables names "Bohemians". `packages/knowledge/tests/test_query.py`'s
+# own docstring already said as much ("the numeric id a replay carries is a different, unrelated
+# numbering space this feature's query surface has no reason to speak"); this is the empirical
+# confirmation of that claim, not a restatement of it.
+#
+# The four names were therefore each established from the recording's own trained units and
+# researched technologies, cross-checked against `data.json`'s per-civilisation `Unit`/`Tech`
+# arrays for exclusivity (a unique unit or unique technology held by exactly one civilisation is
+# proof; a unit merely *available* to several is not):
+#
+#   - **Franks** — slot 1 trained unit 281, "Throwing Axeman", and researched technology 83,
+#     "Bearded Axe": both exclusively Franks' in `data.json` (`civs.Franks.Unit`/`.Tech`).
+#   - **Teutons** — slot 3 trained unit 25, "Teutonic Knight", and researched technology 489,
+#     "Ironclad": both exclusively Teutons'.
+#   - **Persians** — technology 488, "Kamandaran", and unit 239, "War Elephant" (both exclusively
+#     Persians') were queued/researched from the *same* building object (`20802`, a Castle) within
+#     a 5-minute window — a unique technology and a unique unit sharing one building instance is
+#     the strongest possible pairing, since both require the trainer's own civilisation to be
+#     Persians regardless of whether that Castle was built or captured (capturing a Castle does not
+#     grant the *previous* owner's unique unit/tech — AoE2's mechanic ties both to the trainer's own
+#     civilisation).
+#   - **Gurjaras** — unit 1755, "Camel Scout" (exclusively Gurjaras', per `data.json` and confirmed
+#     against `GURJARAS.json`'s own tree, where it is `ResearchedCompleted` at the Stable alongside,
+#     not instead of, Camel Rider — Gurjaras' own take on the Scout Cavalry line, not a Camel-line
+#     replacement), trained repeatedly across five distinct Stable objects from early to late in the
+#     match — far too sustained to be a one-off.
+#
+# **One unexplained anomaly, recorded rather than hidden.** The same recording also attributes one
+# "Camel Scout" production run and one "Silk Armor" (technology 687, exclusively Tatars') research
+# to participants otherwise solidly identified above (a Persians-castle participant and a
+# Gurjaras-stable participant respectively) — inconsistent with a single civilisation per player.
+# `research.md` D11 already documents this exact recording as containing "an action kind the wheel
+# does not name at all"; this is read as further evidence of the same class of adapter/wheel
+# imperfection for this specific fixture, not as grounds to prefer a different set of four names —
+# every other signal for all four civilisations above is internally consistent and, for three of
+# the four, doubly corroborated. **Tatars is not modelled**: the single "Silk Armor" data point
+# is the only evidence for it, contradicts research.md D11's "four civilisations", and is not
+# corroborated by any second signal, unlike every civilisation actually modelled below.
+#
+# **A pre-existing test's fixture collides with this finding.** `test_query.py` (T646) had already
+# chosen "Franks" as its worked example of a civilisation that must **never** be modelled, so that
+# the conservative rule's refusal has something real to refuse. Franks turning out to be a genuine
+# civilisation of the second committed recording is a real collision, not a reason to leave Franks
+# unmodelled: FR-022a and this task's own "six... two from the first, four from the second" target
+# require it. `test_query.py` and `test_effects.py` are updated to use **Britons** in that one role
+# instead — a civilisation confirmed absent from both committed recordings, whose help string
+# (`strings.en.json`, `civs.Britons.help_string_id`) carries no bonus touching the Spearman line's
+# cost either, so the test's own claim continues to hold for a real reason.
+#
+# **Classification rule applied to all four** (the same two axes T644 used): a bonus that
+# unconditionally and civilisation-specifically adjusts cost, a production time, an age
+# requirement, a prerequisite, where something is produced, or availability is `modelled = "yes"`;
+# one that would touch such a field but is team-wide, age-gated in a way this static rule cannot
+# place, or conditional on researched state is `modelled = "no"`, with its reason. A bonus whose
+# own selector would have to be an unenumerable, fuzzy class ("Military Units", "Units") is left
+# out of scope entirely rather than modelled with a class name data-model.md §6 already forbids —
+# recorded here, not silently dropped:
+#
+#   - Franks: "Foragers work +15% faster" (no entity — a gather-rate modifier, not tied to any
+#     `rules.json` record) and "Mounted Units +20% HP starting in Feudal Age" (untracked field,
+#     unit-class selector too broad to enumerate usefully) are out of scope.
+#   - Persians: "Start with +50 wood and +50 food" (no entity), "Town Centers and Docks +100% HP
+#     and work faster in age" (untracked, compound, age-gated), and the unique tech "Citadels"
+#     (untracked: Castle attack/armour) are out of scope. "Can build Caravanserai in Imperial Age"
+#     is also left out: only Persians and Hindustanis carry building 1754 at all in `data.json`, but
+#     `rules.json`'s own flattened baseline (`_raw_value_for_field`'s `available_to` baseline is
+#     always `True` once an entity resolves at all) already cannot represent "most civilisations
+#     lack this building entirely" without an effect naming every civilisation that lacks it — a
+#     limitation of the flattened model, not of this transcription pass, and recorded here rather
+#     than modelled with a no-op effect that would assert nothing real.
+#   - Teutons: "Town Centers +10 / Towers +5 garrison capacity" (untracked), "Barracks and Stable
+#     Units +1/+2 melee armor in Castle/Imperial Age" (untracked, age-gated, unit-class selector too
+#     broad), "Monks +100% healing range" (untracked), and the Team Bonus "Units more resistant to
+#     conversion" (untracked, and "Units" is exactly the fuzzy, unenumerable class this pass
+#     refuses to invent a selector for) are out of scope.
+#   - Gurjaras: "Start with 2 Forage Bushes" and "Can garrison livestock in Mills..." (no entity),
+#     "Mounted Units deal bonus damage in age" and "Docks +5 garrison capacity" (untracked), the
+#     unique tech "Frontier Guards" (untracked: melee armour), and the unique tech "Kshatriyas"
+#     (touches cost, but conditional on having researched it *and* its own selector, "Military
+#     Units", is exactly the unenumerable class this pass refuses to invent a selector for) are out
+#     of scope.
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Mill technologies free"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { food = 0, wood = 0 }
+selector = [
+  { kind = "technology", id = "12" },
+  { kind = "technology", id = "13" },
+  { kind = "technology", id = "14" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
+re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
+pass earlier the same session, confirming the sentence verbatim and the selector's resolution to \
+every technology packages/knowledge/packs/aoe2techtree/trees/FRANKS.json's own Mill (building 68) \
+grid lists as ResearchedCompleted — Crop Rotation (12), Heavy Plow (13) and Horse Collar (14); the \
+three newer Mill technologies rules.json also carries (Transhumance 1012, Pastoralism 1013, \
+Domestication 1014) are absent from Franks' own tree entirely and are correctly excluded.\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Castles cost -15/25% in Castle/Imperial Age"
+modelled = "no"
+reason = """\
+Age-gated in a way this static knowledge base cannot place: the discount's magnitude depends on \
+which age applies at query time, which a rules query carries no match-time state to resolve \
+(research.md D5: "an age-gated bonus whose gate the recording cannot place").\
+"""
+field = "cost"
+selector = [{ kind = "building", id = "82" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the age-gated prose and \
+resolving "Castles" to rules.json building id 82 ("Castle").\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Team Bonus: Knight-line +2 line of sight"
+modelled = "no"
+reason = """\
+Team-wide (research.md D5): granted to every allied player from a Franks ally, not only to \
+Franks-controlled Knight-line units, so it cannot be modelled as a per-civilisation effect on this \
+civilisation's own entities without also knowing every ally's civilisation, which a rules query \
+does not carry. It also touches line of sight, a field this pack's normaliser does not carry on \
+any entity record.\
+"""
+field = "line_of_sight"
+selector = [
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "569" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
+resolving "Knight-line" to rules.json's own prerequisite chain: Knight (38, no prerequisite), \
+Cavalier (283, prerequires 38), Paladin (569, prerequires 283).\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Parthian Tactics available in Castle Age"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = 3
+selector = [{ kind = "technology", id = "436" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
+re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
+pass earlier the same session, confirming the sentence verbatim and resolving "Parthian Tactics" \
+to rules.json technology id 436, whose own baseline age_requirement (4, Imperial) this bonus lowers \
+to 3 (Castle) — the same 1=Dark/2=Feudal/3=Castle/4=Imperial numbering rules.json uses elsewhere \
+(cross-checked against unit 358 "Pikeman" = 3 and unit 359 "Halberdier" = 4).\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Kamandaran (Archer-line gold cost replaced by additional wood cost)"
+modelled = "no"
+reason = """\
+Conditional on match state (research.md D5): "Kamandaran" is a Castle unique technology, named \
+under this civilisation's own "Unique Techs:" heading, so the cost change only applies once it has \
+been researched — a fact no static rules query carries, matching the same reasoning Koreans' \
+Bombard-Tower-conditional archer-armour bonus already uses.\
+"""
+field = "cost"
+selector = [
+  { kind = "unit", id = "4" },
+  { kind = "unit", id = "24" },
+  { kind = "unit", id = "492" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the "Unique Techs:" heading and \
+resolving "Archer-line" to rules.json's own prerequisite chain: Archer (4, no prerequisite), \
+Crossbowman (24, prerequires 4), Arbalester (492, prerequires 24).\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Team Bonus: Knight-line +2 attack vs. Ranged Soldiers"
+modelled = "no"
+reason = """\
+Team-wide (research.md D5): granted to every allied player from a Persian ally, not only to \
+Persian-controlled Knight-line units, so it cannot be modelled as a per-civilisation effect on this \
+civilisation's own entities without also knowing every ally's civilisation, which a rules query \
+does not carry. It also touches attack, a field this pack's normaliser does not carry on any \
+entity record.\
+"""
+field = "attack"
+selector = [
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "569" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
+resolving "Knight-line" the same way as Franks' identical bonus above (units 38, 283, 569).\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Farms cost -40%"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { wood = 0.6 }
+selector = [{ kind = "building", id = "50" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120153, \
+re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
+pass earlier the same session, confirming the sentence verbatim and resolving "Farms" to rules.json \
+building id 50 ("Farm"), whose only cost is wood (60): 60 * 0.6 = 36, a whole number needing no \
+rounding-convention decision.\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Barracks and Stable Units +1/+2 melee armor in Castle/Imperial Age"
+modelled = "no"
+reason = """\
+Age-gated in a way this static knowledge base cannot place: the armour bonus's magnitude depends \
+on which age applies at query time, which a rules query carries no match-time state to resolve \
+(research.md D5). It also touches melee armour, a field this pack's normaliser does not carry on \
+any entity record, and "Barracks and Stable Units" is a broad unit-class this pass does not \
+enumerate (data-model.md §6 forbids a fuzzy class name in place of an explicit selector, and this \
+bonus's own selector would otherwise have to be one) — recorded here as not modelled for both \
+reasons together, with no selector, rather than invented.\
+"""
+field = "melee_armor"
+selector = [{ kind = "building", id = "12" }, { kind = "building", id = "101" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120153, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the age-gated prose; the \
+selector above names only the two producing buildings ("Barracks and Stable"), not the many units \
+trained at them, since no matching effect could ever apply the correct per-unit adjustment \
+without one — see reason.\
+"""
+
+[[effect]]
+civilisation = "Gurjaras"
+source_key = "120191"
+source_text = "Team Bonus: Camel and Elephant Units train +25% faster"
+modelled = "no"
+reason = """\
+Team-wide (research.md D5): granted to every allied player from a Gurjaras ally, not only to \
+Gurjaras-controlled Camel/Elephant units, so it cannot be modelled as a per-civilisation effect on \
+this civilisation's own entities without also knowing every ally's civilisation, which a rules \
+query does not carry.\
+"""
+field = "production_time"
+selector = [
+  { kind = "unit", id = "1007" },
+  { kind = "unit", id = "1009" },
+  { kind = "unit", id = "1120" },
+  { kind = "unit", id = "1122" },
+  { kind = "unit", id = "1132" },
+  { kind = "unit", id = "1134" },
+  { kind = "unit", id = "1263" },
+  { kind = "unit", id = "1744" },
+  { kind = "unit", id = "1746" },
+  { kind = "unit", id = "1755" },
+  { kind = "unit", id = "207" },
+  { kind = "unit", id = "239" },
+  { kind = "unit", id = "329" },
+  { kind = "unit", id = "330" },
+  { kind = "unit", id = "558" },
+  { kind = "unit", id = "873" },
+  { kind = "unit", id = "875" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120191, \
+re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
+resolving "Camel and Elephant Units" mechanically: every unit id in this promoted snapshot's own \
+rules.json whose name contains "Camel" or "Elephant" (17 ids), rather than a hand-picked subset — \
+the same "read the structure, do not hand-guess a class" discipline T644 used for Koreans' \
+"Ranged Soldiers and Infantry".\
+"""
