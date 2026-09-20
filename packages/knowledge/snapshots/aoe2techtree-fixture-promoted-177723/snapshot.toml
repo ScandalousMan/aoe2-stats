@@ -3,8 +3,16 @@
 # neither is silently upgraded to the other" (US2 scenario 2). Same pack, same `source_version`,
 # same normalised `rules.json` as `aoe2techtree-fixture-promoted` — copied byte for byte, and
 # reproduced independently by re-running `aoe2stats_knowledge.normalise.normalise_pack()` against
-# the identical vendored pack, so this is real normalised content, not hand-written data. The one
-# thing that differs is `describes_build`.
+# the identical vendored pack, so this is real normalised content, not hand-written data. The
+# `[snapshot].digest` below is consequently identical to its sibling's, not by coincidence: T644's
+# `effects.toml` is the same real, hand-transcribed content in both directories too (the carry-
+# forward record `aoe2techtree-fixture-promoted` itself carries already attests that nothing this
+# pack describes — including the civilisation bonus prose T644 transcribes from — changed across
+# 177723, 178524, 179158 or 180059), and `compute_digest` hashes only `rules.json` and
+# `effects.toml`, never `describes_build`. The two snapshots stay distinguishable regardless: FR-024
+# identity is the four fields together, and `describes_build` is the one that differs here. The
+# thing that differs between these two `snapshot.toml` files is `describes_build` and how that
+# build's validation was reached (carry-forward here vs. direct implementation there).
 #
 # `describes_build = 177723` is deliberately **not** a carry-forward build. It is the exact build
 # `aoe2techtree-fixture-promoted`'s own `[validation.carry_forward]` record already names as
@@ -18,7 +26,7 @@
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 177723
-digest = "sha256:12effb74e238677dfabdf52698415fee5bdc5ec3c1b49e7808b1aefca6c703ba"
+digest = "sha256:3524558dac7d44e7e48d335fc68cc3eada6e8d52ecfeb1c0c39f21fa056c98ac"
 promoted = true
 civilisations_modelled = []
 

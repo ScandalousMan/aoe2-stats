@@ -1,5 +1,236 @@
-# Placeholder civilisation effects for T639's promoted fixture. T644 replaces this with
-# hand-transcribed effects (research.md D5): the civilisation, the verbatim source sentence and
-# key, whether it is modelled, an explicit entity identifier list, the field, a closed operation,
-# the operand, and the second reading that validated it. Empty here — this fixture exists only so
-# the promotion mechanism (T639) has committed content to digest and verify.
+# T644: hand-transcribed civilisation effects (research.md D5, data-model.md §6 "Civilisation
+# effect"). Transcribed from the English strings vendored in this pack
+# (packages/knowledge/packs/aoe2techtree/strings.en.json), which FR-031 permits with provenance
+# recorded on each entry below (`validated_by`).
+#
+# **Byzantines and Koreans only** — the two civilisations the committed reference recordings train
+# discounted units of (research.md D5, D11): both players in the first fixture trained a Byzantine
+# Pikeman and Korean archers/crossbowmen. Every OTHER bonus in both civilisations' full help
+# strings was read in full and classified, not silently skipped:
+#
+#   - A bonus that touches a field this knowledge base tracks (cost, a production time, an age
+#     requirement, a prerequisite, where something is produced, or availability) and is
+#     unconditional and civilisation-specific (not team-wide, not gated on an age this static rule
+#     cannot place, not conditional on match state) is `modelled = "yes"` below.
+#   - A bonus that is team-wide, age-gated in a way this effect model cannot place (its value
+#     depends on which age a building was constructed in, which this static knowledge base has no
+#     way to know), or conditional on match state (whether a technology has been researched) is
+#     `modelled = "no"` below, with its reason, and its field stays gapped — never half-applied
+#     (research.md D5).
+#   - A bonus touching neither a tracked field nor the two entities these recordings need (e.g.
+#     Byzantines' Fire Ship/Dromon attack-speed bonus, their Imperial Age cost discount, their free
+#     Town Watch/Town Patrol; Koreans' faster stone mining, their Warship wood discount) is out of
+#     scope for this pass — not fabricated, not silently modelled as absent either. Coverage grows
+#     by whole civilisations and the aggregate gap report is the backlog (research.md D5), and
+#     within a modelled civilisation it grows bonus by bonus the same way.
+#
+# **Selector resolution — an explicit identifier list, never a fuzzy class name.** Every selector
+# below was resolved by reading `rules.json`'s own structural fields, not by hand-guessing which
+# ids belong to a named class:
+#
+#   - Byzantines' "Spearman-line": the upgrade chain `rules.json` itself encodes in
+#     `prerequisites` — Spearman (93) has no prerequisite, Pikeman (358) prerequires 93, Halberdier
+#     (359) prerequires 358. All three are trained at the Barracks (building 12).
+#   - Byzantines' "Camel Riders" and "Skirmishers": the same prerequisite-chain method, at the
+#     Stable (101) and Archery Range (87) respectively — Camel Rider (329), Heavy Camel Rider
+#     (330, prerequires 329) and Imperial Camel Rider (207, prerequires 330); Skirmisher (7), Elite
+#     Skirmisher (6, prerequires 7) and Imperial Skirmisher (1155, prerequires 6). A fourth id,
+#     "Camel Scout" (1755), shares Camel Rider's exact cost and is also produced at the Stable, but
+#     its prerequisite/tree linkage does not agree with the rest of the chain (it is not named as a
+#     prerequisite by 329, unlike every other link in these three chains) — recorded here as a
+#     known data-quality question in the vendored pack's per-civilisation tree merge
+#     (`normalise.py`'s majority-vote reduction), not resolved by guessing, and left out of this
+#     selector.
+#   - Koreans' "Ranged Soldiers and Infantry": every unit `rules.json` itself records as produced
+#     at the Archery Range (87) or the Barracks (12) — `produced_at.id`, a real structural field,
+#     not a class label this pack carries anywhere. 18 Archery Range units and 27 Barracks units,
+#     45 in total, including both units the committed recordings need (Crossbowman, 24; Pikeman,
+#     358, already covered by the Byzantine effect above).
+#
+# **Rounding.** Where an operand does not land on an integer resource amount, this package's stated
+# convention (packages/knowledge/tests/test_query.py's module docstring) is round half up, applied
+# by `effects.py`'s `_round_half_up` — never Python's own banker's rounding.
+
+[[effect]]
+civilisation = "Byzantines"
+source_key = "120156"
+source_text = "Camel Riders, Skirmishers and Spearman-line cost -25%"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { food = 0.75, wood = 0.75, gold = 0.75, stone = 0.75 }
+selector = [
+  { kind = "unit", id = "93" },
+  { kind = "unit", id = "358" },
+  { kind = "unit", id = "359" },
+  { kind = "unit", id = "329" },
+  { kind = "unit", id = "330" },
+  { kind = "unit", id = "207" },
+  { kind = "unit", id = "7" },
+  { kind = "unit", id = "6" },
+  { kind = "unit", id = "1155" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
+re-read in full on 2026-09-20 by the T644 implementer, independently of the first transcription \
+pass earlier the same session, confirming the sentence verbatim and the selector's resolution \
+against rules.json's own prerequisites/produced_at fields for units 93/358/359 (Barracks, \
+building 12), 329/330/207 (Stable, building 101) and 7/6/1155 (Archery Range, building 87).\
+"""
+
+[[effect]]
+civilisation = "Byzantines"
+source_key = "120156"
+source_text = "Buildings +10/20/30/40% HP in Dark/Feudal/Castle/Imperial Age"
+modelled = "no"
+reason = """\
+Age-gated in a way this static knowledge base cannot place: the bonus's magnitude depends on \
+which age a building is standing in at query time, and a rules query carries no match-time state \
+to resolve that against (research.md D5: "an age-gated bonus whose gate the recording cannot \
+place"). It also touches hit points, a combat statistic this pack's normaliser does not carry on \
+any entity record at all, so there is no tracked field it could adjust even set aside the age \
+gate.\
+"""
+field = "hp"
+selector = [
+  { kind = "building", id = "12" }, { kind = "building", id = "45" }, { kind = "building", id = "49" }, { kind = "building", id = "50" }, { kind = "building", id = "68" }, { kind = "building", id = "70" }, { kind = "building", id = "71" }, { kind = "building", id = "72" }, { kind = "building", id = "79" }, { kind = "building", id = "82" }, { kind = "building", id = "84" }, { kind = "building", id = "87" }, { kind = "building", id = "101" }, { kind = "building", id = "103" }, { kind = "building", id = "104" }, { kind = "building", id = "109" }, { kind = "building", id = "117" }, { kind = "building", id = "155" }, { kind = "building", id = "199" }, { kind = "building", id = "209" }, { kind = "building", id = "234" }, { kind = "building", id = "235" }, { kind = "building", id = "236" }, { kind = "building", id = "276" }, { kind = "building", id = "487" }, { kind = "building", id = "562" }, { kind = "building", id = "584" }, { kind = "building", id = "598" }, { kind = "building", id = "621" }, { kind = "building", id = "792" }, { kind = "building", id = "1021" }, { kind = "building", id = "1189" }, { kind = "building", id = "1251" }, { kind = "building", id = "1665" }, { kind = "building", id = "1734" }, { kind = "building", id = "1754" }, { kind = "building", id = "1806" }, { kind = "building", id = "1808" }, { kind = "building", id = "1889" }, { kind = "building", id = "2556" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
+re-read in full on 2026-09-20 by the T644 implementer, confirming this bullet is age-gated prose \
+("Dark/Feudal/Castle/Imperial Age") with no per-age state this rules query carries, and that no \
+entity record this normaliser produces carries a hit-point field for it to touch regardless.\
+"""
+
+[[effect]]
+civilisation = "Byzantines"
+source_key = "120156"
+source_text = "Team Bonus: Monks heal +100% faster"
+modelled = "no"
+reason = """\
+Team-wide (research.md D5): the bonus is granted to every allied player from a Byzantine ally, not \
+only to Byzantine-controlled Monks, so it cannot be modelled as a per-civilisation effect on this \
+civilisation's own entities without also knowing every ally's civilisation, which a rules query \
+does not carry.\
+"""
+field = "heal_rate"
+selector = [{ kind = "unit", id = "125" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
+re-read in full on 2026-09-20 by the T644 implementer, confirming the "Team Bonus:" heading and \
+resolving "Monks" to rules.json unit id 125 ("Monk").\
+"""
+
+[[effect]]
+civilisation = "Koreans"
+source_key = "120167"
+source_text = "Ranged Soldiers and Infantry cost -50% wood"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { wood = 0.5 }
+selector = [
+  { kind = "unit", id = "4" },
+  { kind = "unit", id = "5" },
+  { kind = "unit", id = "6" },
+  { kind = "unit", id = "7" },
+  { kind = "unit", id = "24" },
+  { kind = "unit", id = "39" },
+  { kind = "unit", id = "185" },
+  { kind = "unit", id = "474" },
+  { kind = "unit", id = "492" },
+  { kind = "unit", id = "873" },
+  { kind = "unit", id = "875" },
+  { kind = "unit", id = "1010" },
+  { kind = "unit", id = "1012" },
+  { kind = "unit", id = "1155" },
+  { kind = "unit", id = "1911" },
+  { kind = "unit", id = "1952" },
+  { kind = "unit", id = "2569" },
+  { kind = "unit", id = "2571" },
+  { kind = "unit", id = "74" },
+  { kind = "unit", id = "75" },
+  { kind = "unit", id = "77" },
+  { kind = "unit", id = "93" },
+  { kind = "unit", id = "358" },
+  { kind = "unit", id = "359" },
+  { kind = "unit", id = "473" },
+  { kind = "unit", id = "567" },
+  { kind = "unit", id = "751" },
+  { kind = "unit", id = "752" },
+  { kind = "unit", id = "753" },
+  { kind = "unit", id = "759" },
+  { kind = "unit", id = "761" },
+  { kind = "unit", id = "882" },
+  { kind = "unit", id = "1699" },
+  { kind = "unit", id = "1793" },
+  { kind = "unit", id = "1901" },
+  { kind = "unit", id = "1903" },
+  { kind = "unit", id = "1974" },
+  { kind = "unit", id = "2550" },
+  { kind = "unit", id = "2552" },
+  { kind = "unit", id = "2554" },
+  { kind = "unit", id = "2582" },
+  { kind = "unit", id = "2584" },
+  { kind = "unit", id = "2586" },
+  { kind = "unit", id = "2587" },
+  { kind = "unit", id = "2588" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
+re-read in full on 2026-09-20 by the T644 implementer, independently of the first transcription \
+pass earlier the same session, confirming the sentence verbatim ("wood" only, gold and food \
+untouched — Crossbowman's own gold cost is unaffected) and the selector's resolution to every \
+unit rules.json records as produced_at building 87 (Archery Range, 18 units) or building 12 \
+(Barracks, 27 units), 45 unit ids in total, computed directly from rules.json rather than \
+hand-listed.\
+"""
+
+[[effect]]
+civilisation = "Koreans"
+source_key = "120167"
+source_text = "Archer armor and tower upgrades free (Bombard Tower requires Chemistry)"
+modelled = "no"
+reason = """\
+Conditional on match state (research.md D5): the parenthetical itself states the condition — \
+Bombard Tower is free only once Chemistry has been researched, a fact no static rules query \
+carries, and the bonus is stated as one bullet covering both the unconditional and the \
+Chemistry-conditional technologies together, so it is recorded as one not-modelled entry rather \
+than split into an unconditional part this pass would then be asserting more confidence in than \
+the reading supports.\
+"""
+field = "cost"
+selector = [
+  { kind = "technology", id = "211" },
+  { kind = "technology", id = "212" },
+  { kind = "technology", id = "219" },
+  { kind = "technology", id = "140" },
+  { kind = "technology", id = "64" },
+]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
+re-read in full on 2026-09-20 by the T644 implementer, confirming the "(Bombard Tower requires \
+Chemistry)" conditional and resolving "Archer armor" to rules.json's three archer-armour \
+technologies (211, 212, 219) and "tower upgrades" to Guard Tower (140) and Bombard Tower (64) by \
+name.\
+"""
+
+[[effect]]
+civilisation = "Koreans"
+source_key = "120167"
+source_text = "Team Bonus: Villagers +3 line of sight"
+modelled = "no"
+reason = """\
+Team-wide (research.md D5): granted to every allied player from a Korean ally, not only to \
+Korean-controlled Villagers, so it cannot be modelled as a per-civilisation effect on this \
+civilisation's own entities without also knowing every ally's civilisation, which a rules query \
+does not carry. It also touches line of sight, a field this pack's normaliser does not carry on \
+any entity record.\
+"""
+field = "line_of_sight"
+selector = [{ kind = "unit", id = "83" }]
+validated_by = """\
+Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
+re-read in full on 2026-09-20 by the T644 implementer, confirming the "Team Bonus:" heading and \
+resolving "Villagers" to rules.json unit id 83 ("Villager").\
+"""

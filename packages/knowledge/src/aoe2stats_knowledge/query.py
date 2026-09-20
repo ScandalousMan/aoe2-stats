@@ -27,10 +27,22 @@ silently answering with the un-adjusted baseline.
 `KnowledgeGap` member — never a bare value, never a default parameter, never a caught-and-continued
 gap. `KnowledgeGap` is a **type alias**, not the full record FR-035 to FR-037 describe (entity,
 field, `prevents`, computed `severity`) — see `snapshot.NoSnapshotForBuild`'s own docstring for the
-precedent this follows. `EntityAbsent` and `CivilisationNotModelled` are this task's own interim
-gap values, for the same reason: **T647**, when it implements `gaps.py`'s full `KnowledgeGap`, must
-fold all of these interim shapes into it rather than leaving several parallel gap vocabularies in
-the package.
+precedent this follows. `EntityAbsent`, `CivilisationNotModelled` and `EffectNotModelled` are this
+task's own interim gap values, for the same reason: **T647**, when it implements `gaps.py`'s full
+`KnowledgeGap`, must fold all of these interim shapes into it rather than leaving several parallel
+gap vocabularies in the package.
+
+**T644 (`effects.py`) now implements effect application** (contracts/knowledge-base.md,
+"Civilisation qualification" steps 2-3): once a civilisation is modelled (step 1),
+`_raw_value_for_field` reads the entity's own baseline value out of its resolved `rules.json`
+record, and `effects.apply` finds every matching effect in that snapshot's `effects.toml`,
+refusing with `EffectNotModelled` if any match is `modelled = "no"` (never applying a modelled
+match alongside one that is not — "a bonus is never half-applied", research.md D5), and otherwise
+returning the adjusted value with the effects applied, in file order. **No snapshot committed
+today declares any civilisation modelled** (`civilisations_modelled` is still `[]` on every
+promoted fixture — T645 has not run), so every civilisation-qualified query still gaps at step 1,
+exactly as before this task; this wiring exists so T645 only has to populate
+`civilisations_modelled` and `effects.toml` content, never touch this module again.
 
 **Threading a build through a query.** The contract's shorthand signatures
 (`cost(entity, *, civilisation)`) have no separate `build` parameter. `EntityRef` carries `kind`,
@@ -50,7 +62,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
 
-from aoe2stats_knowledge import snapshot
+from aoe2stats_knowledge import effects, snapshot
 from aoe2stats_knowledge.snapshot import NoSnapshotForBuild, Snapshot, SnapshotIdentity
 
 #: The package this module's data is anchored to — the same anchor `snapshot.py` and
@@ -83,7 +95,8 @@ class Answer[T]:
     """One resolved knowledge value (contracts/knowledge-base.md, "The query surface"): the value
     itself, the identity of the snapshot that produced it (US2 scenario 1), the source table it
     was read from (`rules.json`'s own `table_origin`), and every civilisation effect applied to
-    it, in order — always empty for now, because no effect module exists yet to apply one (T644).
+    it, in order (`effects.Effect`, T644) — empty when no effect touched this query, which is
+    every query today, since no snapshot committed yet declares a civilisation modelled (T645).
     """
 
     value: T
@@ -122,12 +135,30 @@ class CivilisationNotModelled:
     cause: str = "civilisation-not-modelled"
 
 
+@dataclass(frozen=True, slots=True)
+class EffectNotModelled:
+    """contracts/knowledge-base.md, "Civilisation qualification" step 2: `civilisation` **is**
+    modelled, but an effect of theirs touches this entity and field and is itself
+    `modelled = "no"` (data-model.md §7's closed cause `effect-not-modelled`) — carries the
+    transcribed `reason` from `effects.py`'s `EffectNotModelled` so a caller need not re-open
+    `effects.toml` to explain the refusal. **Interim** — see `EntityAbsent`.
+    """
+
+    civilisation: str
+    kind: str
+    id: str
+    field: str
+    build: int
+    reason: str
+    cause: str = "effect-not-modelled"
+
+
 #: Every civilisation-qualified query's gap union, until T647 replaces this name with the full
 #: `KnowledgeGap` record (entity, field, build, civilisation, computed `prevents`/`severity` —
 #: data-model.md §7). Kept as one name so a function's `-> Answer[X] | KnowledgeGap` reads exactly
 #: as contracts/knowledge-base.md spells it, and so T647 can retarget this alias without touching
 #: any query function's signature.
-KnowledgeGap = NoSnapshotForBuild | EntityAbsent | CivilisationNotModelled
+KnowledgeGap = NoSnapshotForBuild | EntityAbsent | CivilisationNotModelled | EffectNotModelled
 
 
 @functools.cache
@@ -176,26 +207,52 @@ def _resolve_entity(
     return resolved, record
 
 
+def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
+    """The baseline value `record` (one resolved `rules.json` entity) carries for one
+    query-level field name, before any civilisation effect is applied. `field_name` is the
+    vocabulary this module's own public functions pass (`"cost"`, `"production_time"`, ...) — not
+    necessarily `rules.json`'s own field name, since `production_time` reads whichever of
+    `_TIME_FIELDS` the entity actually carries (a unit's `training_time`, a building's
+    `construction_time`, a technology's `research_time`) and `available_to` has no stored field of
+    its own at all: resolving the entity in the first place already proves the baseline pack
+    carries it, so the baseline answer is `True` pending an effect that says otherwise.
+    """
+    if field_name == "cost":
+        return record.get("cost", {})
+    if field_name == "production_time":
+        for time_field in _TIME_FIELDS:
+            if time_field in record:
+                return record[time_field]
+        return None
+    if field_name == "age_requirement":
+        return record.get("age_requirement")
+    if field_name == "prerequisites":
+        return record.get("prerequisites", [])
+    if field_name == "produced_at":
+        return record.get("produced_at")
+    if field_name == "available_to":
+        return True
+    raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
+
+
 def _civilisation_qualified(
     entity: EntityRef, *, civilisation: str, field_name: str
 ) -> Answer[Any] | KnowledgeGap:
     """The shared body of every civilisation-qualified query (contracts/knowledge-base.md,
-    "Civilisation qualification", steps 1-3): resolve the entity, then refuse unless
-    `civilisation` is in the resolved snapshot's `civilisations_modelled` (research.md D5's
-    conservative rule — never the baseline, FR-038).
+    "Civilisation qualification", steps 1-3): resolve the entity, refuse unless `civilisation` is
+    in the resolved snapshot's `civilisations_modelled` (step 1, research.md D5's conservative
+    rule — never the baseline, FR-038), then apply every matching, modelled effect from that
+    snapshot's `effects.toml` (steps 2-3, `effects.apply` — T644) and return the adjusted value.
 
-    Step 3 — apply each matching effect, in order, and return the adjusted value — is T644's job.
-    No snapshot committed today models any civilisation, so every call through this function gaps
-    at the check above; that is the correct, honest state of this task, not a shortcut (see this
-    module's docstring). The `NotImplementedError` below exists only so that a future change
-    adding a civilisation to some snapshot's `civilisations_modelled` (T645) before effect
-    application exists (T644) fails loudly rather than silently returning the un-adjusted
-    baseline — which would be exactly the substitution FR-038 forbids.
+    **No snapshot committed today declares any civilisation modelled** (`civilisations_modelled`
+    is still `[]` on every promoted fixture — T645 has not run), so every call into this function
+    still gaps at step 1 today, exactly as before this task; that remains the correct, honest state
+    until T645 populates the modelled set, not a shortcut this function takes.
     """
     resolved = _resolve_entity(entity)
     if not isinstance(resolved, tuple):
         return resolved
-    snap, _record = resolved
+    snap, record = resolved
     if civilisation not in _civilisations_modelled(snap.directory):
         return CivilisationNotModelled(
             civilisation=civilisation,
@@ -204,10 +261,30 @@ def _civilisation_qualified(
             field=field_name,
             build=entity.build,
         )
-    raise NotImplementedError(  # pragma: no cover - unreachable while nothing is modelled today
-        "T644 (effects.py) must implement effect application: "
-        f"{civilisation!r} is modelled for {entity.kind}:{entity.id} but nothing applies its "
-        f"effects to {field_name!r} yet"
+    baseline = _raw_value_for_field(record, field_name)
+    applied = effects.apply(
+        snap.directory,
+        civilisation=civilisation,
+        kind=entity.kind,
+        id=entity.id,
+        field=field_name,
+        value=baseline,
+    )
+    if isinstance(applied, effects.EffectNotModelled):
+        return EffectNotModelled(
+            civilisation=civilisation,
+            kind=entity.kind,
+            id=entity.id,
+            field=field_name,
+            build=entity.build,
+            reason=applied.reason,
+        )
+    value, applied_effects = applied
+    return Answer(
+        value=value,
+        snapshot_identity=snap.identity,
+        source=record["table_origin"],
+        effects=applied_effects,
     )
 
 

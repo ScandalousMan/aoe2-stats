@@ -567,7 +567,7 @@ committed recording reports no blocking gap.
       a union of answer and gap with **no third branch** — no bare value, no default parameter, no
       caught-and-continued gap anywhere in the package. **SC-008**'s "by construction rather than by
       inspection" is this signature, and T650 asserts it by introspection
-- [ ] T644 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/effects.py`: structured
+- [x] T644 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/effects.py`: structured
       civilisation effects — the civilisation, the verbatim source sentence and its key, whether it
       is modelled, an explicit identifier list rather than a fuzzy class name, the field, a closed
       operation, the operand, and the second reading that validated it. Transcribed by hand from the
