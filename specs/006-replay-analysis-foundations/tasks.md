@@ -380,7 +380,7 @@ after being produced through the new stream.
       `tests/fixtures/replays/`, following the regeneration discipline the README already states for
       the timeline: regenerate only on an engine upgrade or a deliberate logic change, never by hand,
       and read and explain every diff it produces
-- [ ] T629a [US4] Emit `match-started` from the adapter in
+- [x] T629a [US4] Emit `match-started` from the adapter in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, as the first event of every
       stream, at clock zero. [contracts/canonical-events.md](./contracts/canonical-events.md) lists
       it as produced and nothing produces it: neither committed golden carries one, and the four
@@ -403,7 +403,7 @@ after being produced through the new stream.
       `xfail(strict=True)`: the first event of every committed recording's stream is
       `match-started`, its participants equal the seated slots, and its build equals the one
       `tests/fixtures/replays/README.md` records
-- [ ] T629b [US4] Bind the adapter to the protocol
+- [x] T629b [US4] Bind the adapter to the protocol
       [contracts/canonical-events.md](./contracts/canonical-events.md) names as the seam
       (**FR-015**). The protocol has no implementation and no importer today: the stream's entry
       point takes an already-parsed recording, and the engine's name, version and dependency
@@ -415,13 +415,13 @@ after being produced through the new stream.
       fails a test and not a reader. **This is the entry point T632 extends the refusal test to**,
       and the one object T653, T655 and T658 read the parser's three identity components from.
       Test first, `xfail(strict=True)`
-- [ ] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
+- [x] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
       names and assert none appears in a deny-list **generated from the wheel's own output keys** across
       **every committed recording** — the two expose different action kinds, so a list built from one
       is blind to the other's keys — and that no payload carries a raw byte sequence, a byte offset or a length other
       than `undecoded`'s (**FR-017**). Generating the deny-list rather than writing it by hand is the
       point — a hand-maintained list tracks what someone remembered, and the wheel is what changes
-- [ ] T631 [P] [US4] Write the collapse test (**SC-010**): the age-up command the fixture's player
+- [x] T631 [P] [US4] Write the collapse test (**SC-010**): the age-up command the fixture's player
       issued twice by double-clicking appears once in the canonical stream. Assert over every
       committed recording rather than one, and assert the inverse too: repeated unit-queue commands
       are **not** collapsed, because a test that only checks collapse cannot see over-collapse
