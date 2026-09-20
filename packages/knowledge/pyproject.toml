@@ -19,3 +19,4 @@ packages = ["src/aoe2stats_knowledge"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "snapshots" = "aoe2stats_knowledge/snapshots"
+"packs" = "aoe2stats_knowledge/packs"
