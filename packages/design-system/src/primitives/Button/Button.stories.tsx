@@ -77,6 +77,32 @@ export const Hover: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button' } },
 }
 
+// README's gap register row 8 (H5), F13 (root cause of F1, F2, F4, F6, F7): before this trio,
+// `Hover` above hard-coded `variant: 'primary'`, so `secondary|md` and `destructive|md` had no
+// hover frame anywhere in the tree, and every spec sentence deferring a non-`primary` button's
+// hover "to `Button`'s stories" was false at that size — `secondary`'s own hover only ever existed
+// elsewhere, at `lg` (`ReplayAvailabilityList:Hover`), and `destructive`'s not at all. Same shape
+// as `SecondaryFocusVisible`/`GhostFocusVisible`/`DestructiveFocusVisible` below (T587): one story
+// per variant, each proving the fill deepens to `accent-hover`-shaped tone regardless of which
+// variant it sits on. `ghost|md`'s own hover was already covered elsewhere
+// (`FavouriteToggle:Hover`) before this story existed; `GhostHover` gives it the same first-party
+// frame the other two variants get here, for the same reason `GhostFocusVisible`/`GhostActive`
+// already do — not because the cell was open.
+export const SecondaryHover: Story = {
+  args: { variant: 'secondary', children: 'Cancel' },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const GhostHover: Story = {
+  args: { variant: 'ghost', children: 'Manage' },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const DestructiveHover: Story = {
+  args: { variant: 'destructive', children: 'Unlink this profile' },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
 // §Button "focus-visible": the standard ring, reached by the keyboard only — never by a pointer
 // click (that is what makes it `:focus-visible` rather than `:focus`).
 export const FocusVisible: Story = {
