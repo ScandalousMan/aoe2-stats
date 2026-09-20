@@ -237,7 +237,7 @@ legibility, which outranks uniformity (README rule 1).
 **States**
 
 - **default** — as above, on `background`.
-- **hover / active** — none. A page is not a control.
+- **hover / active** — none; a page is not a control.
 - **focus-visible** — the landmark is the skip link's target and carries `tabIndex={-1}`. When the
   skip link sends focus to it, it shows the standard ring (`outline-ring`, `outline-offset-ring`,
   `focus-ring`) against `background`, the pair the README table already carries. It never shows a
@@ -929,8 +929,8 @@ case. It is not a way to make a form look cleaner.
   and hint do not change. Nothing moves and nothing grows.
 - **focus-visible** — `outline-ring` at `outline-offset-ring` in `focus-ring` around the control,
   never around the whole field. The label is not a focus target.
-- **active** — the control's own text-entry state; no separate paint. A press on a text input is
-  indistinguishable from focusing it, and pretending otherwise would be inventing a state.
+- **active** — the control's own text-entry state; it has no visual form. A press on a text input
+  is indistinguishable from focusing it, and pretending otherwise would be inventing a state.
 - **disabled** — control fill `surface-sunken`, boundary `border`, ink `text-disabled`, label
   `text-disabled`, hint retained in `text-secondary`. **A disabled field carries a visible sentence
   saying why**, exactly as a disabled `Button` does. The hint is never the thing that disappears when

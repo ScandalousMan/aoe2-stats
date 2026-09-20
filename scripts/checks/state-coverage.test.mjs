@@ -717,6 +717,78 @@ function Widget() {
   assert.ok(found.some((el) => el.tag === 'label'))
 })
 
+// --- T595 (row 8, group 3): `inertByConstruction` — an element that is `hidden` and
+// `tabIndex={-1}`, both literal, cannot receive a hover, a focus-visible ring or a press in any
+// frame (`UploadControl`'s own hidden file input). Both required contrasts from the task brief:
+// a `hidden` element that is genuinely reachable in another state (a dynamic `hidden={…}`) must
+// not be swallowed, and a `tabIndex={-1}` element that IS hoverable must not be swallowed either. ---
+
+test('findLocalElements marks a hidden, tabIndex={-1} input as inert by construction (UploadControl shape)', () => {
+  const source = `
+function UploadControl() {
+  return (
+    <input
+      type="file"
+      accept=".aoe2record"
+      hidden
+      tabIndex={-1}
+      disabled={isUploading}
+      onChange={handleInputChange}
+    />
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, true)
+})
+
+test('required contrast: a dynamically hidden element (hidden={condition}) is never inert by construction, even with tabIndex={-1}', () => {
+  const source = `
+function Panel({ collapsed }) {
+  return (
+    <div hidden={collapsed} tabIndex={-1} className="hover:bg-surface-sunken">
+      Detail
+    </div>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
+})
+
+test('required contrast: a tabIndex={-1} element that IS hoverable is never inert by construction (no hidden attribute at all)', () => {
+  const source = `
+function SectionHeading({ id, children }) {
+  return (
+    <h2 id={id} tabIndex={-1} className="hover:text-text-primary">
+      {children}
+    </h2>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
+  assert.equal(found.hover, 'hover:text-text-primary')
+})
+
+test('a hidden element that is not tabIndex={-1} is never inert by construction either (hidden alone is not the rule)', () => {
+  const source = `
+function Widget() {
+  return <input type="file" hidden onChange={handleChange} />
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [found] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.inertByConstruction, false)
+})
+
 test('extractPseudoClasses returns null for a state with no matching utility', () => {
   assert.deepEqual(extractPseudoClasses(['bg-surface text-text-primary']), {
     hover: null,
@@ -5594,6 +5666,94 @@ test('classifyRecord1NoneCells: a multi-component file with no per-component bou
     vocabulary: fixtureVocabulary(),
   })
   assert.equal(results[0].status, 'decline')
+})
+
+// --- T595 (row 8, group 3): `inertByConstruction` closes a cell directly, with no spec lookup at
+// all — `componentKey: 'composites/Unmapped'` deliberately maps to no `## Index` row here (unlike
+// every other fixture above, which resolves through `IMPOSSIBLE_README_FIXTURE`), so a passing
+// result can only come from the inert-by-construction guard itself, never from the ordinary spec
+// path this task's other guards already cover.
+test('classifyRecord1NoneCells: an inert-by-construction element (UploadControl shape) is impossible with no spec lookup at all', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'composites/Unmapped',
+        elements: [
+          {
+            tag: 'input',
+            file: 'f.tsx',
+            line: 274,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: true,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  for (const state of ['hover', 'focus-visible', 'active']) {
+    const cell = results.find((r) => r.state === state)
+    assert.equal(cell.status, 'impossible')
+    assert.match(cell.reason, /inert by construction/)
+  }
+})
+
+// Required contrast: a sibling that is NOT inert by construction, and does not carry a painted
+// class either, still goes through the ordinary spec-mapping path (declining here, since
+// `composites/Unmapped` maps to no Index row) — the inert guard must never leak from one element
+// onto another in the same component.
+test('classifyRecord1NoneCells: inertByConstruction on one element never swallows a sibling that is not inert', () => {
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'composites/Unmapped',
+        elements: [
+          {
+            tag: 'input',
+            file: 'f.tsx',
+            line: 274,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: true,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+          {
+            tag: 'button',
+            file: 'f.tsx',
+            line: 290,
+            hover: null,
+            focus: null,
+            focusVisible: null,
+            active: null,
+            inertByConstruction: false,
+            coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] },
+          },
+        ],
+      },
+    ],
+    matrices: {},
+  }
+  const results = classifyRecord1NoneCells(computed, {
+    readmeSource: IMPOSSIBLE_README_FIXTURE,
+    specSourcesByFile: SPEC_SOURCES,
+    vocabulary: fixtureVocabulary(),
+  })
+  const inertCell = results.find((r) => r.line === 274 && r.state === 'active')
+  const realCell = results.find((r) => r.line === 290 && r.state === 'active')
+  assert.equal(inertCell.status, 'impossible')
+  assert.equal(realCell.status, 'decline')
+  assert.equal(realCell.reason, 'component does not map to exactly one Index row')
 })
 
 test('classifyRecord3NoneCells: the passing case end to end — a non-axis row (Table-shaped), one confirmed-impossible state', () => {

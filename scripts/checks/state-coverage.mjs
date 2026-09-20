@@ -403,6 +403,31 @@ function isAriaHidden(opening) {
   return value === true || value === 'true'
 }
 
+// True when an element is inert by construction: it carries the literal HTML `hidden` attribute
+// (bare `hidden` or `hidden={true}`, never a dynamic `hidden={someCondition}` — a condition might
+// resolve `false` in some story, and an element that can become visible is not safe to treat as
+// permanently inert) *and* a literal `tabIndex={-1}` (`UploadControl`'s own hidden file input,
+// `composites/UploadControl/index.tsx`). Both together, never either alone: `hidden` is the UA
+// stylesheet's own `display: none`, so an element the browser never gives a box to cannot be
+// hovered, focused or pressed in any frame a real pointer or keyboard could produce, whatever a
+// spec sentence says about it — but `tabIndex={-1}` alone says nothing of the kind (`Page`'s own
+// `main` and `Dialog`'s own `h2` are both real script-focus targets, `tabIndex={-1}` and a genuine,
+// painted `focus-visible` frame; `tabIndex` never governs hover or press either, so a `tabIndex={-1}`
+// element that is not hidden can still be hoverable). T595 (row 8, group 3): this is the structural
+// counterpart of bucket (b)'s spec-vocabulary recogniser above — a source-level fact about what the
+// DOM can ever render, never a claim resting on a spec sentence, and never a named exception for one
+// component's own directory.
+function isInertByConstruction(opening) {
+  const hiddenAttr = attrLiteral(getAttr(opening, 'hidden'))
+  const tabIndexAttr = attrLiteral(getAttr(opening, 'tabIndex'))
+  return (
+    hiddenAttr.literal &&
+    hiddenAttr.value === true &&
+    tabIndexAttr.literal &&
+    tabIndexAttr.value === -1
+  )
+}
+
 function lineOf(sourceFile, node) {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
 }
@@ -916,6 +941,7 @@ export function findLocalElements(
       // resolved against a specific story's own scope (T595, `noImpliedRoleReason`'s "dynamic role").
       localConsts: context.localConsts,
       ariaHidden: isAriaHidden(opening),
+      inertByConstruction: isInertByConstruction(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
       // Every real call site of this element's own enclosing helper, within this file, each with
       // its own line and its own guards — `null` when the element is not inside a helper at all,
@@ -5185,6 +5211,21 @@ export function classifyRecord1NoneCells(
             status: 'decline',
             reason:
               'a real class is painted for this state on this exact element — a story gap, never impossible',
+          })
+          continue
+        }
+        // Guard 1.5 (T595, group 3): an element that is inert by construction — `hidden` and
+        // `tabIndex={-1}`, both literal (`isInertByConstruction`) — cannot receive a hover, a
+        // focus-visible ring or a press in *any* frame, a source-level fact that outranks a
+        // sibling's own coverage (which says nothing about whether *this* element can physically
+        // carry the state) and needs no spec confirmation at all, the same "positive knowledge"
+        // precedence guard 1 already holds for a painted class.
+        if (el.inertByConstruction) {
+          results.push({
+            ...base,
+            status: 'impossible',
+            reason:
+              'inert by construction: hidden and tabIndex={-1}, both literal — cannot receive pointer or focus in any frame',
           })
           continue
         }

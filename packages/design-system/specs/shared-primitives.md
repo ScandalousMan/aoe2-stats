@@ -556,7 +556,7 @@ slot, exactly two actions — rather than generalised further than either consum
   other action disables via its own `disabled` rather than a dialog-wide flag, so a caller can
   disable one without the other.
 - **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
-- **empty / hover / active / disabled** — not applicable; a dialog with no actions is a malformed
+- **empty / hover / active / disabled** — none; a dialog with no actions is a malformed
   call site, and hover, active and disabled all belong to the `Button`s inside it — each one's own
   `disabled` prop, as `loading` above already uses to disable one action without the other — not to
   the dialog itself, which has no resting/pressed/disabled distinction independent of its actions.

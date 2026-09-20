@@ -2226,6 +2226,80 @@ interactive`, `has no visual form`, `has no active state`), each cited once, ver
    and declines the rest, each with a reason, for that later commit or a dated register entry to
    resolve.
 
+   **T595's own row-8 closure slice (2026-09-20), the cells this task closes without a new story or a
+   baseline: three groups, none of them the cell gate itself.** Before this slice: record 1 0/44
+   impossible (44 decline); record 3 7/40 impossible (33 decline). After: record 1 7/44 impossible
+   (37 decline); record 3 14/40 impossible (26 decline) — eleven cells closed, all by making an
+   existing decline reason either true or unambiguous, never by relaxing the recogniser itself.
+
+   _Group 1 — phrasing, not meaning._ Thirteen `'none'` cells declined only because their own spec
+   answer used a real, house-established "impossible" claim in a phrasing outside the five-phrase
+   closed vocabulary. `shared-primitives.md`'s `Dialog` bullet ("empty / hover / active / disabled —
+   not applicable; a dialog with no actions is a malformed call site...") became "— none; ..." with
+   the rest of its own sentence untouched, closing `Dialog`'s `h2` hover/active (record 1) and
+   hover/active/disabled (record 3) — its own `focus-visible` bullet is a different, real answer and
+   was not touched. `structural-tier.md`'s `Page` bullet ("hover / active — none. A page is not a
+   control.") became "— none; a page is not a control.", closing `Page`'s `main` hover/active in both
+   records. `structural-tier.md`'s `Field` bullet ("active — the control's own text-entry state; no
+   separate paint.") became "...; it has no visual form. A press on a text input is
+   indistinguishable..." (the same claim the deleted "no separate paint" wording already made,
+   rephrased into the closed vocabulary's own "has no visual form" clause), closing `Field`'s `active`
+   row for both `lg` and `md` in record 3. **`Dialog`'s `h2` `focus-visible`** and **`Tooltip`'s own
+   `active`** were checked against their full spec text and left exactly as they read: both describe a
+   real, painted frame no story yet depicts, and neither answer was touched. Every edit here kept the
+   file's own line count unchanged (only the words within a line moved), so no citation into either
+   file needed a matching fix.
+
+   _Group 2 — `SearchBox`/`PlayerResultRow`'s shared spec file, structurally._
+   `player-search.md`'s States section answers `hover`/`active`/`disabled`/`selection`/`expansion` in
+   one shared prose passage covering both components at once (the same shape
+   `spec-completeness.mjs`'s own file header names for `match-history.md` and
+   `privacy-data-rights.md` too, and correctly so — the passage genuinely reads as one continuous
+   comparison between `Input` and `PlayerResultRow`, not two answers that happen to share a
+   paragraph), so `mapComponentKeyToSpecFile`/`findComponentSection` had nowhere to scope `SearchBox`
+   to and `composites/SearchBox`'s own `input` `active` cell declined on the ambiguity alone. Fixed as
+   a spec edit, not a resolver heuristic: two new level-3 headings, one named `SearchBox` and one
+   named `PlayerResultRow`, now bound each component's own section — `SearchBox`'s carrying every
+   bullet that was already exclusively its own (idle/loading/found/empty×2/error) plus the five
+   shared bullets verbatim, `PlayerResultRow`'s carrying the same five shared bullets verbatim plus
+   its own `default`/`loading`/`error`/`empty` answers (newly written, each grounded in what
+   §2/§4/§6 already state or in the anatomy fact that `PlayerResultRow` renders zero instances during
+   `ResultsRegion`'s loading/error/empty states) — a note at the top of the section records why the
+   shared bullets are quoted twice rather than split, so a later reader does not mistake the
+   duplication for drift. A resolver-side alternative (reading a per-component sub-clause inside the
+   shared answer, introduced by a backtick'd element name) was considered and rejected: the file's own
+   convention for introducing a sub-clause is inconsistent — the `Input` clause is colon-labelled, the
+   `PlayerResultRow` clause is not — and reusing `isClauseLeadingBoldSpan`'s own line-start rule
+   against backtick code, used constantly and mid-sentence throughout this prose, risked a wrapped
+   line's own leading token being read as a false component boundary; the spec edit needed no new
+   parsing rule and could not make that mistake. The cell still declines after the fix (`Input`'s own
+   "standard text-input interaction" is a real, substantive answer, not a closed-vocabulary one) —
+   removing the ambiguity was the goal, not forcing a verdict, exactly as this task's brief allows.
+
+   _Group 3 — `UploadControl`'s hidden file input, a source-level rule rather than a spec question._
+   `composites/UploadControl/index.tsx`'s own file input carries `hidden` and `tabIndex={-1}`, both
+   literal, and no `hover:`/`focus-visible:`/`active:` class of its own — three cells that used to
+   decline on `manual-upload.md`'s own real, multi-sentence deferral (a true answer, just not a
+   closed-vocabulary one). **Decision: this is not a spec question at all.** `hidden` is the UA
+   stylesheet's own `display: none` — an element the browser never gives a box to cannot be hovered,
+   focused or pressed in any frame a real pointer or keyboard could produce, which is true regardless
+   of what any spec sentence says about it, the same way a physical fact is never something a spec
+   could contradict. Implemented as `isInertByConstruction` (`scripts/checks/state-coverage.mjs`), a
+   new guard in `classifyRecord1NoneCells` checked before the spec lookup and after the painted-class
+   guard (positive knowledge — a real class, or a real physical incapacity — always outranks a spec
+   sentence, never the reverse): true only when the element carries **both** a literal `hidden`
+   (bare or `={true}`, never a dynamic `hidden={condition}` — a condition might resolve `false` in
+   some story) **and** a literal `tabIndex={-1}`. Neither alone is sufficient, on purpose and by the
+   two required contrasts `state-coverage.test.mjs` plants: `tabIndex={-1}` alone says nothing about
+   hover or press and nothing about focus either once the element is not hidden (`Page`'s own `main`
+   and `Dialog`'s own `h2` are both real, script-focused `tabIndex={-1}` targets with a genuine
+   `focus-visible` frame, and a `tabIndex={-1}` element carrying a `hover:` class in the same fixture
+   set stays hoverable); a dynamically `hidden` element stays a real candidate too, since it may render
+   visible under some story's own data. This is a general, tested rule keyed to the element's own
+   shape, not a named exception for `UploadControl`'s own directory — nothing in the guard reads a
+   component name. `UploadControl`'s own hover/focus-visible/active cells for this element now read
+   `'impossible'` directly, crediting no spec sentence at all.
+
    **Records 2 and 4 stay read, not extracted, and Record 2's spec side has no mechanical
    completeness guard of its own (a residual `reviewer` noted while verifying this pass, not one this
    pass closes).** `findDeferralHitsInStories` (8c-bis, below) scans every `*.stories.tsx` under this
