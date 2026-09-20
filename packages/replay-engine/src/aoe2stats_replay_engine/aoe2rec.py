@@ -57,7 +57,7 @@ import re
 import struct
 import zipfile
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import metadata
 from io import BytesIO
@@ -74,6 +74,7 @@ from aoe2stats_core.replay.analysis import (
 )
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
+    CanonicalEvent,
     EventKind,
     MatchEndedPayload,
     ResearchQueuedPayload,
@@ -86,6 +87,7 @@ from aoe2stats_core.replay.validation import (
     ReplayValidationResult,
 )
 from aoe2stats_replay_engine.canonical import Accounting, canonical_events
+from aoe2stats_replay_engine.dependencies import read_engine_dependencies
 
 ENGINE_NAME = "aoe2rec-py"
 
@@ -334,7 +336,7 @@ _AGE_UP_TECHNOLOGY_IDS = frozenset({101, 102, 103})
 
 
 class Aoe2RecExtractor:
-    """The `aoe2rec-py`-backed `ReplayExtractor` (T355).
+    """The `aoe2rec-py`-backed `ReplayExtractor` (T355) and `CanonicalEventSource` (T629b).
 
     Shares `_read_member_bytes` with `Aoe2RecValidator.validate` — see that function's docstring —
     so this class implements no well-formedness check of its own. Once the wheel has parsed the
@@ -347,6 +349,14 @@ class Aoe2RecExtractor:
     the stream's exit rule: a build or training issued after a participant's resignation is no
     longer attributed to them, and an unknown operation kind raises `EngineParseError` where the old
     walk skipped it; neither occurs in a committed recording.
+
+    `events` (T629b) is the seam `contracts/canonical-events.md` names: it shares `_parsed_or_
+    refuse` with `extract` — the same well-formedness check, the same `max_raw_bytes` ceiling, the
+    same parse — and then hands back `canonical.canonical_events(parsed)` directly, never a list and
+    never the operations it folds over. Binding this class to `aoe2stats_core.replay.events.
+    CanonicalEventSource` (a `runtime_checkable` `Protocol`) is asserted with the protocol's own
+    `isinstance` check in `tests/test_extract.py`, so a signature that drifts from the contract
+    fails that test rather than surfacing as an `AttributeError` above the adapter (FR-015).
 
     `max_raw_bytes` (T357, R3) is a **required** keyword-only constructor argument, not a module
     constant: it is the analysis memory ceiling (`ANALYSIS_MAX_RAW_BYTES`), a number this package
@@ -364,23 +374,36 @@ class Aoe2RecExtractor:
     two attributes, read from the identical `ENGINE_NAME`/`metadata.version(ENGINE_NAME)` pair
     `_build_timeline` already embeds in every `MatchTimeline` it returns and `Aoe2RecValidator.
     validate` already reads for `ReplayValidationResult` — a third read of the same two values,
-    never a fourth constant to keep in sync with them.
+    never a fourth constant to keep in sync with them. `engine_dependencies` (T629b, FR-044) is the
+    same T627 record `read_engine_dependencies` builds from installed distribution metadata — read
+    once here, not a fourth place it is recomputed.
     """
 
     engine_name: str = ENGINE_NAME
     engine_version: str
+    engine_dependencies: Mapping[str, str]
 
     def __init__(self, *, max_raw_bytes: int) -> None:
         self._max_raw_bytes = max_raw_bytes
         self.engine_version = metadata.version(ENGINE_NAME)
+        self.engine_dependencies = read_engine_dependencies(ENGINE_NAME).as_mapping()
 
     def extract(self, zip_bytes: bytes) -> MatchTimeline:
+        parsed = self._parsed_or_refuse(zip_bytes)
+        return _build_timeline(parsed)
+
+    def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
+        parsed = self._parsed_or_refuse(zip_bytes)
+        return canonical_events(parsed)
+
+    def _parsed_or_refuse(self, zip_bytes: bytes) -> Mapping[str, object]:
         # The declared, uncompressed member size — read from the archive's own central directory,
         # exactly like `_well_formed_member`'s own `_MAX_INNER_BYTES` check — is compared against
         # the configured ceiling before a single byte is decompressed or handed to the engine.
         # `_well_formed_member` still runs its own checks first (single member, expected filename,
         # `_MAX_INNER_BYTES`, decompression ratio); this is an additional, stricter refusal on top,
-        # not a replacement for any of them.
+        # not a replacement for any of them. `extract` and `events` share this one path rather than
+        # each re-implementing well-formedness, the ceiling and the parse.
         member = _well_formed_member(zip_bytes)
         if member.file_size > self._max_raw_bytes:
             raise MalformedArchiveError(
@@ -388,8 +411,7 @@ class Aoe2RecExtractor:
                 f"{self._max_raw_bytes}-byte ceiling — refused before parsing (R3)"
             )
         _member, data = _read_member_bytes(zip_bytes)
-        parsed = _parse_or_raise(data)
-        return _build_timeline(parsed)
+        return _parse_or_raise(data)
 
 
 def _parse_or_raise(data: bytes) -> Mapping[str, object]:
