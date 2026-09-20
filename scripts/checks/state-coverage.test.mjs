@@ -2491,6 +2491,81 @@ test('buildAxisMatrix renders a play-driven focus-visible match as unresolved, n
   assert.match(row.focusVisible[0], /EscapeReturnsFocusToTrigger/)
 })
 
+// --- T595 (row 8, H5): the real `Menu` trigger shape (a script `.focus()` after an `Escape`-driven
+// close, no `visualForceState`) resolves to `unresolved` through the same pipeline
+// `computeStateCoverage` runs the real tree through — never a hand-built `buildElementCells` call —
+// and resolves to `covered` once the story carries the real `visualForceState` T595 adds. Planted
+// against this exact contrast (not just asserted after the fact): the "before" half below is the
+// unfixed shape `Menu.stories.tsx`'s own `EscapeReturnsFocusToTrigger` carried before this task, and
+// it fails the "after" half's own assertion — confirmed by running it against the pre-fix story text
+// before adding the parameter. ------------------------------------------------------------------
+
+const TRIGGER_INDEX_SOURCE = `
+export function Trigger({ triggerLabel }) {
+  return (
+    <button
+      type="button"
+      className="outline-none focus-visible:outline-2 focus-visible:outline-focus-ring"
+    >
+      {triggerLabel}
+    </button>
+  )
+}
+`
+
+function triggerStoriesSource(forced) {
+  return `
+import { within, userEvent, expect } from '@storybook/test'
+import { Trigger } from './index'
+const meta = { component: Trigger, args: {} }
+export default meta
+
+export const EscapeReturnsFocusToTrigger = {
+  ${forced ? "parameters: { visualForceState: { state: 'focus-visible', role: 'button' } }," : ''}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    trigger.focus()
+    await userEvent.keyboard('{Escape}')
+    await expect(trigger).toHaveFocus()
+  },
+  args: { triggerLabel: 'aoe2guy' },
+}
+`
+}
+
+test('contrast: a Menu-trigger-shaped play-driven focus-after-Escape stays unresolved with no visualForceState (the pre-T595 shape, planted), and resolves to covered once the story carries one (real computeStateCoverage pipeline, record 1)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Trigger' }]
+
+  const beforeFiles = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/index.tsx'), TRIGGER_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'),
+      triggerStoriesSource(false),
+    ],
+  ])
+  const before = computeStateCoverage({ componentDirs, filesByPath: beforeFiles })
+  const beforeRow = before.localElements.find(
+    (c) => c.componentKey === 'primitives/Trigger',
+  ).elements[0]
+  assert.equal(beforeRow.coveredBy.focusVisible.length, 1)
+  assert.match(beforeRow.coveredBy.focusVisible[0], /^unresolved:/)
+  assert.match(beforeRow.coveredBy.focusVisible[0], /play-driven; frame not provable statically/)
+
+  const afterFiles = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Trigger/index.tsx'), TRIGGER_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Trigger/Trigger.stories.tsx'),
+      triggerStoriesSource(true),
+    ],
+  ])
+  const after = computeStateCoverage({ componentDirs, filesByPath: afterFiles })
+  const afterRow = after.localElements.find(
+    (c) => c.componentKey === 'primitives/Trigger',
+  ).elements[0]
+  assert.deepEqual(afterRow.coveredBy.focusVisible, ['EscapeReturnsFocusToTrigger'])
+})
+
 // --- REJECT on #80, item 4: own story files skip their JSX and take axis values from args only,
 // so Button.stories.tsx's Disabled/AllVariants/RealisticPageActions (real JSX in a `render:`
 // function, no `args` at all) land in the primitive's default row (`secondary|md`) instead of the

@@ -255,8 +255,27 @@ export const KeyboardNavigation: Story = {
 // documented state, not a leftover. No `visual-full-page` tag — like `Empty` and `ClosedTrigger`,
 // nothing here escapes the trigger's own layout box, so the default clipped capture already
 // reaches it.
+// T595 (row 8, H5): forced rather than left play-driven. `buildElementCells`'s play-focus branch
+// (`state-coverage.mjs`) marks every play-driven match `unresolved` on principle, because a script
+// cannot tell a fresh `:focus-visible` apart from a frame a *preceding* story already captured —
+// but this story's own final frame is exactly `CountryFlag`'s `FlagDismissedAfterEscape` shape
+// (`CountryFlag.stories.tsx`): Escape closes an overlay and hands focus back to the trigger via a
+// script call inside the component's own close handler, never through a real keyboard event, on a
+// page nothing has yet clicked with a *trusted* pointer — `tests/visual/stories.spec.ts`'s own
+// `VisualForceState` comment establishes that shape reliably matches `:focus-visible` in Chromium.
+// `CountryFlag` already resolves the identical case this way rather than by widening the play-focus
+// branch's own policy, so this follows the existing precedent instead of special-casing the branch
+// to one story. `role: 'button'` needs no `name`/`nth`: the trigger is the only `button`-role
+// element `Menu/index.tsx` renders (the footer item takes `role="menuitem"`, `MenuItemRow`'s own
+// items are role `menuitem(radio|checkbox)`), so there is exactly one candidate before the menu
+// even closes. The explicit `.focus()` this parameter drives at capture time lands on the element
+// the play function's own final assertion (`toHaveFocus()`) already names — same element, same
+// frame, now provable rather than merely asserted.
 export const EscapeReturnsFocusToTrigger: Story = {
   name: 'Escape closes the surface and returns focus to the trigger',
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const trigger = canvas.getByRole('button')
