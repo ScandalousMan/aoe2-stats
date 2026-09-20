@@ -559,7 +559,7 @@ committed recording reports no blocking gap.
       the only committed recording cannot be analysed at all. Record the weakest link in the
       attestation — the fixture's own build has no publisher page and its notes come from a
       secondary listing — **in the validation record, not in a comment**
-- [ ] T643 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/query.py` with the surface in
+- [x] T643 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/query.py` with the surface in
       [contracts/knowledge-base.md](./contracts/knowledge-base.md). `civilisation` is **keyword-only
       and required** on every rule query, so there is no way to ask for a generic value and therefore
       no way to be handed one (**FR-023**). Every answer carries the snapshot identity that produced
