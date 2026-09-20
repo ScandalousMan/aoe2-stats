@@ -583,7 +583,7 @@ committed recording reports no blocking gap.
       civilisation absent from the modelled set refuses **every** civilisation-qualified cost and
       time, because which fields its bonuses touch is precisely what is not known. Coverage grows by
       whole civilisations and the gap report is the backlog
-- [ ] T646 [P] [US2] Write `packages/knowledge/tests/test_query.py` before T643–T645,
+- [x] T646 [P] [US2] Write `packages/knowledge/tests/test_query.py` before T643–T645,
       `xfail(strict=True)`: a discounted unit returns its adjusted cost with the effect and its
       source sentence; the same unit for an unmodelled civilisation returns a gap and **never the
       baseline**; a build one higher than any snapshot describes returns a gap; asking without a
