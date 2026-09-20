@@ -24,7 +24,7 @@ These data cannot be known from the recording. Each is stated in full: why, what
 - validation: the absence is re-measured against every newly committed current-patch recording, as docs/data-sources.md section 2 requires
 - evidence: docs/data-sources.md §2
 
-## observed (39)
+## observed (41)
 
 Read directly from the recording.
 
@@ -358,6 +358,26 @@ Read directly from the recording.
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
+- evidence: specs/006-replay-analysis-foundations/research.md D10
+
+### `event.unit_unqueued.unit_id`
+
+- status: planned
+- source: a named field of a top-level cancellation command (Unqueue, FarmUnqueue, FishtrapUnqueue)
+- method: read unchanged, only when the payload carries both an integer unit id and an integer amount; any other shape stays undecoded rather than guessed
+- requires knowledge: none
+- depends on: none
+- validation: packages/replay-engine/tests/test_canonical.py::test_a_top_level_cancellation_is_a_unit_unqueued_event — synthetic: neither committed recording produces a cancellation (feature 006 phase 3, T633)
+- evidence: specs/006-replay-analysis-foundations/research.md D10
+
+### `event.unit_unqueued.count`
+
+- status: planned
+- source: a named field of a top-level cancellation command (Unqueue, FarmUnqueue, FishtrapUnqueue)
+- method: read unchanged, only when the payload carries both an integer unit id and an integer amount; any other shape stays undecoded rather than guessed
+- requires knowledge: none
+- depends on: none
+- validation: packages/replay-engine/tests/test_canonical.py::test_a_top_level_cancellation_is_a_unit_unqueued_event — synthetic: neither committed recording produces a cancellation (feature 006 phase 3, T633)
 - evidence: specs/006-replay-analysis-foundations/research.md D10
 
 ### `event.research_queued.technology_id`
@@ -733,11 +753,11 @@ A signal read from behaviour, not a recorded fact.
 ### `participant.group_silence_episodes`
 
 - status: planned
-- source: unit object identifiers named by move, interact and order commands, and the match clock
-- method: an episode is a group of unit identifiers commanded together repeatedly and then named by no later command; the confidence basis is the ratio of commands naming the group before the silence to the length of the silence, banded into the closed confidence levels. It sees only three command kinds, so a group told to hold or patrol and never moved again reads as silent. The band thresholds are fixed by the method's identifier and version when the algorithm lands, and this entry is amended in the same change
+- source: unit object identifiers named by move, interact and order commands, the match clock, participant-resigned and match-ended
+- method: group-silence.banding v1 (T633): a group is two or more unit object ids named together by one participant's move, interact or order command (the only classes carrying decoded ids), seen together on at least REPEAT_MIN=2 separate occasions, then never named together again before that participant's exit or the match's end. An episode publishes only when the resulting silence lasts at least MIN_SILENCE_MS=180000 ms. Confidence basis: intensity is the occurrence count above; duration_ratio is the observed silence length divided by the time remaining in the match after the group's last command, measured to the true match end even when the participant resigned first — an observed silence cut short by resignation is therefore a weaker signal than one that ran to the match's own end. Confidence bands: medium when intensity>=MEDIUM_INTENSITY=4 and duration_ratio>=MEDIUM_DURATION_RATIO=0.5, low otherwise. High is never assigned: this method sees only three command kinds — move, interact and order carry decoded unit ids; formation, stance, patrol and stop do not — so a group parked by one of those commands is indistinguishable here from one truly abandoned, and that blind spot caps the level this banding may assign at medium, structurally, not as a per-instance judgement. These four thresholds are read by the implementation from this sentence, not from a Python constant: changing one is a register edit and a regenerated view (packages/replay-engine/src/aoe2stats_replay_engine/silence.py)
 - non-claim: this is not a casualty count and not a count of units lost: a unit leaves the command log when its owner stops selecting it, alive or dead, and a unit never individually selected is never in the log at all; a group told to hold, patrol or stop reads as silent
-- confidence method: ratio of commands naming the group before the silence to the length of the silence, banded into the closed confidence levels; algorithm identifier and version recorded with each value
+- confidence method: the ratio of the observed silence length to the match time remaining after the group's last command (duration_ratio), combined with the number of times the group was commanded together before it (intensity), banded per the method's MEDIUM_INTENSITY and MEDIUM_DURATION_RATIO thresholds; medium or low only, never high, per the method's blind-spot cap
 - requires knowledge: none
-- depends on: `event.units_commanded.unit_object_ids`, `event.clock_ms`, `event.participant`
-- validation: packages/replay-engine/tests — synthetic silence streams and both committed recordings (feature 006 phase 3)
+- depends on: `event.units_commanded.unit_object_ids`, `event.clock_ms`, `event.participant`, `event.match_ended.final_clock_ms`
+- validation: packages/replay-engine/tests/test_silence.py — synthetic silence streams and both committed recordings (feature 006 phase 3, T633)
 - evidence: specs/006-replay-analysis-foundations/research.md D10
