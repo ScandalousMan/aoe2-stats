@@ -41,6 +41,10 @@ import {
   parseSelector,
   resolveSelectorMatch,
   findRenderJsxProps,
+  getComponentPropDefaults,
+  evaluateMergedArgsObject,
+  buildStoryPropsScope,
+  buildFileValueScope,
   impliedRoleForPrimitiveInstance,
   computeStateCoverage,
   checkCitations,
@@ -1913,6 +1917,95 @@ test('contrast: a guard whose operand comes from a function call (never a litera
   // simply absent from the scope a real story's own args would ever populate this way.
   const scope = new Map([['authenticated', { resolved: false, value: undefined }]])
   assert.equal(evaluateGuards(real.guards, scope), 'unresolved')
+})
+
+// T599: `buildStoryPropsScope` seeds a component prop that has no destructuring default as
+// `UNRESOLVED` for a story unless that story's own merged `args` names it explicitly — wrong about
+// what Storybook renders. A story renders `<Component {...args} />`; `args` *is* the complete prop
+// set, so a name absent from it is genuinely `undefined` at render, not unknown, and
+// `evaluateGuards` must read `'unreached'` there, not `'unresolved'`. `PrivacyNotice`'s own
+// `controllerContact ? <a…> : null` (`index.tsx:797`) is the live shape this reproduces.
+
+const CONTROLLER_CONTACT_SOURCE = `
+function Widget({ controllerContact }) {
+  return (
+    <div>
+      {controllerContact ? <a href={controllerContact.contactRoute}>Contact</a> : null}
+    </div>
+  )
+}
+`
+
+test('buildStoryPropsScope resolves an optional, default-less prop a story never names in its own args to a real, confirmed undefined — and the guard it gates evaluates unreached, not unresolved (T599)', () => {
+  const sourceFile = parse(CONTROLLER_CONTACT_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap, 'Widget')
+  const anchor = found.find((f) => f.tag === 'a')
+  assert.ok(anchor)
+
+  const defaults = getComponentPropDefaults(sourceFile, 'Widget')
+  // No destructuring default for `controllerContact` — a `null` default expression, the same shape
+  // `PrivacyNotice`'s own optional prop carries.
+  assert.equal(defaults.get('controllerContact'), null)
+
+  // A story whose own merged `args` never name `controllerContact` at all — the exact shape
+  // `PrivacyNotice`'s own `ObjectionCallToActionHover`/`FocusVisible`/`Active` stories carry.
+  const mergedArgs = { resolved: true, value: { lastUpdated: '2026-08-30' } }
+  const scope = buildStoryPropsScope(defaults, mergedArgs, new Map())
+
+  assert.deepEqual(scope.get('controllerContact'), { resolved: true, value: undefined })
+  assert.equal(evaluateGuards(anchor.guards, scope), 'unreached')
+})
+
+test('contrast: an optional prop supplied through render() as an explicit JSX prop still resolves to its real, supplied value, never to undefined merely because args does not name it (T599, MatchRow-shaped)', () => {
+  const componentSourceFile = parse(
+    `
+function MatchRow({ match }) {
+  return (
+    <div>
+      {match ? <a href={match.href}>Link</a> : null}
+    </div>
+  )
+}
+`,
+    'MatchRow/index.tsx',
+  )
+  const constMap = buildConstStringMap(componentSourceFile)
+  const found = findLocalElements(componentSourceFile, 'MatchRow/index.tsx', constMap, 'MatchRow')
+  const anchor = found.find((f) => f.tag === 'a')
+  assert.ok(anchor)
+  const defaults = getComponentPropDefaults(componentSourceFile, 'MatchRow')
+  assert.equal(defaults.get('match'), null)
+
+  const storySourceFile = parse(
+    `
+const base = { href: '/real' }
+export const Real = {
+  render: () => <MatchRow match={base} />,
+}
+`,
+    'MatchRow.stories.tsx',
+  )
+  const [{ node: storyNode }] = findExportedStoryObjects(storySourceFile)
+  const storyFileScope = buildFileValueScope(storySourceFile)
+  // No meta object at all, and this story's own `args` never mention `match` — `render:`'s explicit
+  // JSX prop is the only signal for it.
+  const mergedArgs = evaluateMergedArgsObject(null, storyNode, storyFileScope)
+  assert.deepEqual(mergedArgs.value, {})
+
+  const scope = buildStoryPropsScope(defaults, mergedArgs, storyFileScope)
+  // `buildStoryPropsScope` alone (the `args`-only view) reads `match` as the real, confirmed
+  // `undefined` a bare `{...args}` render would give it — the T599 fix, exercised here too.
+  assert.deepEqual(scope.get('match'), { resolved: true, value: undefined })
+
+  // The caller applies `findRenderJsxProps`'s own override *after* `buildStoryPropsScope`, the same
+  // order `computeStateCoverage`'s own two call sites use — the real, explicit JSX value must win,
+  // not the `args`-absent `undefined` above.
+  for (const [propName, exprNode] of findRenderJsxProps(storyNode, 'MatchRow')) {
+    scope.set(propName, evaluateExpr(exprNode, storyFileScope))
+  }
+  assert.deepEqual(scope.get('match'), { resolved: true, value: { href: '/real' } })
+  assert.equal(evaluateGuards(anchor.guards, scope), 'reached')
 })
 
 // 2. A nested-object arg label matched by name, end to end through `resolveComposedStoryMatches` —

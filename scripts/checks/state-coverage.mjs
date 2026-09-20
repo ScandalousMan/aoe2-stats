@@ -1265,11 +1265,20 @@ export function evaluateMergedArgsObject(metaObj, storyObj, fileScope) {
 
 // The scope a candidate's own guards/attribute expressions are evaluated against for one specific
 // story: the component's own prop defaults, overridden by whichever of those same names the
-// story's merged args actually supplies.
+// story's merged args actually supplies. A story renders `<Component {...args} />` — `args` *is*
+// the complete prop set a story hands the component — so a prop with no destructuring default that
+// `args` does not name is genuinely `undefined` at render, not unknown: it resolves to that real
+// value here rather than staying `UNRESOLVED`. (A caller that also has an explicit
+// `render: () => <Component prop={x} />` JSX prop for that same name — invisible to `args` entirely
+// — overrides this entry afterwards with the real value `findRenderJsxProps` reads, the same way it
+// already overrides a resolved default; this function only ever sees the `args` side of that.)
 export function buildStoryPropsScope(componentPropDefaults, mergedArgsObject, fileScope) {
   const scope = new Map(fileScope)
   for (const [name, defaultExpr] of componentPropDefaults) {
-    scope.set(name, defaultExpr ? evaluateExpr(defaultExpr, fileScope) : UNRESOLVED)
+    scope.set(
+      name,
+      defaultExpr ? evaluateExpr(defaultExpr, fileScope) : { resolved: true, value: undefined },
+    )
   }
   if (mergedArgsObject.resolved) {
     for (const [key, value] of Object.entries(mergedArgsObject.value)) {

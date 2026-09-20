@@ -142,24 +142,22 @@ export const Active: Story = {
 // under these default `hrefs` — both contributing their real slot count to the ordering instead of
 // one apiece. The one side effect worth naming: the contact-route anchor
 // (`index.tsx:797`, T596's own subject, not this task's) shares this component's `link` pool, and
-// this fix correctly rules it out of `nth: 9`'s own range now (a clean `reject`, not `ambiguous`) —
-// but its own cells still read `unresolved`, not `none`. Two fixes reach it and neither closes it,
-// each for a reason worth keeping distinct. `ObjectionCallToAction`'s own `selector` match (below)
-// used to attempt this anchor's `href` without ever checking whether it renders at all;
-// `resolveSelectorMatch`'s own caller now excludes a candidate this story's scope confirms
-// `'unreached'` before attempting it — but the cell's own `unresolved` reason names
-// `ObjectionCallToActionHover`/`FocusVisible`/`Active` below, and *those* stories' own args are
-// `{ lastUpdated, hrefs }`, no `controllerContact` — so, evaluated against those stories' own scope,
-// this anchor's guard, `controllerContact ? <a…> : …`, is `'unresolved'`, not `'unreached'`.
+// this fix correctly rules it out of `nth: 9`'s own range (a clean `reject`, not `ambiguous`) — and,
+// as of T599, its own cells now read `none`, not `unresolved`. `ObjectionCallToAction`'s own
+// `selector` match (below) used to attempt this anchor's `href` without ever checking whether it
+// renders at all; `resolveSelectorMatch`'s own caller now excludes a candidate this story's scope
+// confirms `'unreached'` before attempting it — and the cell's own reason names
+// `ObjectionCallToActionHover`/`FocusVisible`/`Active` below, whose own args are
+// `{ lastUpdated, hrefs }`, no `controllerContact`. `buildStoryPropsScope`
+// (`scripts/checks/state-coverage.mjs`) used to seed a component prop with no destructuring default
+// as unknown whenever the story it is evaluating for did not name it in `args`, rather than as the
+// `undefined` it actually is at render; T599 fixed that package-wide, so evaluated against those
+// stories' own scope, `controllerContact` now resolves to its real value there, `undefined`, and
+// this anchor's guard, `controllerContact ? <a…> : …`, is `'unreached'`, not `'unresolved'`.
 // `WithPublishedContact` above does set `controllerContact` and genuinely renders this anchor (with
 // `href="/contact"`), but it forces no state at all, so it never enters this comparison either way
-// — the gap is not "no story sets `controllerContact`," it is that the one story that does carries
-// no `visualForceState`, and the three that do carry one never set it. `buildStoryPropsScope`
-// treats a component prop with no destructuring default as unknown whenever the story it is
-// evaluating for does not mention it, rather than as the `undefined` it actually is at render — a
-// third, deeper gap this task found and did not close, filed as T599 rather than chased (the
-// coordinator's own instruction: past two fixes for the same cell, a third is a pattern, and the
-// pattern may be a task rather than another fix).
+// — the gap was never "no story sets `controllerContact`," it was that the one story that does
+// carries no `visualForceState`, and the three that do carry one never set it.
 const INLINE_LINK_CLIP = { parts: [{ role: 'link', nth: 9 }], pad: '2' } as const
 
 export const InlineLinkHover: Story = {
@@ -202,14 +200,15 @@ export const InlineLinkActive: Story = {
 // is simpler and does not depend on how many links render before it. It has its own residual
 // boundary, worth naming rather than hiding behind the choice: `resolveSelectorMatch`'s own caller
 // now excludes a candidate this story's scope confirms `'unreached'` before ever attempting its own
-// attribute, the same guard-fold `InlineLinkHover`'s own fix uses for `nth` — but the contact-route
-// anchor (`index.tsx:797`, T596's own subject) renders behind `controllerContact ? <a…> : …`, and
-// this trio's own args (below) never set `controllerContact`, so — evaluated against *this* trio's
-// own scope — its guard is `'unresolved'` (genuinely unknown), never `'unreached'` (confirmed
-// false). `WithPublishedContact` above does set `controllerContact` and genuinely renders this
-// anchor, but carries no `visualForceState`, so it never enters this trio's own comparison — a
-// third, narrower gap in `buildStoryPropsScope` itself (T599), named in `InlineLinkHover`'s own
-// comment above rather than repeated here, and not fixed by either pass.
+// attribute, the same guard-fold `InlineLinkHover`'s own fix uses for `nth` — and the contact-route
+// anchor (`index.tsx:797`, T596's own subject) renders behind `controllerContact ? <a…> : …`. This
+// trio's own args (below) never set `controllerContact`, but as of T599's package-wide
+// `buildStoryPropsScope` fix, evaluated against *this* trio's own scope, `controllerContact`
+// resolves to its real value there — `undefined`, since Storybook's own `args` are the complete
+// prop set and a key absent from it is genuinely `undefined`, not unknown — so its guard is
+// `'unreached'` (confirmed false), not `'unresolved'` (genuinely unknown) as it used to read.
+// `WithPublishedContact` above does set `controllerContact` and genuinely renders this anchor, but
+// carries no `visualForceState`, so it never enters this trio's own comparison either way.
 // The selector string is inlined directly in every `visualForceState` below, never read from a
 // shared identifier — `state-coverage.mjs`'s own `extractVisualForceState` resolves a
 // `visualForceState` field only when it is a literal AST node at that exact position
