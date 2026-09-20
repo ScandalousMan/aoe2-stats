@@ -15,9 +15,16 @@ Two kinds of test live here, deliberately kept apart:
   `effects.toml` (`aoe2techtree-fixture-promoted`, `aoe2techtree-fixture-promoted-177723`): the
   same two real facts `packages/knowledge/tests/test_query.py` encodes (Byzantine Pikeman -25%,
   Korean Crossbowman -50% wood), proven here directly through `effects.apply` rather than through
-  `query.py` — this is deliberate: `query.py`'s own discount tests stay `xfail` until T645
-  populates `civilisations_modelled`, but `effects.py`'s own correctness does not depend on T645 at
+  `query.py` — this is deliberate: `query.py`'s own discount tests stayed `xfail` until T645
+  populated `civilisations_modelled`, but `effects.py`'s own correctness never depended on T645 at
   all, and this file is what proves that independently.
+
+**T645** added the four civilisations the second committed recording needs (research.md D11) —
+Franks, Persians, Teutons, Gurjaras — with the same two-kind treatment: a real cost/age-requirement
+adjustment proven against the committed `effects.toml`, and one conditional/team-wide "not
+modelled" refusal each. `packages/knowledge/snapshots/aoe2techtree-fixture-promoted/effects.toml`'s
+own header comment carries the full identification method and provenance; this file does not
+restate it.
 """
 
 from __future__ import annotations
@@ -376,16 +383,18 @@ def test_the_real_byzantine_building_hp_bonus_is_not_modelled() -> None:
     assert "age" in result.reason.lower()
 
 
-def test_the_real_franks_pikeman_query_matches_no_effect_at_all() -> None:
-    """Franks is deliberately never modelled in either committed `effects.toml` (see
-    `test_query.py`'s module docstring) — at the `effects.py` layer alone, with no
-    `civilisations_modelled` gate involved, a Franks query for Pikeman's cost simply matches
-    nothing and returns the baseline unmodified. The refusal for an unmodelled *civilisation* is
-    `query.py`'s job (research.md D5's conservative rule), not this module's — this test pins down
-    that `effects.py` itself has no knowledge of Franks to accidentally leak a discount from."""
+def test_the_real_britons_pikeman_query_matches_no_effect_at_all() -> None:
+    """Britons is deliberately never modelled in either committed `effects.toml` (see
+    `test_query.py`'s module docstring — Franks held this role until T645 found it genuinely
+    trained in the second committed recording and moved the role to Britons instead) — at the
+    `effects.py` layer alone, with no `civilisations_modelled` gate involved, a Britons query for
+    Pikeman's cost simply matches nothing and returns the baseline unmodified. The refusal for an
+    unmodelled *civilisation* is `query.py`'s job (research.md D5's conservative rule), not this
+    module's — this test pins down that `effects.py` itself has no knowledge of Britons to
+    accidentally leak a discount from."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
-        civilisation="Franks",
+        civilisation="Britons",
         kind="unit",
         id="358",
         field="cost",
@@ -395,3 +404,92 @@ def test_the_real_franks_pikeman_query_matches_no_effect_at_all() -> None:
     value, applied = result
     assert value == {"food": 35, "wood": 25}
     assert applied == ()
+
+
+# --------------------------------------------------- T645: the second recording's civilisations
+
+
+@pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
+def test_the_real_franks_mill_technology_discount_applies_through_the_committed_effects_toml(
+    directory: str,
+) -> None:
+    """Franks: "Mill technologies free" — Crop Rotation's real cost, `{food: 250, wood: 250}`, made
+    free by the civilisation bonus, not by a coincidental baseline of zero."""
+    result = effects.apply(
+        directory,
+        civilisation="Franks",
+        kind="technology",
+        id="12",
+        field="cost",
+        value={"food": 250, "wood": 250},
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == {"food": 0, "wood": 0}
+    assert len(applied) == 1
+    assert applied[0].source_text == "Mill technologies free"
+    assert applied[0].modelled == "yes"
+
+
+def test_the_real_persians_parthian_tactics_age_requirement_applies() -> None:
+    """Persians: "Parthian Tactics available in Castle Age" lowers the technology's own baseline
+    age requirement (4, Imperial — the same numbering unit 358 "Pikeman" = 3 and unit 359
+    "Halberdier" = 4 confirm elsewhere) to 3 (Castle)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Persians",
+        kind="technology",
+        id="436",
+        field="age_requirement",
+        value=4,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == 3
+    assert applied[0].source_text == "Parthian Tactics available in Castle Age"
+
+
+def test_the_real_teutons_farm_discount_applies() -> None:
+    """Teutons: "Farms cost -40%" on the Farm's real, single-resource cost (`{wood: 60}`)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Teutons",
+        kind="building",
+        id="50",
+        field="cost",
+        value={"wood": 60},
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == {"wood": 36}
+    assert applied[0].source_text == "Farms cost -40%"
+
+
+def test_the_real_persians_kamandaran_bonus_is_not_modelled() -> None:
+    """Persians' "Kamandaran" is a Castle unique technology (conditional on match state, research.md
+    D5), so an Archer's cost is refused rather than silently adjusted or silently left baseline."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Persians",
+        kind="unit",
+        id="4",
+        field="cost",
+        value={"gold": 45, "wood": 25},
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+    assert "kamandaran" in result.reason.lower() or "unique technology" in result.reason.lower()
+
+
+def test_the_real_gurjaras_team_bonus_is_not_modelled() -> None:
+    """Gurjaras' Camel/Elephant training-speed bonus is a Team Bonus (research.md D5: team-wide),
+    so it is refused rather than silently applied to Gurjaras' own Camel Rider."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Gurjaras",
+        kind="unit",
+        id="329",
+        field="production_time",
+        value=30,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+    assert "team" in result.reason.lower()

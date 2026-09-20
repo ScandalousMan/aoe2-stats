@@ -575,7 +575,7 @@ committed recording reports no blocking gap.
       recorded. A bonus that is team-wide, gated on an age the recording cannot place, or
       conditional on state is recorded as **not modelled** with its reason, and its fields stay
       gapped — a bonus is never half-applied
-- [ ] T645 [US2] Model the civilisations that appear in the committed reference recordings, and only
+- [x] T645 [US2] Model the civilisations that appear in the committed reference recordings, and only
       those (**FR-022a**) — **six** with both fixtures committed, two from the first and four from the
       second with none shared ([research.md](./research.md) **D11**); two if T605 was taken. Both players in the first fixture trained units their civilisation
       discounts, so this is not an optional refinement: without it the one committed recording

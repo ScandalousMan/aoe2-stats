@@ -1,6 +1,8 @@
-"""T646: the query surface (T643), civilisation effects (T644) and civilisation modelling (T645),
-written before any of the three exist — every test below is `xfail(strict=True)` for exactly that
-reason, and each names which of T643/T644/T645 removes its marker.
+"""T646: the query surface (T643), civilisation effects (T644) and civilisation modelling (T645).
+Written before any of the three existed, every discount/two-snapshot test below was
+`xfail(strict=True)` for exactly that reason; T645 populated `civilisations_modelled` on both
+promoted fixtures and all three markers were removed, since all three now pass for the real reason
+they were written to prove, not by accident.
 
 Contract: [contracts/knowledge-base.md](../../../specs/006-replay-analysis-foundations/contracts/
 knowledge-base.md), "The query surface" and "Civilisation qualification". Research:
@@ -15,8 +17,8 @@ committed pack, `packages/knowledge/packs/aoe2techtree/`, and the committed prom
 `packages/knowledge/snapshots/aoe2techtree-fixture-promoted/rules.json`):
 
 - Unit id `358` is "Pikeman" (`table_origin = "unit"`), cost `{food: 35, wood: 25}`, and is present
-  in both Byzantines' and Franks' unit lists (`data.json`'s `civs.Byzantines.Unit` /
-  `civs.Franks.Unit`) — the same id resolves for both civilisations queried below.
+  in both Byzantines' and Britons' unit lists (`data.json`'s `civs.Byzantines.Unit` /
+  `civs.Britons.Unit`) — the same id resolves for both civilisations queried below.
 - Byzantines' bonus prose (`strings.en.json`, the string named by `civs.Byzantines.help_string_id`,
   `120156`): "Camel Riders, Skirmishers and Spearman-line cost -25%". Pikeman is the Spearman
   line's second member, so this line touches its cost. -25% of `{food: 35, wood: 25}` is
@@ -34,11 +36,16 @@ committed pack, `packages/knowledge/packs/aoe2techtree/`, and the committed prom
   already use when a display quantity is derived from a fraction (see e.g. `docs/data-sources.md`'s
   ratio figures) and it matches the community-known in-game value for a Korean Crossbowman
   (45 gold, 13 wood). T644 must apply this same convention, or this test's marker never comes off.
-- Franks has no bonus that touches Pikeman's cost (`civs.Franks.help_string_id`, `120151`:
-  foragers, free mill technologies, mounted-unit HP, Castle cost) — chosen deliberately so the
-  "unmodelled civilisation" test cannot pass by coincidence: Franks' true Pikeman cost genuinely
+- Britons has no bonus that touches Pikeman's cost (`civs.Britons.help_string_id`, `120150`:
+  shepherds, Town Center wood cost by age, Foot Archer range) — chosen deliberately so the
+  "unmodelled civilisation" test cannot pass by coincidence: Britons' true Pikeman cost genuinely
   *is* the baseline, and the conservative rule (research D5) must still gap it, because which
-  fields an unmodelled civilisation's bonuses touch is exactly what is not known.
+  fields an unmodelled civilisation's bonuses touch is exactly what is not known. **Franks held
+  this role until T645**: the second committed recording (`AgeIIDE_Replay_504695319.zip`) turned
+  out to genuinely train Franks (research.md D11), so Franks is one of the six civilisations
+  `civilisations_modelled` now names, and this file's "always unmodelled" example moved to Britons
+  — confirmed absent from both committed recordings and confirmed, the same way, to have no bonus
+  touching Pikeman's cost.
 
 **Design decisions this file fixes, because `query.py`/`effects.py` do not exist yet to fix them
 first** (T643/T644 must conform, not invent a different shape and leave this file unable to ever
@@ -52,7 +59,7 @@ pass):
   is expected to resolve `entity.build` through `snapshot.snapshot_for` internally — this is the
   "wraps `snapshot_for`" the build-resolution test below exercises.
 - A civilisation is passed as the **pack's own civilisation name string** (`"Byzantines"`,
-  `"Franks"`), matching `normalise.py`'s `civilisations` list and `snapshot.toml`'s
+  `"Britons"`), matching `normalise.py`'s `civilisations` list and `snapshot.toml`'s
   `civilisations_modelled` — never a numeric id (the numeric id a replay carries is a different,
   unrelated numbering space this feature's query surface has no reason to speak).
 - `cost()`'s positive-path return (an `Answer`) carries `.value` (a plain
@@ -90,12 +97,17 @@ intervening build), so the assertion this file makes is not "the two answers dif
 answer is tagged with *its own* snapshot's identity" — which is the actual claim US2 scenario 2
 makes, and the one a bug that always resolved to whichever snapshot loads first would still fail.
 
-**T645's own follow-up**: both promoted fixtures currently carry `civilisations_modelled = []`
-(unchanged by this task, since T645 has not run). T645 must add `"Byzantines"` and `"Koreans"` to
-**both** promoted fixtures' `snapshot.toml`, not only the pre-existing one, or the "two snapshots"
-test below stays gapped for a reason this file does not intend to exercise. `"Franks"` is
-deliberately *never* added to either — it is this file's unmodelled-civilisation case, and must
-stay unmodelled for that case to mean anything.
+**T645**: both promoted fixtures now carry `civilisations_modelled = ["Byzantines", "Koreans",
+"Franks", "Persians", "Teutons", "Gurjaras"]` — all six the first knowledge snapshot models
+(research.md D11: two from the first committed recording, four from the second, none shared),
+added to **both** promoted fixtures' `snapshot.toml` identically, so the "two snapshots" test below
+is no longer gapped. `"Britons"` is deliberately *never* added to either — it is this file's
+unmodelled-civilisation case, and must stay unmodelled for that case to mean anything.
+`"Franks"` held this role until T645 found, by reading the second committed recording's own trained
+units and researched technologies against `data.json`'s per-civilisation tables (see
+`effects.toml`'s own header comment for the full method), that Franks is genuinely one of the four
+civilisations that recording needs — so Franks moved from "this file's placeholder" to "a really
+modelled civilisation", and Britons took over the placeholder role instead.
 """
 
 from __future__ import annotations
@@ -105,7 +117,7 @@ import pytest
 from aoe2stats_knowledge import snapshot
 
 #: Real unit id, "Pikeman" (`table_origin = "unit"`) — see this module's docstring for the
-#: verification. Present in both Byzantines' and Franks' unit lists.
+#: verification. Present in both Byzantines' and Britons' unit lists.
 _PIKEMAN_ID = "358"
 
 #: Real unit id, "Crossbowman" (`table_origin = "unit"`) — present in both Koreans' and
@@ -133,11 +145,6 @@ def _one_build_higher_than_every_promoted_snapshot() -> int:
 # --------------------------------------------------------------------------- a discounted unit
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef), T644 (effects.py) and T645 (Byzantines modelled) "
-    "not implemented yet",
-)
 def test_a_discounted_unit_returns_its_adjusted_cost_with_the_effect_and_its_source_sentence() -> (
     None
 ):
@@ -168,11 +175,6 @@ def test_a_discounted_unit_returns_its_adjusted_cost_with_the_effect_and_its_sou
     assert "Camel Riders, Skirmishers and Spearman-line cost -25%" in effect.source_text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef), T644 (effects.py) and T645 (Koreans modelled) "
-    "not implemented yet",
-)
 def test_a_second_discounted_unit_for_a_second_modelled_civilisation_is_also_correct() -> None:
     """Korean Crossbowman: -50% wood only, on `{gold: 45, wood: 25}` — `25 * 0.5 = 12.5`, a real
     rounding boundary this file resolves by stating round-half-up explicitly (see module
@@ -202,7 +204,7 @@ def test_a_second_discounted_unit_for_a_second_modelled_civilisation_is_also_cor
 
 
 def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the_baseline() -> None:
-    """Franks has no bonus touching Pikeman's cost (module docstring), so Franks' *true* Pikeman
+    """Britons has no bonus touching Pikeman's cost (module docstring), so Britons' *true* Pikeman
     cost genuinely is the baseline `{food: 35, wood: 25}` — and the conservative rule (research D5)
     must still refuse, because which fields an unmodelled civilisation's bonuses touch is exactly
     what is not known. This is the case the task text calls out by name: never the baseline, even
@@ -211,7 +213,7 @@ def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the
 
     entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
 
-    result = query.cost(entity, civilisation="Franks")
+    result = query.cost(entity, civilisation="Britons")
 
     assert not hasattr(result, "value"), (
         "an unmodelled civilisation must gap, never answer — even with a value equal to the "
@@ -258,11 +260,6 @@ def test_asking_without_a_civilisation_keyword_is_a_type_error() -> None:
 # ------------------------------------------------------- two snapshots, two independent answers
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef), T644 (effects.py) and T645 (Byzantines modelled on both "
-    "promoted fixtures) not implemented yet",
-)
 def test_two_snapshots_answer_from_their_own_contents_and_neither_is_upgraded_to_the_other() -> (
     None
 ):
