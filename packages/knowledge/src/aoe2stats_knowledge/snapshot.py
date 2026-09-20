@@ -9,7 +9,7 @@ A snapshot's identity is its ``source``, that source's own ``source_version``, t
 ``effects.toml`` — recorded in the snapshot's ``snapshot.toml``. On load the digest is recomputed
 from the packaged files and compared; a mismatch refuses to load rather than serving content that
 no longer matches what was recorded (FR-025's "never modified or removed" is asserted here, at
-every load, not merely at publish time — publish-time enforcement is T639's promotion sequence).
+every load, not merely at publish time — publish-time enforcement is the promotion sequence below).
 
 Every snapshot directory is read through :mod:`importlib.resources`, never a bare filesystem path,
 so the same code resolves a snapshot identically whether the package is installed from a wheel (a
@@ -20,8 +20,18 @@ at ``aoe2stats_knowledge/snapshots`` for a real build, and ``src/aoe2stats_knowl
 a checked-in symlink back to it for the editable/dev case — both resolve to the identical tree
 through the identical anchor, ``importlib.resources.files("aoe2stats_knowledge") / "snapshots"``.
 
-This module does not yet implement promotion (T639), build resolution (T641) or carry-forward
-(T642); it is the identity and digest mechanism those build on.
+**Promotion (FR-034, FR-030)**: `snapshot.toml`'s `[snapshot]` table also carries `promoted`, a
+boolean defaulting to `False` when absent, and an optional `[validation]` table recording what was
+checked, against what, by whom and when (FR-030's "the validation performed MUST be recorded").
+Setting `promoted = true` with no `[validation]` table, or an empty one, is refused at load time
+with `SnapshotPromotionError` — FR-034's "MUST NOT promote an unvalidated snapshot" is an invariant
+enforced here, not a convention left to whoever writes the next `snapshot.toml`. Only a promoted
+snapshot is resolvable by build: `load_resolvable_snapshots` is the set T641's `snapshot_for(build)`
+resolves against, distinct from `load_all_snapshots`, which loads every digest-verified snapshot
+whether or not it is promoted. This module does not yet implement build resolution (T641) or
+carry-forward's specific per-build attestation content (T642) — `ValidationRecord.details` is the
+extension point T642 adds its per-build note list into, without redesigning the promotion
+invariant enforced here.
 """
 
 from __future__ import annotations
@@ -29,7 +39,7 @@ from __future__ import annotations
 import hashlib
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
 
@@ -54,6 +64,59 @@ class SnapshotDigestMismatch(SnapshotError):
     """The digest recomputed from `rules.json` and `effects.toml` disagrees with the digest
     recorded in `snapshot.toml`. Raised in place of returning a `Snapshot` — there is no partial
     or best-effort load, because a mismatch is exactly the condition FR-025 exists to catch."""
+
+
+class SnapshotPromotionError(SnapshotError):
+    """`promoted = true` was set in `snapshot.toml` with no `[validation]` table, or an empty one
+    (FR-034: "MUST NOT promote an unvalidated snapshot"). Raised at load time in place of
+    constructing a `Snapshot` whose `promoted` flag would be true without the FR-030 record that
+    is supposed to justify it — the invariant is enforced where the flag is read, not left to
+    whoever writes the next `snapshot.toml` to remember."""
+
+
+#: The FR-030 fields every validation record must carry, regardless of `method`. Anything else a
+#: `[validation]` table carries (T642's per-build carry-forward note list, for one) lands in
+#: `ValidationRecord.details` instead of a dedicated field, so a new validation method never
+#: requires extending this tuple or the dataclass below.
+_VALIDATION_REQUIRED_FIELDS: Final[tuple[str, str, str, str]] = (
+    "method",
+    "checked_against",
+    "performed_by",
+    "performed_at",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationRecord:
+    """FR-030's validation record: what was checked (`method`), against what (`checked_against`
+    — "the game" or a named second source), by whom (`performed_by`) and when (`performed_at`).
+
+    `method` is open text on purpose (e.g. `"carry-forward"`, `"second-source"`,
+    `"game-comparison"`) — this dataclass encodes only the shell FR-030 requires of every
+    validation, not any one method's internal shape. `details` carries every other key the
+    `[validation]` table has: T642 is expected to add carry-forward's per-build note list (the
+    notes consulted, where, when, and the reading, for every intervening build — research.md D4)
+    there, so a new validation method's content never requires redesigning this dataclass or the
+    promotion invariant `parse_promotion` enforces.
+    """
+
+    method: str
+    checked_against: str
+    performed_by: str
+    performed_at: str
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for field_name, value in (
+            ("method", self.method),
+            ("checked_against", self.checked_against),
+            ("performed_by", self.performed_by),
+            ("performed_at", self.performed_at),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise SnapshotError(
+                    f"[validation].{field_name} must be a non-blank string, got {value!r}"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,13 +149,17 @@ class SnapshotIdentity:
 class Snapshot:
     """One packaged knowledge snapshot, verified against its own content on load.
 
-    This is the identity slice only: `directory` is the snapshot's directory name under the
-    packaged `snapshots/` root, and `identity` is its FR-024 identity. T639 extends this dataclass
-    with promotion and validation; T640 with the normalised rules body it carries.
+    `directory` is the snapshot's directory name under the packaged `snapshots/` root, `identity`
+    is its FR-024 identity, `promoted` is FR-034's flag (never true without `validation` set — see
+    `parse_promotion`), and `validation` is the FR-030 record `promoted` depends on, or `None` for
+    a snapshot that has not been validated at all. T640 extends this dataclass with the normalised
+    rules body it carries.
     """
 
     directory: str
     identity: SnapshotIdentity
+    promoted: bool = False
+    validation: ValidationRecord | None = None
 
 
 def compute_digest(rules_json: bytes, effects_toml: bytes) -> str:
@@ -136,10 +203,10 @@ def _require_table(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     return value
 
 
-def _require_str(table: Mapping[str, Any], key: str) -> str:
+def _require_str(table: Mapping[str, Any], key: str, *, table_name: str = "snapshot") -> str:
     value = table.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise SnapshotError(f"snapshot.toml: [snapshot].{key} must be a non-blank string")
+        raise SnapshotError(f"snapshot.toml: [{table_name}].{key} must be a non-blank string")
     return value
 
 
@@ -150,17 +217,22 @@ def _require_int(table: Mapping[str, Any], key: str) -> int:
     return value
 
 
+def _load_toml(snapshot_toml_text: str) -> Mapping[str, Any]:
+    try:
+        return tomllib.loads(snapshot_toml_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise SnapshotError(f"snapshot.toml is not valid TOML: {exc}") from exc
+
+
 def parse_identity(snapshot_toml_text: str) -> SnapshotIdentity:
     """Parse `snapshot.toml`'s `[snapshot]` table into a `SnapshotIdentity`.
 
     Reads exactly the four FR-024 fields and ignores every other key `snapshot.toml` may carry
-    (`promoted`, `civilisations_modelled`, a validation table): those belong to T639's promotion
-    sequence, not this task's identity mechanism, and a table that carries them is not malformed.
+    (`promoted`, `civilisations_modelled`, a `[validation]` table): those belong to the promotion
+    sequence `parse_promotion` reads, not this function's identity mechanism, and a table that
+    carries them is not malformed.
     """
-    try:
-        data = tomllib.loads(snapshot_toml_text)
-    except tomllib.TOMLDecodeError as exc:
-        raise SnapshotError(f"snapshot.toml is not valid TOML: {exc}") from exc
+    data = _load_toml(snapshot_toml_text)
     table = _require_table(data, "snapshot")
     return SnapshotIdentity(
         source=_require_str(table, "source"),
@@ -170,12 +242,69 @@ def parse_identity(snapshot_toml_text: str) -> SnapshotIdentity:
     )
 
 
+def _parse_validation_record(table: Mapping[str, Any]) -> ValidationRecord:
+    """Build a `ValidationRecord` from a non-empty `[validation]` table.
+
+    The four FR-030 fields are read strictly (`SnapshotError` if any is missing or blank); every
+    other key the table carries — T642's per-build carry-forward notes, for instance — is kept
+    verbatim in `details` rather than dropped, so a validation method this module does not know
+    about is not silently truncated.
+    """
+    details = {key: value for key, value in table.items() if key not in _VALIDATION_REQUIRED_FIELDS}
+    return ValidationRecord(
+        method=_require_str(table, "method", table_name="validation"),
+        checked_against=_require_str(table, "checked_against", table_name="validation"),
+        performed_by=_require_str(table, "performed_by", table_name="validation"),
+        performed_at=_require_str(table, "performed_at", table_name="validation"),
+        details=details,
+    )
+
+
+def parse_promotion(snapshot_toml_text: str) -> tuple[bool, ValidationRecord | None]:
+    """Parse `snapshot.toml`'s FR-034 promotion flag and its FR-030 validation record.
+
+    `[snapshot].promoted` defaults to `False` when absent — an omitted flag is not a promotion.
+    A `[validation]` table that is absent, or present with no keys at all, is "no validation
+    recorded" and parses to `None`; a `[validation]` table that is present but missing one of the
+    four required fields is malformed and raises `SnapshotError` regardless of `promoted`, because
+    a partial validation record is not the same thing as none at all. Setting `promoted = true`
+    together with `validation is None` raises `SnapshotPromotionError`: FR-034's "MUST NOT promote
+    an unvalidated snapshot" is enforced here, at the one place both are read together.
+    """
+    data = _load_toml(snapshot_toml_text)
+    table = _require_table(data, "snapshot")
+    promoted = table.get("promoted", False)
+    if not isinstance(promoted, bool):
+        raise SnapshotError(
+            f"snapshot.toml: [snapshot].promoted must be a boolean, got {promoted!r}"
+        )
+    validation_table = data.get("validation")
+    validation: ValidationRecord | None
+    if validation_table is None or (isinstance(validation_table, dict) and not validation_table):
+        validation = None
+    elif not isinstance(validation_table, dict):
+        raise SnapshotError("snapshot.toml: [validation] must be a table")
+    else:
+        validation = _parse_validation_record(validation_table)
+    if promoted and validation is None:
+        raise SnapshotPromotionError(
+            "snapshot.toml: promoted = true requires a non-empty [validation] record (FR-034); "
+            "an unvalidated snapshot is never promoted"
+        )
+    return promoted, validation
+
+
 def load_snapshot(directory: str) -> Snapshot:
     """Load one packaged snapshot by its directory name under `snapshots/`.
 
     Recomputes the digest over the packaged `rules.json` and `effects.toml` and compares it with
     the digest `snapshot.toml` records; a disagreement raises `SnapshotDigestMismatch` instead of
-    returning anything — there is no code path that serves stale or tampered content (FR-025).
+    returning anything — there is no code path that serves stale or tampered content (FR-025). The
+    digest is checked before promotion is read: a tampered snapshot is refused on that basis alone,
+    regardless of what its `promoted`/`[validation]` fields claim. Once the digest matches,
+    `parse_promotion` is applied and may itself raise `SnapshotPromotionError` (FR-034) — loading
+    an unpromoted, unvalidated snapshot is not an error; it is only excluded from
+    `load_resolvable_snapshots`.
     """
     snapshot_dir = _snapshots_root().joinpath(directory)
     if not snapshot_dir.is_dir():
@@ -190,13 +319,29 @@ def load_snapshot(directory: str) -> Snapshot:
             f"{directory}: recorded digest {identity.digest} does not match the digest "
             f"recomputed over rules.json and effects.toml, {recomputed}"
         )
-    return Snapshot(directory=directory, identity=identity)
+    promoted, validation = parse_promotion(identity_text)
+    return Snapshot(
+        directory=directory, identity=identity, promoted=promoted, validation=validation
+    )
 
 
 def load_all_snapshots() -> tuple[Snapshot, ...]:
     """Every packaged snapshot, loaded and digest-verified, in directory-name order.
 
     Used by the immutability test that walks every committed snapshot directory — a snapshot that
-    fails to load (a bad digest, a malformed identity) raises rather than being silently skipped.
+    fails to load (a bad digest, a malformed identity, an unpromotable promotion flag) raises
+    rather than being silently skipped. Includes unpromoted snapshots: they are valid, loadable
+    data, just not resolvable by build (`load_resolvable_snapshots` is the filtered set).
     """
     return tuple(load_snapshot(name) for name in list_snapshot_directories())
+
+
+def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
+    """Every packaged snapshot that is **promoted** — the set FR-034's "only a promoted snapshot
+    is resolvable by build" describes, and the set T641's `snapshot_for(build)` resolves against.
+
+    An unpromoted snapshot loads without error through `load_all_snapshots` (it is not corrupt,
+    merely not yet validated) but never appears here: promotion, not mere presence on disk, is
+    what makes a snapshot answerable.
+    """
+    return tuple(snapshot for snapshot in load_all_snapshots() if snapshot.promoted)

@@ -1,4 +1,5 @@
-"""FR-024's identity and digest, FR-025's "never modified" (T638).
+"""FR-024's identity and digest, FR-025's "never modified" (T638); FR-034's promotion sequence and
+FR-030's validation record (T639).
 
 contracts/knowledge-base.md, "Identity and immutability": identity is `source`, `source_version`,
 `describes_build`, `digest`; the digest is recomputed on load over `rules.json` and `effects.toml`,
@@ -9,6 +10,12 @@ the bottom of this file, run against the real packaged `packages/knowledge/snaps
 snapshot directory (`_write_snapshot_dir`) and monkeypatches `_snapshots_root`, so the loader's
 refusals can be planted and proven without touching (or, worse, needing to un-verify) real,
 committed content.
+
+contracts/knowledge-base.md, "Promotion": `promoted = true` is refused unless `[validation]` is a
+non-empty table; an unpromoted snapshot loads fine as data but is excluded from
+`load_resolvable_snapshots`, the set T641's `snapshot_for(build)` resolves against. Two committed
+fixtures exercise this end to end without monkeypatching: `aoe2techtree-fixture` (unpromoted) and
+`aoe2techtree-fixture-promoted` (promoted, with a real validation record).
 """
 
 from __future__ import annotations
@@ -23,11 +30,15 @@ from aoe2stats_knowledge.snapshot import (
     SnapshotDigestMismatch,
     SnapshotError,
     SnapshotIdentity,
+    SnapshotPromotionError,
+    ValidationRecord,
     compute_digest,
     list_snapshot_directories,
     load_all_snapshots,
+    load_resolvable_snapshots,
     load_snapshot,
     parse_identity,
+    parse_promotion,
 )
 
 _RULES_JSON = b'{"entities": {}}'
@@ -72,6 +83,31 @@ def _identity_toml(
         lines.append(f"digest = {resolved_digest}")
     lines.append(extra)
     return "\n".join(lines) + "\n"
+
+
+def _validation_toml(
+    *,
+    method: str | None = '"carry-forward"',
+    checked_against: str | None = '"the game client, directly"',
+    performed_by: str | None = '"a test author"',
+    performed_at: str | None = '"2026-01-01"',
+    extra: str = "",
+) -> str:
+    """A `[validation]` table's text. Any of the four FR-030 fields passed as `None` is omitted,
+    to test a partial (malformed) validation record; a TOML value must be passed already quoted
+    (e.g. `'"a"'`), mirroring `_identity_toml`'s convention."""
+    lines = ["[validation]"]
+    if method is not None:
+        lines.append(f"method = {method}")
+    if checked_against is not None:
+        lines.append(f"checked_against = {checked_against}")
+    if performed_by is not None:
+        lines.append(f"performed_by = {performed_by}")
+    if performed_at is not None:
+        lines.append(f"performed_at = {performed_at}")
+    if extra:
+        lines.append(extra)
+    return "\n".join(lines)
 
 
 def _write_snapshot_dir(
@@ -201,6 +237,114 @@ def test_parse_identity_rejects_digest_of_the_wrong_length() -> None:
         parse_identity(_identity_toml(digest="sha256:abc"))
 
 
+# -------------------------------------------------------------------------------- parse_promotion
+
+
+def test_parse_promotion_defaults_to_unpromoted_with_no_validation() -> None:
+    """No `promoted` key and no `[validation]` table at all: the most common shape for a snapshot
+    that has not gone through FR-034's sequence yet."""
+    promoted, validation = parse_promotion(_identity_toml())
+    assert promoted is False
+    assert validation is None
+
+
+def test_parse_promotion_reads_a_promoted_snapshot_with_its_validation_record() -> None:
+    text = _identity_toml(
+        extra="promoted = true\n\n"
+        + _validation_toml(
+            method='"carry-forward"',
+            checked_against='"the game client, directly"',
+            performed_by='"a test author"',
+            performed_at='"2026-01-01"',
+        )
+    )
+    promoted, validation = parse_promotion(text)
+    assert promoted is True
+    assert validation == ValidationRecord(
+        method="carry-forward",
+        checked_against="the game client, directly",
+        performed_by="a test author",
+        performed_at="2026-01-01",
+        details={},
+    )
+
+
+def test_parse_promotion_reads_an_unset_validation_record_alongside_an_unpromoted_snapshot() -> (
+    None
+):
+    """A validation record may exist before promotion (FR-034's sequence records validation, then
+    promotes) — `promoted = false` with a full `[validation]` table is not itself an error."""
+    text = _identity_toml(extra="promoted = false\n\n" + _validation_toml())
+    promoted, validation = parse_promotion(text)
+    assert promoted is False
+    assert validation is not None
+    assert validation.method == "carry-forward"
+
+
+def test_parse_promotion_keeps_extra_validation_keys_in_details() -> None:
+    """`details` is the extension point T642 adds carry-forward's per-build note list into — any
+    key beyond the four FR-030 fields is kept, not dropped."""
+    text = _identity_toml(
+        extra="promoted = true\n\n"
+        + _validation_toml(extra="builds_confirmed_unchanged = [101101, 101102]")
+    )
+    _, validation = parse_promotion(text)
+    assert validation is not None
+    assert validation.details == {"builds_confirmed_unchanged": [101101, 101102]}
+
+
+def test_parse_promotion_raises_when_promoted_is_not_a_bool() -> None:
+    with pytest.raises(SnapshotError, match="promoted"):
+        parse_promotion(_identity_toml(extra='promoted = "true"'))
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["method", "checked_against", "performed_by", "performed_at"],
+)
+def test_parse_promotion_raises_when_validation_is_missing_a_required_field(field: str) -> None:
+    """A `[validation]` table missing one of the four FR-030 fields is malformed, not merely
+    incomplete — raised regardless of `promoted`, so a half-written validation record is never
+    mistaken for "no validation recorded"."""
+    text = _identity_toml(
+        extra="promoted = false\n\n" + _validation_toml(**{field: None})  # type: ignore[arg-type]
+    )
+    with pytest.raises(SnapshotError, match=field):
+        parse_promotion(text)
+
+
+def test_parse_promotion_rejects_a_blank_validation_field() -> None:
+    text = _identity_toml(extra="promoted = false\n\n" + _validation_toml(method='"   "'))
+    with pytest.raises(SnapshotError, match="method"):
+        parse_promotion(text)
+
+
+def test_parse_promotion_raises_when_validation_is_not_a_table() -> None:
+    """`validation = 1` must be a **root**-level key, not nested inside `[snapshot]` — TOML has no
+    way to reopen the root table once `[snapshot]` starts, so it is prepended here instead of
+    passed through `_identity_toml`'s `extra`."""
+    text = "validation = 1\n\n" + _identity_toml(extra="promoted = false")
+    with pytest.raises(SnapshotError, match="validation"):
+        parse_promotion(text)
+
+
+# ---------------------------------------------- promoted = true with no validation record (FR-034)
+
+
+def test_parse_promotion_refuses_promoted_true_with_no_validation_table_at_all() -> None:
+    """The hard invariant this task exists for: FR-034 forbids promoting an unvalidated snapshot,
+    and there is no `[validation]` table here at all."""
+    with pytest.raises(SnapshotPromotionError, match="validation"):
+        parse_promotion(_identity_toml(extra="promoted = true"))
+
+
+def test_parse_promotion_refuses_promoted_true_with_an_empty_validation_table() -> None:
+    """The twin case: a `[validation]` table is present but carries no keys — also "no validation
+    recorded", not a record with blank fields, and refused the same way."""
+    with pytest.raises(SnapshotPromotionError, match="validation"):
+        parse_promotion(_identity_toml(extra="promoted = true\n\n[validation]"))
+
+
 # ---------------------------------------------------------------------------------- load_snapshot
 
 
@@ -213,6 +357,58 @@ def test_load_snapshot_returns_a_snapshot_when_the_digest_matches(
     assert isinstance(result, Snapshot)
     assert result.directory == "good"
     assert result.identity.digest == compute_digest(_RULES_JSON, _EFFECTS_TOML)
+
+
+def test_load_snapshot_defaults_to_unpromoted_with_no_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A snapshot with no `promoted`/`[validation]` fields at all loads fine as data (T638's
+    identity mechanism does not require them) — `promoted` and `validation` are `False`/`None`,
+    the dataclass defaults, distinct from an explicit `promoted = false`."""
+    _write_snapshot_dir(tmp_path, "unvalidated")
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    result = load_snapshot("unvalidated")
+    assert result.promoted is False
+    assert result.validation is None
+
+
+def test_load_snapshot_returns_a_promoted_snapshot_with_its_validation_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(c) promoted + valid works end to end: a snapshot with `promoted = true` and a full
+    `[validation]` table loads without error and carries both on the returned `Snapshot`."""
+    snapshot_toml = _identity_toml(
+        extra="promoted = true\n\n" + _validation_toml(method='"game-comparison"')
+    )
+    _write_snapshot_dir(tmp_path, "promoted", snapshot_toml=snapshot_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    result = load_snapshot("promoted")
+    assert result.promoted is True
+    assert result.validation is not None
+    assert result.validation.method == "game-comparison"
+
+
+def test_load_snapshot_raises_promotion_error_when_promoted_true_with_no_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a) promoted + empty validation is refused, at `load_snapshot` itself, not only at
+    `parse_promotion` in isolation — the digest matches here, so the only reason to refuse is the
+    promotion invariant."""
+    snapshot_toml = _identity_toml(extra="promoted = true")
+    _write_snapshot_dir(tmp_path, "unvalidated-promotion", snapshot_toml=snapshot_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotPromotionError):
+        load_snapshot("unvalidated-promotion")
+
+
+def test_load_snapshot_raises_promotion_error_when_promoted_true_with_an_empty_validation_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_toml = _identity_toml(extra="promoted = true\n\n[validation]")
+    _write_snapshot_dir(tmp_path, "empty-validation", snapshot_toml=snapshot_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotPromotionError):
+        load_snapshot("empty-validation")
 
 
 def test_load_snapshot_raises_when_rules_json_is_tampered_after_the_digest_was_recorded(
@@ -300,6 +496,39 @@ def test_load_all_snapshots_raises_if_any_one_snapshot_fails_its_digest(
         load_all_snapshots()
 
 
+# --------------------------------------------------------------------- load_resolvable_snapshots
+
+
+def test_load_resolvable_snapshots_is_empty_when_nothing_is_promoted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_snapshot_dir(tmp_path, "one")
+    _write_snapshot_dir(tmp_path, "two")
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    assert load_resolvable_snapshots() == ()
+
+
+def test_load_resolvable_snapshots_excludes_an_unpromoted_but_otherwise_valid_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(b) unpromoted loads but is excluded from resolution: a distinct concept from T638's
+    digest-mismatch refusal — this snapshot is not corrupt, not tampered, and loads through
+    `load_all_snapshots` without error; it is simply not promoted, and that alone excludes it."""
+    _write_snapshot_dir(tmp_path, "unpromoted")
+    promoted_toml = _identity_toml(
+        describes_build="1", extra="promoted = true\n\n" + _validation_toml()
+    )
+    _write_snapshot_dir(tmp_path, "promoted", snapshot_toml=promoted_toml)
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+
+    all_snapshots = load_all_snapshots()
+    assert [s.directory for s in all_snapshots] == ["promoted", "unpromoted"]
+
+    resolvable = load_resolvable_snapshots()
+    assert [s.directory for s in resolvable] == ["promoted"]
+    assert all(s.promoted for s in resolvable)
+
+
 # ------------------------------------------------ the real, committed packaged tree (no patching)
 
 
@@ -326,3 +555,29 @@ def test_every_committed_snapshot_verifies_against_its_own_recorded_digest() -> 
             f"{loaded.directory}: committed rules.json/effects.toml no longer matches the digest "
             "recorded in snapshot.toml"
         )
+
+
+def test_the_committed_unpromoted_fixture_loads_but_is_not_resolvable() -> None:
+    """`aoe2techtree-fixture` is committed deliberately unpromoted (its own `snapshot.toml` says
+    so) — proving on the real, unpatched tree that an unpromoted snapshot is valid, loadable data
+    that is nonetheless absent from the resolvable set."""
+    unpromoted = load_snapshot("aoe2techtree-fixture")
+    assert unpromoted.promoted is False
+    assert unpromoted.validation is None
+    resolvable_directories = {snapshot.directory for snapshot in load_resolvable_snapshots()}
+    assert "aoe2techtree-fixture" not in resolvable_directories
+
+
+def test_the_committed_promoted_fixture_is_promoted_and_resolvable() -> None:
+    """`aoe2techtree-fixture-promoted` is committed promoted, with a real, non-empty validation
+    record — proving the promotion mechanism end to end against real, unpatched, committed
+    content rather than only a synthetic `tmp_path` directory."""
+    promoted = load_snapshot("aoe2techtree-fixture-promoted")
+    assert promoted.promoted is True
+    assert promoted.validation is not None
+    assert promoted.validation.method
+    assert promoted.validation.checked_against
+    assert promoted.validation.performed_by
+    assert promoted.validation.performed_at
+    resolvable_directories = {snapshot.directory for snapshot in load_resolvable_snapshots()}
+    assert "aoe2techtree-fixture-promoted" in resolvable_directories

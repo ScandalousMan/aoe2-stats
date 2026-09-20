@@ -1,0 +1,4 @@
+{
+  "$comment": "Placeholder normalised rules body for T639's promoted fixture. T640 replaces this with the real normaliser output (units, buildings, technologies, costs, times, ages, prerequisites, civilisation bonuses) derived from packages/knowledge/packs/aoe2techtree. This fixture exists only so the promotion mechanism (T639) has a real, digest-verified, promoted snapshot to load and to be excluded-from/included-in the resolvable set against.",
+  "entities": {}
+}

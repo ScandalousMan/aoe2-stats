@@ -1,0 +1,5 @@
+# Placeholder civilisation effects for T639's promoted fixture. T644 replaces this with
+# hand-transcribed effects (research.md D5): the civilisation, the verbatim source sentence and
+# key, whether it is modelled, an explicit entity identifier list, the field, a closed operation,
+# the operand, and the second reading that validated it. Empty here — this fixture exists only so
+# the promotion mechanism (T639) has committed content to digest and verify.
