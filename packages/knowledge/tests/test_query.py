@@ -201,11 +201,6 @@ def test_a_second_discounted_unit_for_a_second_modelled_civilisation_is_also_cor
 # ------------------------------------------------------------- an unmodelled civilisation gaps
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef) and T645 (the conservative unmodelled-civilisation rule) "
-    "not implemented yet",
-)
 def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the_baseline() -> None:
     """Franks has no bonus touching Pikeman's cost (module docstring), so Franks' *true* Pikeman
     cost genuinely is the baseline `{food: 35, wood: 25}` — and the conservative rule (research D5)
@@ -228,10 +223,6 @@ def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the
 # --------------------------------------------------------------------- a build with no snapshot
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef wrapping snapshot.snapshot_for) not implemented yet",
-)
 def test_a_build_one_higher_than_every_snapshot_describes_gaps() -> None:
     """`snapshot_for`'s existing gap path (T641), exercised through the query layer once `cost()`
     wraps it (contracts/knowledge-base.md, "Resolution by build"): exact match only, no nearest."""
@@ -249,10 +240,6 @@ def test_a_build_one_higher_than_every_snapshot_describes_gaps() -> None:
 # ------------------------------------------------------------------------ civilisation is forced
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T643 (query.cost/EntityRef, civilisation keyword-only) not implemented yet",
-)
 def test_asking_without_a_civilisation_keyword_is_a_type_error() -> None:
     """FR-023: `civilisation` is keyword-only and required on every rule query, "so there is no way
     to ask for a generic value" — checked here as a property of the real function object's own
@@ -313,3 +300,77 @@ def test_two_snapshots_answer_from_their_own_contents_and_neither_is_upgraded_to
     # so the values themselves are expected to agree; it is the identity tagging above that proves
     # neither call was silently answered from the other snapshot.
     assert answer_from_carry_forward_snapshot.value == answer_from_direct_snapshot.value
+
+
+# ------------------------------------------------------------- a genuinely unknown entity gaps
+
+
+#: Not a real id in any table of the committed pack (verified above against the same promoted
+#: snapshot `rules.json` this file's other real ids are checked against) — the "genuinely unknown
+#: entity" case, distinct from an unmodelled civilisation: no civilisation could ever answer for an
+#: id that is not in the snapshot at all (T643, added beyond T646's own six tests, since a real
+#: query surface must not crash or silently return `None` on an unknown id).
+_UNKNOWN_UNIT_ID = "999999999"
+
+
+def test_an_entity_id_absent_from_the_snapshot_entirely_gaps_and_never_crashes() -> None:
+    """`cost()` on an id that is in no table of the resolved snapshot at all must gap with
+    `entity-absent` (data-model.md §7's closed cause set) rather than raising a `KeyError`/
+    `AttributeError` or silently returning `None` dressed up as a value — this is true regardless
+    of which civilisation is asked, including one that could in principle be modelled one day."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="unit", id=_UNKNOWN_UNIT_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.cost(entity, civilisation="Byzantines")
+
+    assert not hasattr(result, "value"), f"an unknown entity id must gap, got {result!r}"
+    assert result.cause == "entity-absent"
+
+
+# ------------------------------------------------------------------------------------- name()
+
+
+def test_name_is_not_civilisation_qualified_and_resolves_the_real_entity() -> None:
+    """`name()` takes no `civilisation` keyword at all (contract: "Civilisation qualification",
+    "`name` is not civilisation-qualified") and answers the real, stored name for a known id."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+
+    answer = query.name(entity)
+
+    assert answer.value == "Pikeman"
+    assert answer.source == "unit"
+    assert answer.snapshot_identity.describes_build == _CARRY_FORWARD_BUILD
+
+
+def test_name_degrades_to_the_bare_identifier_for_an_unknown_entity_instead_of_gapping() -> None:
+    """003 FR-043a, quoted directly by the contract: "a confident wrong name is worse than a bare
+    id" — an id `name()` cannot resolve degrades to the bare identifier string, and this is the one
+    query in the surface that never gaps for that reason (contracts/knowledge-base.md,
+    "Civilisation qualification": "it never gaps an analysis")."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="unit", id=_UNKNOWN_UNIT_ID, build=_CARRY_FORWARD_BUILD)
+
+    answer = query.name(entity)
+
+    assert hasattr(answer, "value"), "an unresolvable identifier degrades, it never gaps"
+    assert answer.value == _UNKNOWN_UNIT_ID
+
+
+def test_name_still_gaps_when_the_build_itself_has_no_snapshot() -> None:
+    """The "never gaps" rule is about an unresolvable *identifier* within a resolved snapshot —
+    there is still no snapshot to even attempt a lookup against for a build nothing describes, so
+    this is the one case `name()` does gap, with the same `no-snapshot-for-build` cause every other
+    query uses for it."""
+    from aoe2stats_knowledge import query
+
+    too_high = _one_build_higher_than_every_promoted_snapshot()
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=too_high)
+
+    result = query.name(entity)
+
+    assert not hasattr(result, "value")
+    assert result.cause == "no-snapshot-for-build"
