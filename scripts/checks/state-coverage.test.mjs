@@ -962,6 +962,266 @@ test("contrast: resolveNameMatch (via computeStateCoverage) leaves the whole poo
   assert.match(inlineLink.coveredBy.hover[0], /^unresolved:/)
 })
 
+// --- T595 (row 8, H5), coordinator's own finding on this task's second hand-back: the candidate
+// pool above holds one AST node per declaration site, so a `.map()`-rendered group (`Contents`,
+// nine real elements) used to collapse to exactly one slot in the `nth` ordering, regardless of
+// how many real elements it actually renders — `nth` itself counts real, rendered elements, the
+// same number Playwright's own `getByRole(...).nth(n)` resolves against at capture time. Three
+// cases, matching the coordinator's own three: a `.map()` group whose backing array this story's
+// own scope settles contributes that many real slots; the same shape where the array is not
+// settleable keeps the whole ordering past it unresolved rather than guessing a width of one; and
+// an element positioned after either shape, never the `nth` target either way, must still resolve
+// to a confirmed `none` — not be dragged into `unresolved` merely because an unrelated `nth` this
+// pass cannot place shares its own component's pool. ---------------------------------------------
+
+const MAP_CARDINALITY_INDEX_SOURCE = `
+const ITEMS = [
+  { id: 'a', label: 'A' },
+  { id: 'b', label: 'B' },
+  { id: 'c', label: 'C' },
+]
+export function Nav({ hrefs }) {
+  return (
+    <nav>
+      {ITEMS.map((item) => (
+        <a href={'#' + item.id} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+          {item.label}
+        </a>
+      ))}
+      <a href={hrefs.extra} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Extra
+      </a>
+    </nav>
+  )
+}
+`
+
+const MAP_CARDINALITY_STORIES_SOURCE = `
+import { Nav } from './index'
+const meta = { component: Nav, args: { hrefs: { extra: '/extra' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 3 } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): nth past a .map() group whose backing array this story settles lands on the real element after it, not stalled at the group’s own single AST slot (T595, coordinator’s own finding)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Nav' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/index.tsx'), MAP_CARDINALITY_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/Nav.stories.tsx'), MAP_CARDINALITY_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Nav')
+  const items = elements.find((el) => el.isInsideIteration)
+  const extra = elements.find((el) => el.text === 'Extra')
+  assert.ok(
+    items && extra,
+    'both the ITEMS-mapped anchor and the trailing Extra link must be found',
+  )
+  // `ITEMS` resolves to a real, three-element array (a file-level literal, evaluated once into
+  // every story's own scope) — its own group occupies real positions 0-2, so `nth: 3` is `Extra`,
+  // confirmed, never the group itself.
+  assert.deepEqual(extra.coveredBy.hover, ['Hover'])
+  assert.deepEqual(items.coveredBy.hover, ['none'])
+})
+
+const UNSETTLEABLE_MAP_INDEX_SOURCE = `
+const ITEMS = buildItems()
+export function Nav({ hrefs }) {
+  return (
+    <nav>
+      {ITEMS.map((item) => (
+        <a href={'#' + item.id} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+          {item.label}
+        </a>
+      ))}
+      <a href={hrefs.extra} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Extra
+      </a>
+    </nav>
+  )
+}
+`
+
+test("contrast: resolveNameMatch (via computeStateCoverage) leaves the whole ordering past an unsettleable .map() array unresolved, never guessing a width of one the way the pre-T595 model silently did (T595, 'a .map() array no story settles')", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Nav' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/index.tsx'), UNSETTLEABLE_MAP_INDEX_SOURCE],
+    [path.join(REPO_SRC_DIR, 'primitives/Nav/Nav.stories.tsx'), MAP_CARDINALITY_STORIES_SOURCE],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Nav')
+  const extra = elements.find((el) => el.text === 'Extra')
+  assert.ok(extra, 'the trailing Extra link must be found')
+  // `buildItems()` is a function call — `evaluateExpr` never evaluates one, so this story's own
+  // scope cannot tell how many real slots `ITEMS.map(...)` actually occupies. Genuinely unknown
+  // whether `nth: 3` falls inside that group or past it into `Extra` — `unresolved`, never a guess
+  // either way.
+  assert.equal(extra.coveredBy.hover.length, 1)
+  assert.match(extra.coveredBy.hover[0], /^unresolved:/)
+})
+
+const INLINE_LINK_WITH_TRAILING_LINK_INDEX_SOURCE = `
+function InlineLink({ href, children }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      {children}
+    </a>
+  )
+}
+export function Notice({ hrefs }) {
+  return (
+    <div>
+      <a href="/contents" className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        Contents
+      </a>
+      <InlineLink href={hrefs.a}>A</InlineLink>
+      <InlineLink href={hrefs.b}>B</InlineLink>
+      <a href={hrefs.after} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+        After
+      </a>
+    </div>
+  )
+}
+`
+
+const INLINE_LINK_WITH_TRAILING_LINK_STORIES_SOURCE = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { hrefs: { a: '/a', b: '/b', after: '/after' } } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 1 } },
+}
+`
+
+test('resolveNameMatch (via computeStateCoverage): an element after an nth-targeted helper stays a confirmed none, not dragged into unresolved merely because it shares that helper’s own pool (T595, coordinator’s own finding — PrivacyNotice’s contact-route link shape)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Notice' }]
+  const filesByPath = new Map([
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'),
+      INLINE_LINK_WITH_TRAILING_LINK_INDEX_SOURCE,
+    ],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'),
+      INLINE_LINK_WITH_TRAILING_LINK_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  const inlineLink = elements.find((el) => el.isHelper)
+  const after = elements.find((el) => el.text === 'After')
+  assert.ok(
+    inlineLink && after,
+    'both the InlineLink recipe and the trailing After link must be found',
+  )
+  // `Contents` occupies real position 0; `InlineLink`'s own two call sites (both unconditional,
+  // both reached) occupy positions 1-2 — `nth: 1` is `InlineLink`'s own first real call site,
+  // confirmed. `After`, at real position 3, is never the target either way, and every candidate
+  // before it resolved to an exact, known width, so its own hover cell is a confirmed `none`.
+  // This is worse than an `unresolved` regression, and pins exactly that: the pre-T595 code
+  // excluded every *other* helper from the ordering outright rather than counting its own real
+  // width, which shifted every position after `InlineLink` down by one — `After` (real position 3)
+  // fell into the slot `orderable[1]` actually pointed at, and the old code confidently `'match'`ed
+  // it. Run against the pre-fix `resolveNameMatch`, this exact assertion fails with
+  // `after.coveredBy.hover` reading `['Hover']`, not `['none']` — a silently wrong credit, not an
+  // `unresolved` cell a reader would know to distrust (the coordinator's own finding on this task's
+  // second hand-back, restated in `resolveNameMatch`'s own comment above).
+  assert.deepEqual(inlineLink.coveredBy.hover, ['Hover'])
+  assert.deepEqual(after.coveredBy.hover, ['none'])
+})
+
+// --- T595 (row 8, H5), coordinator's own second finding on this task's third hand-back:
+// `resolveSelectorMatch`'s own caller never consulted a candidate's own guards, so a
+// conditionally-rendered element this story's own scope confirms does *not* render could still
+// have its own attribute value attempted and wrongly credited — the same "excluded from the
+// ordering" family of defect the `nth` fix above closes, one mechanism over. `PrivacyNotice`'s own
+// contact-route link (`controllerContact ? <a…> : …`) is real but this exact shape: its guard is
+// `'unresolved'`, not `'unreached'` (no story here ever settles `controllerContact` either way), so
+// closing this one alone does not return that specific cell to `none` — the fixture below proves
+// the mechanism against a guard this pass *can* settle, which is the case this fix actually owns. --
+
+const GUARDED_SELECTOR_INDEX_SOURCE = `
+export function Panel({ showA, hrefA, hrefB }) {
+  return (
+    <div>
+      {showA && (
+        <a href={hrefA} className="hover:underline focus-visible:outline-2 active:underline">
+          A
+        </a>
+      )}
+      <a href={hrefB} className="hover:underline focus-visible:outline-2 active:underline">
+        B
+      </a>
+    </div>
+  )
+}
+`
+
+const GUARDED_SELECTOR_UNREACHED_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel }
+export default meta
+export const Hover = {
+  args: { showA: false, hrefA: '/a', hrefB: '/b' },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/a"]' } },
+}
+`
+
+test("resolveSelectorMatch (via computeStateCoverage): a conditionally-rendered candidate this story's own scope confirms unreached is excluded before its own attribute is ever attempted (T595, coordinator's own second finding)", () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Panel2' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel2/index.tsx'), GUARDED_SELECTOR_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Panel2/Panel2.stories.tsx'),
+      GUARDED_SELECTOR_UNREACHED_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel2')
+  const a = elements.find((el) => el.text === 'A')
+  assert.ok(a, 'the conditionally-rendered A link must be found')
+  // `showA: false` confirms this story never renders `A` at all — before this fix,
+  // `resolveSelectorMatch` never checked that, resolved `hrefA` to the literal `'/a'` from this
+  // story's own args, and matched it anyway: a real element that does not render this state (it
+  // does not render *at all*) credited with a frame it never paints. `a.coveredBy.hover` reads
+  // `['Hover']` against the pre-fix code; `['none']` is the confirmed, positive absence this
+  // story's own data actually proves.
+  assert.deepEqual(a.coveredBy.hover, ['none'])
+})
+
+const GUARDED_SELECTOR_REACHED_STORIES_SOURCE = `
+import { Panel } from './index'
+const meta = { component: Panel }
+export default meta
+export const Hover = {
+  args: { showA: true, hrefA: '/a', hrefB: '/b' },
+  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/a"]' } },
+}
+`
+
+test('contrast: resolveSelectorMatch (via computeStateCoverage) still matches a conditionally-rendered candidate a story genuinely reaches — having a guard at all is never, on its own, an exclusion (T595)', () => {
+  const componentDirs = [{ segment: 'primitives', name: 'Panel2' }]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Panel2/index.tsx'), GUARDED_SELECTOR_INDEX_SOURCE],
+    [
+      path.join(REPO_SRC_DIR, 'primitives/Panel2/Panel2.stories.tsx'),
+      GUARDED_SELECTOR_REACHED_STORIES_SOURCE,
+    ],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Panel2')
+  const a = elements.find((el) => el.text === 'A')
+  assert.ok(a, 'the conditionally-rendered A link must be found')
+  // `showA: true` this time — the same guard, now confirmed reached, so `A` really does render and
+  // really is the `nth`-free selector target. `evaluateGuards` returning `'reached'` (not
+  // `'unreached'`) must never be folded into the same exclusion as `'unreached'` — this is the
+  // boundary that keeps the fix above from over-excluding.
+  assert.deepEqual(a.coveredBy.hover, ['Hover'])
+})
+
 const FOOTER_LIKE_INDEX_SOURCE = `
 import { Link } from '../../primitives/Link'
 export function TwoLinkFooter({ aHref, bHref }) {

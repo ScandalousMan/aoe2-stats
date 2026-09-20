@@ -1827,33 +1827,89 @@ export function findPlayFocusTarget(body) {
   return last
 }
 
-// A helper candidate's own sort position for `nth` ordering against a *specific* story's own
-// scope — never called for a non-helper candidate, which always stands for its own recorded line
-// directly (`resolveNameMatch`'s own nth branch, below). A helper stands for its *declaration*
-// site, never a render position on its own — but when `scope` is supplied and `helperCallSites`
-// enumerates every real invocation in this file (`findHelperCallSites`, T595: `null` for an
-// `export`ed helper this pass cannot enumerate in full), each call site's own guards are evaluated
-// against this specific story's own scope, and the *earliest* one reached stands in for the
-// helper's own position — the same one-slot-per-candidate approximation the existing line sort
-// already makes for a `.map()`-rendered candidate (one AST node standing for every real instance it
-// renders; every real `nth` in this tree is `0`, so only "which candidate renders first" ever needs
-// deciding, never a candidate's exact index among several of its own instances). Four outcomes, kept
-// distinct because only two of them let the caller say anything at all: `'unplaceable'` (no `scope`,
-// or no enumerable call sites — the original, unconditional exclusion this replaces, `'ambiguous'`
-// in the caller); `'uncertain'` (a call site whose own guard this story's scope cannot resolve — this
-// pass does not know whether the helper renders at all, `'ambiguous'` too, never guessed either way);
+// A helper candidate's own sort position *and* its own real width — how many of its call sites
+// this specific story's own scope confirms reached — for `nth` ordering against a *specific*
+// story's own scope. Never called for a non-helper, non-iteration candidate, which always stands
+// for its own recorded line and a fixed width of one (`resolveNameMatch`'s own nth branch, below,
+// via `candidateExtent`). A helper stands for its *declaration* site, never a render position on
+// its own — but when `scope` is supplied and `helperCallSites` enumerates every real invocation in
+// this file (`findHelperCallSites`, T595: `null` for an `export`ed helper this pass cannot
+// enumerate in full), every call site's own guards are evaluated against this specific story's own
+// scope: the *count* of the ones reached is this candidate's own real width (`PrivacyNotice`'s own
+// `InlineLink`, invoked four times under a story's default args — row 8's own F10/T595, closed by
+// counting all four rather than only ever placing the earliest), and the earliest one reached
+// still stands in for its own sort position, exactly as before. Four outcomes, kept distinct
+// because only two of them let the caller say anything at all: `'unplaceable'` (no `scope`, or no
+// enumerable call sites — the original, unconditional exclusion this replaces, `'ambiguous'` in the
+// caller); `'uncertain'` (a call site whose own guard this story's scope cannot resolve — this pass
+// does not know whether the helper renders at all, `'ambiguous'` too, never guessed either way);
 // `'absent'` (every call site resolvable, none reached for this story — confirmed, positive
-// knowledge that this helper does not render at all here, so it cannot be the `nth` target,
-// `'reject'`); `'placed'` (a real line, ordered against the rest of the pool below).
+// knowledge that this helper does not render at all here, a real width of zero, never the `nth`
+// target and never in anyone else's way either); `'placed'` (a real line and a real, counted width,
+// ordered against the rest of the pool below).
 function helperNthPosition(c, scope) {
-  if (!c.helperCallSites || !scope) return { status: 'unplaceable', line: null }
+  if (!c.helperCallSites || !scope) return { status: 'unplaceable', line: null, count: null }
   let earliest = null
+  let count = 0
   for (const site of c.helperCallSites) {
     const reach = evaluateGuards(site.guards, scope)
-    if (reach === 'unresolved') return { status: 'uncertain', line: null }
-    if (reach === 'reached' && (earliest === null || site.line < earliest)) earliest = site.line
+    if (reach === 'unresolved') return { status: 'uncertain', line: null, count: null }
+    if (reach === 'reached') {
+      count += 1
+      if (earliest === null || site.line < earliest) earliest = site.line
+    }
   }
-  return earliest == null ? { status: 'absent', line: null } : { status: 'placed', line: earliest }
+  return count === 0
+    ? { status: 'absent', line: null, count: 0 }
+    : { status: 'placed', line: earliest, count }
+}
+
+// A pool member's own real render *extent* against a specific story's scope: how many real DOM
+// positions it occupies (`count`) and where it sorts relative to the rest of the pool (`line`) —
+// the data `resolveNameMatch`'s own `nth` branch needs to place an `nth` force-state correctly
+// past a `.map()`/`.flatMap()` group or a multiply-invoked helper, neither of which the
+// one-AST-node-per-candidate model otherwise distinguishes from a single real element (row 8's own
+// F10: `PrivacyNotice`'s nine `Contents` entries used to occupy exactly one slot in this ordering,
+// so no `nth` past the pool's own small size could ever be placed anywhere on that page at all).
+// Three shapes, returned as one of two kinds:
+//   - `'unplaceable'` — this candidate's own position cannot be determined at all (an
+//     `isHelper` candidate with no `scope`, no enumerable call sites, or a call-site guard this
+//     story's own data cannot resolve). The caller excludes it from the ordering entirely when it
+//     is not the candidate currently under test — the same "cannot say anything about it" exclusion
+//     every other helper already got — and is immediately `'ambiguous'` when it is (unchanged from
+//     before this pass).
+//   - `'placed'`, `count: 0` — a helper confirmed to render nowhere in this story (every call site
+//     resolvable, none reached): a real, positive zero-width extent, contributing nothing and
+//     blocking nothing after it.
+//   - `'placed'`, `count: N` — an ordinary single element (`N=1`, always resolvable, its own
+//     `line`), a helper with `N` real call sites this story's own scope confirms reached, or a
+//     `.map()`/`.flatMap()`-rendered candidate whose own backing array this story's own scope
+//     resolves to a literal array of length `N` (`SECTIONS_TOC`, a file-level const evaluated once
+//     into every story's own scope) — only the array's own *length* is needed, never its items.
+//   - `'unknown-width'` — a `.map()`/`.flatMap()`-rendered candidate whose own position (`line`) is
+//     known (it is real, ordinary JSX, not a helper's declaration site) but whose backing array
+//     this story's own scope cannot resolve to a literal array at all (a prop passed through
+//     untouched, or a value built by a function call `evaluateExpr` never evaluates). Distinct from
+//     `'unplaceable'` on purpose: this candidate's own *position* is real and sortable, so an
+//     earlier `nth` that resolves before reaching it is unaffected — only a walk that reaches this
+//     candidate without yet placing `nth` must stop and say so, the "one it cannot settle keeps the
+//     whole ordering unresolved" rule the coordinator's own words state, rather than assuming a
+//     width of one the way the pre-T595 model silently did for every iteration candidate.
+function candidateExtent(c, scope) {
+  if (c.isHelper) {
+    const pos = helperNthPosition(c, scope)
+    if (pos.status === 'unplaceable' || pos.status === 'uncertain') {
+      return { kind: 'unplaceable' }
+    }
+    return { kind: 'placed', count: pos.count, line: pos.line }
+  }
+  if (c.isInsideIteration && c.iterationArrayExpr) {
+    if (!scope) return { kind: 'unknown-width', line: c.line }
+    const arr = evaluateExpr(c.iterationArrayExpr, scope)
+    if (!arr.resolved || !Array.isArray(arr.value)) return { kind: 'unknown-width', line: c.line }
+    return { kind: 'placed', count: arr.value.length, line: c.line }
+  }
+  return { kind: 'placed', count: 1, line: c.line }
 }
 
 // --- Shared candidate-resolution: does `forced`/`playFocus` target `candidate` among `pool`? ------
@@ -1926,36 +1982,58 @@ export function resolveNameMatch({
     return 'ambiguous'
   }
   if (nth != null) {
-    // The candidate itself is a reusable helper's declaration site — its own real render position
-    // is placed against *this* story's own scope (`helperNthPosition`, T595) when its own call
-    // sites are fully enumerable; genuine uncertainty about whether it renders at all (a call site
-    // whose guard this story's scope cannot resolve) leaves it exactly as unplaceable as before —
-    // `'ambiguous'`, never guessed into a `'reject'` this pass has not actually earned. A helper
-    // confirmed to never render this story (every real call site guarded off) cannot be the `nth`
-    // target either way, so it is `'reject'`ed on that same positive knowledge.
-    let candidateLine = candidate.line
-    if (candidate.isHelper) {
-      const pos = helperNthPosition(candidate, scope)
-      if (pos.status === 'unplaceable' || pos.status === 'uncertain') return 'ambiguous'
-      if (pos.status === 'absent') return 'reject'
-      candidateLine = pos.line
-    }
-    // A real DOM-render-order position. Only the candidates whose own recorded line *is* a render
-    // position (not a reusable helper's declaration site, invoked from elsewhere this static pass
-    // cannot enumerate) can be ordered this way — except the candidate under test itself, already
-    // placed above when it is a helper this pass could enumerate for this specific story; every
-    // *other* helper in the pool stays excluded, the original, unconditional exclusion (this pass
-    // only ever places the one candidate a given call is asking about, never a second helper's own
-    // position at the same time). Sorted and compared by object identity, never by line value alone
-    // — two real elements can share a line number and must never be confused for one another.
-    const orderable = pool
-      .filter((c) => !c.isHelper || c === candidate)
-      .map((c) => ({ c, line: c === candidate ? candidateLine : c.line }))
-      .filter((p) => p.line != null)
+    // Why this whole branch was rewritten, stated plainly rather than left for a reader to infer
+    // from the mechanics below: excluding *every* other helper from the ordering (the pre-T595
+    // shape) did not merely make this pass less confident about a helper's own position — once a
+    // `.map()` group and a multiply-invoked helper both preceded the candidate under test, removing
+    // the helper from the pool shifted every position *after* it, and the walk would land `nth` on
+    // whichever real element happened to fall into the resulting, wrong slot and confidently
+    // `'match'` it. That is not an `'ambiguous'` cell quietly asking for a human to look — it is a
+    // wrong `'match'`, indistinguishable in the generated region from a correct one, in a register
+    // whose only value is that a reader can trust a `'match'` without re-deriving it. An off-by-N
+    // count in a printed tally is a bug a reviewer can spot; a silently wrong credit is not (found
+    // by the coordinator reviewing this task's own second hand-back, `PrivacyNotice`'s
+    // `InlineLink`/`After` shape, pinned by `state-coverage.test.mjs`'s own contrast fixture below).
+    //
+    // The candidate itself, first: a helper whose own position this story's scope cannot place at
+    // all is exactly as unplaceable as before (`candidateExtent`'s own `'unplaceable'` kind) —
+    // `'ambiguous'`, the same short-circuit this branch always made, checked before the pool is
+    // even built so an unplaceable candidate under test is never silently walked as if it had a
+    // position (T594 part A's own reasoning, unchanged).
+    const own = candidateExtent(candidate, scope)
+    if (own.kind === 'unplaceable') return 'ambiguous'
+    // A helper confirmed to render nowhere in this story (every one of its own call sites
+    // resolvable, none reached — `candidateExtent`'s own `count: 0`) cannot be the `nth` target
+    // either way, positive knowledge this pass already has without walking the rest of the pool —
+    // `'reject'`, not a guess deferred to whatever the walk below happens to land on.
+    if (own.kind === 'placed' && own.count === 0) return 'reject'
+    // Every other pool member's own real extent against this same story's scope — a `.map()` group
+    // or a multiply-invoked helper now contributes as many slots as it actually renders, not one
+    // (row 8's own F10/T595: nine real `Contents` entries used to be one slot, so no `nth` past the
+    // pool's own tiny size could ever be placed on that page). A member this pass cannot place at
+    // all (another helper this story's scope cannot resolve) is excluded from the ordering
+    // entirely — the original, unconditional exclusion every *other* helper already got, now
+    // extended to a `.map()` member whose own backing array is unresolvable too: excluding it here
+    // would be a guess in the *opposite* direction (assuming it contributes nothing when it may
+    // contribute several), so instead its own `'unknown-width'` kind is *kept* in the ordering and
+    // stops the walk cold the moment it is reached, below.
+    const entries = pool
+      .map((c) => (c === candidate ? { c, ...own } : { c, ...candidateExtent(c, scope) }))
+      .filter((e) => e.kind !== 'unplaceable' && e.count !== 0)
       .sort((a, b) => a.line - b.line)
-      .map((p) => p.c)
-    if (orderable.length > nth) {
-      return orderable[nth] === candidate ? 'match' : 'reject'
+    // Walked in source order, accumulating an exact cumulative position — exact because every
+    // entry reached so far had a known, counted width. The moment the walk reaches an
+    // `'unknown-width'` entry, `nth` has not yet been placed (an already-placed `nth` returns from
+    // inside the loop before ever reaching it), so whether it falls inside that entry's own
+    // unresolved range or past it into whatever follows is genuinely unknown — `'ambiguous'`, the
+    // "one it cannot settle keeps the whole ordering unresolved" rule, never guessed either way.
+    let cursor = 0
+    for (const entry of entries) {
+      if (entry.kind === 'unknown-width') return 'ambiguous'
+      if (nth < cursor + entry.count) {
+        return entry.c === candidate ? 'match' : 'reject'
+      }
+      cursor += entry.count
     }
     return 'ambiguous'
   }
@@ -3364,6 +3442,19 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
       if (!parsed) continue
       const tagPool = elements.filter((o) => o.tag === parsed.tag && !o.ariaHidden)
       if (el.tag !== parsed.tag) continue
+      // `el`'s own guards, against this specific story's scope, the same exclusion
+      // `buildElementCells`'s role path (`resolveNameMatch`'s pool, filtered before it is ever
+      // built) and `resolveDisabledFromStories` already apply — a conditionally-rendered candidate
+      // (`PrivacyNotice`'s own contact-route link, `controllerContact ? <a…> : …`) this story's own
+      // scope confirms `'unreached'` is not a candidate for that story's selector either, positive
+      // knowledge this pass already has without ever attempting to resolve its own attribute value.
+      // Skipped entirely, not merely rejected: a confirmed-absent element contributes nothing to
+      // either half of the cell, the same way a `nth`-excluded absent helper does (`candidateExtent`
+      // above). `'unresolved'` (a guard this story's own data cannot evaluate) is left to
+      // `resolveSelectorMatch` below unchanged — it already reports its own attribute as
+      // unresolvable in that case, which is the honest outcome, not a reason to guess a reject this
+      // pass has not earned.
+      if (evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
       const verdict = resolveSelectorMatch({
         selector: forced.selector,
         candidate: el,
