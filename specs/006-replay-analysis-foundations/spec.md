@@ -432,8 +432,15 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-029**: Every knowledge source MUST be documented with its scope, its reliability, its update
   mechanism, its version identifier, its coverage and its known limitations, and the date that
   assessment was made (002).
-- **FR-030**: A source MUST NOT be treated as authoritative without validation against the game or
-  against a second source; the validation performed MUST be recorded.
+- **FR-030**: A source MUST NOT be treated as authoritative without validation, and the validation
+  performed MUST be recorded. Validation against the game or against a genuinely independent second
+  source is the strong form and is required wherever one exists. **Where none exists, a second
+  reading of the same source through a different field is admissible, and MUST say so** — naming the
+  two fields read and why no independent source was available. Research D3 establishes that for
+  civilisation bonus *scope* there is none: the two community datasets are one generation pipeline
+  run twice, and the game's own data file is barred by the publisher's usage rules. A validation
+  record that does not distinguish which of the two forms it used is not a record (found by
+  `/speckit-analyze` 2026-09-21; the weaker form was in use and was being reported as the stronger).
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).
