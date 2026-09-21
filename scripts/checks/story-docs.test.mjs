@@ -22,11 +22,14 @@ import {
   ICONOGRAPHY_DOCS_TARGET,
   SR_ONLY_NAMING_SHAPE_COMPONENTS,
   SR_ONLY_SOLE_NAME_COMPONENTS,
+  extractExportedPaths,
+  evaluatePublicSurface,
 } from './story-docs.mjs'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(scriptDir, '..', '..')
 const srcDir = path.join(rootDir, 'packages', 'design-system', 'src')
+const indexPath = path.join(srcDir, 'index.ts')
 
 test('extractPurposeLine reads a plain, single-line template-literal purpose line', () => {
   const source = `
@@ -379,4 +382,63 @@ test('every real component whose own source contains sr-only is classified in ex
     )
     .filter(({ name }) => !classified.has(name))
   assert.deepEqual(unclassified, [])
+})
+
+// --- extractExportedPaths / evaluatePublicSurface (T597, production-readiness item 12) -----------
+
+test('extractExportedPaths reads every `export * from` target, ignoring other export shapes', () => {
+  const source = `
+export * from '../tokens/generated/tokens'
+export * from './primitives/Button'
+export * from "./primitives/Callout"
+export { Badge } from './primitives/Badge'
+export const x = 1
+`
+  assert.deepEqual(
+    extractExportedPaths(source),
+    new Set(['../tokens/generated/tokens', './primitives/Button', './primitives/Callout']),
+  )
+})
+
+test('evaluatePublicSurface passes when every component directory has its own export line', () => {
+  const findings = evaluatePublicSurface({
+    componentDirs: [
+      { segment: 'primitives', name: 'Button' },
+      { segment: 'composites', name: 'Footer' },
+    ],
+    indexSource: `export * from './primitives/Button'\nexport * from './composites/Footer'\n`,
+  })
+  assert.deepEqual(findings, [])
+})
+
+test('evaluatePublicSurface fails a component directory index.ts never exports, naming it', () => {
+  const findings = evaluatePublicSurface({
+    componentDirs: [
+      { segment: 'primitives', name: 'Button' },
+      { segment: 'composites', name: 'Ghost' },
+    ],
+    indexSource: `export * from './primitives/Button'\n`,
+  })
+  assert.equal(findings.length, 1)
+  assert.ok(findings[0].includes("export * from './composites/Ghost'"))
+  assert.ok(findings[0].includes('`Ghost`'))
+})
+
+test('evaluatePublicSurface does not accept a substring match — the exact relative path must exist', () => {
+  // A directory named `Button` must not be satisfied by an export path that merely contains the
+  // word, such as a sibling `ButtonGroup` export — the check compares the whole path, not a
+  // substring, the same distinction row 4's sr-only classification draws for a linked vs. an
+  // unlinked mention.
+  const findings = evaluatePublicSurface({
+    componentDirs: [{ segment: 'primitives', name: 'Button' }],
+    indexSource: `export * from './primitives/ButtonGroup'\n`,
+  })
+  assert.equal(findings.length, 1)
+})
+
+test('every real component directory has its own export line in packages/design-system/src/index.ts', () => {
+  const componentDirs = listComponentDirs(srcDir)
+  const indexSource = readFileSync(indexPath, 'utf8')
+  const findings = evaluatePublicSurface({ componentDirs, indexSource })
+  assert.deepEqual(findings, [])
 })

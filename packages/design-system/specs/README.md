@@ -3543,3 +3543,75 @@ task's own read of both on 2026-09-21 found neither changed.** `node scripts/che
 fails on any cell that is none of the three closures T595 permits — covered, impossible, or named
 exactly in a live debt or permanent entry above — the cell gate's own completion condition, not a
 count of cells typed here.
+
+## Verification-coverage gap register
+
+**Open as of 2026-09-21** (T597, re-walking spec.md's production-readiness items 9 and 13 against
+the commit this task actually runs on, rather than the CLAUDE.md violation the sixth-walk's own
+earlier draft made — extending sizing prose into a "Met" verdict, which `reviewer` caught
+2026-09-19). Two standing facts about this package's own verification harness, never about a
+component or a token, filed here for the reason the four registers above already are: the subject is
+this package's own tooling, so a future task changing that tooling needs this row updated, and it
+does not belong in a spec written once.
+
+1. **Item 9's second half — "every story is deterministic" — has no harness anywhere in this
+   repository.** Nothing renders a story twice and compares the two renders: `playwright.config.ts`
+   carries no `repeatEach`, and T568's own double render (the proof behind the clock-freeze fix,
+   `37f0c02`) was a scratch harness run once by hand and never committed. `story-baselines.mjs`
+   proves structural completeness (every story has its six theme x width units on disk) and
+   `story-baselines-duplicates.mjs` proves two different stories' units are not accidentally
+   identical; neither asks whether one story's own render is stable run to run. **Sized, not built by
+   the task that found it (T597) — a checkbox ticked here would be the exact mistake this register
+   exists to stop.** What it takes: (a) a second capture pass over the same story matrix
+   `tests/visual/stories.spec.ts` already walks (586 stories x 6 units as of this entry), most
+   cheaply as a `repeatEach: 2`-style second run rather than a new project, since the story set and
+   the capture axes are already correct and only the "run it twice" property is missing; (b) a
+   comparison the existing checks cannot supply, because "render A vs. the checked-in baseline" and
+   "render A vs. render B, taken seconds apart" are different questions — reusing
+   `story-baselines-duplicates.mjs`'s own `pixelDiffRatio` idiom against the two fresh renders
+   directly (never against a stored PNG) is the smallest correct extension, asserting the same 0.01
+   `DUPLICATE_MAX_DIFF_RATIO` already accepted elsewhere as anti-aliasing noise, not byte equality;
+   (c) this doubles Storybook-story capture cost for whichever job carries it, so it belongs beside
+   `nightly.yml`'s already-unscoped `visual-full` job, never `pr.yml`'s diff-scoped `visual` job — a
+   PR that touches one story has no need to render every story twice. Rough order of magnitude: one
+   new CI job invocation, one new comparison script reusing an idiom that already exists, and a
+   doubled runtime for one nightly job. **Owner: T673. Fix by 2026-10-05.**
+2. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
+   and reduced motion have no route-level suite of any kind. Focus visibility has one,
+   `tests/visual/focus-ring.spec.ts`, but it navigates `/iframe.html` — per-component inside
+   Storybook, never an application route. `tests/visual/app-routes.spec.ts` counts landmarks and
+   screenshots every route in both themes (T553) and asserts none of the four. **Sized, not built by
+   the task that found it (T597).** Four sub-suites, each a different mechanism, none reusing row 8's
+   clip-and-capture idiom because none of the four is "does this control look right in one state" —
+   they are all standing properties of a whole rendered route:
+   - **Keyboard operation** — a `page.keyboard.press('Tab')` walk per route in both themes, asserting
+     the focused element is always inside the route's one main landmark or its header/footer chrome,
+     and that the walk never lands on `document.body` before reaching every interactive element once.
+     No screenshot needed, only `page.evaluate(() => document.activeElement...)` reads — the
+     cheapest of the four.
+   - **Focus visibility** — the colour math already exists (`tokens/contrast.mjs`, extracted by T580)
+     and `focus-ring.spec.ts` already proves it per component; what is missing is the same assertion
+     driven by a real Tab press against a route's own cascade rather than a forced Storybook state,
+     confirming nothing at route level (a wrapper, a reset) repaints or hides what the component
+     alone already guarantees.
+   - **Touch footprints** — a `getBoundingClientRect()` sweep of every interactive element at the
+     375px width in both themes, asserting a minimum touch-target size. What floor to assert is not
+     this entry's decision — this system has not yet recorded one, which is itself part of the sizing
+     (a `product-designer` question, not an `implementer` one) — but the sweep itself needs no
+     screenshot, only computed geometry.
+   - **Reduced motion** — `page.emulateMedia({ reducedMotion: 'reduce' })` before navigation, then
+     asserting every element `tokens/motion.json` governs computes a near-zero transition/animation
+     duration on the real route. `Table.test.tsx` and `Menu.test.tsx` already unit-test this per
+     component (quickstart.md's own T577 walk cites both); the route-level half confirms nothing
+     upstream of the component — a route transition, a layout animation — reintroduces motion the
+     component itself already suppresses.
+
+   Rough order of magnitude: four sub-suites, each smaller than `app-routes.spec.ts` itself, sized to
+   land one axis at a time rather than as one commit so each stays reviewable; none needs a new
+   screenshot baseline except possibly focus visibility, which could ride on `app-routes.spec.ts`'s
+   existing captures if a forced-focus fixture is added per route. **Owner: T674. Fix by
+   2026-10-05.**
+
+Neither row above is evidence that item 9 or item 13 is met — sizing the work is not doing it, the
+distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Both stay open
+until T673 and T674 land and a run, not a plan, backs the verdict.

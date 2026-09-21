@@ -939,3 +939,192 @@ a wording fix in the paragraph above, and T594 now also recording a primitive wh
 stays unticked, deliberately.** Neither pass returned a FAIL on a component deviating from its spec:
 both FAIL-shaped findings were absent captures. That item is earned by a real deviation being caught,
 not by the agent having been run often enough.
+
+## T597 — the five unowned criteria, item 6's re-confirmation, and item 15's general-reviewer half (2026-09-21)
+
+Run against `ff207352`, three commits ahead of `origin/main` (`c9d68db7`, PR #89's merge — the local
+`main` ref is stale at `12c597a7` and understates the gap; `origin/main..HEAD` is the correct diff).
+The three commits ahead are `8e40efb9` (T596), `bdf9a8e9` (T600) and `ff207352` (T671), all on branch
+`fix/005-t595-row8-closure`, none yet opened as a pull request (`gh pr list --head
+fix/005-t595-row8-closure` returns only the already-merged #89).
+
+T577's walk (2026-09-08) recorded five criteria as partly-met or unverified, with no owner: item 3's
+landmark half and items 4 and 13 as **"partly met"** with the browser run not attempted; item 9 as
+**"Met for coverage and structure, not re-verified for determinism this session"**; item 12 as
+**"unverified, not asserted met."** Item 6 is a sixth of the same shape, restated by the 2026-09-11/12
+addendum after CI went green on PR #74's head as **"structurally met, not confirmed green on the
+current commit"** — closed only against that head, three pull requests ago. This task re-derives all
+six against the head above rather than inheriting any of the six verdicts. Item 15's general-reviewer
+half is recorded separately, at the end.
+
+### Item 3 (landmark half) — now Met, by a completed run
+
+T577's own words: *"the first half needs `tests/visual/app-routes.spec.ts` run in a browser… recorded
+as unconfirmed rather than assumed passing."* Run this session:
+`pnpm --filter web build && pnpm exec playwright test tests/visual/app-routes.spec.ts`. The build
+succeeded (`vite build`, 1.26s). The suite completed — it did not hang, and needed no retry for
+timeout reasons — but its own `test.describe.configure({ mode: 'serial' })` halts the whole describe
+block at the first failed test, so one invocation did not exercise every route; two further `--grep`
+invocations, isolating the untested tail, completed the picture within the same session:
+
+1. Full run: 16 passed, 1 failed (`/privacy renders exactly one main landmark (light)`), 5 did not run
+   (11.2s total).
+2. `--grep` for the remaining `/privacy` (dark) plus `/privacy-notice` and `/object` (both themes): 1
+   failed (`/privacy … (dark)`), 4 did not run.
+3. `--grep` for `/privacy-notice` (both themes) plus `/object` (both themes): 1 failed
+   (`/privacy-notice … (light)`), 3 did not run.
+4. `--grep` for `/object` alone (both themes): 2 passed.
+
+Read together: every one of the 22 sub-tests (11 routes x 2 themes; `index.tsx` excepted per the
+file's own comment, since it only ever redirects) reached `expectExactlyOneMain` and passed it —
+`expectExactlyOneMain` runs and is asserted **before** the screenshot comparison in the same test body,
+and every "failed" test's own error is a `toHaveScreenshot` dimension mismatch, never a landmark-count
+assertion. **No route rendered zero or two `<main>` elements, in either theme, this session.** The four
+screenshot failures (`/privacy` and `/privacy-notice`, both themes) are a real but unrelated finding:
+`Expected an image 1280px by 2488px, received 1280px by 2516px` (`/privacy`) and `9996px` vs. `9924px`
+(`/privacy-notice`), both roughly 6% of pixels differing — far past anti-aliasing noise, a genuine
+height change. This is consistent with T596 (landed the same branch, same day): `ArchivalControl`'s
+privacy link and `PrivacyNotice`'s contact-route link became real `Link` instances with new classes,
+and CI has not yet regenerated the app-route baselines that depict them
+(`app-signed-in-privacy*.png`, `app-signed-out-privacy-notice*.png`) — T596's and T600's own commit
+messages already record this exact gap ("Left open for T597 or the baseline-regeneration follow-up").
+Not this task's scope to fix: baselines are CI-only (`baselines.yml`, `workflow_dispatch` only), never
+captured locally.
+
+The padding/width half is unchanged and still true: `node scripts/checks/token-scale.mjs` (run again
+this session, see "Checks run" below) still reports "27 files under `apps/web/src` carry no
+application-authored layout class."
+
+**Item 3: Met.** Both halves hold — the landmark count by a completed run, the layout-class half by a
+live check re-run this session.
+
+### Item 4 — Met, already recorded in this file
+
+T577's own words: **"Partly met."** The behavioural evidence T577 could not find — because it lived only
+in a commit body — is already in this file, above, under "Result (T537, run 2026-09-06)": all four
+manual scenario-6 cases (system-dark fresh profile, override-to-light-then-reload, blocked-storage
+fallback, no-override-with-light-system) ran against a real `apps/web` dev server (case 3 against the
+inline script's own fallback logic, for the reason stated there) and its own closing line is **"All
+four pass as run."** This task adds no new evidence; it records that the evidence already exists in
+this file and was simply not where T577's walk looked.
+
+**Item 4: Met**, per T537's own record above, unchanged by this session.
+
+### Item 6 — re-derived against this head: Not met, structurally, right now
+
+The addendum's own words, quoted rather than paraphrased: **"structurally met, not confirmed green on
+the current commit"** — and that confirmation was against PR #74's head, three pull requests ago. Not
+inherited. Re-run this session: `node scripts/checks/story-baselines.mjs` — **exit 1**. "14 stories are
+missing 84 baseline units (of 6 per story)": every one of the fourteen is a story T596/T600/T671 added
+(`primitives-button--ghost-{active,focus-visible,hover}-lg`,
+`primitives-button--primary-{active,hover}-md`, `primitives-dialog--{active,hover}`,
+`primitives-menu--trigger-focus-visible`, and six `screens-archivalcontrol--privacy-notice-link-*` /
+`screens-privacynotice--contact-route-link-*` stories) — landed on this branch, never yet captured by
+`.github/workflows/baselines.yml` (`workflow_dispatch` only, not run since). **The literal claim item 6
+makes — "a story under test is compared in both themes at all three review widths" — is false for
+these 14 stories on this exact commit**: there is nothing on disk yet to compare them against. The
+mechanism itself (`pr.yml`'s `visual` job runs `pnpm test:visual --changed`, diff-scoped; `nightly.yml`'s
+`visual-full` job runs the unscoped `pnpm test:visual` in full) is unchanged and structurally sound —
+confirmed by reading both workflow files again this session — so this is a capture-lag finding, not a
+wiring defect, and the same follow-up T596/T600/T671 already named (a `baselines.yml` dispatch) closes
+it. `story-baselines-duplicates.mjs` still passes (0 undocumented full matches), which is a different
+claim (no two stories collide) and does not cover this gap.
+
+**Item 6: Not met on this commit** — 14 of the tree's stories currently have zero of their six required
+baseline units. Re-confirming after the baseline-regeneration follow-up (already anticipated, not a
+new task this session files) is what would move it back to "structurally met."
+
+### Item 9 — coverage half unchanged (Met); determinism half sized, not built, owner filed
+
+T577's own words, quoted in full because the task's own earlier draft flattened this into the other
+four: **"Met for coverage and structure, not re-verified for determinism this session."** This task
+does not re-verify determinism either — building the harness is explicitly out of this task's scope.
+The coverage/structure half stays Met: the 14 missing baseline units above are a capture-lag problem
+(the stories exist, are enumerated, and are exactly what `story-baselines.mjs` is complaining is
+*missing*, which is itself evidence the structural enumeration works), not a coverage-claim failure.
+The determinism half — "render each twice and compare" — still has no harness anywhere in this
+repository, confirmed again this session: `playwright.config.ts` still carries no `repeatEach`, and
+T568's own double render is still an uncommitted, one-time, by-hand proof. Sized, dated and given an
+owner in `packages/design-system/specs/README.md`'s new "Verification-coverage gap register" — **owner
+T673, fix by 2026-10-05**. Sizing the work is not doing it, per the task's own explicit instruction and
+the mistake `reviewer` rejected in an earlier draft of this task on 2026-09-19.
+
+**Item 9: coverage/structure half Met (unchanged); determinism half not met, filed as a dated,
+owned gap (T673) — not ticked.**
+
+### Item 12 — now Met, and mechanical rather than a one-time grep
+
+T577's own words: **"Not independently re-verified this session… Recorded as unverified, not asserted
+met."** Re-verified this session, and no longer resting on a grep re-read on faith: `scripts/checks/
+story-docs.mjs` gained `extractExportedPaths` and `evaluatePublicSurface`, comparing every one of the
+41 real component directories `listComponentDirs` finds under `packages/design-system/src/
+{primitives,composites,screens}` against `packages/design-system/src/index.ts`'s own `export * from
+'./<segment>/<name>'` lines — an exact path match, not a substring (a directory named `Button` is not
+satisfied by an export line for `ButtonGroup`, proven by a dedicated test below). Run 2026-09-21: **0
+findings — all 41 directories are exported.** `story-docs.test.mjs` gained six tests (32/32 total,
+up from 26) proving the extractor on a small fixture, the pass case, the fail case (a missing
+directory, named in the finding text), the substring-rejection case, and a live assertion against the
+real tree. The check is wired the same way rows 3/4 already are — it runs every time `story-docs.mjs`
+runs, already part of CI's `web` job — so a 42nd component directory that never gets an `index.ts` line
+fails the build instead of waiting for someone to grep again.
+
+**Item 12: Met, now with a permanent mechanical check** (`scripts/checks/story-docs.mjs`,
+`evaluatePublicSurface`) **rather than a one-time grep. No gap found: the 2026-09-19 grep this task was
+told not to trust is independently confirmed correct.**
+
+### Item 13 — unchanged and still partly met; all four halves sized, owner filed
+
+T577's own words: **"Partly met."** The component-level and per-story evidence T577 cited is unchanged
+and not re-verified this session (out of scope): `Dialog`'s focus-trap regression test, `focus-ring
+.spec.ts`'s per-story wiring, and reduced-motion unit tests on `Table`/`Menu`. What is newly and
+precisely recorded this session: **item 13 is not one gap but three**, confirmed by reading both
+suites again — keyboard operation, touch footprints and reduced motion have no route-level suite of
+any kind; focus visibility has one, but `focus-ring.spec.ts` navigates `/iframe.html`, which is
+per-component inside Storybook and visits no application route at all; `tests/visual/app-routes.spec
+.ts` counts landmarks and screenshots every route in both themes and asserts none of the four. Sized,
+dated and given an owner in `packages/design-system/specs/README.md`'s new "Verification-coverage gap
+register" — **owner T674, fix by 2026-10-05** — one sub-suite per axis (keyboard: a Tab walk asserting
+the focused element stays inside a landmark; focus visibility: the existing colour math driven by a
+real route rather than a forced Storybook state; touch footprints: a `getBoundingClientRect()` sweep
+against a minimum size not yet decided, itself part of the sizing; reduced motion: `emulateMedia`
+plus a near-zero-duration assertion confirming nothing upstream of the already-tested components
+reintroduces motion).
+
+**Item 13: unchanged, partly met; all four halves now sized and owned (T674) rather than left as an
+un-owned "partly met" — not ticked.**
+
+### Item 15's general-reviewer half — outstanding, no pull request covers this head
+
+The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness
+item 15's `visual-reviewer` half is not closed until `visual-reviewer` returns a verdict… over those
+baselines"), and is not this task's to re-verify. Worth recording plainly rather than left silent,
+because it bears directly on what follows: `story-baselines.mjs` is red on this exact head (see item 6
+above), so no baseline yet exists for `visual-reviewer` to judge T596's or T600's or T671's new frames
+against — both T596's and T600's own commit messages already record this ("Left open for T597 or the
+baseline-regeneration follow-up… production-readiness item 15's visual-reviewer half cannot render a
+verdict… until that follow-up lands"). That half is therefore not yet discharged either, mechanically
+confirmed rather than assumed — recorded here for a reader's benefit, not re-opened as this task's own
+scope.
+
+This task's own scope is the second half: **the general reviewer's approval against the specification
+and the constitution, for the head this task runs on.** `origin/main` is at `c9d68db7` (PR #89's
+merge, `fix(005): close row 8 (H5) — T595, T598, T599`, merged 2026-09-20). This branch's HEAD
+(`ff207352`) is three commits ahead of that — `8e40efb9` (T596), `bdf9a8e9` (T600), `ff207352` (T671)
+— and none of the three has been opened as a pull request: `gh pr list --state all --head
+fix/005-t595-row8-closure` returns exactly one result, PR #89, already `MERGED` at the older head.
+**No pull request exists for this commit, so the general reviewer has not evaluated it — not
+rejected, not approved, genuinely outstanding.** Recording this is a status record, not a grant: this
+task is not the general reviewer and cannot supply the second half itself.
+
+### Checks run this session (beyond the ones cited inline above)
+
+`pnpm test` (design-system 1367 vitest + 25 `node --test` + game-assets 21 + apps/web 497, all green),
+`pnpm typecheck` (`tsr generate && tsc -b` for apps/web, `tsc --noEmit` elsewhere, all `Done`),
+`pnpm lint` (`oxlint`, `Done`), `uv run pytest` (960 passed), `uv run python scripts/checks/spec_lint.py
+--feature specs/005-design-system-foundations` (clean), every `scripts/checks/*.mjs` script individually
+(`a11y-allowlist`, `built-css`, `config-preflight`, `spa-routing`, `spec-completeness`,
+`state-coverage`, `story-baselines-duplicates`, `story-docs`, `tier-deps`, `token-scale` all exit 0;
+`story-baselines` exits 1, cited above under item 6), `node --test scripts/checks/story-docs.test.mjs`
+(32/32), `uv run ruff format --check .` and `uv run ruff check .` (both clean, no Python touched by
+this task), `npx prettier --write` over every file this task edited (all reported "unchanged" —
+already correctly formatted).

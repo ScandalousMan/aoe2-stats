@@ -23,6 +23,13 @@
 //      unclassified: the two maps used to be trusted by hand-audit alone (T578's own remediation,
 //      found by review — the check enforced row 4's *wording* for four known names but never
 //      re-derived the list itself from source).
+//   4. T597, production-readiness item 12 ("everything intended for use is reachable from the
+//      package's public surface"): every component directory `listComponentDirs` finds must have a
+//      matching `export * from './<segment>/<name>'` line in
+//      packages/design-system/src/index.ts. This used to be a one-time grep (T542, then re-checked
+//      by hand on 2026-09-19); it is asserted here instead so a 42nd component directory that never
+//      gets a line in index.ts fails the build rather than sitting unreachable until someone thinks
+//      to grep again.
 //
 // Both maps are hand-maintained, not derived — which components carry a redundant accessible name
 // versus the sole one is a judgement call, the same shape spec-completeness.mjs's EXEMPT_SPEC_FILES
@@ -45,6 +52,7 @@ import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const srcDir = path.join(rootDir, 'packages', 'design-system', 'src')
+const indexPath = path.join(srcDir, 'index.ts')
 
 // The docs-entry id `.storybook/foundations/Iconography.stories.tsx` builds to (`title:
 // 'Foundations/Iconography'`, no explicit story-level `id`, Storybook's own default docs suffix) —
@@ -188,6 +196,41 @@ export function containsSrOnly(sourceFileContents) {
   return sourceFileContents.some((content) => content.includes('sr-only'))
 }
 
+// Every `export * from '<path>'` target in packages/design-system/src/index.ts, as a Set of the
+// literal relative paths (`'./primitives/Button'`, never resolved or normalised further — the
+// index file's own convention, `export * from './<segment>/<name>'`, one line per component, is
+// exact enough that a looser match would hide a typo rather than catch one).
+export function extractExportedPaths(indexSource) {
+  const paths = new Set()
+  const EXPORT_PATH_RE = /export\s+\*\s+from\s+['"]([^'"]+)['"]/g
+  for (const match of indexSource.matchAll(EXPORT_PATH_RE)) {
+    paths.add(match[1])
+  }
+  return paths
+}
+
+// Production-readiness item 12 (spec.md): "Everything intended for use is reachable from the
+// package's public surface." Pure — no filesystem access, so story-docs.test.mjs can fixture both
+// the present and the missing case. Every real component directory `listComponentDirs` finds must
+// have its own `export * from './<segment>/<name>'` line in index.ts; nothing here checks the
+// reverse (an index.ts line naming a directory that does not exist), because a stale export line
+// fails a different, more direct way — `tsc` on the missing module specifier.
+export function evaluatePublicSurface({ componentDirs, indexSource }) {
+  const exportedPaths = extractExportedPaths(indexSource)
+  const findings = []
+  for (const { segment, name } of componentDirs) {
+    const expected = `./${segment}/${name}`
+    if (!exportedPaths.has(expected)) {
+      findings.push(
+        `packages/design-system/src/index.ts carries no \`export * from '${expected}'\` — ` +
+          `\`${name}\` is not reachable from the package's public surface (production-readiness ` +
+          'item 12).',
+      )
+    }
+  }
+  return findings
+}
+
 // Pure: takes `componentDirs` (`listComponentDirs`'s own shape) and three maps keyed off it —
 // `storyPathByComponent` (`"<segment>/<name>"` -> absolute story path, or undefined when none
 // exists), `storySourceByPath` (absolute story path -> file contents), and
@@ -309,12 +352,17 @@ function main() {
     sourceFilesByComponent.set(key, sourceFiles)
   }
 
-  const findings = evaluateStoryDocs({
-    componentDirs,
-    storyPathByComponent,
-    storySourceByPath,
-    sourceFilesByComponent,
-  })
+  const indexSource = readFileSync(indexPath, 'utf8')
+
+  const findings = [
+    ...evaluateStoryDocs({
+      componentDirs,
+      storyPathByComponent,
+      storySourceByPath,
+      sourceFilesByComponent,
+    }),
+    ...evaluatePublicSurface({ componentDirs, indexSource }),
+  ]
 
   if (findings.length > 0) {
     for (const finding of findings) fail(finding)
@@ -330,7 +378,8 @@ function main() {
       `line; every \`sr-only\` occurrence in source is classified in exactly one of ` +
       `SR_ONLY_NAMING_SHAPE_COMPONENTS (${SR_ONLY_NAMING_SHAPE_COMPONENTS.size}) or ` +
       `SR_ONLY_SOLE_NAME_COMPONENTS (${SR_ONLY_SOLE_NAME_COMPONENTS.size}), and every redundant ` +
-      'one links Foundations → Iconography.',
+      'one links Foundations → Iconography; and every one of them is named in ' +
+      'packages/design-system/src/index.ts (production-readiness item 12).',
   )
 }
 
