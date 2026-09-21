@@ -692,7 +692,7 @@ The pre-merge review rejected phases 2-4 on spec compliance. Every finding below
 against the code before being written down. **These block #90's merge**; T652a rides with them.
 Three were arbitration and are decided, with the decision recorded in the task that carries it.
 
-- [ ] T652b [US2] **Put the coverage pass on `query.py`'s public seam, and fix what it reports when
+- [x] T652b [US2] **Put the coverage pass on `query.py`'s public seam, and fix what it reports when
       it knows nothing.** Four findings, one file pair, one commit. (a) `coverage.py:356` returns
       `()` when the stream carries no build, so `validate.py` rule 8 sees no blocker and the document
       publishes everything — the spec's own edge case says an unresolvable build is a gap of
@@ -919,7 +919,10 @@ after everything underneath it moves.
       `apps/analyzer/src/aoe2stats_analyzer/run.py`, keyed so a reproduced analysis records nothing
       twice, and publish the gap list in the document. When no snapshot matches the recording's
       build, the knowledge block records the absence explicitly and one blocking gap says so
-      (**FR-027**)
+      (**FR-027**). **A gap whose stream named no build carries `build = -1`** — T652b's sentinel,
+      recorded in [data-model.md](./data-model.md) §7, forced by a non-nullable column and a closed
+      cause set. FR-039's rate query groups by build, so decide here how that row reads to an
+      operator and do not let `-1` appear in the report as though it were a game build
 - [ ] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
       nullable `match_analyses.identity_digest` column T657a reads — under
       `infra/migrations/versions/`, following that directory's naming convention and chaining from

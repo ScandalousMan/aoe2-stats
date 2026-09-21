@@ -39,16 +39,35 @@ snapshot for this build") the seven `query.py` functions ask, and is a real, sta
 `parse_promotion`, `compute_digest`, `list_snapshot_directories`) are excluded on purpose: they are
 the loader `snapshot_for` is built from, not queries in their own right — several raise rather than
 return on a malformed snapshot (`load_snapshot`), and none of them is qualified by a caller's
-question the way `snapshot_for(build)` and every `query.py` function are. `coverage.coverage` is
-excluded for the reason the task text already gives: it is a batch pass over a whole stream,
-returning `Sequence[gaps.KnowledgeGap]` — a list, not a single answer-or-gap union — because
-reporting every gap at once, not stopping at the first, is exactly its job (contracts/
-knowledge-base.md, "Gaps": "Its output is the gap list the document publishes").
+question the way `snapshot_for(build)` and every `query.py` function are.
 
-Within the modules actually swept (`query.py` in full; `snapshot.py` for the one named function),
-the walk itself is general: it iterates every public, module-defined function it finds rather than
-hand-naming each one, so a function added to `query.py` later — the module the contract's "query
-surface" section is actually about — is automatically covered without this file changing.
+`coverage.coverage` is excluded from the union sweep above for a real, still-true reason: it
+returns `Sequence[gaps.KnowledgeGap]` — a list, not a single answer-or-gap union — because
+reporting every gap at once, not stopping at the first, is exactly its job (contracts/
+knowledge-base.md, "Gaps": "Its output is the gap list the document publishes"). Before T652b,
+though, that shape difference also stood as the reason `coverage.py` reimplemented
+`query._civilisation_qualified`'s whole resolution order a second time, through three privately
+imported names (`_civilisations_modelled`, `_raw_value_for_field`, `_rules`), rather than ever
+calling the six public functions this file already proves return the guaranteed union — so SC-008's
+"by construction rather than by inspection" did not, in fact, reach the pass that produces the
+published gap list, even though this paragraph, before T652b, read as though the exclusion made
+that harmless. `test_coverage_never_imports_a_private_name_from_query` below is the narrower
+structural check this task adds to close that gap: `coverage.py` is swept too, for the one property
+that actually matters given its different return shape — that it imports no underscore-prefixed
+name from `query.py` at all, so every `gaps.KnowledgeGap` it can produce came from calling the
+public surface, never from re-deriving one itself through a name this file's own union sweep does
+not, and structurally cannot, reach.
+
+Within the modules actually swept by the union check, the walk itself is general: it iterates
+every public, module-defined function `_QUERY_MODULES` names for a module, rather than importing
+and calling each one by name, so a new query added under an already-named function set is covered
+without this file changing. `query.py`'s own entry names its seven contract functions explicitly
+rather than sweeping every public function blindly (`only=None`, this file's shape before T652b):
+`rules_overrides` (T652b) is a real, public, module-level function in `query.py` that answers no
+yes/no question at all — a context-manager test/config seam, not a query — and a blind walk would
+have wrongly demanded the answer-or-gap union of it. `snapshot.py`'s own entry already named its
+one function the same way, for the same reason (most of that module's other public functions raise
+rather than return, or are not qualified by a caller's question at all).
 """
 
 from __future__ import annotations
@@ -129,12 +148,32 @@ def _assert_is_answer_or_gap_union(name: str, annotation: object) -> None:
     )
 
 
-#: The query surface this file sweeps, and why each module is in it — see the module docstring.
-#: `query.py` is walked in full and generally; `snapshot.py` names exactly the one function that
-#: is itself a query, not every public function in that module (most of which are the loader
+#: `query.py`'s own seven contract functions (data-model.md's "The query surface") — named
+#: explicitly here since T652b, rather than swept blindly (`only=None`), because `query.py` now also
+#: exposes `rules_overrides`, a context-manager test/config seam (this module's own docstring:
+#: "the guarantee was weaker than the test read") that answers no yes/no question at all and is not
+#: part of the contract's query surface. Naming the seven here, the same way `snapshot.py`'s own
+#: entry below already names its one, is what still lets a function silently regressing away from
+#: this set fail loudly (the `found_names == only` assertion), without demanding the answer-or-gap
+#: union of a helper that was never a query in the first place.
+_QUERY_SURFACE_FUNCTION_NAMES: frozenset[str] = frozenset(
+    {
+        "cost",
+        "production_time",
+        "age_requirement",
+        "prerequisites",
+        "produced_at",
+        "available_to",
+        "name",
+    }
+)
+
+#: The query surface this file sweeps, and why each module is in it — see the module docstring and
+#: `_QUERY_SURFACE_FUNCTION_NAMES`'s own comment above. `snapshot.py` names exactly the one function
+#: that is itself a query, not every public function in that module (most of which are the loader
 #: `snapshot_for` is built from, not queries in their own right).
 _QUERY_MODULES: tuple[tuple[types.ModuleType, frozenset[str] | None], ...] = (
-    (query, None),
+    (query, _QUERY_SURFACE_FUNCTION_NAMES),
     (snapshot, frozenset({"snapshot_for"})),
 )
 
@@ -164,23 +203,56 @@ def test_every_public_query_returns_the_answer_or_gap_union() -> None:
 
 
 def test_query_py_defines_exactly_the_contracts_seven_query_functions() -> None:
-    """Guards against the walk quietly narrowing: if `query.py` ever exposed a public function
-    under a name `contracts/knowledge-base.md`'s "The query surface" does not list, the assertion
-    above would still check it (it iterates every public function, not a fixed list) — but nothing
-    would fail if a function accidentally lost its `def`-level visibility or was renamed away from
-    what the contract promises. This is the one hand-written name check this file keeps, precisely
-    because the walk above is deliberately general everywhere else.
+    """Guards against the walk quietly narrowing: `_QUERY_MODULES` names the seven explicitly
+    (T652b), so nothing would fail there if a function accidentally lost its `def`-level visibility
+    or was renamed away from what the contract promises. This is the one hand-written name check
+    this file keeps for exactly that regression.
+
+    `rules_overrides` is subtracted before comparing: it is `query.py`'s own test/config seam
+    (T652b, module docstring), answers no yes/no question at all, and is deliberately excluded from
+    `_QUERY_SURFACE_FUNCTION_NAMES` above for the same reason. Any *other* public function
+    `query.py` gains still fails this assertion — the subtraction names one specific, reviewed
+    exception rather than widening what this test accepts.
     """
-    names = {name for name, _ in _public_module_functions(query)}
-    assert names == {
-        "cost",
-        "production_time",
-        "age_requirement",
-        "prerequisites",
-        "produced_at",
-        "available_to",
-        "name",
-    }
+    names = {name for name, _ in _public_module_functions(query)} - {"rules_overrides"}
+    assert names == _QUERY_SURFACE_FUNCTION_NAMES
+
+
+# ------------------------------------------------------- coverage.py delegates, never reimplements
+
+
+def test_coverage_never_imports_a_private_name_from_query() -> None:
+    """T652b: `coverage.coverage` cannot be swept by
+    `test_every_public_query_returns_the_answer_or_gap_union` — its own return type is
+    `Sequence[gaps.KnowledgeGap]`, a list, not the single answer-or-gap union that check asserts
+    (module docstring, "`coverage.coverage` is excluded from the union sweep above"). SC-008's "by
+    construction rather than by inspection" still has to reach it somehow, so this is the narrower,
+    structural property that actually matters given the different shape: `coverage.py` must import
+    no underscore-prefixed name from `aoe2stats_knowledge.query` at all, so every
+    `gaps.KnowledgeGap` it can produce came from calling `query.py`'s public, already-swept
+    functions, never from a second, private construction of its own.
+
+    Before T652b, `coverage.py` imported three (`_civilisations_modelled`, `_raw_value_for_field`,
+    `_rules`) and reimplemented `query._civilisation_qualified`'s whole step order around them —
+    exactly the shape this assertion now refuses.
+    """
+    tree = ast.parse(
+        (_KNOWLEDGE_SRC_ROOT / "coverage.py").read_text(encoding="utf-8"),
+        filename="coverage.py",
+    )
+    private_query_imports = sorted(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "aoe2stats_knowledge.query"
+        for alias in node.names
+        if alias.name.startswith("_")
+    )
+    assert private_query_imports == [], (
+        f"coverage.py imports private name(s) {private_query_imports!r} from query.py — every gap "
+        "it produces must come from calling query.py's public, structurally-guaranteed "
+        "answer-or-gap functions instead (contracts/knowledge-base.md, 'The query surface'; "
+        "SC-008's 'by construction rather than by inspection')"
+    )
 
 
 # ------------------------------------------------------- FR-026: no network import in the package

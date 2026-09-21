@@ -52,14 +52,43 @@ exactly as before this task; this wiring exists so T645 only has to populate
 under — so `entity.build` is what every query resolves a snapshot from
 (`snapshot.snapshot_for`, FR-027). This matches `packages/knowledge/tests/test_query.py` (T646)'s
 own real call sites, written before this module existed.
+
+**T652b: the field-presence check and the `rules_overrides` seam.** Before this task,
+`_raw_value_for_field` defaulted rather than gapped when a query-level field's own `rules.json` key
+was absent from a resolved entity's record (`record.get("cost", {})`) — a narrower, pre-existing
+behaviour data-model.md §7's `field-absent` cause named as its closed-set member with "no producer
+yet". `_field_present`, checked in `_civilisation_qualified` immediately after the civilisation is
+confirmed modelled and before `_raw_value_for_field` ever reads a default in its place, is that
+producer: an entity whose own record genuinely lacks a field — never a legitimate `None`/`[]` value,
+which every real, committed entity record still carries as an explicit key (`normalise.py`'s
+`_entity`) — now gaps with `cause="field-absent"` instead of silently answering with a fabricated
+default (exactly the FR-038 substitution this whole feature exists to forbid).
+
+`rules_overrides`, a context manager, is the seam a caller — today, only `coverage.py`'s own
+`rules_overrides` parameter and `test_coverage.py`'s SC-007 — may use to substitute an in-memory
+`rules.json` mapping for one build, in place of the real, packaged one `_rules(directory)` reads,
+without touching the packaged fixture on disk (FR-025) or `query.py` inventing a second,
+parallel snapshot-construction path. Every other resolution step — is the build promoted at all,
+is the civilisation modelled, which effects apply — still reads the real, packaged snapshot
+(`snapshot.snapshot_for`, `_civilisations_modelled`, `effects.apply`): the override only ever
+stands in for the parsed `rules.json` body. Left un-entered — every real, production call's case —
+`_resolve_entity` reads `_rules(directory)` exactly as it always has.
+
+Giving `query.py` this seam, rather than leaving `coverage.py` to reimplement
+`_civilisation_qualified`'s whole step order and its own field-presence check on top of privately
+imported internals, is what lets `coverage.coverage` call these six public functions directly
+(T652b) — the point being that SC-008's "by construction rather than by inspection" then actually
+governs the gap list `coverage.coverage` publishes, not only the seven functions
+`test_structure.py` sweeps directly.
 """
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import json
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
@@ -137,6 +166,66 @@ def _civilisations_modelled(directory: str) -> frozenset[str]:
     return frozenset(modelled)
 
 
+#: T652b's test-only substitute for `_rules(directory)`, keyed by build — never read outside
+#: `_rules_for`, and never set outside the `rules_overrides` context manager below. `None` (its
+#: value for every real, production call) means "read the real, packaged rules.json".
+_rules_override: Mapping[int, Mapping[str, Any]] | None = None
+
+
+@contextlib.contextmanager
+def rules_overrides(overrides: Mapping[int, Mapping[str, Any]]) -> Iterator[None]:
+    """T652b's own seam (module docstring): while this context manager is active, `_resolve_entity`
+    reads `overrides[entity.build]` in place of the real, packaged `rules.json` for any build
+    `overrides` names — every other resolution step (`snapshot.snapshot_for`,
+    `_civilisations_modelled`, `effects.apply`) still reads the real, packaged snapshot.
+
+    Test-only: no production caller in this repository ever calls this (`coverage.py`'s own
+    `rules_overrides` parameter and `test_coverage.py`'s SC-007 are the only two callers). Restores
+    the previous override (`None`, for every real call) on exit even if the body raises, so a test
+    that fails inside the `with` block cannot leak its override into the next test.
+    """
+    global _rules_override
+    previous = _rules_override
+    _rules_override = overrides
+    try:
+        yield
+    finally:
+        _rules_override = previous
+
+
+def _rules_for(build: int, directory: str) -> Mapping[str, Any]:
+    """`_rules(directory)`, unless `rules_overrides` is active and names `build` — see that
+    function's docstring. `directory` alone cannot answer this: two different builds can resolve to
+    two different directories, and the override is keyed by build, not by directory."""
+    if _rules_override is not None and build in _rules_override:
+        return _rules_override[build]
+    return _rules(directory)
+
+
+def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
+    """T652b: whether `record` (one resolved `rules.json` entity) carries the key a query-level
+    field reads from at all — checked *before* `_raw_value_for_field` reads it, so a field a
+    `rules_overrides` mutation genuinely deleted is reported as missing (`cause="field-absent"`)
+    rather than silently read back as `_raw_value_for_field`'s own default (`{}`, `[]`, `None`).
+    `available_to` has no stored field of its own at all (`_raw_value_for_field`'s own docstring:
+    resolving the entity already proves the baseline pack carries it), so it is never reported
+    absent.
+    """
+    if field_name == "cost":
+        return "cost" in record
+    if field_name == "production_time":
+        return any(time_field in record for time_field in _TIME_FIELDS)
+    if field_name == "age_requirement":
+        return "age_requirement" in record
+    if field_name == "prerequisites":
+        return "prerequisites" in record
+    if field_name == "produced_at":
+        return "produced_at" in record
+    if field_name == "available_to":
+        return True
+    raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
+
+
 def _resolve_entity(
     entity: EntityRef, *, civilisation: str, field_name: str
 ) -> tuple[Snapshot, Mapping[str, Any]] | KnowledgeGap:
@@ -152,7 +241,9 @@ def _resolve_entity(
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
+    kind_table = (
+        _rules_for(entity.build, resolved.directory).get("entities", {}).get(entity.kind, {})
+    )
     record = kind_table.get(entity.id)
     if record is None:
         return KnowledgeGap(
@@ -215,6 +306,15 @@ def _civilisation_qualified(
     if civilisation not in _civilisations_modelled(snap.directory):
         return KnowledgeGap(
             cause="civilisation-not-modelled",
+            build=entity.build,
+            entity_kind=entity.kind,
+            entity_id=entity.id,
+            field=field_name,
+            civilisation=civilisation,
+        )
+    if not _field_present(record, field_name):
+        return KnowledgeGap(
+            cause="field-absent",
             build=entity.build,
             entity_kind=entity.kind,
             entity_id=entity.id,

@@ -296,9 +296,10 @@ def test_a_civilisation_qualified_cause_must_name_the_civilisation(cause: str) -
 
 
 def test_field_absent_is_in_the_closed_set_and_computes_like_any_other_per_field_cause() -> None:
-    """`field-absent` has no producer in this package yet (module docstring, `gaps.py`'s own
-    docstring) but is part of data-model.md §7's closed set and must already behave like every
-    other per-field cause."""
+    """`field-absent`'s real producer is `query._civilisation_qualified` (T652b,
+    `query._field_present`) — exercised end to end in `test_query.py` and `test_coverage.py`'s
+    SC-007. This test constructs the gap directly, independent of that producer, to prove the type
+    itself behaves like every other per-field cause regardless of which module builds one."""
     gap = gaps.KnowledgeGap(
         cause="field-absent",
         build=1,

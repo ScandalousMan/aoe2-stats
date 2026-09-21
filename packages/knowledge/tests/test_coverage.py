@@ -437,3 +437,159 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
         "'cost' and are neither blocked nor non-determinable (register.toml), so this gap must "
         "compute as blocking (research.md D7) — dependent values really are withheld"
     )
+
+
+# ------------------------------------------------------------------------------------- T652b
+
+
+def _one_build_higher_than_every_promoted_snapshot() -> int:
+    """A build no committed, promoted snapshot describes — computed from whatever is actually
+    committed rather than hard-coded, matching `test_query.py`'s own helper of the same name/intent
+    so a future fixture at a higher build cannot silently turn this into a build that *does*
+    resolve."""
+    from aoe2stats_knowledge import snapshot
+
+    resolvable = snapshot.load_resolvable_snapshots()
+    assert resolvable, "no promoted snapshot is committed — this test proves nothing without one"
+    return max(s.identity.describes_build for s in resolvable) + 1
+
+
+def test_a_stream_with_no_build_at_all_records_a_blocking_gap() -> None:
+    """(a): `coverage.py`'s own pre-fix behaviour was `if build is None: return ()` — a stream that
+    never names a build (no `match-started` event at all, or one whose own `build` field is
+    `None`, both real shapes `MatchStartedPayload.build: int | None` allows) reported *zero* gaps,
+    so `validate.py`'s rule 8 saw no blocker at all and the document would have published every
+    value unchecked. spec.md's own edge case ("a recording ... from a game build the knowledge base
+    has no snapshot for ... is a gap of blocking severity") makes no exception for the build itself
+    being unknown outright — `build is None` is the same ignorance wearing different clothes, per
+    this task's own text, and must gap exactly like an unresolvable-but-known build does.
+    """
+    from aoe2stats_knowledge import coverage, gaps
+
+    stream = [
+        CanonicalEvent(
+            clock_ms=0,
+            kind=EventKind.MATCH_STARTED,
+            payload=MatchStartedPayload(
+                build=None,
+                map_name="9",
+                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+            ),
+        ),
+        CanonicalEvent(
+            clock_ms=1_000,
+            kind=EventKind.UNIT_QUEUED,
+            participant=1,
+            payload=UnitQueuedPayload(
+                unit_id=int(_PIKEMAN_ID), building_type=12, building_object=5001, count=1
+            ),
+        ),
+    ]
+
+    result = coverage.coverage(
+        stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Byzantines"}
+    )
+
+    assert len(result) == 1, (
+        "a stream that names no build at all must still report one whole-stream gap, not zero, "
+        f"got {result!r}"
+    )
+    (gap,) = result
+    assert isinstance(gap, gaps.KnowledgeGap)
+    assert gap.cause == "no-snapshot-for-build"
+    assert gap.severity == gaps.BLOCKING
+
+
+def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_pair() -> None:
+    """(b): `_gap_for` re-resolved `snapshot.snapshot_for(build)` per `(entity, field)` pair and
+    returned the same `no-snapshot-for-build` gap each time — the task's own count is 612 of them
+    on recording 1's real golden stream (confirmed directly: `load_all_snapshots` was called 612
+    times over that stream's real entity/field product). `analysis_knowledge_gaps`' unique index is
+    `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))`, and every one
+    of those duplicate gaps is equal across all five columns (a whole-build cause names no entity,
+    field or civilisation at all — `gaps.py`'s `_WHOLE_BUILD_CAUSES`), so T662's writer would raise
+    on the second insert. The fix resolves the snapshot once, before the entity loop, and emits
+    exactly one gap regardless of how many (entity, field) pairs the stream would otherwise ask
+    about — two entities here (Pikeman, Crossbowman) times six fields is twelve opportunities for
+    the pre-fix code to duplicate; this test only needs more than one to prove deduplication, not
+    the real 612.
+    """
+    from aoe2stats_knowledge import coverage, gaps
+
+    unresolvable_build = _one_build_higher_than_every_promoted_snapshot()
+    stream = [
+        CanonicalEvent(
+            clock_ms=0,
+            kind=EventKind.MATCH_STARTED,
+            payload=MatchStartedPayload(
+                build=unresolvable_build,
+                map_name="9",
+                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+            ),
+        ),
+        CanonicalEvent(
+            clock_ms=1_000,
+            kind=EventKind.UNIT_QUEUED,
+            participant=1,
+            payload=UnitQueuedPayload(
+                unit_id=int(_PIKEMAN_ID), building_type=12, building_object=5001, count=1
+            ),
+        ),
+        CanonicalEvent(
+            clock_ms=2_000,
+            kind=EventKind.UNIT_QUEUED,
+            participant=1,
+            payload=UnitQueuedPayload(
+                unit_id=int(_CROSSBOWMAN_ID), building_type=87, building_object=5002, count=1
+            ),
+        ),
+    ]
+
+    result = coverage.coverage(
+        stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Byzantines"}
+    )
+
+    no_snapshot_gaps = [gap for gap in result if gap.cause == "no-snapshot-for-build"]
+    assert len(no_snapshot_gaps) == 1, (
+        "an unresolvable build must be reported exactly once, never once per (entity, field) pair "
+        f"queried against it — got {len(no_snapshot_gaps)}: {no_snapshot_gaps!r}"
+    )
+    assert len(result) == 1, (
+        f"no gap other than the single whole-build one is expected, got {result!r}"
+    )
+    (gap,) = result
+    assert isinstance(gap, gaps.KnowledgeGap)
+    assert gap.build == unresolvable_build
+    assert gap.severity == gaps.BLOCKING
+
+
+def test_an_unresolvable_build_with_no_entities_still_reports_one_gap() -> None:
+    """(b), the other direction: the pre-fix loop only ever emitted a gap while iterating
+    `entities_by_slot`, so a stream whose build is unresolvable but which names no entity at all
+    (only a `match-started` event) returned zero gaps — FR-027's "the absence MUST be recorded as a
+    gap" does not carve out an exception for an otherwise-empty stream; the build itself is what is
+    unknown, independent of what, if anything, was trained."""
+    from aoe2stats_knowledge import coverage, gaps
+
+    unresolvable_build = _one_build_higher_than_every_promoted_snapshot()
+    stream = [
+        CanonicalEvent(
+            clock_ms=0,
+            kind=EventKind.MATCH_STARTED,
+            payload=MatchStartedPayload(
+                build=unresolvable_build,
+                map_name="9",
+                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+            ),
+        ),
+    ]
+
+    result = coverage.coverage(stream)
+
+    assert len(result) == 1, (
+        "FR-027 requires a gap even when the stream references no entity at all — the build itself "
+        f"is what failed to resolve, not any one entity's lookup. Got {result!r}"
+    )
+    (gap,) = result
+    assert isinstance(gap, gaps.KnowledgeGap)
+    assert gap.cause == "no-snapshot-for-build"
