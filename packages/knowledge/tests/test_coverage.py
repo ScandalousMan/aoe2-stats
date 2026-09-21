@@ -117,11 +117,11 @@ from aoe2stats_core.replay.events import (
 _PACKAGE = "aoe2stats_knowledge"
 
 #: Both committed recordings report this build (`match-started.build`, verified directly against
-#: both golden streams below), which `aoe2techtree-fixture-promoted` describes with all six
+#: both golden streams below), which `aoe2techtree-180059` describes with all six
 #: modelled civilisations (T645).
 _BUILD = 180059
 
-_PROMOTED_DIRECTORY = "aoe2techtree-fixture-promoted"
+_PROMOTED_DIRECTORY = "aoe2techtree-180059"
 
 _FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"
 
@@ -295,7 +295,7 @@ def test_each_committed_recording_reports_zero_blocking_gaps(golden_path: Path) 
     D11: two from the first recording, four from the second, none shared) are sufficient for every
     entity and civilisation the two committed recordings actually reference — with **no**
     `rules_overrides` or `civilisation_names` override: this is `coverage.coverage` run for real,
-    against the real packaged, promoted snapshot (`aoe2techtree-fixture-promoted`, build 180059 —
+    against the real packaged, promoted snapshot (`aoe2techtree-180059`, build 180059 —
     both recordings' own `match-started.build`, confirmed directly against both golden streams),
     and against T648's own real numeric-civilisation-id-to-name research, not a stand-in for it.
 
@@ -333,7 +333,7 @@ def test_each_committed_recording_reports_zero_blocking_gaps(golden_path: Path) 
 _SYNTHETIC_CIVILISATION_ID = 900001
 
 #: "Pikeman" — real unit id `358` in the committed pack (`table_origin = "unit"`), verified
-#: directly against `aoe2techtree-fixture-promoted/rules.json`: cost `{food: 35, wood: 25}`,
+#: directly against `aoe2techtree-180059/rules.json`: cost `{food: 35, wood: 25}`,
 #: trained at the Barracks (building 12), and touched by Byzantines' real, modelled "-25%
 #: Spearman-line" effect (`effects.toml`) — chosen so the mutation below removes a field a real
 #: effect would otherwise have adjusted, not a field no civilisation-qualified step ever reaches.

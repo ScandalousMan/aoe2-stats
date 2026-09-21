@@ -12,7 +12,7 @@ Two kinds of test live here, deliberately kept apart:
   operation (including round-half-up on a fractional resource amount), and the "never
   half-applied" invariant when a modelled and an unmodelled effect both match the same query.
 - **Integration**, against the two real, committed snapshots' real, hand-transcribed
-  `effects.toml` (`aoe2techtree-fixture-promoted`, `aoe2techtree-fixture-promoted-177723`): the
+  `effects.toml` (`aoe2techtree-180059`, `aoe2techtree-177723-test`): the
   same two real facts `packages/knowledge/tests/test_query.py` encodes (Byzantine Pikeman -25%,
   Korean Crossbowman -50% wood), proven here directly through `effects.apply` rather than through
   `query.py` — this is deliberate: `query.py`'s own discount tests stayed `xfail` until T645
@@ -22,7 +22,7 @@ Two kinds of test live here, deliberately kept apart:
 **T645** added the four civilisations the second committed recording needs (research.md D11) —
 Franks, Persians, Teutons, Gurjaras — with the same two-kind treatment: a real cost/age-requirement
 adjustment proven against the committed `effects.toml`, and one conditional/team-wide "not
-modelled" refusal each. `packages/knowledge/snapshots/aoe2techtree-fixture-promoted/effects.toml`'s
+modelled" refusal each. `packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`'s
 own header comment carries the full identification method and provenance; this file does not
 restate it.
 """
@@ -320,8 +320,8 @@ def test_apply_matched_never_half_applies_a_bonus() -> None:
 
 # ---------------------------------------------------------------- integration: real snapshots
 
-_PROMOTED_DIRECTORY = "aoe2techtree-fixture-promoted"
-_PROMOTED_177723_DIRECTORY = "aoe2techtree-fixture-promoted-177723"
+_PROMOTED_DIRECTORY = "aoe2techtree-180059"
+_PROMOTED_177723_DIRECTORY = "aoe2techtree-177723-test"
 
 
 @pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])

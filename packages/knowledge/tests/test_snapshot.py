@@ -14,8 +14,8 @@ committed content.
 contracts/knowledge-base.md, "Promotion": `promoted = true` is refused unless `[validation]` is a
 non-empty table; an unpromoted snapshot loads fine as data but is excluded from
 `load_resolvable_snapshots`, the set `snapshot_for(build)` resolves against. Two committed
-fixtures exercise this end to end without monkeypatching: `aoe2techtree-fixture` (unpromoted) and
-`aoe2techtree-fixture-promoted` (promoted, with a real validation record).
+fixtures exercise this end to end without monkeypatching: `aoe2techtree-test-stub` (unpromoted) and
+`aoe2techtree-180059` (promoted, with a real validation record).
 
 contracts/knowledge-base.md, "Resolution by build" (T641, FR-027): `snapshot_for(build)` is an
 exact match on `describes_build` among `load_resolvable_snapshots()`, or a
@@ -695,21 +695,21 @@ def test_every_committed_snapshot_verifies_against_its_own_recorded_digest() -> 
 
 
 def test_the_committed_unpromoted_fixture_loads_but_is_not_resolvable() -> None:
-    """`aoe2techtree-fixture` is committed deliberately unpromoted (its own `snapshot.toml` says
+    """`aoe2techtree-test-stub` is committed deliberately unpromoted (its own `snapshot.toml` says
     so) — proving on the real, unpatched tree that an unpromoted snapshot is valid, loadable data
     that is nonetheless absent from the resolvable set."""
-    unpromoted = load_snapshot("aoe2techtree-fixture")
+    unpromoted = load_snapshot("aoe2techtree-test-stub")
     assert unpromoted.promoted is False
     assert unpromoted.validation is None
     resolvable_directories = {snapshot.directory for snapshot in load_resolvable_snapshots()}
-    assert "aoe2techtree-fixture" not in resolvable_directories
+    assert "aoe2techtree-test-stub" not in resolvable_directories
 
 
 def test_the_committed_promoted_fixture_is_promoted_and_resolvable() -> None:
-    """`aoe2techtree-fixture-promoted` is committed promoted, with a real, non-empty validation
+    """`aoe2techtree-180059` is committed promoted, with a real, non-empty validation
     record — proving the promotion mechanism end to end against real, unpatched, committed
     content rather than only a synthetic `tmp_path` directory."""
-    promoted = load_snapshot("aoe2techtree-fixture-promoted")
+    promoted = load_snapshot("aoe2techtree-180059")
     assert promoted.promoted is True
     assert promoted.validation is not None
     assert promoted.validation.method
@@ -717,7 +717,7 @@ def test_the_committed_promoted_fixture_is_promoted_and_resolvable() -> None:
     assert promoted.validation.performed_by
     assert promoted.validation.performed_at
     resolvable_directories = {snapshot.directory for snapshot in load_resolvable_snapshots()}
-    assert "aoe2techtree-fixture-promoted" in resolvable_directories
+    assert "aoe2techtree-180059" in resolvable_directories
 
 
 # --------------------------------------------------------------------------------- snapshot_for
@@ -815,13 +815,13 @@ def test_snapshot_for_raises_when_two_promoted_snapshots_describe_the_same_build
 
 
 def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build() -> None:
-    """Against the real, unpatched, committed tree: `aoe2techtree-fixture-promoted` now
+    """Against the real, unpatched, committed tree: `aoe2techtree-180059` now
     `describes_build = 180059`, the game build the committed reference recordings actually report
     (`tests/fixtures/replays/README.md`), wired there by T642's carry-forward validation record —
     resolving that exact build returns it."""
     result = snapshot_for(180059)
     assert isinstance(result, Snapshot)
-    assert result.directory == "aoe2techtree-fixture-promoted"
+    assert result.directory == "aoe2techtree-180059"
 
 
 def test_the_committed_promoted_fixtures_validation_record_is_a_complete_carry_forward() -> None:
@@ -832,7 +832,7 @@ def test_the_committed_promoted_fixtures_validation_record_is_a_complete_carry_f
     between" — 178524 and 179158), and a per-build attestation for all three, each carrying its
     weakest-link statement as data (research.md D4's "record ... in the validation record, not in
     a comment") rather than a placeholder string."""
-    promoted = load_snapshot("aoe2techtree-fixture-promoted")
+    promoted = load_snapshot("aoe2techtree-180059")
     assert promoted.validation is not None
     assert promoted.validation.method == "carry-forward"
     carry_forward = promoted.validation.details["carry_forward"]
@@ -847,7 +847,7 @@ def test_the_committed_promoted_fixtures_validation_record_is_a_complete_carry_f
 
 
 def test_snapshot_for_returns_a_gap_for_the_committed_unpromoted_fixtures_build() -> None:
-    """`aoe2techtree-fixture` (unpromoted) `describes_build = 0` — resolving build 0 must return
+    """`aoe2techtree-test-stub` (unpromoted) `describes_build = 0` — resolving build 0 must return
     a gap, never the unpromoted snapshot: promotion gates resolvability even when the build
     matches exactly (contracts/knowledge-base.md, "Promotion")."""
     result = snapshot_for(0)

@@ -56,7 +56,7 @@ committed recordings with no override at all.
 civilisation integer is, empirically, a third numbering space unrelated to either one already used
 elsewhere in this repository — not Relic's `civilization_id` (`apps/api/src/aoe2stats_api/
 civilizations.py`), and not `aoe2techtree`'s own alphabetical ordering. `snapshots/
-aoe2techtree-fixture-promoted/effects.toml`'s own T645 header comment already proved this for the
+aoe2techtree-180059/effects.toml`'s own T645 header comment already proved this for the
 second committed recording by direct measurement: raw id 4 trains unit 25 ("Teutonic Knight",
 Teutons' unique unit, held by no other civilisation in `data.json`), while raw id 4 in both other
 numbering schemes names "Bohemians". This module's table extends that same measurement — reading

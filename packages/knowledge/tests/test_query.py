@@ -14,7 +14,7 @@ effect") and §7 ("Knowledge gap"). Spec: **US2** scenario 2 ("two different kno
 
 **Real facts this file's numbers are derived from, not invented** (verified directly against the
 committed pack, `packages/knowledge/packs/aoe2techtree/`, and the committed promoted snapshot,
-`packages/knowledge/snapshots/aoe2techtree-fixture-promoted/rules.json`):
+`packages/knowledge/snapshots/aoe2techtree-180059/rules.json`):
 
 - Unit id `358` is "Pikeman" (`table_origin = "unit"`), cost `{food: 35, wood: 25}`, and is present
   in both Byzantines' and Britons' unit lists (`data.json`'s `civs.Byzantines.Unit` /
@@ -80,9 +80,9 @@ pass):
   brittle against a reasonable implementation choice T644 has not made yet.
 
 **Why a second promoted snapshot fixture was added**
-(`packages/knowledge/snapshots/aoe2techtree-fixture-promoted-177723/`): US2 scenario 2 needs two
+(`packages/knowledge/snapshots/aoe2techtree-177723-test/`): US2 scenario 2 needs two
 *different* promoted snapshots to prove neither query silently answers from the other's contents.
-The only committed promoted snapshot before this task, `aoe2techtree-fixture-promoted`, describes
+The only committed promoted snapshot before this task, `aoe2techtree-180059`, describes
 build 180059 by carry-forward (T642) from source revision `b9d494df...`'s own last-implemented
 build, 177723 — a build that same revision's `rules.json` already, directly, describes with no
 carry-forward needed at all. The second fixture names exactly that build instead: same
@@ -92,7 +92,7 @@ different `describes_build`, and a `[validation]` record whose `method` is
 `"source-implements-build"` rather than `"carry-forward"` — real, and simpler than a second
 carry-forward record, because this build genuinely needs none. Its own real content therefore
 cannot differ numerically from the first fixture's (nothing changed between 177723 and 180059 —
-`aoe2techtree-fixture-promoted`'s own carry-forward record already attests this for every
+`aoe2techtree-180059`'s own carry-forward record already attests this for every
 intervening build), so the assertion this file makes is not "the two answers differ" but "each
 answer is tagged with *its own* snapshot's identity" — which is the actual claim US2 scenario 2
 makes, and the one a bug that always resolved to whichever snapshot loads first would still fail.
@@ -125,10 +125,10 @@ _PIKEMAN_ID = "358"
 _CROSSBOWMAN_ID = "24"
 
 #: The build both committed reference recordings report (`tests/fixtures/replays/README.md`),
-#: which `aoe2techtree-fixture-promoted` describes by carry-forward (T642).
+#: which `aoe2techtree-180059` describes by carry-forward (T642).
 _CARRY_FORWARD_BUILD = 180059
 
-#: The build `aoe2techtree-fixture-promoted-177723` (T646) describes directly, with no
+#: The build `aoe2techtree-177723-test` (T646) describes directly, with no
 #: carry-forward — the source revision's own last-implemented build.
 _DIRECT_BUILD = 177723
 
@@ -287,7 +287,7 @@ def test_two_snapshots_answer_from_their_own_contents_and_neither_is_upgraded_to
     None
 ):
     """US2 scenario 2, against the two real, committed promoted snapshots
-    (`aoe2techtree-fixture-promoted`, build 180059; `aoe2techtree-fixture-promoted-177723`, build
+    (`aoe2techtree-180059`, build 180059; `aoe2techtree-177723-test`, build
     177723 — see module docstring for why a second fixture was added and why their content is
     identical). The claim under test is not that the two costs differ — nothing changed between
     these two builds, so they should not — but that each answer is tagged with *its own*
