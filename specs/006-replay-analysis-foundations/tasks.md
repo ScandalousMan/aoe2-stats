@@ -681,7 +681,10 @@ that list is held by a strict expectation.
       changes: `compute_digest` hashes `rules.json` and `effects.toml`, never the directory name, and
       resolution is exact-match on `describes_build` among promoted snapshots, so nothing parses what
       is being renamed. Update the reference in `docs/data-sources.md` §6 in the same change — it is
-      a living document and must be true today
+      a living document and must be true today. **Where this rides**: phase 4's own pull request if
+      it is still open, because these directories are files that pull request creates and renaming
+      them there lands them on `main` under their final names with no rename in history; otherwise
+      it heads phase 5, which is the last stop before T655 publishes
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -691,9 +694,9 @@ and every refusal is counted.
 ## Phase 5: Identity and the published document (plan phase 5 — US3, US6)
 
 **Purpose**: assemble the four foundations into one validated, reproducible, non-destructive
-document. This is the only phase that changes what production publishes. **T652a lands first**: it
-is the last moment a snapshot label can be corrected, because the first published analysis names one
-and **FR-025** freezes it.
+document. This is the only phase that changes what production publishes. **T652a lands first if
+phase 4's pull request merged without it**: T655 is the first thing to publish an analysis that
+names a snapshot, and **FR-025** freezes the label at that moment.
 
 **Independent test**: quickstart Phase 5. Two analyses of the same fixture are byte-identical; an
 older analysis reproduces exactly after a knowledge refresh.
