@@ -401,7 +401,7 @@ def test_the_committed_promoted_fixtures_rules_json_matches_a_fresh_normalisatio
     committed = (
         Path(__file__).resolve().parents[1]
         / "snapshots"
-        / "aoe2techtree-fixture-promoted"
+        / "aoe2techtree-180059"
         / "rules.json"
     ).read_bytes()
     assert committed == rules_json_bytes(normalise_pack())
@@ -418,7 +418,7 @@ def test_the_committed_promoted_fixture_carries_real_entities_not_the_old_stub(
         (
             Path(__file__).resolve().parents[1]
             / "snapshots"
-            / "aoe2techtree-fixture-promoted"
+            / "aoe2techtree-180059"
             / "rules.json"
         ).read_text(encoding="utf-8")
     )

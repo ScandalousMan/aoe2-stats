@@ -662,7 +662,7 @@ that list is held by a strict expectation.
       That is also why the script is wired into the nightly workflow by T663 and not by this task:
       a nightly job against a table that does not exist would fail for the whole gap between the
       two phases
-- [ ] T652a [US2] **Rename the committed snapshot directories to honest labels, before phase 5
+- [x] T652a [US2] **Rename the committed snapshot directories to honest labels, before phase 5
       publishes anything that names one.** Three directories exist and the production one is called
       `aoe2techtree-fixture-promoted`: it is the promoted snapshot both committed recordings resolve
       against, it carries neither the build it describes (180059) nor anything distinguishing it

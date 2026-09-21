@@ -495,7 +495,7 @@ against keeping one measurement in two homes.
   The pinned commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03),
   implementing build 177723 — three builds behind the committed fixtures' build 180059 — which is
   why every snapshot describing 180059 carries a carry-forward validation record rather than a
-  direct import (`packages/knowledge/snapshots/aoe2techtree-fixture-promoted/snapshot.toml`).
+  direct import (`packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`).
 - **Coverage**: all 53 civilisations present in the trees directory at the pinned commit; costs,
   times, ages and prerequisites for every unit, building and technology those trees name. The first
   knowledge snapshot imports this but validates and hand-models bonuses only for the six
@@ -508,7 +508,7 @@ against keeping one measurement in two homes.
   assessment.
 - **Assessed**: 2026-09-19 (survey, research.md D3); vendored and carry-forward-validated
   2026-09-20 (`packages/knowledge/packs/aoe2techtree/LICENCE.md`,
-  `packages/knowledge/snapshots/aoe2techtree-fixture-promoted/snapshot.toml`). Licence: MIT, **copy
+  `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`). Licence: MIT, **copy
   in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -649,7 +649,7 @@ civilizations.py`; ids 56, 57 and everything above 60 are absent from this sourc
   gets a dedicated page: three of the four builds read for the committed fixtures' carry-forward
   validation were "Minor Update `<build>`" sections appended, after the fact, to the previous major
   update's page, with no independently dated timestamp of their own
-  (`packages/knowledge/snapshots/aoe2techtree-fixture-promoted/snapshot.toml`,
+  (`packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`,
   `[validation.carry_forward]`).
 - **Version identifier**: the build number itself, as printed on the page.
 - **Coverage**: whichever builds a human has actually read; for this feature, builds 178524, 179158
