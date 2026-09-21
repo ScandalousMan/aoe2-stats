@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../../primitives/Button'
 import { Callout } from '../../primitives/Callout'
+import { Link } from '../../primitives/Link'
 import { Skeleton } from '../../primitives/Skeleton'
 
 // packages/design-system/specs/archival-control.md
@@ -133,10 +134,10 @@ export function ArchivalControl({
       </div>
 
       {privacyNoticeHref && (
-        <p className="mt-4 font-sans text-sm">
-          <a href={privacyNoticeHref} className="text-text-secondary underline">
+        <p className="mt-4">
+          <Link href={privacyNoticeHref} variant="standalone">
             Read the privacy notice
-          </a>
+          </Link>
         </p>
       )}
 

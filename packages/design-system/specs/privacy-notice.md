@@ -68,7 +68,7 @@ PrivacyNotice                       <article aria-labelledby>
 │  │  └─ ObjectionCallToAction      Button/secondary → the objection route, outside the session
 │  ├─ 8 What we do not do
 │  └─ 9 How to reach us
-│     └─ ContactBlock | ContactUnpublished        the empty state, §5
+│     └─ ContactBlock | ContactUnpublished        ContactRouteLink (§5.1); the empty state, §5
 └─ RegisterLink         ×0..1       link to the public processing register, when a href is supplied
 ```
 
@@ -522,30 +522,38 @@ viewport. The page is allowed to be long.
 **hover** — inline links and `Contents` entries only: the link colour moves to `link-hover` and
 the underline stays (it was never absent). `ObjectionCallToAction` hovers as `Button/secondary`. No
 other part of this component responds to a pointer.
+`ContactRouteLink` (§5.1) is one of those inline links, and its hover carries the second,
+non-colour half every link in this product owes — the underline thickens to `border.ring` (FR-037,
+`structural-tier.md` §9) — taken from `Link` itself rather than from this file's own copy of that
+recipe.
 
 **focus-visible** — the standard ring (`outline-2 outline-offset-2` in `focus-ring`, gap DS-4) on
-every link and on the objection button. Following a `Contents` entry moves focus to the target
-`<h2>`, which carries `tabindex="-1"` for that purpose — a jump that moves the viewport without
-moving focus leaves a keyboard user at the top of a nine-section document.
+every link and on the objection button — `ContactRouteLink` included, which takes that ring from
+`Link` (§5.1). Following a `Contents` entry moves focus to the target `<h2>`, which carries
+`tabindex="-1"` for that purpose — a jump that moves the viewport without moving focus leaves a
+keyboard user at the top of a nine-section document.
 
 **active** — ink stays `link-hover` throughout (there is deliberately no `link-active`; `link-hover`
 serves both — `color-tokens.md` §11.3), and each link adds the second, non-colour signal its own
 shape owes (fourth-pass review remediation, FR-037: a shared `link-hover` fill with nothing else
 left hover and press as one still image; this passage itself described the pre-fix behaviour through
 a fifth-pass review, finding B2). Inline links — the explanation's prose links and `ContactBlock`'s
-contact route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own treatment
-(`inlineLinkClasses`, `index.tsx`); no fill and no ring, because a wash or a ring behind a few words
-inside a paragraph breaks the line. `Contents` entries are a padded, `min-h-11` block — `Link`'s
-`standalone` shape — so they take that variant's own press: a `surface-sunken` fill
-(`active:bg-surface-sunken active:rounded-control`) plus a `border-strong` box-shadow ring
-(`active:ring-2 active:ring-border-strong`), which is the actual non-colour signal FR-037 asks for
-(sixth-pass review remediation, row 2 (M1) of `README.md`'s contrast-signal gap register: this
-passage used to name the fill alone "the second signal its own shape owes", and measured it clears
-only 1.18:1 light / 1.07:1 dark against the fill it replaces — a colour change presented as the
-non-colour half, not the signal itself). `ObjectionCallToAction` is styled like `Button/secondary`
-and takes that variant's own fix: the fill steps to `background`, the ramp's other attenuated rung,
-plus the same `border-strong` ring, bounded by the control's own permanent `border-strong` edge
-regardless of what fills it. Nothing translates or scales.
+contact route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own
+treatment; no fill and no ring, because a wash or a ring behind a few words inside a paragraph
+breaks the line. The prose links reach that treatment through this file's own `inlineLinkClasses`
+copy of it, `ContactRouteLink` through the `Link` primitive itself (§5.1) — one treatment from two
+sources, which is a fact about the source and not about the frame: both paint the same tokens and
+the same utilities, and a screenshot cannot tell them apart. `Contents` entries are a padded,
+`min-h-11` block — `Link`'s `standalone` shape — so they take that variant's own press: a
+`surface-sunken` fill (`active:bg-surface-sunken active:rounded-control`) plus a `border-strong`
+box-shadow ring (`active:ring-2 active:ring-border-strong`), which is the actual non-colour signal
+FR-037 asks for (sixth-pass review remediation, row 2 (M1) of `README.md`'s contrast-signal gap
+register: this passage used to name the fill alone "the second signal its own shape owes", and
+measured it clears only 1.18:1 light / 1.07:1 dark against the fill it replaces — a colour change
+presented as the non-colour half, not the signal itself). `ObjectionCallToAction` is styled like
+`Button/secondary` and takes that variant's own fix: the fill steps to `background`, the ramp's
+other attenuated rung, plus the same `border-strong` ring, bounded by the control's own permanent
+`border-strong` edge regardless of what fills it. Nothing translates or scales.
 
 **disabled** — **nothing in this component is ever disabled.** A right that is described and then
 greyed out has been withdrawn without saying so. If a target route is unavailable, the link is still
@@ -580,6 +588,87 @@ member; no entry marks itself as the one being read.
 with an expander anywhere in this component at any viewport"). Every section is always fully
 rendered.
 
+### 5.1 `ContactRouteLink`'s treatment — decided 2026-09-21 (T596)
+
+`ContactRouteLink` is the anchor inside §4.9's published-contact sentence: the words **this contact
+route**, standing in for `{contactRoute}`, never the raw URL and never "here" (§9, FR-051).
+
+**It is the `Link` primitive at its default `inline` variant**
+([`structural-tier.md`](./structural-tier.md) §9) — not a local `<a>`, and not another consumer of
+this file's `inlineLinkClasses` copy of that variant's recipe. This subsection is that decision's
+only home; nothing in it is to be re-derived at implementation time. Rendered literally:
+
+```tsx
+<Link href={controllerContact.contactRoute}>this contact route</Link>
+```
+
+No `variant` prop — `inline` is `Link`'s own default, and writing it out would imply a choice this
+call site does not have. No `className` (the primitive accepts none), no `external`, no state class
+of this component's own on or around it. Its states are then `Link` `inline`'s, exactly as §9
+defines them and as §5's hover, focus-visible and active answers above already describe an inline
+link: `link` ink under a permanent hairline underline at rest; `link-hover` with the underline
+thickened on hover; the `focus-ring` outline around the whole link box on focus-visible; the hover
+paint with the underline dropped to `underline-offset-4` on press, no fill and no ring. Disabled
+does not arise — a link is never disabled (§9, and §5's own "nothing in this component is ever
+disabled").
+
+**No `external`, and the component never guesses.** `controllerContact.contactRoute` is a route on
+this product, so the link opens in place like every other link in the notice. A heuristic that read
+`https://` as "leaves the product" would mark an absolute in-product URL wrongly, and a link that
+promises a new tab and does not open one is worse than one that promises nothing. If a deployment
+ever needs an off-product contact route, the call site declares that as a prop in the change that
+introduces it, and `Link`'s own `external` — the mark plus the visually hidden "(opens in a new
+tab)" — carries it from there.
+
+**Why `inline` rather than `standalone`.** This link is three words inside a sentence in a paragraph
+of prose: §9's own definition of `inline`, and the opposite of `standalone`'s "a navigation or
+action link on its own line". §9 states the consequence plainly — `inline`'s press paints no fill
+and no ring, "because painting a wash behind three words inside a paragraph breaks the line".
+`standalone` would additionally force a 44px padded block into the middle of a sentence, which this
+file's own §9 rules out in terms: an inline link in a running sentence takes WCAG 2.5.8's inline
+exception and is not padded to 44px, because doing so breaks the line rhythm of a long document.
+This is the mirror image of [`archival-control.md`](./archival-control.md) §5.1's decision for that
+screen's own privacy link, and the two differ for exactly the reason §9's variant table gives: that
+one is a link on its own line, this one is a run of words inside prose. FR-038 is satisfied by the
+rule being the same in both places, not by both call sites picking the same variant.
+
+**Why the primitive rather than this file's `InlineLink` helper.** The paint is identical either
+way: `inlineLinkClasses` is a transcription of `Link`'s own ink, underline, transition, focus-ring
+and `inline`-press constants, so nothing in any frame moves. What differs is where the paint comes
+from, and the record on that is one-sided. T591 had to repair the same omission in three copies of
+this recipe at once — this file's, `ThirdPartyObjectionForm`'s and `AccountErasurePanel`'s, each of
+which had lost the underline-thickness half of the hover signal — and the same task converted
+`Footer`'s hand-rolled pair to the primitive for precisely this reason: "rendering the primitive
+directly instead of copying its recipe … with no second copy to drift out of sync again"
+(`packages/design-system/src/composites/Footer/index.tsx`'s own note). A new call site on the copy
+widens what the next drift breaks; a call site on the primitive cannot drift at all.
+
+**Scope, so the next reader does not take this for more than it is.** This decision moves one
+anchor. It does not migrate the four `InlineLink` call sites in this file, and a change that tried
+to would be re-keying state frames that already exist — `InlineLinkHover`/`FocusVisible`/`Active`
+resolve positionally against this render's own link order — as a side effect of closing a rendering
+defect, the kind of absorbed second change row 8 of [`README.md`](./README.md) exists because of.
+The intended end state is still the obvious one, for whoever owns it later: `InlineLink` shrinks to
+a wrapper that adds the in-page `scrollAndFocus` handler to a `Link`, and `inlineLinkClasses` is
+deleted. Two inline links in one file taking the same paint from two sources is a source-level
+inconsistency, not a visual one, and it is the smaller of the two risks on offer today.
+
+**What this changes in the generated coverage region**, so the implementer is not surprised by it:
+this anchor stops being a locally styled element of `screens/PrivacyNotice` and becomes a `Link`
+instance at `inline`, which the extractor tracks on the primitive's own variant axis instead. The
+three cells keyed to the local element go away with the element; whether the new stories also credit
+`Link`'s own `inline` rows is the extractor's answer to give and is not claimed here.
+
+**What the commit that applies this owes.** The shipped anchor is a local `text-link underline` with
+no `hover:`, `focus-visible:` or `active:` class of any kind: the rest frame is already right and
+the other three do not exist, which is why no story could ever have closed them. That commit owes
+one `Hover`, one `FocusVisible` and one `Active` story, each with `controllerContact` supplied —
+the anchor renders only in that branch, and `WithPublishedContact` is the existing story that sets
+it, while the three `ObjectionCallToAction*` stories deliberately do not — each forcing its state on
+`role: 'link'` named "this contact route", unique in the whole render, and each `visualCaptureClip`ped
+to that link, since a three-word signal on a nine-section document is far below the frame fraction
+the comparator can see.
+
 ## 6. Tokens used
 
 Colour: `surface` (the document), `surface-raised` (`ChangeNote`, `ContactBlock` and
@@ -589,17 +678,19 @@ ring — README's contrast table clears the 3:1 non-text floor for `border-stron
 `background`, what `Page` paints behind this document, in both themes), `surface-sunken` (each
 `Contents` entry's press fill, alongside its ring), `text-primary` (all body copy, every heading,
 every `<dd>` value), `text-secondary` (`LastUpdatedLine`, the `<dt>` labels in a `CategoryEntry`,
-table column headers), `link` (inline and `Contents` links, and the `ContactBlock` contact route),
-`link-hover`, `link-visited`, `info` (`ChangeNote` stripe and heading, via `Callout`), `focus-ring`.
+table column headers), `link` (inline and `Contents` links, and `ContactRouteLink`, which takes it
+from `Link` rather than from this file — §5.1), `link-hover`, `link-visited`, `info` (`ChangeNote`
+stripe and heading, via `Callout`), `focus-ring`.
 No `danger`, no `warning`: nothing in this notice is an alarm, and colouring the erasure paragraph
 red would make a right look like a hazard.
 
 Typography: family `sans` throughout; `display` for the `h1` only. Sizes — `h1` `3xl` (`2xl` below
 `md`); section `h2` `xl`; `CategoryEntry` and `RightsItem` `h3` `lg`; body, `<dd>` values and list
-items `md`; `<dt>` labels `sm`; `LastUpdatedLine` and the register link `sm`. Weights — `semibold`
-on every heading and on every `<dt>` label, `medium` on the bolded lead phrase of a `RightsItem`
-("What it does", "What it does not do"), `normal` on body. Tracking `normal` everywhere; nothing in
-this component is a number that needs `tight`.
+items `md`; `<dt>` labels `sm`; `LastUpdatedLine` and the register link `sm`. `ContactRouteLink`
+sets no size of its own: `Link` `inline` inherits the role and size of the sentence it sits in (§9),
+which is body `md` here. Weights — `semibold` on every heading and on every `<dt>` label, `medium`
+on the bolded lead phrase of a `RightsItem` ("What it does", "What it does not do"), `normal` on
+body. Tracking `normal` everywhere; nothing in this component is a number that needs `tight`.
 
 Radius `lg` on `ChangeNote` and the contact block, `md` on the objection button. Elevation `none`
 throughout — this is a document, not a stack of cards, and a shadow around a section reads as a
@@ -639,6 +730,7 @@ longest prose in the product and needs one), **DS-5** (breakpoints).
 | Contact block padding                            | `space-5`                                                                        |
 | Last `Section` to `RegisterLink`                 | `space-8`                                                                        |
 | `Contents` entry padding-block                   | `space-3` — with the `md` line-height this clears the 44px touch minimum         |
+| `ContactRouteLink`                               | none — an inline link adds no spacing at all; it is a run of text inside a line  |
 
 ## 8. Responsive
 
@@ -646,7 +738,8 @@ longest prose in the product and needs one), **DS-5** (breakpoints).
   label above value, both left-aligned. `ProcessorList` and `OutwardCallList` stack the same way,
   one labelled block per row. **No horizontal scrolling anywhere, at any width, ever** — a retention
   period reachable only by scrolling sideways has not been disclosed. `Contents` is a full-width
-  list of tap targets. `ObjectionCallToAction` is full width.
+  list of tap targets. `ObjectionCallToAction` is full width. `ContactRouteLink` wraps with its
+  sentence, and a fragment on each of two lines keeps its underline (§9).
 - **768** — text column capped at a 60 to 75 character measure (gap DS-6), left-aligned, not
   centred as a narrow ribbon in a wide frame. `CategoryEntry` `<dl>` switches to a two-column grid,
   labels in a fixed-width first column and values in the second, so the four terms line up down the
@@ -676,14 +769,19 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
   legal notice" — with `<th scope="col">` on every column, small enough (three columns, three rows)
   to fit the measure at every viewport without overflow. They are the only tables in the component.
 - Inline links are `<a>` with a permanent underline, never colour alone (README rule 4).
-  `ObjectionCallToAction` is a `Button` rendered as `<a>`, because it navigates.
+  `ObjectionCallToAction` is a `Button` rendered as `<a>`, because it navigates. `ContactRouteLink`
+  is a real `<a href>` whose accessible name is the words "this contact route" — never "here", never
+  the raw URL (`structural-tier.md` §9, FR-051).
 - Touch targets: every `Contents` entry and the objection button clear 44px. Inline links inside a
-  running sentence take WCAG 2.5.8's inline exception and are not padded to 44px — doing so would
-  break the line rhythm of a long document, and every one of them has a standalone equivalent in
-  `Contents` or in a `RightsItem` control.
+  running sentence — `ContactRouteLink` among them — take WCAG 2.5.8's inline exception and are not
+  padded to 44px, because doing so would break the line rhythm of a long document, and every one of
+  them has a standalone equivalent in `Contents` or in a `RightsItem` control. That exception is
+  what makes `inline` the right variant there (§5.1), and it is exactly the exception
+  `ArchivalControl`'s own privacy link cannot claim, which is why that one is `standalone`.
 - Contrast per the README table, in both themes: body `text-primary` on `surface`; `<dt>` labels
   `text-secondary` on `surface` (6.2 light / 7.8 dark); links `link` on `surface` (6.70 light /
-  6.88 dark) and on `surface-raised` (7.17 light / 6.05 dark). `ChangeNote` follows `Callout`'s own
+  6.88 dark) and on `surface-raised` (7.17 light / 6.05 dark) — the second is the pair
+  `ContactRouteLink` renders on, inside the contact block. `ChangeNote` follows `Callout`'s own
   rule: `info` heading, `text-primary` body, on `surface-raised`.
 - Reading order equals visual order equals DOM order, verified with CSS disabled. With stylesheets
   off, the notice must still read as a complete, ordered document — this is the state a text browser
@@ -724,6 +822,23 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
       blank.
 - [ ] With `controllerContact` present, no "not published yet" wording remains in the frame.
 - [ ] With no `changeNote`, no empty bordered callout appears between the lede and the contents.
+
+**`ContactRouteLink` (§5.1)**
+
+- [ ] With `controllerContact` present, the words "this contact route" are underlined and in the
+      link ink inside the sentence, and the paragraph still reads as prose — the link is part of the
+      line, not a control dropped into it.
+- [ ] No padded block, fill, border or box appears around the link in the default frame: its box is
+      the text's own box, and that paragraph's line height matches the paragraphs around it.
+- [ ] The hover capture differs from the default capture in two ways: the ink is different and the
+      underline is visibly thicker.
+- [ ] The focus capture shows a ring around the whole link box, offset from the text, unclipped, in
+      both themes, with the underline still visible under it.
+- [ ] Overlay the press capture on the hover capture: the ink and the underline thickness are the
+      same and the underline's position is the only difference (FR-037). Neither capture shows a
+      fill or a ring behind the words.
+- [ ] The link's URL is never the visible text, and the words "here" and "click here" appear nowhere
+      in the contact block.
 
 **Tone and prohibitions**
 

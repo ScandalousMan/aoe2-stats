@@ -76,12 +76,10 @@ export const WithPrivacyNotice: Story = {
 }
 
 // archival-control.md §5 "hover / focus-visible / active — owned by `Button` and by the privacy
-// link. The section itself is not interactive and shows no hover affordance." The rendered claim
-// below that the privacy link "carr[ies] its own hover, focus and active states" is known to be
-// false: `index.tsx` styles that link `text-text-secondary underline` only, with no state-specific
-// classes at all — a gap recorded in README's gap register row 8, owed by T596. Left as-is here
-// rather than corrected, because correcting the rendered text would move this story's baseline,
-// which this PR is not regenerating.
+// link. The section itself is not interactive and shows no hover affordance." That claim is now
+// true of the rendered link: §5.1 (T596, 2026-09-21) makes `PrivacyNoticeLink` the `Link` primitive
+// at `variant="standalone"`, which paints real `hover:`/`focus-visible:`/`active:` classes, so
+// `Hover`/`FocusVisible`/`Active` below actually depict it — this story no longer defers to a gap.
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
@@ -93,6 +91,49 @@ export const HoverFocusActiveNotApplicable: Story = {
     </div>
   ),
   args: { state: 'archiving', onObject: () => {} },
+}
+
+// §5.1 "one `Hover`, one `FocusVisible` and one `Active` story, each forcing its state on
+// `role: 'link'` named "Read the privacy notice" and each `visualCaptureClip`ped to that link (the
+// standing rule for a signal smaller than roughly 1% of its own frame)." `name` is unambiguous:
+// this is the only link this component ever renders.
+const PRIVACY_LINK_CLIP = {
+  parts: [{ role: 'link' as const, name: 'Read the privacy notice' }],
+  pad: '2',
+} as const
+
+const withPrivacyNoticeArgs = {
+  state: 'objected' as const,
+  objectedAt: 'on 12 August 2026',
+  onResume: () => {},
+  privacyNoticeHref: '/privacy',
+}
+
+export const PrivacyNoticeLinkHover: Story = {
+  name: 'hover on PrivacyNoticeLink ("Read the privacy notice")',
+  args: withPrivacyNoticeArgs,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', name: 'Read the privacy notice' },
+    visualCaptureClip: PRIVACY_LINK_CLIP,
+  },
+}
+
+export const PrivacyNoticeLinkFocusVisible: Story = {
+  name: 'focus-visible on PrivacyNoticeLink ("Read the privacy notice")',
+  args: withPrivacyNoticeArgs,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'Read the privacy notice' },
+    visualCaptureClip: PRIVACY_LINK_CLIP,
+  },
+}
+
+export const PrivacyNoticeLinkActive: Story = {
+  name: 'active (pressed) on PrivacyNoticeLink ("Read the privacy notice")',
+  args: withPrivacyNoticeArgs,
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', name: 'Read the privacy notice' },
+    visualCaptureClip: PRIVACY_LINK_CLIP,
+  },
 }
 
 // §5 "empty — this component has no list and no collection to be empty. Its only content is the

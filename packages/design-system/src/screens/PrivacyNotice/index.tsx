@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 import { Callout } from '../../primitives/Callout'
+import { Link } from '../../primitives/Link'
 import { Page } from '../../primitives/Page'
 import { Table, type TableColumn } from '../../primitives/Table'
 
@@ -794,10 +795,7 @@ export function PrivacyNotice({
                 The controller for everything described here is {controllerContact.name}.{' '}
                 {controllerContact.postalAddress && `${controllerContact.postalAddress}. `}To reach
                 us about anything this notice does not have a button for, use{' '}
-                <a href={controllerContact.contactRoute} className="text-link underline">
-                  this contact route
-                </a>
-                .
+                <Link href={controllerContact.contactRoute}>this contact route</Link>.
               </p>
             ) : (
               <div className="flex flex-col gap-4">
