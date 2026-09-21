@@ -470,7 +470,8 @@ not know.
 
 **Independent test**: quickstart Phase 4. A discounted unit returns its civilisation-adjusted cost
 with the effect applied; an unmodelled civilisation returns a gap; the coverage pass over every
-committed recording reports no blocking gap.
+committed recording reports no blocking gap outside **FR-022b**'s enumerated list, and every entry on
+that list is held by a strict expectation.
 
 **Story goal (US2)**: the engine can ask the rules a question for a stated build and civilisation.
 **(US5)**: a missing rule stops the analysis instead of corrupting it.
@@ -608,24 +609,30 @@ committed recording reports no blocking gap.
       the three accumulators that measurement names — and raise its ceiling with the new
       derivation. Implemented, tested and green: the peak-memory ceiling holds with the coverage
       pass live on the path (still 900 MB, re-derived — the accumulator does not move it).
-      SC-007 (removing a required field) passes for real. **SC-007a does not**, for both committed
-      recordings, for a
-      real reason this task cannot fix inside its own editable scope: both recordings genuinely
-      reference an entity a modelled civilisation's own effect selector names, where the effect is
-      recorded `modelled = "no"` (team-wide or age-gated) rather than split into a modelled,
-      unconditional remainder — Koreans' archer-armor techs (211/212/219), Franks' Castle cost
-      discount (building 82), Gurjaras' camel/elephant team bonus (units 1755, 239) — and
-      recording 2 also references two building ids (490, 673) absent from the vendored pack
-      entirely (Gate/wall-segment variants `aoe2techtree`'s own `data.json` never enumerates).
-      Fixing either means editing `effects.toml`/`rules.json`, fixture data this task may not touch;
-      see `test_coverage.py`'s own `xfail` marker on `test_each_committed_recording_reports_zero_
-      blocking_gaps` for the full citation. A follow-up task, not T648, owns closing this
+      SC-007 (removing a required field) passes for real. **SC-007a passes for recording 1 and not
+      for recording 2.** Recording 1's only blocker was Koreans' archer-armor techs (211/212/219),
+      recorded `modelled = "no"` — a 2026-09-20 remediation of this hand-back re-measured it, found
+      the recording's own use unconditional and the classification simply wrong, corrected
+      `effects.toml`, and that case now carries no marker at all. Recording 2's three blockers are a
+      different kind and this task cannot fix them inside its own editable scope: Franks' Castle
+      cost discount (building 82) is age-scaled and `query.py` has no age argument to resolve it
+      against; Gurjaras' camel/elephant bonus (units 1755, 239) is a team bonus by the pack's own
+      text and correctly stays unmodelled; and two building ids (490, 673) are absent from the
+      vendored pack entirely (Gate/wall-segment variants `aoe2techtree`'s own `data.json` never
+      enumerates). See `test_coverage.py`'s own `xfail` marker on
+      `test_each_committed_recording_reports_zero_blocking_gaps` for the full citation.
+      **No follow-up task owns closing this, because none can**: `/speckit-analyze` (2026-09-21) found that each of recording 2's three blockers is a
+      limit of the one lawful vendored source, not a hole in this feature's transcription, and the
+      requirement was amended to match rather than a task written that would have to fail. That is
+      **FR-022b** — the exception is a closed, enumerated list held by `test_coverage.py`'s own
+      `xfail(strict=True)`, which turns red the day any entry is closed
 - [x] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
       `xfail(strict=True)`. **SC-007**: remove a required field from an in-memory copy of a snapshot,
       run the pass, and assert exactly the dependent values are withheld, a gap names the entity,
       field, build and civilisation, and every independent value is still produced. **SC-007a**: the
-      pass over each committed recording reports zero blocking gaps. **FR-039**'s aggregate is
-      asserted in T652
+      pass over each committed recording reports zero blocking gaps outside **FR-022b**'s enumerated
+      list, parametrized per recording so a recording that is clean stays clean. **FR-039**'s
+      aggregate is asserted in T652
 - [x] T650 [P] [US5] Write the structural tests that make refusal a property of the code rather than
       a habit: introspect every public query in the package and assert its return type is the
       answer-or-gap union (**SC-008**); assert no module in `packages/knowledge` imports a network
@@ -655,6 +662,26 @@ committed recording reports no blocking gap.
       That is also why the script is wired into the nightly workflow by T663 and not by this task:
       a nightly job against a table that does not exist would fail for the whole gap between the
       two phases
+- [ ] T652a [US2] **Rename the committed snapshot directories to honest labels, before phase 5
+      publishes anything that names one.** Three directories exist and the production one is called
+      `aoe2techtree-fixture-promoted`: it is the promoted snapshot both committed recordings resolve
+      against, it carries neither the build it describes (180059) nor anything distinguishing it
+      from its sibling in a listing, and it calls itself a fixture. Its sibling
+      `aoe2techtree-fixture-promoted-177723` is test infrastructure for `test_query.py`, and
+      `aoe2techtree-fixture` is a `describes_build = 0` stub for T638's digest mechanism — both say
+      so in their own headers and neither is production data.
+      [contracts/knowledge-base.md](./contracts/knowledge-base.md)'s "On disk" section now states the
+      rule this breaks: a label is never parsed, but it MUST NOT describe a promoted production
+      snapshot as a fixture, and it MUST carry the build it describes, so a gap row or an object key
+      is readable without opening `snapshot.toml`. **The window is this phase**: nothing has
+      published yet, no analysis identity names a snapshot, and no object key carries one, so the
+      rename costs 34 references across seven test and source files today and is impossible after
+      T655 — **FR-025** makes a snapshot immutable the moment an analysis names it, and an operator
+      reading a gap row is then stuck with the word *fixture* for the life of the product. No digest
+      changes: `compute_digest` hashes `rules.json` and `effects.toml`, never the directory name, and
+      resolution is exact-match on `describes_build` among promoted snapshots, so nothing parses what
+      is being renamed. Update the reference in `docs/data-sources.md` §6 in the same change — it is
+      a living document and must be true today
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -664,7 +691,9 @@ and every refusal is counted.
 ## Phase 5: Identity and the published document (plan phase 5 — US3, US6)
 
 **Purpose**: assemble the four foundations into one validated, reproducible, non-destructive
-document. This is the only phase that changes what production publishes.
+document. This is the only phase that changes what production publishes. **T652a lands first**: it
+is the last moment a snapshot label can be corrected, because the first published analysis names one
+and **FR-025** freezes it.
 
 **Independent test**: quickstart Phase 5. Two analyses of the same fixture are byte-identical; an
 older analysis reproduces exactly after a knowledge refresh.
@@ -694,7 +723,16 @@ after everything underneath it moves.
       `match_analyses.engine_deps` column** — it has existed through two migrations and nothing has
       ever written it. Every published value carries its tier as data and
       the method that produced it (**FR-007**, **FR-009**), and a value at inferred or predicted
-      carries a confidence and is worded so it cannot be read as a measurement (**FR-010**)
+      carries a confidence and is worded so it cannot be read as a measurement (**FR-010**).
+      **Declare `aoe2stats-knowledge` in `apps/analyzer/pyproject.toml`'s `[project].dependencies`
+      and its `[tool.uv.sources]` in this same change** — this is the first task that imports it
+      from an application, and nothing declares it today. Workspace membership is not enough: that
+      file's own header records a real 500 on 2026-09-04 in exactly this shape — a package every
+      local `uv sync --all-packages` installed anyway, which the deployment manifest never named,
+      so the deployed function was the first thing to find out. `scripts/checks/api_entrypoint_deps.py`
+      cannot catch this one: it parses only the module-scope imports of files under `api/` and this
+      import is one hop further down, inside `aoe2stats_analyzer`. Declaring it on the analyzer is
+      what makes the root manifest's existing `aoe2stats-analyzer` entry pull it transitively
 - [ ] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
       so a coaching conclusion cannot occupy a field typed observed, decoded or reconstructed
       (**FR-011**) by construction, with T619's validator as the second lock. Run the validator

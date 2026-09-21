@@ -8,7 +8,7 @@
 ```text
 packages/knowledge/
 ├── packs/aoe2techtree/        vendored source files at one pinned commit + LICENCE.md
-└── snapshots/<identity>/      one directory per snapshot, written once — under a size budget
+└── snapshots/<label>/         one directory per snapshot, written once — under a size budget
     ├── snapshot.toml          identity, validation record, civilisations modelled
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
@@ -17,6 +17,20 @@ packages/knowledge/
 
 Both trees are package data, read through `importlib.resources`. Nothing reads a filesystem path and
 nothing opens a socket (FR-026, SC-006).
+
+**The directory name is a label, never an identity and never parsed.** Identity is the four fields in
+`snapshot.toml` (FR-024), and resolution is exact-match on `describes_build` among promoted snapshots
+and nothing else — so no code reads the directory name and a rename breaks nothing. The earlier
+wording here said `<identity>/`, which was never what the directories carry and which no reader could
+have acted on: two promoted snapshots of this pack share a digest by construction and differ only in
+`describes_build`, so a name built from the identity would be four fields long and still not be what
+resolution uses.
+
+What the label owes is honesty, and that is a real obligation because **FR-025 makes it permanent the
+moment an analysis names the snapshot**. A label MUST NOT describe a promoted, production snapshot as
+a fixture or a stub, and MUST carry the build it describes, so that a gap row, an object key or a
+directory listing is readable without opening `snapshot.toml`. A snapshot that exists only to
+exercise the loader is a test artifact and says so in its label.
 
 **A pack is raw; a snapshot is derived from it and says so.** `scripts/ops/import_knowledge_pack.py`
 reads a local checkout of the source at a stated commit and writes the pack. A second, pure step
@@ -108,7 +122,10 @@ recording resolves.
 - **The coverage pass** (`coverage.py`) takes a canonical stream, collects every entity and every
   participant civilisation, and asks for every field any register datum requires. Its output is the
   gap list the document publishes. **SC-007a** is this pass over each committed recording returning
-  no blocking gap.
+  no blocking gap outside **FR-022b**'s enumerated list — the closed set of blockers that the one
+  lawful vendored source cannot close, each held by a strict expectation so that closing one turns
+  the suite red rather than passing silently. A blocker not on that list is a transcription defect
+  and is fixed, never enumerated.
 - **SC-007**: a test deletes one field from an in-memory copy of a snapshot, runs the pass, and
   asserts that exactly the dependent data are withheld, a gap names the entity, field, build and
   civilisation, and every other datum is unchanged.

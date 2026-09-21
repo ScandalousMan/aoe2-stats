@@ -405,10 +405,16 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   and prerequisites, civilisations, and the civilisation bonuses that modify any of the above.
 - **FR-022a**: The first knowledge snapshot MUST cover every entity and every civilisation referenced
   by each committed reference recording, such that analysing those recordings records no gap of
-  blocking severity. Beyond that set, what the source provides MAY be imported without exhaustive
-  validation, provided the validation actually performed is recorded (FR-030) and any absent field
-  surfaces as a gap rather than as a value. Exhaustive coverage of the game is not a completion
-  condition of this feature.
+  blocking severity **except where the blocker is a limit of the one lawful source rather than a
+  hole in this feature's transcription**. Beyond that set, what the source provides MAY be imported
+  without exhaustive validation, provided the validation actually performed is recorded (FR-030) and
+  any absent field surfaces as a gap rather than as a value. Exhaustive coverage of the game is not a
+  completion condition of this feature.
+- **FR-022b**: A blocking gap that FR-022a's exception admits MUST be enumerated — one entry per
+  blocker, naming the entity or effect, why the single vendored source cannot close it, and the
+  condition that would. An unenumerated blocking gap on a committed recording is a defect in the
+  transcription and MUST be closed, not added to the list. The exception is a closed list, not a
+  standing licence, and the list lives with the test that asserts it.
 - **FR-023**: Every knowledge answer MUST be qualified by game build and by civilisation where the
   game qualifies it, and MUST NOT return a generic value where a civilisation-specific one exists.
 - **FR-024**: A knowledge snapshot MUST have an identity composed of its source, that source's own
@@ -530,7 +536,8 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **SC-007**: Removing a required field from a snapshot causes the dependent values to be withheld and
   a gap to be recorded, while every independent value is still produced.
 - **SC-007a**: Analysing each committed reference recording against the first knowledge snapshot
-  records zero gaps of blocking severity.
+  records no gap of blocking severity outside FR-022b's enumerated list, and every entry on that list
+  is held by a strict expectation that fails the moment the blocker is closed.
 - **SC-008**: No value is ever published with a substituted default in place of missing knowledge: the
   count of substitutions is zero, by construction rather than by inspection.
 - **SC-009**: The canonical event stream for a reference recording contains no field specific to the
