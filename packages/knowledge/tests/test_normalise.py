@@ -399,10 +399,7 @@ def test_the_committed_promoted_fixtures_rules_json_matches_a_fresh_normalisatio
     committed file has drifted from what the normaliser now produces (see `tests/fixtures/replays/
     README.md`'s golden discipline for the same principle applied to the canonical stream)."""
     committed = (
-        Path(__file__).resolve().parents[1]
-        / "snapshots"
-        / "aoe2techtree-180059"
-        / "rules.json"
+        Path(__file__).resolve().parents[1] / "snapshots" / "aoe2techtree-180059" / "rules.json"
     ).read_bytes()
     assert committed == rules_json_bytes(normalise_pack())
 
@@ -416,10 +413,7 @@ def test_the_committed_promoted_fixture_carries_real_entities_not_the_old_stub(
 ) -> None:
     document = json.loads(
         (
-            Path(__file__).resolve().parents[1]
-            / "snapshots"
-            / "aoe2techtree-180059"
-            / "rules.json"
+            Path(__file__).resolve().parents[1] / "snapshots" / "aoe2techtree-180059" / "rules.json"
         ).read_text(encoding="utf-8")
     )
     assert entity_id in document["entities"][entity_kind]

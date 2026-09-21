@@ -65,6 +65,7 @@ case — the gap means *nothing about this build is known*, not that one field o
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import tomllib
 from collections.abc import Mapping
@@ -510,6 +511,7 @@ def load_snapshot(directory: str) -> Snapshot:
     )
 
 
+@functools.cache
 def load_all_snapshots() -> tuple[Snapshot, ...]:
     """Every packaged snapshot, loaded and digest-verified, in directory-name order.
 
@@ -517,10 +519,21 @@ def load_all_snapshots() -> tuple[Snapshot, ...]:
     fails to load (a bad digest, a malformed identity, an unpromotable promotion flag) raises
     rather than being silently skipped. Includes unpromoted snapshots: they are valid, loadable
     data, just not resolvable by build (`load_resolvable_snapshots` is the filtered set).
+
+    **Cached (T652b)**, the same way `query._rules`/`query._civilisations_modelled`/`effects.
+    _effects` already are: the packaged `snapshots/` tree is immutable once committed (FR-025), so
+    re-reading and re-digesting it for every query in one analysis — 612 times, for one committed
+    recording's own entity/field product, before this task — could never observe a different
+    answer. `packages/knowledge/tests/conftest.py`'s autouse fixture clears this cache (and
+    `load_resolvable_snapshots`'s and `snapshot_for`'s) around every test in this package, because
+    `test_snapshot.py` monkeypatches `_snapshots_root` to a fresh, ephemeral `tmp_path` per test —
+    a real production caller never does, so the cache lives for the whole process there, exactly
+    like the other three.
     """
     return tuple(load_snapshot(name) for name in list_snapshot_directories())
 
 
+@functools.cache
 def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
     """Every packaged snapshot that is **promoted** — the set FR-034's "only a promoted snapshot
     is resolvable by build" describes, and the set `snapshot_for(build)` resolves against.
@@ -528,10 +541,14 @@ def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
     An unpromoted snapshot loads without error through `load_all_snapshots` (it is not corrupt,
     merely not yet validated) but never appears here: promotion, not mere presence on disk, is
     what makes a snapshot answerable.
+
+    **Cached (T652b)** — see `load_all_snapshots`'s own docstring for why, and for the
+    test-isolation fixture this relies on.
     """
     return tuple(snapshot for snapshot in load_all_snapshots() if snapshot.promoted)
 
 
+@functools.cache
 def snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     """FR-027's build resolution: an exact match on `describes_build` among
     `load_resolvable_snapshots()`, or a gap.
@@ -549,6 +566,12 @@ def snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     papering over, so it raises `SnapshotError` instead. Nothing upstream of promotion (T639) or
     carry-forward (T642) currently prevents two promoted snapshots from describing the same build,
     so this is checked here, at the one place both would be read together.
+
+    **Cached (T652b)**, per `build` — see `load_all_snapshots`'s own docstring for why, and for the
+    test-isolation fixture this relies on. This is the function `coverage.py`'s per-(entity, field)
+    loop called once per pair before T652b resolved the build once for the whole stream instead;
+    caching it here is a second, independent defence against the same cost, for any future caller
+    that still resolves per-entity (`query._resolve_entity`, which this function underlies).
     """
     matches = tuple(
         snapshot

@@ -36,14 +36,14 @@ entries naming `line_of_sight`, so the naive reading calls it blocking and the c
 not).
 
 **The closed cause set** — data-model.md §7 names five: `no-snapshot-for-build`, `entity-absent`,
-`field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. The first four each have a real
-producer today (`snapshot.snapshot_for`; `query._resolve_entity`; `query._civilisation_qualified`,
-twice). `field-absent` — an entity resolves, but the specific field a query asked for is absent from
-its own record — has none yet: every query-level field reader in `query._raw_value_for_field`
-defaults rather than gapping (`record.get("cost", {})`), which is a pre-existing, narrower
-behaviour this task does not change. `field-absent` is kept in the closed set because
-data-model.md already closes it there, and exercised directly in `test_gaps.py` so the type is
-provably ready for whichever future producer needs it, rather than a name with no test.
+`field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. All five have a real producer
+today (`snapshot.snapshot_for`; `query._resolve_entity`; `query._civilisation_qualified`, three
+times, including `field-absent` since T652b: `query._field_present`, checked immediately after the
+civilisation-modelled step and before `query._raw_value_for_field` ever reads a default in its
+place — an entity whose record genuinely lacks a field now gaps rather than silently answering with
+`query._raw_value_for_field`'s own default, `{}`/`[]`/`None`). `field-absent` was exercised directly
+in `test_gaps.py`, ahead of T652b giving it a real producer, so the type was provably ready for
+whichever future producer needed it, rather than a name with no test.
 """
 
 from __future__ import annotations

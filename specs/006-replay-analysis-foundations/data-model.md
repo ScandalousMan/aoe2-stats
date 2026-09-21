@@ -150,7 +150,7 @@ One absent required field (FR-035 to FR-039).
 | -------------- | -------------------------------------------------------------------------------------- |
 | `entity`       | Kind and identifier.                                                                   |
 | `field`        | The knowledge field that was asked for.                                                |
-| `build`        | The recording's game build.                                                            |
+| `build`        | The recording's game build. **`-1` where the stream named none at all** — the column is not nullable and `cause` is closed, so a sentinel is the only honest answer left; it cannot collide with a real build or with the test stub's `describes_build = 0`. FR-039's rate report must not show it as a build (T662). |
 | `civilisation` | The civilisation the query was qualified by, where it was.                             |
 | `cause`        | Closed: `no-snapshot-for-build`, `entity-absent`, `field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. |
 | `prevents`     | The register data that need this field, by id — what the gap stops, not that it exists (FR-036). Computed. |

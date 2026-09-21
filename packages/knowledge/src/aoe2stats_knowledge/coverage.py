@@ -5,13 +5,16 @@ research.md **D7**; data-model.md §7 "Knowledge gap").
 every entity a participant referenced (a unit trained, a building placed, a technology researched)
 together with that participant's civilisation, and — for every field any *live* register datum
 requires (`register.toml`'s closed `requires_knowledge` vocabulary, minus `line_of_sight`, which
-belongs to a different reconstruction domain and is `gaps.py`'s own concern; see below) — asks
-`query.py`'s matching civilisation-qualified function whether that (entity, civilisation) pair
-resolves. Every refusal becomes one `gaps.KnowledgeGap` in the returned sequence; every resolution
-contributes nothing to it. **FR-038** is enforced by construction, not by a check anywhere in this
-module: there is no branch here that catches a gap and substitutes a value, a default, an average
-or a neighbouring answer for it — a query either resolves for real or its refusal is recorded, and
-the loop moves on to the next field.
+belongs to a different reconstruction domain and is `gaps.py`'s own concern; see below) — calls
+`query.py`'s matching civilisation-qualified **public** function directly to ask whether that
+(entity, civilisation) pair resolves (T652b: previously this module re-resolved the snapshot and
+the entity, and re-checked civilisation modelling, itself, through privately imported internals —
+see "Calling the query surface, not reimplementing it" below for why that changed). Every refusal
+becomes one `gaps.KnowledgeGap` in the returned sequence; every resolution contributes nothing to
+it. **FR-038** is enforced by construction, not by a check anywhere in this module: there is no
+branch here that catches a gap and substitutes a value, a default, an average or a neighbouring
+answer for it — a query either resolves for real or its refusal is recorded, and the loop moves on
+to the next field.
 
 **The six fields this pass asks about, and why exactly these six.** `packages/core/src/
 aoe2stats_core/truth/register.toml`'s `requires_knowledge` vocabulary is, read directly (there is
@@ -117,28 +120,40 @@ real, modelled name (`f"unknown-civilisation-{raw_id}"`), so every query for it 
 `query.py`'s own "is this civilisation modelled" step (`cause="civilisation-not-modelled"`) rather
 than this module ever guessing a name a wrong guess could make look confidently, silently wrong.
 
-**`rules_overrides` — the seam SC-007 needs, and why field-level resolution is reimplemented here
-rather than delegated whole to `query.py`.** `query.py`'s six functions read a build's `rules.json`
-through their own private, `functools.cache`d `_rules(directory)`, unconditionally from the
-packaged snapshot — there is no parameter through which a caller could substitute a different rules
-mapping, and this task may not add one (`query.py`'s core logic is out of scope for this task).
-`rules_overrides`, keyed by build, is this module's own substitute: when present for the build an
-entity resolves against, its mapping is read in `_rules(directory)`'s place for that entity's
-lookup; every other resolution step — is the civilisation modelled, which effects apply — still
-reads the real, packaged snapshot (`query._civilisations_modelled`, `effects.apply`), because
-`rules_overrides` only ever stands in for the parsed `rules.json` body, never for `snapshot.toml`
-or `effects.toml`. This is also why `field-absent` (data-model.md §7's fifth, previously
-unproduced cause — `gaps.py`'s own docstring: "kept in the closed set because data-model.md already
-closes it there ... rather than a name with no test") is produced here and not in `query.py`:
-`query._raw_value_for_field` already defaults rather than gapping when a field key is absent from
-an entity's own record (`record.get("cost", {})`), a narrower, pre-existing behaviour this task
-does not change; this module checks presence itself, *before* reading the value, so a field a
-caller's override genuinely deleted is reported as missing rather than silently read back as an
-empty default — precisely the FR-038 substitution this whole pass exists to refuse.
+**Calling the query surface, not reimplementing it (T652b).** Before this task, this module
+re-resolved a build's snapshot, looked its entity up in `rules.json` and re-checked whether the
+civilisation was modelled itself, through `query.py`'s privately imported internals
+(`_civilisations_modelled`, `_raw_value_for_field`, `_rules`) — restating
+`query._civilisation_qualified`'s whole step order in this module's own `_gap_for`, and duplicating
+`query._TIME_FIELDS` under a second name. SC-008's "by construction rather than by inspection" is a
+claim that the answer-or-gap union `query.py`'s six public functions return is the *only* route to
+a value or a gap in this package; a pass that produced the published gap list some other way was
+not taking it, no matter how faithfully it mirrored the same steps. This module now builds one
+`query.EntityRef` per (entity, build) pair and calls `query.cost`, `query.production_time`,
+`query.age_requirement`, `query.prerequisites`, `query.produced_at` and `query.available_to`
+directly — `_QUERY_SURFACE_FUNCTIONS` below — collecting whichever of the two-branch union's gap
+branch each call returns. `rules_overrides` (SC-007's own seam) is threaded through as
+`query.rules_overrides`, a context manager `query.py` itself now exposes for exactly this purpose,
+rather than a second, parallel field-lookup path in this module.
+
+**Resolving the build once, not once per (entity, field) pair (T652b).** `snapshot.snapshot_for`
+is not re-called by this module for each of the (potentially many) query calls it makes: the build
+named in the stream's own `match-started` event is resolved exactly once, before any entity is
+even considered, specifically so a build with no promoted snapshot at all is reported as **one**
+`gaps.KnowledgeGap(cause="no-snapshot-for-build")`, never one per (entity, field) pair asked about
+it (every one of those would be identical — `gaps.py`'s `_WHOLE_BUILD_CAUSES` names no entity,
+field or civilisation at all, so nothing distinguishes them — and `analysis_knowledge_gaps`' own
+unique index, `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))`,
+would then reject every one after the first as a duplicate insert). This is checked, and the single
+gap returned, whether or not the stream references any entity at all: FR-027's "the absence MUST
+be recorded as a gap" does not depend on what, if anything, was trained — only on the build itself
+being unresolvable. A stream that names no build at all (`_NO_BUILD_KNOWN` below) is the same
+ignorance wearing different clothes and is reported identically, for the same reason.
 """
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Final
 
@@ -150,46 +165,32 @@ from aoe2stats_core.replay.events import (
     ResearchQueuedPayload,
     UnitQueuedPayload,
 )
-from aoe2stats_knowledge import effects, gaps, snapshot
-from aoe2stats_knowledge.query import _civilisations_modelled, _raw_value_for_field, _rules
+from aoe2stats_knowledge import gaps, query, snapshot
 
-#: `register.toml`'s closed `requires_knowledge` vocabulary, minus `line_of_sight` (this module's
-#: own docstring explains why: a different reconstruction domain, already exercised directly by
-#: `gaps.py`'s own tests). Exactly `query.py`'s six civilisation-qualified query-surface fields.
-_QUERY_SURFACE_FIELDS: Final[tuple[str, ...]] = (
-    "cost",
-    "production_time",
-    "age_requirement",
-    "prerequisites",
-    "produced_at",
-    "available_to",
+#: T652b (a): a stream whose `match-started` event carries no build at all (`MatchStartedPayload.
+#: build: int | None` allows this, distinct from a real build integer with no promoted snapshot,
+#: which `snapshot.snapshot_for` already reports) still has nothing honest to check any entity
+#: against, so it is reported the same way. `gaps.KnowledgeGap.build` is a required `int` with no
+#: default, so this module needs a real int to hand it even here; `-1` is never a real Age II DE
+#: build number (every one in this repository, and every real replay header, is positive) and, in
+#: particular, is never `packages/knowledge/snapshots/aoe2techtree-test-stub`'s own deliberately
+#: fake `describes_build = 0` — so this sentinel cannot be mistaken for, or collide with, any real
+#: or placeholder build a future snapshot might describe.
+_NO_BUILD_KNOWN: Final[int] = -1
+
+#: `query.py`'s six civilisation-qualified public functions, called directly (T652b) rather than
+#: reimplemented — `register.toml`'s `requires_knowledge` vocabulary minus `line_of_sight` (this
+#: module's own docstring explains why: a different reconstruction domain, already exercised
+#: directly by `gaps.py`'s own tests). The field name is kept alongside each function only for this
+#: tuple's own readability; nothing in `coverage()` reads it back out.
+_QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
+    ("cost", query.cost),
+    ("production_time", query.production_time),
+    ("age_requirement", query.age_requirement),
+    ("prerequisites", query.prerequisites),
+    ("produced_at", query.produced_at),
+    ("available_to", query.available_to),
 )
-
-#: `rules.json`'s own field name(s) a query-level field reads from an entity's record — the same
-#: vocabulary `query._raw_value_for_field` reads, duplicated here only for the *presence* check
-#: that function does not perform (see the module docstring's `rules_overrides` section for why
-#: that check belongs to this module and not to `query.py`). `available_to` has no stored field of
-#: its own at all: resolving the entity already proves the baseline pack carries it (the same
-#: reasoning `query._raw_value_for_field` states for its own `available_to` branch), so it is
-#: never reported absent.
-_TIME_FIELDS: Final[tuple[str, ...]] = ("training_time", "construction_time", "research_time")
-
-
-def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
-    if field_name == "cost":
-        return "cost" in record
-    if field_name == "production_time":
-        return any(time_field in record for time_field in _TIME_FIELDS)
-    if field_name == "age_requirement":
-        return "age_requirement" in record
-    if field_name == "prerequisites":
-        return "prerequisites" in record
-    if field_name == "produced_at":
-        return "produced_at" in record
-    if field_name == "available_to":
-        return True
-    raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
-
 
 #: research.md D11 / `effects.toml`'s T645 header comment; this module's own docstring records the
 #: measurement in full, including the one recording whose split T645 itself left unresolved.
@@ -214,104 +215,6 @@ def _civilisation_name_for(raw_id: int, civilisation_names: Mapping[int, str] | 
     return f"unknown-civilisation-{raw_id}"
 
 
-def _entity_record(
-    *,
-    build: int,
-    directory: str,
-    entity_kind: str,
-    entity_id: str,
-    rules_overrides: Mapping[int, Mapping[str, Any]] | None,
-) -> Mapping[str, Any] | None:
-    if rules_overrides is not None and build in rules_overrides:
-        rules_mapping = rules_overrides[build]
-    else:
-        rules_mapping = _rules(directory)
-    entities: Mapping[str, Any] = rules_mapping.get("entities", {})
-    kind_table: Mapping[str, Any] = entities.get(entity_kind, {})
-    record: Mapping[str, Any] | None = kind_table.get(entity_id)
-    return record
-
-
-def _gap_for(
-    *,
-    build: int,
-    entity_kind: str,
-    entity_id: str,
-    field_name: str,
-    civilisation: str,
-    rules_overrides: Mapping[int, Mapping[str, Any]] | None,
-) -> gaps.KnowledgeGap | None:
-    """One (entity, field, civilisation) check: resolve the snapshot, the entity, the field's
-    presence, whether the civilisation is modelled and, finally, effect application — returning
-    the first `gaps.KnowledgeGap` any of those steps produces, or `None` once every step actually
-    resolves. Mirrors `query.py`'s own `_civilisation_qualified` step order (contracts/
-    knowledge-base.md, "Civilisation qualification") with one addition, the field-presence check,
-    inserted ahead of the value read it guards (this module's own docstring explains why that
-    check lives here and not in `query.py`).
-    """
-    resolved = snapshot.snapshot_for(build)
-    if isinstance(resolved, gaps.KnowledgeGap):
-        return resolved
-
-    record = _entity_record(
-        build=build,
-        directory=resolved.directory,
-        entity_kind=entity_kind,
-        entity_id=entity_id,
-        rules_overrides=rules_overrides,
-    )
-    if record is None:
-        return gaps.KnowledgeGap(
-            cause="entity-absent",
-            build=build,
-            entity_kind=entity_kind,
-            entity_id=entity_id,
-            field=field_name,
-            civilisation=civilisation,
-        )
-
-    if civilisation not in _civilisations_modelled(resolved.directory):
-        return gaps.KnowledgeGap(
-            cause="civilisation-not-modelled",
-            build=build,
-            entity_kind=entity_kind,
-            entity_id=entity_id,
-            field=field_name,
-            civilisation=civilisation,
-        )
-
-    if not _field_present(record, field_name):
-        return gaps.KnowledgeGap(
-            cause="field-absent",
-            build=build,
-            entity_kind=entity_kind,
-            entity_id=entity_id,
-            field=field_name,
-            civilisation=civilisation,
-        )
-
-    baseline = _raw_value_for_field(record, field_name)
-    applied = effects.apply(
-        resolved.directory,
-        civilisation=civilisation,
-        kind=entity_kind,
-        id=entity_id,
-        field=field_name,
-        value=baseline,
-    )
-    if isinstance(applied, effects.EffectNotModelled):
-        return gaps.KnowledgeGap(
-            cause="effect-not-modelled",
-            build=build,
-            entity_kind=entity_kind,
-            entity_id=entity_id,
-            field=field_name,
-            civilisation=civilisation,
-            detail=applied.reason,
-        )
-    return None
-
-
 def coverage(
     events: Iterable[CanonicalEvent],
     *,
@@ -323,7 +226,8 @@ def coverage(
     (entity, civilisation) pair resolves. The return value is the gap list alone — every resolved
     value is simply not reported, never returned alongside the gaps (contracts/knowledge-base.md:
     "Its output is the gap list the document publishes"). See this module's docstring for the field
-    vocabulary, the civilisation-name resolution and the `rules_overrides` seam.
+    vocabulary, the civilisation-name resolution, why the build is resolved exactly once, and the
+    `rules_overrides` seam.
     """
     build: int | None = None
     raw_civilisation_by_slot: dict[int, int] = {}
@@ -354,31 +258,36 @@ def coverage(
             entities_by_slot.setdefault(slot, set()).add(entity)
 
     if build is None:
-        # Nothing about which build to resolve against is known — no entity in the stream can be
-        # sensibly checked against anything, so there is nothing honest to report (never a guessed
-        # build, FR-038's own spirit for the one input this pass cannot substitute for either).
-        return ()
+        # (a): no build at all was ever named in the stream — see _NO_BUILD_KNOWN's own docstring.
+        return (gaps.KnowledgeGap(cause="no-snapshot-for-build", build=_NO_BUILD_KNOWN),)
+
+    resolved = snapshot.snapshot_for(build)
+    if isinstance(resolved, gaps.KnowledgeGap):
+        # (b): resolved exactly once for the whole stream, before any entity loop, so an
+        # unresolvable build is reported once — never once per (entity, field) pair — and reported
+        # whether or not the stream references any entity at all (module docstring).
+        return (resolved,)
 
     result: list[gaps.KnowledgeGap] = []
-    for slot in sorted(entities_by_slot):
-        raw_civilisation = raw_civilisation_by_slot.get(slot)
-        if raw_civilisation is None:
-            # A participant with no seated civilisation at all (never seen in `match-started`) —
-            # nothing to qualify a query by, so this participant's entities are skipped rather than
-            # qualified by a fabricated civilisation.
-            continue
-        civilisation = _civilisation_name_for(raw_civilisation, civilisation_names)
-        for entity_kind, entity_id in sorted(entities_by_slot[slot]):
-            for field_name in _QUERY_SURFACE_FIELDS:
-                gap = _gap_for(
-                    build=build,
-                    entity_kind=entity_kind,
-                    entity_id=entity_id,
-                    field_name=field_name,
-                    civilisation=civilisation,
-                    rules_overrides=rules_overrides,
-                )
-                if gap is not None:
-                    result.append(gap)
+    override_context = (
+        query.rules_overrides(rules_overrides)
+        if rules_overrides is not None
+        else contextlib.nullcontext()
+    )
+    with override_context:
+        for slot in sorted(entities_by_slot):
+            raw_civilisation = raw_civilisation_by_slot.get(slot)
+            if raw_civilisation is None:
+                # A participant with no seated civilisation at all (never seen in `match-started`)
+                # — nothing to qualify a query by, so this participant's entities are skipped
+                # rather than qualified by a fabricated civilisation.
+                continue
+            civilisation = _civilisation_name_for(raw_civilisation, civilisation_names)
+            for entity_kind, entity_id in sorted(entities_by_slot[slot]):
+                entity_ref = query.EntityRef(kind=entity_kind, id=entity_id, build=build)
+                for _field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
+                    answer_or_gap = query_function(entity_ref, civilisation=civilisation)
+                    if isinstance(answer_or_gap, gaps.KnowledgeGap):
+                        result.append(answer_or_gap)
 
     return tuple(result)
