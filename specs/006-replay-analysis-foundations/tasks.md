@@ -639,7 +639,7 @@ committed recording reports no blocking gap.
       and that the game's own data file is barred by the publisher's usage rules. This section also
       finally gives feature 002's licence rulings a living home — 002's own register was never
       written, and they survive today only in a frozen task list and a module docstring
-- [ ] T652 [US5] Add `analysis_knowledge_gaps` to `packages/storage/src/aoe2stats_storage/models.py`
+- [x] T652 [US5] Add `analysis_knowledge_gaps` to `packages/storage/src/aoe2stats_storage/models.py`
       per [data-model.md](./data-model.md) §7. **The table is the aggregate** (**FR-039**): one
       repository function grouping by build, cause and severity over a window, and one check script
       under `scripts/checks/` that prints the rate. Do **not** mirror the ingester's quarantine
