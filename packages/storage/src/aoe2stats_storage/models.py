@@ -614,6 +614,117 @@ class ReplayAccessLog(Base):
     purpose: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AnalysisGapCause(enum.StrEnum):
+    """`analysis_knowledge_gaps.cause` — the same five-member closed set
+    `packages/knowledge/src/aoe2stats_knowledge/gaps.py`'s `KnowledgeGap.cause` enforces at
+    construction (data-model.md §7). Not imported from there: `packages/storage` has no dependency
+    on `packages/knowledge` (plan.md's package boundary — storage is a library every application
+    depends on, not the other way around), so the closed set is restated here, in code, the same
+    way `CaptureStatus` above restates `replay_captures`' own state machine rather than importing
+    it from whichever caller happens to define it first. Both copies are pinned to data-model.md
+    §7, not to each other."""
+
+    NO_SNAPSHOT_FOR_BUILD = "no-snapshot-for-build"
+    ENTITY_ABSENT = "entity-absent"
+    FIELD_ABSENT = "field-absent"
+    CIVILISATION_NOT_MODELLED = "civilisation-not-modelled"
+    EFFECT_NOT_MODELLED = "effect-not-modelled"
+
+
+class AnalysisGapSeverity(enum.StrEnum):
+    """`analysis_knowledge_gaps.severity` — FR-037's exactly-two-member closed set, computed by
+    `gaps.KnowledgeGap.__post_init__` and never supplied by a caller; this column only ever
+    persists the value that computation already produced (T662 writes the rows, not this task)."""
+
+    BLOCKING = "blocking"
+    INFORMATIONAL = "informational"
+
+
+class AnalysisKnowledgeGap(Base):
+    """`analysis_knowledge_gaps` — FR-039's aggregate, in full: this table **is** the aggregate,
+    not a cache fed by a separate counter. `KnowledgeGapsRepository.gap_rate`
+    (`repositories/knowledge_gaps.py`) groups these rows by `build`, `cause` and `severity` over a
+    window; `scripts/checks/knowledge_gap_rate.py` prints what that grouping returns. Both are
+    real, tested code as of this table landing — and both are dead code in production until
+    T663's single additive migration actually creates this table; nothing in this feature's own
+    call graph invokes either before then (T652's own task text).
+
+    **Deliberately not the ingester's `ingest_runs.quarantined_total` shape.** That is one column
+    on a per-run table, incremented by a multi-stage aggregator as a run drains
+    (`IngestRun` above). The analyzer has no run, no counters and no logger to attach one to
+    (contracts/knowledge-base.md, "Gaps"/"Aggregate"), so a pattern of gaps introduced by a game
+    patch is made visible the other way: one flat row per gap, and a query that groups them,
+    rather than a second table this feature's data model was never given.
+
+    **No personal data: a participant is not a column** (data-model.md §7's own words). `game_id`
+    names a match, `identity_digest` names the analysis that recorded the gap (T653's identity
+    tuple, not yet a column on `match_analyses` until T663) — neither is a profile, a Steam
+    identity or anything scoped to one person's account.
+
+    Unique on `(identity_digest, entity_kind, entity_id, field, civilisation_id)`
+    (data-model.md §7): a reproduced analysis — the same recording, the same versions all the way
+    down — records the identical gap once, never twice, because its `identity_digest` and the gap's
+    own shape are both, by construction, identical to the first recording of it.
+    """
+
+    __tablename__ = "analysis_knowledge_gaps"
+    __table_args__ = (
+        # data-model.md §7: "Unique on (identity_digest, entity_kind, entity_id, field,
+        # civilisation_id), so a reproduced analysis records nothing twice" — an *expression*
+        # index, not a plain `UniqueConstraint` on the five columns: a plain unique constraint
+        # would not actually deliver that sentence, because Postgres never treats two `NULL`s as
+        # equal, and `civilisation_id` is nullable by the same section's own words ("a query
+        # unqualified by civilisation at all"). A gap the coverage pass repeats identically — the
+        # exact "reproduced analysis" case this constraint exists for — for a query with no
+        # civilisation at all would insert twice under a plain constraint, silently violating the
+        # one guarantee this index is named for. `coalesce(..., '')` folds every `NULL` to the
+        # same real value before comparing, so two such rows do collide, the same as two rows that
+        # share a real civilisation already do.
+        Index(
+            "uq_analysis_knowledge_gaps_identity_entity_field_civilisation",
+            "identity_digest",
+            "entity_kind",
+            "entity_id",
+            "field",
+            text("coalesce(civilisation_id, '')"),
+            unique=True,
+        ),
+        # data-model.md §7: "Indexed with cause — the per-patch rate is this query." `severity`
+        # joins the two here (not named in that sentence) because `gap_rate`'s own grouping is
+        # `(build, cause, severity)` together (contracts/knowledge-base.md, "Aggregate"), and a
+        # composite index that does not cover its own grouping columns would not actually serve
+        # the query it exists for.
+        Index("ix_analysis_knowledge_gaps_build_cause_severity", "build", "cause", "severity"),
+    )
+
+    # Our own surrogate key: unlike `matches.game_id` or `aoe_profiles.profile_id`, nothing
+    # upstream owns this id, so — unlike those two — ordinary autoincrement is exactly right here
+    # rather than a footgun to guard against (`_uuid_pk`'s neighbours' own comments explain the
+    # contrast).
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    game_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("matches.game_id"), index=True)
+    # T653's identity tuple digest — the analysis that recorded this gap. No foreign key yet:
+    # `match_analyses.identity_digest` does not exist until T663's same additive migration adds it
+    # alongside this table.
+    identity_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    build: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[str] = mapped_column(Text, nullable=False)
+    field: Mapped[str] = mapped_column(Text, nullable=False)
+    # data-model.md §7: "civilisation_id nullable" — the one column of the five in the unique
+    # constraint that a gap need not carry (a query unqualified by civilisation at all).
+    civilisation_id: Mapped[str | None] = mapped_column(Text)
+    cause: Mapped[AnalysisGapCause] = mapped_column(
+        _enum_column(AnalysisGapCause, "analysis_gap_cause"), nullable=False
+    )
+    severity: Mapped[AnalysisGapSeverity] = mapped_column(
+        _enum_column(AnalysisGapSeverity, "analysis_gap_severity"), nullable=False
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class DataRequest(Base):
     """`data_requests` — an export, erasure or third-party objection, and how it was resolved.
 
