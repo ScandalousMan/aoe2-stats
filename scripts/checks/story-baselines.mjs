@@ -116,8 +116,8 @@ const WIDTHS = [375, 768, 1280]
 // a test asserts it rather than because someone re-read it"). This is the same tripwire
 // `build-tokens.test.mjs` is for that file's contrast table: a deliberate change bumps one number in
 // the same commit as the change, and an accidental one fails.
-export const EXPECTED_STORY_COUNT = 578
-export const EXPECTED_BASELINE_COUNT = 3490
+export const EXPECTED_STORY_COUNT = 586
+export const EXPECTED_BASELINE_COUNT = 3538
 
 // Fails when either count has moved, naming the README section that has to move with it. Returns a
 // message rather than exiting so story-baselines.test.mjs can assert both directions.

@@ -412,6 +412,25 @@ export const TriggerActive: Story = {
   },
 }
 
+// README's gap register row 8 (H5), Cause A, closed by T600: the trigger's own focus ring
+// (`focusRing`, shared with `Button`'s `secondary` variant, `index.tsx:144`'s own comment) had no
+// frame at the `actions` variant — `EscapeReturnsFocusToTrigger` above forces `focus-visible` on
+// `role: 'button'` too, but always under `variant: 'selection'` args, so it credits `selection`'s
+// own row, never `actions`'s. Forced here the same way `TriggerHover`/`TriggerActive` above already
+// are: no `play()`, since a plain `.focus()` on a fresh page matches `:focus-visible` without one
+// (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment).
+export const TriggerFocusVisible: Story = {
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  args: {
+    variant: 'actions',
+    triggerLabel: 'Manage',
+    items: [
+      { id: 'make-primary', label: 'Make primary' },
+      { id: 'unlink', label: 'Unlink this profile' },
+    ],
+  },
+}
+
 // The footer item (index.tsx:242) is its own `role="menuitem"` `<button>`, not a `MenuItemRow` —
 // `Hover`/`Active` above only ever force a state on a `menuitemradio` row, never on this one.
 // `role: 'menuitem'` needs no `name`: for the `selection` variant rendered here, every row item

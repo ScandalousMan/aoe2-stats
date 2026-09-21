@@ -238,3 +238,46 @@ export const AsLinkActive: Story = {
   args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
   parameters: { visualForceState: { state: 'active', role: 'link' } },
 }
+
+// README's gap register row 8 (H5), Cause A, closed by T600: `resolveClassParts`'s own class-half
+// (row 8's own Method section, "Record 1's own class half") reads only a `Button` element's
+// *default* variant's class, so record 3's own axis matrix — which does resolve every real
+// `variant|size` combination the tree renders, independent of that limitation — is where
+// `primary|md`'s own hover/press live. This pass hand-traced `variantClasses.primary`
+// (`index.tsx`), which paints identically at every size: only `sizeClasses` (padding/height/type
+// scale) varies by size, never a state class, so `primary|md`'s own hover/press are the same
+// `hover:bg-accent-hover`/`active:bg-accent-active` recipe `Hover`/`Active` above already prove at
+// `lg` — a real, distinct-from-rest treatment nothing before this pair ever forced at `md`. `size`
+// omitted (defaults `'md'`, `index.tsx`'s own destructuring), matching `SecondaryHover`/
+// `GhostHover`/`DestructiveHover`'s own convention for their variant's non-`lg`-labelled stories.
+export const PrimaryHoverMd: Story = {
+  args: { variant: 'primary' },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const PrimaryActiveMd: Story = {
+  args: { variant: 'primary' },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+
+// README's gap register row 8 (H5), Cause A, closed by T600: `ghost|lg` had no hover, focus-visible
+// or press frame anywhere in the tree — `RealisticPageActions` above renders two `ghost` buttons at
+// `lg` but forces no state on either. `variantClasses.ghost`/`focusRing` (`index.tsx`) paint the
+// same class set regardless of size, the same fact `PrimaryHoverMd`'s own comment traces for
+// `primary` — so this is the same, real `hover:bg-surface-sunken`/`focus-visible:outline-2 …
+// focus-visible:outline-focus-ring`/`active:bg-background active:border-border-strong` recipe
+// `GhostHover`/`GhostFocusVisible`/`GhostActive` above already prove at `md`, now forced at `lg`.
+export const GhostHoverLg: Story = {
+  args: { variant: 'ghost', size: 'lg', children: 'Manage' },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const GhostFocusVisibleLg: Story = {
+  args: { variant: 'ghost', size: 'lg', children: 'Manage' },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+}
+
+export const GhostActiveLg: Story = {
+  args: { variant: 'ghost', size: 'lg', children: 'Manage' },
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
