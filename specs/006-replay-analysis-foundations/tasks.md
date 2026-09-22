@@ -732,6 +732,21 @@ Three were arbitration and are decided, with the decision recorded in the task t
       and that tuple. That assertion fails in both directions, which is the whole point, and the test
       then passes for real with **no `xfail` at all**. Recording 1 keeps its unmarked, genuinely
       passing case
+- [ ] T652j [US2] **Correct `query.py`'s module docstring, which asserts the opposite of the data
+      committed beside it, and delete the guard it promises that was never written.** Three blocks —
+      `query.py:17-21`, `:45` and `:298` — say `civilisations_modelled` is `[]` on every promoted
+      fixture and that "T645 has not run". T645 ran in this same pull request:
+      `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml` names six civilisations, and
+      every one of the six queries answers for real — which is exactly what `test_coverage.py`'s
+      SC-007a case now depends on. Worse, `:21` documents a fail-loud mechanism that does not exist:
+      it says `_civilisation_qualified` "raises `NotImplementedError` if it is ever reached past
+      that check", and there is no `raise NotImplementedError` in the file — the string occurs once,
+      in that sentence. Either restore the guard or delete the promise; do not leave a reader
+      relying on it. This is the first thing the next agent reads before touching the query surface,
+      and it is the shape of defect this feature's whole register discipline exists to distrust — a
+      claim with nothing behind it. Missed when the review's findings were grouped into T652b–T652i
+      and added on 2026-09-22 once `test_query.py` and `test_effects.py` were found carrying the
+      same stale "T645 has not run" prose; sweep those two docstrings in the same change
 - [ ] T652d [US4] **Stop an unfamiliar operation from losing the whole match, and stop the market
       decoder publishing a scaled value at the exact tier.** (a) `canonical.py:530` raises
       `EngineParseError` on an operation kind the adapter does not know, while an unknown *action*
