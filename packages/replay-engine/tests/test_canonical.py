@@ -33,11 +33,16 @@ from aoe2stats_core.replay.events import (
     UnitsCommandedPayload,
     UnitUnqueuedPayload,
 )
-from aoe2stats_replay_engine.aoe2rec import _parse_or_raise, _read_member_bytes
+from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor, _parse_or_raise, _read_member_bytes
 from aoe2stats_replay_engine.canonical import Accounting, canonical_events
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _RECORDINGS = sorted(_FIXTURES.glob("AgeIIDE_Replay_*.zip"))
+
+# Generous relative to both committed recordings' extracted size, the same value and rationale as
+# `packages/replay-engine/tests/test_extract_limits.py`'s own fixture-local ceiling — never
+# `ANALYSIS_MAX_RAW_BYTES` itself (constitution V, XII).
+_FIXTURE_MAX_RAW_BYTES = 50_000_000
 
 _Parsed = Mapping[str, object]
 
@@ -50,9 +55,28 @@ def _parse(path: Path) -> _Parsed:
     return _parse_or_raise(data)
 
 
+def _canonical_stream(path: Path) -> list[CanonicalEvent]:
+    """T652e: the real-recording canonical stream, through `Aoe2RecExtractor.events()` — the
+    public seam (`contracts/canonical-events.md`) — never `canonical_events(parsed)` called
+    directly against the raw dict `_parse` produces. `parsed` (below) stays: several tests here
+    compare the canonical stream against the *raw* operations, which have no seam of their own."""
+    extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
+    return list(extractor.events(path.read_bytes()))
+
+
 @pytest.fixture(scope="module", params=_RECORDINGS, ids=lambda p: p.stem)
-def parsed(request: pytest.FixtureRequest) -> _Parsed:
-    return _parse(request.param)
+def recording_path(request: pytest.FixtureRequest) -> Path:
+    return cast(Path, request.param)
+
+
+@pytest.fixture(scope="module")
+def parsed(recording_path: Path) -> _Parsed:
+    return _parse(recording_path)
+
+
+@pytest.fixture(scope="module")
+def canonical_stream(recording_path: Path) -> list[CanonicalEvent]:
+    return _canonical_stream(recording_path)
 
 
 def _operations(parsed: _Parsed) -> Sequence[Mapping[str, object]]:
@@ -72,11 +96,14 @@ def test_the_committed_recordings_are_found() -> None:
     assert len(_RECORDINGS) >= 2
 
 
-def test_the_first_event_of_every_stream_is_match_started(parsed: _Parsed) -> None:
+def test_the_first_event_of_every_stream_is_match_started(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     """T629a: `match-started` comes from the header and corresponds to no operation (it is
     excluded from the conservation equation by name, not by a widened tolerance — see
     `test_conservation_every_operation_is_an_event_or_a_counted_category`). Its participants equal
-    the seated slots and its build is the one the fixtures README records."""
+    the seated slots and its build is the one the fixtures README records. `canonical_stream` is
+    driven through `Aoe2RecExtractor.events()` (T652e), not `canonical_events(parsed)` directly."""
     zheader = cast(Mapping[str, object], parsed["zheader"])
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
     raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
@@ -84,7 +111,7 @@ def test_the_first_event_of_every_stream_is_match_started(parsed: _Parsed) -> No
         (cast(int, player["player_number"]), cast(int, player["civ_id"])) for player in raw_players
     }
 
-    first = next(iter(canonical_events(parsed)))
+    first = next(iter(canonical_stream))
 
     assert first.kind is EventKind.MATCH_STARTED
     assert first.clock_ms == 0
@@ -110,9 +137,10 @@ def test_the_accumulated_clock_equals_every_actions_own_time(parsed: _Parsed) ->
     assert checked > 0
 
 
-def test_the_accumulated_clock_equals_the_post_game_match_time(parsed: _Parsed) -> None:
-    events = list(canonical_events(parsed))
-    ended = [e for e in events if e.kind is EventKind.MATCH_ENDED]
+def test_the_accumulated_clock_equals_the_post_game_match_time(
+    canonical_stream: list[CanonicalEvent],
+) -> None:
+    ended = [e for e in canonical_stream if e.kind is EventKind.MATCH_ENDED]
 
     assert len(ended) == 1
     payload = ended[0].payload
@@ -121,8 +149,8 @@ def test_the_accumulated_clock_equals_the_post_game_match_time(parsed: _Parsed) 
     assert ended[0].participant is None
 
 
-def test_event_times_never_go_backwards(parsed: _Parsed) -> None:
-    times = [e.clock_ms for e in canonical_events(parsed)]
+def test_event_times_never_go_backwards(canonical_stream: list[CanonicalEvent]) -> None:
+    times = [e.clock_ms for e in canonical_stream]
     assert times == sorted(times)
 
 
@@ -133,9 +161,11 @@ def test_events_are_produced_lazily() -> None:
 # --- mapping over the real recordings -----------------------------------------------------------
 
 
-def test_placement_positions_fall_inside_the_map(parsed: _Parsed) -> None:
+def test_placement_positions_fall_inside_the_map(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     info = cast(Mapping[str, Mapping[str, int]], parsed["zheader"])["map_info"]
-    placed = [e.payload for e in canonical_events(parsed) if e.kind is EventKind.BUILDING_PLACED]
+    placed = [e.payload for e in canonical_stream if e.kind is EventKind.BUILDING_PLACED]
     assert placed
     for payload in placed:
         assert isinstance(payload, BuildingPlacedPayload)
@@ -147,18 +177,21 @@ def _count(parsed: _Parsed, label: str) -> int:
     return sum(1 for _, found, _ in _timed_actions(parsed) if found == label)
 
 
-def test_placement_count_equals_build_action_count(parsed: _Parsed) -> None:
-    placed = sum(1 for e in canonical_events(parsed) if e.kind is EventKind.BUILDING_PLACED)
+def test_placement_count_equals_build_action_count(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    placed = sum(1 for e in canonical_stream if e.kind is EventKind.BUILDING_PLACED)
     assert placed == _count(parsed, "Build")
 
 
-def test_queueing_and_movement_are_never_collapsed(parsed: _Parsed) -> None:
-    events = list(canonical_events(parsed))
-    kinds = Counter(e.kind for e in events)
+def test_queueing_and_movement_are_never_collapsed(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    kinds = Counter(e.kind for e in canonical_stream)
     assert kinds[EventKind.UNIT_QUEUED] == _count(parsed, "DeQueue")
     commanded = Counter(
         cast(UnitsCommandedPayload, e.payload).command_class
-        for e in events
+        for e in canonical_stream
         if e.kind is EventKind.UNITS_COMMANDED
     )
     assert commanded["move"] == _count(parsed, "Move")
@@ -166,14 +199,16 @@ def test_queueing_and_movement_are_never_collapsed(parsed: _Parsed) -> None:
     assert commanded["order"] == _count(parsed, "Order")
 
 
-def test_research_is_collapsed_to_its_first_occurrence_per_participant(parsed: _Parsed) -> None:
+def test_research_is_collapsed_to_its_first_occurrence_per_participant(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     raw: dict[tuple[int, int], int] = {}
     for clock, label, payload in _timed_actions(parsed):
         if label == "Research":
             raw.setdefault(
                 (cast(int, payload["player_id"]), cast(int, payload["technology_type"])), clock
             )
-    research = [e for e in canonical_events(parsed) if e.kind is EventKind.RESEARCH_QUEUED]
+    research = [e for e in canonical_stream if e.kind is EventKind.RESEARCH_QUEUED]
     seen = {
         (cast(int, e.participant), cast(ResearchQueuedPayload, e.payload).technology_id): e.clock_ms
         for e in research
@@ -182,33 +217,39 @@ def test_research_is_collapsed_to_its_first_occurrence_per_participant(parsed: _
     assert len(research) == len(raw)
 
 
-def test_no_participant_is_attributed_after_their_resignation(parsed: _Parsed) -> None:
+def test_no_participant_is_attributed_after_their_resignation(
+    canonical_stream: list[CanonicalEvent],
+) -> None:
     resigned_at: dict[int, int] = {}
-    for index, event in enumerate(canonical_events(parsed)):
+    for index, event in enumerate(canonical_stream):
         if event.kind is EventKind.PARTICIPANT_RESIGNED:
             assert event.participant is not None
             assert event.participant not in resigned_at
             resigned_at[event.participant] = index
     later_by_resigned = [
         e
-        for i, e in enumerate(canonical_events(parsed))
+        for i, e in enumerate(canonical_stream)
         if e.participant in resigned_at and i > resigned_at[cast(int, e.participant)]
     ]
     assert resigned_at
     assert later_by_resigned == []
 
 
-def test_only_match_level_events_carry_no_participant(parsed: _Parsed) -> None:
-    for event in canonical_events(parsed):
+def test_only_match_level_events_carry_no_participant(
+    canonical_stream: list[CanonicalEvent],
+) -> None:
+    for event in canonical_stream:
         if event.participant is None:
             assert event.kind in (EventKind.MATCH_ENDED, EventKind.MATCH_STARTED)
 
 
-def test_every_participant_is_a_seated_slot(parsed: _Parsed) -> None:
+def test_every_participant_is_a_seated_slot(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     settings = cast(Mapping[str, Mapping[str, Mapping[str, object]]], parsed)["zheader"]
     players = cast(Sequence[Mapping[str, int]], settings["game_settings"]["players"])
     seated = {p["player_number"] for p in players}
-    assert {e.participant for e in canonical_events(parsed)} - {None} <= seated
+    assert {e.participant for e in canonical_stream} - {None} <= seated
 
 
 def test_view_lock_and_sync_operations_yield_no_event(parsed: _Parsed) -> None:
@@ -387,6 +428,11 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
     subtracted from the event count by name, never folded in by widening the equation's tolerance.
     Both committed recordings carry no operation kind the adapter lacks a case for, so
     `unknown_operation` is 0 here and is exercised on a fabricated stream instead (T652d).
+
+    Stays on `canonical_events(parsed, accounting)` directly (T652e): `Accounting` is not part of
+    `CanonicalEventSource.events()` — the public seam hands back only the event stream, never the
+    side-channel this equation is evidence about — so there is no seam call this test could make
+    instead without losing the thing it asserts on.
     """
     accounting = Accounting()
     events = list(canonical_events(parsed, accounting))
@@ -411,6 +457,7 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
 
 
 def test_every_recorded_action_is_an_event_or_a_named_drop(parsed: _Parsed) -> None:
+    # Same exception as the conservation test above (T652e): `Accounting` has no seam equivalent.
     # Chat has its own accounting (below); leave it out so `unseated` counts actions only.
     without_chat = {**parsed, "operations": [op for op in _operations(parsed) if "Chat" not in op]}
     accounting = Accounting()
@@ -450,6 +497,7 @@ def test_an_unfamiliar_top_level_operation_kind_is_counted_not_aborted() -> None
 
 def test_the_action_kind_the_wheel_cannot_name_is_emitted_undecoded() -> None:
     recordings = [_parse(path) for path in _RECORDINGS]
+    streams = [_canonical_stream(path) for path in _RECORDINGS]
     named = [
         [
             (label, payload)
@@ -459,36 +507,34 @@ def test_the_action_kind_the_wheel_cannot_name_is_emitted_undecoded() -> None:
         for parsed_ in recordings
     ]
     assert any(named), "no committed recording carries an action the wheel cannot name"
-    for parsed_, instances in zip(recordings, named, strict=True):
+    for stream, instances in zip(streams, named, strict=True):
         undecoded = [
             e.payload
-            for e in canonical_events(parsed_)
+            for e in stream
             if isinstance(e.payload, UndecodedPayload) and e.payload.operation.startswith("Unknown")
         ]
         expected = Counter((label, cast(int, p["action_length"])) for label, p in instances)
         assert Counter((u.operation, u.payload_length) for u in undecoded) == expected
 
 
-def test_undecoded_carries_the_engines_label_and_the_payload_length(parsed: _Parsed) -> None:
+def test_undecoded_carries_the_engines_label_and_the_payload_length(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     labels = {
         label
         for _, label, _ in _timed_actions(parsed)
         if label in ("Flare", "TownBell", "Transform")
     }
-    got = {
-        e.payload.operation
-        for e in canonical_events(parsed)
-        if isinstance(e.payload, UndecodedPayload)
-    }
+    got = {e.payload.operation for e in canonical_stream if isinstance(e.payload, UndecodedPayload)}
     assert labels <= got
 
 
 def test_command_kinds_without_decoded_ids_are_commanded_with_an_empty_list(
-    parsed: _Parsed,
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
 ) -> None:
     empty = Counter(
         cast(UnitsCommandedPayload, e.payload).command_class
-        for e in canonical_events(parsed)
+        for e in canonical_stream
         if e.kind is EventKind.UNITS_COMMANDED
         and cast(UnitsCommandedPayload, e.payload).command_class
         not in ("move", "interact", "order")
@@ -496,7 +542,7 @@ def test_command_kinds_without_decoded_ids_are_commanded_with_an_empty_list(
     assert empty["formation"] == _count(parsed, "Formation")
     assert empty["stance"] == _count(parsed, "Stance")
     assert empty["stop"] == _count(parsed, "Stop")
-    for e in canonical_events(parsed):
+    for e in canonical_stream:
         if e.kind is EventKind.UNITS_COMMANDED:
             payload = cast(UnitsCommandedPayload, e.payload)
             if payload.command_class not in ("move", "interact", "order"):
@@ -588,9 +634,16 @@ _GOLDEN_DELETES: Mapping[str, tuple[int, int]] = {
 }
 
 
-@pytest.fixture(scope="module", params=_RECORDINGS, ids=lambda p: p.stem)
-def named(request: pytest.FixtureRequest) -> tuple[str, _Parsed]:
-    return request.param.stem, _parse(request.param)
+@pytest.fixture(scope="module")
+def named(recording_path: Path, parsed: _Parsed) -> tuple[str, _Parsed]:
+    return recording_path.stem, parsed
+
+
+@pytest.fixture(scope="module")
+def named_stream(
+    recording_path: Path, canonical_stream: list[CanonicalEvent]
+) -> tuple[str, list[CanonicalEvent]]:
+    return recording_path.stem, canonical_stream
 
 
 def _raw(parsed: _Parsed, *labels: str) -> list[tuple[int, str, int, bytes]]:
@@ -602,10 +655,11 @@ def _raw(parsed: _Parsed, *labels: str) -> list[tuple[int, str, int, bytes]]:
 
 
 def test_every_market_transaction_is_decoded_exactly_and_matches_the_golden_counts(
-    named: tuple[str, _Parsed],
+    named: tuple[str, _Parsed], named_stream: tuple[str, list[CanonicalEvent]]
 ) -> None:
     name, parsed_ = named
-    events = [e for e in canonical_events(parsed_) if e.kind is EventKind.MARKET_TRANSACTION]
+    _, stream = named_stream
+    events = [e for e in stream if e.kind is EventKind.MARKET_TRANSACTION]
     raw = _raw(parsed_, "Sell", "Buy")
 
     assert len(events) == len(raw) > 0
@@ -653,10 +707,11 @@ def test_a_market_object_that_is_deleted_is_deleted_after_its_last_transaction(
 
 
 def test_every_deletion_is_decoded_exactly_and_matches_the_golden(
-    named: tuple[str, _Parsed],
+    named: tuple[str, _Parsed], named_stream: tuple[str, list[CanonicalEvent]]
 ) -> None:
     name, parsed_ = named
-    events = [e for e in canonical_events(parsed_) if e.kind is EventKind.OBJECT_DELETED]
+    _, stream = named_stream
+    events = [e for e in stream if e.kind is EventKind.OBJECT_DELETED]
     raw = _raw(parsed_, "Delete")
 
     assert len(events) == len(raw)
@@ -732,14 +787,16 @@ def test_a_delete_payload_that_does_not_fit_the_layout_is_undecoded_never_guesse
     assert event.payload == UndecodedPayload(operation="Delete", payload_length=3)
 
 
-def test_decoding_market_and_deletion_does_not_change_the_event_count(parsed: _Parsed) -> None:
+def test_decoding_market_and_deletion_does_not_change_the_event_count(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     """Undecoded became decoded one for one: no operation gained or lost an event."""
-    kinds = Counter(e.kind for e in canonical_events(parsed))
+    kinds = Counter(e.kind for e in canonical_stream)
     assert kinds[EventKind.MARKET_TRANSACTION] == _count(parsed, "Sell") + _count(parsed, "Buy")
     assert kinds[EventKind.OBJECT_DELETED] == _count(parsed, "Delete")
     labels = {
         cast(UndecodedPayload, e.payload).operation
-        for e in canonical_events(parsed)
+        for e in canonical_stream
         if e.kind is EventKind.UNDECODED
     }
     assert not labels & {"Sell", "Buy", "Delete"}
@@ -830,13 +887,17 @@ def test_malformed_chat_is_counted_unseated_and_never_raises_or_leaks(
 
 
 def test_no_chat_text_reaches_any_event_or_log_line_of_either_recording(
-    parsed: _Parsed, caplog: pytest.LogCaptureFixture
+    parsed: _Parsed, recording_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Driven through `Aoe2RecExtractor.events()` (T652e) rather than the shared `canonical_stream`
+    fixture: production must happen *inside* `caplog.at_level` below for `caplog.records` to be
+    meaningful evidence, and a module-scoped fixture shared with every other test in this file may
+    already have produced (and logged) before this test ran."""
     texts = _chat_texts(parsed)
     assert texts, "the recording carries no chat to protect"
-    accounting = Accounting()
+    extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
     with caplog.at_level(logging.DEBUG):
-        events = list(canonical_events(parsed, accounting))
+        events = list(extractor.events(recording_path.read_bytes()))
     assert not any(_leaks(event, texts) for event in events)
     assert caplog.records == []
     chats = [e for e in events if e.kind is EventKind.CHAT]

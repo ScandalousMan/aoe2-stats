@@ -22,6 +22,15 @@ class CanonicalEventSource(Protocol):
 Everything above the adapter imports `aoe2stats_core.replay.events` and nothing else (FR-015). The
 pinned wheel is imported in `packages/replay-engine` only, as today.
 
+**The accounting is deliberately not on this protocol.** `events` returns a stream and nothing else,
+so obligation 3's conservation test — the one that proves no operation is lost — reaches the
+generator underneath it to read the tally. That is the single sanctioned exception and it is stated
+here rather than left for a reader to rediscover: everything that is *evidence about the stream's
+content* (the goldens, engine independence, the collapse rule) goes through `events`, and only the
+count of what the generator dropped does not, because a tally is not a stream and putting it on the
+protocol would widen the seam to carry a diagnostic. Regenerating the goldens goes through `events`
+too — `scripts/ops/canonical_golden.py`, outside the shipped package (constitution XII).
+
 ## The vocabulary
 
 Closed. Each kind has one typed payload. Tier is per kind and fixed.

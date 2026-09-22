@@ -38,11 +38,15 @@ from aoe2stats_core.replay.events import (
     ResearchQueuedPayload,
     UnitQueuedPayload,
 )
-from aoe2stats_replay_engine.aoe2rec import _parse_or_raise, _read_member_bytes
-from aoe2stats_replay_engine.canonical import canonical_events
+from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor, _parse_or_raise, _read_member_bytes
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _RECORDINGS = sorted(_FIXTURES.glob("AgeIIDE_Replay_*.zip"))
+
+# Generous relative to both committed recordings' extracted size, the same value and rationale as
+# `packages/replay-engine/tests/test_extract_limits.py`'s own fixture-local ceiling — never
+# `ANALYSIS_MAX_RAW_BYTES` itself.
+_FIXTURE_MAX_RAW_BYTES = 50_000_000
 
 _Parsed = Mapping[str, object]
 
@@ -62,8 +66,23 @@ def _parse(path: Path) -> _Parsed:
 
 
 @pytest.fixture(scope="module", params=_RECORDINGS, ids=lambda p: p.stem)
-def parsed(request: pytest.FixtureRequest) -> _Parsed:
-    return _parse(request.param)
+def recording_path(request: pytest.FixtureRequest) -> Path:
+    return cast(Path, request.param)
+
+
+@pytest.fixture(scope="module")
+def parsed(recording_path: Path) -> _Parsed:
+    return _parse(recording_path)
+
+
+@pytest.fixture(scope="module")
+def canonical_stream(recording_path: Path) -> list[CanonicalEvent]:
+    """T652e: the canonical stream, through `Aoe2RecExtractor.events()` — the public seam
+    (`contracts/canonical-events.md`) — not `canonical_events(parsed)` called directly against the
+    raw dict `_parse` produces. `parsed` stays for the raw-operation sweeps below, which have no
+    seam of their own to go through."""
+    extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
+    return list(extractor.events(recording_path.read_bytes()))
 
 
 def _operations(parsed: _Parsed) -> Sequence[Mapping[str, object]]:
@@ -123,13 +142,16 @@ def _unit_queued_events(events: Sequence[CanonicalEvent]) -> Sequence[CanonicalE
     return [e for e in events if e.kind is EventKind.UNIT_QUEUED]
 
 
-def test_a_real_double_clicked_age_up_collapses_to_one_event(parsed: _Parsed) -> None:
+def test_a_real_double_clicked_age_up_collapses_to_one_event(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     """SC-010: the age-up a fixture's player double-clicked appears once in the canonical stream.
 
     Finds every (participant, technology) pair among the three age-up technologies issued more than
     once in the recording's raw operations — a double-click, since a technology can only ever be
     researched once for real — and asserts each collapses to exactly one `research-queued` event, at
-    the clock of its first raw occurrence.
+    the clock of its first raw occurrence. `canonical_stream` is driven through `Aoe2RecExtractor.
+    events()` (T652e), the public seam, not `canonical_events(parsed)` called directly.
     """
     raw_counts = _raw_age_up_occurrences(parsed)
     doubled = {key: count for key, count in raw_counts.items() if count >= 2}
@@ -139,8 +161,7 @@ def test_a_real_double_clicked_age_up_collapses_to_one_event(parsed: _Parsed) ->
         "found none"
     )
 
-    events = list(canonical_events(parsed))
-    research_events = _research_events(events)
+    research_events = _research_events(canonical_stream)
 
     for (participant, technology), raw_count in doubled.items():
         matching = [
@@ -156,13 +177,17 @@ def test_a_real_double_clicked_age_up_collapses_to_one_event(parsed: _Parsed) ->
         )
 
 
-def test_a_genuinely_repeated_unit_queue_command_is_not_collapsed(parsed: _Parsed) -> None:
+def test_a_genuinely_repeated_unit_queue_command_is_not_collapsed(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
     """SC-010's inverse: a real, repeated unit-queue command is never collapsed.
 
     A test that only checks collapse cannot see over-collapse. Finds the unit-queue (training)
     command issued identically the most times in the recording's raw operations — in both committed
     recordings this is a villager trained from one Town Centre — and asserts the canonical stream
-    carries exactly that many `unit-queued` events for it, unreduced.
+    carries exactly that many `unit-queued` events for it, unreduced. `canonical_stream` is driven
+    through `Aoe2RecExtractor.events()` (T652e), the public seam, not `canonical_events(parsed)`
+    called directly.
     """
     raw_counts = _raw_queue_occurrences(parsed)
     assert raw_counts, "expected at least one unit-queue action in this recording"
@@ -174,13 +199,12 @@ def test_a_genuinely_repeated_unit_queue_command_is_not_collapsed(parsed: _Parse
         f"training, typically); the most repeated command found was issued only {raw_count} times"
     )
 
-    events = list(canonical_events(parsed))
     expected_payload = UnitQueuedPayload(
         unit_id=unit_id, building_type=building_type, building_object=building_object, count=count
     )
     matching = [
         e
-        for e in _unit_queued_events(events)
+        for e in _unit_queued_events(canonical_stream)
         if e.participant == player and e.payload == expected_payload
     ]
 

@@ -22,12 +22,21 @@ from typing import cast
 
 import pytest
 
-from aoe2stats_core.replay.events import Payload, UndecodedPayload
-from aoe2stats_replay_engine.aoe2rec import _parse_or_raise, _read_member_bytes
-from aoe2stats_replay_engine.canonical import canonical_events
+from aoe2stats_core.replay.events import CanonicalEvent, Payload, UndecodedPayload
+from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor, _parse_or_raise, _read_member_bytes
 
+# T652e: the deny-list generation (below) needs the raw parsed structure, which has no seam of its
+# own — `_read_member_bytes`/`_parse_or_raise` are the adapter's own parse, reused here rather than
+# duplicated. The emitted-payload sweep (`test_no_emitted_payload_carries_a_raw_byte_sequence`)
+# does have a seam, and goes through it (`canonical_stream`, via `Aoe2RecExtractor(...).events()`)
+# rather than around it with `canonical_events(parsed)` directly (contracts/canonical-events.md).
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _RECORDINGS = sorted(_FIXTURES.glob("AgeIIDE_Replay_*.zip"))
+
+# Generous relative to both committed recordings' extracted size, the same value and rationale as
+# `packages/replay-engine/tests/test_extract_limits.py`'s own fixture-local ceiling — never
+# `ANALYSIS_MAX_RAW_BYTES` itself.
+_FIXTURE_MAX_RAW_BYTES = 50_000_000
 
 _Parsed = Mapping[str, object]
 
@@ -38,8 +47,19 @@ def _parse(path: Path) -> _Parsed:
 
 
 @pytest.fixture(scope="module", params=_RECORDINGS, ids=lambda p: p.stem)
-def parsed(request: pytest.FixtureRequest) -> _Parsed:
-    return _parse(request.param)
+def recording_path(request: pytest.FixtureRequest) -> Path:
+    return cast(Path, request.param)
+
+
+@pytest.fixture(scope="module")
+def parsed(recording_path: Path) -> _Parsed:
+    return _parse(recording_path)
+
+
+@pytest.fixture(scope="module")
+def canonical_stream(recording_path: Path) -> list[CanonicalEvent]:
+    extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
+    return list(extractor.events(recording_path.read_bytes()))
 
 
 def _collect_keys(value: object, keys: set[str]) -> None:
@@ -173,12 +193,15 @@ def _values(node: object) -> Iterator[object]:
         yield node
 
 
-def test_no_emitted_payload_carries_a_raw_byte_sequence(parsed: _Parsed) -> None:
+def test_no_emitted_payload_carries_a_raw_byte_sequence(
+    canonical_stream: list[CanonicalEvent],
+) -> None:
     """The structural check above is defence in depth; this walks what the adapter actually
     produces over a real recording, so a value smuggled past the type declaration is still
-    caught."""
+    caught. Driven through `Aoe2RecExtractor.events()` (T652e), not `canonical_events(parsed)`
+    directly, so this is evidence about the seam callers actually use."""
     checked = 0
-    for event in canonical_events(parsed):
+    for event in canonical_stream:
         for value in _values(event.payload):
             assert not isinstance(value, (bytes, bytearray))
             checked += 1
