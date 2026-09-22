@@ -54,13 +54,17 @@ FONT_SIZE_BUDGET_BYTES = 1 * 1024 * 1024
 KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 12 * 1024 * 1024
 
 #: specs/006-replay-analysis-foundations/contracts/knowledge-base.md's on-disk layout for
-#: `packages/knowledge/snapshots` — a reasoned estimate, not a measurement, because the directory
-#: does not exist yet (T638 writes the first snapshot). Each snapshot holds four small files
-#: (`snapshot.toml`, `rules.json`, `effects.toml`, `disagreements.toml`); `rules.json`, the
-#: largest, holds normalised entities derived from the pack above, not the pack itself, so it is
-#: expected well under 1 MB per snapshot. Budgeted generously — a handful of snapshots at that
-#: per-snapshot size, doubled again — because this root is append-only by design (written once,
-#: never edited) and is the one root this feature adds that had no ceiling at all before T637.
+#: `packages/knowledge/snapshots` — measured, not estimated (T637/T652i). The three snapshots
+#: committed as of 2026-09-22 total 551,139 bytes (~538 KiB): 271,983 bytes for
+#: `aoe2techtree-177723-test`, 277,174 for `aoe2techtree-180059` (each holding `snapshot.toml`,
+#: `rules.json` and `effects.toml`, `aoe2techtree-180059` also `disagreements.toml`) and 1,982 for
+#: the near-empty `aoe2techtree-test-stub`. `rules.json`, the largest file in a real snapshot, is
+#: normalised entities derived from the pack above, not the pack itself. Budgeted at roughly 15x
+#: today's measured total — a handful more snapshots at today's largest single-snapshot size —
+#: because this root is append-only by design (written once, never edited); the multiple is stated
+#: so a future re-measurement can say whether it still holds rather than re-deriving it from
+#: scratch. Unchanged from the estimate T637 first set: the measurement now backing it still sits
+#: comfortably inside it, so there is no case for moving it yet.
 KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES = 8 * 1024 * 1024
 
 
