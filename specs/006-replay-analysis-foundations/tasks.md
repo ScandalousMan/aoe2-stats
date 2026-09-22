@@ -841,6 +841,48 @@ Three were arbitration and are decided, with the decision recorded in the task t
       from the strong one. (d) T618 and T621 are marked `[x]` on verification claims with no artifact
       on disk. The mechanisms are real and pass; re-run both by hand and record what they printed
 
+- [ ] T652k [US5] **Dedupe the coverage pass by civilisation, not by slot — the duplicate-gap fix
+      closed one cause and left its siblings.** T652b resolved the snapshot once so an unresolvable
+      build emits one gap instead of 612, and the argument it was fixed on — that
+      `analysis_knowledge_gaps`' unique index is
+      `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))`, so
+      identical rows collide on T662's second insert — **was never carried to the other causes**.
+      `coverage.py:236-251` keys `entities_by_slot` by **slot** and emits one gap per
+      (slot, entity, field), so two seated participants on the same civilisation referencing the
+      same entity emit N identical gaps. Reproduced against the real packaged snapshot by forcing
+      recording 2's four slots onto one civilisation: **16 gaps, 13 distinct, `('building', '82',
+      'cost', 'Franks')` four times**, every copy equal on all five index columns. Neither committed
+      recording can see it — both seat four distinct civilisations — and a mirror matchup or any
+      team game with two players on one civilisation is ordinary. A query result depends on
+      `(entity, civilisation, build)` and never on the slot, so collect per civilisation name, or
+      dedupe on the index's own key before returning. **Test it with two slots on one civilisation
+      and assert `len(result) == len(set(...))`**, not merely that a gap exists — the defect is
+      duplication and "at least one" cannot see it, which is the same trap T652b's own test had to
+      avoid. **In the same change, close the guard that was supposed to prevent this class**:
+      `packages/knowledge/tests/test_structure.py:224-256` walks for `ast.ImportFrom` with
+      `module == "aoe2stats_knowledge.query"`, but `coverage.py:125` is
+      `from aoe2stats_knowledge import ... query ...` and calls by attribute — so it forbids exactly
+      the form T652b removed and cannot see the form T652b introduced. Writing
+      `query._civilisation_qualified(...)` into `coverage.py` passes it today, while its docstring
+      claims every gap came from the public functions. Walk `ast.Attribute` whose value is
+      `Name(id="query")` and whose `attr` starts with `_`, and fail on any
+- [ ] T652l [US2] **Correct two false measurements now frozen behind a snapshot digest.** Both live
+      in `effects.toml`, in both promoted snapshots, which are byte-identical and must stay so.
+      (a) The `[[civilisation_id]]` record for `raw_id = 33` claims participant 4 of recording 2
+      *"researches technology 488 (Kamandaran)"* and that 488 is `NotAvailable` for Gurjaras in
+      `packages/knowledge/packs/aoe2techtree/trees/GURJARAS.json`. Measured against the committed golden: **participant 2 researches 488,
+      not participant 4**; participant 4's exclusive research is **687**; and **488 has no node at
+      all in that tree file** — absent, not `NotAvailable`. The file's own header comment 90 lines
+      above already says both of those things, so the entry contradicts its own file. The mapping
+      `33 → Persians` is **correct** and the elimination on unit 39 holds — strike only the false
+      clause and leave the true observation. This matters more than an ordinary typo because T652i
+      re-labelled this record **"Strong form (FR-030)"** without re-reading it, and a validation
+      record that misstates what was read is the exact thing FR-030's amendment exists to prevent.
+      (b) Two lines call `data.json` *"all sixty-one civilisations"*. It carries **53**, and
+      `trees/` holds 53 files, and `docs/data-sources.md:497` says 53 for this same pinned commit —
+      four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
+      snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
+
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
 

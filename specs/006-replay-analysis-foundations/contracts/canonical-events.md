@@ -24,7 +24,7 @@ pinned wheel is imported in `packages/replay-engine` only, as today.
 
 **The accounting is deliberately not on this protocol.** `events` returns a stream and nothing else,
 so obligation 3's conservation test — the one that proves no operation is lost — reaches the
-generator underneath it to read the tally. That is the single sanctioned exception and it is stated
+generator underneath it to read the tally. That is the one sanctioned kind of exception — two tests take it — and it is stated
 here rather than left for a reader to rediscover: everything that is *evidence about the stream's
 content* (the goldens, engine independence, the collapse rule) goes through `events`, and only the
 count of what the generator dropped does not, because a tally is not a stream and putting it on the
