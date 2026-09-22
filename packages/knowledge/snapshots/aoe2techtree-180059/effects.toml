@@ -558,3 +558,128 @@ rules.json whose name contains "Camel" or "Elephant" (17 ids), rather than a han
 the same "read the structure, do not hand-guess a class" discipline T644 used for Koreans' \
 "Ranged Soldiers and Infantry".\
 """
+
+# T652g: the replay's own raw civilisation integer, mapped to this pack's civilisation name
+# (FR-023, FR-024). Moved here from `coverage.py`'s own `_DEFAULT_CIVILISATION_NAMES` module
+# constant: that table was unversioned, undigested and absent from the register, so the game's
+# civilisation numbering shifting when a civilisation is added would have silently resolved a raw
+# id to the **wrong modelled** civilisation — a confident wrong answer `query.cost` would return
+# with no gap, because the id was already *in* the table and merely wrong. The
+# `unknown-civilisation-{raw_id}` fallback in `coverage.py` only catches an id this table does not
+# name at all; every entry below is now covered by this snapshot's own digest, exactly like every
+# other piece of civilisation knowledge `effects.toml` carries.
+#
+# **How each mapping below was actually measured, not guessed.** The replay's own raw
+# civilisation integer is, empirically, a third numbering space unrelated to either one already
+# used elsewhere in this repository — not Relic's `civilization_id`
+# (`apps/api/src/aoe2stats_api/civilizations.py`), and not `aoe2techtree`'s own alphabetical
+# ordering. This file's own header comment above already proved this for the second committed
+# recording by direct measurement: raw id 4 trains unit 25 ("Teutonic Knight", Teutons' unique
+# unit, held by no other civilisation in `data.json`), while raw id 4 in both other numbering
+# schemes names "Bohemians". The table below extends that same measurement — reading each
+# committed golden canonical stream's own `match-started` payload and `unit-queued`/
+# `research-queued` entities directly, cross-checked against `packages/knowledge/packs/
+# aoe2techtree/data.json`'s per-civilisation `Unit`/`Tech` arrays and, where `data.json`'s
+# flattened membership needed a second opinion, the per-civilisation tree files' own `node_status`
+# (`ResearchedCompleted` vs `NotAvailable`) — for the two raw ids the header comment above did not
+# itself resolve to a slot (both committed recordings' first fixture, and the second fixture's
+# remaining two slots):
+#
+#   - `AgeIIDE_Replay_500546441.zip` (raw ids 9 and 26). Neither participant trains or researches
+#     a unique unit or technology of either civilisation research.md D5 already named for this
+#     recording (Byzantines, Koreans), so entity-exclusivity alone (the method used above) is
+#     silent here. The discriminator instead comes from each civilisation's own,
+#     already-divergent tech-tree availability, read directly from `trees/BYZANTINES.json` and
+#     `trees/KOREANS.json`: participant 1 (raw id 9) researches technology 377
+#     ("Siege Engineers"), `node_status = "ResearchedCompleted"` in `KOREANS.json` and
+#     `"NotAvailable"` in `BYZANTINES.json` — only a Korean player could have researched it.
+#     Participant 2 (raw id 26) researches technology 80 ("Plate Barding Armor"),
+#     `"ResearchedCompleted"` in `BYZANTINES.json` and `"NotAvailable"` in `KOREANS.json` — only a
+#     Byzantine player could have researched it. The two readings agree with each other (one
+#     participant per civilisation, no overlap) and with research.md D5's "both players trained
+#     units their civilisation discounts": raw id 9 is therefore Koreans, raw id 26 is Byzantines.
+#   - `AgeIIDE_Replay_504695319.zip` (raw ids 2, 8, 4, 33). The header comment above already fixes
+#     two of the four by slot: slot 1 (raw id 2) is Franks (unit 281, "Throwing Axeman"; technology
+#     83, "Bearded Axe" — both exclusively Franks' in `data.json`) and slot 3 (raw id 4) is Teutons
+#     (unit 25, "Teutonic Knight"; technology 489, "Ironclad" — both exclusively Teutons'). It
+#     names Persians and Gurjaras as the recording's other two civilisations without committing
+#     either to slot 2 or slot 4 — the table below is what needs the slot-level split, and measured
+#     it directly, including the one genuine complication the header comment above already
+#     flagged in prose ("one 'Camel Scout' production run ... attributed to ... a Persians-castle
+#     participant"): read directly against the golden canonical stream, participant 2 (raw id 8)
+#     is recorded training unit 1755 ("Camel Scout") 27 times across five distinct Stable objects
+#     spanning the match (`data.json`: id 1755 is owned by Gurjaras alone, of all sixty-one
+#     civilisations in the pack — the same exclusivity test used above) — evidence far too
+#     voluminous and sustained to be the stray, single-event misattribution the header's prose
+#     describes, so participant 2 is Gurjaras. The same participant's canonical stream also
+#     carries a smaller cluster of Persians-exclusive activity (technology 488 "Kamandaran", unit
+#     239 "War Elephant", unit 38 "Knight" — the last of these both `ResearchedCompleted` for
+#     Persians and, tellingly, `NotAvailable` for Gurjaras in `trees/GURJARAS.json`, which cannot
+#     train a Knight at all — a genuine, mechanically impossible combination for one real
+#     civilisation to have produced itself), all issued from a single Castle object (20802): this
+#     is read as the documented adapter/wheel misattribution research.md D11 already records for
+#     this exact recording ("an action kind the wheel does not name at all"), not as evidence
+#     Gurjaras is wrong. Participant 4 (raw id 33) trains unit 39 ("Cavalry Archer",
+#     `ResearchedCompleted` for Persians and `NotAvailable` for Gurjaras in the same two tree
+#     files) and researches technology 687 ("Silk Armor", exclusively Tatars' — the single,
+#     uncorroborated anomaly the header above already dismisses: "not corroborated by any second
+#     signal, unlike every civilisation actually modelled below"). With Tatars excluded on that
+#     same, already-recorded basis, and Gurjaras fixed to participant 2 above, participant 4 is
+#     Persians by elimination as well as by its own Persians-available, Gurjaras-unavailable unit
+#     — raw id 8 is therefore Gurjaras, raw id 33 is Persians.
+
+[[civilisation_id]]
+raw_id = 2
+civilisation = "Franks"
+validated_by = """\
+Unit 281 ("Throwing Axeman") and technology 83 ("Bearded Axe"), both exclusively Franks' in \
+data.json — the header comment above's own measurement, extended by T652g to a full table entry.\
+"""
+
+[[civilisation_id]]
+raw_id = 4
+civilisation = "Teutons"
+validated_by = """\
+Unit 25 ("Teutonic Knight") and technology 489 ("Ironclad"), both exclusively Teutons' in \
+data.json — the header comment above's own measurement, extended by T652g to a full table entry.\
+"""
+
+[[civilisation_id]]
+raw_id = 8
+civilisation = "Gurjaras"
+validated_by = """\
+Participant 2 of AgeIIDE_Replay_504695319.zip trains unit 1755 ("Camel Scout") 27 times across \
+five distinct Stable objects, id 1755 owned by Gurjaras alone of all sixty-one civilisations in \
+data.json; a smaller cluster of Persians-exclusive activity from the same slot is read as the \
+documented adapter/wheel misattribution research.md D11 already records, not as evidence against \
+Gurjaras (T652g measurement, see the header comment above for the full reading).\
+"""
+
+[[civilisation_id]]
+raw_id = 9
+civilisation = "Koreans"
+validated_by = """\
+Participant 1 of AgeIIDE_Replay_500546441.zip researches technology 377 ("Siege Engineers"), \
+node_status = "ResearchedCompleted" in trees/KOREANS.json and "NotAvailable" in \
+trees/BYZANTINES.json (T652g measurement, see the header comment above for the full reading).\
+"""
+
+[[civilisation_id]]
+raw_id = 26
+civilisation = "Byzantines"
+validated_by = """\
+Participant 2 of AgeIIDE_Replay_500546441.zip researches technology 80 ("Plate Barding Armor"), \
+node_status = "ResearchedCompleted" in trees/BYZANTINES.json and "NotAvailable" in \
+trees/KOREANS.json (T652g measurement, see the header comment above for the full reading).\
+"""
+
+[[civilisation_id]]
+raw_id = 33
+civilisation = "Persians"
+validated_by = """\
+Participant 4 of AgeIIDE_Replay_504695319.zip trains unit 39 ("Cavalry Archer") and researches \
+technology 488 ("Kamandaran"), both ResearchedCompleted for Persians and NotAvailable for \
+Gurjaras in trees/GURJARAS.json; by elimination once Gurjaras is fixed to participant 2 and \
+Tatars is excluded as an uncorroborated anomaly (T652g measurement, see the header comment above \
+for the full reading).\
+"""

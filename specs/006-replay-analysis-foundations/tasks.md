@@ -792,7 +792,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       it is published. Same shape for `StartingObjectPayload`'s four fields collapsed into one
       `event.starting_object.attributes`. Add the missing entries and regenerate `REGISTER.md`.
       Depends on T652d — both edit `register.toml`
-- [ ] T652g [US2] **Move the civilisation-id table into the snapshot, behind its digest.**
+- [x] T652g [US2] **Move the civilisation-id table into the snapshot, behind its digest.**
       `coverage.py:196` hard-codes `_DEFAULT_CIVILISATION_NAMES`, mapping replay civilisation
       integers to pack names. That is game knowledge: **FR-023** says every knowledge answer is
       qualified by build and **FR-024** says a snapshot's contents are covered by its digest, and
