@@ -71,6 +71,11 @@ selector = [
   { kind = "unit", id = "1155" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's prerequisites and produced_at fields. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
 re-read in full on 2026-09-20 by the T644 implementer, independently of the first transcription \
 pass earlier the same session, confirming the sentence verbatim and the selector's resolution \
@@ -96,6 +101,11 @@ selector = [
   { kind = "building", id = "12" }, { kind = "building", id = "45" }, { kind = "building", id = "49" }, { kind = "building", id = "50" }, { kind = "building", id = "68" }, { kind = "building", id = "70" }, { kind = "building", id = "71" }, { kind = "building", id = "72" }, { kind = "building", id = "79" }, { kind = "building", id = "82" }, { kind = "building", id = "84" }, { kind = "building", id = "87" }, { kind = "building", id = "101" }, { kind = "building", id = "103" }, { kind = "building", id = "104" }, { kind = "building", id = "109" }, { kind = "building", id = "117" }, { kind = "building", id = "155" }, { kind = "building", id = "199" }, { kind = "building", id = "209" }, { kind = "building", id = "234" }, { kind = "building", id = "235" }, { kind = "building", id = "236" }, { kind = "building", id = "276" }, { kind = "building", id = "487" }, { kind = "building", id = "562" }, { kind = "building", id = "584" }, { kind = "building", id = "598" }, { kind = "building", id = "621" }, { kind = "building", id = "792" }, { kind = "building", id = "1021" }, { kind = "building", id = "1189" }, { kind = "building", id = "1251" }, { kind = "building", id = "1665" }, { kind = "building", id = "1734" }, { kind = "building", id = "1754" }, { kind = "building", id = "1806" }, { kind = "building", id = "1808" }, { kind = "building", id = "1889" }, { kind = "building", id = "2556" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's own entity schema (confirming no hit-point field exists to adjust). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
 re-read in full on 2026-09-20 by the T644 implementer, confirming this bullet is age-gated prose \
 ("Dark/Feudal/Castle/Imperial Age") with no per-age state this rules query carries, and that no \
@@ -116,6 +126,11 @@ does not carry.\
 field = "heal_rate"
 selector = [{ kind = "unit", id = "125" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's entity name field (used to resolve "Monks" to unit id 125). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120156, \
 re-read in full on 2026-09-20 by the T644 implementer, confirming the "Team Bonus:" heading and \
 resolving "Monks" to rules.json unit id 125 ("Monk").\
@@ -177,6 +192,11 @@ selector = [
   { kind = "unit", id = "2588" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's produced_at field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
 re-read in full on 2026-09-20 by the T644 implementer, independently of the first transcription \
 pass earlier the same session, confirming the sentence verbatim ("wood" only, gold and food \
@@ -203,6 +223,11 @@ selector = [
   { kind = "technology", id = "64" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's prerequisites field. \
 Reclassified 2026-09-20 during a remediation of T648's coverage pass (SC-007a): re-read against \
 rules.json's own structural fields rather than the earlier transcription's prose-only reading. The \
 parenthetical "(Bombard Tower requires Chemistry)" is a note about Bombard Tower's own \
@@ -244,6 +269,11 @@ any entity record.\
 field = "line_of_sight"
 selector = [{ kind = "unit", id = "83" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's entity name field (used to resolve "Villagers" to unit id 83). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167, \
 re-read in full on 2026-09-20 by the T644 implementer, confirming the "Team Bonus:" heading and \
 resolving "Villagers" to rules.json unit id 83 ("Villager").\
@@ -360,6 +390,11 @@ selector = [
   { kind = "technology", id = "14" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+the pack's own FRANKS.json tree file's node_status field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
 re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
 pass earlier the same session, confirming the sentence verbatim and the selector's resolution to \
@@ -382,6 +417,11 @@ which age applies at query time, which a rules query carries no match-time state
 field = "cost"
 selector = [{ kind = "building", id = "82" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's entity name field (used to resolve "Castles" to building id 82). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the age-gated prose and \
 resolving "Castles" to rules.json building id 82 ("Castle").\
@@ -406,6 +446,11 @@ selector = [
   { kind = "unit", id = "569" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's prerequisites field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
 resolving "Knight-line" to rules.json's own prerequisite chain: Knight (38, no prerequisite), \
@@ -422,6 +467,11 @@ operation = "set"
 operand = 3
 selector = [{ kind = "technology", id = "436" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's age_requirement field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
 re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
 pass earlier the same session, confirming the sentence verbatim and resolving "Parthian Tactics" \
@@ -448,6 +498,11 @@ selector = [
   { kind = "unit", id = "492" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's prerequisites field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the "Unique Techs:" heading and \
 resolving "Archer-line" to rules.json's own prerequisite chain: Archer (4, no prerequisite), \
@@ -473,6 +528,11 @@ selector = [
   { kind = "unit", id = "569" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's prerequisites field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
 resolving "Knight-line" the same way as Franks' identical bonus above (units 38, 283, 569).\
@@ -488,6 +548,11 @@ operation = "multiply"
 operand = { wood = 0.6 }
 selector = [{ kind = "building", id = "50" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's own cost field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120153, \
 re-read in full on 2026-09-20 by the T645 implementer, independently of the first transcription \
 pass earlier the same session, confirming the sentence verbatim and resolving "Farms" to rules.json \
@@ -512,6 +577,11 @@ reasons together, with no selector, rather than invented.\
 field = "melee_armor"
 selector = [{ kind = "building", id = "12" }, { kind = "building", id = "101" }]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's entity name field (used to resolve the two producing buildings). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120153, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the age-gated prose; the \
 selector above names only the two producing buildings ("Barracks and Stable"), not the many units \
@@ -551,6 +621,11 @@ selector = [
   { kind = "unit", id = "875" },
 ]
 validated_by = """\
+Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
+instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
+the game's own data file is barred by the publisher's usage rules). Two fields of the same \
+vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
+rules.json's entity name field (matched by substring on "Camel"/"Elephant"). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120191, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the "Team Bonus:" heading and \
 resolving "Camel and Elephant Units" mechanically: every unit id in this promoted snapshot's own \
@@ -632,6 +707,10 @@ the same "read the structure, do not hand-guess a class" discipline T644 used fo
 raw_id = 2
 civilisation = "Franks"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Unit 281 ("Throwing Axeman") and technology 83 ("Bearded Axe"), both exclusively Franks' in \
 data.json — the header comment above's own measurement, extended by T652g to a full table entry.\
 """
@@ -640,6 +719,10 @@ data.json — the header comment above's own measurement, extended by T652g to a
 raw_id = 4
 civilisation = "Teutons"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Unit 25 ("Teutonic Knight") and technology 489 ("Ironclad"), both exclusively Teutons' in \
 data.json — the header comment above's own measurement, extended by T652g to a full table entry.\
 """
@@ -648,6 +731,10 @@ data.json — the header comment above's own measurement, extended by T652g to a
 raw_id = 8
 civilisation = "Gurjaras"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Participant 2 of AgeIIDE_Replay_504695319.zip trains unit 1755 ("Camel Scout") 27 times across \
 five distinct Stable objects, id 1755 owned by Gurjaras alone of all sixty-one civilisations in \
 data.json; a smaller cluster of Persians-exclusive activity from the same slot is read as the \
@@ -659,6 +746,10 @@ Gurjaras (T652g measurement, see the header comment above for the full reading).
 raw_id = 9
 civilisation = "Koreans"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Participant 1 of AgeIIDE_Replay_500546441.zip researches technology 377 ("Siege Engineers"), \
 node_status = "ResearchedCompleted" in trees/KOREANS.json and "NotAvailable" in \
 trees/BYZANTINES.json (T652g measurement, see the header comment above for the full reading).\
@@ -668,6 +759,10 @@ trees/BYZANTINES.json (T652g measurement, see the header comment above for the f
 raw_id = 26
 civilisation = "Byzantines"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Participant 2 of AgeIIDE_Replay_500546441.zip researches technology 80 ("Plate Barding Armor"), \
 node_status = "ResearchedCompleted" in trees/BYZANTINES.json and "NotAvailable" in \
 trees/KOREANS.json (T652g measurement, see the header comment above for the full reading).\
@@ -677,6 +772,10 @@ trees/KOREANS.json (T652g measurement, see the header comment above for the full
 raw_id = 33
 civilisation = "Persians"
 validated_by = """\
+Strong form (FR-030): validated against a genuinely independent second source — this recording's \
+own canonical stream (parsed by this project's own pipeline, wholly separate from the vendored \
+aoe2techtree pack's generation pipeline), cross-checked against data.json's/the per-civilisation \
+tree file's exclusivity table. \
 Participant 4 of AgeIIDE_Replay_504695319.zip trains unit 39 ("Cavalry Archer") and researches \
 technology 488 ("Kamandaran"), both ResearchedCompleted for Persians and NotAvailable for \
 Gurjaras in trees/GURJARAS.json; by elimination once Gurjaras is fixed to participant 2 and \

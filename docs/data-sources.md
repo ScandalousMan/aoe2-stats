@@ -115,9 +115,9 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON array
   of lobby slots (`profileInfo.id`, `stationID`, `teamID`, `raceID`, `metaData`, ...) and a
   trailing NUL. Each occupied slot's `metaData` is two more base64 layers — the outer one wraps a
-  JSON string literal, the inner one a binary record: one count byte, then `(u32 LE length,
-bytes)` key/value pairs — holding `ScenarioPlayerIndex` and `Team` (and a duplicate under the
-  key `0`). `ScenarioPlayerIndex` is the player's 0-based number in the game, and in DE that
+  JSON string literal, the inner one a binary record: one count byte, then
+  `(u32 LE length, bytes)` key/value pairs — holding `ScenarioPlayerIndex` and `Team` (and a
+  duplicate under the key `0`). `ScenarioPlayerIndex` is the player's 0-based number in the game, and in DE that
   number is the colour: `0` blue, `1` red, `2` green, `3` yellow, `4` teal, `5` purple, `6` grey,
   `7` orange — `+1` is the 1..8 scheme aoe2companion's `color` and the design system use.
   Verified by joining the two fixtures on `(match id, profile id)`: every one of the 24
@@ -543,9 +543,9 @@ against keeping one measurement in two homes.
 - **Scope**: names only — identifiers to display names for civilisations and other constants. No
   costs, times, ages, prerequisites or bonuses (research.md D3).
 - **Reliability**: community-maintained, explicit identifiers, cross-checked against this project's
-  own independently captured fixtures rather than trusted blind: `apps/api/src/aoe2stats_api/
-civilizations.py`'s docstring records that its `data/datasets/100.json` confirmed all 45
-  civilisation ids this repository had already derived from two frozen provider fixtures, and 44 of
+  own independently captured fixtures rather than trusted blind:
+  `apps/api/src/aoe2stats_api/civilizations.py`'s docstring records that its
+  `data/datasets/100.json` confirmed all 45 civilisation ids this repository had already derived from two frozen provider fixtures, and 44 of
   their 45 labels — one deliberate, checked divergence at id 30, "Maya" there against "Mayans" here,
   the name both the game and aoe2techtree use, which this project keeps. Fourteen further ids,
   outside the fixture-derived range, were added from this source alone, with no independent fixture
@@ -555,9 +555,9 @@ civilizations.py`'s docstring records that its `data/datasets/100.json` confirme
 - **Version identifier**: none — the source carries no release, tag or version field. Whichever
   commit a maintainer happened to read is not recorded, because the source is never vendored (see
   "Known limitations") and there is nothing to pin a digest to.
-- **Coverage**: civilisation ids 0-60 as of the reading recorded in `apps/api/src/aoe2stats_api/
-civilizations.py`; ids 56, 57 and everything above 60 are absent from this source too and stay on
-  this project's bare-id fallback deliberately, not guessed at.
+- **Coverage**: civilisation ids 0-60 as of the reading recorded in
+  `apps/api/src/aoe2stats_api/civilizations.py`; ids 56, 57 and everything above 60 are absent from
+  this source too and stay on this project's bare-id fallback deliberately, not guessed at.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
   file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
   forbids vendoring a source with no licence and permits only a human's transcription, recorded with

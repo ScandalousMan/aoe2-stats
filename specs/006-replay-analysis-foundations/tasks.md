@@ -254,7 +254,16 @@ the view fails the suite.
 - [x] T618 [US1] Verify **SC-012** by hand and record the result in the task hand-back: open
       `REGISTER.md`, look up unit loss, and confirm — **without opening a Python file** — that it
       says why it cannot be known, what that costs, that the approximation is not acceptable, and
-      what would change the answer. If that read needs the source, the renderer is the defect
+      what would change the answer. If that read needs the source, the renderer is the defect.
+      **Re-verified 2026-09-22 (T652i)**: `REGISTER.md`'s `## Non-determinable (1)` section, entry
+      `participant.units_lost`, states all four without opening a Python file — why: "the operation
+      stream is player intent only: it carries no damage event, no death event and no completion
+      event, and the post-game operation carries no statistics block, so no field of the file
+      states that any unit died"; cost: "no casualty count, no army value over time, no trade
+      evaluation, and no military-strength dimension that needs either; the analytics that wanted
+      them are not degraded, they are absent"; not acceptable: `approximation_acceptable: no`; what
+      would change it: "a recording format that carries outcome events or a post-game statistics
+      block"
 - [x] T619 [US3] Implement `packages/core/src/aoe2stats_core/truth/validate.py` with the ten rules in
       [contracts/analysis-document.md](./contracts/analysis-document.md), against the document shape
       that exists today — the identity, inferred and gap blocks arrive in later phases and their
@@ -270,7 +279,12 @@ the view fails the suite.
 - [x] T621 [US1] Verify the drift gate bites: edit one impact line in `register.toml`, run the
       suite, confirm the view test fails and prints the regeneration command, regenerate, confirm
       green, and leave the register as it was. A gate nobody has seen fail is a gate nobody knows
-      the shape of
+      the shape of. **Re-verified 2026-09-22 (T652i)**: edited `participant.units_lost`'s `impact`
+      line in `register.toml`; `uv run pytest packages/core/tests/test_register_view.py -q` printed
+      `AssertionError: REGISTER.md has drifted from register.toml. Regenerate it with: uv run
+      python -m aoe2stats_core.truth.register` (1 failed, 3 passed); ran that exact command, reran
+      the same test file and got `4 passed`; restored the edited line and regenerated again —
+      `git diff --quiet` on both `register.toml` and `REGISTER.md` confirmed empty
 - [x] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
       module docstring and enforce it in T615's loader: a datum id states what was measured, never
       what a reader would like it to mean (**FR-012**) — commands rather than times, ordered rather
@@ -812,7 +826,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       trustworthy only because a test asserts it — there is no test. Add one check under
       `scripts/checks/` asserting all five agree, and wire it into the `python` job. Independent of
       every other task here
-- [ ] T652i **The documentation findings, which share no file with the code tasks.** (a)
+- [x] T652i **The documentation findings, which share no file with the code tasks.** (a)
       `docs/data-sources.md` lines 119, 547 and 559 carry list-continuation text at column 0, which
       terminates the bullet it belongs to. Line 119 is in §1's `slotinfo` decode — a section this
       feature does not touch, damaged by a Prettier reflow riding in on `69ada014`, which also
