@@ -15,7 +15,7 @@
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:5f11ba1156731b0ca3ec4fcb6deb033cda1bed42315665a2c64de1d952dec384"
+digest = "sha256:79b8f9a25b833649456caf5e20003acc45aee7d5d6c62519b71d4119648d89ae"
 promoted = true
 civilisations_modelled = ["Byzantines", "Koreans", "Franks", "Persians", "Teutons", "Gurjaras"]
 

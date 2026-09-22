@@ -36,6 +36,24 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
 
+**T652g: `[[civilisation_id]]`, the replay's raw civilisation integer mapped to this pack's
+civilisation name.** This is a second, independent record `effects.toml` carries, not an
+`[[effect]]` entry: a replay's `match-started` participant names its civilisation only as the
+game's own raw integer (`ParticipantEntry.civilisation`), and nothing else in this pack or this
+repository translates that integer into one of the pack's own civilisation-name strings
+(`coverage.py`'s own module docstring records why). Moved here from what was, before this task,
+`coverage.py`'s own unversioned, undigested `_DEFAULT_CIVILISATION_NAMES` module constant — the
+same game knowledge as an `[[effect]]`'s `selector`, and wrong for the same reason a table outside
+the snapshot is wrong: the game's civilisation numbering shifts when civilisations are added, and
+an un-digested table cannot be qualified by build (FR-023) or covered by the snapshot's own
+digest (FR-024). Each entry's `civilisation` and `validated_by` carry the same measurement
+discipline as an `[[effect]]`'s: read directly against the committed golden recordings and
+cross-checked against `data.json`'s per-civilisation membership and the per-civilisation tree
+files' `node_status` — see the header comment above the `[[civilisation_id]]` entries at the foot
+of each snapshot's own `effects.toml` for the full per-id reading. A raw id this table does not
+name is `coverage.py`'s to resolve to its `unknown-civilisation-{raw_id}` placeholder, never this
+module's to guess.
+
 **Civilisation qualification, steps 2-3** (contracts/knowledge-base.md): given an entity, a field
 and a civilisation already known to be modelled (`query.py`'s step 1, `_civilisations_modelled`),
 this module's `apply` finds every effect matching all three, refuses with `EffectNotModelled` if
@@ -188,6 +206,40 @@ class EffectNotModelled:
     cause: str = "effect-not-modelled"
 
 
+#: TOML keys required on every `[[civilisation_id]]` table (T652g).
+_CIVILISATION_ID_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
+    "raw_id",
+    "civilisation",
+    "validated_by",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CivilisationId:
+    """T652g: one replay-native civilisation integer mapped to the pack's own civilisation name it
+    identifies. See this module's docstring, "T652g: `[[civilisation_id]]`" for why this table
+    lives in `effects.toml` rather than as code, and each committed snapshot's own `effects.toml`
+    header comment (immediately above its `[[civilisation_id]]` entries) for how every mapping was
+    actually measured — a summary of that same measurement is repeated in each entry's own
+    `validated_by` below, in the same spirit as `Effect.validated_by`."""
+
+    raw_id: int
+    civilisation: str
+    validated_by: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.raw_id, int) or isinstance(self.raw_id, bool):
+            raise EffectsError(f"civilisation_id.raw_id must be an int, got {self.raw_id!r}")
+        for name, value in (
+            ("civilisation", self.civilisation),
+            ("validated_by", self.validated_by),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise EffectsError(
+                    f"civilisation_id.{name} must be a non-blank string, got {value!r}"
+                )
+
+
 def _require_str(table: Mapping[str, object], key: str) -> str:
     value = table.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -266,6 +318,65 @@ def _effects(directory: str) -> tuple[Effect, ...]:
     root = resources.files(_PACKAGE).joinpath("snapshots").joinpath(directory)
     text = root.joinpath("effects.toml").read_text(encoding="utf-8")
     return parse_effects_toml(text)
+
+
+def _parse_civilisation_id(table: Mapping[str, object]) -> CivilisationId:
+    for key in _CIVILISATION_ID_REQUIRED_FIELDS:
+        if key not in table:
+            raise EffectsError(f"[[civilisation_id]] is missing required field {key!r}")
+    raw_id = table.get("raw_id")
+    if not isinstance(raw_id, int) or isinstance(raw_id, bool):
+        raise EffectsError(f"civilisation_id.raw_id must be an int, got {raw_id!r}")
+    return CivilisationId(
+        raw_id=raw_id,
+        civilisation=_require_str(table, "civilisation"),
+        validated_by=_require_str(table, "validated_by"),
+    )
+
+
+def parse_civilisation_ids_toml(text: str) -> tuple[CivilisationId, ...]:
+    """T652g: parse one snapshot's `effects.toml` `[[civilisation_id]]` entries into records.
+    Unlike `[[effect]]`, file order carries no meaning here — each `raw_id` names at most one
+    civilisation, checked below, and there is no "apply every match in order" step to preserve."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise EffectsError(f"effects.toml is not valid TOML: {exc}") from exc
+    raw_entries = data.get("civilisation_id", [])
+    if not isinstance(raw_entries, list):
+        raise EffectsError("effects.toml: [[civilisation_id]] must be an array of tables")
+    entries = tuple(_parse_civilisation_id(table) for table in raw_entries)
+    seen: dict[int, str] = {}
+    for entry in entries:
+        if entry.raw_id in seen:
+            raise EffectsError(
+                f"effects.toml: civilisation_id.raw_id {entry.raw_id} is duplicated "
+                f"({seen[entry.raw_id]!r} and {entry.civilisation!r})"
+            )
+        seen[entry.raw_id] = entry.civilisation
+    return entries
+
+
+@functools.cache
+def _civilisation_ids(directory: str) -> tuple[CivilisationId, ...]:
+    """One packaged snapshot's parsed `[[civilisation_id]]` entries (T652g), read directly through
+    `importlib.resources` (FR-026) and cached per directory — same immutability argument as
+    `_effects` above (FR-025)."""
+    root = resources.files(_PACKAGE).joinpath("snapshots").joinpath(directory)
+    text = root.joinpath("effects.toml").read_text(encoding="utf-8")
+    return parse_civilisation_ids_toml(text)
+
+
+def civilisation_id_names(directory: str) -> Mapping[int, str]:
+    """T652g: this packaged snapshot's own raw-civilisation-id-to-name table, keyed by `raw_id` —
+    every `[[civilisation_id]]` entry its own `effects.toml` carries, covered by that snapshot's
+    digest (FR-024) and therefore qualified by the build it describes (FR-023). A raw id absent
+    here is not this function's problem to solve: `coverage.py`'s own
+    `unknown-civilisation-{raw_id}` fallback is what turns that absence into a gap, never a guess
+    (FR-038). Empty for a snapshot whose `effects.toml` carries no such table at all (e.g.
+    `aoe2techtree-test-stub`, whose `civilisations_modelled` is itself empty) — nothing calls this
+    for a name it needs to resolve."""
+    return {entry.raw_id: entry.civilisation for entry in _civilisation_ids(directory)}
 
 
 def _matches(effect: Effect, *, civilisation: str, kind: str, id: str, field: str) -> bool:

@@ -51,74 +51,31 @@ this pack: `aoe2techtree`'s `data.json` civilisation entries carry no numeric id
 the replay header decodes no name from one either). `civilisation_names`, keyword-only and
 optional, is the seam a caller may use to supply that translation directly (SC-007's synthetic
 test, whose one participant's raw id is deliberately not a real replay value at all). Left `None`
-— every real, production caller's case — `_DEFAULT_CIVILISATION_NAMES` below is used instead: the
-real, measured translation this task had to establish, because SC-007a runs `coverage()` over both
-committed recordings with no override at all.
+— every real, production caller's case — the resolved build's own snapshot is asked instead
+(**T652g**, below), the real, measured translation this task had to establish, because SC-007a
+runs `coverage()` over both committed recordings with no override at all.
 
-**How `_DEFAULT_CIVILISATION_NAMES` was actually measured, not guessed.** The replay's own raw
-civilisation integer is, empirically, a third numbering space unrelated to either one already used
-elsewhere in this repository — not Relic's `civilization_id` (`apps/api/src/aoe2stats_api/
-civilizations.py`), and not `aoe2techtree`'s own alphabetical ordering. `snapshots/
-aoe2techtree-180059/effects.toml`'s own T645 header comment already proved this for the
-second committed recording by direct measurement: raw id 4 trains unit 25 ("Teutonic Knight",
-Teutons' unique unit, held by no other civilisation in `data.json`), while raw id 4 in both other
-numbering schemes names "Bohemians". This module's table extends that same measurement — reading
-each committed golden canonical stream's own `match-started` payload and `unit-queued`/
-`research-queued` entities directly, cross-checked against `packages/knowledge/packs/
-aoe2techtree/data.json`'s per-civilisation `Unit`/`Tech` arrays and, where `data.json`'s flattened
-membership needed a second opinion, the per-civilisation tree files' own `node_status`
-(`ResearchedCompleted` vs `NotAvailable`) — for the two raw ids T645 did not itself resolve to a
-slot (both committed recordings' first fixture, and the second fixture's remaining two slots):
+**T652g: the translation lives in the snapshot, not in this module.** Before this task this
+translation was `_DEFAULT_CIVILISATION_NAMES`, a module constant hard-coded here — unversioned,
+undigested, absent from the register: not qualified by build (FR-023) and not covered by a
+snapshot's digest (FR-024), so a future civilisation addition shifting the game's own numbering
+would silently resolve a raw id to the **wrong modelled** civilisation, a confident wrong answer
+`query.cost` would return with no gap, because the id was *in* the table and merely wrong — the
+`unknown-civilisation-{raw_id}` fallback below only catches an id the table does not name at all.
+The translation now lives in each snapshot's own `effects.toml`, as a `[[civilisation_id]]` entry
+per raw id (`aoe2stats_knowledge.effects.civilisation_id_names`), covered by the same digest as
+every other piece of civilisation knowledge that file carries. This module reads it from the one
+snapshot the stream's own build already resolved to (`resolved.directory`, below) rather than
+from a constant true of every build — how each mapping was actually measured, not guessed, is
+recorded in full in that snapshot's own `effects.toml` header comment and in each entry's own
+`validated_by`, not repeated here.
 
-  - **`AgeIIDE_Replay_500546441.zip` (raw ids 9 and 26).** Neither participant trains or researches
-    a unique unit or technology of either civilisation research.md D5 already named for this
-    recording (Byzantines, Koreans), so entity-exclusivity alone (T645's method for the second
-    recording) is silent here. The discriminator instead comes from each civilisation's own,
-    already-divergent **tech-tree availability**, read directly from `trees/BYZANTINES.json` and
-    `trees/KOREANS.json`: participant 1 (raw id 9) researches technology 377 ("Siege Engineers"),
-    `node_status = "ResearchedCompleted"` in `KOREANS.json` and `"NotAvailable"` in
-    `BYZANTINES.json` — only a Korean player could have researched it. Participant 2 (raw id 26)
-    researches technology 80 ("Plate Barding Armor"), `"ResearchedCompleted"` in `BYZANTINES.json`
-    and `"NotAvailable"` in `KOREANS.json` — only a Byzantine player could have researched it. The
-    two readings agree with each other (one participant per civilisation, no overlap) and with
-    research.md D5's "both players trained units their civilisation discounts": raw id 9 is
-    therefore **Koreans**, raw id 26 is **Byzantines**.
-  - **`AgeIIDE_Replay_504695319.zip` (raw ids 2, 8, 4, 33).** `effects.toml`'s T645 comment already
-    fixes two of the four by slot: slot 1 (raw id 2) is **Franks** (unit 281, "Throwing Axeman";
-    technology 83, "Bearded Axe" — both exclusively Franks' in `data.json`) and slot 3 (raw id 4)
-    is **Teutons** (unit 25, "Teutonic Knight"; technology 489, "Ironclad" — both exclusively
-    Teutons'). It names Persians and Gurjaras as the recording's other two civilisations without
-    committing either to slot 2 or slot 4, because T645's own deliverable was the snapshot's
-    *civilisation set*, not a slot table — this task is the first that needs the slot-level split,
-    and had to measure it directly, including the one genuine complication `effects.toml` had
-    already flagged in prose ("one 'Camel Scout' production run ... attributed to ... a
-    Persians-castle participant"): read directly against the golden canonical stream, participant 2
-    (raw id 8) is recorded training unit 1755 ("Camel Scout") **27 times across five distinct
-    Stable objects** spanning the match (`data.json`: id 1755 is owned by Gurjaras alone, of all
-    sixty-one civilisations in the pack — the same exclusivity test T645 used) — evidence far too
-    voluminous and sustained to be the stray, single-event misattribution `effects.toml`'s prose
-    describes, so participant 2 is **Gurjaras**. The same participant's canonical stream also
-    carries a smaller cluster of Persians-exclusive activity (technology 488 "Kamandaran", unit 239
-    "War Elephant", unit 38 "Knight" — the last of these both `ResearchedCompleted` for Persians
-    and, tellingly, `NotAvailable` for Gurjaras in `trees/GURJARAS.json`, which cannot train a
-    Knight at all — a genuine, mechanically impossible combination for one real civilisation to
-    have produced itself), all issued from a single Castle object (20802): this is read as the
-    documented adapter/wheel misattribution research.md D11 already records for this exact
-    recording ("an action kind the wheel does not name at all"), not as evidence Gurjaras is wrong.
-    Participant 4 (raw id 33) trains unit 39 ("Cavalry Archer", `ResearchedCompleted` for Persians
-    and `NotAvailable` for Gurjaras in the same two tree files) and researches technology 687
-    ("Silk Armor", exclusively Tatars' — the single, uncorroborated anomaly `effects.toml` already
-    dismisses: "not corroborated by any second signal, unlike every civilisation actually modelled
-    below"). With Tatars excluded on that same, already-recorded basis, and Gurjaras fixed to
-    participant 2 above, participant 4 is **Persians** by elimination as well as by its own
-    Persians-available, Gurjaras-unavailable unit — raw id 8 is therefore **Gurjaras**, raw id 33
-    is **Persians**.
-
-A raw id this table does not name (any civilisation this package has not modelled, per
-`snapshot.toml`'s `civilisations_modelled`) resolves to a placeholder that can never collide with a
-real, modelled name (`f"unknown-civilisation-{raw_id}"`), so every query for it refuses at
-`query.py`'s own "is this civilisation modelled" step (`cause="civilisation-not-modelled"`) rather
-than this module ever guessing a name a wrong guess could make look confidently, silently wrong.
+A raw id the resolved snapshot's table does not name (any civilisation this package has not
+modelled, per `snapshot.toml`'s `civilisations_modelled`) resolves to a placeholder that can never
+collide with a real, modelled name (`f"unknown-civilisation-{raw_id}"`), so every query for it
+refuses at `query.py`'s own "is this civilisation modelled" step
+(`cause="civilisation-not-modelled"`) rather than this module ever guessing a name a wrong guess
+could make look confidently, silently wrong.
 
 **Calling the query surface, not reimplementing it (T652b).** Before this task, this module
 re-resolved a build's snapshot, looked its entity up in `rules.json` and re-checked whether the
@@ -165,7 +122,7 @@ from aoe2stats_core.replay.events import (
     ResearchQueuedPayload,
     UnitQueuedPayload,
 )
-from aoe2stats_knowledge import gaps, query, snapshot
+from aoe2stats_knowledge import effects, gaps, query, snapshot
 
 #: T652b (a): a stream whose `match-started` event carries no build at all (`MatchStartedPayload.
 #: build: int | None` allows this, distinct from a real build integer with no promoted snapshot,
@@ -192,23 +149,19 @@ _QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
     ("available_to", query.available_to),
 )
 
-#: research.md D11 / `effects.toml`'s T645 header comment; this module's own docstring records the
-#: measurement in full, including the one recording whose split T645 itself left unresolved.
-_DEFAULT_CIVILISATION_NAMES: Final[Mapping[int, str]] = {
-    2: "Franks",
-    4: "Teutons",
-    8: "Gurjaras",
-    9: "Koreans",
-    26: "Byzantines",
-    33: "Persians",
-}
 
-
-def _civilisation_name_for(raw_id: int, civilisation_names: Mapping[int, str] | None) -> str:
+def _civilisation_name_for(
+    raw_id: int,
+    civilisation_names: Mapping[int, str] | None,
+    snapshot_civilisation_names: Mapping[int, str],
+) -> str:
+    """T652g: `civilisation_names` (the test-only override) first, then
+    `snapshot_civilisation_names` — the resolved snapshot's own `[[civilisation_id]]` table
+    (`effects.civilisation_id_names`), never a module constant true of every build."""
     if civilisation_names is not None and raw_id in civilisation_names:
         return civilisation_names[raw_id]
-    if raw_id in _DEFAULT_CIVILISATION_NAMES:
-        return _DEFAULT_CIVILISATION_NAMES[raw_id]
+    if raw_id in snapshot_civilisation_names:
+        return snapshot_civilisation_names[raw_id]
     # Never a guess: a name shaped so it can never collide with a real, modelled civilisation name,
     # so every query for it refuses at query.py's own "is this civilisation modelled" step
     # (FR-038 — no default, no nearest, no fabricated identity).
@@ -268,6 +221,11 @@ def coverage(
         # whether or not the stream references any entity at all (module docstring).
         return (resolved,)
 
+    # T652g: the raw-id-to-name translation lives in the resolved snapshot's own `effects.toml`
+    # (`[[civilisation_id]]`), never a module constant true of every build — see this module's
+    # docstring, "T652g: the translation lives in the snapshot, not in this module."
+    snapshot_civilisation_names = effects.civilisation_id_names(resolved.directory)
+
     result: list[gaps.KnowledgeGap] = []
     override_context = (
         query.rules_overrides(rules_overrides)
@@ -282,7 +240,9 @@ def coverage(
                 # — nothing to qualify a query by, so this participant's entities are skipped
                 # rather than qualified by a fabricated civilisation.
                 continue
-            civilisation = _civilisation_name_for(raw_civilisation, civilisation_names)
+            civilisation = _civilisation_name_for(
+                raw_civilisation, civilisation_names, snapshot_civilisation_names
+            )
             for entity_kind, entity_id in sorted(entities_by_slot[slot]):
                 entity_ref = query.EntityRef(kind=entity_kind, id=entity_id, build=build)
                 for _field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
