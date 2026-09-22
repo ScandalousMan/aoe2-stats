@@ -30,11 +30,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
+from scripts.ops.canonical_golden import golden_path, serialise
 
 from aoe2stats_core.replay.events import CanonicalEvent, CanonicalEventSource
 from aoe2stats_core.replay.validation import MalformedArchiveError
 from aoe2stats_replay_engine.aoe2rec import _MAX_INNER_BYTES, ENGINE_NAME, Aoe2RecExtractor
-from aoe2stats_replay_engine.canonical_golden import golden_path, serialise
 from aoe2stats_replay_engine.dependencies import read_engine_dependencies
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"

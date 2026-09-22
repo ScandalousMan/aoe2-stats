@@ -11,8 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
-
-from aoe2stats_replay_engine.canonical_golden import (
+from scripts.ops.canonical_golden import (
     golden_path,
     live_serialisation,
     recordings,

@@ -62,19 +62,21 @@ regenerate it to make a failing test pass without first understanding why the ou
 
 ## `AgeIIDE_Replay_<id>.canonical.json` (one per recording)
 
-The golden canonical event stream (T629): `canonical_events()` run over each committed zip, one
-file beside each recording (`AgeIIDE_Replay_500546441.canonical.json`,
-`AgeIIDE_Replay_504695319.canonical.json`). Serialised by
-`packages/replay-engine/src/aoe2stats_replay_engine/canonical_golden.py`: a JSON object with
-`format`, `recording`, `event_count` and `events`, **one compact event per line** so a diff names
-the events that moved. Each event is `clock_ms`, `kind` (kebab-case), `participant` (a slot number
-or null) and `payload` (dataclass declaration order); the tier is derived from the kind and not
-written. There is no message text (chat carries a channel only) and no name: participants are slot
-numbers. `packages/replay-engine/tests/test_canonical_golden.py` compares the live stream to these
-files byte for byte and reports the first differing line.
+The golden canonical event stream (T629): `Aoe2RecExtractor(...).events(zip_bytes)` — the public
+`CanonicalEventSource` seam, not the adapter's internals — run over each committed zip, one file
+beside each recording (`AgeIIDE_Replay_500546441.canonical.json`,
+`AgeIIDE_Replay_504695319.canonical.json`). Serialised by `scripts/ops/canonical_golden.py`
+(T652e; not shipped — a dev-only tool, moved out of `packages/replay-engine/src/` because that
+directory ships in the deployed wheel): a JSON object with `format`, `recording`, `event_count`
+and `events`, **one compact event per line** so a diff names the events that moved. Each event is
+`clock_ms`, `kind` (kebab-case), `participant` (a slot number or null) and `payload` (dataclass
+declaration order); the tier is derived from the kind and not written. There is no message text
+(chat carries a channel only) and no name: participants are slot numbers.
+`packages/replay-engine/tests/test_canonical_golden.py` compares the live stream to these files
+byte for byte and reports the first differing line.
 
 Regenerate only when `aoe2rec-py` is upgraded or the adapter's logic changes deliberately, only by
-running `uv run python -m aoe2stats_replay_engine.canonical_golden`, never by hand and never from a
-test. Every diff it produces has to be read and explained. Do not regenerate to make a failing
-test pass without first understanding why the stream moved: a moved event means something was lost
-or altered, which is the failure the golden exists to catch.
+running `uv run python scripts/ops/canonical_golden.py`, never by hand and never from a test. Every
+diff it produces has to be read and explained. Do not regenerate to make a failing test pass
+without first understanding why the stream moved: a moved event means something was lost or
+altered, which is the failure the golden exists to catch.

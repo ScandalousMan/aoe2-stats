@@ -764,7 +764,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       snapshot change. Rename the register entry and the payload field to say what is carried
       (**FR-012**), and regenerate both canonical goldens under the README's discipline — the
       expected diff is the market events' one field, and anything else is a defect
-- [ ] T652e [US4] **Move the golden-regeneration tool out of the shipped package and put it on the
+- [x] T652e [US4] **Move the golden-regeneration tool out of the shipped package and put it on the
       seam.** `packages/replay-engine/src/aoe2stats_replay_engine/canonical_golden.py` is in `src/`,
       so it is in the wheel deployed to Vercel and the VPS, and it computes
       `Path(__file__).parents[4] / "tests/fixtures/replays"` — a repository-relative path that exists
