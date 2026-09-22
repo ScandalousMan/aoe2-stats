@@ -24,7 +24,7 @@ These data cannot be known from the recording. Each is stated in full: why, what
 - validation: the absence is re-measured against every newly committed current-patch recording, as docs/data-sources.md section 2 requires
 - evidence: docs/data-sources.md §2
 
-## observed (41)
+## observed (42)
 
 Read directly from the recording.
 
@@ -340,11 +340,21 @@ Read directly from the recording.
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
 - evidence: specs/006-replay-analysis-foundations/research.md D10
 
-### `event.unit_queued.producing_building`
+### `event.unit_queued.building_type`
 
 - status: planned
 - source: a named field of the training-queue command
 - method: read unchanged
+- requires knowledge: none
+- depends on: none
+- validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
+- evidence: specs/006-replay-analysis-foundations/research.md D10
+
+### `event.unit_queued.building_object`
+
+- status: planned
+- source: the training-queue command's list of producing-building object ids
+- method: the first id in the list is kept; a command naming several producing buildings still yields one event, and the rest are not represented — a narrowing of the vocabulary, not a re-decoding of the omitted ones
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
@@ -460,7 +470,7 @@ Read directly from the recording.
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
 - evidence: specs/006-replay-analysis-foundations/research.md D10
 
-## decoded (18)
+## decoded (21)
 
 Read from the recording after decoding an encoded field.
 
@@ -622,11 +632,44 @@ Read from the recording after decoding an encoded field.
 - validation: packages/replay-engine/tests — golden object table (feature 007)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
-### `event.starting_object.attributes`
+### `event.starting_object.object_id`
 
 - status: blocked
 - blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
-- source: the object identifier, class, position and owner of the declared-only starting-object canonical event
+- source: the object identifier of the declared-only starting-object canonical event
+- method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
+- requires knowledge: none
+- depends on: `map.starting_objects`
+- validation: a test asserts the adapter emits no such event until the decoder lands
+- evidence: specs/006-replay-analysis-foundations/research.md D1
+
+### `event.starting_object.object_class`
+
+- status: blocked
+- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- source: the object class of the declared-only starting-object canonical event
+- method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
+- requires knowledge: none
+- depends on: `map.starting_objects`
+- validation: a test asserts the adapter emits no such event until the decoder lands
+- evidence: specs/006-replay-analysis-foundations/research.md D1
+
+### `event.starting_object.position`
+
+- status: blocked
+- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- source: the position of the declared-only starting-object canonical event
+- method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
+- requires knowledge: none
+- depends on: `map.starting_objects`
+- validation: a test asserts the adapter emits no such event until the decoder lands
+- evidence: specs/006-replay-analysis-foundations/research.md D1
+
+### `event.starting_object.owner`
+
+- status: blocked
+- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- source: the owning participant of the declared-only starting-object canonical event
 - method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
 - depends on: `map.starting_objects`
@@ -675,7 +718,7 @@ Rebuilt from several recorded facts.
 - source: queued units and researched technologies, timed by the versioned knowledge base for the participant's civilisation
 - method: sum of the knowledge base's production time for each order against the producing building, per building; an order is a command, not a completion
 - requires knowledge: `production_time`, `produced_at`
-- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.producing_building`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
+- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_object`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
 - validation: feature 007 golden reconstruction fixtures and reconstruction invariants
 - evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
 

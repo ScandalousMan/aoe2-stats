@@ -780,7 +780,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       it. Drive the tool and all four tests through
       `Aoe2RecExtractor(max_raw_bytes=ANALYSIS_MAX_RAW_BYTES).events(zip_bytes)`. Depends on T652d —
       they share every one of those test files
-- [ ] T652f [US1] **Close the register's drift against the code and the contract it describes.** The
+- [x] T652f [US1] **Close the register's drift against the code and the contract it describes.** The
       `event.unit_queued.producing_building` entry says `method = "read unchanged"`;
       `canonical.py:222` keeps the first of several producing-building ids and discards the rest. The
       register is the one document whose job is to be right about how a datum is produced
