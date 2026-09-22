@@ -841,7 +841,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       from the strong one. (d) T618 and T621 are marked `[x]` on verification claims with no artifact
       on disk. The mechanisms are real and pass; re-run both by hand and record what they printed
 
-- [ ] T652k [US5] **Dedupe the coverage pass by civilisation, not by slot — the duplicate-gap fix
+- [x] T652k [US5] **Dedupe the coverage pass by civilisation, not by slot — the duplicate-gap fix
       closed one cause and left its siblings.** T652b resolved the snapshot once so an unresolvable
       build emits one gap instead of 612, and the argument it was fixed on — that
       `analysis_knowledge_gaps`' unique index is

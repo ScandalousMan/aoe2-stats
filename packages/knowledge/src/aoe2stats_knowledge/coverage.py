@@ -226,6 +226,28 @@ def coverage(
     # docstring, "T652g: the translation lives in the snapshot, not in this module."
     snapshot_civilisation_names = effects.civilisation_id_names(resolved.directory)
 
+    # T652k: a query result depends on (entity, civilisation, build), never on which slot
+    # referenced the entity, so entities are merged per resolved civilisation **name** here,
+    # before any query is made — not per slot. Two seated participants sharing a civilisation
+    # (a mirror matchup, or any team game with two players on one civilisation) would otherwise
+    # each contribute the same (entity, field) query, and an identical gap for each: every column
+    # `analysis_knowledge_gaps`' unique index checks (`identity_digest, entity_kind, entity_id,
+    # field, coalesce(civilisation_id, '')`) would be equal across the copies, so T662's writer
+    # would reject the second insert of an identical row — the same collision T652b already
+    # closed for the whole-build causes, now closed here for the per-entity ones too.
+    entities_by_civilisation: dict[str, set[tuple[str, str]]] = {}
+    for slot in sorted(entities_by_slot):
+        raw_civilisation = raw_civilisation_by_slot.get(slot)
+        if raw_civilisation is None:
+            # A participant with no seated civilisation at all (never seen in `match-started`)
+            # — nothing to qualify a query by, so this participant's entities are skipped
+            # rather than qualified by a fabricated civilisation.
+            continue
+        civilisation = _civilisation_name_for(
+            raw_civilisation, civilisation_names, snapshot_civilisation_names
+        )
+        entities_by_civilisation.setdefault(civilisation, set()).update(entities_by_slot[slot])
+
     result: list[gaps.KnowledgeGap] = []
     override_context = (
         query.rules_overrides(rules_overrides)
@@ -233,17 +255,8 @@ def coverage(
         else contextlib.nullcontext()
     )
     with override_context:
-        for slot in sorted(entities_by_slot):
-            raw_civilisation = raw_civilisation_by_slot.get(slot)
-            if raw_civilisation is None:
-                # A participant with no seated civilisation at all (never seen in `match-started`)
-                # — nothing to qualify a query by, so this participant's entities are skipped
-                # rather than qualified by a fabricated civilisation.
-                continue
-            civilisation = _civilisation_name_for(
-                raw_civilisation, civilisation_names, snapshot_civilisation_names
-            )
-            for entity_kind, entity_id in sorted(entities_by_slot[slot]):
+        for civilisation in sorted(entities_by_civilisation):
+            for entity_kind, entity_id in sorted(entities_by_civilisation[civilisation]):
                 entity_ref = query.EntityRef(kind=entity_kind, id=entity_id, build=build)
                 for _field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
                     answer_or_gap = query_function(entity_ref, civilisation=civilisation)

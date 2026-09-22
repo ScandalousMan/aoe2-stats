@@ -93,6 +93,7 @@ packaged snapshot" — a production caller never has to know either exists.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -519,6 +520,69 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
         "reconstruction.resources_spent and reconstruction.ordered_army_cost both require "
         "'cost' and are neither blocked nor non-determinable (register.toml), so this gap must "
         "compute as blocking (research.md D7) — dependent values really are withheld"
+    )
+
+
+# ------------------------------------------------------------------------------------- T652k
+
+
+def test_two_slots_on_one_civilisation_produce_no_duplicate_gaps() -> None:
+    """T652k: `entities_by_slot` was keyed by **slot**, so `coverage()` emitted one gap per
+    (slot, entity, field) — a query result depends only on `(entity, civilisation, build)`, never
+    on which slot referenced the entity, so two seated participants sharing a civilisation (a
+    mirror matchup, or any team game with two players on one civilisation) produced the same gap
+    once per slot that referenced it. `analysis_knowledge_gaps`' own unique index —
+    `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))`,
+    `packages/storage/src/aoe2stats_storage/models.py` — checks nothing about the slot at all, so
+    every copy is equal on all five columns and T662's writer rejects the second insert of an
+    identical row.
+
+    Recording 2's own golden stream (`_load_golden_stream`, this module's own loader — no new
+    fixture file) is forced onto this shape by `dataclasses.replace`-ing every seated
+    participant's `civilisation` in its one `match-started` event down to the first participant's
+    real value, leaving every other event (and therefore every entity referenced) untouched.
+    Recording 2 seats four distinct, real civilisations before this mutation (module docstring),
+    so the unmutated stream cannot exercise this at all — this is exactly why neither committed
+    recording's own SC-007a assertion sees the defect.
+
+    Asserts the **count**, not that a gap exists at all: "at least one gap" cannot see
+    duplication, the same trap T652b's own duplicate-gap test had to avoid. The key compared is
+    the unique index's own five columns minus `identity_digest` (constant across one `coverage()`
+    call, so irrelevant to whether two gaps from the same call collide).
+    """
+    from aoe2stats_knowledge import coverage
+
+    events = _load_golden_stream(_GOLDEN_CANONICAL_STREAMS[1])
+    match_started_index = next(
+        index for index, event in enumerate(events) if event.kind is EventKind.MATCH_STARTED
+    )
+    match_started = events[match_started_index]
+    assert isinstance(match_started.payload, MatchStartedPayload)
+    assert len(match_started.payload.participants) >= 2, (
+        "recording 2 must seat at least two participants for this to force a shared civilisation"
+    )
+    forced_civilisation = match_started.payload.participants[0].civilisation
+    forced_participants = tuple(
+        dataclasses.replace(participant, civilisation=forced_civilisation)
+        for participant in match_started.payload.participants
+    )
+    events[match_started_index] = dataclasses.replace(
+        match_started,
+        payload=dataclasses.replace(match_started.payload, participants=forced_participants),
+    )
+
+    result = coverage.coverage(events)
+
+    def _unique_index_key(gap: object) -> tuple[str | None, str | None, str | None, str]:
+        return (gap.entity_kind, gap.entity_id, gap.field, gap.civilisation or "")  # type: ignore[attr-defined]
+
+    keys = [_unique_index_key(gap) for gap in result]
+    assert len(result) == len(set(keys)), (
+        "forcing every participant onto one civilisation must not multiply an identical gap once "
+        "per slot that referenced it — analysis_knowledge_gaps' own unique index "
+        "(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, '')) would "
+        f"reject the second insert of any duplicate. Got {len(result)} gaps, {len(set(keys))} "
+        f"distinct keys: {keys!r}"
     )
 
 
