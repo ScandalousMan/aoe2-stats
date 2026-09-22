@@ -26,25 +26,25 @@ pinned wheel is imported in `packages/replay-engine` only, as today.
 
 Closed. Each kind has one typed payload. Tier is per kind and fixed.
 
-| Kind                  | Tier       | Payload                                                     | Produced now |
-| --------------------- | ---------- | ----------------------------------------------------------- | ------------ |
-| `match-started`       | observed   | build, map, lobby presets, participants and their civilisations | yes      |
-| `building-placed`     | decoded    | building id, position                                       | yes          |
-| `unit-queued`         | observed   | unit id, building type, producing building object, count    | yes          |
-| `unit-unqueued`       | observed   | unit id, count                                              | yes          |
-| `research-queued`     | observed   | technology id, researching building object                  | yes          |
-| `units-commanded`     | observed   | command class, unit object ids, optional target             | yes          |
-| `market-transaction`  | decoded    | direction, resource, amount                                 | yes — needs a decoder |
-| `object-deleted`      | decoded    | object id                                                   | yes — needs a decoder |
-| `chat`                | decoded    | channel — **not the text**                                  | yes — needs a decoder |
-| `participant-resigned`| observed   | —                                                           | yes          |
-| `match-ended`         | observed   | final match-clock time                                      | yes          |
-| `undecoded`           | observed   | opaque operation label, payload length                      | yes          |
-| `starting-attributes` | decoded    | per-participant attribute values                            | **declared only** |
-| `starting-object`     | decoded    | object id, class, position, owner                           | **declared only** |
+| Kind                   | Tier     | Payload                                                         | Produced now          |
+| ---------------------- | -------- | --------------------------------------------------------------- | --------------------- |
+| `match-started`        | observed | build, map, lobby presets, participants and their civilisations | yes                   |
+| `building-placed`      | decoded  | building id, position                                           | yes                   |
+| `unit-queued`          | observed | unit id, building type, producing building object, count        | yes                   |
+| `unit-unqueued`        | observed | unit id, count                                                  | yes                   |
+| `research-queued`      | observed | technology id, researching building object                      | yes                   |
+| `units-commanded`      | observed | command class, unit object ids, optional target                 | yes                   |
+| `market-transaction`   | decoded  | direction, resource, steps                                      | yes — needs a decoder |
+| `object-deleted`       | decoded  | object id                                                       | yes — needs a decoder |
+| `chat`                 | decoded  | channel — **not the text**                                      | yes — needs a decoder |
+| `participant-resigned` | observed | —                                                               | yes                   |
+| `match-ended`          | observed | final match-clock time                                          | yes                   |
+| `undecoded`            | observed | opaque operation label, payload length                          | yes                   |
+| `starting-attributes`  | decoded  | per-participant attribute values                                | **declared only**     |
+| `starting-object`      | decoded  | object id, class, position, owner                               | **declared only**     |
 
 **Two additions, each forced by the timeline golden (T628).** `unit-queued` carries the building
-*type* beside the building object: the old timeline publishes each training's building type (a Town
+_type_ beside the building object: the old timeline publishes each training's building type (a Town
 Center is 109) and an object id cannot recover it; both are game concepts, not engine-shaped fields.
 `unit-unqueued` (unit id, count) is the cancellation counterpart, which the old extractor netted
 against `villagers_ordered`; it is emitted only for a top-level cancellation action whose payload
@@ -86,10 +86,13 @@ what changes, and no type does.
    consumed for the clock; view-lock is a camera position and is excluded because it carries no
    intent. A test asserts that **every operation is an emitted event or is counted in a named
    category** — sync, view-lock, collapsed by obligation 2, attributed after an exit by obligation
-   4, or naming no seated participant — so a new way to lose an operation has to be named to pass.
-   `match-started` comes from the header and corresponds to no operation; it sits outside the
-   count. The second recording carries an action kind the wheel itself cannot name, so
-   this rule has a live instance.
+   4, naming no seated participant, or a **top-level operation kind the adapter has no case for**
+   — so a new way to lose an operation has to be named to pass. `match-started` comes from the
+   header and corresponds to no operation; it sits outside the count. The second recording carries
+   an action kind the wheel itself cannot name, so this rule has a live instance. A top-level kind
+   nothing here has a case for — a future wheel upgrade or engine patch, never seen in either
+   committed recording — is counted, not aborted on: its shape is unestablished, so it cannot be
+   emitted as `undecoded`, which requires a participant.
 4. **Exit discipline.** No event is attributed to a participant after their `participant-resigned`.
 5. **No participant timeline for an observer or an empty slot** — they are absent from
    `match-started`, not present and silent.

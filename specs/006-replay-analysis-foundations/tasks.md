@@ -747,7 +747,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       claim with nothing behind it. Missed when the review's findings were grouped into T652b–T652i
       and added on 2026-09-22 once `test_query.py` and `test_effects.py` were found carrying the
       same stale "T645 has not run" prose; sweep those two docstrings in the same change
-- [ ] T652d [US4] **Stop an unfamiliar operation from losing the whole match, and stop the market
+- [x] T652d [US4] **Stop an unfamiliar operation from losing the whole match, and stop the market
       decoder publishing a scaled value at the exact tier.** (a) `canonical.py:530` raises
       `EngineParseError` on an operation kind the adapter does not know, while an unknown *action*
       degrades to `undecoded` correctly. **FR-019** sanctions two outcomes and aborting is neither:
