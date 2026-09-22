@@ -746,7 +746,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       and that tuple. That assertion fails in both directions, which is the whole point, and the test
       then passes for real with **no `xfail` at all**. Recording 1 keeps its unmarked, genuinely
       passing case
-- [ ] T652j [US2] **Correct `query.py`'s module docstring, which asserts the opposite of the data
+- [x] T652j [US2] **Correct `query.py`'s module docstring, which asserts the opposite of the data
       committed beside it, and delete the guard it promises that was never written.** Three blocks —
       `query.py:17-21`, `:45` and `:298` — say `civilisations_modelled` is `[]` on every promoted
       fixture and that "T645 has not run". T645 ran in this same pull request:
