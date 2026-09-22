@@ -802,7 +802,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       with no gap, which the `unknown-civilisation-{id}` fallback does not catch because the id is
       in the table and merely wrong. Put it in the snapshot and gap on an id the snapshot does not
       name. Depends on T652a and T652b
-- [ ] T652h **Gate the pinned source commit, which lives in five files and is asserted in none.**
+- [x] T652h **Gate the pinned source commit, which lives in five files and is asserted in none.**
       `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0` appears in `docs/data-sources.md` §6,
       `docs/asset-packs.md`, the pack's `LICENCE.md` and `MANIFEST.json`, and three `snapshot.toml`
       files; the measurements derived from it — last-implemented build, commit, date, the

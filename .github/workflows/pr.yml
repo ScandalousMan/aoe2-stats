@@ -49,6 +49,14 @@ jobs:
               - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              # T652h: `pinned_source_commit.py` reads both of these to hold the aoe2techtree
+              # pinned commit and its derived measurements consistent across `docs/` and
+              # `packages/knowledge/`. Without these two lines, the same class of gap T634's
+              # comment above already names once: a pull request touching only a doc file the
+              # check reads would run no Python job, and so run the one check written to catch
+              # exactly that drift.
+              - 'docs/data-sources.md'
+              - 'docs/asset-packs.md'
             web:
               - 'apps/web/**'
               - 'packages/design-system/**'
@@ -224,6 +232,13 @@ jobs:
       # module scope is declared in the root manifest, on every pull request, rather than only on
       # the deploy that would suffer the gap.
       - run: uv run scripts/checks/api_entrypoint_deps.py
+      # T652h: the aoe2techtree pinned commit `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0` is
+      # machine-written once, into MANIFEST.json, then hand-copied into six more files
+      # (LICENCE.md, docs/data-sources.md, docs/asset-packs.md, and three snapshot.toml files);
+      # the commit's own last-implemented build, the commit that implements it, its date, and the
+      # builds shipped after it travel with it into the same prose. Nothing asserted any of that
+      # agreed until this check — read-only, no network, stdlib only.
+      - run: uv run scripts/checks/pinned_source_commit.py
       # Unit tests must never touch the network: providers are exercised through fixtures.
       # Contract tests against real APIs live in nightly.yml. A reachable-but-empty database is
       # now guaranteed here, so tests/db.py hard-fails rather than skips if it cannot find one —
