@@ -11,17 +11,19 @@ parameter enforces this at the language level, so there is no way to ask for a g
 therefore no way to be handed one (FR-023). `name` is the one exception the contract carves out
 explicitly: it is not civilisation-qualified at all.
 
-**Every civilisation-qualified query currently gaps.** research.md D5's conservative rule: a
-civilisation whose bonus set is not modelled refuses every civilisation-qualified cost and time,
-because which fields its bonuses touch is exactly what is not known. No snapshot committed today
-declares any civilisation modelled (`civilisations_modelled` is `[]` on both promoted fixtures —
-T645 has not run), so every call into `_civilisation_qualified` gaps at that check. This is the
-correct, honest behaviour for this task alone, not a shortcut: returning a baseline value here
-would be exactly the FR-038 substitution this feature exists to forbid. `_civilisation_qualified`
-raises `NotImplementedError` if it is ever reached past that check with no snapshot committed today
-able to trigger it, precisely so that a future change adding a civilisation to
-`civilisations_modelled` (T645) *before* effect application exists (T644) fails loudly instead of
-silently answering with the un-adjusted baseline.
+**Six civilisations are modelled today; every other one still gaps.** research.md D5's
+conservative rule: a civilisation whose bonus set is not modelled refuses every
+civilisation-qualified cost and time, because which fields its bonuses touch is exactly what is
+not known. T645 populated `civilisations_modelled` on both promoted fixtures
+(`aoe2techtree-180059`, `aoe2techtree-177723-test`) with the same six names — Byzantines, Koreans,
+Franks, Persians, Teutons, Gurjaras — so a query naming one of those six now proceeds past step 1
+into real effect application (T644, below). A civilisation outside that set still gaps at the same
+check, and that remains the correct, honest behaviour research.md D5 requires, not a shortcut:
+returning a baseline value for an unmodelled civilisation would be exactly the FR-038 substitution
+this feature exists to forbid. There is no `raise NotImplementedError` guarding the step past that
+check, and there does not need to be one: once T644 and T645 both landed, falling past "is this
+civilisation modelled" runs straight into `_field_present` and `effects.apply` — the real
+implementation — so there is no unimplemented branch left for a guard to catch.
 
 **Two return branches, never a third.** Every public function below returns `Answer[X]` or a
 `gaps.KnowledgeGap` — never a bare value, never a default parameter, never a caught-and-continued
@@ -40,11 +42,11 @@ observes a difference.
 record, and `effects.apply` finds every matching effect in that snapshot's `effects.toml`,
 refusing with `EffectNotModelled` if any match is `modelled = "no"` (never applying a modelled
 match alongside one that is not — "a bonus is never half-applied", research.md D5), and otherwise
-returning the adjusted value with the effects applied, in file order. **No snapshot committed
-today declares any civilisation modelled** (`civilisations_modelled` is still `[]` on every
-promoted fixture — T645 has not run), so every civilisation-qualified query still gaps at step 1,
-exactly as before this task; this wiring exists so T645 only has to populate
-`civilisations_modelled` and `effects.toml` content, never touch this module again.
+returning the adjusted value with the effects applied, in file order. **T645 has since populated
+`civilisations_modelled` and `effects.toml`** on both promoted fixtures, exactly as this wiring was
+built to receive without this module changing again: a query naming one of the six modelled
+civilisations now returns a real, effect-adjusted `Answer`; a query naming any other civilisation
+still gaps at step 1, per research.md D5.
 
 **Threading a build through a query.** The contract's shorthand signatures
 (`cost(entity, *, civilisation)`) have no separate `build` parameter. `EntityRef` carries `kind`,
@@ -127,8 +129,9 @@ class Answer[T]:
     """One resolved knowledge value (contracts/knowledge-base.md, "The query surface"): the value
     itself, the identity of the snapshot that produced it (US2 scenario 1), the source table it
     was read from (`rules.json`'s own `table_origin`), and every civilisation effect applied to
-    it, in order (`effects.Effect`, T644) — empty when no effect touched this query, which is
-    every query today, since no snapshot committed yet declares a civilisation modelled (T645).
+    it, in order (`effects.Effect`, T644) — empty when no effect touched this query: either the
+    civilisation asked for is not one of the six T645 named as modelled, or it is one of the six
+    but no effect in that snapshot's `effects.toml` matches this entity/field.
     """
 
     value: T
@@ -294,10 +297,11 @@ def _civilisation_qualified(
     rule — never the baseline, FR-038), then apply every matching, modelled effect from that
     snapshot's `effects.toml` (steps 2-3, `effects.apply` — T644) and return the adjusted value.
 
-    **No snapshot committed today declares any civilisation modelled** (`civilisations_modelled`
-    is still `[]` on every promoted fixture — T645 has not run), so every call into this function
-    still gaps at step 1 today, exactly as before this task; that remains the correct, honest state
-    until T645 populates the modelled set, not a shortcut this function takes.
+    **Both promoted fixtures now name six civilisations modelled** (T645: Byzantines, Koreans,
+    Franks, Persians, Teutons, Gurjaras) — a call naming one of those six proceeds to steps 2-3 and
+    returns a real, effect-adjusted `Answer`; a call naming any other civilisation still gaps at
+    step 1, which remains the correct, honest state research.md D5 requires, not a shortcut this
+    function takes.
     """
     resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
