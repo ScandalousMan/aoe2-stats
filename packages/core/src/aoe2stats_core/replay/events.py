@@ -133,7 +133,11 @@ class UnitsCommandedPayload:
 class MarketTransactionPayload:
     direction: str  # "buy" or "sell"
     resource: str
-    amount: int
+    # The payload's own count of market steps (one click is 1, one shift-click is 5). The step's
+    # size in resource units is the game's fixed constant, not carried by any recording, so it is
+    # not multiplied in here (FR-014, FR-012): that belongs to 007's reconstruction layer, behind
+    # a versioned constant that can gap.
+    steps: int
 
 
 @dataclass(frozen=True, slots=True)

@@ -88,10 +88,6 @@ def _payload_field_names() -> Mapping[str, frozenset[str]]:
 # - `build`: the game's own patch build number, read unchanged from the header into
 #   `MatchStartedPayload.build` (T629a). Every reader of this file calls this field the same thing;
 #   it is a fact about the game, not a wheel-internal label.
-# - `amount`: a plain English word for "how many". The wheel's own queueing count (renamed to
-#   `count` in `UnitQueuedPayload`, precisely so `amount` does not leak) and
-#   `MarketTransactionPayload.amount` — a resource quantity in market steps — are unrelated
-#   concepts that both happen to need this word.
 # - `unit_id`, `building_type`: `contracts/canonical-events.md` names both explicitly as domain
 #   concepts carried beside the decoded building/unit objects — "a Town Center is 109" — kept
 #   because the old timeline published them, not copied because the wheel happens to use the name.
@@ -100,9 +96,11 @@ def _payload_field_names() -> Mapping[str, frozenset[str]]:
 #   `building_id` fields (`Research`, `Order`) name a *different* thing, a producing/target
 #   building's object id. The two share only the English words for the same real-world object, a
 #   building, not a shape or an offset.
-_ALLOWED_OVERLAP: frozenset[str] = frozenset(
-    {"build", "amount", "unit_id", "building_type", "building_id"}
-)
+#
+# `MarketTransactionPayload.steps` (T652d) does not appear here: the wheel's own queueing count is
+# `amount`, which `UnitQueuedPayload`/`UnitUnqueuedPayload` already avoid by publishing `count`,
+# and the wheel names nothing `steps`, so the rename introduces no collision to allow.
+_ALLOWED_OVERLAP: frozenset[str] = frozenset({"build", "unit_id", "building_type", "building_id"})
 
 # A field name that would betray a raw byte layout even without carrying a `bytes` value. Excludes
 # `UndecodedPayload.payload_length`, which FR-019 requires and FR-017 explicitly carves out.

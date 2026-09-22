@@ -87,7 +87,7 @@ def _market(clock_ms: int, participant: int) -> CanonicalEvent:
         clock_ms=clock_ms,
         kind=EventKind.MARKET_TRANSACTION,
         participant=participant,
-        payload=MarketTransactionPayload(direction="sell", resource="wood", amount=100),
+        payload=MarketTransactionPayload(direction="sell", resource="wood", steps=1),
     )
 
 

@@ -32,15 +32,21 @@ No silent drop (FR-019) and the accounting
 ------------------------------------------
 Every operation is exactly one of: a `Sync` (consumed for the clock), a `Viewlock` (a camera
 position, no intent), an operation that yields one event, or an operation deliberately dropped for
-one of three named reasons. `Accounting` counts each reason as it happens, so that
+one of four named reasons. `Accounting` counts each reason as it happens, so that
 
-    events + syncs + viewlocks + collapsed + after_exit + unseated == operations
+    events + syncs + viewlocks + collapsed + after_exit + unseated + unknown_operation
+        == operations
 
 is an equation a test can check rather than an assurance:
 
 - `collapsed`: a repeated research or resignation (FR-018);
 - `after_exit`: an action by a participant who has already resigned;
 - `unseated`: an action naming a `player_id` that is no seated slot;
+- `unknown_operation`: a top-level operation kind this module has no case for — a wheel upgrade
+  or a patch that adds one, never seen in either committed recording. `undecoded` is not used
+  here: it requires a participant (line below), and an operation kind nothing here has a case for
+  carries no established shape to read one from. This is the FR-019 outcome for a kind, not a
+  command: never an abort, and never a guess at a participant.
 
 Chat (T626b) is an operation like any other: it yields one `chat` event, or is counted as
 `after_exit` / `unseated` by the participant its JSON names, exactly as an action would be.
@@ -121,14 +127,16 @@ _BUILD_ID_STRUCT = struct.Struct("<I")
 #   three tradeable resources in the game's attribute order food, wood, stone. The value set is
 #   verified against the recordings; the *names* are the game's own enumeration, which the
 #   recordings cannot confirm by themselves (aoc-mgz reads the same layout with the same names).
-# - Amount is only ever 1 or 5: one click and one shift-click, counted in market steps. A step is
-#   100 units of the resource, the game's fixed market step; that constant is not in the recording.
+# - Amount is only ever 1 or 5: one click and one shift-click. It is a count of market steps, not
+#   a resource quantity, and is published unmultiplied as `MarketTransactionPayload.steps`: the
+#   step's size in resource units (100) is the game's fixed constant, not carried by any
+#   recording, so multiplying it is not this decoder's job (FR-014, FR-012). That multiplication
+#   belongs to 007's reconstruction layer, behind a versioned constant that can gap.
 #
-# A payload that does not fit (length, unknown resource code, non-positive amount) is emitted as
-# `undecoded`, never decoded from a guess.
+# A payload that does not fit (length, unknown resource code, non-positive step count) is emitted
+# as `undecoded`, never decoded from a guess.
 _MARKET_STRUCT = struct.Struct("<hhI")
 _MARKET_RESOURCES: Mapping[int, str] = {0: "food", 1: "wood", 2: "stone"}
-_MARKET_STEP = 100
 _DELETE_STRUCT = struct.Struct("<I")
 
 _MOVE = "move"
@@ -164,6 +172,9 @@ class Accounting:
     collapsed: int = 0
     after_exit: int = 0
     unseated: int = 0
+    # A top-level operation kind this module has no case for (FR-019): never an abort, and never a
+    # guess at a participant for a shape nothing here has established.
+    unknown_operation: int = 0
     # Every action operation naming a seated participant, before collapse and before the exit rule.
     # It is a measurement, not a drop reason, so it is left out of equality and of the equation.
     # The timeline's published `actions` figure is this count, which no event stream can supply.
@@ -316,7 +327,7 @@ def _market(direction: str, label: str) -> _ActionMapper:
                     kind=EventKind.MARKET_TRANSACTION,
                     participant=player,
                     payload=MarketTransactionPayload(
-                        direction=direction, resource=name, amount=steps * _MARKET_STEP
+                        direction=direction, resource=name, steps=steps
                     ),
                 )
         return _undecoded(label, clock, player, payload)
@@ -527,4 +538,8 @@ def canonical_events(
             else:
                 yield event
         else:
-            raise EngineParseError(f"operation kind {kind!r} is not one the adapter knows")
+            # A top-level kind this module has no case for — a future wheel upgrade or patch, not
+            # a malformed operation of a kind already known — is named in the accounting (FR-019)
+            # rather than aborting the whole match (docs/risks.md R3). Its shape is unestablished,
+            # so no participant is guessed and no `undecoded` event is emitted for it.
+            tally.unknown_operation += 1

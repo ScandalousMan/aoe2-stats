@@ -378,12 +378,15 @@ def test_placement_decodes_position_and_building_from_the_raw_bytes() -> None:
 
 
 def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: _Parsed) -> None:
-    """events + syncs + viewlocks + collapsed + after_exit + unseated == operations.
+    """events + syncs + viewlocks + collapsed + after_exit + unseated + unknown_operation ==
+    operations.
 
     The two left-hand counts the wheel reports come from the raw operation list; the rest come from
     the generator's own `Accounting`, so a new way to lose an operation has to be named to pass.
     `match-started` (T629a) comes from the header and corresponds to no operation: it is
     subtracted from the event count by name, never folded in by widening the equation's tolerance.
+    Both committed recordings carry no operation kind the adapter lacks a case for, so
+    `unknown_operation` is 0 here and is exercised on a fabricated stream instead (T652d).
     """
     accounting = Accounting()
     events = list(canonical_events(parsed, accounting))
@@ -393,6 +396,7 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
     viewlocks = sum(1 for op in operations if "Viewlock" in op)
 
     assert match_started == 1
+    assert accounting.unknown_operation == 0
     assert (
         len(events)
         - match_started
@@ -401,6 +405,7 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
         + accounting.collapsed
         + accounting.after_exit
         + accounting.unseated
+        + accounting.unknown_operation
         == len(operations)
     )
 
@@ -424,6 +429,23 @@ def test_a_collapsed_research_is_counted_as_collapsed() -> None:
     stream = _stream(_research(1, 101), _research(1, 101), _research(1, 102))
     assert len(_drop_match_started(canonical_events(stream, accounting))) == 2
     assert accounting == Accounting(collapsed=1)
+
+
+def test_an_unfamiliar_top_level_operation_kind_is_counted_not_aborted() -> None:
+    """FR-019: a top-level operation kind the adapter has no case for is a named accounting
+    category, never an abort. Neither committed recording carries one — a future wheel upgrade or
+    engine patch would be the first — so a golden cannot cover this and the stream is fabricated
+    (T652d, docs/risks.md R3: the whole match must not stop analysing for one unfamiliar kind).
+    """
+    from aoe2stats_replay_engine.canonical import Accounting, canonical_events
+
+    stream = _stream({"FutureCommand": {"whatever": 1}})
+    accounting = Accounting()
+
+    events = _drop_match_started(canonical_events(stream, accounting))
+
+    assert events == []
+    assert accounting == Accounting(unknown_operation=1)
 
 
 def test_the_action_kind_the_wheel_cannot_name_is_emitted_undecoded() -> None:
@@ -538,24 +560,24 @@ def _timed_actions(parsed: _Parsed) -> Iterator[tuple[int, str, Mapping[str, obj
 
 _RESOURCE_NAMES = {0: "food", 1: "wood", 2: "stone"}
 
-# Expected market transactions per recording: (direction, resource, amount in resource units).
+# Expected market transactions per recording: (direction, resource, step count).
 _GOLDEN_MARKET: Mapping[str, Mapping[tuple[str, str, int], int]] = {
     "AgeIIDE_Replay_500546441": {
-        ("buy", "food", 100): 18,
-        ("buy", "stone", 100): 15,
-        ("buy", "wood", 100): 6,
-        ("sell", "food", 100): 7,
-        ("sell", "food", 500): 1,
-        ("sell", "stone", 100): 17,
-        ("sell", "stone", 500): 1,
-        ("sell", "wood", 100): 42,
+        ("buy", "food", 1): 18,
+        ("buy", "stone", 1): 15,
+        ("buy", "wood", 1): 6,
+        ("sell", "food", 1): 7,
+        ("sell", "food", 5): 1,
+        ("sell", "stone", 1): 17,
+        ("sell", "stone", 5): 1,
+        ("sell", "wood", 1): 42,
     },
     "AgeIIDE_Replay_504695319": {
-        ("buy", "food", 100): 7,
-        ("buy", "wood", 100): 2,
-        ("sell", "food", 100): 18,
-        ("sell", "wood", 100): 74,
-        ("sell", "wood", 500): 14,
+        ("buy", "food", 1): 7,
+        ("buy", "wood", 1): 2,
+        ("sell", "food", 1): 18,
+        ("sell", "wood", 1): 74,
+        ("sell", "wood", 5): 14,
     },
 }
 # Deletion golden: (count, sum of the object ids) — the ids themselves are checked one by one
@@ -593,10 +615,10 @@ def test_every_market_transaction_is_decoded_exactly_and_matches_the_golden_coun
         assert event.clock_ms == clock
         assert event.participant == player
         assert event.payload == MarketTransactionPayload(
-            direction=label.lower(), resource=_RESOURCE_NAMES[resource], amount=steps * 100
+            direction=label.lower(), resource=_RESOURCE_NAMES[resource], steps=steps
         )
     counts = Counter(
-        (p.direction, p.resource, p.amount)
+        (p.direction, p.resource, p.steps)
         for p in (cast(MarketTransactionPayload, e.payload) for e in events)
     )
     assert counts == _GOLDEN_MARKET[name]
@@ -677,8 +699,8 @@ def test_a_market_command_is_exact_on_a_synthetic_stream() -> None:
     sell = _act("Sell", 1, data=list(struct.pack("<hhI", 1, 5, 4321)), action_length=8)
     buy = _act("Buy", 2, data=list(struct.pack("<hhI", 2, 1, 4321)), action_length=8)
     first, second = _drop_match_started(canonical_events(_stream(sell, buy)))
-    assert first.payload == MarketTransactionPayload("sell", "wood", 500)
-    assert second.payload == MarketTransactionPayload("buy", "stone", 100)
+    assert first.payload == MarketTransactionPayload("sell", "wood", 5)
+    assert second.payload == MarketTransactionPayload("buy", "stone", 1)
     assert first.tier.value == "decoded"
 
 
@@ -686,8 +708,8 @@ def test_a_market_command_is_exact_on_a_synthetic_stream() -> None:
     "data",
     [
         list(struct.pack("<hhI", 3, 1, 9)),  # a resource code outside the closed set
-        list(struct.pack("<hhI", 0, 0, 9)),  # no amount
-        list(struct.pack("<hhI", 0, -1, 9)),  # a negative amount
+        list(struct.pack("<hhI", 0, 0, 9)),  # no step count
+        list(struct.pack("<hhI", 0, -1, 9)),  # a negative step count
         list(struct.pack("<hh", 0, 1)),  # short
         list(struct.pack("<hhIB", 0, 1, 9, 0)),  # long
     ],
