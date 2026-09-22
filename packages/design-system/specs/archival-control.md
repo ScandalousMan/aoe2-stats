@@ -325,14 +325,13 @@ longer claims these three states belong to another component; and the two transi
 
 Colour: `surface` (section), `surface-raised` (identity statement block and callouts), `border`
 (block boundary), `text-primary` (heading, all four identity statements, basis paragraphs, callout
-bodies), `text-secondary` (timestamps), `link` / `link-hover` / `link-visited` and `surface-sunken`
-
-- `border-strong` (`PrivacyNoticeLink`, via `Link` `standalone` — §5.1; the muted ink it paints
-  today is retired by that decision and is not to be reintroduced by a caller), `accent` family via
-  `Button`, `danger` (error callout), `success` (archiving callout), `info` (objected callout,
-  unavailable callout), `focus-ring`.
-  `overlay` and `modal` elevation are no longer used by this component — carried by `Dialog`'s one
-  remaining consumer, profile unlink, and nowhere in this file.
+bodies), `text-secondary` (timestamps), `link` / `link-hover` / `link-visited` and `surface-sunken`,
+`border-strong` (`PrivacyNoticeLink`, via `Link` `standalone` — §5.1; the muted ink it paints today
+is retired by that decision and is not to be reintroduced by a caller), `accent` family via
+`Button`, `danger` (error callout), `success` (archiving callout), `info` (objected callout,
+unavailable callout), `focus-ring`.
+`overlay` and `modal` elevation are no longer used by this component — carried by `Dialog`'s one
+remaining consumer, profile unlink, and nowhere in this file.
 
 Typography: family `sans` throughout, `display` for the section heading only. Sizes — section
 heading `xl`; `StatementHeading` and `BasisHeading` `md`; the four identity statements `md`; basis
