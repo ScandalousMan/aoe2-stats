@@ -137,10 +137,20 @@ export const KeyboardFocusOrderAndTrap: Story = {
 // finding. Forced here, on the same button `FocusVisible` above already targets, for the same
 // reason that story does: `Default`'s own resting frame already shows this button unforced, so a
 // second copy without a state change would document nothing (FR-037).
+//
+// `Dialog` is `position: fixed` over a full-viewport overlay (the `visual-full-page` comment at the
+// top of this file), so the hover/active fill on `primaryAction` is a small mark against a mostly
+// unchanged frame — well under the 1% floor at 1280 (README's contrast-signal register, row 3;
+// row 8's own Method section). Clipped to the button itself, the same way `PrivacyNotice`'s
+// `FIRST_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip` and `Table`'s `ROW_LINK_CLIP` clip their
+// own forced-state stories — `visualCaptureClip` takes precedence over `visual-full-page` (T591).
+const PRIMARY_ACTION_CLIP = { parts: [{ role: 'button' as const, name: 'Turn it off' }], pad: '2' }
+
 export const Hover: Story = {
   tags: ['visual-full-page'],
   parameters: {
     visualForceState: { state: 'hover', role: 'button', name: 'Turn it off' },
+    visualCaptureClip: PRIMARY_ACTION_CLIP,
   },
   args: {
     heading: 'Turn off replay archival?',
@@ -155,6 +165,7 @@ export const Active: Story = {
   tags: ['visual-full-page'],
   parameters: {
     visualForceState: { state: 'active', role: 'button', name: 'Turn it off' },
+    visualCaptureClip: PRIMARY_ACTION_CLIP,
   },
   args: {
     heading: 'Turn off replay archival?',

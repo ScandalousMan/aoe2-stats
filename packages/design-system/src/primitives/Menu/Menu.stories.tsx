@@ -419,8 +419,20 @@ export const TriggerActive: Story = {
 // own row, never `actions`'s. Forced here the same way `TriggerHover`/`TriggerActive` above already
 // are: no `play()`, since a plain `.focus()` on a fresh page matches `:focus-visible` without one
 // (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment).
+//
+// Unlike `TriggerHover`/`TriggerActive` above (a solid fill swap, large enough against the padded
+// story canvas `root`'s own default, unclipped capture already produces), a `focus-visible` ring is
+// a 2px outline only — row 8's own contrast-signal register (row 3): measured unclipped this
+// task's own local capture put it at 0.51-1.85% across the three widths, under 1% at 768 and 1280.
+// Clipped to the trigger itself, the same `PRIMARY_ACTION_CLIP`/`GHOST_LG_CLIP` idiom
+// `Dialog.stories.tsx`/`Button.stories.tsx` use for the same boundary-only shape.
+const TRIGGER_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
+
 export const TriggerFocusVisible: Story = {
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: TRIGGER_CLIP,
+  },
   args: {
     variant: 'actions',
     triggerLabel: 'Manage',
