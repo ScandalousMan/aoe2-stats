@@ -883,6 +883,32 @@ Three were arbitration and are decided, with the decision recorded in the task t
       four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
       snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
 
+- [ ] T652m [US2] **BLOCKING — establish recording 2's civilisations properly, because two of the
+      six modelled may be misidentified.** T652l was written to correct a false clause in the
+      `raw_id = 33` validation record and was **reverted uncommitted** when verifying it turned up
+      something larger. The pack's own per-civilisation tree files, read with unit and tech nodes
+      separated (the `id` field carries the kind: `Unit_239_82` vs `Tech_488_82` — conflating them
+      gives wrong answers, which is how the first pass went astray), say:
+      **slot 1 → Franks** and **slot 3 → Teutons**, both agreeing with the committed table; but
+      **slot 4 narrows to Tatars alone**, via `Tech_687` which is Tatars-only and absent from the
+      Persians tree — while the table says `raw_id = 33` is Persians. Persians-only `Tech_488`
+      (Kamandaran) is researched by **slot 2**, not slot 4, which the record itself got backwards.
+      **Slot 2 is outright contradictory**: it trains unit 1755 (Camel Scout, `ResearchedCompleted`
+      for Gurjaras and absent from both the Persians and Tatars trees) *and* unit 38, which is
+      `NotAvailable` for Gurjaras and available to both the others — no single civilisation trains
+      both. So the evidence splits two-to-one against the committed `raw_id = 8 → Gurjaras`.
+      **What must be settled before this is edited**: whether the pack's `node_id` space is the
+      game's own unit and technology id space in every case, or only mostly — because if it is not,
+      every exclusivity argument in `effects.toml`'s header, including the ones that look sound,
+      rests on an unchecked assumption. Do not resolve this by picking the reading that preserves
+      the current table. **What it reaches if wrong**: T645's six modelled civilisations, T652g's
+      `[[civilisation_id]]` table, and SC-007a's 15-gap enumeration, which names Gurjaras twice and
+      attributes a blocker to a civilisation that may not be in the match. Tatars is modelled
+      nowhere. Carry T652l's two uncontested corrections into the same change rather than landing
+      them separately — the false participant-4/`Tech_488` clause, and the four places calling
+      `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
+      once, not twice
+
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
 
