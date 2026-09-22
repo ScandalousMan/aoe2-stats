@@ -235,6 +235,16 @@ def test_coverage_never_imports_a_private_name_from_query() -> None:
     Before T652b, `coverage.py` imported three (`_civilisations_modelled`, `_raw_value_for_field`,
     `_rules`) and reimplemented `query._civilisation_qualified`'s whole step order around them —
     exactly the shape this assertion now refuses.
+
+    **T652k: `ast.ImportFrom` alone cannot see the module-import form.** `coverage.py` actually
+    reads `from aoe2stats_knowledge import effects, gaps, query, snapshot` — a module import, with
+    every call made by attribute (`query.cost(...)`, ...) — so the `ImportFrom` walk above forbids
+    exactly the import shape T652b removed and is structurally blind to the shape it introduced:
+    `query._civilisation_qualified(...)` or any other `query._foo(...)` call passes it today. The
+    second walk below closes that: any `ast.Attribute` whose value is the bare name `query` and
+    whose own attribute starts with `_` fails it, so a private call written as an attribute access
+    is caught the same way a private import already was. Both forms are checked; neither replaces
+    the other.
     """
     tree = ast.parse(
         (_KNOWLEDGE_SRC_ROOT / "coverage.py").read_text(encoding="utf-8"),
@@ -250,6 +260,23 @@ def test_coverage_never_imports_a_private_name_from_query() -> None:
     assert private_query_imports == [], (
         f"coverage.py imports private name(s) {private_query_imports!r} from query.py — every gap "
         "it produces must come from calling query.py's public, structurally-guaranteed "
+        "answer-or-gap functions instead (contracts/knowledge-base.md, 'The query surface'; "
+        "SC-008's 'by construction rather than by inspection')"
+    )
+
+    private_query_attribute_accesses = sorted(
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "query"
+        and node.attr.startswith("_")
+    )
+    assert private_query_attribute_accesses == [], (
+        f"coverage.py reads private attribute(s) {private_query_attribute_accesses!r} off "
+        "query.py's module object (e.g. query._civilisation_qualified(...)) — the module-import "
+        "form of exactly the same defect an ImportFrom of a private name would be; every gap "
+        "coverage.py produces must come from calling query.py's public, structurally-guaranteed "
         "answer-or-gap functions instead (contracts/knowledge-base.md, 'The query surface'; "
         "SC-008's 'by construction rather than by inspection')"
     )
