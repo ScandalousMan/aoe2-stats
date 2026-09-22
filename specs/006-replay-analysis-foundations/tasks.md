@@ -718,7 +718,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       inside the analyzer's function budget (**FR-049**, constitution I). Cache them. Test first for
       each of (a) and (b), `xfail(strict=True)`; **state in the hand-back what each test printed when
       run against the unfixed code** — a regression test that passed before the fix proves nothing
-- [ ] T652c [US5] **Replace SC-007a's blanket `xfail` with the enumeration FR-022b actually asks
+- [x] T652c [US5] **Replace SC-007a's blanket `xfail` with the enumeration FR-022b actually asks
       for.** Depends on T652b — both edit `test_coverage.py`. Today one
       `xfail(strict=True, reason=_RECORDING_2_XFAIL_REASON)` sits over a body asserting
       `blocking == []`, and a 26-line prose string stands in for the list. It fails **FR-022b** three
