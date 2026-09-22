@@ -975,28 +975,51 @@ invocations, isolating the untested tail, completed the picture within the same 
    (`/privacy-notice … (light)`), 3 did not run.
 4. `--grep` for `/object` alone (both themes): 2 passed.
 
-Read together: every one of the 22 sub-tests (11 routes x 2 themes; `index.tsx` excepted per the
-file's own comment, since it only ever redirects) reached `expectExactlyOneMain` and passed it —
-`expectExactlyOneMain` runs and is asserted **before** the screenshot comparison in the same test body,
-and every "failed" test's own error is a `toHaveScreenshot` dimension mismatch, never a landmark-count
-assertion. **No route rendered zero or two `<main>` elements, in either theme, this session.** The four
-screenshot failures (`/privacy` and `/privacy-notice`, both themes) are a real but unrelated finding:
-`Expected an image 1280px by 2488px, received 1280px by 2516px` (`/privacy`) and `9996px` vs. `9924px`
-(`/privacy-notice`), both roughly 6% of pixels differing — far past anti-aliasing noise, a genuine
-height change. This is consistent with T596 (landed the same branch, same day): `ArchivalControl`'s
-privacy link and `PrivacyNotice`'s contact-route link became real `Link` instances with new classes,
-and CI has not yet regenerated the app-route baselines that depict them
-(`app-signed-in-privacy*.png`, `app-signed-out-privacy-notice*.png`) — T596's and T600's own commit
-messages already record this exact gap ("Left open for T597 or the baseline-regeneration follow-up").
-Not this task's scope to fix: baselines are CI-only (`baselines.yml`, `workflow_dispatch` only), never
-captured locally.
+This left one of the 22 sub-tests genuinely unreached — `/privacy-notice renders exactly one main
+landmark (dark)`: run 3's grep covered `/privacy-notice` light and `/object` both themes, halted on
+the light failure, and run 4 narrowed to `/object` alone, never returning to it. This file's own
+earlier text claimed 22 of 22 reached anyway; that claim was false as written. **Closed in this
+remediation, 2026-09-22**, with the same build still current: `--grep` for exactly
+`/privacy-notice renders exactly one main landmark (dark)`: 1 failed — the same shape as the other
+three: `expectExactlyOneMain` passed (no error from it), and `toHaveScreenshot` did not
+(`Expected an image 1280px by 9996px, received 1280px by 9924px. 780309 pixels (ratio 0.07 of all
+image pixels) are different.`).
+
+Read together across all five invocations (four from 2026-09-21, the fifth above from 2026-09-22): 18
+passed, 4 failed, all 22 reached —
+`expectExactlyOneMain` ran and was asserted **before** the screenshot comparison in every test body,
+including the one closed above, and every "failed" test's own error is a `toHaveScreenshot` dimension
+mismatch, never a landmark-count assertion. **No route rendered zero or two `<main>` elements, in
+either theme, across either session.** The four screenshot failures are `/privacy` (both themes) and
+`/privacy-notice` (both themes) — real, and now fully accounted for by a run rather than inferred from
+the one sub-test that had not executed. Only half of that pair has a known cause. `/privacy`'s pair is
+consistent with T596 (landed the same branch, same day): `ArchivalControl`'s privacy link became a real
+`Link` instance with new classes, and the regenerated baseline confirms it — `b6bc3242`
+(`chore(visual): regenerate baselines from CI`) moved `app-signed-in-privacy.png` and its dark twin
+from 2488px to exactly the 2516px height this run observed, verified this session against
+`origin/main`: `git show origin/main:…app-signed-in-privacy.png | shasum` and
+`git show HEAD:…app-signed-in-privacy.png | shasum` disagree. `/privacy-notice`'s pair is **not**
+explained by T596, contrary to what this file previously claimed: `PrivacyNoticeContainer.tsx` passes
+no `controllerContact` prop, so `PrivacyNotice`'s `ContactRouteLink` never renders on this route at all
+(`apps/web/src/features/privacy/PrivacyNoticeContainer.tsx:17-27`), and the committed baseline proves
+it — `app-signed-out-privacy-notice.png` and its dark twin are byte-identical between `origin/main` and
+`b6bc3242` (same `shasum`, confirmed this session), unchanged by any commit on this branch. The most
+plausible explanation is the local-vs-CI renderer divergence `.github/workflows/baselines.yml`'s own
+header measures at "around 2% of pixels" — the observed mismatch (9924px vs. 9996px, 0.7% of height)
+is the right order of magnitude — but this session did not run the suite on CI's own renderer, so that
+cause is recorded as plausible, not verified: the `/privacy-notice` screenshot failures are otherwise
+**unexplained**. Not this task's scope to fix either way: baselines are CI-only (`baselines.yml`,
+`workflow_dispatch` only), never captured locally.
 
 The padding/width half is unchanged and still true: `node scripts/checks/token-scale.mjs` (run again
 this session, see "Checks run" below) still reports "27 files under `apps/web/src` carry no
 application-authored layout class."
 
-**Item 3: Met.** Both halves hold — the landmark count by a completed run, the layout-class half by a
-live check re-run this session.
+**Item 3: Met** — on a real 22 of 22, closed by the fifth invocation above (2026-09-22, this
+remediation). The 2026-09-21 session this file records reached only 21 of 22 and its own "every one of
+the 22" and "four screenshot failures" claims were false as written until this run supplied the
+missing one. Both halves hold now — the landmark count by five completed runs across the two sessions,
+the layout-class half by a live check re-run this session.
 
 ### Item 4 — Met, already recorded in this file
 
@@ -1033,6 +1056,18 @@ claim (no two stories collide) and does not cover this gap.
 **Item 6: Not met on this commit** — 14 of the tree's stories currently have zero of their six required
 baseline units. Re-confirming after the baseline-regeneration follow-up (already anticipated, not a
 new task this session files) is what would move it back to "structurally met."
+
+**Superseded, 2026-09-22 (this remediation).** Commit `b6bc3242` (`chore(visual): regenerate baselines
+from CI`, cause `row-8-debt-closure-state-stories`) landed after this task ran, rewrote every selected
+capture from that run's CI renderer, and added all 84 missing units. Re-run this session:
+`node scripts/checks/story-baselines.mjs` — **exit 0**, "586 stories each have all 6 baselines; 3538
+baseline files total (22 app-route captures exempt) agree with the built index." CI run `35653405270`
+(this same pull request's own head) is green on every job, including "Visual regression — affected
+stories and the built application" (verified this session with `gh run view 35653405270`). **Item 6 is
+Met on the head that now exists, `b6bc3242`.** The verdict above is not rewritten: it stands as a true
+record of `ff207352`, the commit this task actually ran on — carrying it forward is this note, not an
+edit to it, per the discipline this file's own Addendum names: closing a gap re-stales the finding that
+described it, including the closer's own record of it.
 
 ### Item 9 — coverage half unchanged (Met); determinism half sized, not built, owner filed
 
@@ -1115,6 +1150,43 @@ fix/005-t595-row8-closure` returns exactly one result, PR #89, already `MERGED` 
 **No pull request exists for this commit, so the general reviewer has not evaluated it — not
 rejected, not approved, genuinely outstanding.** Recording this is a status record, not a grant: this
 task is not the general reviewer and cannot supply the second half itself.
+
+**`visual-reviewer`'s half, closed 2026-09-22 (this remediation).** Item 6's superseding note above
+means baselines now exist for the 14 new stories; `visual-reviewer` ran against them this session,
+judged from the committed CI PNGs in `b6bc3242` — this feature's established method, no local browser.
+Per-component verdicts, with evidence:
+
+- `ArchivalControl` `PrivacyNoticeLink` — PASS. Clip 194×64, identical bbox every width/theme. Rest
+  underline 1px → hover 2px with a different ink ((96,63,176)→(80,51,150)) → focus adds a hollow ring
+  spanning y[4,59] → active fills `surface-sunken` rows 6–57 (~6800px) with a `border-strong`-toned
+  ring. Ink change confirmed real: link ink (96,63,176) is distinct from the same frame's
+  `text-secondary` heading ink (36,92,99) — reads as a link, not muted metadata, per
+  `archival-control.md` §5.1's stated intent.
+- `PrivacyNotice` `ContactRouteLink` — PASS. Clip 147×36 at 768/1280, 212×60 at 375 (two-line wrap).
+  Hover underline rows 26–27, active rows 28–29; full pixel diff hover-vs-active (dark, 1280) = 524 px
+  confined to y[26,29]. No fill, no ring, as `inline` requires.
+- `Button` `ghost|lg` — PASS. Rest no box → hover filled `surface-sunken` (225,212,184) → focus-visible
+  outer blue ring (31,78,140) with no fill → active `border-strong` box (125,105,52) with no fill.
+- `Button` `primary|md` — PASS. Hover underline rows 51–52 → active rows 53–54, plus three distinct
+  fills (125,90,28 → 106,76,21 → 87,61,15).
+- `Dialog` `primaryAction` (destructive|lg) — PASS on content, with a caveat that stands until a
+  sibling fix lands (below).
+- `Menu` actions trigger focus-visible — PASS. Four pairwise-distinguishable frames by fill/ring shape.
+- `Tooltip` pinned — PASS. Diff vs hover-revealed = 336 px bboxed at x[17,60] y[40,83] (the trigger),
+  label byte-identical.
+
+**Caveat, not folded into a clean PASS for `Dialog`.** A separate blocking finding — owned by another
+agent, landing in the same pull request, out of this task's own scope (`Dialog.stories.tsx` is not a
+file this task touches) — established that `Dialog`'s `Hover`/`Active` stories were captured
+**unclipped**, so at 1280 their state signal (0.603%/0.678%) sat below `playwright.config.ts`'s
+`maxDiffPixelRatio` of 0.01: those 4 units could not detect their own loss. `visual-reviewer`'s PASS
+above was rendered on frames whose *content* is correct but whose *framing* was inadequate to detect a
+regression, and that PASS is recorded on that basis rather than withheld or overstated. It stands on
+the re-clipped frames once that sibling fix's own baseline regeneration lands; nothing here coordinates
+that landing.
+
+Both halves of item 15 are now recorded: `visual-reviewer`'s, above; the general reviewer's, still
+outstanding per the paragraph before it.
 
 ### Checks run this session (beyond the ones cited inline above)
 
