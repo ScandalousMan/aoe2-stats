@@ -255,11 +255,11 @@ the bolded lead phrases of each outcome, `normal` elsewhere. No number animates 
 Radius `lg` on the `DropZone` and the callouts, `md` on the buttons and the `FileChip`.
 Elevation `none` throughout — the `DropZone` is a well defined by its boundary, not a floating card, and
 must not compete with the panel's real content for depth.
-Motion: `duration.fast` + `easing.standard` on button and drag-over boundary changes; `duration.normal`
-
-- `easing.decelerate` for an `OutcomeRegion` callout appearing; a determinate `progressbar`, when shown,
-  advances with no easing curve of its own. Under `prefers-reduced-motion: reduce` every transition is
-  `duration.instant` and the progress bar, if present, stops animating and shows its value statically.
+Motion: `duration.fast` + `easing.standard` on button and drag-over boundary changes;
+`duration.normal` + `easing.decelerate` for an `OutcomeRegion` callout appearing; a determinate
+`progressbar`, when shown, advances with no easing curve of its own. Under
+`prefers-reduced-motion: reduce` every transition is `duration.instant` and the progress bar, if
+present, stops animating and shows its value statically.
 
 Gaps in play: **DS-4** (focus ring), **DS-7** (no icon is required; if a plain, in-house upload glyph is
 ever added it sizes from the adjacent font-size and records its origin — an in-house glyph, not a game

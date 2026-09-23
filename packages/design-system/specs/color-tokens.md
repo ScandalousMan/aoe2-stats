@@ -101,10 +101,9 @@ hue. It is also what makes light and dark the same rule instead of two.
 **What it costs, stated.** A `Callout` and a `Menu` panel are now very slightly _lighter_ than the
 card they sit near rather than slightly darker (98.7 vs 96.0 — 2.7 L\*). Every raised surface in this
 system already carries a border, a stripe or a shadow (`Callout` `border-l-2`, `Menu` `border-border`
-
-- `shadow-overlay`, `Tooltip` `border-border`, `SignInScreen` `shadow-raised`), so none of them
-  depends on the fill alone to be read as a bounded unit. This is checked as an acceptance criterion in
-  §9.
+and `shadow-overlay`, `Tooltip` `border-border`, `SignInScreen` `shadow-raised`), so none of them
+depends on the fill alone to be read as a bounded unit. This is checked as an acceptance criterion in
+§9.
 
 ### 3.2 The ink ramp
 

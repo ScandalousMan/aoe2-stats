@@ -357,6 +357,49 @@ export function extractPseudoClasses(parts) {
   return result
 }
 
+// T671 (row 8, H5, Cause C — this row's own Method section, "8j" below): a *state-conditional*
+// class — a ternary keyed on a component's own persisted boolean state, rather than a literal CSS
+// pseudo-class utility — is the shape `Tooltip`'s own press treatment actually takes (tooltip.md §4
+// active: "the trigger shows its own pressed treatment ... painted `border-strong` for as long as
+// `pinned` is true"; `Tooltip/index.tsx`'s own remediation-B1 comment: "`pinned` is a persisted
+// React boolean ... not the CSS `:active` pseudo-class ... so the paint is a plain conditional class
+// rather than an `active:` variant"). `extractPseudoClasses` above only ever reads a literal
+// `active:`-prefixed utility out of the *flattened* class text — by the time a ternary reaches it,
+// `resolveClassParts` has already merged both branches into one bag of strings, deliberately losing
+// which branch belongs to which condition (that function's own top comment: the "dual-branch
+// conservative" rule). This walks the *raw*, unflattened className expression instead, looking for a
+// `ConditionalExpression` whose own condition is exactly one of this state's own known bare
+// identifiers.
+// **First decision (this task's own brief): scope, Option A vs Option B — recorded in row 8's own
+// Method section ("8j"), not restated here.** `STATE_CONDITIONAL_IDENTIFIERS` holds only the one
+// real shape found: `pinned` names `active`, and nothing else — widened only once a second real case
+// is found, never a general state-shaped-name vocabulary guessed ahead of one.
+const STATE_CONDITIONAL_IDENTIFIERS = { active: ['pinned'] }
+
+export function findStateConditionalClass(expr, state) {
+  const names = STATE_CONDITIONAL_IDENTIFIERS[state]
+  if (!names || !expr) return null
+  let found = null
+  function visit(node) {
+    if (found || !node) return
+    if (
+      ts.isConditionalExpression(node) &&
+      ts.isIdentifier(node.condition) &&
+      names.includes(node.condition.text)
+    ) {
+      found = {
+        identifier: node.condition.text,
+        whenTrue: node.whenTrue.getText(),
+        whenFalse: node.whenFalse.getText(),
+      }
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(expr)
+  return found
+}
+
 // --- JSX attribute helpers --------------------------------------------------------------------
 
 function getAttr(openingElement, name) {
@@ -878,7 +921,26 @@ export function findLocalElements(
         )
       : []
     const pseudo = extractPseudoClasses(parts)
-    const hasPseudo = pseudo.hover || pseudo['focus-visible'] || pseudo.active || pseudo.focus
+    // T671: a state-conditional `active` class (`findStateConditionalClass`, above) is read from
+    // the *raw* className expression, never `parts` — `parts` is already the flattened,
+    // dual-branch-merged bag `resolveClassParts` produces, which is exactly what loses the one fact
+    // this needs (which branch belongs to `pinned`). Skipped once a literal `active:` utility
+    // already answers the state (`pseudo.active`): a component with both would be a second, still
+    // unfound real case, not this one.
+    const classExprForState = classAttr
+      ? classAttr.initializer && ts.isJsxExpression(classAttr.initializer)
+        ? classAttr.initializer.expression
+        : classAttr.initializer
+      : null
+    const stateConditionalActive = pseudo.active
+      ? null
+      : findStateConditionalClass(classExprForState, 'active')
+    const hasPseudo =
+      pseudo.hover ||
+      pseudo['focus-visible'] ||
+      pseudo.active ||
+      pseudo.focus ||
+      Boolean(stateConditionalActive)
     const isIntrinsicInteractive =
       tagName === 'label' ? labelWrapsControl(node) : INTERACTIVE_TAGS.has(tagName)
     const isRoleInteractive =
@@ -930,6 +992,15 @@ export function findLocalElements(
       focusVisible: pseudo['focus-visible'],
       active: pseudo.active,
       focus: pseudo.focus,
+      // T671: real, positive knowledge from source alone — independent of any story — that this
+      // element's own `active` state paints through a conditional class rather than a literal
+      // `active:` utility (`findStateConditionalClass`, above); `null` when no such shape was found.
+      // Kept separate from `active` (never merged into it) so every existing reader of `active` —
+      // the "ancestor of a forced descendant" pass, `noImpliedRoleReason`'s own unresolved-vs-none
+      // fallback — keeps reading exactly the literal-pseudo-class fact it always has; only
+      // `buildElementCells`'s own new play-click branch and `renderRecord1`'s own display column
+      // read this field.
+      activeStateConditional: stateConditionalActive,
       classUnresolvedRefs: unresolved,
       text: literalTextOf(node) || ariaLabelText(opening),
       hasDisabledAttr,
@@ -1891,6 +1962,68 @@ export function findPlayFocusTarget(body) {
   return last
 }
 
+// T671: the `userEvent.click(target)` shape `Tooltip.stories.tsx`'s own `pinOpen` (`Pinned`'s
+// `play`) uses to drive `handleActivate` for real — the click-half of the two things this task's own
+// brief says are owed together, the deliberate opposite number to `focusCallShape` above (`.focus()`
+// or `toHaveFocus()`). Unlike a `visualForceState: { state: 'active' }`, which the visual harness
+// (`tests/visual/stories.spec.ts`) answers with a real, held `page.mouse.down()` — wrong here, since
+// `pinned` outlives the mouse button being held (tooltip.md §4 active) and a forced hover+mousedown
+// would re-hover the trigger the `Pinned` story's own `pinOpen` deliberately moves the pointer off
+// of — a real `userEvent.click()` is the only honest way to reach this state at all, so this reads it
+// out of the play body directly rather than the `visualForceState` object every other credited state
+// reads from.
+function clickCallShape(expr) {
+  if (!expr) return null
+  let call = expr
+  if (ts.isAwaitExpression(call)) call = call.expression
+  if (!ts.isCallExpression(call)) return null
+  const callee = call.expression
+  if (
+    ts.isPropertyAccessExpression(callee) &&
+    callee.name.text === 'click' &&
+    ts.isIdentifier(callee.expression) &&
+    callee.expression.text === 'userEvent'
+  ) {
+    return { targetExpr: call.arguments[0] }
+  }
+  return null
+}
+
+// The click-half's own `findPlayFocusTarget` counterpart — same shape, same `varMap` (a
+// `const trigger = canvas.getByRole('button')` bound earlier in the same play body, `pinOpen`'s own
+// shape), same "keep the last one found" rule. **Not folded into `findPlayFocusTarget` itself**: a
+// click and a focus/blur assertion answer two different states (`active` vs `focus-visible`) and a
+// play body that does both (`pinOpen` clicks, then unhovers and blurs) must credit each to its own
+// state, never the last call of either kind found across the whole body.
+export function findPlayClickTarget(body) {
+  if (!body) return null
+  const flat = ts.isBlock(body) ? body.statements : []
+  const varMap = new Map()
+  let last = null
+  function consider(expr) {
+    const shape = clickCallShape(expr)
+    if (!shape) return
+    const target = shape.targetExpr
+    let resolved = roleCallTarget(target)
+    if (!resolved && target && ts.isIdentifier(target) && varMap.has(target.text)) {
+      resolved = varMap.get(target.text)
+    }
+    last = resolved ?? { role: 'unresolved', name: null, raw: target?.getText?.() ?? '<expr>' }
+  }
+  for (const statement of flat) {
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          const roleTarget = roleCallTarget(decl.initializer)
+          if (roleTarget) varMap.set(decl.name.text, roleTarget)
+        }
+      }
+    }
+    if (ts.isExpressionStatement(statement)) consider(statement.expression)
+  }
+  return last
+}
+
 // A helper candidate's own sort position *and* its own real width — how many of its call sites
 // this specific story's own scope confirms reached — for `nth` ordering against a *specific*
 // story's own scope. Never called for a non-helper, non-iteration candidate, which always stands
@@ -2588,6 +2721,11 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         const forced = extractVisualForceState(node)
         const playBody = resolvePlayBody(node, sourceFile)
         const playFocus = forced ? null : findPlayFocusTarget(playBody)
+        // T671: the click-half's own credit is read only where record 1's `buildElementMatrix` can
+        // ever use it — `buildElementCells`'s own new branch, gated on an element's own
+        // `activeStateConditional` (never a general-purpose click credit for every role-matching
+        // element, the blast-radius caution this row's own Method section names).
+        const playClick = forced ? null : findPlayClickTarget(playBody)
         const argsHasDisabledTrue = argsObjectHasDisabledTrue(
           getProp(metaObj, 'args'),
           getProp(node, 'args'),
@@ -2624,6 +2762,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           exportName,
           forced,
           playFocus,
+          playClick,
           argsLiterals,
           argsHasDisabledTrue,
           scope,
@@ -3506,7 +3645,14 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
   const cells = { hover: [], 'focus-visible': [], active: [] }
   const ambiguousReasons = { hover: [], 'focus-visible': [], active: [] }
   if (!el.ariaHidden && impliedRole) {
-    for (const { exportName, forced, playFocus, argsLiterals, scope } of storyObjectsWithMeta) {
+    for (const {
+      exportName,
+      forced,
+      playFocus,
+      playClick,
+      argsLiterals,
+      scope,
+    } of storyObjectsWithMeta) {
       // A `selector`-targeted force-state names no `role` — never a candidate for a local
       // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
       // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
@@ -3524,6 +3670,35 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
         else if (verdict === 'ambiguous') {
           ambiguousReasons[forced.state].push(
             `${exportName}: ${pool.length} candidates share role ${JSON.stringify(impliedRole)}${forced.name ? `, name ${JSON.stringify(forced.name)} not literally resolvable` : forced.nth != null ? `, nth ${forced.nth} not orderable` : ''}`,
+          )
+        }
+      } else if (
+        // T671: the click-half's own credit — gated on `el.activeStateConditional` (real, positive
+        // knowledge from source that *this* element's own `active` state paints through a
+        // conditional class rather than a literal `active:` utility, never guessed from the mere
+        // presence of a click in some story's `play()`) so this branch can never reach past
+        // `Tooltip`'s own trigger today. Credited directly into `cells.active`, never
+        // `ambiguousReasons` the way `playFocus` below always is: `pinned` is a plain, persisted
+        // React boolean a real `userEvent.click()` commits synchronously (`Tooltip.test.tsx`'s own
+        // unit coverage), not a browser-heuristic pseudo-class a captured frame might or might not
+        // still show — the exact distinction `playFocus`'s own comment draws for why *it* can never
+        // be more than `unresolved`.
+        !forced &&
+        el.activeStateConditional &&
+        playClick &&
+        (playClick.role === impliedRole || playClick.role === 'unresolved')
+      ) {
+        const verdict = resolveNameMatch({
+          candidate: el,
+          pool,
+          name: playClick.name,
+          nth: null,
+          argsLiterals,
+        })
+        if (verdict === 'match') cells.active.push(exportName)
+        else if (verdict === 'ambiguous') {
+          ambiguousReasons.active.push(
+            `${exportName} (play-click-driven): ${pool.length} candidates share role ${JSON.stringify(impliedRole)}${playClick.name ? `, name ${JSON.stringify(playClick.name)} not literally resolvable` : ''}`,
           )
         }
       } else if (
@@ -3887,6 +4062,17 @@ function combineFocusClassText(focusText, focusVisibleText) {
   return focusText ?? focusVisibleText
 }
 
+// T671: `el.active` stays literal-only (every other reader of it keeps meaning exactly what it
+// always has — see `activeStateConditional`'s own comment at `findLocalElements`); this is the one
+// place a state-conditional ternary (`Tooltip`'s own `pinned ? 'border-border-strong' :
+// 'border-transparent'`) needs to be human-readable at all, so the printed cell never shows the
+// misleading bare `'none'` a real, painted conditional class would otherwise read as.
+function activeClassText(activeText, stateConditional) {
+  if (!stateConditional) return activeText
+  const conditionalText = `${stateConditional.identifier} ? ${stateConditional.whenTrue} : ${stateConditional.whenFalse}`
+  return activeText ? `${activeText} ${conditionalText}` : conditionalText
+}
+
 export function renderRecord1(computed) {
   const rows = []
   for (const { componentKey, elements } of computed.localElements) {
@@ -3906,7 +4092,11 @@ export function renderRecord1(computed) {
           el.coveredBy.focusVisible,
           classResolved,
         ),
-        stateCell(el.active, el.coveredBy.active, classResolved),
+        stateCell(
+          activeClassText(el.active, el.activeStateConditional),
+          el.coveredBy.active,
+          classResolved,
+        ),
       ])
     }
   }
@@ -5670,11 +5860,10 @@ export function checkCellGate(
     const missing = ['date', 'reason'].filter(
       (f) => typeof entry[f] !== 'string' || entry[f].trim() === '',
     )
-    const invalidDate =
-      !missing.includes('date') && !isValidIsoDate(entry.date) ? ['date'] : []
-    const forbidden = ['fixBy', 'owner'].filter(
-      (f) => typeof entry[f] === 'string' && entry[f].trim() !== '',
-    ).map((f) => `${f} (a permanent entry may not carry ${f})`)
+    const invalidDate = !missing.includes('date') && !isValidIsoDate(entry.date) ? ['date'] : []
+    const forbidden = ['fixBy', 'owner']
+      .filter((f) => typeof entry[f] === 'string' && entry[f].trim() !== '')
+      .map((f) => `${f} (a permanent entry may not carry ${f})`)
     const malformed = [...missing, ...invalidDate, ...forbidden]
     if (malformed.length > 0) {
       malformedEntries.push({ entry, malformed, kind: 'permanent' })

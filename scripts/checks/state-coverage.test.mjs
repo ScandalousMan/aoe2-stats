@@ -21,6 +21,8 @@ import {
   findExportedStoryObjects,
   extractVisualForceState,
   findPlayFocusTarget,
+  findPlayClickTarget,
+  findStateConditionalClass,
   extractStringLiteralsDeep,
   storyArgsStringLiterals,
   resolveNameMatch,
@@ -242,6 +244,169 @@ test('findPlayFocusTarget finds nothing for a play() that only hovers (must not 
   const playProp = node.properties.find((p) => p.name.getText() === 'play')
   const target = findPlayFocusTarget(playProp.initializer.body)
   assert.equal(target, null)
+})
+
+// --- T671 (row 8, H5, Cause C, "8j"): the click-half — `findStateConditionalClass` and
+// `findPlayClickTarget`, `Tooltip.stories.tsx`'s own `Pinned`/`pinOpen` shape. ---------------------
+
+const PLAY_CLICK_SOURCE = `
+export const Pinned = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const trigger = canvas.getByRole('button')
+    await userEvent.click(trigger)
+    await canvas.findByRole('tooltip')
+    await userEvent.unhover(trigger)
+    trigger.blur()
+  },
+}
+`
+
+test("findPlayClickTarget resolves a userEvent.click() to its earlier-bound getByRole() locator (Tooltip's own pinOpen shape)", () => {
+  const sourceFile = parse(PLAY_CLICK_SOURCE)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const playProp = node.properties.find((p) => p.name.getText() === 'play')
+  const target = findPlayClickTarget(playProp.initializer.body)
+  assert.deepEqual(target, { role: 'button', name: null })
+})
+
+test('findPlayClickTarget finds nothing for a play() that only hovers (contrast)', () => {
+  const sourceFile = parse(PLAY_HOVER_ONLY_SOURCE)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const playProp = node.properties.find((p) => p.name.getText() === 'play')
+  const target = findPlayClickTarget(playProp.initializer.body)
+  assert.equal(target, null)
+})
+
+test('findPlayFocusTarget finds nothing for a play() that only clicks (contrast, the mirror gap)', () => {
+  const sourceFile = parse(PLAY_CLICK_SOURCE)
+  const [{ node }] = findExportedStoryObjects(sourceFile)
+  const playProp = node.properties.find((p) => p.name.getText() === 'play')
+  const target = findPlayFocusTarget(playProp.initializer.body)
+  assert.equal(target, null)
+})
+
+test("findStateConditionalClass finds a ternary conditioned on the bare identifier `pinned` (Tooltip's own shape)", () => {
+  const sourceFile = parse(
+    `const el = <button className={pinned ? 'border-border-strong' : 'border-transparent'} />`,
+  )
+  // Walk to the JSX className attribute's own expression the same way findLocalElements does.
+  let exprNode = null
+  function visit(node) {
+    if (exprNode) return
+    if (
+      node.kind !== undefined &&
+      node.name &&
+      node.name.getText &&
+      node.name.getText() === 'className' &&
+      node.initializer
+    ) {
+      exprNode = node.initializer.expression
+      return
+    }
+    node.forEachChild?.(visit)
+  }
+  visit(sourceFile)
+  const found = findStateConditionalClass(exprNode, 'active')
+  assert.deepEqual(found, {
+    identifier: 'pinned',
+    whenTrue: "'border-border-strong'",
+    whenFalse: "'border-transparent'",
+  })
+})
+
+test('findStateConditionalClass finds nothing for a ternary conditioned on an unlisted identifier (contrast — never a general state-shaped-name vocabulary)', () => {
+  let exprNode = null
+  const sourceFile = parse(
+    `const el = <button className={pressed ? 'border-border-strong' : 'border-transparent'} />`,
+  )
+  function visit(node) {
+    if (exprNode) return
+    if (node.name && node.name.getText && node.name.getText() === 'className' && node.initializer) {
+      exprNode = node.initializer.expression
+      return
+    }
+    node.forEachChild?.(visit)
+  }
+  visit(sourceFile)
+  assert.equal(findStateConditionalClass(exprNode, 'active'), null)
+})
+
+test("findLocalElements reads Tooltip's own trigger as activeStateConditional, never as a literal active pseudo-class", () => {
+  const source = `
+function Tooltip() {
+  return (
+    <button className={cx('border-2', pinned ? 'border-border-strong' : 'border-transparent')}>
+      {children}
+    </button>
+  )
+}
+`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(el.active, null)
+  assert.deepEqual(el.activeStateConditional, {
+    identifier: 'pinned',
+    whenTrue: "'border-border-strong'",
+    whenFalse: "'border-transparent'",
+  })
+})
+
+test('buildElementMatrix credits a state-conditional active cell directly (covered), from a play-click match — never unresolved, unlike a play-driven focus', () => {
+  const elements = [
+    {
+      tag: 'button',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'Tooltip/index.tsx',
+      line: 259,
+      active: null,
+      activeStateConditional: { identifier: 'pinned', whenTrue: "'a'", whenFalse: "'b'" },
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'Pinned',
+      forced: null,
+      playFocus: null,
+      playClick: { role: 'button', name: null },
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].active, ['Pinned'])
+})
+
+test('buildElementMatrix never credits a play-click match when the element carries no state-conditional active class (contrast — the narrow gate holds for an ordinary button)', () => {
+  const elements = [
+    {
+      tag: 'button',
+      role: null,
+      tabIndex: null,
+      ariaHidden: false,
+      isHelper: false,
+      text: '',
+      file: 'Widget/index.tsx',
+      line: 10,
+      active: null,
+      activeStateConditional: null,
+    },
+  ]
+  const storyStates = [
+    {
+      exportName: 'ClickedViaPlay',
+      forced: null,
+      playFocus: null,
+      playClick: { role: 'button', name: null },
+      argsLiterals: new Set(),
+    },
+  ]
+  const rows = buildElementMatrix(elements, storyStates)
+  assert.deepEqual(rows[0].active, ['none'])
 })
 
 test('extractVisualForceState reads a hover force-state directly, never through play() (contrast)', () => {

@@ -247,6 +247,53 @@ export const ObjectionCallToActionActive: Story = {
   },
 }
 
+// §5.1 (T596, 2026-09-21): `ContactRouteLink` is the `Link` primitive at its default `inline`
+// variant. "one `Hover`, one `FocusVisible` and one `Active` story, each with `controllerContact`
+// supplied — the anchor renders only in that branch, and `WithPublishedContact` is the existing
+// story that sets it … each forcing its state on `role: 'link'` named "this contact route", unique
+// in the whole render, and each `visualCaptureClip`ped to that link."
+const contactRouteArgs = {
+  lastUpdated: '2026-08-30',
+  hrefs,
+  controllerContact: {
+    name: 'aoe2-stats',
+    postalAddress: '1 Example Street, Paris, France',
+    contactRoute: '/contact',
+  },
+}
+
+const CONTACT_ROUTE_LINK_CLIP = {
+  parts: [{ role: 'link' as const, name: 'this contact route' }],
+  pad: '2',
+} as const
+
+export const ContactRouteLinkHover: Story = {
+  name: 'hover on ContactRouteLink ("this contact route")',
+  args: contactRouteArgs,
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', name: 'this contact route' },
+    visualCaptureClip: CONTACT_ROUTE_LINK_CLIP,
+  },
+}
+
+export const ContactRouteLinkFocusVisible: Story = {
+  name: 'focus-visible on ContactRouteLink ("this contact route")',
+  args: contactRouteArgs,
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'this contact route' },
+    visualCaptureClip: CONTACT_ROUTE_LINK_CLIP,
+  },
+}
+
+export const ContactRouteLinkActive: Story = {
+  name: 'active (pressed) on ContactRouteLink ("this contact route")',
+  args: contactRouteArgs,
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', name: 'this contact route' },
+    visualCaptureClip: CONTACT_ROUTE_LINK_CLIP,
+  },
+}
+
 // §5 "disabled — nothing in this component is ever disabled. A right that is described and then
 // greyed out has been withdrawn without saying so."
 export const DisabledNotApplicable: Story = {

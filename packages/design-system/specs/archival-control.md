@@ -51,7 +51,7 @@ ArchivalControl
 ├─ StatusRegion                Callout — current state, and the one switch
 │  ├─ Callout/success           state = "archiving"
 │  └─ Callout/info               state = "objected"
-├─ PrivacyNoticeLink           FR-041
+├─ PrivacyNoticeLink           FR-041 — a Link at variant="standalone" (§5.1), never a local anchor
 └─ WriteFailedRegion           Callout/danger ×0..1 — the write failed
 ```
 
@@ -194,9 +194,9 @@ save your choice right now**, body _Nothing has changed while this is unavailabl
 **default** — as anatomised, `state` reflects the last-known server truth, the switch enabled.
 
 **hover / focus-visible / active** — owned by `Button` and by the privacy link. The section itself
-is not interactive and shows no hover affordance. **Not true of the shipped link today**: it renders
-with no hover, press or focus styling (`packages/design-system/specs/README.md`'s contrast-signal
-register row 8, owed by T596).
+is not interactive and shows no hover affordance of its own. What each of those three states looks
+like on the privacy link is §5.1 below: the `Link` primitive at `variant="standalone"`, in the
+`link` ink.
 
 **disabled** — the one visible switch button disables while its write is in flight, or while
 `unavailable`. There is exactly one button rendered at a time (`state` picks which), so there is no
@@ -226,48 +226,148 @@ items; there is no set for one member to be marked current within.
 identity statements "behind a disclosure, a tooltip, a `title` attribute, a scroll-to-reveal or a
 'Learn more'." Nothing in this component collapses.
 
+### 5.1 `PrivacyNoticeLink`'s treatment — decided 2026-09-21 (T596)
+
+**`PrivacyNoticeLink` is the `Link` primitive at `variant="standalone"`**
+([`structural-tier.md`](./structural-tier.md) §9), not a local `<a>` and not a copy of any link
+recipe. This subsection is that decision's only home; nothing in it is to be re-derived at
+implementation time. Rendered literally:
+
+```tsx
+{
+  privacyNoticeHref && (
+    <Link href={privacyNoticeHref} variant="standalone">
+      Read the privacy notice
+    </Link>
+  )
+}
+```
+
+No `className`, no `external`, no other prop, and no state class of this component's own on or
+around it. The wrapper it sits in carries the `space-4` gap of §7 and nothing else — no `text-sm`,
+no `font-sans`, because `standalone` owns its own typography (`type-body` at `text-md`).
+
+Its states are therefore `Link` `standalone`'s, as §9 defines them, with no local addition:
+
+| State          | What the frame shows                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| default        | ink `link`, permanent underline at `border.hairline`                                                    |
+| hover          | ink `link-hover`, underline thickened to `border.ring` — two signals, one not colour                    |
+| focus-visible  | the `focus-ring` outline at `border.ring-offset` around the whole link box, over the hover paint        |
+| active (press) | the hover paint, a `surface-sunken` fill behind the box, and a `border-strong` ring flush with its edge |
+| disabled       | never. A link is never disabled (§9); `unavailable` disables the switch and not this link.              |
+
+**Why the primitive rather than a local anchor with state classes added.** The copy is how this
+defect happened: the shipped anchor renders `text-text-secondary underline` and paints no `hover:`,
+`focus-visible:` or `active:` class of any kind, so no story could ever depict a state it does not
+have. `Footer` reached the same conclusion for this same label under T591 — "rendering the primitive
+directly instead of copying its recipe … with no second copy to drift out of sync again"
+(`packages/design-system/src/composites/Footer/index.tsx`'s own note) — and FR-038 wants the two
+"Read the privacy notice" links in this product to be one control rather than two that merely
+resemble each other. A local recipe here would be one more copy of `Link`'s paint in the screens
+tier, on top of the copies T591 already had to repair in lockstep when every one of them had lost
+the same half of the same signal; the register records what happens to those, one signal at a time.
+
+**Why `standalone` rather than `inline`.** §2 lists `PrivacyNoticeLink` as a top-level part, a
+sibling of `StatusRegion` — not a run of words inside a sentence. §9's variant table calls that "a
+navigation or action link on its own line", which is `standalone`; `inline`'s row is "a link inside
+running prose", which this is not. Two consequences settle it beyond the taxonomy:
+
+- **Touch target.** `standalone` reaches 44px by its own block padding (§9 Spacing), never by an
+  overlay. The shipped `text-sm` anchor with no padding does not, and this file's own §9 states the
+  44px floor — so `inline` would leave an accessibility criterion failing on purpose. The WCAG 2.5.8
+  inline exception that excuses a link inside a running sentence does not reach this one, because
+  this one is not inside a sentence.
+- **A press signal a screenshot can resolve.** `inline`'s press is the underline dropping by one
+  offset step, and that exact signal has already failed once in this package at this scale: it is
+  what `Footer`'s hand-rolled link carried until T591, recorded there as "too weak for the duplicate
+  check to tell apart from hover at this row's size". This screen's frames are larger than that row.
+  `standalone`'s fill-plus-ring press is legible at that scale, and stays legible in the clipped
+  capture its story takes.
+
+**The `text-secondary` ink does not survive. This link renders in `link`**, like every other link in
+the product. Three reasons, in the order that decides it:
+
+1. **The primitive forbids caller-side ink by construction**, and that is the rule rather than an
+   obstacle: `LinkProps` omits `className` precisely so "a caller never colours a link by hand"
+   (`packages/design-system/src/primitives/Link/index.tsx`, quoting
+   `contracts/005-design-system-foundations/structural-tier.md`). Keeping the muted ink would need
+   either a `className` escape or a third `Link` variant, and FR-031 rejects a variant that exists
+   to accommodate one call site.
+2. **A de-emphasised route to the disclosure is a dark pattern in the one place this product cannot
+   afford one.** FR-041 puts this link on the screen that carries the objection switch. Painting the
+   only route to the full notice quieter than the prose around it is the shape consent-washing takes,
+   and constitution IX's standing right to object is exercised by people who can first read what
+   they are objecting to. In this file `text-secondary` is the timestamp colour: the shipped link
+   reads as metadata about the page rather than as the way out of it.
+3. **`link` is the ink whose pairs are validated for link text.** The README contrast table measures
+   `link`/`link-hover`/`link-visited` on all four surfaces in both themes — referenced, not restated
+   here — including `surface-sunken`, which is exactly what `standalone`'s own press fill paints
+   behind this text. `text-secondary` is measured as body-adjacent text and never as a link over
+   that fill.
+
+**What this changes in the generated coverage region**, so the implementer is not surprised by it:
+this anchor stops being a locally styled element of `screens/ArchivalControl` and becomes a `Link`
+instance at `standalone`, which the extractor tracks on the primitive's own variant axis instead.
+The three cells keyed to the local element go away with the element; whether the new stories also
+credit `Link`'s own `standalone` rows is the extractor's answer to give and is not claimed here.
+
+**What the commit that applies this owes** — T596's own instruction, together with the
+`state-coverage-debt` entry in row 8 of [`README.md`](./README.md)'s contrast-signal register that
+names the same three cells: one `Hover`, one `FocusVisible` and one `Active` story, each forcing its
+state on `role: 'link'` named "Read the privacy notice" and each `visualCaptureClip`ped to that link
+(the standing rule for a signal smaller than roughly 1% of its own frame);
+`ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` reworded so its rendered text no
+longer claims these three states belong to another component; and the two transitional sentences in
+§5 above, plus that register entry, deleted in the same commit.
+
 ## 6. Tokens used
 
 Colour: `surface` (section), `surface-raised` (identity statement block and callouts), `border`
 (block boundary), `text-primary` (heading, all four identity statements, basis paragraphs, callout
-bodies), `text-secondary` (timestamps, privacy link), `accent` family via `Button`, `danger` (error
-callout), `success` (archiving callout), `info` (objected callout, unavailable callout), `focus-ring`.
+bodies), `text-secondary` (timestamps), `link` / `link-hover` / `link-visited` and `surface-sunken`,
+`border-strong` (`PrivacyNoticeLink`, via `Link` `standalone` — §5.1; the muted ink it paints today
+is retired by that decision and is not to be reintroduced by a caller), `accent` family via
+`Button`, `danger` (error callout), `success` (archiving callout), `info` (objected callout,
+unavailable callout), `focus-ring`.
 `overlay` and `modal` elevation are no longer used by this component — carried by `Dialog`'s one
 remaining consumer, profile unlink, and nowhere in this file.
 
 Typography: family `sans` throughout, `display` for the section heading only. Sizes — section
 heading `xl`; `StatementHeading` and `BasisHeading` `md`; the four identity statements `md`; basis
-paragraphs `md`; timestamps `xs`. Weights — `semibold` on headings, `medium` on the four identity
-statements, `normal` elsewhere. The identity statements are one weight step above the surrounding
-prose: that is the only emphasis they get, and it is enough.
+paragraphs `md`; timestamps `xs`; `PrivacyNoticeLink` `md`, `Link` `standalone`'s own `type-body`
+size rather than the `sm` the local anchor sets today. Weights — `semibold` on headings, `medium`
+on the four identity statements, `normal` elsewhere. The identity statements are one weight step
+above the surrounding prose: that is the only emphasis they get, and it is enough.
 
-Radius `lg` (identity block, callouts), `md` (buttons).
+Radius `lg` (identity block, callouts), `md` (buttons), `control` (`PrivacyNoticeLink`'s own box,
+`Link` `standalone`'s, visible where its press fill is).
 Elevation `none` throughout — both text blocks are passages of text, not floating cards, and the
 callout carries no extra elevation beyond its own default.
-Motion: `duration.fast` + `easing.standard` on the switch button; `duration.normal` +
-`easing.decelerate` for the failure callout appearing; `duration.instant` under
-`prefers-reduced-motion`. **No entrance animation on the identity statement**: text that fades in
-can be answered before it is read.
+Motion: `duration.fast` + `easing.standard` on the switch button and on `PrivacyNoticeLink`'s colour
+transition; `duration.normal` + `easing.decelerate` for the failure callout appearing;
+`duration.instant` under `prefers-reduced-motion`. **No entrance animation on the identity
+statement**: text that fades in can be answered before it is read.
 
 Gaps in play: **DS-4** (focus ring), **DS-6** (reading measure — this block is long-form prose and
 needs one).
 
 ## 7. Spacing
 
-| Between                               | Step                                                                                                                        |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Section padding                       | `space-6` below `md`, `space-8` from `md`                                                                                   |
-| Section heading to identity statement | `space-6`                                                                                                                   |
-| Statement heading to first statement  | `space-3`                                                                                                                   |
-| Between the four statements           | `space-3`                                                                                                                   |
-| Fourth statement to rationale line    | `space-4`                                                                                                                   |
-| Identity block padding                | `space-5`                                                                                                                   |
-| Identity block to basis statement     | `space-8` — the widest gap in the composition, because these are two different subjects and the reader must feel the change |
-| Basis heading to first paragraph      | `space-3`                                                                                                                   |
-| Between basis paragraphs              | `space-3`                                                                                                                   |
-| Basis statement to status region      | `space-8`                                                                                                                   |
-| Status region to privacy link         | `space-4`                                                                                                                   |
-| Write-failed callout above/below      | `space-6`                                                                                                                   |
+| Between                               | Step                                                                                                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section padding                       | `space-6` below `md`, `space-8` from `md`                                                                                                                                                                                       |
+| Section heading to identity statement | `space-6`                                                                                                                                                                                                                       |
+| Statement heading to first statement  | `space-3`                                                                                                                                                                                                                       |
+| Between the four statements           | `space-3`                                                                                                                                                                                                                       |
+| Fourth statement to rationale line    | `space-4`                                                                                                                                                                                                                       |
+| Identity block padding                | `space-5`                                                                                                                                                                                                                       |
+| Identity block to basis statement     | `space-8` — the widest gap in the composition, because these are two different subjects and the reader must feel the change                                                                                                     |
+| Basis heading to first paragraph      | `space-3`                                                                                                                                                                                                                       |
+| Between basis paragraphs              | `space-3`                                                                                                                                                                                                                       |
+| Basis statement to status region      | `space-8`                                                                                                                                                                                                                       |
+| Status region to privacy link         | `space-4`, measured to `PrivacyNoticeLink`'s own padded box and not to its text — `Link` `standalone`'s block padding is what carries the 44px target (§5.1), so the visible gap above the words is that padding plus this step |
+| Write-failed callout above/below      | `space-6`                                                                                                                                                                                                                       |
 
 ## 8. Responsive
 
@@ -276,7 +376,9 @@ needs one).
   page is allowed to be long. What is not allowed is `StatusRegion` being reachable without the
   identity statement having been on screen — accordingly `StatusRegion` is placed after both text
   blocks in DOM and visual order at every viewport, so it cannot be reached by scrolling past
-  nothing.
+  nothing. `PrivacyNoticeLink` sits on its own line under the status region at every width and is
+  never pulled up beside the switch: a link that shares a line with the one decision control reads
+  as its second option.
 - **768** — text column capped at a 60–75 character measure (gap DS-6), left-aligned. The switch
   button intrinsic width, left-aligned with the text.
 - **1280** — same as 768. The column does not widen. A single-column composition on a wide screen is
@@ -294,14 +396,22 @@ needs one).
   no dialog anywhere left in this component.
 - The switch is one `<button>`, never a checkbox and never a two-button row: one press, one action,
   no chance of a stale "which one did I press" ambiguity. Not `autofocus`.
+- `PrivacyNoticeLink` is a real `<a href>` whose accessible name is its visible text and says where
+  it goes (`Link`'s own rule, `structural-tier.md` §9, FR-051): "Read the privacy notice", never
+  "here" and never the raw route. It is in the tab order after the switch, in DOM order.
 - Reading order equals visual order equals DOM order: heading, identity statement, basis statement,
-  status region. Verified with CSS disabled.
+  status region, privacy link. Verified with CSS disabled.
 - `StatusRegion`: `role="status"` for `archiving` and `objected` (via `Callout`'s own tone-to-role
   mapping), `role="alert"` for the write-failed callout. On a client-side action the region
   announces; focus does not move, because the user's hands are on the button they just pressed.
-- Touch target ≥ 44px: the switch button renders at a size that clears 44px in every state.
+- Touch target ≥ 44px: the switch button renders at a size that clears 44px in every state, and so
+  does `PrivacyNoticeLink` once §5.1 is applied, by `Link` `standalone`'s own block padding and
+  never by an overlay. This is the floor the shipped `text-sm` anchor fails, and the second reason
+  the variant is `standalone`.
 - Contrast per the README table. The four identity statements are `text-primary` on
   `surface-raised`, the strongest pair available in both themes; that is deliberate and unchanged.
+  `PrivacyNoticeLink` is `link` on `surface` at rest and `link` on `surface-sunken` while pressed —
+  both measured rows of that table, both themes, referenced and not restated here.
 - Zoom to 200% and 320px logical width without horizontal scrolling, with the identity statement
   fully readable.
 - **Loading (T532, FR-054)**: the status region's own wrapper carries `aria-busy="true"` while it
@@ -334,6 +444,23 @@ needs one).
 - [ ] Nothing in the default frame reads as a question awaiting an answer: no "Accept"/"Decline"
       pair, no unanswered/pending tone, anywhere.
 
+**`PrivacyNoticeLink` (§5.1)**
+
+- [ ] In the default frame the link is underlined and reads in the link ink — the same ink as the
+      links in `Footer` and in the privacy notice, **not** the muted colour the timestamps use. A
+      frame in which this link is the quietest text on the screen fails this criterion.
+- [ ] Greyscale the default frame: the link is still identifiable as a link, by its underline alone.
+- [ ] The link's box measures at least 44px tall at 375, measured from the rendered box and not from
+      the glyph.
+- [ ] The hover capture differs from the default capture in two ways: the ink is different and the
+      underline is visibly thicker.
+- [ ] The focus capture shows a ring around the whole link box, offset from the text, unclipped, in
+      both themes, with the underline still visible under it.
+- [ ] The press capture shows a filled, ringed box behind and around the link — overlay it on the
+      hover capture and the fill and the ring are the difference, not the ink alone (FR-037).
+- [ ] The link sits on its own line below the status region in every frame at 375, 768 and 1280, and
+      never shares a line with the switch.
+
 **States**
 
 - [ ] Loading: `StatusRegion` shows skeleton blocks at the loaded footprint; the identity and basis
@@ -344,6 +471,8 @@ needs one).
       no persistent red banner.
 - [ ] `archiving`, `justResumed`: the success tone, with the "resumed" heading distinguishable in
       the frame from the plain "Archival is on." heading of the default `archiving` story.
+- [ ] `unavailable`: the switch is disabled and `PrivacyNoticeLink` is not — a link is never
+      disabled, and the route to the notice does not depend on the write route being reachable.
 
 **Craft**
 
