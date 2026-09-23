@@ -924,6 +924,24 @@ Three were arbitration and are decided, with the decision recorded in the task t
       exclusivity as sound until something measures otherwise; that distinction is a property of the
       vendored source and belongs in `docs/data-sources.md` §6.
 
+      **Scope decided 2026-09-23: correct the identification *and* transcribe the three real
+      civilisations.** Modelling only what is already written would leave ~846 blocking gaps — both
+      of recording 1's players and one of recording 2's — and those are transcription gaps, which
+      **FR-022b** says MUST be closed rather than enumerated. The bonus prose is in the vendored
+      pack's English strings and is quoted in the dispatch; only one bonus per civilisation touches
+      a cost or a time:
+
+      | civilisation | the one cost/time bonus | selector |
+      | ------------ | ----------------------- | -------- |
+      | Saracens | "Market trading fee only 5%; Markets cost -100 wood" | building 84, wood -100, `add` |
+      | Malians  | "Buildings cost -15% wood" | all 28 building ids, wood x0.85, `multiply` |
+      | Tatars   | "Thumb Ring, Parthian Tactics free" | techs 437 and 436, cost `set` to zero |
+
+      Everything else each of them carries — hit points, armour, attack, line of sight, livestock,
+      trade fees, Town Centre sheep — touches no field this knowledge base answers and is recorded
+      `modelled = "no"` with that as the reason, which is the same treatment the existing entries
+      give a bonus out of scope. A bonus is never half-applied.
+
       **Scope of the correction**: the `[[civilisation_id]]` table; `civilisations_modelled` in both
       promoted snapshots; the effects transcribed for Byzantines and Gurjaras, which are dead and
       whose replacements for Malians and Tatars are not written; every example and test naming a
