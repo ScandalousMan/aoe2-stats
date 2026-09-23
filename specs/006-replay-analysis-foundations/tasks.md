@@ -896,10 +896,19 @@ Three were arbitration and are decided, with the decision recorded in the task t
       | ------ | ------------- | -------- |
       | 2      | Franks        | Franks — agrees |
       | 4      | Teutons       | Teutons — agrees |
-      | 9      | Koreans       | not contradicted, and **not pinned**: 19 candidates, no unique technology researched |
+      | 9      | Koreans       | **Saracens** |
       | 8      | Gurjaras      | **Persians** |
       | 26     | Byzantines    | **Malians** |
       | 33     | Persians      | **Tatars** |
+
+      **Four of the six were wrong.** Ids 9 and 26 were supplied by the user on 2026-09-23 from
+      the SiegeEngineers aoc-reference-data dataset `docs/data-sources.md` §6 assesses, and both corroborate the
+      independent tree measurement: 26 is what `Tech_577` (Farimba) pinned, and Saracens is among
+      the 19 candidates id 9 narrowed to. **Take the mapping from that source, transcribed by hand
+      with its provenance recorded — do not re-measure it.** `docs/data-sources.md` §6 has assessed
+      it since 2026-08-30 and rules it read-and-transcribe-only, which is exactly what **FR-031**
+      permits for a source with no licence. The hand-measurement this task exists to undo was work
+      the repository's own referential had already done.
 
       **Byzantines and Gurjaras are in neither match.** Byzantines' Pikeman -25% is the flagship
       example in `packages/knowledge/tests/test_query.py` and in
@@ -945,6 +954,22 @@ Three were arbitration and are decided, with the decision recorded in the task t
       them separately — the false participant-4/`Tech_488` clause, and the four places calling
       `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
       once, not twice
+
+- [ ] T652n **Two readings of the same file disagree, and one of them may be serving wrong names in
+      production.** `docs/data-sources.md` §6 states that the aoc-reference-data dataset it names *"confirmed all
+      45 civilisation ids this repository had already derived from two frozen provider fixtures"* —
+      ids where `apps/api/src/aoe2stats_api/civilizations.py` holds 9 = Byzantines and
+      26 = Lithuanians. The same file read on 2026-09-23 gives **9 = Saracens** and
+      **26 = Malians**, and the vendored tech trees independently pin 26 to Malians. At most one of
+      those two readings of one file is right. Either the dataset is keyed to the replay's
+      civilisation id space and not Relic's `civilization_id` — in which case §6's confirmation
+      claim is false and the fixture-derived table was never corroborated at all — or
+      `civilizations.py` is wrong, and every match page has been serving wrong civilisation names.
+      **This is outside feature 006** and is filed here only because 006 found it; it reaches
+      `apps/api`, so it outranks finishing this feature. Establish which space the dataset is keyed
+      to before changing anything, and do not "fix" `civilizations.py` toward the replay space
+      without evidence that Relic uses it — `civilizations.py`'s own header records that its first
+      table was confidently wrong in exactly that way
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
