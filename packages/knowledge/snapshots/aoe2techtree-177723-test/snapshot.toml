@@ -26,9 +26,9 @@
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 177723
-digest = "sha256:9ee2f480a7b8cd6ef07866fc05a7114b38343cd432c7c250554fc02e51d11cba"
+digest = "sha256:1bbd3e4a6c5823b6b64f44f7a5884f908cecf84df48d0460cde30a82b16d2755"
 promoted = true
-civilisations_modelled = ["Byzantines", "Koreans", "Franks", "Persians", "Teutons", "Gurjaras"]
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 
 # FR-030's validation record. `method` is deliberately not "carry-forward": this build is not
 # carried forward from an earlier revision at all, it is the exact build the pinned revision

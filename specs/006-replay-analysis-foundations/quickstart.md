@@ -91,10 +91,11 @@ uv run scripts/checks/asset_packs.py
 Expected: the licence check now sees `packages/knowledge/packs/aoe2techtree` and passes; remove one
 of the five fields and it fails.
 
-**US2, by hand** — a discounted unit, for the civilisation that discounts it:
+**US2, by hand** — a discounted building, for the civilisation that discounts it (raw id 9 is
+Saracens, T652m; Saracens' Market costs 175 wood, discounted by 100):
 
 ```bash
-uv run python -c "from aoe2stats_knowledge import open_snapshot_for; kb = open_snapshot_for(180059); print(kb.cost(('unit', 93), civilisation=9))"
+uv run python -c "from aoe2stats_knowledge import open_snapshot_for; kb = open_snapshot_for(180059); print(kb.cost(('building', 84), civilisation=9))"
 ```
 
 Expected: an answer whose value is the civilisation-adjusted cost, carrying the snapshot identity
@@ -105,7 +106,7 @@ modelled and expect a gap with cause `civilisation-not-modelled`, never the base
 with cause `no-snapshot-for-build`.
 
 **SC-007a** — the coverage pass over every committed recording reports no blocking gap outside
-FR-022b's enumerated list; recording 1 is clean, recording 2's three source-limited blockers are held
+FR-022b's enumerated list; recording 1 is clean, recording 2's two source-limited blockers are held
 by a strict expectation that fails the day any of them is closed. **SC-007** — the test that removes
 a field sees exactly the dependent data withheld.
 

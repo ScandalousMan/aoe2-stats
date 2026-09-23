@@ -16,36 +16,36 @@ effect") and §7 ("Knowledge gap"). Spec: **US2** scenario 2 ("two different kno
 committed pack, `packages/knowledge/packs/aoe2techtree/`, and the committed promoted snapshot,
 `packages/knowledge/snapshots/aoe2techtree-180059/rules.json`):
 
-- Unit id `358` is "Pikeman" (`table_origin = "unit"`), cost `{food: 35, wood: 25}`, and is present
-  in both Byzantines' and Britons' unit lists (`data.json`'s `civs.Byzantines.Unit` /
-  `civs.Britons.Unit`) — the same id resolves for both civilisations queried below.
-- Byzantines' bonus prose (`strings.en.json`, the string named by `civs.Byzantines.help_string_id`,
-  `120156`): "Camel Riders, Skirmishers and Spearman-line cost -25%". Pikeman is the Spearman
-  line's second member, so this line touches its cost. -25% of `{food: 35, wood: 25}` is
-  `{food: 26.25, wood: 18.75}` — neither value lands on a rounding boundary (`.5`), so
-  round-half-up and Python's own banker's `round()` agree without needing to pin one down:
-  `{food: 26, wood: 19}`.
-- Unit id `24` is "Crossbowman" (`table_origin = "unit"`), cost `{gold: 45, wood: 25}`, present in
-  both Koreans' and Byzantines' unit lists.
-- Koreans' bonus prose (`civs.Koreans.help_string_id`, `120167`, read directly from
-  `strings.en.json`): "Ranged Soldiers and Infantry cost -50% wood". Crossbowman is a Ranged
-  Soldier, so only its wood
-  cost is touched: `25 * 0.5 = 12.5`, which **does** land on a rounding boundary. This file states
-  the convention explicitly rather than leaving it to whichever rounding `round()` happens to pick:
-  **round half up** (`12.5 -> 13`), because that is the convention this repository's own docstrings
-  already use when a display quantity is derived from a fraction (see e.g. `docs/data-sources.md`'s
-  ratio figures) and it matches the community-known in-game value for a Korean Crossbowman
-  (45 gold, 13 wood). T644 must apply this same convention, or this test's marker never comes off.
-- Britons has no bonus that touches Pikeman's cost (`civs.Britons.help_string_id`, `120150`:
-  shepherds, Town Center wood cost by age, Foot Archer range) — chosen deliberately so the
-  "unmodelled civilisation" test cannot pass by coincidence: Britons' true Pikeman cost genuinely
-  *is* the baseline, and the conservative rule (research D5) must still gap it, because which
-  fields an unmodelled civilisation's bonuses touch is exactly what is not known. **Franks held
-  this role until T645**: the second committed recording (`AgeIIDE_Replay_504695319.zip`) turned
-  out to genuinely train Franks (research.md D11), so Franks is one of the six civilisations
+- Building id `84` is "Market" (`table_origin = "building"`), cost `{wood: 175}`.
+- Saracens' bonus prose (`strings.en.json`, the string named by `civs.Saracens.help_string_id`,
+  `120158`): "Market trading fee only 5%; Markets cost -100 wood" (T652m; Saracens is one of
+  recording 1's two real civilisations, corrected from the previously committed, wrong
+  Byzantines). Only the wood-cost clause is modelled: `175 - 100 = 75`, a whole number needing no
+  rounding-convention decision.
+- Building id `45` is "Dock" (`table_origin = "building"`), cost `{wood: 150}`.
+- Malians' bonus prose (`civs.Malians.help_string_id`, `120175`, read directly from
+  `strings.en.json`): "Buildings cost -15% wood" (T652m; Malians is recording 1's other real
+  civilisation, corrected from the previously committed, wrong Koreans). The
+  Dock is one of the 28 buildings this bonus names, so its cost is touched:
+  `150 * 0.85 = 127.5`, which **does** land on a rounding boundary. This file states the
+  convention explicitly rather than leaving it to whichever rounding `round()` happens to pick:
+  **round half up** (`127.5 -> 128`), because that is the convention this repository's own
+  docstrings already use when a display quantity is derived from a fraction (see e.g.
+  `docs/data-sources.md`'s ratio figures).
+- Unit id `358` is "Pikeman" (`table_origin = "unit"`), cost `{food: 35, wood: 25}`. Britons has
+  no bonus that touches Pikeman's cost (`civs.Britons.help_string_id`, `120150`: shepherds, Town
+  Center wood cost by age, Foot Archer range) — chosen deliberately so the "unmodelled
+  civilisation" test cannot pass by coincidence: Britons' true Pikeman cost genuinely *is* the
+  baseline, and the conservative rule (research D5) must still gap it, because which fields an
+  unmodelled civilisation's bonuses touch is exactly what is not known. **Franks held this role
+  until T645**: the second committed recording (`AgeIIDE_Replay_504695319.zip`) turned out to
+  genuinely train Franks (research.md D11), so Franks is one of the six civilisations
   `civilisations_modelled` now names, and this file's "always unmodelled" example moved to Britons
   — confirmed absent from both committed recordings and confirmed, the same way, to have no bonus
-  touching Pikeman's cost.
+  touching Pikeman's cost. Franks is otherwise used below wherever a test needs *some* modelled
+  civilisation but is not itself proving a discount (build resolution, entity absence): none of
+  Franks' own effects touch Pikeman's cost either, so this is a plain, unmodified baseline
+  answer in those cases, not a second discount claim.
 
 **Design decisions this file fixes, because `query.py`/`effects.py` do not exist yet to fix them
 first** (T643/T644 must conform, not invent a different shape and leave this file unable to ever
@@ -97,17 +97,22 @@ intervening build), so the assertion this file makes is not "the two answers dif
 answer is tagged with *its own* snapshot's identity" — which is the actual claim US2 scenario 2
 makes, and the one a bug that always resolved to whichever snapshot loads first would still fail.
 
-**T645**: both promoted fixtures now carry `civilisations_modelled = ["Byzantines", "Koreans",
-"Franks", "Persians", "Teutons", "Gurjaras"]` — all six the first knowledge snapshot models
+**T645/T652m**: both promoted fixtures now carry `civilisations_modelled = ["Franks", "Teutons",
+"Persians", "Saracens", "Malians", "Tatars"]` — all six the first knowledge snapshot models
 (research.md D11: two from the first committed recording, four from the second, none shared),
 added to **both** promoted fixtures' `snapshot.toml` identically, so the "two snapshots" test below
-is no longer gapped. `"Britons"` is deliberately *never* added to either — it is this file's
+is no longer gapped. T645 first populated this list as `["Byzantines", "Koreans", "Franks",
+"Persians", "Teutons", "Gurjaras"]`; T652m (2026-09-23) found the underlying raw-id-to-name table
+wrong at four of six rows — Byzantines, Koreans and Gurjaras are in neither committed recording at
+all — and corrected it to the list above (`effects.toml`'s own header comment carries the full
+correction). `"Britons"` is deliberately *never* added to either list — it is this file's
 unmodelled-civilisation case, and must stay unmodelled for that case to mean anything.
 `"Franks"` held this role until T645 found, by reading the second committed recording's own trained
 units and researched technologies against `data.json`'s per-civilisation tables (see
 `effects.toml`'s own header comment for the full method), that Franks is genuinely one of the four
 civilisations that recording needs — so Franks moved from "this file's placeholder" to "a really
-modelled civilisation", and Britons took over the placeholder role instead.
+modelled civilisation", and Britons took over the placeholder role instead. T652m's correction does
+not disturb this: Britons remains confirmed absent from both committed recordings.
 """
 
 from __future__ import annotations
@@ -117,12 +122,17 @@ import pytest
 from aoe2stats_knowledge import snapshot
 
 #: Real unit id, "Pikeman" (`table_origin = "unit"`) — see this module's docstring for the
-#: verification. Present in both Byzantines' and Britons' unit lists.
+#: verification. Touched by no modelled civilisation's cost effect (Franks', Britons' — used
+#: below wherever a test needs a real, generic entity and does not itself claim a discount).
 _PIKEMAN_ID = "358"
 
-#: Real unit id, "Crossbowman" (`table_origin = "unit"`) — present in both Koreans' and
-#: Byzantines' unit lists.
-_CROSSBOWMAN_ID = "24"
+#: Real building id, "Market" (`table_origin = "building"`) — see this module's docstring for the
+#: verification. Touched by Saracens' real, modelled "Markets cost -100 wood" effect.
+_MARKET_ID = "84"
+
+#: Real building id, "Dock" (`table_origin = "building"`) — see this module's docstring for the
+#: verification. Touched by Malians' real, modelled "Buildings cost -15% wood" effect.
+_DOCK_ID = "45"
 
 #: The build both committed reference recordings report (`tests/fixtures/replays/README.md`),
 #: which `aoe2techtree-180059` describes by carry-forward (T642).
@@ -142,62 +152,60 @@ def _one_build_higher_than_every_promoted_snapshot() -> int:
     return max(s.identity.describes_build for s in resolvable) + 1
 
 
-# --------------------------------------------------------------------------- a discounted unit
+# ----------------------------------------------------------------------- a discounted building
 
 
-def test_a_discounted_unit_returns_its_adjusted_cost_with_the_effect_and_its_source_sentence() -> (
-    None
-):
-    """Byzantine Pikeman: -25% of `{food: 35, wood: 25}` is `{food: 26, wood: 19}` (see this
-    module's docstring — neither value lands on a rounding boundary). The answer must carry the
-    effect that produced the adjustment, and that effect must carry the verbatim sentence it was
-    transcribed from (data-model.md §6, `source_text`)."""
+def test_a_discounted_building_returns_its_adjusted_cost_with_effect_and_source_sentence() -> None:
+    """Saracens' Market: `{wood: 175}` minus 100 is `{wood: 75}` (see this module's docstring — a
+    whole number needing no rounding-convention decision). The answer must carry the effect that
+    produced the adjustment, and that effect must carry the verbatim sentence it was transcribed
+    from (data-model.md §6, `source_text`)."""
     from aoe2stats_knowledge import effects, query
 
-    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+    entity = query.EntityRef(kind="building", id=_MARKET_ID, build=_CARRY_FORWARD_BUILD)
 
-    answer = query.cost(entity, civilisation="Byzantines")
+    answer = query.cost(entity, civilisation="Saracens")
 
     assert hasattr(answer, "value"), "a discounted, modelled civilisation must answer, not gap"
-    assert answer.value == {"food": 26, "wood": 19}
+    assert answer.value == {"wood": 75}
     assert answer.snapshot_identity.describes_build == _CARRY_FORWARD_BUILD
-    assert answer.source == "unit"
+    assert answer.source == "building"
     assert len(answer.effects) >= 1
     matching = [
         effect
         for effect in answer.effects
-        if isinstance(effect, effects.Effect) and effect.civilisation == "Byzantines"
+        if isinstance(effect, effects.Effect) and effect.civilisation == "Saracens"
     ]
-    assert matching, "no Byzantine effect was applied to the answer's own .effects"
+    assert matching, "no Saracens effect was applied to the answer's own .effects"
     effect = matching[0]
     assert effect.field == "cost"
     assert effect.modelled == "yes"
-    assert "Camel Riders, Skirmishers and Spearman-line cost -25%" in effect.source_text
+    assert "Markets cost -100 wood" in effect.source_text
 
 
-def test_a_second_discounted_unit_for_a_second_modelled_civilisation_is_also_correct() -> None:
-    """Korean Crossbowman: -50% wood only, on `{gold: 45, wood: 25}` — `25 * 0.5 = 12.5`, a real
-    rounding boundary this file resolves by stating round-half-up explicitly (see module
-    docstring): `{gold: 45, wood: 13}`. A second, independent real fact from research.md D5 ("Korean
-    archers and crossbowmen"), not a restatement of the Byzantine case above."""
+def test_a_second_discounted_building_for_a_second_modelled_civilisation_is_also_correct() -> None:
+    """Malians' Dock: -15% wood only, on `{wood: 150}` — `150 * 0.85 = 127.5`, a real rounding
+    boundary this file resolves by stating round-half-up explicitly (see module docstring):
+    `{wood: 128}`. A second, independent real fact (T652m), not a restatement of the Saracens case
+    above."""
     from aoe2stats_knowledge import effects, query
 
-    entity = query.EntityRef(kind="unit", id=_CROSSBOWMAN_ID, build=_CARRY_FORWARD_BUILD)
+    entity = query.EntityRef(kind="building", id=_DOCK_ID, build=_CARRY_FORWARD_BUILD)
 
-    answer = query.cost(entity, civilisation="Koreans")
+    answer = query.cost(entity, civilisation="Malians")
 
     assert hasattr(answer, "value")
-    assert answer.value == {"gold": 45, "wood": 13}
+    assert answer.value == {"wood": 128}
     matching = [
         effect
         for effect in answer.effects
-        if isinstance(effect, effects.Effect) and effect.civilisation == "Koreans"
+        if isinstance(effect, effects.Effect) and effect.civilisation == "Malians"
     ]
-    assert matching, "no Korean effect was applied to the answer's own .effects"
+    assert matching, "no Malians effect was applied to the answer's own .effects"
     effect = matching[0]
     assert effect.field == "cost"
     assert effect.modelled == "yes"
-    assert "Ranged Soldiers and Infantry cost -50% wood" in effect.source_text
+    assert "Buildings cost -15% wood" in effect.source_text
 
 
 # ------------------------------------------------------------- an unmodelled civilisation gaps
@@ -245,7 +253,7 @@ def test_a_build_one_higher_than_every_snapshot_describes_gaps() -> None:
     too_high = _one_build_higher_than_every_promoted_snapshot()
     entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=too_high)
 
-    result = query.cost(entity, civilisation="Byzantines")
+    result = query.cost(entity, civilisation="Franks")
 
     assert not hasattr(result, "value")
     assert result.cause == "no-snapshot-for-build"
@@ -277,7 +285,7 @@ def test_asking_without_a_civilisation_keyword_is_a_type_error() -> None:
         query.cost(entity)  # civilisation omitted entirely
 
     with pytest.raises(TypeError):
-        query.cost(entity, "Byzantines")  # type: ignore[misc]  # civilisation passed positionally
+        query.cost(entity, "Franks")  # type: ignore[misc]  # civilisation passed positionally
 
 
 # ------------------------------------------------------- two snapshots, two independent answers
@@ -302,9 +310,9 @@ def test_two_snapshots_answer_from_their_own_contents_and_neither_is_upgraded_to
     entity_at_direct_build = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_DIRECT_BUILD)
 
     answer_from_carry_forward_snapshot = query.cost(
-        entity_at_carry_forward_build, civilisation="Byzantines"
+        entity_at_carry_forward_build, civilisation="Franks"
     )
-    answer_from_direct_snapshot = query.cost(entity_at_direct_build, civilisation="Byzantines")
+    answer_from_direct_snapshot = query.cost(entity_at_direct_build, civilisation="Franks")
 
     assert hasattr(answer_from_carry_forward_snapshot, "value")
     assert hasattr(answer_from_direct_snapshot, "value")
@@ -342,7 +350,7 @@ def test_an_entity_id_absent_from_the_snapshot_entirely_gaps_and_never_crashes()
 
     entity = query.EntityRef(kind="unit", id=_UNKNOWN_UNIT_ID, build=_CARRY_FORWARD_BUILD)
 
-    result = query.cost(entity, civilisation="Byzantines")
+    result = query.cost(entity, civilisation="Franks")
 
     assert not hasattr(result, "value"), f"an unknown entity id must gap, got {result!r}"
     assert result.cause == "entity-absent"
@@ -353,7 +361,7 @@ def test_an_entity_id_absent_from_the_snapshot_entirely_gaps_and_never_crashes()
     assert result.entity_kind == "unit"
     assert result.entity_id == _UNKNOWN_UNIT_ID
     assert result.field == "cost"
-    assert result.civilisation == "Byzantines"
+    assert result.civilisation == "Franks"
 
 
 # ------------------------------------------------------------------------------------- name()

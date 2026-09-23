@@ -2,18 +2,17 @@
 T648 has since implemented it, `test_removing_a_required_field_withholds_only_its_dependent_values`
 (SC-007) genuinely passes and its marker is removed, and
 `test_each_committed_recording_reports_zero_blocking_gaps` (SC-007a) is parametrized per recording:
-the first committed recording (Byzantines/Koreans) genuinely passes, asserting its blocking gaps
-equal the empty set, since a remediation of T648's hand-back (2026-09-20) found and corrected a real
-misclassification in `effects.toml` — Koreans' "Archer armor and tower upgrades free" is
-unconditional, not conditional-on-state (see `effects.toml`'s own `validated_by` on that entry for
-the evidence). The second committed recording's own case genuinely passes too (T652c): it asserts
-its blocking gaps equal `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, FR-022b's closed, three-blocker
-enumeration below, replacing a blanket `xfail(strict=True, reason=...)` a remediation of T648's
-hand-back found insufficient — a `reason=` string asserts against nothing, and closing one of the
-three blockers left the assertion failing with the marker still holding, silencing exactly the
-signal FR-022b exists to keep. Set equality catches both directions: a closed blocker leaves an
-enumerated tuple unmatched, and a fourth blocker (a real transcription defect) leaves an observed
-tuple unmatched.
+the first committed recording (Saracens/Malians, T652m — Byzantines/Koreans before it, both of
+which turned out to be in neither committed recording at all) genuinely passes, asserting its
+blocking gaps equal the empty set. The second committed recording's own case genuinely passes too
+(T652c/T652m): it asserts its blocking gaps equal `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`,
+FR-022b's closed, two-blocker enumeration below (T652m removed a third, Gurjaras' team bonus,
+after finding Gurjaras was never in this recording at all — see below), replacing a blanket
+`xfail(strict=True, reason=...)` a remediation of T648's hand-back found insufficient — a
+`reason=` string asserts against nothing, and closing one of the blockers left the assertion
+failing with the marker still holding, silencing exactly the signal FR-022b exists to keep. Set
+equality catches both directions: a closed blocker leaves an enumerated tuple unmatched, and a
+fourth blocker (a real transcription defect) leaves an observed tuple unmatched.
 
 Contract: [contracts/knowledge-base.md](../../../specs/006-replay-analysis-foundations/contracts/
 knowledge-base.md), "Gaps" — "The coverage pass (`coverage.py`) takes a canonical stream, collects
@@ -274,28 +273,14 @@ _FRANKS_CASTLE_COST_IS_AGE_SCALED = _RecordingTwoBlocker(
     gap_tuples=(("building", "82", "cost", "Franks", "effect-not-modelled"),),
 )
 
-#: **Gurjaras' Team Bonus "Camel and Elephant Units train +25% faster"** (units 1755, 239) is, by
-#: the pack's own text, a **Team Bonus** — granted to every allied player from a Gurjaras ally,
-#: not only to Gurjaras-controlled units — so it is correctly excluded from this civilisation-
-#: scoped effect model, exactly like every other team bonus this feature has ever modelled
-#: (`effects.toml`'s own "Team Bonus:" entries throughout). **2 tuples.**
-_GURJARAS_TRAINING_SPEED_BONUS_IS_A_TEAM_BONUS = _RecordingTwoBlocker(
-    name="Gurjaras' camel/elephant training-speed bonus is a Team Bonus (units 1755, 239)",
-    why_the_vendored_source_cannot_close_it=(
-        "the pack's own text names it a Team Bonus, granted through an ally rather than to "
-        "Gurjaras' own units, so it is correctly excluded from this civilisation-scoped effect "
-        "model, the same as every other team bonus effects.toml records."
-    ),
-    what_would_close_it=(
-        "the bonus being reclassified as non-team-wide by the vendored pack, which no evidence "
-        "supports today."
-    ),
-    gap_tuples=(
-        ("unit", "1755", "production_time", "Gurjaras", "effect-not-modelled"),
-        ("unit", "239", "production_time", "Gurjaras", "effect-not-modelled"),
-    ),
-)
-
+#: **T652m removed this recording's third blocker.** The slot the previously committed,
+#: wrong table attributed to "Gurjaras" (raw id 8) is Persians (technology-node exclusivity,
+#: `effects.toml`'s own header comment): Persians has no effect naming units 1755 ("Camel
+#: Scout") or 239 ("War Elephant") at all, so the "Camel and Elephant Units train +25% faster"
+#: Team Bonus — which was Gurjaras' selector, never referenced by any other civilisation's
+#: effect — no longer matches anything this recording queries, and the 2-tuple blocker it used
+#: to produce is gone rather than replaced.
+#:
 #: **Two building ids (490, 673)**, referenced by `building-placed` events in this recording, are
 #: absent from the vendored `aoe2techtree` pack entirely — real, age-upgraded visual variants the
 #: pack's tech-tree UI source never enumerates a second id for (`test_normalise.py`'s
@@ -331,16 +316,17 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingTwoBlocker(
     ),
 )
 
-#: FR-022b's closed list: exactly the three blockers above, none other. Referenced by the test
-#: below both for the flattened set-equality assertion and, in a failure message, by name.
+#: FR-022b's closed list: exactly the two blockers above, none other (T652m: down from three —
+#: see the Gurjaras note above). Referenced by the test below both for the flattened
+#: set-equality assertion and, in a failure message, by name.
 _RECORDING_2_BLOCKERS: tuple[_RecordingTwoBlocker, ...] = (
     _FRANKS_CASTLE_COST_IS_AGE_SCALED,
-    _GURJARAS_TRAINING_SPEED_BONUS_IS_A_TEAM_BONUS,
     _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK,
 )
 
 #: The flattened union of every blocker's `gap_tuples` — what recording 2's observed blocking
-#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 2 + 12 = 15 tuples.
+#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 12 = 13 tuples
+#: (T652m: down from 15 — the removed Gurjaras blocker's 2 tuples are gone, not replaced).
 _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_2_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -359,9 +345,9 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
 ) -> None:
     """**SC-007a**: "Analysing each committed reference recording against the first knowledge
     snapshot records no gap of blocking severity outside FR-022b's enumerated list." This is the
-    test that proves T645's six modelled civilisations (Byzantines, Koreans, Franks, Persians,
-    Teutons, Gurjaras — research.md D11: two from the first recording, four from the second, none
-    shared) are sufficient for every entity and civilisation the two committed recordings
+    test that proves the six real modelled civilisations (Franks, Teutons, Persians, Saracens,
+    Malians, Tatars — T652m; research.md D11: two from the first recording, four from the second,
+    none shared) are sufficient for every entity and civilisation the two committed recordings
     actually reference — with **no** `rules_overrides` or `civilisation_names` override: this is
     `coverage.coverage` run for real, against the real packaged, promoted snapshot
     (`aoe2techtree-180059`, build 180059 — both recordings' own `match-started.build`, confirmed
@@ -373,20 +359,24 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     this snapshot's coverage is real but partial (e.g. entities neither committed recording trains
     a discount for). Only **blocking** severity is SC-007a's claim.
 
-    **Recording 1 genuinely passes, with no marker at all**: a remediation of T648's hand-back
-    (2026-09-20) found that Koreans' "Archer armor and tower upgrades free" — the one effect
-    blocking this recording — had been misclassified as conditional on state, when the
-    recording's own use is unconditional (see `effects.toml`'s own `validated_by` on that entry),
-    so its blocking gaps must equal the empty set, exactly.
+    **Recording 1 genuinely passes, with no marker at all**: it plays Saracens versus Malians
+    (T652m, corrected from the previously committed, wrong Byzantines/Koreans). Neither
+    civilisation's own `modelled = "no"` effects touch a query-surface field this recording's
+    players actually reference (each such effect's `field` is untracked — `hp`, `attack`,
+    `gold_dropoff_bonus`, `pierce_armor` — so `coverage.py`'s six-field pass never matches one),
+    and each civilisation's one modelled cost effect (Saracens' Market, Malians' buildings)
+    applies cleanly to every building either player places, so its blocking gaps must equal the
+    empty set, exactly.
 
     **Recording 2 asserts set equality against `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`**
-    (FR-022b), not `xfail`: the same three real, permanent reasons the former
-    `_RECORDING_2_XFAIL_REASON` marker named are now `_RECORDING_2_BLOCKERS`, data a set-equality
-    assertion checks in both directions — a blocker closing leaves an enumerated tuple with no
-    observed match, and an unenumerated blocking gap (a real transcription defect, per FR-022b)
-    leaves an observed tuple with no enumerated match. Either failure names the mismatched tuple
-    directly, so a stale entry or a fourth blocker cannot hide behind a single `reason=` string
-    the way the marker let them.
+    (FR-022b), not `xfail`: the two real, permanent reasons named by `_RECORDING_2_BLOCKERS`
+    below (T652m removed a third, Gurjaras' team bonus, once Gurjaras was found to be in neither
+    committed recording — the slot it used to be attributed to is Persians, which has no
+    equivalent effect touching that slot's own entities) are data a set-equality assertion checks
+    in both directions — a blocker closing leaves an enumerated tuple with no observed match, and
+    an unenumerated blocking gap (a real transcription defect, per FR-022b) leaves an observed
+    tuple with no enumerated match. Either failure names the mismatched tuple directly, so a stale
+    entry or a further blocker cannot hide behind a single `reason=` string the way a marker would.
     """
     from aoe2stats_knowledge import coverage, gaps
 
@@ -416,19 +406,21 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
 #: explicit `civilisation_names` override keeps this test's correctness independent of it.
 _SYNTHETIC_CIVILISATION_ID = 900001
 
-#: "Pikeman" — real unit id `358` in the committed pack (`table_origin = "unit"`), verified
-#: directly against `aoe2techtree-180059/rules.json`: cost `{food: 35, wood: 25}`,
-#: trained at the Barracks (building 12), and touched by Byzantines' real, modelled "-25%
-#: Spearman-line" effect (`effects.toml`) — chosen so the mutation below removes a field a real
-#: effect would otherwise have adjusted, not a field no civilisation-qualified step ever reaches.
-_PIKEMAN_ID = "358"
+#: "Market" — real building id `84` in the committed pack (`table_origin = "building"`), verified
+#: directly against `aoe2techtree-180059/rules.json`: cost `{wood: 175}`, and touched by
+#: Saracens' real, modelled "Markets cost -100 wood" effect (`effects.toml`, T652m) — chosen so
+#: the mutation below removes a field a real effect would otherwise have adjusted, not a field no
+#: civilisation-qualified step ever reaches. (T652m: this role was `_PIKEMAN_ID` under the
+#: removed Byzantines' "-25% Spearman-line" effect before Byzantines was found to be in neither
+#: committed recording; none of the six real modelled civilisations' cost effects touch a unit,
+#: only buildings and technologies, so the entity kind moved with it.)
+_MARKET_ID = "84"
 
-#: "Crossbowman" — real unit id `24`, cost `{gold: 45, wood: 25}`, trained at the Archery Range
-#: (building 87). Byzantines' effect does not touch it at all (its selector is Camel Rider/
-#: Skirmisher/Spearman-line only), so every one of its six query-surface fields must still answer
-#: normally for Byzantines once Pikeman's cost is withheld — the "every independent value is still
-#: produced" half of SC-007, on a *different entity*.
-_CROSSBOWMAN_ID = "24"
+#: "Mill" — real building id `68`, cost `{wood: 100}`. Saracens' effect does not touch it at all
+#: (its selector is the Market alone, building 84), so every one of its six query-surface fields
+#: must still answer normally for Saracens once the Market's cost is withheld — the "every
+#: independent value is still produced" half of SC-007, on a *different entity*.
+_MILL_ID = "68"
 
 
 def test_removing_a_required_field_withholds_only_its_dependent_values() -> None:
@@ -439,32 +431,31 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
     the entity, field, build and civilisation, and every other datum is unchanged."
 
     The mutation: an in-memory, deep copy of the real, committed, promoted snapshot's `rules.json`
-    with Pikeman's (`358`) `cost` field deleted entirely — not zeroed, not replaced, absent, so the
-    only correct response is a gap (FR-038 forbids substituting anything, including a stale `{}`,
-    for a field that was asked for and is not there).
+    with the Market's (`84`) `cost` field deleted entirely — not zeroed, not replaced, absent, so
+    the only correct response is a gap (FR-038 forbids substituting anything, including a stale
+    `{}`, for a field that was asked for and is not there).
 
     The stream: one synthetic participant (an arbitrary, never-real civilisation id, resolved to
-    the real, modelled "Byzantines" only through this test's own `civilisation_names` override —
-    see this module's docstring for why) who queues both Pikeman and Crossbowman.
+    the real, modelled "Saracens" only through this test's own `civilisation_names` override —
+    see this module's docstring for why) who places both a Market and a Mill.
 
     `coverage.coverage`'s return is **the gap list alone** (contracts/knowledge-base.md: "Its
     output is the gap list the document publishes") — it does not also hand back the values that
     *did* resolve. So "every independent value is still produced" is proven the only way the
-    return value can prove it: the gap list contains **exactly one** entry, which is Pikeman's
-    missing cost for Byzantines. Every other query the pass must have made — Pikeman's five other
-    fields, and all six of Crossbowman's — produced no gap at all, which is only possible if each
+    return value can prove it: the gap list contains **exactly one** entry, which is the Market's
+    missing cost for Saracens. Every other query the pass must have made — the Market's five other
+    fields, and all six of the Mill's — produced no gap at all, which is only possible if each
     one resolved to a real answer.
     """
     from aoe2stats_knowledge import coverage, gaps
 
     real_rules = _real_rules_for(_PROMOTED_DIRECTORY)
     mutated_rules = copy.deepcopy(real_rules)
-    del mutated_rules["entities"]["unit"][_PIKEMAN_ID]["cost"]
-    assert "cost" not in mutated_rules["entities"]["unit"][_PIKEMAN_ID]
-    assert mutated_rules["entities"]["unit"][_CROSSBOWMAN_ID]["cost"] == {
-        "gold": 45,
-        "wood": 25,
-    }, "Crossbowman's own cost must be untouched by Pikeman's mutation"
+    del mutated_rules["entities"]["building"][_MARKET_ID]["cost"]
+    assert "cost" not in mutated_rules["entities"]["building"][_MARKET_ID]
+    assert mutated_rules["entities"]["building"][_MILL_ID]["cost"] == {
+        "wood": 100,
+    }, "the Mill's own cost must be untouched by the Market's mutation"
 
     stream = [
         CanonicalEvent(
@@ -478,31 +469,29 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
         ),
         CanonicalEvent(
             clock_ms=1_000,
-            kind=EventKind.UNIT_QUEUED,
+            kind=EventKind.BUILDING_PLACED,
             participant=1,
-            payload=UnitQueuedPayload(
-                unit_id=int(_PIKEMAN_ID), building_type=12, building_object=5001, count=1
+            payload=BuildingPlacedPayload(
+                building_id=int(_MARKET_ID), position=Position(x=10, y=10)
             ),
         ),
         CanonicalEvent(
             clock_ms=2_000,
-            kind=EventKind.UNIT_QUEUED,
+            kind=EventKind.BUILDING_PLACED,
             participant=1,
-            payload=UnitQueuedPayload(
-                unit_id=int(_CROSSBOWMAN_ID), building_type=87, building_object=5002, count=1
-            ),
+            payload=BuildingPlacedPayload(building_id=int(_MILL_ID), position=Position(x=12, y=10)),
         ),
     ]
 
     result = coverage.coverage(
         stream,
-        civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Byzantines"},
+        civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Saracens"},
         rules_overrides={_BUILD: mutated_rules},
     )
 
     assert len(result) == 1, (
-        "exactly one gap is expected (Pikeman's withheld cost for Byzantines); every independent "
-        f"value — Pikeman's other five fields, and all six of Crossbowman's — must still resolve "
+        "exactly one gap is expected (the Market's withheld cost for Saracens); every independent "
+        f"value — the Market's other five fields, and all six of the Mill's — must still resolve "
         f"with no gap of its own. Got {result!r}"
     )
     (gap,) = result
@@ -512,10 +501,10 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
         f"missing, which data-model.md §7 names 'field-absent', not {gap.cause!r}"
     )
     assert gap.build == _BUILD
-    assert gap.entity_kind == "unit"
-    assert gap.entity_id == _PIKEMAN_ID
+    assert gap.entity_kind == "building"
+    assert gap.entity_id == _MARKET_ID
     assert gap.field == "cost"
-    assert gap.civilisation == "Byzantines"
+    assert gap.civilisation == "Saracens"
     assert gap.severity == gaps.BLOCKING, (
         "reconstruction.resources_spent and reconstruction.ordered_army_cost both require "
         "'cost' and are neither blocked nor non-determinable (register.toml), so this gap must "
@@ -628,14 +617,12 @@ def test_a_stream_with_no_build_at_all_records_a_blocking_gap() -> None:
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_PIKEMAN_ID), building_type=12, building_object=5001, count=1
+                unit_id=int(_MARKET_ID), building_type=12, building_object=5001, count=1
             ),
         ),
     ]
 
-    result = coverage.coverage(
-        stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Byzantines"}
-    )
+    result = coverage.coverage(stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Franks"})
 
     assert len(result) == 1, (
         "a stream that names no build at all must still report one whole-stream gap, not zero, "
@@ -679,7 +666,7 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_PIKEMAN_ID), building_type=12, building_object=5001, count=1
+                unit_id=int(_MARKET_ID), building_type=12, building_object=5001, count=1
             ),
         ),
         CanonicalEvent(
@@ -687,14 +674,12 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_CROSSBOWMAN_ID), building_type=87, building_object=5002, count=1
+                unit_id=int(_MILL_ID), building_type=87, building_object=5002, count=1
             ),
         ),
     ]
 
-    result = coverage.coverage(
-        stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Byzantines"}
-    )
+    result = coverage.coverage(stream, civilisation_names={_SYNTHETIC_CIVILISATION_ID: "Franks"})
 
     no_snapshot_gaps = [gap for gap in result if gap.cause == "no-snapshot-for-build"]
     assert len(no_snapshot_gaps) == 1, (
