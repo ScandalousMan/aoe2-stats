@@ -268,17 +268,14 @@ export const PrimaryActiveMd: Story = {
 // focus-visible:outline-focus-ring`/`active:bg-background active:border-border-strong` recipe
 // `GhostHover`/`GhostFocusVisible`/`GhostActive` above already prove at `md`, now forced at `lg`.
 //
-// Row 8's own contrast-signal register (row 3) again: with no `tags: ['visual-full-page']`, the
-// default capture is a screenshot of `root` itself — but `root` here renders as Storybook's padded
-// story canvas (measured 1248x96 at 1280, not the button's own ~90x48 box), not the button alone, so a
-// boundary-only signal (`focus-visible`'s 2px outline; `active`'s border swap from `transparent`)
-// is a small mark against a mostly unchanged frame the same way `Dialog`'s `Hover`/`Active` are
-// against the full page. `GhostHoverLg` above needs no clip — its `hover:bg-surface-sunken` fills
-// the whole button against a `bg-transparent` rest, a large-area signal the padded frame does not
-// drown out (measured 4.3-15.7%, this task's own local capture) — but `GhostFocusVisibleLg` and
-// `GhostActiveLg` are exactly the boundary-only case (measured, unclipped: focus-visible 0.59-2.15%,
-// active 0.28-1.01%, both under or barely over 1% at 768/1280), so both clip to the button itself,
-// the same `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses.
+// With no `tags: ['visual-full-page']`, the default capture is a screenshot of `root` itself — but
+// `root` here renders as Storybook's padded story canvas, not the button's own box, so a
+// boundary-only signal (`focus-visible`'s outline; `active`'s border swap from `transparent`) is a
+// small mark against a mostly unchanged frame, the same reason `Dialog`'s `Hover`/`Active` clip.
+// `GhostFocusVisibleLg` and `GhostActiveLg` below clip to the button itself, the same
+// `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses. `GhostHoverLg` does not; whether it needs
+// one, like the rest of this file's states, is T675's to determine (README's Verification-coverage
+// gap register).
 const GHOST_LG_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
 
 export const GhostHoverLg: Story = {

@@ -1142,14 +1142,9 @@ confirmed rather than assumed — recorded here for a reader's benefit, not re-o
 scope.
 
 This task's own scope is the second half: **the general reviewer's approval against the specification
-and the constitution, for the head this task runs on.** `origin/main` is at `c9d68db7` (PR #89's
-merge, `fix(005): close row 8 (H5) — T595, T598, T599`, merged 2026-09-20). This branch's HEAD
-(`ff207352`) is three commits ahead of that — `8e40efb9` (T596), `bdf9a8e9` (T600), `ff207352` (T671)
-— and none of the three has been opened as a pull request: `gh pr list --state all --head
-fix/005-t595-row8-closure` returns exactly one result, PR #89, already `MERGED` at the older head.
-**No pull request exists for this commit, so the general reviewer has not evaluated it — not
-rejected, not approved, genuinely outstanding.** Recording this is a status record, not a grant: this
-task is not the general reviewer and cannot supply the second half itself.
+and the constitution, for the head this task runs on.** This half is earned per pull request rather
+than recorded here — a status written into this artifact goes stale at the next review. PR #93's
+review outcome is recorded on the pull request itself.
 
 **`visual-reviewer`'s half, closed 2026-09-22 (this remediation).** Item 6's superseding note above
 means baselines now exist for the 14 new stories; `visual-reviewer` ran against them this session,
@@ -1169,8 +1164,8 @@ Per-component verdicts, with evidence:
   outer blue ring (31,78,140) with no fill → active `border-strong` box (125,105,52) with no fill.
 - `Button` `primary|md` — PASS. Hover underline rows 51–52 → active rows 53–54, plus three distinct
   fills (125,90,28 → 106,76,21 → 87,61,15).
-- `Dialog` `primaryAction` (destructive|lg) — PASS on content, with a caveat that stands until a
-  sibling fix lands (below).
+- `Dialog` `primaryAction` (destructive|lg) — PASS on content, with a caveat about these `b6bc3242`
+  frames specifically (below).
 - `Menu` actions trigger focus-visible — PASS. Four pairwise-distinguishable frames by fill/ring shape.
 - `Tooltip` pinned — PASS. Diff vs hover-revealed = 336 px bboxed at x[17,60] y[40,83] (the trigger),
   label byte-identical.
@@ -1178,23 +1173,31 @@ Per-component verdicts, with evidence:
 **Caveat, not folded into a clean PASS for `Dialog`.** A separate blocking finding — owned by another
 agent, landing in the same pull request, out of this task's own scope (`Dialog.stories.tsx` is not a
 file this task touches) — established that `Dialog`'s `Hover`/`Active` stories were captured
-**unclipped**, so at 1280 their state signal (0.603%/0.678%) sat below `playwright.config.ts`'s
-`maxDiffPixelRatio` of 0.01: those 4 units could not detect their own loss. `visual-reviewer`'s PASS
-above was rendered on frames whose *content* is correct but whose *framing* was inadequate to detect a
-regression, and that PASS is recorded on that basis rather than withheld or overstated. **Corrected
-2026-09-23, row 8's own debt-closure remediation:** the re-clip does not settle this the same way for
-both halves. `active`'s own delta is a border-strength change whose comparator-faithful pixel count is
-already non-zero at the unclipped frame (Playwright's `toHaveScreenshot`, pixelmatch at its default
-0.2 threshold), so clipping to the button genuinely raises its ratio over the 1% floor once the
-re-clipped frames land — `active` is defended by that clip. `hover`'s own delta is a fill-only colour
-swap whose comparator-faithful pixel count is zero at the unclipped frame, and a clip only shrinks the
-denominator the ratio is taken against — it cannot raise a numerator that is already zero. `hover`
-stays undefended **at any crop**, a comparator blind spot the re-clipped frames do not fix. Owned by
-T675 (`packages/design-system/specs/README.md`'s Verification-coverage gap register), not by the
-sibling fix's own baseline regeneration.
+**unclipped**, so at 1280 their state signal sat below `playwright.config.ts`'s `maxDiffPixelRatio` of
+0.01: those 4 units could not detect their own loss. `visual-reviewer`'s PASS above was rendered on
+frames whose *content* is correct but whose *framing* was inadequate to detect a regression, and that
+PASS is recorded on that basis rather than withheld or overstated. **Corrected 2026-09-23, row 8's own
+debt-closure remediation, then re-clipped and landed in `e26e85fa`:** the re-clip does not settle this
+the same way for both halves. `active`'s own delta is a border-strength change whose surviving-pixel
+count (Playwright's `toHaveScreenshot`, pixelmatch at its default 0.2 threshold) is already non-zero at
+the unclipped frame, so clipping to the button raises its ratio over the 1% floor — `active` is now
+defended by that clip. `hover`'s own delta is a fill-only colour swap whose surviving-pixel count is
+zero at the unclipped frame, and a clip only shrinks the denominator the ratio is taken against — it
+cannot raise a numerator that is already zero. `hover` stays undefended **at any crop**, a comparator
+blind spot the re-clip does not fix. Owned by T675 (`packages/design-system/specs/README.md`'s
+Verification-coverage gap register), not by the sibling fix's own baseline regeneration.
 
-Both halves of item 15 are now recorded: `visual-reviewer`'s, above; the general reviewer's, still
-outstanding per the paragraph before it.
+**`visual-reviewer`'s second pass, 2026-09-23 (this remediation), on the `e26e85fa` frames.** PASS on
+rendering and framing for all five re-clipped stories: `Dialog` `Hover`, `Dialog` `Active`, `Button`
+`GhostFocusVisibleLg`, `Button` `GhostActiveLg` and `Menu` `TriggerFocusVisible`. Each clip encloses
+its own control, the state is depicted, and there is no truncation at any width in either theme.
+`Dialog` `Hover`'s own row records that the border stays 1px and only the fill changes — consistent
+with it staying a comparator blind spot (T675) rather than a framing defect. The earlier PASS on the
+`b6bc3242` frames, above, stays as its own dated record.
+
+The `visual-reviewer` half is recorded above, across both dated passes. The general-reviewer half is
+earned per pull request, not recorded here; PR #93's review outcome is recorded on the pull request
+itself.
 
 ### Checks run this session (beyond the ones cited inline above)
 

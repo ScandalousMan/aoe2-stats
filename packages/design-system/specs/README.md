@@ -2663,7 +2663,7 @@ checker can verify it the same way it verifies 8c's own table.
 | `ProfileSummary`          | `:496` "The switcher's own hover/focus/active are `Menu`'s stories" (comment) and `:572-573` "carry theirs, per `Menu`" (rendered text, `RatingEntryHoverNotApplicable`) — **false for hover, same shape as F15**: `Menu`'s own trigger has no hover frame anywhere in the tree (F15), so neither quote's claim holds for hover; both are added to the F15/F16-carried finding below as this component's own story-level echo of the spec's `profile-summary.md:134` claim, not a new, separate false claim.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `ArchivalControl`         | `:88` "carry their own hover, focus and active states" (rendered text) — **corrected 2026-09-21 (T596, F11 closed)**: the comment above it used to quote the spec's own now-deleted transitional sentence and flag this rendered claim as known-false; that comment is rewritten to state §5.1's real decision instead, so it carries no more deferral-vocabulary hit of its own. The rendered claim is **true for the privacy link** (`Link` `standalone`, real hover/focus-visible/active classes, `PrivacyNoticeLinkHover`/`FocusVisible`/`Active`) and **still false for the button's hover** (F2, `secondary\|lg`) — unaffected by this task.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `DataExportPanel`         | `:126` "owned by the `Button`s, the `DownloadLink`… the sections" (comment, quoting the spec) and `:150-151` "its hover, focus-visible and press are all real, but the frames that prove them are `ReplayAvailabilityList`'s and `UploadControl`'s own" (rendered text) — **corrected 2026-09-19 (T595)**: the pair used to read "already covered by `Button.stories.tsx`'s per-variant stories," true for the ownership fact and false for the story named — `RequestButton` is `secondary\|lg` (`index.tsx:118-119,215`), and `Button.stories.tsx`'s own per-variant stories force `md`, never `lg`, the same shape F20 found in `AccountErasurePanel` and this audit found in `MatchDetailPanel`. The generated `secondary\|lg` row's own hover, focus-visible and press cells all read `ReplayAvailabilityList`/`UploadControl`, never `Button.stories.tsx`'s own — the rewritten text now states exactly that.                                                                                                                                                                  |
-| `Dialog`                  | `:187` "malformed call site, and hover, active and disabled all belong to the `Button`s inside it" (comment) and `:195` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim. (Line numbers moved from `:130`/`:138` to `:169`/`:177` when T600 appended `Hover`/`Active` above this story in the same file, then to `:187`/`:195` when row 8's own debt-closure remediation (2026-09-23) corrected the comment above `PRIMARY_ACTION_CLIP`, immediately above this story in the same file.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `Dialog`                  | `:183` "malformed call site, and hover, active and disabled all belong to the `Button`s inside it" (comment) and `:191` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim. (Line numbers moved from `:130`/`:138` to `:169`/`:177` when T600 appended `Hover`/`Active` above this story in the same file, to `:187`/`:195` when row 8's own debt-closure remediation (2026-09-23) corrected the comment above `PRIMARY_ACTION_CLIP`, then to `:183`/`:191` when that same comment was cut to remove unverifiable claims, still immediately above this story in the same file.)                                                                                                                                                                                         |
 | `Section`                 | `:124` "the components inside it carry their own" (comment, quoting `structural-tier.md` §6) and `:130` "The components inside it carry their own." (rendered text) — target: none, the same no-fixed-owner shape N2 already files — **true as a blanket statement**: `Section` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no child to falsify the claim against, the same reason `Dialog`'s blanket claim above is true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `Callout`                 | `:97` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:242-243`) and `:103` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:108`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                                                                                                                                                                                                                                                                                                                                                   |
 | `Text`                    | `:134` "none of its own. `Text` is not focusable" (comment, quoting `structural-tier.md` §8, reused from N3/8c's own `:552`) and `:142-143` "that ring belongs to the caller, not to this component." (rendered text) — target: none, the same no-fixed-owner shape N3 already files — **true as a blanket statement**: this story renders `<Text role="display">Recent matches</Text>` with no `tabIndex` at all, so there is no focused instance here to falsify the claim against, the same reason `Section`'s and `Dialog`'s blanket claims above are true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -2972,9 +2972,8 @@ again</Button>` its own `FocusVisible` story renders, once candidates are narrow
   (`Dialog:Hover`) is real and correctly forced — `visual-reviewer` returned PASS on it — but its own
   signal is a fill-only colour change that clears none of Playwright's pixelmatch threshold at any
   crop, so it cannot fail a regression in that state today; `destructive|lg`'s own active frame
-  (`Dialog:Active`) clears that threshold and is genuinely defended once its own clip's baselines
-  land. The hover half is a comparator blind spot, not a coverage one, and is owned by T675
-  (Verification-coverage gap register), not reopened here.**
+  (`Dialog:Active`) is defended on its clipped baseline. The hover half is a comparator blind spot,
+  not a coverage one, and is owned by T675 (Verification-coverage gap register), not reopened here.**
   `primary/md`'s own hover and press: `Button:PrimaryHoverMd`/`PrimaryActiveMd`, first-party frames
   matching the `SecondaryHover`/`GhostHover`/`DestructiveHover` convention. `destructive/lg`'s own
   hover and press: `Dialog:Hover`/`Active`, forced on the same `primaryAction` button
@@ -3392,18 +3391,18 @@ duplicates-debt.json` (that file's own discipline: a stale entry fails the run, 
   already known real gaps (8e's own F13/F14) and needed only stories — `Button`'s own
   `PrimaryHoverMd`/`PrimaryActiveMd` close `primary|md`; `Dialog`'s own new `Hover`/`Active`
   (`primaryAction.variant ?? 'destructive'`, unset by every Dialog story here, so every one of them
-  renders the same default `destructive|lg` `Hover`/`Active` already prove) close `destructive|lg`
-  _and_, via the same per-story redirect this Method section's own "Record 3's own axis-mismatch
-  redirect" paragraph already describes, the pseudo-row `unresolved|lg` these same two Dialog call
-  sites file their own `rest` entries under. `ghost|lg` had no hover, focus-visible or press frame at
+  renders the same default `destructive|lg` `Hover`/`Active` already prove) give `destructive|lg` a
+  forcing story for both states — and, via the same per-story redirect this Method section's own
+  "Record 3's own axis-mismatch redirect" paragraph already describes, so does the pseudo-row
+  `unresolved|lg` these same two Dialog call sites file their own `rest` entries under. A forcing
+  story existing is what `state-coverage.mjs`'s "covered" means; whether the comparator defends either
+  state is T675's to determine (below). `ghost|lg` had no hover, focus-visible or press frame at
   all — `variantClasses.ghost`/`focusRing` (`index.tsx`) paint the identical class set at every size,
   the same fact `primary`'s own trace establishes, so `Button`'s new `GhostHoverLg`/
-  `GhostFocusVisibleLg`/`GhostActiveLg` are the same, already-proven-at-`md` recipe, now forced at
-  `lg`. `Menu`'s own `actions` row had every state but focus-visible — its trigger shares `Button`
-  `secondary`'s own `focusRing` (`Menu/index.tsx:144`'s own comment), and `EscapeReturnsFocusToTrigger`
-  already forces that exact ring but only ever under `variant: 'selection'` args; `Menu`'s new
-  `TriggerFocusVisible` forces it under `variant: 'actions'` instead, the same no-`play()` idiom
-  `TriggerHover`/`TriggerActive` beside it already use. `Link`'s own two named rows (`hover inline`,
+  `GhostFocusVisibleLg`/`GhostActiveLg` give `ghost|lg` its own forcing story for each state, now
+  forced at `lg`; whether the comparator defends any of them is likewise T675's to determine, and
+  `GhostHoverLg`'s pair is not even measurable against a same-size resting frame (T675's register
+  entry, below). `Menu`'s own `actions` row had every state but focus-visible — its trigger shares `Button` `secondary`'s own `focusRing` (`Menu/index.tsx:144`'s own comment), and `EscapeReturnsFocusToTrigger` already forces that exact ring but only ever under `variant: 'selection'` args; `Menu`'s new `TriggerFocusVisible` forces it under `variant: 'actions'` instead, the same no-`play()` idiom `TriggerHover`/`TriggerActive` beside it already use. `Link`'s own two named rows (`hover inline`,
   `focus-visible inline`) were already stale by the time this task started: T596 (Cause D, closed the
   day before) gave `PrivacyNotice`'s contact-route link a real `Link` `inline` instance with its own
   `ContactRouteLinkHover`/`FocusVisible`/`Active` stories, which the generated region already credits
@@ -3639,33 +3638,34 @@ does not belong in a spec written once.
    row 8's own T596/T600/`7f0b31e5` debt (2026-09-23).** Playwright's `toHaveScreenshot` compares with
    pixelmatch at its default `threshold: 0.2` — `playwright.config.ts` sets only
    `maxDiffPixelRatio: 0.01`, never `threshold` — so a pixel counts as different only when its YIQ
-   delta exceeds `35215 × 0.2² = 1409`. A colour-only fill swap can fall under that bar everywhere in
-   its own frame; when it does, the comparator's own surviving-pixel count is already zero, and a clip
-   shrinks the frame the ratio is taken against without ever raising that count. **Confirmed cells
-   (this task's own measurement, reproducing the comparator's own YIQ formula against the committed
-   baseline pairs — never `story-baselines-duplicates.mjs`'s own `pixelDiffRatio`, which counts
-   exact-match pixels, a different and looser tolerance than this comparator's own):**
-   - `Dialog` `Hover` vs `Default` (`surface` → `surface-sunken`, YIQ delta 496): 0 of 5,561 differing
-     pixels at light 1280, 0 of 5,569 at dark 1280 — zero survivors at every width and theme measured.
-     **Undefended at any crop** (F14, above).
-   - `Dialog` `Active` vs `Default` (a border-strength swap, YIQ delta 5921): 702 of 6,246 at light
-     1280, 698 of 6,246 at dark 1280 — non-zero, and clears the 1% floor once clipped to the button
-     (F14, above). **Defended once its own clip's baselines land.**
-   - `Menu` `TriggerFocusVisible` vs `ClosedTrigger` (its own identical-args resting frame, a ring):
-     579 of 612 at light 1280 (0.483% unclipped), 576 at dark 1280 — non-zero, geometry. Not a false
-     claim in that story's own comment (checked, not corrected); recorded here for completeness, not
-     because it is a gap.
+   delta clears that threshold. A colour-only fill swap can fall under that bar everywhere in its own
+   frame; when it does, the comparator's own surviving-pixel count is already zero, and a clip shrinks
+   the frame the ratio is taken against without ever raising that count. **Classified this task
+   (2026-09-23), by Playwright's own pixelmatch (threshold 0.2), against the six {theme × width} units
+   each story renders in:**
+   - **Zero surviving pixels in every unit — no clip can help, a `product-designer` decision is
+     needed:** `Button` `SecondaryHover` vs `Secondary`, `GhostHover` vs `Ghost`, `DestructiveHover` vs
+     `Destructive`; `Menu` `TriggerHover` vs `ClosedTrigger`; `Dialog` `Hover` (clipped) vs `Default`
+     cropped to the same rect (F14, above).
+   - **A real surviving signal, but at or under 1% on at least one unit while unclipped — a clip fixes
+     this mechanically, no design decision needed:** `Button` `Hover`/`Active` vs `Primary`,
+     `SecondaryActive` vs `Secondary`, `GhostActive` vs `Ghost`, `DestructiveActive` vs `Destructive`;
+     `Menu` `TriggerActive` vs `ClosedTrigger`.
+   - **Defended (over 1% on every unit), already clipped:** `Dialog` `Active` and `Menu`
+     `TriggerFocusVisible`.
+   - **Not measurable — no resting frame with the same args and size exists in the committed set:**
+     `Button` `GhostHoverLg`/`GhostFocusVisibleLg`/`GhostActiveLg`/`PrimaryHoverMd`/`PrimaryActiveMd`
+     (`Primary` is `size: 'lg'`, so comparing it against the `md` stories would mix in a size change).
 
-   **Not measured, filed as unmeasured rather than assumed:** `Button`'s `PrimaryHoverMd`/
-   `PrimaryActiveMd` and `GhostHoverLg`/`GhostFocusVisibleLg`/`GhostActiveLg` — no resting baseline with
-   identical args exists among the committed set for either pair (the only unforced `Primary` story is
-   size `lg`, not `md`; no unforced `Ghost` story is size `lg` at all).
+   **The package-wide extent beyond this list is unmeasured and owed** — this task's own scope was the
+   stories T596/T600/`7f0b31e5` touched, never a sweep of the whole tree.
 
-   **The package-wide extent is unmeasured and owed** — this task's own scope was the stories
-   T596/T600/`7f0b31e5` touched, never a sweep of the whole tree, and every other fill-only forced
-   state in this system (this row's own register above lists further large-fill hover signals, e.g.
-   `Menu`'s own `TriggerHover`, never measured this way either) is an open question this entry does not
-   answer. **Owner: T675. Fix by 2026-10-07.**
+   **What T675 owes:** a package-wide sweep by this same method; clipping every "at or under 1%" cell
+   above, which is mechanical; and a `product-designer` decision for every "zero surviving pixels"
+   cell — a non-fill signal of its own, or a lower comparator threshold, applied per component or
+   package-wide. That decision also bears on FR-037's "more than colour" requirement. Any such
+   threshold bound differs per theme; establishing it is part of this task, not decided here. **Owner:
+   T675. Fix by 2026-10-07.**
 
 Rows 1 and 2 above are not evidence that item 9 or item 13 is met — sizing the work is not doing it,
 the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Both stay
