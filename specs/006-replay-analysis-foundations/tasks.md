@@ -989,6 +989,54 @@ Three were arbitration and are decided, with the decision recorded in the task t
       without evidence that Relic uses it — `civilizations.py`'s own header records that its first
       table was confidently wrong in exactly that way
 
+- [ ] T652o [US2] **Sweep every bonus of all six civilisations — the transcription silently dropped
+      the ones that touch a tracked field, and recording 1's zero is hollow because of it.** The
+      third review found Malians' Team Bonus *"Universities work +80% faster"* dismissed in
+      `effects.toml` as touching no tracked field. It touches `production_time`: a technology's
+      production time **is** its research time, one of the six fields the coverage pass walks.
+      Measured — Malians and Teutons both answer 100, 50, 60 and 30 for technologies 47, 50, 93 and
+      140, and recording 1's Malians player researches **all four**. They are answered with the
+      un-adjusted baseline, which is the **FR-038** substitution the conservative rule exists to
+      forbid, and it is the reason SC-007a reports zero for recording 1: not because nothing blocks,
+      but because a blocker was never written down. Three siblings, all verified the same way, all
+      predating this remediation — fixing Malians alone leaves them, which is the one-of-N failure
+      this project keeps repeating:
+      Persians' *"Town Centers and Docks ... work +5/10/15/20% faster"* (the work-faster half touches
+      `production_time` at buildings 109, 621 and 45 — Persians' Villager answers 25, same as
+      Teutons'); Teutons' *"Murder Holes, Herbal Medicine free"*, absent from the file **entirely**,
+      so Teutons pays `{food:200, stone:100}` and `{food:0, gold:200}` for technologies 322 and 441
+      that its own bonus makes free; and Franks' *"Chivalry (Stables work +40% faster)"*, likewise
+      absent.
+      **Do not fix only the four named.** Walk **every bullet** of all six civilisations' prose in
+      the vendored `strings.en.json` — Franks 120151, Teutons 120153, Saracens 120158, Malians
+      120175, Tatars 120182, Persians — including Unique Techs and Team Bonuses, and give each one
+      an entry: `modelled = "yes"` with its selector, or `modelled = "no"` with a real reason and an
+      explicit selector. **A bullet that appears in neither state is the defect**, so assert that
+      too: a test that counts the bullets per civilisation and fails when the file accounts for
+      fewer. That test is what stops this recurring; without it the next transcription drops
+      something again and nothing notices.
+      Then recompute what each recording reports. Recording 1 will no longer be zero — enumerate its
+      blockers under **FR-022b** only where the blocker is a team-wide or age-gated bonus the model
+      genuinely cannot place, never where it is something nobody transcribed. Update
+      `test_coverage.py`, its docstrings and [quickstart.md](./quickstart.md), which all currently
+      say recording 1 is clean. Recompute both digests; keep them equal
+- [ ] T652p **Close the review's smaller findings, three of which make a test prove less than it
+      claims.** (a) `packages/knowledge/tests/test_coverage.py:569` asserts
+      `len(result) == len(set(keys))`, which holds for an empty result — add `assert result` so the
+      duplicate-gap regression cannot pass vacuously. (b) The same file at `:620`, `:669` and `:677`
+      passes building ids as `unit_id`; harmless today because those tests never resolve the entity,
+      but it now reads as a claim that 84 and 68 are units. (c)
+      `packages/knowledge/tests/test_query.py:45-48` newly claims Franks/Pikeman returns "a plain,
+      unmodified baseline" and **no test asserts it** — a spurious Franks cost effect would pass
+      every test in the file. Add the control. (d) The rounding row I added to
+      [data-model.md](./data-model.md) §6 is true of `multiply` only: `add` also rounds half up, but
+      mapping `set` **truncates** with `int(...)`, and scalar `set` returns a float — so
+      `age_requirement(436, "Persians")` answers `3.0`. State which operations the convention
+      governs, or make them agree. (e) Malians' selector includes Bombard Tower `236`, which that
+      civilisation's own tree marks `NotAvailable` — the discount asserts a cost for a building it
+      cannot build. (f) `effects.py:431` has no guard against `add` driving a cost negative;
+      unreachable today, but `add` is live data now and the invariant is unasserted
+
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
 
