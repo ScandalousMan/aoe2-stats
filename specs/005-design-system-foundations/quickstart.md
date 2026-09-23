@@ -1181,9 +1181,17 @@ file this task touches) — established that `Dialog`'s `Hover`/`Active` stories
 **unclipped**, so at 1280 their state signal (0.603%/0.678%) sat below `playwright.config.ts`'s
 `maxDiffPixelRatio` of 0.01: those 4 units could not detect their own loss. `visual-reviewer`'s PASS
 above was rendered on frames whose *content* is correct but whose *framing* was inadequate to detect a
-regression, and that PASS is recorded on that basis rather than withheld or overstated. It stands on
-the re-clipped frames once that sibling fix's own baseline regeneration lands; nothing here coordinates
-that landing.
+regression, and that PASS is recorded on that basis rather than withheld or overstated. **Corrected
+2026-09-23, row 8's own debt-closure remediation:** the re-clip does not settle this the same way for
+both halves. `active`'s own delta is a border-strength change whose comparator-faithful pixel count is
+already non-zero at the unclipped frame (Playwright's `toHaveScreenshot`, pixelmatch at its default
+0.2 threshold), so clipping to the button genuinely raises its ratio over the 1% floor once the
+re-clipped frames land — `active` is defended by that clip. `hover`'s own delta is a fill-only colour
+swap whose comparator-faithful pixel count is zero at the unclipped frame, and a clip only shrinks the
+denominator the ratio is taken against — it cannot raise a numerator that is already zero. `hover`
+stays undefended **at any crop**, a comparator blind spot the re-clipped frames do not fix. Owned by
+T675 (`packages/design-system/specs/README.md`'s Verification-coverage gap register), not by the
+sibling fix's own baseline regeneration.
 
 Both halves of item 15 are now recorded: `visual-reviewer`'s, above; the general reviewer's, still
 outstanding per the paragraph before it.

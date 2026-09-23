@@ -144,6 +144,13 @@ export const KeyboardFocusOrderAndTrap: Story = {
 // row 8's own Method section). Clipped to the button itself, the same way `PrivacyNotice`'s
 // `FIRST_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip` and `Table`'s `ROW_LINK_CLIP` clip their
 // own forced-state stories — `visualCaptureClip` takes precedence over `visual-full-page` (T591).
+// The clip only shrinks the frame the ratio is taken against; it does not create surviving pixels
+// where the comparator (Playwright's `toHaveScreenshot`, pixelmatch at its default 0.2 threshold)
+// already counts none. `active`'s border-strength delta clears that threshold before any crop, so
+// the clip genuinely lifts it over the 1% floor. `hover`'s own delta is fill-only colour and clears
+// nothing at that threshold at any crop — a clip cannot raise a numerator that is already zero. The
+// hover half is therefore undefended regardless of this clip (T675, README's Verification-coverage
+// gap register).
 const PRIMARY_ACTION_CLIP = { parts: [{ role: 'button' as const, name: 'Turn it off' }], pad: '2' }
 
 export const Hover: Story = {
