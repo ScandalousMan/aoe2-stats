@@ -3,21 +3,22 @@
 # longer the T639/T641 placeholder — T642 wires it to the real build the recordings report, and
 # the `[validation]` table below is the carry-forward attestation research.md D4 requires to get
 # there, not the T639 `method = "second-source"` placeholder it replaces. `rules.json` is
-# unchanged by this task; `effects.toml` is not — T644 replaced its empty placeholder with the
-# real, hand-transcribed Byzantine and Korean effects (research.md D5); T645 then added the four
-# civilisations the second committed recording needs (Franks, Persians, Teutons, Gurjaras —
-# research.md D11), so `digest` below is T645's recomputed digest over `rules.json` and the full,
-# six-civilisation `effects.toml`, not T644's. `civilisations_modelled` now names all six; see
-# `effects.toml`'s own header comment for how the second fixture's four were established and why
-# Franks is among them despite `test_query.py`'s unrelated "always-unmodelled" example moving to
-# Britons to avoid the collision.
+# unchanged by this task; `effects.toml` is not — T644/T645 first transcribed six civilisations
+# (Byzantines, Koreans, Franks, Persians, Teutons, Gurjaras), and T652m (2026-09-23) found the
+# `[[civilisation_id]]` table wrong at four of six raw ids: Byzantines, Koreans and Gurjaras are in
+# neither committed recording at all, and the real six are Franks, Teutons, Persians, Saracens,
+# Malians and Tatars. `digest` below is T652m's recomputed digest over `rules.json` (unchanged) and
+# the corrected, six-civilisation `effects.toml`. `civilisations_modelled` now names the real six;
+# see `effects.toml`'s own header comment for the full correction and why `test_query.py`'s
+# unrelated "always-unmodelled" example still uses Britons (confirmed absent from both committed
+# recordings, unaffected by this correction).
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:9ee2f480a7b8cd6ef07866fc05a7114b38343cd432c7c250554fc02e51d11cba"
+digest = "sha256:1bbd3e4a6c5823b6b64f44f7a5884f908cecf84df48d0460cde30a82b16d2755"
 promoted = true
-civilisations_modelled = ["Byzantines", "Koreans", "Franks", "Persians", "Teutons", "Gurjaras"]
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 
 # FR-030's validation record, by carry-forward (research.md D4): the pinned commit
 # (`b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`, 2026-06-21) is the source's own newest revision, and

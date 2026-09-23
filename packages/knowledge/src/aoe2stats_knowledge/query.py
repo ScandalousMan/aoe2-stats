@@ -15,8 +15,9 @@ explicitly: it is not civilisation-qualified at all.
 conservative rule: a civilisation whose bonus set is not modelled refuses every
 civilisation-qualified cost and time, because which fields its bonuses touch is exactly what is
 not known. T645 populated `civilisations_modelled` on both promoted fixtures
-(`aoe2techtree-180059`, `aoe2techtree-177723-test`) with the same six names — Byzantines, Koreans,
-Franks, Persians, Teutons, Gurjaras — so a query naming one of those six now proceeds past step 1
+(`aoe2techtree-180059`, `aoe2techtree-177723-test`); T652m (2026-09-23) corrected that table to
+the six civilisations actually in the two committed recordings — Franks, Teutons, Persians,
+Saracens, Malians, Tatars — so a query naming one of those six now proceeds past step 1
 into real effect application (T644, below). A civilisation outside that set still gaps at the same
 check, and that remains the correct, honest behaviour research.md D5 requires, not a shortcut:
 returning a baseline value for an unmodelled civilisation would be exactly the FR-038 substitution
@@ -297,8 +298,8 @@ def _civilisation_qualified(
     rule — never the baseline, FR-038), then apply every matching, modelled effect from that
     snapshot's `effects.toml` (steps 2-3, `effects.apply` — T644) and return the adjusted value.
 
-    **Both promoted fixtures now name six civilisations modelled** (T645: Byzantines, Koreans,
-    Franks, Persians, Teutons, Gurjaras) — a call naming one of those six proceeds to steps 2-3 and
+    **Both promoted fixtures now name six civilisations modelled** (T645/T652m: Franks, Teutons,
+    Persians, Saracens, Malians, Tatars) — a call naming one of those six proceeds to steps 2-3 and
     returns a real, effect-adjusted `Answer`; a call naming any other civilisation still gaps at
     step 1, which remains the correct, honest state research.md D5 requires, not a shortcut this
     function takes.

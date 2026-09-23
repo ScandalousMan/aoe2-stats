@@ -44,7 +44,7 @@ match and therefore one build; every entity collected resolves against it.
 
 **Civilisation-name resolution — `civilisation_names`, and the real default it stands in for.**
 `query.py`'s six query-surface functions require a civilisation **name** string
-(`"Byzantines"`, ...), never the replay's raw integer — but nothing else in this repository
+(`"Franks"`, ...), never the replay's raw integer — but nothing else in this repository
 translates that integer into a name, because until this task nothing needed to (T629a: "naming is
 the knowledge base's job, not the adapter's"; `query.py`'s own docstring, verified directly against
 this pack: `aoe2techtree`'s `data.json` civilisation entries carry no numeric id in any form, and

@@ -13,18 +13,23 @@ Two kinds of test live here, deliberately kept apart:
   half-applied" invariant when a modelled and an unmodelled effect both match the same query.
 - **Integration**, against the two real, committed snapshots' real, hand-transcribed
   `effects.toml` (`aoe2techtree-180059`, `aoe2techtree-177723-test`): the
-  same two real facts `packages/knowledge/tests/test_query.py` encodes (Byzantine Pikeman -25%,
-  Korean Crossbowman -50% wood), proven here directly through `effects.apply` rather than through
-  `query.py` — this is deliberate: `query.py`'s own discount tests stayed `xfail` until T645
-  populated `civilisations_modelled`, but `effects.py`'s own correctness never depended on T645 at
-  all, and this file is what proves that independently.
+  same two real facts `packages/knowledge/tests/test_query.py` encodes (Saracens' Market -100
+  wood, Malians' Dock -15% wood — T652m; Byzantines' Pikeman -25% and Koreans' Crossbowman -50%
+  wood before Byzantines and Koreans were found to be in neither committed recording at all),
+  proven here directly through `effects.apply` rather than through `query.py` — this is
+  deliberate: `query.py`'s own discount tests stayed `xfail` until T645 populated
+  `civilisations_modelled`, but `effects.py`'s own correctness never depended on T645 at all, and
+  this file is what proves that independently.
 
 **T645** added the four civilisations the second committed recording needs (research.md D11) —
-Franks, Persians, Teutons, Gurjaras — with the same two-kind treatment: a real cost/age-requirement
-adjustment proven against the committed `effects.toml`, and one conditional/team-wide "not
-modelled" refusal each. `packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`'s
-own header comment carries the full identification method and provenance; this file does not
-restate it.
+Franks, Persians, Teutons and, at the time, Gurjaras — with the same two-kind treatment: a real
+cost/age-requirement adjustment proven against the committed `effects.toml`, and one
+conditional/team-wide "not modelled" refusal each. **T652m** (2026-09-23) found Gurjaras was never
+in either committed recording, along with Byzantines and Koreans, and replaced all three with the
+recordings' real civilisations — Saracens, Malians (recording 1) and Tatars (recording 2, the
+fourth of Franks/Persians/Teutons/Tatars). `packages/knowledge/snapshots/aoe2techtree-180059/
+effects.toml`'s own header comment carries the full identification method and provenance; this
+file does not restate it.
 """
 
 from __future__ import annotations
@@ -325,58 +330,63 @@ _PROMOTED_177723_DIRECTORY = "aoe2techtree-177723-test"
 
 
 @pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
-def test_the_real_byzantine_pikeman_discount_applies_through_the_committed_effects_toml(
+def test_the_real_saracens_market_discount_applies_through_the_committed_effects_toml(
     directory: str,
 ) -> None:
     """The exact real fact `test_query.py` encodes, proven here directly against `effects.py`
     without going through `query.py`/`civilisations_modelled` at all (T645 is not a dependency of
     this test) — over **both** committed promoted snapshots, since both carry the same real,
     hand-transcribed `effects.toml` content (their sibling `snapshot.toml` files record why: the
-    same pack revision, unchanged across every build between them)."""
+    same pack revision, unchanged across every build between them). Saracens replaces the
+    previously committed, wrong Byzantines (T652m: Byzantines is in neither committed recording)."""
     result = effects.apply(
         directory,
-        civilisation="Byzantines",
-        kind="unit",
-        id="358",
+        civilisation="Saracens",
+        kind="building",
+        id="84",
         field="cost",
-        value={"food": 35, "wood": 25},
+        value={"wood": 175},
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
-    assert value == {"food": 26, "wood": 19}
+    assert value == {"wood": 75}
     assert len(applied) == 1
-    assert applied[0].source_text == "Camel Riders, Skirmishers and Spearman-line cost -25%"
+    assert applied[0].source_text == "Market trading fee only 5%; Markets cost -100 wood"
     assert applied[0].modelled == "yes"
 
 
 @pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
-def test_the_real_korean_crossbowman_discount_applies_through_the_committed_effects_toml(
+def test_the_real_malians_dock_discount_applies_through_the_committed_effects_toml(
     directory: str,
 ) -> None:
+    """Malians replaces the previously committed, wrong Koreans (T652m: Koreans is in neither
+    committed recording). `150 * 0.85 = 127.5`, a real rounding boundary resolved by round-half-up
+    to 128."""
     result = effects.apply(
         directory,
-        civilisation="Koreans",
-        kind="unit",
-        id="24",
+        civilisation="Malians",
+        kind="building",
+        id="45",
         field="cost",
-        value={"gold": 45, "wood": 25},
+        value={"wood": 150},
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
-    assert value == {"gold": 45, "wood": 13}
+    assert value == {"wood": 128}
     assert len(applied) == 1
-    assert applied[0].source_text == "Ranged Soldiers and Infantry cost -50% wood"
+    assert applied[0].source_text == "Buildings cost -15% wood"
 
 
-def test_the_real_byzantine_building_hp_bonus_is_not_modelled() -> None:
+def test_the_real_malians_barracks_pierce_armor_bonus_is_not_modelled() -> None:
     """The age-gated bonus this task's "not modelled" rule requires be recorded rather than
-    silently dropped (research.md D5) — proven here against the real, committed `effects.toml`."""
+    silently dropped (research.md D5) — proven here against the real, committed `effects.toml`.
+    Malians replaces the previously committed, wrong Byzantines (T652m)."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
-        civilisation="Byzantines",
+        civilisation="Malians",
         kind="building",
         id="12",
-        field="hp",
+        field="pierce_armor",
         value=None,
     )
     assert isinstance(result, effects.EffectNotModelled)
@@ -480,16 +490,18 @@ def test_the_real_persians_kamandaran_bonus_is_not_modelled() -> None:
     assert "kamandaran" in result.reason.lower() or "unique technology" in result.reason.lower()
 
 
-def test_the_real_gurjaras_team_bonus_is_not_modelled() -> None:
-    """Gurjaras' Camel/Elephant training-speed bonus is a Team Bonus (research.md D5: team-wide),
-    so it is refused rather than silently applied to Gurjaras' own Camel Rider."""
+def test_the_real_tatars_town_center_sheep_bonus_is_not_modelled() -> None:
+    """Tatars' "New Town Centers spawn 2 Sheep starting in Castle Age" is age-gated, and touches
+    spawning a Sheep — no Sheep, Deer or Boar entity exists anywhere in this pack's `rules.json`
+    at all — so it is refused rather than silently applied to the Town Center (T652m: Tatars
+    replaces the previously committed, wrong Persians for this recording's fourth participant)."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
-        civilisation="Gurjaras",
-        kind="unit",
-        id="329",
-        field="production_time",
-        value=30,
+        civilisation="Tatars",
+        kind="building",
+        id="621",
+        field="sheep_spawn",
+        value=None,
     )
     assert isinstance(result, effects.EffectNotModelled)
-    assert "team" in result.reason.lower()
+    assert "age" in result.reason.lower()

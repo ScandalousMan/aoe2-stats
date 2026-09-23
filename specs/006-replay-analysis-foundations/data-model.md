@@ -137,6 +137,7 @@ edited (FR-025); a correction is a new snapshot.
 | `field`        | Which knowledge field it modifies.                                                    |
 | `operation`    | Closed: `multiply`, `add`, `set`.                                                     |
 | `operand`      | The amount, per resource where the field is a cost.                                   |
+| *rounding*     | A cost is an integer, so a `multiply` landing on a fraction is **rounded half up** — Malians' -15% wood takes a 150-wood Dock to 128, not 127. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
 | `validated_by` | The second reading that confirmed it (FR-030).                                        |
 
 **Source disagreement** (FR-028) — entity, field, build, each source's value, which one was stored,

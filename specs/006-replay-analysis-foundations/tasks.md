@@ -883,7 +883,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
       snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
 
-- [ ] T652m [US2] **BLOCKING — three of the six modelled civilisations are misidentified, and two
+- [x] T652m [US2] **BLOCKING — three of the six modelled civilisations are misidentified, and two
       of them are not in either match.** Confirmed 2026-09-23: the user named recording 2's match as
       Franks + Teutons versus Tatars + Persians. Identifying each participant from the pack's own
       tree files, using **technology nodes only** (`id` prefixed `Tech_`), reproduces that exactly —
