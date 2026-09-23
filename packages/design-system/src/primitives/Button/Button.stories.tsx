@@ -273,9 +273,9 @@ export const PrimaryActiveMd: Story = {
 // boundary-only signal (`focus-visible`'s outline; `active`'s border swap from `transparent`) is a
 // small mark against a mostly unchanged frame, the same reason `Dialog`'s `Hover`/`Active` clip.
 // `GhostFocusVisibleLg` and `GhostActiveLg` below clip to the button itself, the same
-// `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses. `GhostHoverLg` does not; whether it needs
-// one, like the rest of this file's states, is T675's to determine (README's Verification-coverage
-// gap register).
+// `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses. `GhostHoverLg` does not — its `md` twin
+// (`GhostHover`) sits in T675's zero-surviving-pixels class, where no clip helps (README's
+// Verification-coverage gap register).
 const GHOST_LG_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
 
 export const GhostHoverLg: Story = {

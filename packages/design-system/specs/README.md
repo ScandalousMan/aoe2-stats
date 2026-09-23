@@ -3395,9 +3395,10 @@ duplicates-debt.json` (that file's own discipline: a stale entry fails the run, 
   forcing story for both states — and, via the same per-story redirect this Method section's own
   "Record 3's own axis-mismatch redirect" paragraph already describes, so does the pseudo-row
   `unresolved|lg` these same two Dialog call sites file their own `rest` entries under. A forcing
-  story existing is what `state-coverage.mjs`'s "covered" means; whether the comparator defends either
-  state is T675's to determine (below). `ghost|lg` had no hover, focus-visible or press frame at
-  all — `variantClasses.ghost`/`focusRing` (`index.tsx`) paint the identical class set at every size,
+  story existing is what `state-coverage.mjs`'s "covered" means, not that the comparator defends
+  either state — T675's register (below) records which one does. `ghost|lg` had no hover,
+  focus-visible or press frame at all — `variantClasses.ghost`/`focusRing` (`index.tsx`) paint the
+  identical class set at every size,
   the same fact `primary`'s own trace establishes, so `Button`'s new `GhostHoverLg`/
   `GhostFocusVisibleLg`/`GhostActiveLg` give `ghost|lg` its own forcing story for each state, now
   forced at `lg`; whether the comparator defends any of them is likewise T675's to determine, and
@@ -3641,24 +3642,27 @@ does not belong in a spec written once.
    delta clears that threshold. A colour-only fill swap can fall under that bar everywhere in its own
    frame; when it does, the comparator's own surviving-pixel count is already zero, and a clip shrinks
    the frame the ratio is taken against without ever raising that count. **Classified this task
-   (2026-09-23), by Playwright's own pixelmatch (threshold 0.2), against the six {theme × width} units
+   (2026-09-23), by Playwright's own pixelmatch (threshold 0.2), against the {theme × width} units
    each story renders in:**
    - **Zero surviving pixels in every unit — no clip can help, a `product-designer` decision is
      needed:** `Button` `SecondaryHover` vs `Secondary`, `GhostHover` vs `Ghost`, `DestructiveHover` vs
-     `Destructive`; `Menu` `TriggerHover` vs `ClosedTrigger`; `Dialog` `Hover` (clipped) vs `Default`
-     cropped to the same rect (F14, above).
+     `Destructive`; `Button` `AsLinkHover` vs `AsLink`; `Menu` `TriggerHover` vs `ClosedTrigger`;
+     `Dialog` `Hover` (clipped) vs `Default` cropped to the same rect (F14, above).
    - **A real surviving signal, but at or under 1% on at least one unit while unclipped — a clip fixes
      this mechanically, no design decision needed:** `Button` `Hover`/`Active` vs `Primary`,
      `SecondaryActive` vs `Secondary`, `GhostActive` vs `Ghost`, `DestructiveActive` vs `Destructive`;
-     `Menu` `TriggerActive` vs `ClosedTrigger`.
+     `Menu` `TriggerActive` vs `ClosedTrigger`; `Button` `FocusVisible` vs `Primary`,
+     `SecondaryFocusVisible` vs `Secondary`, `GhostFocusVisible` vs `Ghost` (the `md` twin of the
+     clipped `GhostFocusVisibleLg`), `DestructiveFocusVisible` vs `Destructive`, `AsLinkActive` vs
+     `AsLink`, `AsLinkFocusVisible` vs `AsLink`.
    - **Defended (over 1% on every unit), already clipped:** `Dialog` `Active` and `Menu`
      `TriggerFocusVisible`.
    - **Not measurable — no resting frame with the same args and size exists in the committed set:**
      `Button` `GhostHoverLg`/`GhostFocusVisibleLg`/`GhostActiveLg`/`PrimaryHoverMd`/`PrimaryActiveMd`
      (`Primary` is `size: 'lg'`, so comparing it against the `md` stories would mix in a size change).
 
-   **The package-wide extent beyond this list is unmeasured and owed** — this task's own scope was the
-   stories T596/T600/`7f0b31e5` touched, never a sweep of the whole tree.
+   **The package-wide extent beyond this list is unmeasured and owed** — never a sweep of the whole
+   tree.
 
    **What T675 owes:** a package-wide sweep by this same method; clipping every "at or under 1%" cell
    above, which is mechanical; and a `product-designer` decision for every "zero surviving pixels"

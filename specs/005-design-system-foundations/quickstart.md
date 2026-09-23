@@ -1144,7 +1144,7 @@ scope.
 This task's own scope is the second half: **the general reviewer's approval against the specification
 and the constitution, for the head this task runs on.** This half is earned per pull request rather
 than recorded here — a status written into this artifact goes stale at the next review. PR #93's
-review outcome is recorded on the pull request itself.
+review outcome is tracked in the pull request's description; it will be updated there.
 
 **`visual-reviewer`'s half, closed 2026-09-22 (this remediation).** Item 6's superseding note above
 means baselines now exist for the 14 new stories; `visual-reviewer` ran against them this session,
@@ -1173,9 +1173,10 @@ Per-component verdicts, with evidence:
 **Caveat, not folded into a clean PASS for `Dialog`.** A separate blocking finding — owned by another
 agent, landing in the same pull request, out of this task's own scope (`Dialog.stories.tsx` is not a
 file this task touches) — established that `Dialog`'s `Hover`/`Active` stories were captured
-**unclipped**, so at 1280 their state signal sat below `playwright.config.ts`'s `maxDiffPixelRatio` of
-0.01: those 4 units could not detect their own loss. `visual-reviewer`'s PASS above was rendered on
-frames whose *content* is correct but whose *framing* was inadequate to detect a regression, and that
+**unclipped**, so at every width their state signal sat below `playwright.config.ts`'s
+`maxDiffPixelRatio` of 0.01: those 12 units could not detect their own loss. `visual-reviewer`'s PASS
+above was rendered on frames whose *content* is correct but whose *framing* was inadequate to detect
+a regression, and that
 PASS is recorded on that basis rather than withheld or overstated. **Corrected 2026-09-23, row 8's own
 debt-closure remediation, then re-clipped and landed in `e26e85fa`:** the re-clip does not settle this
 the same way for both halves. `active`'s own delta is a border-strength change whose surviving-pixel
@@ -1196,8 +1197,8 @@ with it staying a comparator blind spot (T675) rather than a framing defect. The
 `b6bc3242` frames, above, stays as its own dated record.
 
 The `visual-reviewer` half is recorded above, across both dated passes. The general-reviewer half is
-earned per pull request, not recorded here; PR #93's review outcome is recorded on the pull request
-itself.
+earned per pull request, not recorded here; PR #93's review outcome is tracked in the pull
+request's description; it will be updated there.
 
 ### Checks run this session (beyond the ones cited inline above)
 

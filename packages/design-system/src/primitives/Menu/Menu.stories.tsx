@@ -422,9 +422,9 @@ export const TriggerActive: Story = {
 //
 // This story clips to the trigger itself, the same `PRIMARY_ACTION_CLIP`/`GHOST_LG_CLIP` idiom
 // `Dialog.stories.tsx`/`Button.stories.tsx` use, and is defended on that clipped frame (Playwright's
-// own pixelmatch, threshold 0.2, over 1% on every {theme × width} unit). Whether `TriggerHover` and
-// `TriggerActive` above need a clip of their own is T675's to determine (README's
-// Verification-coverage gap register).
+// own pixelmatch, threshold 0.2, over 1% on every {theme × width} unit). `TriggerHover`'s own
+// signal is zero surviving pixels in every unit, no clip helps; `TriggerActive`'s is at or under
+// 1%, a mechanical clip away — T675's register (README's Verification-coverage gap register).
 const TRIGGER_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
 
 export const TriggerFocusVisible: Story = {
