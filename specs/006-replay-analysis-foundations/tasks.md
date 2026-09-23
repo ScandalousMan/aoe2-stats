@@ -866,7 +866,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `query._civilisation_qualified(...)` into `coverage.py` passes it today, while its docstring
       claims every gap came from the public functions. Walk `ast.Attribute` whose value is
       `Name(id="query")` and whose `attr` starts with `_`, and fail on any
-- [ ] T652l [US2] **Correct two false measurements now frozen behind a snapshot digest.** Both live
+- [x] T652l [US2] **SUPERSEDED by T652m, which carried both corrections.** Kept for the trail: it was dispatched, handed back, and reverted uncommitted when verifying it found the civilisation misidentification. **Correct two false measurements now frozen behind a snapshot digest.** Both live
       in `effects.toml`, in both promoted snapshots, which are byte-identical and must stay so.
       (a) The `[[civilisation_id]]` record for `raw_id = 33` claims participant 4 of recording 2
       *"researches technology 488 (Kamandaran)"* and that 488 is `NotAvailable` for Gurjaras in
