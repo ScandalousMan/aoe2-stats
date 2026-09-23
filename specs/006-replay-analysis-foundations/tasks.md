@@ -883,8 +883,45 @@ Three were arbitration and are decided, with the decision recorded in the task t
       four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
       snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
 
-- [ ] T652m [US2] **BLOCKING — establish recording 2's civilisations properly, because two of the
-      six modelled may be misidentified.** T652l was written to correct a false clause in the
+- [ ] T652m [US2] **BLOCKING — three of the six modelled civilisations are misidentified, and two
+      of them are not in either match.** Confirmed 2026-09-23: the user named recording 2's match as
+      Franks + Teutons versus Tatars + Persians. Identifying each participant from the pack's own
+      tree files, using **technology nodes only** (`id` prefixed `Tech_`), reproduces that exactly —
+      slot 1 Franks, slot 2 Persians via Persians-only `Tech_488` (Kamandaran), slot 3 Teutons,
+      slot 4 Tatars via Tatars-only `Tech_687`. Four for four against ground truth, so the method is
+      sound. Applied to recording 1 it narrows slot 2 to **Malians alone**, via Malians-exclusive
+      `Tech_577` (Farimba), with Byzantines excluded outright.
+
+      | raw id | register says | measured |
+      | ------ | ------------- | -------- |
+      | 2      | Franks        | Franks — agrees |
+      | 4      | Teutons       | Teutons — agrees |
+      | 9      | Koreans       | not contradicted, and **not pinned**: 19 candidates, no unique technology researched |
+      | 8      | Gurjaras      | **Persians** |
+      | 26     | Byzantines    | **Malians** |
+      | 33     | Persians      | **Tatars** |
+
+      **Byzantines and Gurjaras are in neither match.** Byzantines' Pikeman -25% is the flagship
+      example in `packages/knowledge/tests/test_query.py` and in
+      [quickstart.md](./quickstart.md), modelled for a civilisation no committed recording plays.
+      Malians and Tatars are modelled nowhere.
+
+      **Why the earlier identification went wrong, recorded so it is not repeated**: it rested on
+      *unit* node ids, and **the pack's `node_id` space is not the game's unit id space**. The
+      counterexample is in the data — recording 2's slot 2, now known to be Persians, trains unit id
+      1755, which the pack lists as `Unit_1755_101`, Camel Scout, `ResearchedCompleted` for Gurjaras
+      alone and absent from the Persians tree. Technology ids did hold, on all five participants
+      that a unique technology pins. Treat unit-id exclusivity as unsound and technology-id
+      exclusivity as sound until something measures otherwise; that distinction is a property of the
+      vendored source and belongs in `docs/data-sources.md` §6.
+
+      **Scope of the correction**: the `[[civilisation_id]]` table; `civilisations_modelled` in both
+      promoted snapshots; the effects transcribed for Byzantines and Gurjaras, which are dead and
+      whose replacements for Malians and Tatars are not written; every example and test naming a
+      Byzantine discount; and `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, whose Gurjaras entries name a
+      civilisation not in the match. Also carry T652l's two uncontested corrections — the false
+      participant-4/`Tech_488` clause and the four "sixty-one civilisations" for 53 — so
+      `effects.toml`'s digest moves once. **Superseded framing, kept for the record:** T652l was written to correct a false clause in the
       `raw_id = 33` validation record and was **reverted uncommitted** when verifying it turned up
       something larger. The pack's own per-civilisation tree files, read with unit and tech nodes
       separated (the `id` field carries the kind: `Unit_239_82` vs `Tech_488_82` — conflating them
