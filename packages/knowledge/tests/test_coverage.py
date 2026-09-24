@@ -1,18 +1,24 @@
 """T649: the coverage pass over a canonical stream. Written before `coverage.py` (T648) existed;
 T648 has since implemented it, `test_removing_a_required_field_withholds_only_its_dependent_values`
 (SC-007) genuinely passes and its marker is removed, and
-`test_each_committed_recording_reports_zero_blocking_gaps` (SC-007a) is parametrized per recording:
-the first committed recording (Saracens/Malians, T652m — Byzantines/Koreans before it, both of
-which turned out to be in neither committed recording at all) genuinely passes, asserting its
-blocking gaps equal the empty set. The second committed recording's own case genuinely passes too
-(T652c/T652m): it asserts its blocking gaps equal `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`,
-FR-022b's closed, two-blocker enumeration below (T652m removed a third, Gurjaras' team bonus,
-after finding Gurjaras was never in this recording at all — see below), replacing a blanket
+`test_each_committed_recording_reports_zero_blocking_gaps` (SC-007a) is parametrized per recording,
+and — despite its own name, kept for the SC-007a cross-reference rather than renamed — **neither
+recording's blocking gaps are asserted to be the empty set any more (T652o, 2026-09-23)**: the
+first committed recording (Saracens/Malians, T652m — Byzantines/Koreans before it, both of which
+turned out to be in neither committed recording at all) asserts its blocking gaps equal
+`_RECORDING_1_ENUMERATED_BLOCKING_GAPS`, FR-022b's one-blocker enumeration below, once the third
+review found a bonus this file had silently left un-transcribed. The second committed recording's
+own case (T652c/T652m/T652o) asserts its blocking gaps equal
+`_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, FR-022b's closed, four-blocker enumeration below (T652m
+removed a third of the original three,
+Gurjaras' team bonus, after finding Gurjaras was never in this recording at all; T652o added two
+more it found un-transcribed the same way as recording 1's), replacing a blanket
 `xfail(strict=True, reason=...)` a remediation of T648's hand-back found insufficient — a
 `reason=` string asserts against nothing, and closing one of the blockers left the assertion
 failing with the marker still holding, silencing exactly the signal FR-022b exists to keep. Set
-equality catches both directions: a closed blocker leaves an enumerated tuple unmatched, and a
-fourth blocker (a real transcription defect) leaves an observed tuple unmatched.
+equality catches both directions, on both recordings now: a closed blocker leaves an enumerated
+tuple unmatched, and a further blocker (a real transcription defect) leaves an observed tuple
+unmatched.
 
 Contract: [contracts/knowledge-base.md](../../../specs/006-replay-analysis-foundations/contracts/
 knowledge-base.md), "Gaps" — "The coverage pass (`coverage.py`) takes a canonical stream, collects
@@ -240,12 +246,16 @@ def _real_rules_for(directory: str) -> dict[str, Any]:
 #: condition that would" — data, not prose a marker's `reason=` asserts against nothing.
 #:
 #: `gap_tuples` on each blocker is every `(entity_kind, entity_id, field, civilisation, cause)`
-#: observed on recording 2 that the blocker accounts for; the module-level set below flattens all
-#: three for the equality assertion the test makes.
+#: observed on the recording it is enumerated against that the blocker accounts for. **T652o
+#: (2026-09-23) generalised this from "recording 2's own blocker" to either recording's**:
+#: Malians' Team Bonus, found genuinely blocking recording 1 once the third review's finding (the
+#: bonus touches production_time and was silently left un-transcribed) was fixed, is the same
+#: shape as Franks' age-scaled Castle discount below — a real, permanent, FR-022b-enumerable
+#: reason a static rules query cannot place — not a defect this task's own remediation left open.
 @dataclass(frozen=True, slots=True)
-class _RecordingTwoBlocker:
-    """One of FR-022b's enumerated blockers standing between recording 2 and SC-007a's zero-
-    blocking-gaps claim."""
+class _RecordingBlocker:
+    """One of FR-022b's enumerated blockers standing between a committed recording and SC-007a's
+    zero-blocking-gaps claim (or, for recording 1 since T652o, its own enumerated set)."""
 
     name: str
     why_the_vendored_source_cannot_close_it: str
@@ -253,13 +263,56 @@ class _RecordingTwoBlocker:
     gap_tuples: tuple[tuple[str, str, str, str, str], ...]
 
 
+#: **Malians' Team Bonus "Universities work +80% faster"** (technologies 47, 50, 93 and 140,
+#: the four University technologies recording 1's Malians participant actually researches) is
+#: team-wide (research.md D5: "Team bonuses ... are recorded as modelled: no with the reason"):
+#: it also benefits every allied player's own Universities, which a rules query has no way to
+#: place without knowing every ally's civilisation. T652o (2026-09-23) found this bonus had been
+#: dismissed in `effects.toml` as touching no tracked field, when it touches production_time
+#: (a technology's research time), and closed that transcription gap by recording the honest
+#: refusal — which is what makes this recording's four blocking gaps real rather than a defect.
+#: **4 tuples.**
+_MALIANS_UNIVERSITY_TEAM_BONUS_IS_TEAM_WIDE = _RecordingBlocker(
+    name="Malians' Team Bonus 'Universities work +80% faster' is team-wide (technologies 47, 50, "
+    "93, 140)",
+    why_the_vendored_source_cannot_close_it=(
+        "'Universities work +80% faster' is named under Malians' own 'Team Bonus:' heading, so "
+        "it is granted to every allied player from a Malians ally, not only to Malians-controlled "
+        "Universities, and query.py's six query-surface functions carry no ally/match-state "
+        "argument to resolve that against — an architecture question, not a transcription fix."
+    ),
+    what_would_close_it=(
+        "adding an ally/match-state argument to query.py's query surface, an architecture change "
+        "out of scope for this feature."
+    ),
+    gap_tuples=(
+        ("technology", "47", "production_time", "Malians", "effect-not-modelled"),
+        ("technology", "50", "production_time", "Malians", "effect-not-modelled"),
+        ("technology", "93", "production_time", "Malians", "effect-not-modelled"),
+        ("technology", "140", "production_time", "Malians", "effect-not-modelled"),
+    ),
+)
+
+#: FR-022b's closed list for recording 1: exactly the one blocker above, none other — T652o
+#: (2026-09-23) is what first made recording 1 report a blocking gap at all; before it, this
+#: recording's own SC-007a assertion was the empty set, correctly, because nothing had yet
+#: transcribed the bonus that blocks it.
+_RECORDING_1_BLOCKERS: tuple[_RecordingBlocker, ...] = (
+    _MALIANS_UNIVERSITY_TEAM_BONUS_IS_TEAM_WIDE,
+)
+
+#: The flattened union of recording 1's one blocker's `gap_tuples` — 4 tuples.
+_RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
+    gap_tuple for blocker in _RECORDING_1_BLOCKERS for gap_tuple in blocker.gap_tuples
+)
+
 #: **Franks' "Castles cost -15/25% in Castle/Imperial Age"** (building 82, the Castle the Franks
 #: participant trains Throwing Axemen from) is genuinely age-scaled: its magnitude depends on
 #: which age the Castle was built in, and this static, per-build knowledge base's query surface
 #: (`query.py`'s six functions) carries no "current age"/match-state argument at all — an
 #: architecture question (the effect model's own signature), not a fixable transcription. **1
 #: tuple.**
-_FRANKS_CASTLE_COST_IS_AGE_SCALED = _RecordingTwoBlocker(
+_FRANKS_CASTLE_COST_IS_AGE_SCALED = _RecordingBlocker(
     name="Franks' Castle cost discount is age-scaled (building 82)",
     why_the_vendored_source_cannot_close_it=(
         "'Castles cost -15/25% in Castle/Imperial Age' depends on which age the Castle was "
@@ -289,7 +342,7 @@ _FRANKS_CASTLE_COST_IS_AGE_SCALED = _RecordingTwoBlocker(
 #: source to close it is explicitly rejected by research.md D3 for this feature. Each id fails
 #: all six of `query.py`'s query-surface fields, for the civilisation the recording actually
 #: places it under — building 490 for Franks, 673 for Teutons. **12 tuples.**
-_TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingTwoBlocker(
+_TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
     name="Buildings 490 and 673 are absent from the vendored aoe2techtree pack entirely",
     why_the_vendored_source_cannot_close_it=(
         "both ids are real, age-upgraded visual variants the pack's tech-tree UI source never "
@@ -316,17 +369,67 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingTwoBlocker(
     ),
 )
 
-#: FR-022b's closed list: exactly the two blockers above, none other (T652m: down from three —
-#: see the Gurjaras note above). Referenced by the test below both for the flattened
-#: set-equality assertion and, in a failure message, by name.
-_RECORDING_2_BLOCKERS: tuple[_RecordingTwoBlocker, ...] = (
+#: **Franks' Unique Technology "Chivalry (Stables work +40% faster)"** (units 38 "Knight" and
+#: 448 "Scout Cavalry", the two Stable-trained units recording 2's Franks participant actually
+#: trains) is conditional on match state (research.md D5): it is a Castle unique technology, so
+#: the training-speed bonus only applies once it has been researched, which a static rules query
+#: has no way to place. T652o (2026-09-23) found this bullet absent from `effects.toml` entirely
+#: and closed that transcription gap by recording the honest refusal. **2 tuples.**
+_FRANKS_CHIVALRY_IS_CONDITIONAL_ON_RESEARCH = _RecordingBlocker(
+    name="Franks' Chivalry (Stables work +40% faster) is conditional on being researched "
+    "(units 38, 448)",
+    why_the_vendored_source_cannot_close_it=(
+        "'Chivalry' is a Castle unique technology, so the training-speed bonus only applies "
+        "once it has been researched, and query.py's six query-surface functions carry no "
+        "match-state argument to resolve that against — an architecture question, not a "
+        "transcription fix."
+    ),
+    what_would_close_it=(
+        "adding a per-technology-researched match-state argument to query.py's query surface, "
+        "an architecture change out of scope for this feature."
+    ),
+    gap_tuples=(
+        ("unit", "38", "production_time", "Franks", "effect-not-modelled"),
+        ("unit", "448", "production_time", "Franks", "effect-not-modelled"),
+    ),
+)
+
+#: **Persians' "Town Centers and Docks ... work +5/10/15/20% faster in Dark/Feudal/Castle/
+#: Imperial Age"** (building 621, the Town Center variant recording 2's Persians participant
+#: actually places) is genuinely age-scaled, the same shape as Franks' Castle discount above: its
+#: magnitude depends on which age applies at query time, which a static rules query has no way to
+#: resolve. T652o (2026-09-23) found this bullet absent from `effects.toml` entirely and closed
+#: that transcription gap by recording the honest refusal. **1 tuple.**
+_PERSIANS_TOWN_CENTER_WORK_SPEED_IS_AGE_SCALED = _RecordingBlocker(
+    name="Persians' Town Center/Dock work-speed bonus is age-scaled (building 621)",
+    why_the_vendored_source_cannot_close_it=(
+        "'work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age' depends on which age "
+        "applies at query time, and query.py's six query-surface functions carry no "
+        "age/match-state argument to resolve that against — an architecture question, not a "
+        "transcription fix."
+    ),
+    what_would_close_it=(
+        "adding an age/match-state argument to query.py's query surface, an architecture "
+        "change out of scope for this feature."
+    ),
+    gap_tuples=(("building", "621", "production_time", "Persians", "effect-not-modelled"),),
+)
+
+#: FR-022b's closed list: exactly the four blockers above, none other (T652o: up from two — the
+#: third review's own finding added Franks' Chivalry and Persians' Town-Center/Dock work-speed,
+#: both absent from `effects.toml` entirely before this task; T652m's own two are unchanged).
+#: Referenced by the test below both for the flattened set-equality assertion and, in a failure
+#: message, by name.
+_RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = (
     _FRANKS_CASTLE_COST_IS_AGE_SCALED,
     _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK,
+    _FRANKS_CHIVALRY_IS_CONDITIONAL_ON_RESEARCH,
+    _PERSIANS_TOWN_CENTER_WORK_SPEED_IS_AGE_SCALED,
 )
 
 #: The flattened union of every blocker's `gap_tuples` — what recording 2's observed blocking
-#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 12 = 13 tuples
-#: (T652m: down from 15 — the removed Gurjaras blocker's 2 tuples are gone, not replaced).
+#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 12 + 2 + 1 = 16
+#: tuples (T652o: up from 13 — see the note above).
 _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_2_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -335,7 +438,7 @@ _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 @pytest.mark.parametrize(
     ("golden_path", "expected_blocking"),
     [
-        (_GOLDEN_CANONICAL_STREAMS[0], frozenset()),
+        (_GOLDEN_CANONICAL_STREAMS[0], _RECORDING_1_ENUMERATED_BLOCKING_GAPS),
         (_GOLDEN_CANONICAL_STREAMS[1], _RECORDING_2_ENUMERATED_BLOCKING_GAPS),
     ],
     ids=[path.stem for path in _GOLDEN_CANONICAL_STREAMS],
@@ -359,24 +462,31 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     this snapshot's coverage is real but partial (e.g. entities neither committed recording trains
     a discount for). Only **blocking** severity is SC-007a's claim.
 
-    **Recording 1 genuinely passes, with no marker at all**: it plays Saracens versus Malians
-    (T652m, corrected from the previously committed, wrong Byzantines/Koreans). Neither
-    civilisation's own `modelled = "no"` effects touch a query-surface field this recording's
-    players actually reference (each such effect's `field` is untracked — `hp`, `attack`,
-    `gold_dropoff_bonus`, `pierce_armor` — so `coverage.py`'s six-field pass never matches one),
-    and each civilisation's one modelled cost effect (Saracens' Market, Malians' buildings)
-    applies cleanly to every building either player places, so its blocking gaps must equal the
-    empty set, exactly.
+    **Recording 1 is no longer zero (T652o, 2026-09-23).** It plays Saracens versus Malians
+    (T652m, corrected from the previously committed, wrong Byzantines/Koreans). Every one of
+    Saracens' and Malians' other `modelled = "no"` effects still touches no query-surface field
+    this recording's players actually reference (each such effect's `field` is untracked — `hp`,
+    `attack`, `gold_dropoff_bonus`, `pierce_armor`, `fires_arrows_ungarrisoned` — so `coverage.py`'s
+    six-field pass never matches one), and each civilisation's one modelled cost effect (Saracens'
+    Market, Malians' buildings) still applies cleanly to every building either player places.
+    **But** the third review found Malians' Team Bonus "Universities work +80% faster" had been
+    dismissed as touching no tracked field, when it touches production_time, and recording 1's
+    Malians participant researches four University technologies (47, 50, 93, 140) — so its own
+    blocking gaps now asserts set equality against `_RECORDING_1_ENUMERATED_BLOCKING_GAPS`
+    (FR-022b), the same discipline recording 2 already used, rather than the empty set a hollow
+    transcription used to make true.
 
     **Recording 2 asserts set equality against `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`**
-    (FR-022b), not `xfail`: the two real, permanent reasons named by `_RECORDING_2_BLOCKERS`
+    (FR-022b), not `xfail`: the four real, permanent reasons named by `_RECORDING_2_BLOCKERS`
     below (T652m removed a third, Gurjaras' team bonus, once Gurjaras was found to be in neither
     committed recording — the slot it used to be attributed to is Persians, which has no
-    equivalent effect touching that slot's own entities) are data a set-equality assertion checks
-    in both directions — a blocker closing leaves an enumerated tuple with no observed match, and
-    an unenumerated blocking gap (a real transcription defect, per FR-022b) leaves an observed
-    tuple with no enumerated match. Either failure names the mismatched tuple directly, so a stale
-    entry or a further blocker cannot hide behind a single `reason=` string the way a marker would.
+    equivalent effect touching that slot's own entities; T652o added two more, Franks' Chivalry and
+    Persians' Town-Center/Dock work-speed, both absent from `effects.toml` entirely before this
+    task) are data a set-equality assertion checks in both directions — a blocker closing leaves an
+    enumerated tuple with no observed match, and an unenumerated blocking gap (a real transcription
+    defect, per FR-022b) leaves an observed tuple with no enumerated match. Either failure names the
+    mismatched tuple directly, so a stale entry or a further blocker cannot hide behind a single
+    `reason=` string the way a marker would.
     """
     from aoe2stats_knowledge import coverage, gaps
 

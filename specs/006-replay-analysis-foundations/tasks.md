@@ -989,7 +989,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       without evidence that Relic uses it — `civilizations.py`'s own header records that its first
       table was confidently wrong in exactly that way
 
-- [ ] T652o [US2] **Sweep every bonus of all six civilisations — the transcription silently dropped
+- [x] T652o [US2] **Sweep every bonus of all six civilisations — the transcription silently dropped
       the ones that touch a tracked field, and recording 1's zero is hollow because of it.** The
       third review found Malians' Team Bonus *"Universities work +80% faster"* dismissed in
       `effects.toml` as touching no tracked field. It touches `production_time`: a technology's

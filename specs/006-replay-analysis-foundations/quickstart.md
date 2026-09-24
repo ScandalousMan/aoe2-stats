@@ -106,9 +106,10 @@ modelled and expect a gap with cause `civilisation-not-modelled`, never the base
 with cause `no-snapshot-for-build`.
 
 **SC-007a** — the coverage pass over every committed recording reports no blocking gap outside
-FR-022b's enumerated list; recording 1 is clean, recording 2's two source-limited blockers are held
-by a strict expectation that fails the day any of them is closed. **SC-007** — the test that removes
-a field sees exactly the dependent data withheld.
+FR-022b's enumerated list; recording 1's one source-limited blocker (Malians' team-wide University
+bonus) and recording 2's four are each held by a strict expectation that fails the day any of them
+is closed, or the day an unenumerated one appears. **SC-007** — the test that removes a field sees
+exactly the dependent data withheld.
 
 **SC-006** — the suite above ran with the network blocked; a knowledge query that touched a socket
 would have raised.
