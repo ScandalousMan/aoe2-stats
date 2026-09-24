@@ -7,16 +7,19 @@
 # (Byzantines, Koreans, Franks, Persians, Teutons, Gurjaras), and T652m (2026-09-23) found the
 # `[[civilisation_id]]` table wrong at four of six raw ids: Byzantines, Koreans and Gurjaras are in
 # neither committed recording at all, and the real six are Franks, Teutons, Persians, Saracens,
-# Malians and Tatars. `digest` below is T652m's recomputed digest over `rules.json` (unchanged) and
-# the corrected, six-civilisation `effects.toml`. `civilisations_modelled` now names the real six;
-# see `effects.toml`'s own header comment for the full correction and why `test_query.py`'s
-# unrelated "always-unmodelled" example still uses Britons (confirmed absent from both committed
-# recordings, unaffected by this correction).
+# Malians and Tatars. `civilisations_modelled` names the real six; see `effects.toml`'s own header
+# comment for the full correction and why `test_query.py`'s unrelated "always-unmodelled" example
+# still uses Britons (confirmed absent from both committed recordings, unaffected by that
+# correction). `digest` below is T652o's recomputed digest (2026-09-23) over `rules.json`
+# (unchanged) and `effects.toml`, which grew from T652m's transcription to account for every
+# bullet of all six civilisations' vendored prose — see `effects.toml`'s own header comment for
+# the full correction (`packages/knowledge/tests/test_bullet_coverage.py` is the test that now
+# asserts this class of omission cannot recur).
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:1bbd3e4a6c5823b6b64f44f7a5884f908cecf84df48d0460cde30a82b16d2755"
+digest = "sha256:4c4d717d596b19b4dec2d63df56317c33a944177369796be66dc3885f11793dc"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

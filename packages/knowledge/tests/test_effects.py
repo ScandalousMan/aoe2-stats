@@ -441,6 +441,120 @@ def test_the_real_franks_mill_technology_discount_applies_through_the_committed_
     assert applied[0].modelled == "yes"
 
 
+# ------------------------------------- T652o: "free" grants a technology, never merely prices it
+
+
+@pytest.mark.parametrize(
+    ("civilisation", "technology_id", "baseline_time"),
+    [
+        ("Franks", "12", 70),  # Crop Rotation, "Mill technologies free"
+        ("Teutons", "322", 35),  # Murder Holes, "Murder Holes, Herbal Medicine free"
+        ("Tatars", "437", 45),  # Thumb Ring, "Thumb Ring, Parthian Tactics free"
+    ],
+)
+def test_a_free_technology_also_drives_production_time_to_zero(
+    civilisation: str, technology_id: str, baseline_time: int
+) -> None:
+    """T652o (mid-task correction, repository owner): a technology a civilisation bonus makes
+    "free" is granted automatically on reaching its own baseline age_requirement, never manually
+    researched — so the cost being zero is only half the bonus; the player also spends no
+    research time at all. Cost-only was itself the FR-038 half-applied substitution research.md D5
+    forbids, the same shape the third review found in Malians' University bonus."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation=civilisation,
+        kind="technology",
+        id=technology_id,
+        field="production_time",
+        value=baseline_time,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == 0
+    assert len(applied) == 1
+    assert applied[0].modelled == "yes"
+    assert applied[0].field == "production_time"
+
+
+@pytest.mark.parametrize(
+    ("civilisation", "technology_id", "baseline_time"),
+    [
+        ("Teutons", "12", 70),  # Crop Rotation is Franks-only, not Teutons'
+        ("Persians", "437", 45),  # Thumb Ring is Tatars-only, not Persians'
+        ("Franks", "322", 35),  # Murder Holes is Teutons-only, not Franks'
+    ],
+)
+def test_a_free_technology_grant_does_not_leak_to_a_different_civilisation(
+    civilisation: str, technology_id: str, baseline_time: int
+) -> None:
+    """The mirror of the parametrized test above: a civilisation this file does not grant the
+    technology to free must still answer the real, un-adjusted baseline research time — proving
+    the new `production_time = 0` effects are matched by civilisation, not merely by technology
+    id."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation=civilisation,
+        kind="technology",
+        id=technology_id,
+        field="production_time",
+        value=baseline_time,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == baseline_time
+    assert applied == ()
+
+
+def test_the_real_malians_university_team_bonus_is_not_modelled() -> None:
+    """The third review's own finding (T652o, 2026-09-23): "Universities work +80% faster" touches
+    production_time — a technology's research time is its production_time — and was silently
+    dismissed as untracked before this task. It is team-wide (research.md D5), so the fix is a
+    refusal, not an arithmetic adjustment: recording 1's own blocking-gap count depends on this
+    refusal being real (`test_coverage.py`'s `_MALIANS_UNIVERSITY_TEAM_BONUS_IS_TEAM_WIDE`)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Malians",
+        kind="technology",
+        id="47",
+        field="production_time",
+        value=100,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+    assert "team" in result.reason.lower()
+
+
+def test_the_real_franks_chivalry_bonus_is_not_modelled() -> None:
+    """ "Chivalry (Stables work +40% faster)" is a Castle unique technology (conditional on match
+    state, research.md D5) — absent from `effects.toml` entirely before this task, the third
+    review's own finding."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Franks",
+        kind="unit",
+        id="38",
+        field="production_time",
+        value=30,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+    assert "research" in result.reason.lower()
+
+
+def test_the_real_persians_town_center_work_speed_bonus_is_not_modelled() -> None:
+    """ "Town Centers and Docks ... work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age" is
+    age-gated (research.md D5) — absent from `effects.toml` entirely before this task, the third
+    review's own finding."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Persians",
+        kind="building",
+        id="621",
+        field="production_time",
+        value=150,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+    assert "age" in result.reason.lower()
+
+
 def test_the_real_persians_parthian_tactics_age_requirement_applies() -> None:
     """Persians: "Parthian Tactics available in Castle Age" lowers the technology's own baseline
     age requirement (4, Imperial — the same numbering unit 358 "Pikeman" = 3 and unit 359
