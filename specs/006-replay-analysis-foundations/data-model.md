@@ -137,6 +137,7 @@ edited (FR-025); a correction is a new snapshot.
 | `field`        | Which knowledge field it modifies.                                                    |
 | `operation`    | Closed: `multiply`, `add`, `set`.                                                     |
 | `operand`      | The amount, per resource where the field is a cost.                                   |
+| *rounding*     | Every field this package models is an integer (a cost, a time, an age requirement), so an operation landing on a fraction must still answer one. `multiply` and `add` both **round half up** on the resulting amount — Malians' -15% wood takes a 150-wood Dock to 128, not 127. `set` is a direct replacement, not a fractional derivation, so there is nothing to round — but the result is still typed as an int, never the raw operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
 | `validated_by` | The second reading that confirmed it (FR-030).                                        |
 
 **Source disagreement** (FR-028) — entity, field, build, each source's value, which one was stored,
@@ -150,7 +151,7 @@ One absent required field (FR-035 to FR-039).
 | -------------- | -------------------------------------------------------------------------------------- |
 | `entity`       | Kind and identifier.                                                                   |
 | `field`        | The knowledge field that was asked for.                                                |
-| `build`        | The recording's game build.                                                            |
+| `build`        | The recording's game build. **`-1` where the stream named none at all** — the column is not nullable and `cause` is closed, so a sentinel is the only honest answer left; it cannot collide with a real build or with the test stub's `describes_build = 0`. FR-039's rate report must not show it as a build (T662). |
 | `civilisation` | The civilisation the query was qualified by, where it was.                             |
 | `cause`        | Closed: `no-snapshot-for-build`, `entity-absent`, `field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. |
 | `prevents`     | The register data that need this field, by id — what the gap stops, not that it exists (FR-036). Computed. |

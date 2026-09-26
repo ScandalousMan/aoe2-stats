@@ -52,9 +52,16 @@ Full reasoning and evidence: [research.md](./research.md).
 **Language/Version**: Python 3.13. No TypeScript source change: the web reader already accepts the
 next document version structurally, and gains one test that pins it.
 
-**Primary Dependencies**: None added at runtime. `packages/core` stays dependency-free — the
-register is TOML, read with the standard library. The new `packages/knowledge` depends on
-`aoe2stats-core` only. `aoe2rec-py` stays pinned where it is, inside `packages/replay-engine`.
+**Primary Dependencies**: No third-party dependency added at runtime. `packages/core` stays
+dependency-free — the register is TOML, read with the standard library. The new `packages/knowledge`
+depends on `aoe2stats-core` only. `aoe2rec-py` stays pinned where it is, inside
+`packages/replay-engine`. One intra-workspace edge **is** added, in phase 5: `apps/analyzer` gains
+`aoe2stats-knowledge`, and it must be declared on that application's own manifest rather than left
+to workspace membership. The deployed function installs from the root manifest's
+`[project].dependencies`, which names `aoe2stats-analyzer`; a dependency the analyzer does not
+declare is one Vercel never installs, which is the 2026-09-04 fault `apps/analyzer/pyproject.toml`'s
+header already records. `scripts/checks/api_entrypoint_deps.py` does not cover it — it reads only
+the module-scope imports of files under `api/`, and this edge is one hop below them.
 
 **Storage**: Object store only, through `packages/storage`. The published analysis document gains
 an identity-addressed key. One additive table, `analysis_knowledge_gaps`, for the aggregate gap
@@ -84,7 +91,7 @@ never retained past the fold. The wheel materialises it before this code runs, w
 can change, and peak memory is measured, not inferred from the input-size refusal (research D10). No scheduled job, no request-path work, nothing that draws on the capture budget
 (FR-049). No network at build, test or run time. No default, average or neighbouring value, ever.
 
-**Scale/Scope**: 6 user stories, 52 functional requirements, 14 success criteria. One new package,
+**Scale/Scope**: 6 user stories, 53 functional requirements, 14 success criteria. One new package,
 two existing packages extended, one application touched at two functions. One vendored pack of three
 files, six hand-modelled civilisations in the first snapshot — two from the first fixture, four from
 the second, none shared (research D11). Five documents corrected. Five build phases and a closing
@@ -188,6 +195,7 @@ packages/knowledge/                    # NEW PACKAGE — depends on aoe2stats-co
 └── tests/
 
 apps/analyzer/
+├── pyproject.toml                     # + aoe2stats-knowledge, declared not inherited (phase 5)
 └── src/aoe2stats_analyzer/
     ├── extract.py                     # additive document version; identity; provenance; gaps
     └── run.py                         # identity-addressed result key; gap rows

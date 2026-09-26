@@ -189,7 +189,7 @@ the view fails the suite.
 **Story goal (US1)**: a reader can look up any datum and learn whether it can be known.
 **(US3)**: a tier is a property of a value, enforced by a type rather than by a habit.
 
-- [ ] T609 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/tiers.py`: the closed, ordered
+- [x] T609 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/tiers.py`: the closed, ordered
       tier set observed → decoded → reconstructed → derived → inferred → predicted (**FR-008**), as
       an enumeration with a total order, plus the weakest-input combinator that computes a result
       tier from its inputs' tiers. A caller must have **no way** to assert a tier stronger than its
@@ -197,29 +197,29 @@ the view fails the suite.
       deliberately **absent** from this enumeration: it is a register classification and nothing is
       ever published at it, which is why **FR-001** lists seven classifications and **FR-008** six
       tiers. Tiers with no producer in this feature exist from the start so that 007 adds no member
-- [ ] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
+- [x] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
       closed, ordered level set and a mandatory non-empty basis, constructed together. A number is
       **not accepted in any form** — no float field, no numeric coercion, no optional escape hatch —
       because a recording carries no outcome against which a probability could be calibrated, and an
       uncalibrated number is an invented value wearing a measured one's clothes. An empty or
       whitespace basis fails construction
-- [ ] T611 [P] [US3] Write `packages/core/tests/test_truth_types.py` covering T609 and T610 before
+- [x] T611 [P] [US3] Write `packages/core/tests/test_truth_types.py` covering T609 and T610 before
       either is implemented, `xfail(strict=True)`: the order is total; the combinator returns the
       weakest input; a confidence rejects a float, an integer, a numeric string and an empty basis;
       a confidence attached to a value at a tier above inferred is an error, because doubt advertised
       where the method admits none misleads in the other direction
-- [ ] T612 [US3] Create `packages/core/src/aoe2stats_core/truth/provenance.py` (**FR-009**): tier,
+- [x] T612 [US3] Create `packages/core/src/aoe2stats_core/truth/provenance.py` (**FR-009**): tier,
       method identifier and version, inputs, optional confidence, optional non-claim, bound to one
       register datum. Confidence is **required** at inferred and predicted and **forbidden** below
       (**FR-010**), enforced at construction. The method must name an algorithm in a form a reader
       can recompute — a free-text sentence is not one, so the field is an identifier plus a version
-- [ ] T613 [US1] Write `packages/core/src/aoe2stats_core/truth/register.toml` with the entry schema
+- [x] T613 [US1] Write `packages/core/src/aoe2stats_core/truth/register.toml` with the entry schema
       in [contracts/register.md](./contracts/register.md) and the entries that contract lists as
       mandatory (**FR-001**, **FR-002**). Every entry states its source, its method, the knowledge
       it requires, what it depends on and how it is validated, and its evidence is a **reference**
       into `docs/data-sources.md` or [research.md](./research.md) — never a restated number
       (**SC-013**). Include every leaf the published document carries today, at observed or decoded
-- [ ] T614 [US1] Add to `register.toml` the entries the spec names individually. Unit loss as
+- [x] T614 [US1] Add to `register.toml` the entries the spec names individually. Unit loss as
       **non-determinable** (**FR-004**), citing the absence of any damage or death event and the
       absence of a post-game statistics block, with its reason, its impact on the analytics that
       wanted it, the approximation that exists, `approximation_acceptable = "no"`, and the single
@@ -232,7 +232,7 @@ the view fails the suite.
       empty requirement set had better mean it. The starting-state data are **blocked** on the named
       decoder, **not non-determinable**: [research.md](./research.md) **D1** measured them present
       in the file, and the register is the one place that distinction has to be right
-- [ ] T615 [US1] Implement `packages/core/src/aoe2stats_core/truth/register.py`: the entry type and
+- [x] T615 [US1] Implement `packages/core/src/aoe2stats_core/truth/register.py`: the entry type and
       a loader that reads the TOML with the standard library, so `packages/core` keeps its
       zero-dependency rule. Loading **fails at import** on any of the eight refusals in
       [contracts/register.md](./contracts/register.md) — duplicate id, value outside a closed set, a
@@ -240,38 +240,52 @@ the view fails the suite.
       dependency, a dangling or cyclic dependency, a tier stronger than its weakest dependency, a
       published inferred entry with no confidence method, or empty evidence. Expose the dependency
       graph, which phase 4 reads to compute severity
-- [ ] T616 [P] [US1] Write `packages/core/tests/test_register.py` before T615, `xfail(strict=True)`:
+- [x] T616 [P] [US1] Write `packages/core/tests/test_register.py` before T615, `xfail(strict=True)`:
       one test per refusal, each **planting the defect itself** rather than asserting the happy
       path. A loader test that only loads the good file proves the file is good, not that the loader
       refuses anything — and the refusals are the whole product here
-- [ ] T617 [US1] Implement the view renderer in `register.py` and commit its output as
+- [x] T617 [US1] Implement the view renderer in `register.py` and commit its output as
       `packages/core/src/aoe2stats_core/truth/REGISTER.md` (**FR-006a**): grouped by classification,
       non-determinable entries first and in full, with a generated-file header naming its source.
       Add the drift test that renders in memory and compares byte for byte, failing with the
       regeneration command in its message. The file is filed **beside the package**, not under
       `docs/`, because its subject is this product's own data — `CLAUDE.md`'s filing rule sends a
       fact about a package to live next to what recomputes it
-- [ ] T618 [US1] Verify **SC-012** by hand and record the result in the task hand-back: open
+- [x] T618 [US1] Verify **SC-012** by hand and record the result in the task hand-back: open
       `REGISTER.md`, look up unit loss, and confirm — **without opening a Python file** — that it
       says why it cannot be known, what that costs, that the approximation is not acceptable, and
-      what would change the answer. If that read needs the source, the renderer is the defect
-- [ ] T619 [US3] Implement `packages/core/src/aoe2stats_core/truth/validate.py` with the ten rules in
+      what would change the answer. If that read needs the source, the renderer is the defect.
+      **Re-verified 2026-09-22 (T652i)**: `REGISTER.md`'s `## Non-determinable (1)` section, entry
+      `participant.units_lost`, states all four without opening a Python file — why: "the operation
+      stream is player intent only: it carries no damage event, no death event and no completion
+      event, and the post-game operation carries no statistics block, so no field of the file
+      states that any unit died"; cost: "no casualty count, no army value over time, no trade
+      evaluation, and no military-strength dimension that needs either; the analytics that wanted
+      them are not degraded, they are absent"; not acceptable: `approximation_acceptable: no`; what
+      would change it: "a recording format that carries outcome events or a post-game statistics
+      block"
+- [x] T619 [US3] Implement `packages/core/src/aoe2stats_core/truth/validate.py` with the ten rules in
       [contracts/analysis-document.md](./contracts/analysis-document.md), against the document shape
       that exists today — the identity, inferred and gap blocks arrive in later phases and their
       rules are written now and exercised against hand-built documents. Rules 1 and 2 are
       **FR-006** and **FR-007**: every leaf resolves to exactly one published datum, and every datum
       present carries a provenance entry. Rule 5 is **FR-010**; rule 6 is **FR-011**
-- [ ] T620 [P] [US3] Write `packages/core/tests/test_validate.py` before T619, `xfail(strict=True)`.
+- [x] T620 [P] [US3] Write `packages/core/tests/test_validate.py` before T619, `xfail(strict=True)`.
       **SC-003** is tested the way it is worded — a coaching-style conclusion placed in a field typed
       observed, decoded and reconstructed, rejected **each time it is attempted**, which is once per
       tier boundary and not once overall. **SC-001**: a document carrying a leaf with no register
       entry is rejected. **SC-002**: a document with a value missing its tier, and one with an
       inferred value missing its confidence or its basis, are both rejected
-- [ ] T621 [US1] Verify the drift gate bites: edit one impact line in `register.toml`, run the
+- [x] T621 [US1] Verify the drift gate bites: edit one impact line in `register.toml`, run the
       suite, confirm the view test fails and prints the regeneration command, regenerate, confirm
       green, and leave the register as it was. A gate nobody has seen fail is a gate nobody knows
-      the shape of
-- [ ] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
+      the shape of. **Re-verified 2026-09-22 (T652i)**: edited `participant.units_lost`'s `impact`
+      line in `register.toml`; `uv run pytest packages/core/tests/test_register_view.py -q` printed
+      `AssertionError: REGISTER.md has drifted from register.toml. Regenerate it with: uv run
+      python -m aoe2stats_core.truth.register` (1 failed, 3 passed); ran that exact command, reran
+      the same test file and got `4 passed`; restored the edited line and regenerated again —
+      `git diff --quiet` on both `register.toml` and `REGISTER.md` confirmed empty
+- [x] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
       module docstring and enforce it in T615's loader: a datum id states what was measured, never
       what a reader would like it to mean (**FR-012**) — commands rather than times, ordered rather
       than built. This is 003's **FR-043b** discipline applied to the whole vocabulary, and it is
@@ -295,7 +309,7 @@ after being produced through the new stream.
 
 **Story goal (US4)**: when the parser changes, the adapter changes and nothing above it does.
 
-- [ ] T623 [P] [US4] Create `packages/core/src/aoe2stats_core/replay/events.py`: the closed event
+- [x] T623 [P] [US4] Create `packages/core/src/aoe2stats_core/replay/events.py`: the closed event
       vocabulary and the source protocol in
       [contracts/canonical-events.md](./contracts/canonical-events.md). Every event carries a
       match-clock time, the participant it is attributed to, its kind and its tier (**FR-016**), and
@@ -305,10 +319,10 @@ after being produced through the new stream.
       text**: the text is personal data this feature has no use for, and leaving it out of the
       vocabulary keeps constitution IX out of this seam entirely. Declare the two starting-state
       kinds **without a producer** (**FR-020**), so the day the decoder lands no type changes
-- [ ] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
+- [x] T624 [P] [US4] Write `packages/core/tests/test_events.py` before T623, `xfail(strict=True)`:
       every kind has a tier; an event without a participant is constructible only for the
       match-level kinds; the two declared-only kinds exist as types
-- [ ] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
+- [x] T625 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`: a
       generator mapping the wheel's operations to canonical events in **one pass, with no copy and
       nothing retained past the fold** (**FR-021**). Be exact about what that guarantees: the wheel
       has already materialised every operation before this code runs, which is where the resident
@@ -326,16 +340,18 @@ after being produced through the new stream.
       not a silent one. Neither committed recording shows a player resigning while the match runs on
       at length ([research.md](./research.md) **D11**), so test the exit rule on a synthetic stream
       as well
-- [ ] T626 [US4] Represent every **action** the adapter does not decode as an `undecoded` event
+- [x] T626 [US4] Represent every **action** the adapter does not decode as an `undecoded` event
       carrying the engine's own label and the payload length, never dropped and never guessed at
       (**FR-019**). Command kinds that arrive without decoded unit ids — formation, stance, patrol,
       stop and the rest — are emitted as `units-commanded` with an **empty** id list, never an
-      inferred one. Add the conservation test over every committed recording: emitted events, plus
-      sync and view-lock operations, equal the operation count the wheel reports. The second
+      inferred one. Add the conservation test over every committed recording: every operation the
+      wheel reports is an emitted event or is counted in a named drop category — sync, view-lock,
+      collapsed, after-exit, unseated. Two terms cannot balance it, because **FR-018**'s collapse
+      and the exit rule both remove operations by design. The second
       recording carries an action kind the wheel itself cannot name, so this rule has a live
       instance to assert on. A silent drop is the failure mode that cannot be found later, because
       nothing downstream knows to miss it
-- [ ] T626a [US4] Write the market and deletion decoders in
+- [x] T626a [US4] Write the market and deletion decoders in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, in the placement decoder's
       mould (**FR-014**). The wheel returns sell, buy and delete as raw byte payloads, so direction,
       resource, amount and the deleted object's id must be derived **empirically** — sweep the byte
@@ -345,7 +361,7 @@ after being produced through the new stream.
       inferred quantity. If a field cannot be pinned with confidence, emit the event without it and
       register the field as blocked — a guessed amount at the decoded tier is the precise lie this
       feature exists to prevent. Test first, `xfail(strict=True)`
-- [ ] T626b [US4] Decode the chat channel in
+- [x] T626b [US4] Decode the chat channel in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`. The channel sits inside the
       same JSON string as the message text, so the text cannot be avoided on the way to it: parse,
       keep the channel and the participant, and **discard the text at the adapter**. Assert that no
@@ -353,13 +369,13 @@ after being produced through the new stream.
       line this module emits — the text is personal data this feature has no use for, and
       constitution IX is kept out of this seam by that assertion, not by intention. Chat carries no
       time of its own and takes T625's accumulated clock
-- [ ] T627 [US4] Populate the engine dependency record inside the adapter (**FR-044**) from installed
+- [x] T627 [US4] Populate the engine dependency record inside the adapter (**FR-044**) from installed
       distribution metadata for the engine and each requirement it declares, and make an empty
       record a construction error. `apps/analyzer/src/aoe2stats_analyzer/extract.py` publishes an
       empty dependency map as a literal today, and the column to hold it has existed all along —
       this is the task that stops the document claiming to identify its engine while recording
       nothing (**SC-011** is asserted in phase 5, where the document carries it)
-- [ ] T628 [US4] Re-express the existing timeline extractor in
+- [x] T628 [US4] Re-express the existing timeline extractor in
       `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` as a fold over the canonical
       stream, and **prove the committed golden timeline comes back byte-identical**. `git status`
       shows `tests/fixtures/replays/AgeIIDE_Replay_500546441.timeline.json` untouched. Three things
@@ -373,33 +389,72 @@ after being produced through the new stream.
       pass: the fixtures README already carries that instruction and ADR-0001's own failure mode was
       a parser upgrade that silently changed what was being read. A diff here means the stream lost
       or altered something, which is the one thing this phase may not do
-- [ ] T629 [US4] Commit the canonical stream for each **committed** reference recording — one if T605
+- [x] T629 [US4] Commit the canonical stream for each **committed** reference recording — one if T605
       was taken, two otherwise — as a golden file under
       `tests/fixtures/replays/`, following the regeneration discipline the README already states for
       the timeline: regenerate only on an engine upgrade or a deliberate logic change, never by hand,
       and read and explain every diff it produces
-- [ ] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
+- [x] T629a [US4] Emit `match-started` from the adapter in
+      `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, as the first event of every
+      stream, at clock zero. [contracts/canonical-events.md](./contracts/canonical-events.md) lists
+      it as produced and nothing produces it: neither committed golden carries one, and the four
+      `event.match_started.*` register entries name a golden stream as their validation that does
+      not contain them. **Phase 4 cannot start without it** — the coverage pass collects every
+      participant's civilisation from the stream, every rule query requires one, and build
+      resolution needs the build; the only other route to those three is the wheel's header, read
+      from above the adapter, which **FR-015** forbids. Read the build, the resolved map, the lobby
+      presets and the seated participants from the header fields the timeline fold already reads,
+      unchanged (**FR-016**). Carry each civilisation as **the game's integer identifier, never a
+      name** — naming is the knowledge base's job — and change `ParticipantEntry.civilisation` in
+      `packages/core/src/aoe2stats_core/replay/events.py` to an integer to match: nothing
+      constructs that type today, so the change is free now and costs a golden regeneration later.
+      Observers and empty slots are absent, not present and silent. The event comes from the
+      header and corresponds to **no operation**, so the conservation test subtracts it by name;
+      do not let it pass by widening a tolerance. This is a deliberate logic change, so both
+      canonical goldens are regenerated under the README's discipline — the expected diff is one
+      event at the head of each file and its count, and anything else is a defect. **The timeline
+      golden stays byte-identical**: the fold ignores the new kind. Test first,
+      `xfail(strict=True)`: the first event of every committed recording's stream is
+      `match-started`, its participants equal the seated slots, and its build equals the one
+      `tests/fixtures/replays/README.md` records
+- [x] T629b [US4] Bind the adapter to the protocol
+      [contracts/canonical-events.md](./contracts/canonical-events.md) names as the seam
+      (**FR-015**). The protocol has no implementation and no importer today: the stream's entry
+      point takes an already-parsed recording, and the engine's name, version and dependency
+      record live in three places. Give `Aoe2RecExtractor` in
+      `packages/replay-engine/src/aoe2stats_replay_engine/aoe2rec.py` the dependency record from
+      T627 and an `events` method taking the archive's bytes — the same well-formedness and
+      input-size refusals as `extract`, then the parse, then the stream, never returning the
+      operations. Assert the binding with the protocol's own runtime check, so a drifted signature
+      fails a test and not a reader. **This is the entry point T632 extends the refusal test to**,
+      and the one object T653, T655 and T658 read the parser's three identity components from.
+      Test first, `xfail(strict=True)`
+- [x] T630 [P] [US4] Write the engine-independence test (**SC-009**): walk every payload type's field
       names and assert none appears in a deny-list **generated from the wheel's own output keys** across
       **every committed recording** — the two expose different action kinds, so a list built from one
       is blind to the other's keys — and that no payload carries a raw byte sequence, a byte offset or a length other
       than `undecoded`'s (**FR-017**). Generating the deny-list rather than writing it by hand is the
       point — a hand-maintained list tracks what someone remembered, and the wheel is what changes
-- [ ] T631 [P] [US4] Write the collapse test (**SC-010**): the age-up command the fixture's player
+- [x] T631 [P] [US4] Write the collapse test (**SC-010**): the age-up command the fixture's player
       issued twice by double-clicking appears once in the canonical stream. Assert over every
       committed recording rather than one, and assert the inverse too: repeated unit-queue commands
       are **not** collapsed, because a test that only checks collapse cannot see over-collapse
-- [ ] T632 [US4] Extend the existing input-size refusal test to the canonical entry point, **and add
-      a real peak-memory measurement beside it**. The existing test is named for the memory ceiling
-      and measures no memory: it asserts that an oversized input is refused, which says nothing
-      about what an accepted input consumes. This feature puts three accumulators on that path — the
-      stream's consumers, the group-silence state and the coverage pass — and the second recording's
-      object-id space is several times the first's. Measure peak allocation over every committed
-      recording through the full canonical path and record the ceiling the test asserts against,
-      with its derivation, in the test itself. Also assert the declared-only kinds are never emitted
+- [x] T632 [US4] Extend the existing input-size refusal test to the canonical entry point T629b
+      creates, **and add a real peak-memory measurement beside it**. The existing test is named for
+      the memory ceiling and measures no memory: it asserts that an oversized input is refused,
+      which says nothing about what an accepted input consumes. This feature puts three accumulators
+      on that path — the stream's consumers, the group-silence state and the coverage pass — and
+      the second recording's object-id space is several times the first's. **Only the first exists
+      at this task**: T633 and T648 each re-run this measurement when they add theirs and raise the
+      ceiling with the derivation, so a ceiling recorded here is a floor for two later tasks, not
+      the feature's. Measure peak allocation over every committed recording through the full
+      canonical path and record the ceiling the test asserts against, with its derivation, in the
+      test itself. Also assert the declared-only kinds are never emitted
       (**FR-020**): that is what makes the reserved vocabulary honest — the day a producer lands,
       this test is what changes, and no type does
-- [ ] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
-      group-control-lost observable, computed from commanded-unit events only, published at the
+- [x] T633 [US4] Implement `packages/replay-engine/src/aoe2stats_replay_engine/silence.py`: the
+      group-silence observable — register datum `participant.group_silence_episodes` — computed
+      from commanded-unit events only, published at the
       **inferred** tier with a confidence whose basis states the command intensity and the silence
       length for that instance (**FR-013**). **State its blind spot in the datum's method**: only
       move, interact and order carry decoded unit ids; formation, stance, patrol and stop do not, so
@@ -409,7 +464,13 @@ after being produced through the new stream.
       deletion and no market event and is never summed with either (**FR-014**). Its banding lives
       in the register entry's method, so changing it is a register change with a regenerated view,
       not a constant edit. **This is the datum a reader is most likely to misread as a loss
-      figure**, which is why the non-claim is a required field of the type and not a comment near it
+      figure**, which is why the non-claim is a required field of the type and not a comment near it.
+      Re-run T632's peak-memory measurement with this accumulator on the path and raise its ceiling
+      with the new derivation. In the same register edit, add `event.unit_unqueued.unit_id` and
+      `event.unit_unqueued.count` at observed and planned —
+      [contracts/register.md](./contracts/register.md) requires every kind's payload fields and T614
+      missed this one. Neither recording produces a cancellation, so its validation names the
+      synthetic cancellation test, not a golden
 
 **Checkpoint**: one vocabulary, no engine-shaped field, nothing dropped, and the golden timeline
 proves nothing was lost.
@@ -423,14 +484,17 @@ not know.
 
 **Independent test**: quickstart Phase 4. A discounted unit returns its civilisation-adjusted cost
 with the effect applied; an unmodelled civilisation returns a gap; the coverage pass over every
-committed recording reports no blocking gap.
+committed recording reports no blocking gap outside **FR-022b**'s enumerated list, and every entry on
+that list is held by a strict expectation.
 
 **Story goal (US2)**: the engine can ask the rules a question for a stated build and civilisation.
 **(US5)**: a missing rule stops the analysis instead of corrupting it.
 
-- [ ] T634 [US2] Create `packages/knowledge/` as a workspace member — `pyproject.toml` depending on
+- [x] T634 [US2] Create `packages/knowledge/` as a workspace member — `pyproject.toml` depending on
       `aoe2stats-core` only — and register it in the root `pyproject.toml` workspace list, its
-      `testpaths` and its mypy settings. **In the same change, narrow the two format globs in
+      `testpaths`, its mypy settings and the `known-first-party` list under the ruff isort settings —
+      the seven module names are enumerated there, and an eighth left out turns `ruff check` red on
+      this task's own commit. **In the same change, narrow the two format globs in
       `package.json`** to exclude `packages/knowledge/packs` and `packages/knowledge/snapshots`. The
       workspace format script globs every JSON file under `packages/` and ignores only what
       `.gitignore` names — a `.prettierignore` is not consulted, because the script passes its own
@@ -441,17 +505,17 @@ committed recording reports no blocking gap.
       every later pull request touching only this package runs no Python job at all, the failure that
       file's own comments already record twice. Update the root `pyproject.toml` comment that counts
       the workspace members
-- [ ] T635 [US2] Write `scripts/ops/import_knowledge_pack.py`: reads a **local checkout** of the
+- [x] T635 [US2] Write `scripts/ops/import_knowledge_pack.py`: reads a **local checkout** of the
       source at a stated commit and writes `packages/knowledge/packs/aoe2techtree/`. It opens no
       socket, and its header carries the same warning `scripts/ops/sync_map_thumbnails.py` does,
       plus the statement that automating the download is the moment a provider becomes mandatory
       (**FR-032**). Nothing in the running system, the build or the tests fetches a knowledge source,
       and the way that is guaranteed here is that no code performs a fetch at all
-- [ ] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
+- [x] T636 [US2] Vendor the pack at a pinned commit with its `LICENCE.md`, whose five fields are
       named **exactly** as `scripts/checks/asset_packs.py` matches them — `Source`, `Licence`,
       `Permitted usage`, `Ruling`, `Checked` (**FR-033**); a field written any other way fails the
-      gate as missing. The ruling leads with **COPY IN**, one of the two verdicts the gate
-      recognises. Only a source whose licence permits it is vendored (**FR-031**): this one is MIT.
+      gate as missing. The ruling leads with **COPY IN**, one of the two verdicts T637 makes the
+      gate require. Only a source whose licence permits it is vendored (**FR-031**): this one is MIT.
       Add a **third section** to `docs/asset-packs.md` for knowledge packs, as feature 005 added one
       for typefaces — the row does not belong in the game-assets table — and widen that document's
       opening scope sentence, which names game assets only. **State the residual risk once and do
@@ -461,7 +525,7 @@ committed recording reports no blocking gap.
       and the risk register's R7 records the residual — so cite both and restate neither. The flags
       pack records no such risk because it has no game-derived content; this pack is not in that
       position
-- [ ] T637 [US2] Extend the list of roots in `scripts/checks/asset_packs.py` and the `asset-packs`
+- [x] T637 [US2] Extend the list of roots in `scripts/checks/asset_packs.py` and the `asset-packs`
       paths filter in `.github/workflows/pr.yml`. That list holds **(root, size budget) pairs**, not
       bare paths, so each new root needs its own named budget constant with its own stated
       justification, as the two existing roots have. Add **two**: `packages/knowledge/packs`, and
@@ -469,22 +533,26 @@ committed recording reports no blocking gap.
       the package, so it is the one that most needs a ceiling and had none. Size each budget from
       the measured payload with stated headroom. The check is scoped by root today, so until both
       are added it neither sees the new pack nor runs when it changes, and constitution X is
-      enforced only where the gate looks. **Prove it bites**: drop one licence field, confirm the
-      check names the pack, restore it
-- [ ] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
+      enforced only where the gate looks. **Also make the gate refuse a ruling that leads with
+      neither verdict**: today its enforcement is a substring test for READ ONLY, the COPY IN
+      pattern is display-only, and any other string — a typo included — passes, so the two-verdict
+      claim the artifacts make is true of its label and false of its gate. **Prove it bites,
+      twice**: drop one licence field, confirm the check names the pack, restore it; then replace
+      the ruling's verdict with a stray word, confirm the refusal, restore it
+- [x] T638 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/snapshot.py`: the identity —
       source, source version, described build, content digest (**FR-024**) — loaded through
       `importlib.resources` so it works identically from a serverless bundle and a virtual
       environment. The digest is recomputed on load and a mismatch **refuses to load**. Publishing a
       new snapshot never modifies or removes an existing one (**FR-025**), and a test walks every
       committed snapshot directory asserting each file matches its recorded digest — which is how
       immutability is asserted rather than merely requested
-- [ ] T639 [US2] Implement the promotion sequence in `snapshot.py` (**FR-034**): source change, new
+- [x] T639 [US2] Implement the promotion sequence in `snapshot.py` (**FR-034**): source change, new
       pack revision, new unvalidated snapshot, recorded validation, promoted. Only a promoted
       snapshot is resolvable, and a promotion flag set with an empty validation record is refused.
       An unvalidated snapshot is never promoted, and no source is treated as authoritative without
       validation against the game or a second source, with the validation performed recorded
       (**FR-030**)
-- [ ] T640 [US2] Implement the normaliser producing `rules.json` from a pack: units, buildings,
+- [x] T640 [US2] Implement the normaliser producing `rules.json` from a pack: units, buildings,
       technologies, their costs, their training, construction and research times, their age
       requirements and prerequisites, civilisations, and the civilisation bonuses that modify any of
       the above (**FR-022**). A unit identifier may live in the source's unit table or its upgrade
@@ -492,12 +560,12 @@ committed recording reports no blocking gap.
       space and record which table each came from. Where the vendored pack and any second reading
       disagree on a field, record the disagreement and carry which source the stored value came from
       (**FR-028**) in `disagreements.toml`, rather than resolving it by precedence alone
-- [ ] T641 [US2] Implement build resolution (**FR-027**): exact match on the described build among
+- [x] T641 [US2] Implement build resolution (**FR-027**): exact match on the described build among
       promoted snapshots, or a gap with the no-snapshot cause. There is **no nearest, no latest and
       no fallback parameter** — the function must not accept one, because an argument that exists
       will be passed. A recording from a build with no snapshot is a gap with its own severity, not
       an analysis against a neighbouring snapshot
-- [ ] T642 [US2] Implement carry-forward in `snapshot.py` per [research.md](./research.md) **D4**:
+- [x] T642 [US2] Implement carry-forward in `snapshot.py` per [research.md](./research.md) **D4**:
       a snapshot may describe a build later than the revision it was imported from, only when its
       validation record lists **every** intervening build with the notes consulted, where they were
       read, the date, and the reading. A build missing from that list makes the snapshot
@@ -506,7 +574,7 @@ committed recording reports no blocking gap.
       the only committed recording cannot be analysed at all. Record the weakest link in the
       attestation — the fixture's own build has no publisher page and its notes come from a
       secondary listing — **in the validation record, not in a comment**
-- [ ] T643 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/query.py` with the surface in
+- [x] T643 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/query.py` with the surface in
       [contracts/knowledge-base.md](./contracts/knowledge-base.md). `civilisation` is **keyword-only
       and required** on every rule query, so there is no way to ask for a generic value and therefore
       no way to be handed one (**FR-023**). Every answer carries the snapshot identity that produced
@@ -514,7 +582,7 @@ committed recording reports no blocking gap.
       a union of answer and gap with **no third branch** — no bare value, no default parameter, no
       caught-and-continued gap anywhere in the package. **SC-008**'s "by construction rather than by
       inspection" is this signature, and T650 asserts it by introspection
-- [ ] T644 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/effects.py`: structured
+- [x] T644 [US2] Implement `packages/knowledge/src/aoe2stats_knowledge/effects.py`: structured
       civilisation effects — the civilisation, the verbatim source sentence and its key, whether it
       is modelled, an explicit identifier list rather than a fuzzy class name, the field, a closed
       operation, the operand, and the second reading that validated it. Transcribed by hand from the
@@ -522,7 +590,7 @@ committed recording reports no blocking gap.
       recorded. A bonus that is team-wide, gated on an age the recording cannot place, or
       conditional on state is recorded as **not modelled** with its reason, and its fields stay
       gapped — a bonus is never half-applied
-- [ ] T645 [US2] Model the civilisations that appear in the committed reference recordings, and only
+- [x] T645 [US2] Model the civilisations that appear in the committed reference recordings, and only
       those (**FR-022a**) — **six** with both fixtures committed, two from the first and four from the
       second with none shared ([research.md](./research.md) **D11**); two if T605 was taken. Both players in the first fixture trained units their civilisation
       discounts, so this is not an optional refinement: without it the one committed recording
@@ -530,37 +598,61 @@ committed recording reports no blocking gap.
       civilisation absent from the modelled set refuses **every** civilisation-qualified cost and
       time, because which fields its bonuses touch is precisely what is not known. Coverage grows by
       whole civilisations and the gap report is the backlog
-- [ ] T646 [P] [US2] Write `packages/knowledge/tests/test_query.py` before T643–T645,
+- [x] T646 [P] [US2] Write `packages/knowledge/tests/test_query.py` before T643–T645,
       `xfail(strict=True)`: a discounted unit returns its adjusted cost with the effect and its
       source sentence; the same unit for an unmodelled civilisation returns a gap and **never the
       baseline**; a build one higher than any snapshot describes returns a gap; asking without a
       civilisation is a type error. Two snapshots answer from their own contents and neither is
       silently upgraded to the other (**US2** scenario 2)
-- [ ] T647 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/gaps.py`: the gap record with
+- [x] T647 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/gaps.py`: the gap record with
       entity, field, build and affected civilisation (**FR-035**), a closed cause set, what it
       prevents by register datum id (**FR-036** — what it stops, not that something is missing), and
       a severity **computed** from the register's dependency graph, never supplied by a caller
-      (**FR-037**). Blocking when at least one register datum that is not itself blocked requires the
-      field; informational otherwise. [research.md](./research.md) **D7** is why this is computed:
+      (**FR-037**). Blocking when at least one register datum that is neither blocked nor
+      non-determinable requires the field, as **D7** words it; informational otherwise. The two
+      readings agree today only because no non-determinable entry names any knowledge.
+      [research.md](./research.md) **D7** is why this is computed:
       read naively, nothing this feature publishes depends on a cost, every gap would be
       informational, and **SC-007a** would pass vacuously
-- [ ] T648 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/coverage.py`: take a canonical
+- [x] T648 [US5] Implement `packages/knowledge/src/aoe2stats_knowledge/coverage.py`: take a canonical
       stream, collect every entity and every participant civilisation, and ask for every field any
       register datum requires. Its output is the gap list the document publishes. A blocking gap
       prevents publication of every value depending on it while leaving independent values
-      untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**)
-- [ ] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
+      untouched, and **no default, average or neighbouring value is ever substituted** (**FR-038**).
+      Re-run T632's peak-memory measurement with the coverage pass on the path — it is the last of
+      the three accumulators that measurement names — and raise its ceiling with the new
+      derivation. Implemented, tested and green: the peak-memory ceiling holds with the coverage
+      pass live on the path (still 900 MB, re-derived — the accumulator does not move it).
+      SC-007 (removing a required field) passes for real. **SC-007a passes for recording 1 and not
+      for recording 2.** Recording 1's only blocker was Koreans' archer-armor techs (211/212/219),
+      recorded `modelled = "no"` — a 2026-09-20 remediation of this hand-back re-measured it, found
+      the recording's own use unconditional and the classification simply wrong, corrected
+      `effects.toml`, and that case now carries no marker at all. Recording 2's three blockers are a
+      different kind and this task cannot fix them inside its own editable scope: Franks' Castle
+      cost discount (building 82) is age-scaled and `query.py` has no age argument to resolve it
+      against; Gurjaras' camel/elephant bonus (units 1755, 239) is a team bonus by the pack's own
+      text and correctly stays unmodelled; and two building ids (490, 673) are absent from the
+      vendored pack entirely (Gate/wall-segment variants `aoe2techtree`'s own `data.json` never
+      enumerates). See `test_coverage.py`'s own `xfail` marker on
+      `test_each_committed_recording_reports_zero_blocking_gaps` for the full citation.
+      **No follow-up task owns closing this, because none can**: `/speckit-analyze` (2026-09-21) found that each of recording 2's three blockers is a
+      limit of the one lawful vendored source, not a hole in this feature's transcription, and the
+      requirement was amended to match rather than a task written that would have to fail. That is
+      **FR-022b** — the exception is a closed, enumerated list held by `test_coverage.py`'s own
+      `xfail(strict=True)`, which turns red the day any entry is closed
+- [x] T649 [P] [US5] Write `packages/knowledge/tests/test_coverage.py` before T648,
       `xfail(strict=True)`. **SC-007**: remove a required field from an in-memory copy of a snapshot,
       run the pass, and assert exactly the dependent values are withheld, a gap names the entity,
       field, build and civilisation, and every independent value is still produced. **SC-007a**: the
-      pass over each committed recording reports zero blocking gaps. **FR-039**'s aggregate is
-      asserted in T652
-- [ ] T650 [P] [US5] Write the structural tests that make refusal a property of the code rather than
+      pass over each committed recording reports zero blocking gaps outside **FR-022b**'s enumerated
+      list, parametrized per recording so a recording that is clean stays clean. **FR-039**'s
+      aggregate is asserted in T652
+- [x] T650 [P] [US5] Write the structural tests that make refusal a property of the code rather than
       a habit: introspect every public query in the package and assert its return type is the
       answer-or-gap union (**SC-008**); assert no module in `packages/knowledge` imports a network
       library; and assert the whole package's tests pass with the network blocked (**SC-006**,
       **FR-026**), which `tests/conftest.py` already enforces at the socket workspace-wide
-- [ ] T651 [US2] Add the source assessments to `docs/data-sources.md` as a new section, one
+- [x] T651 [US2] Add the source assessments to `docs/data-sources.md` as a new section, one
       subsection per source assessed in [research.md](./research.md) **D3** (**FR-029**): scope,
       reliability, update mechanism, version identifier, coverage, known limitations and the date the
       assessment was made. Record the rejections and **why**, including that the two community
@@ -568,7 +660,7 @@ committed recording reports no blocking gap.
       and that the game's own data file is barred by the publisher's usage rules. This section also
       finally gives feature 002's licence rulings a living home — 002's own register was never
       written, and they survive today only in a frozen task list and a module docstring
-- [ ] T652 [US5] Add `analysis_knowledge_gaps` to `packages/storage/src/aoe2stats_storage/models.py`
+- [x] T652 [US5] Add `analysis_knowledge_gaps` to `packages/storage/src/aoe2stats_storage/models.py`
       per [data-model.md](./data-model.md) §7. **The table is the aggregate** (**FR-039**): one
       repository function grouping by build, cause and severity over a window, and one check script
       under `scripts/checks/` that prints the rate. Do **not** mirror the ingester's quarantine
@@ -576,7 +668,374 @@ committed recording reports no blocking gap.
       analyzer has no run, no counters and no logger to attach one to; inventing a run concept for
       this would be a second table the data model says this feature does not have. A pattern of gaps
       introduced by a game patch must be visible as a rate, not discovered one analysis at a time.
-      The table holds no personal data: a participant is not a column
+      The table holds no personal data: a participant is not a column. **Two consequences of the
+      migration living in T663 and not here, recorded rather than discovered**: this phase is green
+      and mergeable — the revision test compares the expected revision to the migrations head, not
+      the models to the database — but the repository function and the check script are dead code
+      in production until T663's revision is applied, and nothing may call either before then.
+      That is also why the script is wired into the nightly workflow by T663 and not by this task:
+      a nightly job against a table that does not exist would fail for the whole gap between the
+      two phases
+- [x] T652a [US2] **Rename the committed snapshot directories to honest labels, before phase 5
+      publishes anything that names one.** Three directories exist and the production one is called
+      `aoe2techtree-fixture-promoted`: it is the promoted snapshot both committed recordings resolve
+      against, it carries neither the build it describes (180059) nor anything distinguishing it
+      from its sibling in a listing, and it calls itself a fixture. Its sibling
+      `aoe2techtree-fixture-promoted-177723` is test infrastructure for `test_query.py`, and
+      `aoe2techtree-fixture` is a `describes_build = 0` stub for T638's digest mechanism — both say
+      so in their own headers and neither is production data.
+      [contracts/knowledge-base.md](./contracts/knowledge-base.md)'s "On disk" section now states the
+      rule this breaks: a label is never parsed, but it MUST NOT describe a promoted production
+      snapshot as a fixture, and it MUST carry the build it describes, so a gap row or an object key
+      is readable without opening `snapshot.toml`. **The window is this phase**: nothing has
+      published yet, no analysis identity names a snapshot, and no object key carries one, so the
+      rename costs 34 references across seven test and source files today and is impossible after
+      T655 — **FR-025** makes a snapshot immutable the moment an analysis names it, and an operator
+      reading a gap row is then stuck with the word *fixture* for the life of the product. No digest
+      changes: `compute_digest` hashes `rules.json` and `effects.toml`, never the directory name, and
+      resolution is exact-match on `describes_build` among promoted snapshots, so nothing parses what
+      is being renamed. Update the reference in `docs/data-sources.md` §6 in the same change — it is
+      a living document and must be true today. **Where this rides**: phase 4's own pull request if
+      it is still open, because these directories are files that pull request creates and renaming
+      them there lands them on `main` under their final names with no rename in history; otherwise
+      it heads phase 5, which is the last stop before T655 publishes
+
+### Review remediation (pull request #90, `reviewer` REJECT 2026-09-21)
+
+The pre-merge review rejected phases 2-4 on spec compliance. Every finding below was re-verified
+against the code before being written down. **These block #90's merge**; T652a rides with them.
+Three were arbitration and are decided, with the decision recorded in the task that carries it.
+
+- [x] T652b [US2] **Put the coverage pass on `query.py`'s public seam, and fix what it reports when
+      it knows nothing.** Four findings, one file pair, one commit. (a) `coverage.py:356` returns
+      `()` when the stream carries no build, so `validate.py` rule 8 sees no blocker and the document
+      publishes everything — the spec's own edge case says an unresolvable build is a gap of
+      **blocking** severity, and `build is None` is the same ignorance. Emit it. (b) `_gap_for`
+      re-resolves `snapshot_for(build)` per `(entity, field)` and returns the same
+      `no-snapshot-for-build` gap each time — 612 of them on recording 1's stream. T662 would raise
+      on the second insert: `analysis_knowledge_gaps`' unique index is
+      `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))` and all five
+      are equal across those 612. Resolve the snapshot **once**, before the entity loop, emit exactly
+      one gap, return — and emit it whether or not the stream references any entity, which is the
+      other way **FR-027**'s gap currently goes unrecorded. (c) `coverage.py` imports
+      `_civilisations_modelled`, `_raw_value_for_field` and `_rules` from `query.py`, restates
+      `_civilisation_qualified`'s whole step order in `_gap_for`, and duplicates `_TIME_FIELDS`.
+      **Give `query.py` the field-presence check and a rules-override seam and call its six public
+      functions instead** — decided 2026-09-21 rather than left as duplication, because **SC-008**'s
+      "by construction rather than by inspection" is a claim about the answer-or-gap union being the
+      only route to a value, and the pass that actually produces the published gap list was not
+      taking it; `test_structure.py:42-46` excludes `coverage.coverage` from its own sweep, so the
+      guarantee was weaker than the test read. Remove that exclusion in this change. (d)
+      `load_all_snapshots` / `load_resolvable_snapshots` / `snapshot_for` carry no `functools.cache`
+      where `query._rules`, `query._civilisations_modelled` and `effects` all do, so one
+      `coverage()` re-read and re-digested three snapshots 612 times — 1.47 s, linear in entities,
+      inside the analyzer's function budget (**FR-049**, constitution I). Cache them. Test first for
+      each of (a) and (b), `xfail(strict=True)`; **state in the hand-back what each test printed when
+      run against the unfixed code** — a regression test that passed before the fix proves nothing
+- [x] T652c [US5] **Replace SC-007a's blanket `xfail` with the enumeration FR-022b actually asks
+      for.** Depends on T652b — both edit `test_coverage.py`. Today one
+      `xfail(strict=True, reason=_RECORDING_2_XFAIL_REASON)` sits over a body asserting
+      `blocking == []`, and a 26-line prose string stands in for the list. It fails **FR-022b** three
+      ways: closing one of the three blockers leaves the assertion failing and the marker holding, so
+      a stale entry is never signalled; the body never inspects *which* gaps came back, so a fourth
+      blocker from a real transcription defect — the thing FR-022b says MUST be closed and never
+      enumerated — hides behind the same marker forever; and a `reason=` string is asserted against
+      nothing. Replace it with a module-level tuple of **three** entries, each carrying
+      `(entity_kind, entity_id, field, civilisation, cause)` plus why the single vendored source
+      cannot close it and what would, and assert **set equality** between the observed blocking gaps
+      and that tuple. That assertion fails in both directions, which is the whole point, and the test
+      then passes for real with **no `xfail` at all**. Recording 1 keeps its unmarked, genuinely
+      passing case
+- [x] T652j [US2] **Correct `query.py`'s module docstring, which asserts the opposite of the data
+      committed beside it, and delete the guard it promises that was never written.** Three blocks —
+      `query.py:17-21`, `:45` and `:298` — say `civilisations_modelled` is `[]` on every promoted
+      fixture and that "T645 has not run". T645 ran in this same pull request:
+      `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml` names six civilisations, and
+      every one of the six queries answers for real — which is exactly what `test_coverage.py`'s
+      SC-007a case now depends on. Worse, `:21` documents a fail-loud mechanism that does not exist:
+      it says `_civilisation_qualified` "raises `NotImplementedError` if it is ever reached past
+      that check", and there is no `raise NotImplementedError` in the file — the string occurs once,
+      in that sentence. Either restore the guard or delete the promise; do not leave a reader
+      relying on it. This is the first thing the next agent reads before touching the query surface,
+      and it is the shape of defect this feature's whole register discipline exists to distrust — a
+      claim with nothing behind it. Missed when the review's findings were grouped into T652b–T652i
+      and added on 2026-09-22 once `test_query.py` and `test_effects.py` were found carrying the
+      same stale "T645 has not run" prose; sweep those two docstrings in the same change
+- [x] T652d [US4] **Stop an unfamiliar operation from losing the whole match, and stop the market
+      decoder publishing a scaled value at the exact tier.** (a) `canonical.py:530` raises
+      `EngineParseError` on an operation kind the adapter does not know, while an unknown *action*
+      degrades to `undecoded` correctly. **FR-019** sanctions two outcomes and aborting is neither:
+      the day a patch or a wheel upgrade adds one top-level kind, every replay in the corpus stops
+      analysing — the exact failure the canonical model exists to insulate against (`docs/risks.md`
+      R3). Emit `undecoded`, or add a named `unknown_operation` accounting term so the conservation
+      test still balances; keep the raise for a *malformed* operation, not an unfamiliar one. (b)
+      `_MARKET_STEP = 100` multiplies a payload count into an amount published at **decoded**, which
+      **FR-014** requires to be exact, while `register.toml:564` declares `requires_knowledge = []`
+      although the entry's own method admits the constant is not in the recording. **Decided
+      2026-09-21: publish the step count, not the amount.** The count is in the payload and is
+      exact; the multiplication is knowledge-qualified and belongs in 007's reconstruction layer,
+      where a versioned constant can gap. This keeps the decoded tier honestly exact and needs no
+      snapshot change. Rename the register entry and the payload field to say what is carried
+      (**FR-012**), and regenerate both canonical goldens under the README's discipline — the
+      expected diff is the market events' one field, and anything else is a defect
+- [x] T652e [US4] **Move the golden-regeneration tool out of the shipped package and put it on the
+      seam.** `packages/replay-engine/src/aoe2stats_replay_engine/canonical_golden.py` is in `src/`,
+      so it is in the wheel deployed to Vercel and the VPS, and it computes
+      `Path(__file__).parents[4] / "tests/fixtures/replays"` — a repository-relative path that exists
+      in neither, which constitution XII forbids. Move it under `scripts/ops/`. Worse, its
+      `live_serialisation` imports two private adapter functions and calls `canonical_events`
+      directly, bypassing `Aoe2RecExtractor.events()`, the `max_raw_bytes` ceiling and the
+      `CanonicalEventSource` protocol T629b exists to establish — so **every committed canonical
+      golden was produced through that bypass**, and `test_canonical_golden.py:40`,
+      `test_canonical.py:36`, `test_canonical_collapse.py:41` and `test_canonical_independence.py:26`
+      re-verify them the same way. The evidence for **FR-017**, **FR-018**, **FR-019**, **SC-009**
+      and **SC-010** never flows through the interface those requirements are about;
+      `test_extract.py`'s `isinstance` check proves the seam exists and nothing proves anything uses
+      it. Drive the tool and all four tests through
+      `Aoe2RecExtractor(max_raw_bytes=ANALYSIS_MAX_RAW_BYTES).events(zip_bytes)`. Depends on T652d —
+      they share every one of those test files
+- [x] T652f [US1] **Close the register's drift against the code and the contract it describes.** The
+      `event.unit_queued.producing_building` entry says `method = "read unchanged"`;
+      `canonical.py:222` keeps the first of several producing-building ids and discards the rest. The
+      register is the one document whose job is to be right about how a datum is produced
+      (**FR-002**), so state the narrowing. Separately,
+      [contracts/canonical-events.md](./contracts/canonical-events.md) lists four `unit-queued`
+      payload fields and `UnitQueuedPayload` carries four, while the register has three:
+      `building_type` has no entry, and [contracts/register.md](./contracts/register.md) requires
+      every kind's payload fields — under validator rule 1 that leaf resolves to nothing the moment
+      it is published. Same shape for `StartingObjectPayload`'s four fields collapsed into one
+      `event.starting_object.attributes`. Add the missing entries and regenerate `REGISTER.md`.
+      Depends on T652d — both edit `register.toml`
+- [x] T652g [US2] **Move the civilisation-id table into the snapshot, behind its digest.**
+      `coverage.py:196` hard-codes `_DEFAULT_CIVILISATION_NAMES`, mapping replay civilisation
+      integers to pack names. That is game knowledge: **FR-023** says every knowledge answer is
+      qualified by build and **FR-024** says a snapshot's contents are covered by its digest, and
+      this table is in neither — not in `rules.json`, not digested, not versioned, not in the
+      register. The numbering shifts when civilisations are added, and when it does a raw id
+      resolves to the **wrong modelled** civilisation and `cost` returns a confident wrong answer
+      with no gap, which the `unknown-civilisation-{id}` fallback does not catch because the id is
+      in the table and merely wrong. Put it in the snapshot and gap on an id the snapshot does not
+      name. Depends on T652a and T652b
+- [x] T652h **Gate the pinned source commit, which lives in five files and is asserted in none.**
+      `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0` appears in `docs/data-sources.md` §6,
+      `docs/asset-packs.md`, the pack's `LICENCE.md` and `MANIFEST.json`, and three `snapshot.toml`
+      files; the measurements derived from it — last-implemented build, commit, date, the
+      unimplemented builds — are restated in both `docs/data-sources.md` §6 and `snapshot.toml`.
+      Only `source_version` is functional and the rest are prose copies. `CLAUDE.md` is explicit
+      that a number in two files will be wrong in one, and that a living fact in `docs/` is
+      trustworthy only because a test asserts it — there is no test. Add one check under
+      `scripts/checks/` asserting all five agree, and wire it into the `python` job. Independent of
+      every other task here
+- [x] T652i **The documentation findings, which share no file with the code tasks.** (a)
+      `docs/data-sources.md` lines 119, 547 and 559 carry list-continuation text at column 0, which
+      terminates the bullet it belongs to. Line 119 is in §1's `slotinfo` decode — a section this
+      feature does not touch, damaged by a Prettier reflow riding in on `69ada014`, which also
+      flipped `*recent*` to `_recent_` at line 330. Repair the three bullets; a living document may
+      not be left broken by scope creep. (b) `scripts/checks/asset_packs.py:56` justifies the
+      snapshots budget as "a reasoned estimate, not a measurement, because the directory does not
+      exist yet" — it exists and measures 544 KB, and T637 asked for the measured payload with
+      stated headroom. Re-derive it. (c) **FR-030 was amended** 2026-09-21 to admit a second reading
+      of the same source through a different field where no independent source exists, which is what
+      `effects.toml`'s 16 `validated_by` fields actually do; make each of them name the two fields
+      read and say no independent source was available, so the record distinguishes the weak form
+      from the strong one. (d) T618 and T621 are marked `[x]` on verification claims with no artifact
+      on disk. The mechanisms are real and pass; re-run both by hand and record what they printed
+
+- [x] T652k [US5] **Dedupe the coverage pass by civilisation, not by slot — the duplicate-gap fix
+      closed one cause and left its siblings.** T652b resolved the snapshot once so an unresolvable
+      build emits one gap instead of 612, and the argument it was fixed on — that
+      `analysis_knowledge_gaps`' unique index is
+      `(identity_digest, entity_kind, entity_id, field, coalesce(civilisation_id, ''))`, so
+      identical rows collide on T662's second insert — **was never carried to the other causes**.
+      `coverage.py:236-251` keys `entities_by_slot` by **slot** and emits one gap per
+      (slot, entity, field), so two seated participants on the same civilisation referencing the
+      same entity emit N identical gaps. Reproduced against the real packaged snapshot by forcing
+      recording 2's four slots onto one civilisation: **16 gaps, 13 distinct, `('building', '82',
+      'cost', 'Franks')` four times**, every copy equal on all five index columns. Neither committed
+      recording can see it — both seat four distinct civilisations — and a mirror matchup or any
+      team game with two players on one civilisation is ordinary. A query result depends on
+      `(entity, civilisation, build)` and never on the slot, so collect per civilisation name, or
+      dedupe on the index's own key before returning. **Test it with two slots on one civilisation
+      and assert `len(result) == len(set(...))`**, not merely that a gap exists — the defect is
+      duplication and "at least one" cannot see it, which is the same trap T652b's own test had to
+      avoid. **In the same change, close the guard that was supposed to prevent this class**:
+      `packages/knowledge/tests/test_structure.py:224-256` walks for `ast.ImportFrom` with
+      `module == "aoe2stats_knowledge.query"`, but `coverage.py:125` is
+      `from aoe2stats_knowledge import ... query ...` and calls by attribute — so it forbids exactly
+      the form T652b removed and cannot see the form T652b introduced. Writing
+      `query._civilisation_qualified(...)` into `coverage.py` passes it today, while its docstring
+      claims every gap came from the public functions. Walk `ast.Attribute` whose value is
+      `Name(id="query")` and whose `attr` starts with `_`, and fail on any
+- [x] T652l [US2] **SUPERSEDED by T652m, which carried both corrections.** Kept for the trail: it was dispatched, handed back, and reverted uncommitted when verifying it found the civilisation misidentification. **Correct two false measurements now frozen behind a snapshot digest.** Both live
+      in `effects.toml`, in both promoted snapshots, which are byte-identical and must stay so.
+      (a) The `[[civilisation_id]]` record for `raw_id = 33` claims participant 4 of recording 2
+      *"researches technology 488 (Kamandaran)"* and that 488 is `NotAvailable` for Gurjaras in
+      `packages/knowledge/packs/aoe2techtree/trees/GURJARAS.json`. Measured against the committed golden: **participant 2 researches 488,
+      not participant 4**; participant 4's exclusive research is **687**; and **488 has no node at
+      all in that tree file** — absent, not `NotAvailable`. The file's own header comment 90 lines
+      above already says both of those things, so the entry contradicts its own file. The mapping
+      `33 → Persians` is **correct** and the elimination on unit 39 holds — strike only the false
+      clause and leave the true observation. This matters more than an ordinary typo because T652i
+      re-labelled this record **"Strong form (FR-030)"** without re-reading it, and a validation
+      record that misstates what was read is the exact thing FR-030's amendment exists to prevent.
+      (b) Two lines call `data.json` *"all sixty-one civilisations"*. It carries **53**, and
+      `trees/` holds 53 files, and `docs/data-sources.md:497` says 53 for this same pinned commit —
+      four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
+      snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
+
+- [x] T652m [US2] **BLOCKING — three of the six modelled civilisations are misidentified, and two
+      of them are not in either match.** Confirmed 2026-09-23: the user named recording 2's match as
+      Franks + Teutons versus Tatars + Persians. Identifying each participant from the pack's own
+      tree files, using **technology nodes only** (`id` prefixed `Tech_`), reproduces that exactly —
+      slot 1 Franks, slot 2 Persians via Persians-only `Tech_488` (Kamandaran), slot 3 Teutons,
+      slot 4 Tatars via Tatars-only `Tech_687`. Four for four against ground truth, so the method is
+      sound. Applied to recording 1 it narrows slot 2 to **Malians alone**, via Malians-exclusive
+      `Tech_577` (Farimba), with Byzantines excluded outright.
+
+      | raw id | register says | measured |
+      | ------ | ------------- | -------- |
+      | 2      | Franks        | Franks — agrees |
+      | 4      | Teutons       | Teutons — agrees |
+      | 9      | Koreans       | **Saracens** |
+      | 8      | Gurjaras      | **Persians** |
+      | 26     | Byzantines    | **Malians** |
+      | 33     | Persians      | **Tatars** |
+
+      **Four of the six were wrong.** Ids 9 and 26 were supplied by the user on 2026-09-23 from
+      the SiegeEngineers aoc-reference-data dataset `docs/data-sources.md` §6 assesses, and both corroborate the
+      independent tree measurement: 26 is what `Tech_577` (Farimba) pinned, and Saracens is among
+      the 19 candidates id 9 narrowed to. **Take the mapping from that source, transcribed by hand
+      with its provenance recorded — do not re-measure it.** `docs/data-sources.md` §6 has assessed
+      it since 2026-08-30 and rules it read-and-transcribe-only, which is exactly what **FR-031**
+      permits for a source with no licence. The hand-measurement this task exists to undo was work
+      the repository's own referential had already done.
+
+      **Byzantines and Gurjaras are in neither match.** Byzantines' Pikeman -25% is the flagship
+      example in `packages/knowledge/tests/test_query.py` and in
+      [quickstart.md](./quickstart.md), modelled for a civilisation no committed recording plays.
+      Malians and Tatars are modelled nowhere.
+
+      **Why the earlier identification went wrong, recorded so it is not repeated**: it rested on
+      *unit* node ids, and **the pack's `node_id` space is not the game's unit id space**. The
+      counterexample is in the data — recording 2's slot 2, now known to be Persians, trains unit id
+      1755, which the pack lists as `Unit_1755_101`, Camel Scout, `ResearchedCompleted` for Gurjaras
+      alone and absent from the Persians tree. Technology ids did hold, on all five participants
+      that a unique technology pins. Treat unit-id exclusivity as unsound and technology-id
+      exclusivity as sound until something measures otherwise; that distinction is a property of the
+      vendored source and belongs in `docs/data-sources.md` §6.
+
+      **Scope decided 2026-09-23: correct the identification *and* transcribe the three real
+      civilisations.** Modelling only what is already written would leave ~846 blocking gaps — both
+      of recording 1's players and one of recording 2's — and those are transcription gaps, which
+      **FR-022b** says MUST be closed rather than enumerated. The bonus prose is in the vendored
+      pack's English strings and is quoted in the dispatch; only one bonus per civilisation touches
+      a cost or a time:
+
+      | civilisation | the one cost/time bonus | selector |
+      | ------------ | ----------------------- | -------- |
+      | Saracens | "Market trading fee only 5%; Markets cost -100 wood" | building 84, wood -100, `add` |
+      | Malians  | "Buildings cost -15% wood" | all 28 building ids, wood x0.85, `multiply` |
+      | Tatars   | "Thumb Ring, Parthian Tactics free" | techs 437 and 436, cost `set` to zero |
+
+      Everything else each of them carries — hit points, armour, attack, line of sight, livestock,
+      trade fees, Town Centre sheep — touches no field this knowledge base answers and is recorded
+      `modelled = "no"` with that as the reason, which is the same treatment the existing entries
+      give a bonus out of scope. A bonus is never half-applied.
+
+      **Scope of the correction**: the `[[civilisation_id]]` table; `civilisations_modelled` in both
+      promoted snapshots; the effects transcribed for Byzantines and Gurjaras, which are dead and
+      whose replacements for Malians and Tatars are not written; every example and test naming a
+      Byzantine discount; and `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, whose Gurjaras entries name a
+      civilisation not in the match. Also carry T652l's two uncontested corrections — the false
+      participant-4/`Tech_488` clause and the four "sixty-one civilisations" for 53 — so
+      `effects.toml`'s digest moves once. **Superseded framing, kept for the record:** T652l was written to correct a false clause in the
+      `raw_id = 33` validation record and was **reverted uncommitted** when verifying it turned up
+      something larger. The pack's own per-civilisation tree files, read with unit and tech nodes
+      separated (the `id` field carries the kind: `Unit_239_82` vs `Tech_488_82` — conflating them
+      gives wrong answers, which is how the first pass went astray), say:
+      **slot 1 → Franks** and **slot 3 → Teutons**, both agreeing with the committed table; but
+      **slot 4 narrows to Tatars alone**, via `Tech_687` which is Tatars-only and absent from the
+      Persians tree — while the table says `raw_id = 33` is Persians. Persians-only `Tech_488`
+      (Kamandaran) is researched by **slot 2**, not slot 4, which the record itself got backwards.
+      **Slot 2 is outright contradictory**: it trains unit 1755 (Camel Scout, `ResearchedCompleted`
+      for Gurjaras and absent from both the Persians and Tatars trees) *and* unit 38, which is
+      `NotAvailable` for Gurjaras and available to both the others — no single civilisation trains
+      both. So the evidence splits two-to-one against the committed `raw_id = 8 → Gurjaras`.
+      **What must be settled before this is edited**: whether the pack's `node_id` space is the
+      game's own unit and technology id space in every case, or only mostly — because if it is not,
+      every exclusivity argument in `effects.toml`'s header, including the ones that look sound,
+      rests on an unchecked assumption. Do not resolve this by picking the reading that preserves
+      the current table. **What it reaches if wrong**: T645's six modelled civilisations, T652g's
+      `[[civilisation_id]]` table, and SC-007a's 15-gap enumeration, which names Gurjaras twice and
+      attributes a blocker to a civilisation that may not be in the match. Tatars is modelled
+      nowhere. Carry T652l's two uncontested corrections into the same change rather than landing
+      them separately — the false participant-4/`Tech_488` clause, and the four places calling
+      `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
+      once, not twice
+
+- [ ] T652n **Two readings of the same file disagree, and one of them may be serving wrong names in
+      production.** `docs/data-sources.md` §6 states that the aoc-reference-data dataset it names *"confirmed all
+      45 civilisation ids this repository had already derived from two frozen provider fixtures"* —
+      ids where `apps/api/src/aoe2stats_api/civilizations.py` holds 9 = Byzantines and
+      26 = Lithuanians. The same file read on 2026-09-23 gives **9 = Saracens** and
+      **26 = Malians**, and the vendored tech trees independently pin 26 to Malians. At most one of
+      those two readings of one file is right. Either the dataset is keyed to the replay's
+      civilisation id space and not Relic's `civilization_id` — in which case §6's confirmation
+      claim is false and the fixture-derived table was never corroborated at all — or
+      `civilizations.py` is wrong, and every match page has been serving wrong civilisation names.
+      **This is outside feature 006** and is filed here only because 006 found it; it reaches
+      `apps/api`, so it outranks finishing this feature. Establish which space the dataset is keyed
+      to before changing anything, and do not "fix" `civilizations.py` toward the replay space
+      without evidence that Relic uses it — `civilizations.py`'s own header records that its first
+      table was confidently wrong in exactly that way
+
+- [x] T652o [US2] **Sweep every bonus of all six civilisations — the transcription silently dropped
+      the ones that touch a tracked field, and recording 1's zero is hollow because of it.** The
+      third review found Malians' Team Bonus *"Universities work +80% faster"* dismissed in
+      `effects.toml` as touching no tracked field. It touches `production_time`: a technology's
+      production time **is** its research time, one of the six fields the coverage pass walks.
+      Measured — Malians and Teutons both answer 100, 50, 60 and 30 for technologies 47, 50, 93 and
+      140, and recording 1's Malians player researches **all four**. They are answered with the
+      un-adjusted baseline, which is the **FR-038** substitution the conservative rule exists to
+      forbid, and it is the reason SC-007a reports zero for recording 1: not because nothing blocks,
+      but because a blocker was never written down. Three siblings, all verified the same way, all
+      predating this remediation — fixing Malians alone leaves them, which is the one-of-N failure
+      this project keeps repeating:
+      Persians' *"Town Centers and Docks ... work +5/10/15/20% faster"* (the work-faster half touches
+      `production_time` at buildings 109, 621 and 45 — Persians' Villager answers 25, same as
+      Teutons'); Teutons' *"Murder Holes, Herbal Medicine free"*, absent from the file **entirely**,
+      so Teutons pays `{food:200, stone:100}` and `{food:0, gold:200}` for technologies 322 and 441
+      that its own bonus makes free; and Franks' *"Chivalry (Stables work +40% faster)"*, likewise
+      absent.
+      **Do not fix only the four named.** Walk **every bullet** of all six civilisations' prose in
+      the vendored `strings.en.json` — Franks 120151, Teutons 120153, Saracens 120158, Malians
+      120175, Tatars 120182, Persians — including Unique Techs and Team Bonuses, and give each one
+      an entry: `modelled = "yes"` with its selector, or `modelled = "no"` with a real reason and an
+      explicit selector. **A bullet that appears in neither state is the defect**, so assert that
+      too: a test that counts the bullets per civilisation and fails when the file accounts for
+      fewer. That test is what stops this recurring; without it the next transcription drops
+      something again and nothing notices.
+      Then recompute what each recording reports. Recording 1 will no longer be zero — enumerate its
+      blockers under **FR-022b** only where the blocker is a team-wide or age-gated bonus the model
+      genuinely cannot place, never where it is something nobody transcribed. Update
+      `test_coverage.py`, its docstrings and [quickstart.md](./quickstart.md), which all currently
+      say recording 1 is clean. Recompute both digests; keep them equal
+- [x] T652p **Close the review's smaller findings, three of which make a test prove less than it
+      claims.** (a) `packages/knowledge/tests/test_coverage.py:569` asserts
+      `len(result) == len(set(keys))`, which holds for an empty result — add `assert result` so the
+      duplicate-gap regression cannot pass vacuously. (b) The same file at `:620`, `:669` and `:677`
+      passes building ids as `unit_id`; harmless today because those tests never resolve the entity,
+      but it now reads as a claim that 84 and 68 are units. (c)
+      `packages/knowledge/tests/test_query.py:45-48` newly claims Franks/Pikeman returns "a plain,
+      unmodified baseline" and **no test asserts it** — a spurious Franks cost effect would pass
+      every test in the file. Add the control. (d) The rounding row I added to
+      [data-model.md](./data-model.md) §6 is true of `multiply` only: `add` also rounds half up, but
+      mapping `set` **truncates** with `int(...)`, and scalar `set` returns a float — so
+      `age_requirement(436, "Persians")` answers `3.0`. State which operations the convention
+      governs, or make them agree. (e) Malians' selector includes Bombard Tower `236`, which that
+      civilisation's own tree marks `NotAvailable` — the discount asserts a cost for a building it
+      cannot build. (f) `effects.py:431` has no guard against `add` driving a cost negative;
+      unreachable today, but `add` is live data now and the invariant is unasserted
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -586,7 +1045,9 @@ and every refusal is counted.
 ## Phase 5: Identity and the published document (plan phase 5 — US3, US6)
 
 **Purpose**: assemble the four foundations into one validated, reproducible, non-destructive
-document. This is the only phase that changes what production publishes.
+document. This is the only phase that changes what production publishes. **T652a lands first if
+phase 4's pull request merged without it**: T655 is the first thing to publish an analysis that
+names a snapshot, and **FR-025** freezes the label at that moment.
 
 **Independent test**: quickstart Phase 5. Two analyses of the same fixture are byte-identical; an
 older analysis reproduces exactly after a knowledge refresh.
@@ -597,9 +1058,13 @@ after everything underneath it moves.
 - [ ] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
-      serialisation. Reconstruction engine and analytics carry an explicit not-applicable marker
-      until 007 ships, so the tuple's **shape never changes** — retrofitting identity onto published
-      artifacts is far harder than designing it in, which is why US6 is specified now
+      serialisation. The reconstruction engine carries an explicit not-applicable marker until 007
+      ships; **analytics does not** — it is this feature's own version for the coverage pass and
+      the group-silence method ([data-model.md](./data-model.md) §8), and marking it not-applicable
+      would let a banding change keep the same digest and never trigger T657a's recompute
+      (**FR-042**). Both components exist from the start, so the tuple's **shape never changes** —
+      retrofitting identity onto published artifacts is far harder than designing it in, which is
+      why US6 is specified now
 - [ ] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
       the digest is stable across processes and insensitive to field ordering; two identities
       differing in any one component produce different digests; an empty dependency record is
@@ -612,12 +1077,27 @@ after everything underneath it moves.
       `match_analyses.engine_deps` column** — it has existed through two migrations and nothing has
       ever written it. Every published value carries its tier as data and
       the method that produced it (**FR-007**, **FR-009**), and a value at inferred or predicted
-      carries a confidence and is worded so it cannot be read as a measurement (**FR-010**)
+      carries a confidence and is worded so it cannot be read as a measurement (**FR-010**).
+      **Declare `aoe2stats-knowledge` in `apps/analyzer/pyproject.toml`'s `[project].dependencies`
+      and its `[tool.uv.sources]` in this same change** — this is the first task that imports it
+      from an application, and nothing declares it today. Workspace membership is not enough: that
+      file's own header records a real 500 on 2026-09-04 in exactly this shape — a package every
+      local `uv sync --all-packages` installed anyway, which the deployment manifest never named,
+      so the deployed function was the first thing to find out. `scripts/checks/api_entrypoint_deps.py`
+      cannot catch this one: it parses only the module-scope imports of files under `api/` and this
+      import is one hop further down, inside `aoe2stats_analyzer`. Declaring it on the analyzer is
+      what makes the root manifest's existing `aoe2stats-analyzer` entry pull it transitively
 - [ ] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
       so a coaching conclusion cannot occupy a field typed observed, decoded or reconstructed
       (**FR-011**) by construction, with T619's validator as the second lock. Run the validator
       **before** the object is written: a failing document is not published and the analysis fails
-      through 003's existing failure path
+      through 003's existing failure path. **Promote `participant.group_silence_episodes` from
+      planned to published in `packages/core/src/aoe2stats_core/truth/register.toml` in this same
+      change**, and regenerate the view: the validator rejects an inferred datum whose register
+      status is not published, so without the move no document carrying this feature's one
+      inferred datum can pass. The move belongs here and not in T633 — a status is earned by the
+      change that publishes, and until this task nothing does. The `event.*` entries stay planned:
+      the stream is never persisted
 - [ ] T657 [US6] Make the published object's key carry the identity digest, and keep
       `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object
       per match is overwritten on recompute, which destroys an existing analysis — a new parser,
@@ -649,7 +1129,9 @@ after everything underneath it moves.
       because the web reader requires it there, and it joins the excluded set
 - [ ] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
       `xfail(strict=True)`. **SC-004**: the same recording analysed twice with identical versions
-      yields a byte-identical result, with the second run **in a fresh process** so that dictionary
+      yields a byte-identical result **outside the wall-clock set** — the envelope and the legacy
+      top-level extraction time, which T659 excludes; a whole-document comparison fails on every
+      run and proves nothing — with the second run **in a fresh process** so that dictionary
       ordering or a cached clock cannot pass by accident. **SC-005**: publish, record the identity,
       promote a second snapshot, recompute, then fetch by the first identity and confirm it
       reproduces exactly and the newer snapshot was not substituted — and that the previous version
@@ -662,7 +1144,10 @@ after everything underneath it moves.
       `apps/analyzer/src/aoe2stats_analyzer/run.py`, keyed so a reproduced analysis records nothing
       twice, and publish the gap list in the document. When no snapshot matches the recording's
       build, the knowledge block records the absence explicitly and one blocking gap says so
-      (**FR-027**)
+      (**FR-027**). **A gap whose stream named no build carries `build = -1`** — T652b's sentinel,
+      recorded in [data-model.md](./data-model.md) §7, forced by a non-nullable column and a closed
+      cause set. FR-039's rate query groups by build, so decide here how that row reads to an
+      operator and do not let `-1` appear in the report as though it were a game build
 - [ ] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
       nullable `match_analyses.identity_digest` column T657a reads — under
       `infra/migrations/versions/`, following that directory's naming convention and chaining from
@@ -674,7 +1159,12 @@ after everything underneath it moves.
       health endpoint answers 503, so **merge and apply in one sitting**. Follow
       `docs/runbooks/database-migrations.md` exactly — the direct, unpooled endpoint; its single
       prompted command; and unsetting the variable afterwards. `.env.local` points at production and
-      no task here runs a migration from a developer machine by any other route
+      no task here runs a migration from a developer machine by any other route. **In the same
+      change, wire T652's gap-rate script into `.github/workflows/nightly.yml`** beside the capture
+      audit, reporting and never failing on a rate: **FR-039** asks for a pattern to be *visible*,
+      and a script nobody schedules is a rate nobody sees. There is no threshold yet — the first
+      patch that moves the rate is what sets one, and a job that fails on an unmeasured number
+      would cry wolf from its first run
 - [ ] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
       next-version document fixture with **no source change**. The reader already requires only the
       existing fields, accepts any numeric schema version and ignores unknown keys — this test is
@@ -707,7 +1197,9 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       parser as a fallback although [research.md](./research.md) **D1** measured that it cannot open
       the current build; and add a row for the dependency class this feature creates —
       community-maintained knowledge sources that may stop, one of which already has, plus the
-      standing hand-transcription of civilisation bonuses and patch notes. Add the
+      standing hand-transcription of civilisation bonuses and patch notes. Widen R7's mitigation,
+      which names `packages/game-assets/` as the only root carrying a `LICENCE.md` and checked by
+      `scripts/checks/asset_packs.py` — T637 added two, and `docs/` must be true today. Add the
       verification-checklist line for T603's assertion under parsing. Tick no existing checklist
       item
 - [ ] T668 [P] Record the starting-state finding in `docs/data-sources.md` §2, which is where a

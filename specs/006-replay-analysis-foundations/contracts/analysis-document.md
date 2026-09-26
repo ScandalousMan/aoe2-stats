@@ -38,7 +38,7 @@ added and `schema_version` increments.
   },
 
   "inferred": {
-    "participant.group_control_lost": [
+    "participant.group_silence_episodes": [
       { "participant": 1, "from_ms": 0, "units": 0,
         "confidence": { "level": "medium", "basis": "…" },
         "non_claim": "not a casualty count — …" }

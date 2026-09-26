@@ -71,7 +71,7 @@ Expected:
 - The golden timeline is **byte-identical** to the committed one, now produced through the
   canonical stream. `git status` shows the golden file untouched.
 - The doubled age-up command in the fixture appears once (SC-010).
-- Emitted events plus deliberately consumed operations equal the operation count (no silent drop).
+- Every operation is an emitted event or is counted in a named drop category (no silent drop).
 - No payload field name appears in the wheel-derived deny-list (SC-009).
 - The input-size refusal holds through the new entry point, and the separate peak-memory measurement
   over every committed recording stays under its recorded ceiling (FR-021). The first proves nothing
@@ -91,10 +91,11 @@ uv run scripts/checks/asset_packs.py
 Expected: the licence check now sees `packages/knowledge/packs/aoe2techtree` and passes; remove one
 of the five fields and it fails.
 
-**US2, by hand** — a discounted unit, for the civilisation that discounts it:
+**US2, by hand** — a discounted building, for the civilisation that discounts it (raw id 9 is
+Saracens, T652m; Saracens' Market costs 175 wood, discounted by 100):
 
 ```bash
-uv run python -c "from aoe2stats_knowledge import open_snapshot_for; kb = open_snapshot_for(180059); print(kb.cost(('unit', 93), civilisation=9))"
+uv run python -c "from aoe2stats_knowledge import open_snapshot_for; kb = open_snapshot_for(180059); print(kb.cost(('building', 84), civilisation=9))"
 ```
 
 Expected: an answer whose value is the civilisation-adjusted cost, carrying the snapshot identity
@@ -104,8 +105,11 @@ modelled and expect a gap with cause `civilisation-not-modelled`, never the base
 **No nearest snapshot** — ask for a build one higher than any snapshot describes and expect a gap
 with cause `no-snapshot-for-build`.
 
-**SC-007a** — the coverage pass over every committed recording reports no blocking gap. **SC-007** —
-the test that removes a field sees exactly the dependent data withheld.
+**SC-007a** — the coverage pass over every committed recording reports no blocking gap outside
+FR-022b's enumerated list; recording 1's one source-limited blocker (Malians' team-wide University
+bonus) and recording 2's four are each held by a strict expectation that fails the day any of them
+is closed, or the day an unenumerated one appears. **SC-007** — the test that removes a field sees
+exactly the dependent data withheld.
 
 **SC-006** — the suite above ran with the network blocked; a knowledge query that touched a socket
 would have raised.

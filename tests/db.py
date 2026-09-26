@@ -245,10 +245,27 @@ async def clean_database(
     the next. Truncating *before* rather than after means a test that crashes mid-way still hands
     the next one a clean start, and the final test's leftovers are moot: the whole database is
     dropped when the session ends (`database_url` above).
+
+    Filtered against the database's own `pg_tables`, not simply every name `Base.metadata` knows
+    about (006-replay-analysis-foundations T652): a model can land in `models.py` — and therefore
+    in `Base.metadata` — a whole phase before the migration that actually creates its table
+    (`analysis_knowledge_gaps`, deliberately additive-only and deferred to T663). Truncating a
+    name `_migrate_to_head` never created would fail every test in the session with `relation ...
+    does not exist`, for a table this feature's own tests create for themselves directly against
+    `Base.metadata` (see `packages/storage/tests/repositories/test_knowledge_gaps.py`) — a real
+    regression this harness must not reintroduce the moment the next such table lands.
     """
-    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
-    if tables:
-        async with session_factory() as session:
+    async with session_factory() as session:
+        existing = await session.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()")
+        )
+        existing_names = {row[0] for row in existing}
+        tables = ", ".join(
+            f'"{table.name}"'
+            for table in Base.metadata.sorted_tables
+            if table.name in existing_names
+        )
+        if tables:
             await session.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
             await session.commit()
     yield

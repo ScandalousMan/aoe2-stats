@@ -1,3 +1,10 @@
+# `aoe2stats-knowledge` (T648): no module under `src/` imports it — this package's own production
+# code stays exactly what its description above says. `tests/test_extract_limits.py`'s peak-memory
+# measurement puts `aoe2stats_knowledge.coverage.coverage` on the same measured `tracemalloc`
+# region as `events()` and the group-silence accumulator (T633), because T648's own task text names
+# the coverage pass as "the last of the three accumulators that measurement names" — a dependency
+# this package's own *tests* import belongs on this package's own manifest, the same discipline
+# `apps/analyzer/pyproject.toml`'s comment already states for a sibling package.
 [project]
 name = "aoe2stats-replay-engine"
 version = "0.1.0"
@@ -5,11 +12,14 @@ description = "The aoe2rec-py adapter satisfying the core replay-validation Prot
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "aoe2stats-core",
+  "aoe2stats-knowledge",
   "aoe2rec-py==0.1.21",
+  "packaging",
 ]
 
 [tool.uv.sources]
 aoe2stats-core = { workspace = true }
+aoe2stats-knowledge = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

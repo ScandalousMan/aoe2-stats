@@ -22,25 +22,45 @@ class CanonicalEventSource(Protocol):
 Everything above the adapter imports `aoe2stats_core.replay.events` and nothing else (FR-015). The
 pinned wheel is imported in `packages/replay-engine` only, as today.
 
+**The accounting is deliberately not on this protocol.** `events` returns a stream and nothing else,
+so obligation 3's conservation test — the one that proves no operation is lost — reaches the
+generator underneath it to read the tally. That is the one sanctioned kind of exception — two tests take it — and it is stated
+here rather than left for a reader to rediscover: everything that is *evidence about the stream's
+content* (the goldens, engine independence, the collapse rule) goes through `events`, and only the
+count of what the generator dropped does not, because a tally is not a stream and putting it on the
+protocol would widen the seam to carry a diagnostic. Regenerating the goldens goes through `events`
+too — `scripts/ops/canonical_golden.py`, outside the shipped package (constitution XII).
+
 ## The vocabulary
 
 Closed. Each kind has one typed payload. Tier is per kind and fixed.
 
-| Kind                  | Tier       | Payload                                                     | Produced now |
-| --------------------- | ---------- | ----------------------------------------------------------- | ------------ |
-| `match-started`       | observed   | build, map, lobby presets, participants and their civilisations | yes      |
-| `building-placed`     | decoded    | building id, position                                       | yes          |
-| `unit-queued`         | observed   | unit id, producing building object, count                   | yes          |
-| `research-queued`     | observed   | technology id, researching building object                  | yes          |
-| `units-commanded`     | observed   | command class, unit object ids, optional target             | yes          |
-| `market-transaction`  | decoded    | direction, resource, amount                                 | yes — needs a decoder |
-| `object-deleted`      | decoded    | object id                                                   | yes — needs a decoder |
-| `chat`                | decoded    | channel — **not the text**                                  | yes — needs a decoder |
-| `participant-resigned`| observed   | —                                                           | yes          |
-| `match-ended`         | observed   | final match-clock time                                      | yes          |
-| `undecoded`           | observed   | opaque operation label, payload length                      | yes          |
-| `starting-attributes` | decoded    | per-participant attribute values                            | **declared only** |
-| `starting-object`     | decoded    | object id, class, position, owner                           | **declared only** |
+| Kind                   | Tier     | Payload                                                         | Produced now          |
+| ---------------------- | -------- | --------------------------------------------------------------- | --------------------- |
+| `match-started`        | observed | build, map, lobby presets, participants and their civilisations | yes                   |
+| `building-placed`      | decoded  | building id, position                                           | yes                   |
+| `unit-queued`          | observed | unit id, building type, producing building object, count        | yes                   |
+| `unit-unqueued`        | observed | unit id, count                                                  | yes                   |
+| `research-queued`      | observed | technology id, researching building object                      | yes                   |
+| `units-commanded`      | observed | command class, unit object ids, optional target                 | yes                   |
+| `market-transaction`   | decoded  | direction, resource, steps                                      | yes — needs a decoder |
+| `object-deleted`       | decoded  | object id                                                       | yes — needs a decoder |
+| `chat`                 | decoded  | channel — **not the text**                                      | yes — needs a decoder |
+| `participant-resigned` | observed | —                                                               | yes                   |
+| `match-ended`          | observed | final match-clock time                                          | yes                   |
+| `undecoded`            | observed | opaque operation label, payload length                          | yes                   |
+| `starting-attributes`  | decoded  | per-participant attribute values                                | **declared only**     |
+| `starting-object`      | decoded  | object id, class, position, owner                               | **declared only**     |
+
+**Two additions, each forced by the timeline golden (T628).** `unit-queued` carries the building
+_type_ beside the building object: the old timeline publishes each training's building type (a Town
+Center is 109) and an object id cannot recover it; both are game concepts, not engine-shaped fields.
+`unit-unqueued` (unit id, count) is the cancellation counterpart, which the old extractor netted
+against `villagers_ordered`; it is emitted only for a top-level cancellation action whose payload
+carries both an integer unit id and an integer amount, and any other shape stays `undecoded`, so
+nothing is read from a payload whose layout no recording has shown. A command naming several
+producing buildings is still one event carrying the first: the timeline never read a building object,
+so nothing it published is lost, and the one-event-per-operation accounting is unchanged.
 
 **`building-placed` is `decoded`**, not observed: the building identifier is read from a payload by
 this repository's own decoder. The participant on the same event comes from a named field and would
@@ -73,9 +93,15 @@ what changes, and no type does.
    never collapse. SC-010 is asserted on the doubled age-up command.
 3. **No silent drop** (FR-019). Any **action** the adapter does not map becomes `undecoded`. Sync is
    consumed for the clock; view-lock is a camera position and is excluded because it carries no
-   intent. A test asserts that emitted events plus those two excluded kinds equal the operation count
-   the wheel reports. The second recording carries an action kind the wheel itself cannot name, so
-   this rule has a live instance.
+   intent. A test asserts that **every operation is an emitted event or is counted in a named
+   category** — sync, view-lock, collapsed by obligation 2, attributed after an exit by obligation
+   4, naming no seated participant, or a **top-level operation kind the adapter has no case for**
+   — so a new way to lose an operation has to be named to pass. `match-started` comes from the
+   header and corresponds to no operation; it sits outside the count. The second recording carries
+   an action kind the wheel itself cannot name, so this rule has a live instance. A top-level kind
+   nothing here has a case for — a future wheel upgrade or engine patch, never seen in either
+   committed recording — is counted, not aborted on: its shape is unestablished, so it cannot be
+   emitted as `undecoded`, which requires a participant.
 4. **Exit discipline.** No event is attributed to a participant after their `participant-resigned`.
 5. **No participant timeline for an observer or an empty slot** — they are absent from
    `match-started`, not present and silent.
@@ -103,15 +129,14 @@ regeneration rules the fixtures README already states for the timeline.
 
 Computed in `packages/replay-engine`, from `units-commanded` events only.
 
-- **Datum**: `participant.group_control_lost` — a set of unit objects commanded together repeatedly,
+- **Datum**: `participant.group_silence_episodes` — a set of unit objects commanded together repeatedly,
   then never named again before the participant's exit.
 - **Tier**: `inferred`. Structurally published under the document's `inferred` block only.
 - **Confidence**: level banded from how intensively the group was commanded before the silence and
   how long the silence lasted relative to the remaining match; `basis` states both figures for the
   instance. The bands live in the register entry's method.
-- **Non-claim**, verbatim on every instance: *not a casualty count — a group can fall silent
-  because it was garrisoned, left idle, told to hold, patrol or change formation, or simply not
-  re-selected*.
+- **Non-claim**, verbatim on every instance: the register entry's own `non_claim`. It is not
+  restated here — a sentence quoted in two files is verbatim in one of them.
 - **Blind spot, stated in the method.** Only move, interact and order carry decoded unit ids. Formation,
   stance, patrol and stop do not, so exactly the commands that park a military group are invisible,
   and a parked group reads as silent. This caps the level the banding may assign.

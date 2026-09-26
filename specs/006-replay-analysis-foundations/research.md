@@ -13,15 +13,15 @@ becomes its historical record, not its home.
 
 ## What the spec claimed, and what the measurements say
 
-| Spec claim | Verdict | Evidence |
-| --- | --- | --- |
-| The starting state is not exposed by any parser that works on the current build | **True of the parsers, false of the file.** | The pinned wheel returns the initial section as three scalars and stops. The decompressed header nevertheless contains each player's attribute array at an anchor that can be found without a grammar — see D1. |
-| The secondary engine fails on this build at the initial-state section | **Not reproducible from this repository.** | `mgz` is in no lockfile and behind no adapter. It is installed ephemerally by the nightly canary (`.github/workflows/nightly.yml`, `scripts/checks/parser_canary.py`) and nowhere else. `docs/risks.md` already carries "the engine interface allows selecting mgz by configuration" as an unchecked item. |
-| `SKILL.md` and ADR-0001 name a path that was never created (FR-046) | **Confirmed.** | Both name a parser application directory; the applications that exist are `apps/analyzer`, `apps/api`, `apps/ingester`, `apps/web`. |
-| `SKILL.md` wrongly says placement carries no player identifier (FR-047) | **Confirmed, and a test already says so.** | `packages/replay-engine/tests/test_aoe2rec.py` pins the opposite across every placement in the fixture and names both documents in its module docstring. |
-| The dependency record may be empty (FR-044) | **Confirmed: it is always empty.** | `apps/analyzer/src/aoe2stats_analyzer/extract.py` publishes `"deps": {}` as a literal. The `engine_deps` column exists and nothing fills it. |
-| The repository has no versioned reference-data pattern | **Confirmed, and 002's own register was never written.** | The only structured game knowledge is three identifier-to-name tables under `apps/api/src/aoe2stats_api/`. `docs/reference-data.md`, 002's deliverable, does not exist; 002's licence rulings survive only in its frozen tasks and in a module docstring. |
-| No network in tests needs building (SC-006) | **Already exists.** | `tests/conftest.py` blocks every non-loopback socket under `PYTEST_DISABLE_NETWORK=1`, workspace-wide. This feature asserts against it. |
+| Spec claim                                                                      | Verdict                                                  | Evidence                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The starting state is not exposed by any parser that works on the current build | **True of the parsers, false of the file.**              | The pinned wheel returns the initial section as three scalars and stops. The decompressed header nevertheless contains each player's attribute array at an anchor that can be found without a grammar — see D1.                                                                                            |
+| The secondary engine fails on this build at the initial-state section           | **Not reproducible from this repository.**               | `mgz` is in no lockfile and behind no adapter. It is installed ephemerally by the nightly canary (`.github/workflows/nightly.yml`, `scripts/checks/parser_canary.py`) and nowhere else. `docs/risks.md` already carries "the engine interface allows selecting mgz by configuration" as an unchecked item. |
+| `SKILL.md` and ADR-0001 name a path that was never created (FR-046)             | **Confirmed.**                                           | Both name a parser application directory; the applications that exist are `apps/analyzer`, `apps/api`, `apps/ingester`, `apps/web`.                                                                                                                                                                        |
+| `SKILL.md` wrongly says placement carries no player identifier (FR-047)         | **Confirmed, and a test already says so.**               | `packages/replay-engine/tests/test_aoe2rec.py` pins the opposite across every placement in the fixture and names both documents in its module docstring.                                                                                                                                                   |
+| The dependency record may be empty (FR-044)                                     | **Confirmed: it is always empty.**                       | `apps/analyzer/src/aoe2stats_analyzer/extract.py` publishes `"deps": {}` as a literal. The `engine_deps` column exists and nothing fills it.                                                                                                                                                               |
+| The repository has no versioned reference-data pattern                          | **Confirmed, and 002's own register was never written.** | The only structured game knowledge is three identifier-to-name tables under `apps/api/src/aoe2stats_api/`. `docs/reference-data.md`, 002's deliverable, does not exist; 002's licence rulings survive only in its frozen tasks and in a module docstring.                                                  |
+| No network in tests needs building (SC-006)                                     | **Already exists.**                                      | `tests/conftest.py` blocks every non-loopback socket under `PYTEST_DISABLE_NETWORK=1`, workspace-wide. This feature asserts against it.                                                                                                                                                                    |
 
 **One collision the spec does not mention.** `match_analyses` is one row per match, the published
 document lives at one object key per match, and a recompute overwrites it. FR-042 forbids destroying
@@ -29,7 +29,7 @@ an existing analysis. D9 resolves it without touching 003's primary key.
 
 ## D1 — The starting state: present in the bytes, reachable in two tiers of very different cost
 
-**Decision.** The starting state is re-classified from *unreadable* to **decodable by a
+**Decision.** The starting state is re-classified from _unreadable_ to **decodable by a
 repository-local decoder, not yet built**. This feature records that in the register, reserves the
 vocabulary for it (FR-020), and corrects the documents that say otherwise. The decoder itself is the
 first work item of feature 007, where its only consumer lives.
@@ -60,11 +60,11 @@ be ported from an existing open grammar, not derived from zero.
 
 **The three routes.**
 
-| Route | Verdict | Why |
-| --- | --- | --- |
+| Route                             | Verdict                        | Why                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. A fork of the secondary engine | **Reference, not dependency.** | The one fork that parses this save version end to end (`CliveUnger/aoc-mgz`, MIT) has a single maintainer, one star, no release, and has been silent since 2026-08-01. None of the open upstream pull requests ADR-0001 names fixes the initial section — the ADR's fork fallback would not have delivered it. Its object grammar is the map for Tier B. |
-| 2. The fast alternative | **Dead for objects.** | `mgz-fast` gates on save versions below this build's and skips the attribute block it would need. The crate behind the pinned wheel has no object structure at any version, with an issue open on exactly that since March. |
-| 3. A repository-local decoder | **Chosen.** | Keeps principle V's swappability, adds no runtime dependency, and Tier A needs no grammar at all. |
+| 2. The fast alternative           | **Dead for objects.**          | `mgz-fast` gates on save versions below this build's and skips the attribute block it would need. The crate behind the pinned wheel has no object structure at any version, with an issue open on exactly that since March.                                                                                                                              |
+| 3. A repository-local decoder     | **Chosen.**                    | Keeps principle V's swappability, adds no runtime dependency, and Tier A needs no grammar at all.                                                                                                                                                                                                                                                        |
 
 **Alternatives rejected.** Taking the fork as a runtime dependency trades a six-month outage risk
 for a smaller one carried by one person. Building Tier A inside this feature was rejected because a
@@ -74,10 +74,10 @@ proves the anchor and not the semantics; 007 consumes it on day one.
 **What this does to feature 007's scope.** The income side is in scope: its initial condition is
 Tier A plus the knowledge base. Start positions and the small starting object set are in scope at
 medium confidence. The map's resource geometry, and with it exploration, vision and map control,
-stay deferred — but as *decodable at a stated cost*, which is a different register entry from
-*not determinable*, and the register is the one place that distinction has to be right.
+stay deferred — but as _decodable at a stated cost_, which is a different register entry from
+_not determinable_, and the register is the one place that distinction has to be right.
 
-**Unsettled, and what settles it.** Whether the fork and the fast parser actually walk *this*
+**Unsettled, and what settles it.** Whether the fork and the fast parser actually walk _this_
 fixture's object table was not run, because it needs a throwaway environment. It is one short
 script, and its assertion must be on object count and coordinate range, since the fast parser's scan
 returns an empty list rather than raising. It belongs to 007's Phase 0, not here.
@@ -90,7 +90,7 @@ byte, with its checksum and provenance in `tests/fixtures/replays/README.md`.
 **Rationale.** `docs/data-sources.md` §2 states its own bar for closing the open question: more than
 one recording, across at minimum ranked 1v1 and ranked team games. The two measured recordings are
 exactly that bar. But the second is in neither checkout — it was supplied in session and never
-persisted — so FR-045 would move a section from *not known* to *settled* on a measurement nobody can
+persisted — so FR-045 would move a section from _not known_ to _settled_ on a measurement nobody can
 re-run, which is the precise failure the filing rule in `CLAUDE.md` exists to prevent. A fact in
 `docs/` is trustworthy only because a test asserts it, and a test cannot assert a file that is not
 there.
@@ -127,17 +127,12 @@ not evidence anyone can check.
 Cross-validate by **hand transcription from the publisher's own per-build patch notes**. Do not
 vendor a second dataset in this feature.
 
-| Source | Carries | Licence | Ruling |
-| --- | --- | --- | --- |
-| aoe2techtree — data file, per-civilisation trees, English strings | Costs, training and research times, age, producing building, upgrade edges and availability per civilisation; bonuses **as prose only** | MIT | **Copy in** |
-| halfon | Costs and combat attributes for a wider object set; **no times, no ages, no civilisation dimension** | MIT | Deferred — see below |
-| aoc-reference-data | Names only | **None** | Read and transcribe only (002's ruling, re-verified) |
-| aoe2companion's data module | aoe2techtree verbatim in a wrapper | **None** | Rejected |
-| The game's own data file, via genieutils | Everything, per civilisation, per build | Publisher's | **Rejected** — the usage rules' first prohibition bars the extraction, it needs a game install, and it engages the EU database right |
-| Fandom wiki | Prose tables | CC BY-SA 3.0; terms forbid automated access | One human, one number, with provenance |
-| Publisher patch notes | Exact per-build deltas | All rights reserved | Read and transcribe only — **this is the FR-030 validation source** |
-| aoe2de_patcher build list | Every build number with its date | GPL-2.0 | Reference only; the list is transcribed, the file is not copied |
-| aoestats | Match data | — | Rejected — not rules |
+**The full per-source assessment — scope, reliability, update mechanism, version identifier,
+coverage, known limitations and the date each was assessed — now lives in
+`docs/data-sources.md` §6 (FR-029, T651), which also carries feature 002's `aoc-reference-data`
+licence ruling forward into a living home.** This document keeps only the decision above and the
+reasoning below, which the survey table used to carry and which is not itself a fact about the
+outside world that changes independently of this decision.
 
 **halfon is not an independent source.** Both it and aoe2techtree are generated by the same library
 reading the same game data file. Their unit costs agree everywhere except in how a zero is
@@ -151,14 +146,11 @@ script reads that local checkout and writes the pack. This is `scripts/ops/sync_
 discipline, and it satisfies FR-032 by construction: nothing in the build, the tests or the running
 system fetches anything, so no provider is needed because no call is made.
 
-**002's unwritten register.** The source assessments FR-029 requires land in `docs/data-sources.md`
-as a new section, which also finally gives 002's licence rulings a living home.
-
 ## D4 — No source can answer "what did this cost on build N"; a snapshot is carried forward with evidence
 
 **Decision.** A snapshot names the build it **describes**, separately from the source revision it
 was **imported from**. Where the source has no revision for a build, a snapshot for that build may
-be created by *carry-forward*: the nearest earlier import, plus a recorded, dated, human reading of
+be created by _carry-forward_: the nearest earlier import, plus a recorded, dated, human reading of
 the publisher's notes for every intervening build stating that none changed a field the pack
 carries. A carry-forward is a validation (FR-030, FR-034) and produces a new snapshot identity. It is
 never inferred at query time, which is what FR-027 forbids.
@@ -195,12 +187,12 @@ the fourth clarification already chose: cover what the reference recordings need
 else surface as a gap.
 
 **The conservative rule, stated once.** For a civilisation whose bonus set is not modelled, the
-knowledge base cannot know *which* fields a bonus touches, so it refuses **every**
+knowledge base cannot know _which_ fields a bonus touches, so it refuses **every**
 civilisation-qualified cost and time for that civilisation. Coverage therefore grows by whole
 civilisations, and the aggregate gap report (FR-039) is the backlog.
 
 **What stays out of the effect model.** Team bonuses, age-gated bonuses whose gate the recording
-cannot place, and anything conditional on state are recorded as *modelled: no* with the reason; they
+cannot place, and anything conditional on state are recorded as _modelled: no_ with the reason; they
 keep their fields gapped. A bonus is never half-applied.
 
 ## D6 — The register is TOML inside the package that enforces it
@@ -260,7 +252,7 @@ the digest: today a published row is stale only when the parser changes, so with
 knowledge version would never trigger the recompute this decision exists to preserve.
 
 Reconstruction and analytics versions are part of the identity from the start and carry an explicit
-*not applicable* marker until 007 ships, so the tuple's shape never changes (FR-040, and the reason
+_not applicable_ marker until 007 ships, so the tuple's shape never changes (FR-040, and the reason
 US6 is specified now).
 
 **The dependency record (FR-044)** is populated from installed distribution metadata for the engine
@@ -288,7 +280,7 @@ what FR-021 now says: no second copy, and nothing retained past the fold. **The 
 "memory-ceiling" test is an input-size refusal test; it measures no consumption**, so extending it
 proves only that the new entry point refuses the same inputs. A real peak-memory measurement over
 both fixtures is added beside it, because this feature puts three accumulators on that path and the
-second recording's object-id space is several times the first's. Whether the stream is *persisted* is settled here as **no**: it is recomputable from the
+second recording's object-id space is several times the first's. Whether the stream is _persisted_ is settled here as **no**: it is recomputable from the
 retained recording by a versioned tool, which is principle IV's definition of disposable, and 007
 consumes it in-process.
 
@@ -310,7 +302,7 @@ payloads, and the chat channel sits inside the same JSON string as the message t
 small decoder of the placement decoder's kind, golden-tested. For chat, "no text" is therefore a rule
 about what is discarded after parsing, since the text cannot be avoided on the way to the channel.
 
-**Undecoded commands (FR-019)** become an event of kind *undecoded* carrying the engine's own
+**Undecoded commands (FR-019)** become an event of kind _undecoded_ carrying the engine's own
 operation kind as an opaque label and the payload length — never the payload's shape, which would be
 an engine-specific field (FR-017).
 

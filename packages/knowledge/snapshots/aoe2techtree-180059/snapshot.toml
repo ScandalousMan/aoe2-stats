@@ -1,0 +1,116 @@
+# The promoted snapshot the committed reference recordings actually resolve against
+# (`tests/fixtures/replays/README.md`: game build 180059, both fixtures). `describes_build` is no
+# longer the T639/T641 placeholder — T642 wires it to the real build the recordings report, and
+# the `[validation]` table below is the carry-forward attestation research.md D4 requires to get
+# there, not the T639 `method = "second-source"` placeholder it replaces. `rules.json` is
+# unchanged by this task; `effects.toml` is not — T644/T645 first transcribed six civilisations
+# (Byzantines, Koreans, Franks, Persians, Teutons, Gurjaras), and T652m (2026-09-23) found the
+# `[[civilisation_id]]` table wrong at four of six raw ids: Byzantines, Koreans and Gurjaras are in
+# neither committed recording at all, and the real six are Franks, Teutons, Persians, Saracens,
+# Malians and Tatars. `civilisations_modelled` names the real six; see `effects.toml`'s own header
+# comment for the full correction and why `test_query.py`'s unrelated "always-unmodelled" example
+# still uses Britons (confirmed absent from both committed recordings, unaffected by that
+# correction). `digest` below is T652o's recomputed digest (2026-09-23) over `rules.json`
+# (unchanged) and `effects.toml`, which grew from T652m's transcription to account for every
+# bullet of all six civilisations' vendored prose — see `effects.toml`'s own header comment for
+# the full correction (`packages/knowledge/tests/test_bullet_coverage.py` is the test that now
+# asserts this class of omission cannot recur).
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 180059
+digest = "sha256:f871e87266b82cfc5d27b05a8b4d4076b81f599b78c9a4db77f50b10ec21d862"
+promoted = true
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
+
+# FR-030's validation record, by carry-forward (research.md D4): the pinned commit
+# (`b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`, 2026-06-21) is the source's own newest revision, and
+# its own commit history's last "Implement DE Update <build>" message —
+# `daf5fa18de` ("Implement DE Update 177723"), 2026-06-03 — is the newest build the source has
+# actually implemented. The committed recordings report build 180059
+# (`tests/fixtures/replays/README.md`), which the source has never implemented, with two further
+# builds (178524, 179158) shipped in between and likewise never implemented. Carry-forward is the
+# only lawful path to a snapshot the recordings can be analysed against (research.md D4): every
+# build between the source's last-implemented one and 180059 is read and attested below, so that a
+# real rule change hiding in one of them cannot pass silently.
+[validation]
+method = "carry-forward"
+checked_against = """\
+official Age of Empires II: Definitive Edition patch notes for builds 178524, 179158 and 180059, \
+read against the source's own last-implemented build, 177723\
+"""
+performed_by = "the T642 implementer, by direct reading of the publisher's own patch-notes page"
+performed_at = "2026-09-20"
+
+[validation.carry_forward]
+source_last_implemented_build = 177723
+source_last_implemented_build_evidence = """\
+SiegeEngineers/aoe2techtree commit daf5fa18de, dated 2026-06-03, message "Implement DE Update \
+177723" — the newest "Implement DE Update <build>" commit reachable from the pinned commit \
+b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0 (2026-06-21); no later commit reachable from the pin \
+implements a further build. research.md D3: the build lives in commit-message prose, not in a \
+dedicated field, so this is a reading of that prose, not a lookup.\
+"""
+intervening_builds = [178524, 179158, 180059]
+weakest_link = """\
+None of the three intervening builds has its own dedicated publisher release-notes page: \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-178524/, \
+.../update-179158/ and .../update-180059/ all answer 404 (checked 2026-09-20). Each build's notes \
+were instead found as a "Minor Update <build>" section appended, after the fact, to the *previous* \
+major update's own page, .../update-177723/ (article:published_time 2026-06-02T10:12:25-07:00; \
+article:modified_time 2026-07-31T15:54:46-07:00 — after all three builds had shipped). There is \
+therefore no independently dated publisher timestamp for any one addendum, only the page's single \
+overall modified time covering all three at once. Each build's actual release date is corroborated \
+only via a secondary, non-editorial source: the community-maintained Steam depot-manifest listing \
+`DJSchaffner/aoe2de_patcher` (GPL-2.0, reference only per research.md D3) records 178524 as \
+2026-06-08, 179158 as 2026-06-16 and 180059 as 2026-07-07. This is weaker than a dedicated, \
+separately dated publisher release note per build, and is recorded here rather than glossed over.\
+"""
+
+[[validation.carry_forward.builds]]
+build = 178524
+notes_consulted = """\
+"Minor Update 178524" section of the Age of Empires II: DE Update 177723 page: "After the most \
+recent update for Age of Empires II: Definitive Edition, we know players are experiencing a \
+variety of issues. The team has been working on fixes for various crashes on Xbox that we are \
+releasing in today's minor update. An additional update will be coming soon to address additional \
+issues happening after the recent patch."\
+"""
+read_at = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-177723/ (\"Minor Update 178524\" section)"
+date_read = "2026-09-20"
+reading = """\
+Xbox crash fixes only. No unit, building or technology cost, time, age requirement, prerequisite \
+or civilisation bonus is named — nothing this pack carries changed.\
+"""
+
+[[validation.carry_forward.builds]]
+build = 179158
+notes_consulted = """\
+"Minor Update 179158" section of the same page: "Fixed an issue that would cause incorrect medals \
+to show on various campaigns. Fixed an issue that caused incorrect ELO changes to display at the \
+end of games. Fixed various crashes on Xbox, PlayStation and PC. Fixed an issue that could cause \
+incorrect campaign achievements to unlock."\
+"""
+read_at = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-177723/ (\"Minor Update 179158\" section)"
+date_read = "2026-09-20"
+reading = """\
+Campaign medals, end-of-game ELO display and achievement-unlock fixes, plus further crash fixes. \
+No cost, training/construction/research time, age requirement, prerequisite or civilisation bonus \
+is named — nothing this pack carries changed.\
+"""
+
+[[validation.carry_forward.builds]]
+build = 180059
+notes_consulted = """\
+"Minor Update 180059" section of the same page: "Fixed a crash that could occur during shutdown. \
+Fixed a crash that could occur when closing player profile stats. Fixed an issue where dataset \
+mods would not load if they have fewer civilizations than the game."\
+"""
+read_at = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-177723/ (\"Minor Update 180059\" section)"
+date_read = "2026-09-20"
+reading = """\
+Shutdown/profile-stats crash fixes and a dataset-mod loading fix. No cost, training/construction/ \
+research time, age requirement, prerequisite or civilisation bonus is named — nothing this pack \
+carries changed. This is the build the committed reference recordings report \
+(tests/fixtures/replays/README.md).\
+"""

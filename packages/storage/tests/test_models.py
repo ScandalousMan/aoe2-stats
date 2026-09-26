@@ -280,6 +280,107 @@ def test_aoe_profiles_gains_alias_observed_at_and_never_hidden_observed_at() -> 
     assert "hidden_observed_at" not in columns
 
 
+# --- 006: replay-analysis foundations — the one additive table this feature has (T652) ----------
+
+
+def test_analysis_knowledge_gaps_carries_exactly_the_columns_data_model_names() -> None:
+    """data-model.md §7's persistence table, column for column: `id`, `game_id`,
+    `identity_digest`, `build`, `entity_kind`, `entity_id`, `field`, `civilisation_id`, `cause`,
+    `severity`, `recorded_at` — nothing else, and in particular no participant/profile column
+    (§7's own words: "It holds no personal data: a participant is not a column")."""
+    columns = set(_table("analysis_knowledge_gaps").columns.keys())
+    assert columns == {
+        "id",
+        "game_id",
+        "identity_digest",
+        "build",
+        "entity_kind",
+        "entity_id",
+        "field",
+        "civilisation_id",
+        "cause",
+        "severity",
+        "recorded_at",
+    }
+    for forbidden in ("profile_id", "steam_id64", "user_id", "requested_by_user_id"):
+        assert forbidden not in columns
+
+
+def test_analysis_knowledge_gaps_civilisation_id_is_the_only_nullable_identity_column() -> None:
+    """data-model.md §7: "`civilisation_id` nullable" is the one exception it states; every other
+    column the unique constraint covers is not."""
+    table = _table("analysis_knowledge_gaps")
+    assert table.columns["civilisation_id"].nullable
+    for required in ("identity_digest", "entity_kind", "entity_id", "field", "build"):
+        assert not table.columns[required].nullable, f"{required} must not be nullable"
+
+
+def test_analysis_knowledge_gaps_game_id_is_a_foreign_key_to_matches() -> None:
+    column = _table("analysis_knowledge_gaps").columns["game_id"]
+    fk = next(iter(column.foreign_keys))
+    assert fk.column.table.name == "matches"
+    assert fk.column.name == "game_id"
+
+
+def test_analysis_knowledge_gaps_is_unique_on_the_five_columns_data_model_names() -> None:
+    """data-model.md §7: "Unique on (identity_digest, entity_kind, entity_id, field,
+    civilisation_id), so a reproduced analysis records nothing twice." An *expression* unique
+    index, not a plain `UniqueConstraint`: `civilisation_id` is nullable (the same section's own
+    words), and Postgres never treats two `NULL`s as equal in a plain unique constraint, which
+    would silently let a reproduced analysis with no civilisation at all record its gap twice —
+    exactly what this index exists to prevent. `coalesce(civilisation_id, '')` is what folds every
+    `NULL` to one real, comparable value first, verified against the compiled index expression
+    itself rather than merely against which columns it names."""
+    table = _table("analysis_knowledge_gaps")
+    dedup = next(
+        (
+            i
+            for i in table.indexes
+            if i.unique
+            and {"identity_digest", "entity_kind", "entity_id", "field"}
+            <= {c.name for c in i.columns}
+        ),
+        None,
+    )
+    assert dedup is not None, (
+        "no unique index covers (identity_digest, entity_kind, entity_id, field, civilisation_id)"
+    )
+    expressions = {
+        str(expr.compile(dialect=postgresql.dialect()))
+        for expr in dedup.expressions
+        if not hasattr(expr, "name")
+    }
+    assert any("coalesce" in expr.lower() and "civilisation_id" in expr for expr in expressions), (
+        f"expected a coalesce(civilisation_id, ...) expression, got {expressions!r}"
+    )
+
+
+def test_analysis_knowledge_gaps_is_indexed_by_build_and_cause() -> None:
+    """data-model.md §7: "build: integer, Indexed with cause — the per-patch rate is this
+    query." — a composite index covering at least `build` and `cause` together, not two separate
+    single-column indexes, which would not serve the one query this table exists for."""
+    table = _table("analysis_knowledge_gaps")
+    composite = next(
+        (i for i in table.indexes if {"build", "cause"} <= {c.name for c in i.columns}),
+        None,
+    )
+    assert composite is not None, "no index covers (build, cause) together"
+
+
+def test_analysis_knowledge_gap_cause_is_the_five_member_closed_set_data_model_names() -> None:
+    assert {c.value for c in models.AnalysisGapCause} == {
+        "no-snapshot-for-build",
+        "entity-absent",
+        "field-absent",
+        "civilisation-not-modelled",
+        "effect-not-modelled",
+    }
+
+
+def test_analysis_knowledge_gap_severity_is_the_two_member_closed_set_fr037_requires() -> None:
+    assert {s.value for s in models.AnalysisGapSeverity} == {"blocking", "informational"}
+
+
 def test_replay_access_log_check_constraint_accepts_exactly_one_source() -> None:
     """FR-029: after this feature there are two kinds of archive a logged access can point at
     (`replay_captures` and `retained_recordings`), and a row that points at neither or both is a

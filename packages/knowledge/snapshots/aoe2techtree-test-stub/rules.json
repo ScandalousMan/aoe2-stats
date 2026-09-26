@@ -1,0 +1,4 @@
+{
+  "$comment": "Placeholder normalised rules body. T640 replaces this with the real normaliser output (units, buildings, technologies, costs, times, ages, prerequisites, civilisation bonuses) derived from packages/knowledge/packs/aoe2techtree. This fixture exists only so T638's digest and load mechanism has committed content to verify.",
+  "entities": {}
+}
