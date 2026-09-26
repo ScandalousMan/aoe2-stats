@@ -3570,36 +3570,16 @@ count of cells typed here.
 **Open as of 2026-09-21** (T597, re-walking spec.md's production-readiness items 9 and 13 against
 the commit this task actually runs on, rather than the CLAUDE.md violation the sixth-walk's own
 earlier draft made — extending sizing prose into a "Met" verdict, which `reviewer` caught
-2026-09-19). Two standing facts about this package's own verification harness, never about a
-component or a token, filed here for the reason the four registers above already are: the subject is
-this package's own tooling, so a future task changing that tooling needs this row updated, and it
-does not belong in a spec written once.
+2026-09-19). Item 9's second half's own row is deleted (T673, 2026-09-26): nightly run
+[36267228036](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36267228036) backs the
+determinism harness's verdict — 3516 render pairs compared, every one within the 0.01 tolerance —
+so the row is removed rather than left as a passing exception. The rows below are what is still
+open about this package's own verification harness, never about a component or a token, filed here
+for the reason the four registers above already are: the subject is this package's own tooling, so
+a future task changing that tooling needs this row updated, and it does not belong in a spec written
+once.
 
-1. **Item 9's second half — "every story is deterministic" — has no harness anywhere in this
-   repository.** Nothing renders a story twice and compares the two renders: `playwright.config.ts`
-   carries no `repeatEach`, and T568's own double render (the proof behind the clock-freeze fix,
-   `37f0c02`) was a scratch harness run once by hand and never committed. `story-baselines.mjs`
-   proves structural completeness (every story has its six theme x width units on disk) and
-   `story-baselines-duplicates.mjs` proves two different stories' units are not accidentally
-   identical; neither asks whether one story's own render is stable run to run. **Sized, not built by
-   the task that found it (T597) — a checkbox ticked here would be the exact mistake this register
-   exists to stop.** What it takes: (a) a second capture pass over the same story matrix
-   `tests/visual/stories.spec.ts` already walks (the full story matrix this file's own "The
-   baseline set, as it stands" section above counts and `scripts/checks/story-baselines.mjs` asserts,
-   never restated as a number here that could drift from it), most
-   cheaply as a `repeatEach: 2`-style second run rather than a new project, since the story set and
-   the capture axes are already correct and only the "run it twice" property is missing; (b) a
-   comparison the existing checks cannot supply, because "render A vs. the checked-in baseline" and
-   "render A vs. render B, taken seconds apart" are different questions — reusing
-   `story-baselines-duplicates.mjs`'s own `pixelDiffRatio` idiom against the two fresh renders
-   directly (never against a stored PNG) is the smallest correct extension, asserting the same 0.01
-   `DUPLICATE_MAX_DIFF_RATIO` already accepted elsewhere as anti-aliasing noise, not byte equality;
-   (c) this doubles Storybook-story capture cost for whichever job carries it, so it belongs beside
-   `nightly.yml`'s already-unscoped `visual-full` job, never `pr.yml`'s diff-scoped `visual` job — a
-   PR that touches one story has no need to render every story twice. Rough order of magnitude: one
-   new CI job invocation, one new comparison script reusing an idiom that already exists, and a
-   doubled runtime for one nightly job. **Owner: T673. Fix by 2026-10-05.**
-2. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
+1. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
    and reduced motion have no route-level suite of any kind. Focus visibility has one,
    `tests/visual/focus-ring.spec.ts`, but it navigates `/iframe.html` — per-component inside
    Storybook, never an application route. `tests/visual/app-routes.spec.ts` counts landmarks and
@@ -3635,7 +3615,7 @@ does not belong in a spec written once.
    existing captures if a forced-focus fixture is added per route. **Owner: T674. Fix by
    2026-10-05.**
 
-3. **A fill-only state signal is invisible to the comparator regardless of crop, found while closing
+2. **A fill-only state signal is invisible to the comparator regardless of crop, found while closing
    row 8's own T596/T600/`7f0b31e5` debt (2026-09-23).** Playwright's `toHaveScreenshot` compares with
    pixelmatch at its default `threshold: 0.2` — `playwright.config.ts` sets only
    `maxDiffPixelRatio: 0.01`, never `threshold` — so a pixel counts as different only when its YIQ
@@ -3671,8 +3651,8 @@ does not belong in a spec written once.
    threshold bound differs per theme; establishing it is part of this task, not decided here. **Owner:
    T675. Fix by 2026-10-07.**
 
-Rows 1 and 2 above are not evidence that item 9 or item 13 is met — sizing the work is not doing it,
-the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Both stay
-open until T673 and T674 land and a run, not a plan, backs the verdict. Row 3 answers a different
-question — the comparator's own sensitivity, not an axis the harness fails to run — and stays open
-until T675's package-wide sweep and its `product-designer` decision land.
+Row 1 above is not evidence that item 13 is met — sizing the work is not doing it, the distinction
+an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays open until
+T674 lands. Row 2 answers a different question — the comparator's own sensitivity, not an axis the
+harness fails to run — and stays open until T675's package-wide sweep and its `product-designer`
+decision land.
