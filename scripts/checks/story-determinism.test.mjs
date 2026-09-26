@@ -368,3 +368,29 @@ test('resolveDeterminismDir defaults to test-results/determinism when the var is
     else process.env.VISUAL_DETERMINISM_DIR = previous
   }
 })
+
+// A second contrast: explicit dirs passed to `runCheck` still win outright over
+// VISUAL_DETERMINISM_DIR — the env var only ever supplies a *default*, never overrides a caller
+// who already named a directory. Points the var at a path that does not exist at all, so a run
+// that wrongly consulted it would fail on "no pass directory found" rather than compare anything.
+test('runCheck prefers explicit dirs over VISUAL_DETERMINISM_DIR when both are given', () => {
+  const dir = makeFixtureDir()
+  const passA = path.join(dir, 'pass-0')
+  const passB = path.join(dir, 'pass-1')
+  const png = makeSolidPng(0)
+  writePass(passA, { 'story-light-1280.png': png })
+  writePass(passB, { 'story-light-1280.png': png })
+
+  const previous = process.env.VISUAL_DETERMINISM_DIR
+  process.env.VISUAL_DETERMINISM_DIR = path.join(dir, 'does-not-exist')
+  try {
+    const { findings, comparedCount, exitCode } = runCheck({ passADir: passA, passBDir: passB })
+    assert.deepEqual(findings, [])
+    assert.equal(comparedCount, 1)
+    assert.equal(exitCode, 0)
+  } finally {
+    if (previous === undefined) delete process.env.VISUAL_DETERMINISM_DIR
+    else process.env.VISUAL_DETERMINISM_DIR = previous
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

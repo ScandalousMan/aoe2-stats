@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// T673: closes item 9's second half's row ("every story is deterministic") of
-// packages/design-system/specs/README.md's "Verification-coverage gap register" (deleted by T673
-// once a run backed the verdict — see that file's git history for the sizing this implements).
-// Nothing in this repository, before this file, rendered a story twice and compared the two
-// renders: `story-baselines.mjs` proves structural completeness (every story has its six baselines
-// on disk) and `story-baselines-duplicates.mjs` proves two *different* stories' units are not
-// accidentally identical; neither asks whether one story's own render is stable run to run.
+// T673: closes item 9's second half's row, deleted by T673, of
+// packages/design-system/specs/README.md's "Verification-coverage gap register" — see that file's
+// git history for the sizing this implements. Nothing in this repository, before this file,
+// rendered a story twice and compared the two renders: `story-baselines.mjs` proves structural
+// completeness (every story has its six baselines on disk) and `story-baselines-duplicates.mjs`
+// proves two *different* stories' units are not accidentally identical; neither asks whether one
+// story's own render is stable run to run.
 //
 // The two renders this file compares are never a checked-in baseline
 // (`packages/design-system/__screenshots__`) — they are two fresh, independent captures written by
@@ -14,8 +14,8 @@
 // `VISUAL_DETERMINISM_DIR`'s own children, if set — `resolveDeterminismDir` below resolves this
 // file's read location the same way that project resolves its write location) — gitignored,
 // ephemeral, produced fresh by the CI job this script runs beside. "Render A vs. the checked-in
-// baseline" and "render A vs. render B, taken seconds apart" are different questions; this file
-// only ever answers the second.
+// baseline" and "render A vs. render B, taken in separate page loads of one run" are different
+// questions; this file only ever answers the second.
 //
 // Reuses `story-baselines-duplicates.mjs`'s own `pixelDiffRatio` idiom directly — the fraction of
 // differing pixels between two same-dimensioned PNGs — rather than a second implementation of pixel
