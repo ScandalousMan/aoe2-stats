@@ -532,6 +532,13 @@ _MARKET_ID = "84"
 #: independent value is still produced" half of SC-007, on a *different entity*.
 _MILL_ID = "68"
 
+#: T652p (b): a `unit_id` value for tests whose stream never resolves the entity at all (an
+#: unresolvable build, or no build), so the value carried is never looked up — only ever passed
+#: through unread. Deliberately not `_MARKET_ID`/`_MILL_ID`: those are building ids, and using a
+#: building id as `unit_id=` reads as a (false) claim that 84/68 are unit ids. Matches
+#: `test_query.py`'s own `_UNKNOWN_UNIT_ID` convention for a placeholder that is never a real id.
+_UNRESOLVED_UNIT_ID_PLACEHOLDER = 999_999_999
+
 
 def test_removing_a_required_field_withholds_only_its_dependent_values() -> None:
     """**SC-007**: "Removing a required field from a snapshot causes the dependent values to be
@@ -676,6 +683,10 @@ def test_two_slots_on_one_civilisation_produce_no_duplicate_gaps() -> None:
         return (gap.entity_kind, gap.entity_id, gap.field, gap.civilisation or "")  # type: ignore[attr-defined]
 
     keys = [_unique_index_key(gap) for gap in result]
+    assert result, (
+        "expected at least one gap from this stream — an empty result passes the dedup check "
+        "vacuously"
+    )
     assert len(result) == len(set(keys)), (
         "forcing every participant onto one civilisation must not multiply an identical gap once "
         "per slot that referenced it — analysis_knowledge_gaps' own unique index "
@@ -727,7 +738,10 @@ def test_a_stream_with_no_build_at_all_records_a_blocking_gap() -> None:
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_MARKET_ID), building_type=12, building_object=5001, count=1
+                unit_id=_UNRESOLVED_UNIT_ID_PLACEHOLDER,
+                building_type=12,
+                building_object=5001,
+                count=1,
             ),
         ),
     ]
@@ -776,7 +790,10 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_MARKET_ID), building_type=12, building_object=5001, count=1
+                unit_id=_UNRESOLVED_UNIT_ID_PLACEHOLDER,
+                building_type=12,
+                building_object=5001,
+                count=1,
             ),
         ),
         CanonicalEvent(
@@ -784,7 +801,10 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
             kind=EventKind.UNIT_QUEUED,
             participant=1,
             payload=UnitQueuedPayload(
-                unit_id=int(_MILL_ID), building_type=87, building_object=5002, count=1
+                unit_id=_UNRESOLVED_UNIT_ID_PLACEHOLDER,
+                building_type=87,
+                building_object=5002,
+                count=1,
             ),
         ),
     ]

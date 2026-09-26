@@ -377,6 +377,29 @@ def test_the_real_malians_dock_discount_applies_through_the_committed_effects_to
     assert applied[0].source_text == "Buildings cost -15% wood"
 
 
+@pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
+def test_the_real_malians_bombard_tower_cost_is_never_discounted(directory: str) -> None:
+    """T652p (e): the Malians "Buildings cost -15% wood" selector wrongly included building 236
+    (Bombard Tower) — Malians' own tree file (`MALIANS.json`) marks it `node_status:
+    "NotAvailable"`, the only such entry among the 28 buildings the selector originally named, so
+    this civilisation cannot construct a Bombard Tower at all and discounting a cost it can never
+    pay was wrong. Removed from the selector in both promoted `effects.toml` files; this proves
+    the discount no longer applies, and querying still answers the plain, undiscounted baseline
+    cost (`rules.json`'s own entry for building 236) with no effect touching it."""
+    result = effects.apply(
+        directory,
+        civilisation="Malians",
+        kind="building",
+        id="236",
+        field="cost",
+        value={"gold": 100, "stone": 125, "wood": 0},
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == {"gold": 100, "stone": 125, "wood": 0}
+    assert applied == (), "no Malians effect should touch a building this civilisation cannot build"
+
+
 def test_the_real_malians_barracks_pierce_armor_bonus_is_not_modelled() -> None:
     """The age-gated bonus this task's "not modelled" rule requires be recorded rather than
     silently dropped (research.md D5) — proven here against the real, committed `effects.toml`.
@@ -619,3 +642,118 @@ def test_the_real_tatars_town_center_sheep_bonus_is_not_modelled() -> None:
     )
     assert isinstance(result, effects.EffectNotModelled)
     assert "age" in result.reason.lower()
+
+
+# ------------------------------------------------------------------------------------- T652p (d)
+
+
+_MINIMAL_SET_SCALAR_EFFECT = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "999"
+source_text = "synthetic: a scalar field set to a whole number"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = 3
+selector = [{ kind = "technology", id = "1" }]
+validated_by = "synthetic fixture, T652p"
+"""
+
+
+def test_a_set_scalar_effect_returns_an_int_not_a_float() -> None:
+    """T652p (d): data-model.md §6's rounding row stated the half-up convention as if it covered
+    every operation; it is true of `multiply` and `add` only. `set` is a direct replacement with
+    nothing to round, but the result must still be typed as an int — every scalar field this
+    package models (`age_requirement`, `production_time`) is an integer. Before the fix,
+    `_apply_scalar`'s `set` branch returned the raw float `operand` unconverted."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_SET_SCALAR_EFFECT)
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="technology",
+        id="1",
+        field="age_requirement",
+        value=4,
+    )
+    assert value == 3
+    assert isinstance(value, int), f"a 'set' scalar effect must answer an int, got {type(value)!r}"
+    assert applied == (effect,)
+
+
+@pytest.mark.parametrize(
+    ("civilisation", "technology_id", "field", "baseline"),
+    [
+        ("Franks", "12", "production_time", 70),  # Crop Rotation, "Mill technologies free"
+        ("Persians", "436", "age_requirement", 4),  # Parthian Tactics, Castle Age
+    ],
+)
+def test_the_real_free_technology_and_age_requirement_effects_answer_ints_not_floats(
+    civilisation: str, technology_id: str, field: str, baseline: int
+) -> None:
+    """T652p (d), against the real committed snapshot rather than a synthetic fixture: T652o's
+    free-technology model (`production_time = 0`) and the pre-existing Persians `age_requirement`
+    discount both go through `_apply_scalar`'s `set` branch, so both must now answer an int.
+    Confirmed directly before this fix: both answered a float (`0.0`, `3.0`)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation=civilisation,
+        kind="technology",
+        id=technology_id,
+        field=field,
+        value=baseline,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, _applied = result
+    assert isinstance(value, int), f"{field} must answer an int, got {type(value)!r} ({value!r})"
+
+
+# ------------------------------------------------------------------------------------- T652p (f)
+
+
+_MINIMAL_ADD_MAPPING_EFFECT_TEMPLATE = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "998"
+source_text = "synthetic: an add effect on a cost, T652p (f)"
+modelled = "yes"
+field = "cost"
+operation = "add"
+operand = {{ wood = {operand} }}
+selector = [{{ kind = "building", id = "1" }}]
+validated_by = "synthetic fixture, T652p"
+"""
+
+
+def test_an_add_that_would_drive_a_resource_negative_raises() -> None:
+    """T652p (f): unreachable by any committed effect today (the one real `add` effect, Saracens'
+    Market discount, never drives a resource below zero), but `add` is live data since T652o's
+    free-technology model, and the invariant — a cost never goes negative — was previously
+    unasserted."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_ADD_MAPPING_EFFECT_TEMPLATE.format(operand=-30))
+    with pytest.raises(effects.EffectsError, match="negative"):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Franks",
+            kind="building",
+            id="1",
+            field="cost",
+            value={"wood": 25},
+        )
+
+
+def test_an_add_that_lands_exactly_at_zero_does_not_raise() -> None:
+    """The contrast case the guard above needs: zero is a valid cost (a free technology genuinely
+    costs nothing), so landing exactly on it must not raise — only a result strictly below zero is
+    a defect."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_ADD_MAPPING_EFFECT_TEMPLATE.format(operand=-25))
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="building",
+        id="1",
+        field="cost",
+        value={"wood": 25},
+    )
+    assert value == {"wood": 0}
+    assert applied == (effect,)
