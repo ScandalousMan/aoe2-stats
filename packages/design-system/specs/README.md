@@ -3570,41 +3570,16 @@ count of cells typed here.
 **Open as of 2026-09-21** (T597, re-walking spec.md's production-readiness items 9 and 13 against
 the commit this task actually runs on, rather than the CLAUDE.md violation the sixth-walk's own
 earlier draft made — extending sizing prose into a "Met" verdict, which `reviewer` caught
-2026-09-19). Two standing facts about this package's own verification harness, never about a
-component or a token, filed here for the reason the four registers above already are: the subject is
-this package's own tooling, so a future task changing that tooling needs this row updated, and it
-does not belong in a spec written once.
+2026-09-19). Item 9's second half's own row is deleted (T673, 2026-09-26): nightly run
+[36267228036](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36267228036) backs the
+determinism harness's verdict — 3516 render pairs compared, every one within the 0.01 tolerance —
+so the row is removed rather than left as a passing exception. The rows below are what is still
+open about this package's own verification harness, never about a component or a token, filed here
+for the reason the four registers above already are: the subject is this package's own tooling, so
+a future task changing that tooling needs this row updated, and it does not belong in a spec written
+once.
 
-1. **Item 9's second half — "every story is deterministic" — the harness is built; no CI run backs
-   it yet (T673, 2026-09-26).** `playwright.config.ts`'s `determinism` project (`repeatEach: 2`,
-   opt-in via `RUN_DETERMINISM=1`, replacing the `chromium` project rather than joining it) re-runs
-   `tests/visual/stories.spec.ts` itself twice — never a second copy of its settle/force-state/clip
-   logic. That same file's own final capture step switches only the _name_ it passes to
-   `expect(...).toHaveScreenshot` under this mode — every branch still calls the same matcher, with
-   its own defaults (`animations: 'disabled'`, `caret: 'hide'`, `scale: 'css'`) and its own
-   stability loop, so both passes go through the exact render path the baseline suite captures,
-   never a narrower copy of it (a raw `page.screenshot` proved a different, less exacting render's
-   stability — the defect an earlier draft of this harness shipped and `reviewer` caught).
-   `playwright.config.ts`'s own `snapshotPathTemplate` for that one project resolves the name into
-   `<dir>/pass-<repeatEachIndex>/<id>-<theme>-<width>.png` (`test-results/determinism` by default,
-   or `VISUAL_DETERMINISM_DIR`), never into `packages/design-system/__screenshots__`, and
-   `updateSnapshots: 'all'` (config-level, travelling with `RUN_DETERMINISM=1` in the same file, so
-   it can never reach a `chromium` run against a real baseline) makes a first-sight capture write
-   and pass rather than write and fail — verified empirically against the installed
-   `playwright@1.62.1`, whose default mode does the former. `scripts/checks/story-determinism.mjs`
-   (with `scripts/checks/story-determinism.test.mjs`, run in `pr.yml`) compares pass-0 against
-   pass-1 directly — never a stored PNG — reusing `story-baselines-duplicates.mjs`'s own
-   `pixelDiffRatio` idiom at the same 0.01 `DUPLICATE_MAX_DIFF_RATIO` tolerance, and fails loudly on
-   a missing or empty pass directory, a unit captured in one pass and not the other, or any pair
-   over tolerance — never a silent zero. Wired into `.github/workflows/nightly.yml`'s `visual-full`
-   job, beside its own unscoped `pnpm test:visual` step, never `pr.yml`'s diff-scoped `visual`
-   job — doubling every story's capture cost has no place in a job scoped to what one pull request
-   touched. **This row stays open until a nightly run over the full matrix has actually backed the
-   verdict**: a local subset run during this task proved the mechanics (an identical pair passes,
-   including a hover story whose fill transitions on a CSS `transition`; a corrupted pass-1 capture
-   fails the comparator; `packages/design-system/__screenshots__` stays untouched throughout),
-   which is not the run item 9 needs. **Owner: T673. Fix by 2026-10-05.**
-2. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
+1. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
    and reduced motion have no route-level suite of any kind. Focus visibility has one,
    `tests/visual/focus-ring.spec.ts`, but it navigates `/iframe.html` — per-component inside
    Storybook, never an application route. `tests/visual/app-routes.spec.ts` counts landmarks and
@@ -3640,7 +3615,7 @@ does not belong in a spec written once.
    existing captures if a forced-focus fixture is added per route. **Owner: T674. Fix by
    2026-10-05.**
 
-3. **A fill-only state signal is invisible to the comparator regardless of crop, found while closing
+2. **A fill-only state signal is invisible to the comparator regardless of crop, found while closing
    row 8's own T596/T600/`7f0b31e5` debt (2026-09-23).** Playwright's `toHaveScreenshot` compares with
    pixelmatch at its default `threshold: 0.2` — `playwright.config.ts` sets only
    `maxDiffPixelRatio: 0.01`, never `threshold` — so a pixel counts as different only when its YIQ
@@ -3676,9 +3651,8 @@ does not belong in a spec written once.
    threshold bound differs per theme; establishing it is part of this task, not decided here. **Owner:
    T675. Fix by 2026-10-07.**
 
-Rows 1 and 2 above are not evidence that item 9 or item 13 is met — sizing the work is not doing it,
-the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays
-open until a nightly run backs the determinism harness T673 built (not merely sized). Row 2 stays
-open until T674 lands. Row 3 answers a different question — the comparator's own sensitivity, not an
-axis the harness fails to run — and stays open until T675's package-wide sweep and its
-`product-designer` decision land.
+Row 1 above is not evidence that item 13 is met — sizing the work is not doing it, the distinction
+an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays open until
+T674 lands. Row 2 answers a different question — the comparator's own sensitivity, not an axis the
+harness fails to run — and stays open until T675's package-wide sweep and its `product-designer`
+decision land.
