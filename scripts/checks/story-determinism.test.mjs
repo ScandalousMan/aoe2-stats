@@ -7,9 +7,15 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { PNG } from 'pngjs'
 import { DUPLICATE_MAX_DIFF_RATIO } from './story-baselines-duplicates.mjs'
-import { listPngFiles, compareRenderPasses, runCheck } from './story-determinism.mjs'
+import {
+  listPngFiles,
+  compareRenderPasses,
+  runCheck,
+  resolveDeterminismDir,
+} from './story-determinism.mjs'
 
 function makeFixtureDir() {
   return mkdtempSync(path.join(os.tmpdir(), 'story-determinism-'))
@@ -316,5 +322,49 @@ test('runCheck exits 1 when a pair exceeds the tolerance', () => {
     assert.equal(exitCode, 1)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ---------------------------------------------------------------------------------------------
+// VISUAL_DETERMINISM_DIR — playwright.config.ts resolves the write location from this var; the
+// comparator's own no-argv default must resolve the read location the same way, against the same
+// root, or editing the env value in nightly.yml makes the comparator report "no pass directory
+// found" against a location nothing ever wrote to.
+// ---------------------------------------------------------------------------------------------
+
+test('runCheck with no explicit dirs honours VISUAL_DETERMINISM_DIR when it is set', () => {
+  const dir = makeFixtureDir()
+  const passA = path.join(dir, 'pass-0')
+  const passB = path.join(dir, 'pass-1')
+  const png = makeSolidPng(0)
+  writePass(passA, { 'story-light-1280.png': png })
+  writePass(passB, { 'story-light-1280.png': png })
+
+  const previous = process.env.VISUAL_DETERMINISM_DIR
+  process.env.VISUAL_DETERMINISM_DIR = dir
+  try {
+    const { findings, comparedCount, exitCode } = runCheck()
+    assert.deepEqual(findings, [])
+    assert.equal(comparedCount, 1)
+    assert.equal(exitCode, 0)
+  } finally {
+    if (previous === undefined) delete process.env.VISUAL_DETERMINISM_DIR
+    else process.env.VISUAL_DETERMINISM_DIR = previous
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// Contrast: an unset var still resolves to the same `test-results/determinism` this file has
+// always defaulted to — VISUAL_DETERMINISM_DIR only ever narrows the default, it does not become
+// mandatory.
+test('resolveDeterminismDir defaults to test-results/determinism when the var is unset', () => {
+  const previous = process.env.VISUAL_DETERMINISM_DIR
+  delete process.env.VISUAL_DETERMINISM_DIR
+  try {
+    const expectedRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+    assert.equal(resolveDeterminismDir(), path.join(expectedRoot, 'test-results', 'determinism'))
+  } finally {
+    if (previous === undefined) delete process.env.VISUAL_DETERMINISM_DIR
+    else process.env.VISUAL_DETERMINISM_DIR = previous
   }
 })

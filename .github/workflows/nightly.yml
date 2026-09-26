@@ -207,20 +207,21 @@ jobs:
       # unscoped `pnpm test:visual` below walks in full — see the job comment above.
       - run: pnpm --filter web build
       - run: pnpm test:visual
-      # T673: item 9's second half — "every story is deterministic" — closing row 1 of
+      # T673: item 9's second half — "every story is deterministic" — closes its row of
       # packages/design-system/specs/README.md's "Verification-coverage gap register" once this
       # run backs it. Lands beside this job, never `pr.yml`'s diff-scoped `visual` job: doubling
       # every story's capture cost has no place in a job scoped to what one pull request touched.
       #
       # `RUN_DETERMINISM=1` swaps `playwright.config.ts`'s only registered project from `chromium`
       # to `determinism` (`repeatEach: 2`, targeting `tests/visual/stories.spec.ts` itself — never
-      # a second copy of its settle/force-state/clip logic), and `VISUAL_DETERMINISM_DIR` makes
-      # that same file's own final capture step write each of the two repeats straight to disk
-      # instead of asserting against the checked-in baseline (see that file's own comment at the
-      # switch). `pnpm test:visual` (unscoped, no `--changed`) is the same entrypoint the step
-      # above already used, so this reuses `scripts/visual/run.mjs`'s own story selection and
-      # {theme, width} axes (`scripts/visual/review-widths.mjs`) rather than a second definition of
-      # either.
+      # a second copy of its settle/force-state/clip logic) and makes that same file's own final
+      # capture step write each of the two repeats straight to disk instead of asserting against
+      # the checked-in baseline (see that file's own comment at the switch). `VISUAL_DETERMINISM_DIR`
+      # only chooses *where* that write lands (`test-results/determinism` here; unset, it would
+      # default to the same path). `pnpm test:visual` (unscoped, no `--changed`) is the same
+      # entrypoint the step above already used, so this reuses `scripts/visual/run.mjs`'s own story
+      # selection and {theme, width} axes (`scripts/visual/review-widths.mjs`) rather than a second
+      # definition of either.
       - name: Render every story twice for the determinism harness (T673)
         run: RUN_DETERMINISM=1 VISUAL_DETERMINISM_DIR=test-results/determinism pnpm test:visual
       # Compares pass-0 against pass-1 directly — never against a checked-in baseline — reusing

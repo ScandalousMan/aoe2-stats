@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// T673: closes row 1 ("item 9's second half — every story is deterministic") of
-// packages/design-system/specs/README.md's now-deleted "Verification-coverage gap register" entry
-// — see that file's git history for the sizing this implements. Nothing in this repository, before
-// this file, rendered a story twice and compared the two renders: `story-baselines.mjs` proves
-// structural completeness (every story has its six baselines on disk) and `story-baselines-
-// duplicates.mjs` proves two *different* stories' units are not accidentally identical; neither
-// asks whether one story's own render is stable run to run.
+// T673: closes item 9's second half's row ("every story is deterministic") of
+// packages/design-system/specs/README.md's "Verification-coverage gap register" (deleted by T673
+// once a run backed the verdict — see that file's git history for the sizing this implements).
+// Nothing in this repository, before this file, rendered a story twice and compared the two
+// renders: `story-baselines.mjs` proves structural completeness (every story has its six baselines
+// on disk) and `story-baselines-duplicates.mjs` proves two *different* stories' units are not
+// accidentally identical; neither asks whether one story's own render is stable run to run.
 //
 // The two renders this file compares are never a checked-in baseline
 // (`packages/design-system/__screenshots__`) — they are two fresh, independent captures written by
-// `tests/visual/determinism.spec.ts`'s own `determinism` Playwright project (`playwright.config.ts`,
-// `repeatEach: 2`) to `test-results/determinism/pass-0` and `test-results/determinism/pass-1`
-// (gitignored, ephemeral, produced fresh by the CI job this script runs beside). "Render A vs. the
-// checked-in baseline" and "render A vs. render B, taken seconds apart" are different questions;
-// this file only ever answers the second.
+// `tests/visual/stories.spec.ts` itself, under `playwright.config.ts`'s own `determinism` project
+// (`repeatEach: 2`), to `test-results/determinism/pass-0` and `test-results/determinism/pass-1` (or
+// `VISUAL_DETERMINISM_DIR`'s own children, if set — `resolveDeterminismDir` below resolves this
+// file's read location the same way that project resolves its write location) — gitignored,
+// ephemeral, produced fresh by the CI job this script runs beside. "Render A vs. the checked-in
+// baseline" and "render A vs. render B, taken seconds apart" are different questions; this file
+// only ever answers the second.
 //
 // Reuses `story-baselines-duplicates.mjs`'s own `pixelDiffRatio` idiom directly — the fraction of
 // differing pixels between two same-dimensioned PNGs — rather than a second implementation of pixel
@@ -40,8 +42,19 @@ import { fileURLToPath } from 'node:url'
 import { DUPLICATE_MAX_DIFF_RATIO, pixelDiffRatio } from './story-baselines-duplicates.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const defaultPassADir = path.join(rootDir, 'test-results', 'determinism', 'pass-0')
-const defaultPassBDir = path.join(rootDir, 'test-results', 'determinism', 'pass-1')
+
+// The write location `playwright.config.ts`'s `determinism` project resolves
+// `VISUAL_DETERMINISM_DIR` into (that file's own `determinismSnapshotDir`) — read here the same
+// way, against the same root, so editing the env var in `nightly.yml` moves both the write and the
+// read together. Reads `process.env` at call time, never a module-load-time constant, so a test
+// (or a caller) can set the var and see this resolve differently within the same process.
+export function resolveDeterminismDir(env = process.env) {
+  return path.resolve(rootDir, env.VISUAL_DETERMINISM_DIR ?? 'test-results/determinism')
+}
+
+function defaultPassDir(index, env = process.env) {
+  return path.join(resolveDeterminismDir(env), `pass-${index}`)
+}
 
 // Every `.png` filename directly inside `dir`, sorted — or `null` when `dir` does not exist at all
 // (distinct from an existing, empty directory, so a caller can tell "the capture step never ran"
@@ -122,14 +135,17 @@ function fail(message) {
 }
 
 export function runCheck({
-  passADir = defaultPassADir,
-  passBDir = defaultPassBDir,
+  // `undefined` here, not a module-load-time constant: the default is resolved below, at call
+  // time, so it reads whatever `VISUAL_DETERMINISM_DIR` is set to *now* — explicit argv/caller
+  // values still win outright.
+  passADir,
+  passBDir,
   threshold = DUPLICATE_MAX_DIFF_RATIO,
   getPixelDiffRatio = pixelDiffRatio,
 } = {}) {
   const { findings, comparedCount } = compareRenderPasses({
-    passADir,
-    passBDir,
+    passADir: passADir ?? defaultPassDir(0),
+    passBDir: passBDir ?? defaultPassDir(1),
     threshold,
     getPixelDiffRatio,
   })
@@ -138,8 +154,8 @@ export function runCheck({
 
 function main() {
   const [passADirArg, passBDirArg] = process.argv.slice(2)
-  const passADir = passADirArg ? path.resolve(rootDir, passADirArg) : defaultPassADir
-  const passBDir = passBDirArg ? path.resolve(rootDir, passBDirArg) : defaultPassBDir
+  const passADir = passADirArg ? path.resolve(rootDir, passADirArg) : defaultPassDir(0)
+  const passBDir = passBDirArg ? path.resolve(rootDir, passBDirArg) : defaultPassDir(1)
 
   const { findings, comparedCount, exitCode } = runCheck({ passADir, passBDir })
   if (findings.length > 0) {
