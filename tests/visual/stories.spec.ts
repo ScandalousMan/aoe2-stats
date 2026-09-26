@@ -303,8 +303,20 @@ const stories: VisualStory[] = storiesFilePath
   ? (JSON.parse(readFileSync(storiesFilePath, 'utf8')) as VisualStory[])
   : []
 
+// T673 (FR-047, item 9's second half — "every story is deterministic"): true only under
+// `playwright.config.ts`'s own `determinism` project, which registers *instead of* `chromium`
+// (never alongside it) and only when this var is `1` — see that file's comment for why the whole
+// `projects` array swaps rather than adding a second one. Read directly, not derived from
+// `VISUAL_DETERMINISM_DIR` or any other var, so this branch can never be entered by accident: the
+// moment this is true, `playwright.config.ts` has also set `updateSnapshots: 'all'` for the whole
+// run and pointed the `determinism` project's own `snapshotPathTemplate` at
+// `test-results/determinism` (or `VISUAL_DETERMINISM_DIR`, if set) — never at
+// `packages/design-system/__screenshots__` — so there is no path through this file, under this
+// var, that can touch a checked-in baseline.
+const determinismMode = process.env.RUN_DETERMINISM === '1'
+
 for (const { id, theme, width, fullPage } of stories) {
-  test(`${id} matches its visual baseline (${theme}, ${width})`, async ({ page }) => {
+  test(`${id} matches its visual baseline (${theme}, ${width})`, async ({ page }, testInfo) => {
     await page.route('https://avatars.steamstatic.com/**', (route: Route) => {
       const requestUrl = new URL(route.request().url())
       if (requestUrl.pathname === STEAM_AVATAR_FIXTURE_PATH) {
@@ -458,7 +470,15 @@ for (const { id, theme, width, fullPage } of stories) {
     // story that would otherwise have been scanned this run. Only once per story-theme pair, at
     // the designated width (see `AXE_SCAN_WIDTH` above), not once per capture unit, and reusing
     // this loop's scoping and theme mechanism rather than a second harness (research D12).
-    if (width === AXE_SCAN_WIDTH) {
+    // Skipped entirely under the determinism harness (`determinismMode`): it is a DOM/semantics
+    // question, not a rendering one (see `AXE_SCAN_WIDTH`'s own comment above), so it has nothing
+    // to say about render-to-render stability, and running it twice per story on every nightly
+    // determinism pass would double an already-expensive scan for no gain in what this harness
+    // catches. `checkStaleness()` (`scripts/visual/a11y-scan.cjs`) never misreads "not scanned this
+    // run" as "scanned and found nothing" — it only flags an allowlist entry for a component this
+    // run's own `scanned.ndjson` recorded, so skipping the scan here produces no false staleness
+    // finding.
+    if (width === AXE_SCAN_WIDTH && !determinismMode) {
       const component = componentFromTitle(titleById.get(id) ?? id)
       // Scoped to `#storybook-root` — the story's own wrapper — rather than the whole page.
       // Confirmed empirically (not assumed): scanning the whole `iframe.html` document reports
@@ -509,16 +529,48 @@ for (const { id, theme, width, fullPage } of stories) {
     // mean its own `visual-full-page` tag was never removed when the clip was added — the clip is
     // still the more specific, more correct capture, so it wins rather than the two silently racing.
     const captureClip = await readCaptureClip(page, id)
+
+    // T673: a pure snapshot-*name* switch, never a second capture mechanism — every branch below
+    // still calls `expect(...).toHaveScreenshot`, with the same clip/fullPage arguments, on the
+    // same settled DOM, and inherits that matcher's own defaults (`animations: 'disabled'`,
+    // `caret: 'hide'`, `scale: 'css'`) and its own stability loop (retakes until two consecutive
+    // captures match) unchanged — a raw `page.screenshot`/`root.screenshot` has none of those and
+    // would be proving a different render's stability than the one the baseline suite captures,
+    // exactly the gap `reviewer` found in this file's first version. `toHaveScreenshot`'s first
+    // argument accepts a `string[]`, joined as path segments (confirmed against the installed
+    // `playwright@1.62.1`'s own `SnapshotHelper`, `node_modules/playwright/lib/matchers/
+    // expect.js`), so under `determinismMode` the name becomes `['pass-<repeatEachIndex>',
+    // baselineName]` — `playwright.config.ts`'s own `determinism` project resolves that through
+    // its `snapshotPathTemplate` into `test-results/determinism/pass-<index>/<baselineName>`
+    // (or `VISUAL_DETERMINISM_DIR`, if set), never into `packages/design-system/__screenshots__`.
+    // The baseline path (`determinismMode` false) passes the plain `baselineName` exactly as
+    // before — byte-for-byte the code this file always ran.
+    //
+    // The snapshot this produces is *always* "missing" on first sight — `test-results/` is
+    // gitignored and each pass gets its own subdirectory — so `playwright.config.ts` sets
+    // `updateSnapshots: 'all'` for the whole run whenever `determinismMode` is true: verified
+    // empirically (not assumed) against the installed version that Playwright's *default* mode,
+    // `'missing'`, does write the file but still fails the test (a `softError` that
+    // `workerProcessEntry.js`'s `_failWithError` promotes to a real failure even though the
+    // matcher itself returns `pass: true`); `'all'` writes the same file and returns no
+    // `softError`, so the test passes. Since `determinismMode` and `updateSnapshots: 'all'` are
+    // set by the same env var in the same config file, this can never fire against a real
+    // baseline comparison — the `chromium` project (the only one registered whenever
+    // `updateSnapshots` is left at its default `'missing'`) never sees `'all'`.
+    const snapshotName: string | string[] = determinismMode
+      ? [`pass-${testInfo.repeatEachIndex}`, baselineName]
+      : baselineName
+
     if (captureClip) {
       const clip = await resolveCaptureClip(page, root, id, captureClip)
-      await expect(page).toHaveScreenshot(baselineName, { fullPage: true, clip })
+      await expect(page).toHaveScreenshot(snapshotName, { fullPage: true, clip })
     } else if (fullPage) {
       // The story's own subject (a fixed dialog, an open popover) paints outside the root
       // element's layout box, so a screenshot clipped to that element never shows it — this
       // captures the whole page instead.
-      await expect(page).toHaveScreenshot(baselineName)
+      await expect(page).toHaveScreenshot(snapshotName)
     } else {
-      await expect(root).toHaveScreenshot(baselineName)
+      await expect(root).toHaveScreenshot(snapshotName)
     }
 
     // Releases the real mouse-down `active` above started — harmless to skip (the page closes with

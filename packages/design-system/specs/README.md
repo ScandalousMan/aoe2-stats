@@ -3575,30 +3575,35 @@ component or a token, filed here for the reason the four registers above already
 this package's own tooling, so a future task changing that tooling needs this row updated, and it
 does not belong in a spec written once.
 
-1. **Item 9's second half — "every story is deterministic" — has no harness anywhere in this
-   repository.** Nothing renders a story twice and compares the two renders: `playwright.config.ts`
-   carries no `repeatEach`, and T568's own double render (the proof behind the clock-freeze fix,
-   `37f0c02`) was a scratch harness run once by hand and never committed. `story-baselines.mjs`
-   proves structural completeness (every story has its six theme x width units on disk) and
-   `story-baselines-duplicates.mjs` proves two different stories' units are not accidentally
-   identical; neither asks whether one story's own render is stable run to run. **Sized, not built by
-   the task that found it (T597) — a checkbox ticked here would be the exact mistake this register
-   exists to stop.** What it takes: (a) a second capture pass over the same story matrix
-   `tests/visual/stories.spec.ts` already walks (the full story matrix this file's own "The
-   baseline set, as it stands" section above counts and `scripts/checks/story-baselines.mjs` asserts,
-   never restated as a number here that could drift from it), most
-   cheaply as a `repeatEach: 2`-style second run rather than a new project, since the story set and
-   the capture axes are already correct and only the "run it twice" property is missing; (b) a
-   comparison the existing checks cannot supply, because "render A vs. the checked-in baseline" and
-   "render A vs. render B, taken seconds apart" are different questions — reusing
-   `story-baselines-duplicates.mjs`'s own `pixelDiffRatio` idiom against the two fresh renders
-   directly (never against a stored PNG) is the smallest correct extension, asserting the same 0.01
-   `DUPLICATE_MAX_DIFF_RATIO` already accepted elsewhere as anti-aliasing noise, not byte equality;
-   (c) this doubles Storybook-story capture cost for whichever job carries it, so it belongs beside
-   `nightly.yml`'s already-unscoped `visual-full` job, never `pr.yml`'s diff-scoped `visual` job — a
-   PR that touches one story has no need to render every story twice. Rough order of magnitude: one
-   new CI job invocation, one new comparison script reusing an idiom that already exists, and a
-   doubled runtime for one nightly job. **Owner: T673. Fix by 2026-10-05.**
+1. **Item 9's second half — "every story is deterministic" — the harness is built; no CI run backs
+   it yet (T673, 2026-09-26).** `playwright.config.ts`'s `determinism` project (`repeatEach: 2`,
+   opt-in via `RUN_DETERMINISM=1`, replacing the `chromium` project rather than joining it) re-runs
+   `tests/visual/stories.spec.ts` itself twice — never a second copy of its settle/force-state/clip
+   logic. That same file's own final capture step switches only the _name_ it passes to
+   `expect(...).toHaveScreenshot` under this mode — every branch still calls the same matcher, with
+   its own defaults (`animations: 'disabled'`, `caret: 'hide'`, `scale: 'css'`) and its own
+   stability loop, so both passes go through the exact render path the baseline suite captures,
+   never a narrower copy of it (a raw `page.screenshot` proved a different, less exacting render's
+   stability — the defect an earlier draft of this harness shipped and `reviewer` caught).
+   `playwright.config.ts`'s own `snapshotPathTemplate` for that one project resolves the name into
+   `<dir>/pass-<repeatEachIndex>/<id>-<theme>-<width>.png` (`test-results/determinism` by default,
+   or `VISUAL_DETERMINISM_DIR`), never into `packages/design-system/__screenshots__`, and
+   `updateSnapshots: 'all'` (config-level, travelling with `RUN_DETERMINISM=1` in the same file, so
+   it can never reach a `chromium` run against a real baseline) makes a first-sight capture write
+   and pass rather than write and fail — verified empirically against the installed
+   `playwright@1.62.1`, whose default mode does the former. `scripts/checks/story-determinism.mjs`
+   (with `scripts/checks/story-determinism.test.mjs`, run in `pr.yml`) compares pass-0 against
+   pass-1 directly — never a stored PNG — reusing `story-baselines-duplicates.mjs`'s own
+   `pixelDiffRatio` idiom at the same 0.01 `DUPLICATE_MAX_DIFF_RATIO` tolerance, and fails loudly on
+   a missing or empty pass directory, a unit captured in one pass and not the other, or any pair
+   over tolerance — never a silent zero. Wired into `.github/workflows/nightly.yml`'s `visual-full`
+   job, beside its own unscoped `pnpm test:visual` step, never `pr.yml`'s diff-scoped `visual`
+   job — doubling every story's capture cost has no place in a job scoped to what one pull request
+   touched. **This row stays open until a nightly run over the full matrix has actually backed the
+   verdict**: a local subset run during this task proved the mechanics (an identical pair passes,
+   including a hover story whose fill transitions on a CSS `transition`; a corrupted pass-1 capture
+   fails the comparator; `packages/design-system/__screenshots__` stays untouched throughout),
+   which is not the run item 9 needs. **Owner: T673. Fix by 2026-10-05.**
 2. **Item 13's four halves have three different gaps, not one.** Keyboard operation, touch footprints
    and reduced motion have no route-level suite of any kind. Focus visibility has one,
    `tests/visual/focus-ring.spec.ts`, but it navigates `/iframe.html` — per-component inside
@@ -3672,7 +3677,8 @@ does not belong in a spec written once.
    T675. Fix by 2026-10-07.**
 
 Rows 1 and 2 above are not evidence that item 9 or item 13 is met — sizing the work is not doing it,
-the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Both stay
-open until T673 and T674 land and a run, not a plan, backs the verdict. Row 3 answers a different
-question — the comparator's own sensitivity, not an axis the harness fails to run — and stays open
-until T675's package-wide sweep and its `product-designer` decision land.
+the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays
+open until a nightly run backs the determinism harness T673 built (not merely sized). Row 2 stays
+open until T674 lands. Row 3 answers a different question — the comparator's own sensitivity, not an
+axis the harness fails to run — and stays open until T675's package-wide sweep and its
+`product-designer` decision land.
