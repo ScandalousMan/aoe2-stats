@@ -1020,7 +1020,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       genuinely cannot place, never where it is something nobody transcribed. Update
       `test_coverage.py`, its docstrings and [quickstart.md](./quickstart.md), which all currently
       say recording 1 is clean. Recompute both digests; keep them equal
-- [ ] T652p **Close the review's smaller findings, three of which make a test prove less than it
+- [x] T652p **Close the review's smaller findings, three of which make a test prove less than it
       claims.** (a) `packages/knowledge/tests/test_coverage.py:569` asserts
       `len(result) == len(set(keys))`, which holds for an empty result — add `assert result` so the
       duplicate-gap regression cannot pass vacuously. (b) The same file at `:620`, `:669` and `:677`

@@ -874,8 +874,12 @@ for a broad unit class.\
 # Imperial Age", plus Unique Unit/Unique Techs/Team Bonus sections not transcribed (same scope
 # note as Saracens' header comment above).
 #
-# Only "Buildings cost -15% wood" touches a tracked field, over the 28 building ids named in this
-# task's own dispatch and confirmed directly against rules.json below. "Villagers drop off +10%
+# Only "Buildings cost -15% wood" touches a tracked field, over 27 of the 28 building ids named
+# in this task's own dispatch and confirmed directly against rules.json below — the dispatch's own
+# 28th, Bombard Tower (236), was removed by T652p (2026-09-26, third review): Malians' own tree
+# file (MALIANS.json) marks building 236 `node_status: "NotAvailable"`, the only `NotAvailable`
+# entry among these 28, so this civilisation cannot build a Bombard Tower at all and discounting a
+# cost it can never pay is wrong, not merely unreachable. "Villagers drop off +10%
 # more gold" names a real entity (the Villager, unit 83) but touches the rate a resource drop-off
 # is credited, an economic mechanic this pack's normaliser does not carry on any entity record at
 # all — no cost, time, age, prerequisite, production-site or availability field is affected, so
@@ -931,7 +935,6 @@ selector = [
   { kind = "building", id = "209" },
   { kind = "building", id = "234" },
   { kind = "building", id = "235" },
-  { kind = "building", id = "236" },
   { kind = "building", id = "276" },
   { kind = "building", id = "487" },
   { kind = "building", id = "562" },
@@ -953,7 +956,11 @@ directly against rules.json's own entity table: every one of the 28 resolves to 
 entity in this promoted snapshot, and a resource key an entity's own cost does not carry (e.g. a \
 stone-only building's absent wood key) is left untouched by `effects.py`'s own "multiply" \
 semantics rather than fabricated. Example: Dock (45), cost {wood: 150}: 150 * 0.85 = 127.5, a real \
-rounding boundary resolved by this package's stated round-half-up convention to 128.\
+rounding boundary resolved by this package's stated round-half-up convention to 128. \
+T652p correction (2026-09-26, third review): building 236 (Bombard Tower) was removed from the \
+selector below — Malians' own tree file marks it `node_status: "NotAvailable"`, the only such \
+entry among the 28, so this civilisation can never build it and the discount asserted a cost for \
+a building it cannot construct. The selector now names 27 buildings.\
 """
 
 [[effect]]

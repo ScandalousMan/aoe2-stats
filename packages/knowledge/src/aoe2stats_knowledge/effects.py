@@ -407,18 +407,34 @@ def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
 
 
-def _apply_scalar(value: float, operation: str, operand: float) -> float | int:
+def _apply_scalar(value: float, operation: str, operand: float) -> int:
     if operation == "multiply":
         return _round_half_up(value * operand)
     if operation == "add":
+        # T652p (f): no committed effect applies a scalar `add` to a field that must stay
+        # non-negative — the only scalar fields this package's `set` effects touch
+        # (age_requirement, production_time) are never modified by `add`, and the one real
+        # `add` effect in the pack (Saracens' Market wood discount) is a mapping (a cost),
+        # guarded in `_apply_mapping` below. No guard is added here because there is no case
+        # to test it against; add one the day a scalar `add` effect against a cost-like field
+        # is transcribed.
         return _round_half_up(value + operand)
     if operation == "set":
-        return operand
+        # T652p (d): every scalar field this package models (age_requirement,
+        # production_time) is an integer — `set` is a direct replacement, not a fractional
+        # derivation, so there is nothing to round, but the result must still be typed as an
+        # int rather than the raw float `operand`. Left uncaught before this fix,
+        # `age_requirement(436, "Persians")`-shaped queries answered `3.0` instead of `3`.
+        return int(operand)
     raise AssertionError(f"unreachable: unknown operation {operation!r}")  # pragma: no cover
 
 
 def _apply_mapping(
-    value: Mapping[str, int], operation: str, operand: Mapping[str, float]
+    value: Mapping[str, int],
+    operation: str,
+    operand: Mapping[str, float],
+    *,
+    context: str = "",
 ) -> dict[str, int]:
     result = dict(value)
     for resource, amount in operand.items():
@@ -429,7 +445,20 @@ def _apply_mapping(
         if operation == "multiply":
             result[resource] = _round_half_up(result[resource] * amount)
         elif operation == "add":
-            result[resource] = _round_half_up(result[resource] + amount)
+            pre_effect_value = result[resource]
+            adjusted = _round_half_up(pre_effect_value + amount)
+            if adjusted < 0:
+                # T652p (f): unreachable by any committed effect today, but `add` is live data
+                # (T652o's free-technology model) and the invariant — a cost never goes
+                # negative — was previously unasserted. Zero is a valid cost (a free
+                # technology genuinely costs nothing) and must not raise; only a result below
+                # zero is a defect.
+                raise EffectsError(
+                    f"applying 'add' to resource {resource!r} would drive it negative: "
+                    f"{pre_effect_value!r} + {amount!r} = {adjusted!r}"
+                    + (f" ({context})" if context else "")
+                )
+            result[resource] = adjusted
         elif operation == "set":
             result[resource] = int(amount)
         else:
@@ -439,9 +468,11 @@ def _apply_mapping(
     return result
 
 
-def _apply_operation(value: object, operation: str, operand: object) -> object:
+def _apply_operation(
+    value: object, operation: str, operand: object, *, context: str = ""
+) -> object:
     if isinstance(value, Mapping) and isinstance(operand, Mapping):
-        return _apply_mapping(value, operation, operand)
+        return _apply_mapping(value, operation, operand, context=context)
     if isinstance(value, int | float) and isinstance(operand, int | float):
         return _apply_scalar(float(value), operation, float(operand))
     raise EffectsError(
@@ -473,9 +504,10 @@ def apply_matched(
         )
     applied = tuple(effect for effect in matched if effect.modelled == "yes")
     result = value
+    context = f"civilisation={civilisation!r} kind={kind!r} id={id!r} field={field!r}"
     for effect in applied:
         assert effect.operation is not None  # enforced by Effect.__post_init__
-        result = _apply_operation(result, effect.operation, effect.operand)
+        result = _apply_operation(result, effect.operation, effect.operand, context=context)
     return result, applied
 
 

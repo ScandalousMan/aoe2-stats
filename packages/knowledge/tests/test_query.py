@@ -208,6 +208,44 @@ def test_a_second_discounted_building_for_a_second_modelled_civilisation_is_also
     assert "Buildings cost -15% wood" in effect.source_text
 
 
+def test_malians_bombard_tower_cost_is_never_discounted() -> None:
+    """T652p (e), at the query layer: Malians' "Buildings cost -15% wood" selector originally
+    named building 236 (Bombard Tower), but Malians' own tree file (`MALIANS.json`) marks that
+    building `node_status: "NotAvailable"` — this civilisation cannot construct one at all, so
+    discounting a cost it can never pay was wrong. `packages/knowledge/tests/test_effects.py`
+    proves the same fact one layer down, directly against `effects.apply`; this is the same
+    regression through `query.cost`, the path a caller actually uses."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="building", id="236", build=_CARRY_FORWARD_BUILD)
+
+    answer = query.cost(entity, civilisation="Malians")
+
+    assert hasattr(answer, "value"), "Malians is a modelled civilisation — must answer, not gap"
+    assert answer.value == {"gold": 100, "stone": 125, "wood": 0}
+    assert answer.effects == (), "no Malians effect should touch a building it cannot construct"
+
+
+def test_franks_pikeman_cost_is_the_plain_unmodified_baseline() -> None:
+    """T652p (c): the module docstring claims Franks/Pikeman is "a plain, unmodified baseline
+    answer", and several tests in this file rely on that being true (`Franks` is used wherever a
+    test needs *some* modelled civilisation without itself proving a discount) — but until now
+    nothing actually asserted the value. A spurious Franks cost effect on Pikeman would have
+    passed every test in this file; this is the control that would catch it."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.cost(entity, civilisation="Franks")
+
+    assert hasattr(result, "value"), (
+        f"Franks is a modelled civilisation and Pikeman is a known entity — must answer, got "
+        f"{result!r}"
+    )
+    assert result.value == {"food": 35, "wood": 25}
+    assert result.effects == (), "no effect should have touched this baseline answer"
+
+
 # ------------------------------------------------------------- an unmodelled civilisation gaps
 
 
