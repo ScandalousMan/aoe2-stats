@@ -1087,6 +1087,15 @@ the mistake `reviewer` rejected in an earlier draft of this task on 2026-09-19.
 **Item 9: coverage/structure half Met (unchanged); determinism half not met, filed as a dated,
 owned gap (T673) — not ticked.**
 
+**Superseded, 2026-09-26 (T673).** The determinism harness is built (`playwright.config.ts`'s
+`determinism` project, `scripts/checks/story-determinism.mjs`) and backed by a real run: nightly
+run [36267228036](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36267228036) rendered
+every story twice and compared — "3516 render pair(s) compared; every one is within tolerance."
+**Item 9's determinism half is Met** on the head that carries T673, and its row in
+`packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted rather
+than left open. The verdict above is not rewritten: it stands as a true record of the commit this
+task ran on, the same discipline the Item 6 note above follows.
+
 ### Item 12 — now Met, and mechanical rather than a one-time grep
 
 T577's own words: **"Not independently re-verified this session… Recorded as unverified, not asserted
