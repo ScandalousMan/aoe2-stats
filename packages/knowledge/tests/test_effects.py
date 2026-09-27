@@ -563,19 +563,44 @@ def test_the_real_franks_chivalry_bonus_is_not_modelled() -> None:
 
 
 def test_the_real_persians_town_center_work_speed_bonus_is_not_modelled() -> None:
-    """ "Town Centers and Docks ... work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age" is
-    age-gated (research.md D5) — absent from `effects.toml` entirely before this task, the third
-    review's own finding."""
+    """T652q (the fourth review's blocker): "Town Centers and Docks ... work +5/10/15/20% faster
+    in Dark/Feudal/Castle/Imperial Age" is age-gated (research.md D5) and touches what a Town
+    Center *produces*, not the building's own construction time — the previous version of this
+    test queried `production_time` of building 621 itself, which the row's own selector used to
+    (wrongly) name directly, and which therefore proved the row existed without proving it
+    reached anything the bonus actually adjusts. The real target is the Villager (unit 83),
+    trained at the Town Center: querying its `production_time` for Persians must refuse, exactly
+    as `query.py`'s civilisation qualification promises — before this task it silently answered
+    25, Teutons' own un-adjusted baseline."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation="Persians",
-        kind="building",
-        id="621",
+        kind="unit",
+        id="83",
         field="production_time",
-        value=150,
+        value=25,
     )
     assert isinstance(result, effects.EffectNotModelled)
     assert "age" in result.reason.lower()
+
+
+def test_the_real_teutons_villager_production_time_is_the_baseline_control() -> None:
+    """The control half of the fix above: Teutons carries no Town-Center/Dock work-speed bonus at
+    all, so the same query — same unit, same field — must answer the plain, unadjusted baseline
+    rather than refuse, proving the Persians refusal above is this civilisation's own effect and
+    not `effects.apply` refusing every civilisation regardless of selector."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Teutons",
+        kind="unit",
+        id="83",
+        field="production_time",
+        value=25,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == 25
+    assert applied == ()
 
 
 def test_the_real_persians_parthian_tactics_age_requirement_applies() -> None:
@@ -682,19 +707,25 @@ def test_a_set_scalar_effect_returns_an_int_not_a_float() -> None:
 
 
 @pytest.mark.parametrize(
-    ("civilisation", "technology_id", "field", "baseline"),
+    ("civilisation", "technology_id", "field", "baseline", "expected"),
     [
-        ("Franks", "12", "production_time", 70),  # Crop Rotation, "Mill technologies free"
-        ("Persians", "436", "age_requirement", 4),  # Parthian Tactics, Castle Age
+        ("Franks", "12", "production_time", 70, 0),  # Crop Rotation, "Mill technologies free"
+        ("Persians", "436", "age_requirement", 4, 3),  # Parthian Tactics, Castle Age
     ],
 )
 def test_the_real_free_technology_and_age_requirement_effects_answer_ints_not_floats(
-    civilisation: str, technology_id: str, field: str, baseline: int
+    civilisation: str, technology_id: str, field: str, baseline: int, expected: int
 ) -> None:
     """T652p (d), against the real committed snapshot rather than a synthetic fixture: T652o's
     free-technology model (`production_time = 0`) and the pre-existing Persians `age_requirement`
     discount both go through `_apply_scalar`'s `set` branch, so both must now answer an int.
-    Confirmed directly before this fix: both answered a float (`0.0`, `3.0`)."""
+    Confirmed directly before this fix: both answered a float (`0.0`, `3.0`).
+
+    T652q correction (the fourth review, item 6): the previous version of this test asserted only
+    `isinstance(value, int)`, which passes just as well on the un-adjusted `baseline` — every
+    `baseline` value passed in is already an int, so a regression that made `apply` return it
+    untouched would still pass. This now asserts the real, adjusted value and that an effect was
+    actually applied, not merely that whichever value came back happens to be an int."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation=civilisation,
@@ -704,8 +735,10 @@ def test_the_real_free_technology_and_age_requirement_effects_answer_ints_not_fl
         value=baseline,
     )
     assert not isinstance(result, effects.EffectNotModelled)
-    value, _applied = result
+    value, applied = result
     assert isinstance(value, int), f"{field} must answer an int, got {type(value)!r} ({value!r})"
+    assert value == expected
+    assert applied, "an effect must actually have been applied, not merely a same-typed baseline"
 
 
 # ------------------------------------------------------------------------------------- T652p (f)
@@ -727,9 +760,9 @@ validated_by = "synthetic fixture, T652p"
 
 def test_an_add_that_would_drive_a_resource_negative_raises() -> None:
     """T652p (f): unreachable by any committed effect today (the one real `add` effect, Saracens'
-    Market discount, never drives a resource below zero), but `add` is live data since T652o's
-    free-technology model, and the invariant — a cost never goes negative — was previously
-    unasserted."""
+    Market discount, never drives a resource below zero), but `add` is live data (that same
+    Saracens discount — the free-technology model T652o added uses `set`, never `add`), and the
+    invariant — a cost never goes negative — was previously unasserted."""
     (effect,) = effects.parse_effects_toml(_MINIMAL_ADD_MAPPING_EFFECT_TEMPLATE.format(operand=-30))
     with pytest.raises(effects.EffectsError, match="negative"):
         effects.apply_matched(

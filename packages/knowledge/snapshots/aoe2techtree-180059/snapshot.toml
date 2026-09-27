@@ -10,16 +10,19 @@
 # Malians and Tatars. `civilisations_modelled` names the real six; see `effects.toml`'s own header
 # comment for the full correction and why `test_query.py`'s unrelated "always-unmodelled" example
 # still uses Britons (confirmed absent from both committed recordings, unaffected by that
-# correction). `digest` below is T652o's recomputed digest (2026-09-23) over `rules.json`
-# (unchanged) and `effects.toml`, which grew from T652m's transcription to account for every
-# bullet of all six civilisations' vendored prose — see `effects.toml`'s own header comment for
-# the full correction (`packages/knowledge/tests/test_bullet_coverage.py` is the test that now
-# asserts this class of omission cannot recur).
+# correction). `digest` below is over `rules.json` (unchanged since T642) and `effects.toml`,
+# recomputed each time that file's content actually changed: T652o (2026-09-23) grew it to
+# account for every bullet of all six civilisations' vendored prose
+# (`packages/knowledge/tests/test_bullet_coverage.py` is the test that now asserts this class of
+# omission cannot recur), and T652q (2026-09-26) re-pointed two production_time rows at what a
+# Town Center/Dock/Stable actually produces instead of the buildings themselves, and restricted
+# two selectors to what the civilisation's own tree offers — see `effects.toml`'s own header
+# comment and each corrected row's own `validated_by` for the full corrections.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:f871e87266b82cfc5d27b05a8b4d4076b81f599b78c9a4db77f50b10ec21d862"
+digest = "sha256:9fe7f14eebefcbd4aad385a19fb8586a715e9a5cf19c88f0ba03c5b60747cb5f"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

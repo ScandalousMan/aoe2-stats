@@ -11,9 +11,11 @@ tracks — Malians' Team Bonus, Teutons' "Murder Holes, Herbal Medicine free", F
 Persians' Town-Center/Dock work-speed clause — because nothing checked that a bonus had been
 *considered* at all, only that a present `[[effect]]` entry was well-formed. A test that only reads
 `effects.toml` cannot see an omission; this file reads the other side, `strings.en.json`'s own
-prose, counts its bullets per civilisation, and fails when `effects.toml` (plus this file's own
-closed, reviewed registry of the bullets that structurally cannot become an `[[effect]]` row)
-accounts for fewer.
+prose, counts its bullets per civilisation, and fails when `effects.toml` (plus this file's own two
+closed, reviewed registries of the bullets that structurally cannot, or need not, become an
+`[[effect]]` row — `_NO_SELECTOR_BULLETS` for a bullet with no representable entity at all, and
+`_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW` for one whose entity is real but whose baseline
+already answers correctly, T652q) accounts for fewer.
 
 **Why a `source_text` cannot always become an `[[effect]]` row.** `effects.Effect` requires a
 non-empty, explicit `selector` on every record, modelled or not (`effects.py`'s own docstring). A
@@ -24,8 +26,13 @@ Bonus "Units more resistant to conversion" — "Units" names every military unit
 be written as an effect table at all (`effects.toml`'s own header comment, "Classification rule").
 `_NO_SELECTOR_BULLETS` below is the closed, hand-reviewed list of exactly those bullets, each
 carrying its own real reason — the same discipline FR-022b's enumerated exception list uses: a
-closed list that lives with the test that asserts it, not a standing licence. A bullet's absence
-from both `effects.toml` and this registry is the defect this file exists to catch.
+closed list that lives with the test that asserts it, not a standing licence. A different bullet
+shape — one that *does* name a representable entity, but for which the entity's own flattened
+`rules.json` baseline already answers correctly, so an effect row would assert nothing real
+(Persians' "Can build Caravanserai in Imperial Age", building 1754, T652q) — is a distinct closed
+list, `_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW`, kept separate so neither registry's own name
+overclaims what it holds. A bullet's absence from `effects.toml` and both registries is the defect
+this file exists to catch.
 
 **One bullet, one or more `[[effect]]` rows, never fewer.** A compound bullet that a `modelled =
 "yes"` cost fix and the correction's `production_time = 0` grant-fact both touch (Franks' "Mill
@@ -153,16 +160,33 @@ _NO_SELECTOR_BULLETS: Mapping[str, tuple[str, ...]] = {
         "Mounted Units +20% HP starting in Feudal Age",
     ),
     "Teutons": ("Team Bonus: Units more resistant to conversion",),
-    "Persians": (
-        "Start with +50 wood and +50 food",
-        "Can build Caravanserai in Imperial Age",
-    ),
+    "Persians": ("Start with +50 wood and +50 food",),
     "Saracens": (),
     "Malians": (),
     "Tatars": (
         "Livestock animals last +50% longer",
         "Units deal +25% damage when fighting from higher elevation",
     ),
+}
+
+#: **T652q correction (the fourth review, item 6): a second, distinct closed registry.**
+#: "Can build Caravanserai in Imperial Age" used to live in `_NO_SELECTOR_BULLETS` above, but that
+#: registry's own name and docstring both say "no representable entity at all", and this bullet
+#: has one — building 1754 ("Caravanserai") is a real `rules.json` entity. What actually excludes
+#: it from `effects.toml` is a different, narrower fact (`effects.toml`'s own header comment):
+#: `query.available_to`'s baseline already answers `True` for Persians with no effect at all,
+#: because `rules.json`'s flattened model treats "the entity resolves" as sufficient and this
+#: pack revision only lists Caravanserai in `data.json` for Persians and Hindustanis in the first
+#: place — so a no-op effect asserting a fact the baseline already gets right would add a row that
+#: represents nothing real. Kept as its own table, not folded into `_NO_SELECTOR_BULLETS`, so
+#: neither registry's name overclaims what it holds.
+_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW: Mapping[str, tuple[str, ...]] = {
+    "Franks": (),
+    "Teutons": (),
+    "Persians": ("Can build Caravanserai in Imperial Age",),
+    "Saracens": (),
+    "Malians": (),
+    "Tatars": (),
 }
 
 
@@ -180,6 +204,13 @@ def test_no_selector_bullets_are_real_bullets_from_strings_en_json() -> None:
                 f"bullets for help_string_id {source_key} — {bullets!r}. The registry has gone "
                 "stale."
             )
+        for registered in _ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW[civilisation]:
+            assert registered in bullets, (
+                f"{civilisation}: {registered!r} is registered in "
+                "_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW, but it is not one of "
+                f"strings.en.json's own bullets for help_string_id {source_key} — {bullets!r}. "
+                "The registry has gone stale."
+            )
 
 
 def test_every_bullet_is_accounted_for_by_an_effect_or_the_no_selector_registry() -> None:
@@ -191,8 +222,10 @@ def test_every_bullet_is_accounted_for_by_an_effect_or_the_no_selector_registry(
     rather than only an off-by-one total that leaves the next reader re-deriving which one."""
     for civilisation, source_key in _SOURCE_KEY_BY_CIVILISATION.items():
         bullets = frozenset(_bullets_for(source_key))
-        accounted_for = _distinct_effect_source_texts(civilisation) | frozenset(
-            _NO_SELECTOR_BULLETS[civilisation]
+        accounted_for = (
+            _distinct_effect_source_texts(civilisation)
+            | frozenset(_NO_SELECTOR_BULLETS[civilisation])
+            | frozenset(_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW[civilisation])
         )
         missing = bullets - accounted_for
         assert not missing, (
@@ -212,8 +245,10 @@ def test_every_bullet_count_matches_exactly() -> None:
     accounted-for total to match the real bullet count exactly, not merely cover it."""
     for civilisation, source_key in _SOURCE_KEY_BY_CIVILISATION.items():
         bullets = frozenset(_bullets_for(source_key))
-        accounted_for = _distinct_effect_source_texts(civilisation) | frozenset(
-            _NO_SELECTOR_BULLETS[civilisation]
+        accounted_for = (
+            _distinct_effect_source_texts(civilisation)
+            | frozenset(_NO_SELECTOR_BULLETS[civilisation])
+            | frozenset(_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW[civilisation])
         )
         assert len(accounted_for) == len(bullets), (
             f"{civilisation}: strings.en.json names {len(bullets)} bullet(s) "

@@ -64,9 +64,9 @@ corroborate this one at all — and was corrected 2026-09-27 (T652n). What actua
 fourteen ids below instead: a fresh 2026-09-27 join of Relic's `getRecentMatchHistory` against
 aoe2companion's `/api/matches`, keyed on `(match id, profile id)`, which reached three of them —
 48 Shu, 52 Khitans, 59 Mapuche — and agreed with the values already here. **The other eleven rest
-on no measurement**: `100.json` read on 2026-09-27 does not match them either (46 Achaemenids where this
-table has 45, 57 Muisca where it has 58), so they are not a transcription of it as it stands. They are
-kept because the three measured ids agree with them, not because anything checked them:
+on no measurement**: `100.json` read on 2026-09-27 does not match them either (46 Achaemenids where
+this table has 45, 57 Muisca where it has 58), so they are not a transcription of it as it stands.
+They are kept because the three measured ids agree with them, not because anything checked them:
 
 ```
 45 Achaemenids   48 Shu    51 Jurchens   54 Thracians   58 Muisca

@@ -1037,7 +1037,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       cannot build. (f) `effects.py:431` has no guard against `add` driving a cost negative;
       unreachable today, but `add` is live data now and the invariant is unasserted
 
-- [ ] T652q **A "works faster" bonus was attached to the building instead of what it produces — the
+- [x] T652q **A "works faster" bonus was attached to the building instead of what it produces — the
       fourth review's blocker.** Persians' "Town Centers and Docks … work +5/10/15/20% faster"
       selects buildings 109, 621 and 45 themselves, so `production_time` of Persians' Villager (83)
       answers 25 — Teutons' baseline — and technologies 101, 102, 103, 213 and 249 answer theirs,

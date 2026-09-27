@@ -370,18 +370,24 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
 )
 
 #: **Franks' Unique Technology "Chivalry (Stables work +40% faster)"** (units 38 "Knight" and
-#: 448 "Scout Cavalry", the two Stable-trained units recording 2's Franks participant actually
-#: trains) is conditional on match state (research.md D5): it is a Castle unique technology, so
-#: the training-speed bonus only applies once it has been researched, which a static rules query
-#: has no way to place. T652o (2026-09-23) found this bullet absent from `effects.toml` entirely
-#: and closed that transcription gap by recording the honest refusal. **2 tuples.**
+#: 448 "Scout Cavalry", and technologies 209 "Cavalier", 254 "Light Cavalry" and 39 "Husbandry" —
+#: every unit and technology recording 2's Franks participant actually trains or researches at
+#: the Stable) is conditional on match state (research.md D5): it is a Castle unique technology,
+#: so the training/research-speed bonus only applies once it has been researched, which a static
+#: rules query has no way to place. T652o (2026-09-23) found this bullet absent from `effects.toml`
+#: entirely and closed that transcription gap by recording the honest refusal; **T652q
+#: (2026-09-26, the fourth review) found the row's own selector had been re-pointed at the wrong
+#: entities — the Stable itself and every unit it trains, unrestricted by civilisation, rather
+#: than every unit *and technology* Franks' own tree actually offers — so it never matched
+#: technologies 209, 254 or 39 at all, which is what re-derived this blocker's own three new
+#: tuples.** **5 tuples**, up from 2.
 _FRANKS_CHIVALRY_IS_CONDITIONAL_ON_RESEARCH = _RecordingBlocker(
     name="Franks' Chivalry (Stables work +40% faster) is conditional on being researched "
-    "(units 38, 448)",
+    "(units 38, 448; technologies 209, 254, 39)",
     why_the_vendored_source_cannot_close_it=(
-        "'Chivalry' is a Castle unique technology, so the training-speed bonus only applies "
-        "once it has been researched, and query.py's six query-surface functions carry no "
-        "match-state argument to resolve that against — an architecture question, not a "
+        "'Chivalry' is a Castle unique technology, so the training/research-speed bonus only "
+        "applies once it has been researched, and query.py's six query-surface functions carry "
+        "no match-state argument to resolve that against — an architecture question, not a "
         "transcription fix."
     ),
     what_would_close_it=(
@@ -391,17 +397,30 @@ _FRANKS_CHIVALRY_IS_CONDITIONAL_ON_RESEARCH = _RecordingBlocker(
     gap_tuples=(
         ("unit", "38", "production_time", "Franks", "effect-not-modelled"),
         ("unit", "448", "production_time", "Franks", "effect-not-modelled"),
+        ("technology", "39", "production_time", "Franks", "effect-not-modelled"),
+        ("technology", "209", "production_time", "Franks", "effect-not-modelled"),
+        ("technology", "254", "production_time", "Franks", "effect-not-modelled"),
     ),
 )
 
 #: **Persians' "Town Centers and Docks ... work +5/10/15/20% faster in Dark/Feudal/Castle/
-#: Imperial Age"** (building 621, the Town Center variant recording 2's Persians participant
-#: actually places) is genuinely age-scaled, the same shape as Franks' Castle discount above: its
-#: magnitude depends on which age applies at query time, which a static rules query has no way to
-#: resolve. T652o (2026-09-23) found this bullet absent from `effects.toml` entirely and closed
-#: that transcription gap by recording the honest refusal. **1 tuple.**
+#: Imperial Age"** (unit 83 "Villager", and technologies 101 "Feudal Age", 102 "Castle Age", 103
+#: "Imperial Age", 213 "Wheelbarrow" and 249 "Hand Cart" — every unit and technology recording 2's
+#: Persians participant actually trains or researches at the Town Center) is genuinely age-scaled,
+#: the same shape as Franks' Castle discount above: its magnitude depends on which age applies at
+#: query time, which a static rules query has no way to resolve. T652o (2026-09-23) found this
+#: bullet absent from `effects.toml` entirely and closed that transcription gap by recording the
+#: honest refusal, with a selector naming the three buildings (109, 621, 45) directly; **T652q
+#: (2026-09-26, the fourth review) found that selector pointed at the wrong entities — a "works
+#: faster" bonus adjusts what a Town Center or Dock *produces*, never the buildings' own
+#: construction time, so it never matched anything this recording's Persians participant actually
+#: queries. The building-621 tuple this blocker used to carry is gone: `rules.json` names no unit
+#: or technology produced there at all, so nothing was ever really blocked at that entity — the
+#: six replacing it are the real, previously-silent blockers this recording's Persians participant
+#: hits.** **6 tuples**, replacing the 1 building-621 tuple.
 _PERSIANS_TOWN_CENTER_WORK_SPEED_IS_AGE_SCALED = _RecordingBlocker(
-    name="Persians' Town Center/Dock work-speed bonus is age-scaled (building 621)",
+    name="Persians' Town Center work-speed bonus is age-scaled (unit 83; technologies 101, 102, "
+    "103, 213, 249)",
     why_the_vendored_source_cannot_close_it=(
         "'work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age' depends on which age "
         "applies at query time, and query.py's six query-surface functions carry no "
@@ -412,14 +431,23 @@ _PERSIANS_TOWN_CENTER_WORK_SPEED_IS_AGE_SCALED = _RecordingBlocker(
         "adding an age/match-state argument to query.py's query surface, an architecture "
         "change out of scope for this feature."
     ),
-    gap_tuples=(("building", "621", "production_time", "Persians", "effect-not-modelled"),),
+    gap_tuples=(
+        ("unit", "83", "production_time", "Persians", "effect-not-modelled"),
+        ("technology", "101", "production_time", "Persians", "effect-not-modelled"),
+        ("technology", "102", "production_time", "Persians", "effect-not-modelled"),
+        ("technology", "103", "production_time", "Persians", "effect-not-modelled"),
+        ("technology", "213", "production_time", "Persians", "effect-not-modelled"),
+        ("technology", "249", "production_time", "Persians", "effect-not-modelled"),
+    ),
 )
 
 #: FR-022b's closed list: exactly the four blockers above, none other (T652o: up from two — the
 #: third review's own finding added Franks' Chivalry and Persians' Town-Center/Dock work-speed,
 #: both absent from `effects.toml` entirely before this task; T652m's own two are unchanged).
-#: Referenced by the test below both for the flattened set-equality assertion and, in a failure
-#: message, by name.
+#: **T652q (2026-09-26, the fourth review) re-derived the last two blockers' own `gap_tuples`
+#: from what `coverage.coverage` actually emits after re-pointing both rows' selectors — the
+#: blocker count stays four, only their tuples changed.** Referenced by the test below both for
+#: the flattened set-equality assertion and, in a failure message, by name.
 _RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = (
     _FRANKS_CASTLE_COST_IS_AGE_SCALED,
     _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK,
@@ -428,8 +456,8 @@ _RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = (
 )
 
 #: The flattened union of every blocker's `gap_tuples` — what recording 2's observed blocking
-#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 12 + 2 + 1 = 16
-#: tuples (T652o: up from 13 — see the note above).
+#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 1 + 12 + 5 + 6 = 24
+#: tuples (T652q: up from 16 — see the note above).
 _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_2_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -487,6 +515,16 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     defect, per FR-022b) leaves an observed tuple with no enumerated match. Either failure names the
     mismatched tuple directly, so a stale entry or a further blocker cannot hide behind a single
     `reason=` string the way a marker would.
+
+    **T652q (2026-09-26, the fourth review) found the last two blockers' own selectors pointed at
+    the wrong entities** — Franks' Chivalry and Persians' Town-Center/Dock work-speed had each
+    named the producing building(s) themselves rather than what those buildings actually produce,
+    so neither ever matched what this recording's players train and research there at all; both
+    silently answered the un-adjusted baseline instead of refusing. Re-pointing both selectors at
+    every unit and technology the civilisation's own tree offers, produced at the named
+    building(s), is what turns this test from green-by-accident (the old selectors matched
+    nothing this recording queries at all, apart from the now-removed building-621 tuple) into
+    green because every query this recording actually makes is honestly accounted for.
     """
     from aoe2stats_knowledge import coverage, gaps
 

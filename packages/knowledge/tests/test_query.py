@@ -26,7 +26,7 @@ committed pack, `packages/knowledge/packs/aoe2techtree/`, and the committed prom
 - Malians' bonus prose (`civs.Malians.help_string_id`, `120175`, read directly from
   `strings.en.json`): "Buildings cost -15% wood" (T652m; Malians is recording 1's other real
   civilisation, corrected from the previously committed, wrong Koreans). The
-  Dock is one of the 28 buildings this bonus names, so its cost is touched:
+  Dock is one of the 24 buildings this bonus names, so its cost is touched:
   `150 * 0.85 = 127.5`, which **does** land on a rounding boundary. This file states the
   convention explicitly rather than leaving it to whichever rounding `round()` happens to pick:
   **round half up** (`127.5 -> 128`), because that is the convention this repository's own

@@ -12,7 +12,11 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
 - `source_key` / `source_text` — "the verbatim sentence from the vendored strings, **and its
   key**": `source_key` is `strings.en.json`'s own `help_string_id` (e.g. `"120156"`), so an edit
   to that source string is detectable by re-reading the same key, and `source_text` is transcribed
-  byte-for-byte from it (FR-031's provenance).
+  from it (FR-031's provenance) — byte-for-byte for every row except a Team Bonus's: those five
+  (`test_bullet_coverage.py`'s own `_bullets_for` docstring) prepend the literal label
+  `"Team Bonus: "` to the source's own bullet text, since the source itself states that heading
+  once, separately from the bullet it governs, and every `[[effect]]` row for a Team Bonus needs
+  its own `source_text` to carry the distinction on its own.
 - `modelled` — `"yes"` or `"no"`, spelled exactly as data-model.md §6 spells it. `"no"` requires a
   non-blank `reason` and **must not** carry an `operation`/`operand` — research.md D5's "a bonus is
   never half-applied" is enforced here, at parse time, not left to a caller to notice a stray
@@ -449,7 +453,8 @@ def _apply_mapping(
             adjusted = _round_half_up(pre_effect_value + amount)
             if adjusted < 0:
                 # T652p (f): unreachable by any committed effect today, but `add` is live data
-                # (T652o's free-technology model) and the invariant — a cost never goes
+                # (Saracens' Market wood discount, a mapping `add` — the free-technology model
+                # T652o added uses `set`, never `add`) and the invariant — a cost never goes
                 # negative — was previously unasserted. Zero is a valid cost (a free
                 # technology genuinely costs nothing) and must not raise; only a result below
                 # zero is a defect.

@@ -99,7 +99,10 @@
 # with no effect at all — a limitation of the flattened model that happens to already give the
 # one civilisation this file models the right answer, not a gap this file's own conservative rule
 # would ever want to paper over with a no-op effect that asserts nothing real; registered in
-# `test_bullet_coverage.py`'s own registry instead.
+# `test_bullet_coverage.py`'s own `_ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW` registry instead
+# (T652q correction: building 1754 *is* a representable entity, so this bullet does not belong in
+# that same file's `_NO_SELECTOR_BULLETS` — a different, narrower registry for the "no entity at
+# all" shape).
 # Teutons: the Team Bonus "Units more resistant to conversion" is out of scope — "Units" is
 # exactly the fuzzy, unenumerable class this pass refuses to invent a selector for, and
 # conversion resistance has no producing-building anchor either (every military unit qualifies);
@@ -261,31 +264,24 @@ Kamandaran, the field this bonus would touch if it applied — production_time �
 actually exposes, which is exactly why this bullet cannot be silently left out of this file the \
 way it was before this task (T652o, 2026-09-23): a query for any Stable-trained unit's \
 production_time, for Franks, must refuse rather than silently answer with the un-adjusted \
-baseline.\
+baseline. \
+T652q correction (the fourth review's blocker): "Stables work faster" adjusts everything a \
+Stable trains **or researches**, not only units, so the selector below also names the \
+technologies `rules.json` lists as `produced_at` building 101 — Cavalier (209), Light Cavalry \
+(254) and Husbandry (39) used to answer Teutons' un-adjusted baseline, 80/45/40, silently, \
+because no effect named the field they touched.\
 """
 field = "production_time"
 selector = [
   { kind = "unit", id = "38" },
-  { kind = "unit", id = "207" },
   { kind = "unit", id = "283" },
-  { kind = "unit", id = "329" },
-  { kind = "unit", id = "330" },
-  { kind = "unit", id = "441" },
   { kind = "unit", id = "448" },
   { kind = "unit", id = "546" },
   { kind = "unit", id = "569" },
-  { kind = "unit", id = "886" },
-  { kind = "unit", id = "887" },
-  { kind = "unit", id = "1132" },
-  { kind = "unit", id = "1134" },
-  { kind = "unit", id = "1370" },
-  { kind = "unit", id = "1372" },
-  { kind = "unit", id = "1707" },
-  { kind = "unit", id = "1751" },
-  { kind = "unit", id = "1753" },
-  { kind = "unit", id = "1755" },
-  { kind = "unit", id = "1944" },
-  { kind = "unit", id = "1946" },
+  { kind = "technology", id = "39" },
+  { kind = "technology", id = "209" },
+  { kind = "technology", id = "254" },
+  { kind = "technology", id = "265" },
 ]
 validated_by = """\
 Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
@@ -294,13 +290,23 @@ the game's own data file is barred by the publisher's usage rules). Two fields o
 vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
 rules.json's own produced_at field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
-re-read in full on 2026-09-23 by the T652o implementer, confirming the "Unique Techs:" heading \
-and resolving "Stables" to every unit id this promoted snapshot's own rules.json lists as \
-produced_at building 101 ("Stable") — 21 ids — rather than a hand-picked subset, the same "read \
-the structure, do not hand-guess a class" discipline Saracens' "Camel Units" selector below \
-already uses, and matching this file's own building-cost-selector convention of naming every \
-entity the structure names regardless of which civilisations can actually train each one \
-(Malians' 28-building selector below carries the same shape).\
+re-read in full on 2026-09-23 by the T652o implementer, confirming the "Unique Techs:" heading; \
+re-checked on 2026-09-26 by the T652q implementer against \
+packages/knowledge/packs/aoe2techtree/trees/FRANKS.json, restricting "Stables" to every unit and \
+technology rules.json lists as produced_at building 101 ("Stable") whose own tree entry's \
+`node_status` is other than `NotAvailable` — or, for a technology whose own id the tree never \
+uses as a node id (`table_origin = "unit_upgrades"`), its `upgrades_unit`'s tree entry instead \
+(`normalise.py`'s own `_technology_tree_lookup_key` indirection: Cavalier's own id 209 is never \
+gridded by any of the 53 committed trees, but its owning unit, 283, is, and is `ResearchedCompleted` \
+for Franks). The previous 21-unit selector named every unit produced_at 101 regardless of which \
+civilisations could actually train each one, the same shape T652p (e) already found wrong for \
+Malians' Bombard Tower: 16 of those 21 are absent from FRANKS.json entirely (other civilisations' \
+own regional or unique cavalry — Camel Rider, Tarkan, Battle Elephant, Steppe Lancer, Winged \
+Hussar, Shrivamsha Rider, Hei Guang Cavalry) and one, Hussar (441), is present and explicitly \
+`NotAvailable`; Hussar's own research technology (428) resolves the same way through its \
+`upgrades_unit` indirection (441) and is excluded for the identical reason. Bloodlines (435), a \
+Stable-produced technology with no unit to indirect through, is also explicitly `NotAvailable` \
+for Franks and stays out. 9 ids named (5 units, 4 technologies).\
 """
 
 [[effect]]
@@ -369,26 +375,72 @@ HP" half touches hit points, a field this pack's normaliser does not carry on an
 at all regardless of the age gate, and is not separately recorded — the whole bullet is \
 transcribed verbatim as this effect's source_text (FR-031's provenance), but only the age-gated, \
 tracked half (production_time) is modelled/reasoned here, the same half-a-compound-bullet \
-treatment Saracens' Market entry below already uses.\
+treatment Saracens' Market entry below already uses. \
+T652q correction (the fourth review's blocker): "work faster" adjusts what a Town Center or Dock \
+*produces*, not the building's own construction time, so the selector below names every unit and \
+technology `rules.json` lists as `produced_at` building 109, 621 or 45 — never the three \
+buildings themselves, which this row used to name and which therefore never matched a query for \
+anything the bonus actually touches (`production_time(unit 83 "Villager", "Persians")` answered \
+Teutons' un-adjusted baseline, 25, silently).\
 """
 field = "production_time"
 selector = [
-  { kind = "building", id = "109" },
-  { kind = "building", id = "621" },
-  { kind = "building", id = "45" },
+  { kind = "unit", id = "13" },
+  { kind = "unit", id = "17" },
+  { kind = "unit", id = "21" },
+  { kind = "unit", id = "83" },
+  { kind = "unit", id = "420" },
+  { kind = "unit", id = "442" },
+  { kind = "unit", id = "527" },
+  { kind = "unit", id = "528" },
+  { kind = "unit", id = "529" },
+  { kind = "unit", id = "532" },
+  { kind = "unit", id = "539" },
+  { kind = "unit", id = "545" },
+  { kind = "unit", id = "691" },
+  { kind = "unit", id = "1103" },
+  { kind = "unit", id = "1104" },
+  { kind = "unit", id = "2626" },
+  { kind = "unit", id = "2627" },
+  { kind = "unit", id = "2628" },
+  { kind = "technology", id = "8" },
+  { kind = "technology", id = "22" },
+  { kind = "technology", id = "34" },
+  { kind = "technology", id = "35" },
+  { kind = "technology", id = "65" },
+  { kind = "technology", id = "101" },
+  { kind = "technology", id = "102" },
+  { kind = "technology", id = "103" },
+  { kind = "technology", id = "213" },
+  { kind = "technology", id = "244" },
+  { kind = "technology", id = "249" },
+  { kind = "technology", id = "280" },
+  { kind = "technology", id = "376" },
+  { kind = "technology", id = "905" },
+  { kind = "technology", id = "906" },
 ]
 validated_by = """\
 Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
 instead (research.md D3: the two community datasets are one generation pipeline run twice, and \
 the game's own data file is barred by the publisher's usage rules). Two fields of the same \
 vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
-rules.json's entity name field (used to resolve "Town Centers" and "Docks" to building ids 109, \
-621 and 45). \
+rules.json's own produced_at field (used to resolve "Town Centers" and "Docks" to every unit and \
+technology produced at building ids 109, 621 or 45). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
-re-read in full on 2026-09-23 by the T652o implementer, confirming the age-gated, compound \
-prose and resolving "Town Centers" to rules.json building ids 109 and 621 (both named "Town \
-Center", the same duplicate-id shape Malians' own 28-building selector below already carries) \
-and "Docks" to building id 45.\
+re-read in full on 2026-09-26 by the T652q implementer, confirming the age-gated, compound \
+prose; the selector above names every unit and technology `rules.json` lists as `produced_at` \
+building 109, 621 or 45, restricted to what `packages/knowledge/packs/aoe2techtree/trees/\
+PERSIANS.json` offers Persians — its own tree entry's `node_status` other than `NotAvailable`, \
+or, for a `unit_upgrades`-origin technology whose own id the tree never uses as a node id \
+(`normalise.py`'s own `_technology_tree_lookup_key` indirection), its `upgrades_unit`'s tree \
+entry instead. Building 621 itself drops out of the selector entirely: `rules.json` names no \
+unit or technology produced there at all, so the "duplicate Town Center id" this row used to \
+carry as a bare building selector was never the entity a query for this bonus could reach. 33 \
+ids named (18 units, 15 technologies); 14 candidates this same produced_at sweep found are \
+excluded because Persians' own tree marks them, or their `upgrades_unit`, `NotAvailable` or \
+never names them at all — every one a different civilisation's own regional or unique naval \
+entity (Vikings' Longboat line, Koreans' Turtle Ship line, the Caravel and Elite Caravel line, \
+Dragon Ship, Thirisadai, Dromon, Lou Chuan, Catapult Galleon).\
 """
 
 [[effect]]
@@ -874,12 +926,16 @@ for a broad unit class.\
 # Imperial Age", plus Unique Unit/Unique Techs/Team Bonus sections not transcribed (same scope
 # note as Saracens' header comment above).
 #
-# Only "Buildings cost -15% wood" touches a tracked field, over 27 of the 28 building ids named
-# in this task's own dispatch and confirmed directly against rules.json below — the dispatch's own
-# 28th, Bombard Tower (236), was removed by T652p (2026-09-26, third review): Malians' own tree
-# file (MALIANS.json) marks building 236 `node_status: "NotAvailable"`, the only `NotAvailable`
-# entry among these 28, so this civilisation cannot build a Bombard Tower at all and discounting a
-# cost it can never pay is wrong, not merely unreachable. "Villagers drop off +10%
+# Only "Buildings cost -15% wood" touches a tracked field, over the 24 building ids
+# `rules.json` gives a positive wood cost and Malians' own tree (MALIANS.json) marks available
+# (T652q, 2026-09-26, the fourth review — see that row's own `validated_by` for the full
+# accounting, which corrected both a missing entry, Fish Trap 199, and several present-but-
+# wood-less ones the task dispatch that first named this selector had included regardless).
+# Bombard Tower (236) was removed earlier still, by T652p (2026-09-26, third review): Malians'
+# own tree file marks building 236 `node_status: "NotAvailable"`, so this civilisation cannot
+# build a Bombard Tower at all and discounting a cost it can never pay is wrong, not merely
+# unreachable (236 also carries no wood cost, so T652q's own sweep excludes it independently).
+# "Villagers drop off +10%
 # more gold" names a real entity (the Villager, unit 83) but touches the rate a resource drop-off
 # is credited, an economic mechanic this pack's normaliser does not carry on any entity record at
 # all — no cost, time, age, prerequisite, production-site or availability field is affected, so
@@ -923,20 +979,17 @@ selector = [
   { kind = "building", id = "70" },
   { kind = "building", id = "72" },
   { kind = "building", id = "79" },
-  { kind = "building", id = "82" },
   { kind = "building", id = "84" },
   { kind = "building", id = "87" },
   { kind = "building", id = "101" },
   { kind = "building", id = "103" },
   { kind = "building", id = "104" },
   { kind = "building", id = "109" },
-  { kind = "building", id = "117" },
-  { kind = "building", id = "155" },
+  { kind = "building", id = "199" },
   { kind = "building", id = "209" },
   { kind = "building", id = "234" },
   { kind = "building", id = "235" },
   { kind = "building", id = "276" },
-  { kind = "building", id = "487" },
   { kind = "building", id = "562" },
   { kind = "building", id = "584" },
   { kind = "building", id = "598" },
@@ -950,17 +1003,25 @@ the game's own data file is barred by the publisher's usage rules). Two fields o
 vendored source read instead of an independent one: strings.en.json's help_string_id text, and \
 rules.json's own cost field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120175, \
-re-read in full on 2026-09-23 by the T652m implementer, confirming the bullet verbatim and \
-resolving "Buildings" to the 28 building ids this task's own dispatch named, cross-checked \
-directly against rules.json's own entity table: every one of the 28 resolves to a real building \
-entity in this promoted snapshot, and a resource key an entity's own cost does not carry (e.g. a \
-stone-only building's absent wood key) is left untouched by `effects.py`'s own "multiply" \
-semantics rather than fabricated. Example: Dock (45), cost {wood: 150}: 150 * 0.85 = 127.5, a real \
-rounding boundary resolved by this package's stated round-half-up convention to 128. \
+re-read in full on 2026-09-23 by the T652m implementer, confirming the bullet verbatim; re-read \
+again on 2026-09-26 by the T652q implementer (the fourth review's finding), restricting \
+"Buildings" to every building `rules.json` gives a positive (non-zero, present) `wood` cost, \
+cross-checked against `packages/knowledge/packs/aoe2techtree/trees/MALIANS.json`'s own entry for \
+each one (`node_status` other than `NotAvailable`). Two corrections from the previously committed \
+27-building list: Fish Trap (199) — cost `{wood: 100}`, produced at the Dock (45), and \
+`ResearchedCompleted` for Malians in the tree's own `units_techs` list, its `Building_199_45` \
+entry, rather than the top-level `buildings` list every other entry here happens to use — was \
+missing entirely; and Castle (82), Stone Wall (117), Fortified Wall (155) and Gate (487), whose \
+`rules.json` cost carries no wood at all (Castle's own `wood` key is present and zero; the three \
+walls carry no `wood` key), are removed — none had ever needed this discount to answer correctly \
+(`effects.py`'s own "multiply" semantics leave an absent or zero resource key untouched), but a \
+row's selector naming an entity the row's own field never touches is exactly the shape T652p (e) \
+already flagged once for Bombard Tower (236, removed below). \
 T652p correction (2026-09-26, third review): building 236 (Bombard Tower) was removed from the \
-selector below — Malians' own tree file marks it `node_status: "NotAvailable"`, the only such \
-entry among the 28, so this civilisation can never build it and the discount asserted a cost for \
-a building it cannot construct. The selector now names 27 buildings.\
+selector below — Malians' own tree file marks it `node_status: "NotAvailable"` — so this \
+civilisation can never build it and the discount asserted a cost for a building it cannot \
+construct (236 also carries no wood cost at all, so T652q's own sweep above would have removed \
+it a second, independent way). The selector now names 24 buildings.\
 """
 
 [[effect]]
@@ -1041,7 +1102,7 @@ vendored source read instead of an independent one: strings.en.json's help_strin
 rules.json's entity name field (used to resolve "Town Centers" to building ids 109 and 621). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120175, \
 re-read in full on 2026-09-23 by the T652o implementer, confirming the "Unique Techs:" heading \
-and resolving "Town Centers" to the same two building ids this file's own 28-building selector \
+and resolving "Town Centers" to the same two building ids this file's own -15%-wood selector \
 above already carries.\
 """
 
@@ -1089,7 +1150,11 @@ other, so leaving this bullet out of this file at all (the third review's own fi
 2026-09-23) let a query for a Malians University technology's production_time answer with the \
 un-adjusted baseline instead of refusing — the exact FR-038 substitution research.md D5's \
 conservative rule exists to forbid, and the reason recording 1's blocking-gap count used to \
-report zero: not because nothing blocks, but because this blocker was never written down.\
+report zero: not because nothing blocks, but because this blocker was never written down. \
+T652q correction (the fourth review's blocker, item 6): the 20-technology selector this row \
+used to carry named every technology produced_at building 209 regardless of which \
+civilisations can actually research each one — the same shape already fixed for Franks' \
+Chivalry above — so it is now restricted to what Malians' own tree offers.\
 """
 field = "production_time"
 selector = [
@@ -1098,21 +1163,15 @@ selector = [
   { kind = "technology", id = "51" },
   { kind = "technology", id = "54" },
   { kind = "technology", id = "63" },
-  { kind = "technology", id = "64" },
   { kind = "technology", id = "93" },
   { kind = "technology", id = "140" },
   { kind = "technology", id = "194" },
   { kind = "technology", id = "322" },
-  { kind = "technology", id = "373" },
   { kind = "technology", id = "374" },
   { kind = "technology", id = "375" },
-  { kind = "technology", id = "377" },
   { kind = "technology", id = "380" },
-  { kind = "technology", id = "608" },
   { kind = "technology", id = "907" },
   { kind = "technology", id = "908" },
-  { kind = "technology", id = "909" },
-  { kind = "technology", id = "910" },
 ]
 validated_by = """\
 Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
@@ -1123,10 +1182,13 @@ rules.json's own produced_at field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120175, \
 re-read in full on 2026-09-23 by the T652o implementer, confirming the "Team Bonus:" heading and \
 resolving "Universities" to every technology id this promoted snapshot's own rules.json lists as \
-produced_at building 209 ("University") — 20 ids, rather than only the four (47, 50, 93, 140) \
-recording 1's Malians participant happens to research — the same "read the structure, do not \
-hand-pick only what one recording touches" discipline Franks' Chivalry selector above already \
-uses.\
+produced_at building 209 ("University"); re-read again on 2026-09-26 by the T652q implementer \
+against packages/knowledge/packs/aoe2techtree/trees/MALIANS.json, restricting that 20-id list to \
+the 14 whose own tree entry's `node_status` is other than `NotAvailable` (every one of these 20 \
+technologies carries `table_origin = "tech"` with no `upgrades_unit`, so each resolves under its \
+own id directly, with no indirection needed). Six are excluded, each explicitly `NotAvailable` \
+for Malians, not merely absent: Bombard Tower (64), Shipwright (373), Siege Engineers (377), \
+Arrowslits (608), Siphons (909) and Incendiaries (910) — the exact six the fourth review named.\
 """
 
 # T652m: Tatars — recording 2's fourth civilisation (raw id 33, corrected from the previously
@@ -1323,7 +1385,7 @@ ids this promoted snapshot carries). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120182, \
 re-read in full on 2026-09-23 by the T652m implementer, confirming the age-gated prose and \
 resolving "Town Centers" to rules.json building ids 109 and 621, both named "Town Center" — the \
-same duplicate-id shape Malians' own 28-building selector above already carries both of.\
+same duplicate-id shape Malians' own -15%-wood selector above already carries both of.\
 """
 
 # T652m: the replay's own raw civilisation integer, mapped to this pack's civilisation name
