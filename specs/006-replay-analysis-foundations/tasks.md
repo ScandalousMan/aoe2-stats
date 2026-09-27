@@ -1037,6 +1037,53 @@ Three were arbitration and are decided, with the decision recorded in the task t
       cannot build. (f) `effects.py:431` has no guard against `add` driving a cost negative;
       unreachable today, but `add` is live data now and the invariant is unasserted
 
+- [ ] T652q **A "works faster" bonus was attached to the building instead of what it produces — the
+      fourth review's blocker.** Persians' "Town Centers and Docks … work +5/10/15/20% faster"
+      selects buildings 109, 621 and 45 themselves, so `production_time` of Persians' Villager (83)
+      answers 25 — Teutons' baseline — and technologies 101, 102, 103, 213 and 249 answer theirs,
+      silently; recording 2's Persians player trains and researches all six. Franks' Chivalry
+      ("Stables work 40% faster") selects Stable units only, while Malians' University row already
+      reads "work faster" as research time, so Stable technologies 209, 254 and 39 answer baseline
+      too. `test_bullet_coverage.py` could not see it: it proves a row exists, not where it points.
+      (1) Re-point both rows at every unit and technology whose `produced_at` is the named building,
+      **restricted to what the civilisation's own tree offers** (`node_status` other than
+      `NotAvailable`, in `packages/knowledge/packs/aoe2techtree/trees/`); apply the same restriction
+      to Chivalry's Hussar (441) and Malians University's 64, 373, 377, 608, 909 and 910. (2) Add a
+      test that fails on the shape, not the instance: for every production-speed row, the selector
+      equals exactly that set. (3) Malians' "Buildings cost -15% wood" omits Fish Trap (199), which
+      its tree offers; add a test that the selector equals every building the tree offers with
+      wood in its cost. (4) Recompute both digests; keep both promoted files byte-identical.
+      (5) Re-derive recording 2's enumerated blockers in `test_coverage.py` from what the pass
+      emits — the building-621 tuple goes, the Persians and Franks entities above arrive — and
+      replace `test_effects.py`'s building-621 test with Villager-refuses-for-Persians plus a
+      Teutons control. (6) Same files, same commit: "Can build Caravanserai" is filed as having no
+      representable entity, but 1754 is in `rules.json` — label it by what actually represents it;
+      the stale "28-building" references; `effects.py`'s claim that `add` is live since T652o (the
+      free-technology model uses `set`) and that `source_text` is byte-for-byte (five rows are
+      not); the digest credited to T652o in `snapshot.toml`; and `test_effects.py`'s int-type test,
+      which passes on the unadjusted baseline — assert the value and a non-empty `applied`
+- [ ] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add`, a
+      negative `multiply` and a mapping `multiply` all go below zero unguarded; `set` truncates a
+      fractional operand while [data-model.md](./data-model.md) §6 says it has nothing to round, and
+      "every field is an integer" is false of `prerequisites`, `produced_at` and `available_to`.
+      Reject a non-whole `set` operand and a negative `multiply` operand when `effects.toml` is
+      parsed, guard `add` on both paths, and narrow the rounding row to numeric fields. No committed
+      effect reaches any of these; **lands before T655 publishes anything**
+- [ ] T652s **A team bonus refuses only for its owner.** Malians' University row gaps
+      `production_time` for Malians alone; an ally's University technologies still answer the
+      baseline, the substitution research.md D5 forbids ("keep their fields gapped"). A rules query
+      does not know a player's allies. Decide where the gap is raised — the coverage pass knows
+      every seated civilisation, and gapping the field for every participant in a match that seats
+      the owner never answers wrong — and record the decision in research.md D5 before building it.
+      Neither committed recording triggers it; **lands before T655 publishes anything**
+- [ ] T652t **Twenty prerequisite references in `rules.json` point at nothing.** Technology 436 lists
+      `{kind: building, id: 437}`, but 437 is a technology, and 437 lists building 185. The fault is
+      in `packages/knowledge/src/aoe2stats_knowledge/normalise.py`'s kind assignment, so
+      `query.prerequisites` answers with entities that do not exist. Fix it there, regenerate
+      both promoted snapshots' `rules.json` and digests — in place, which is still lawful because
+      nothing has published a snapshot's identity yet (**FR-025** freezes it at T655) — and assert
+      that every prerequisite resolves. **Lands before T655 publishes anything**
+
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
 

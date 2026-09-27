@@ -64,8 +64,8 @@ corroborate this one at all — and was corrected 2026-09-27 (T652n). What actua
 fourteen ids below instead: a fresh 2026-09-27 join of Relic's `getRecentMatchHistory` against
 aoe2companion's `/api/matches`, keyed on `(match id, profile id)`, which reached three of them —
 48 Shu, 52 Khitans, 59 Mapuche — and agreed with the values already here. **The other eleven rest
-on no measurement**: `100.json` read on 2026-09-27 numbers the same civilisations one higher (46
-Achaemenids against 45 here), so they are not a transcription of it as it stands either. They are
+on no measurement**: `100.json` read on 2026-09-27 does not match them either (46 Achaemenids where this
+table has 45, 57 Muisca where it has 58), so they are not a transcription of it as it stands. They are
 kept because the three measured ids agree with them, not because anything checked them:
 
 ```
@@ -74,8 +74,8 @@ kept because the three measured ids agree with them, not because anything checke
 47 Spartans      50 Wei    53 Macedonians               60 Tupi
 ```
 
-**Ids 56 and 57 are deliberately absent**, not merely unassigned. They are absent from the reference
-dataset too — nothing checkable reaches them — so this module leaves them on the fallback rather
+**Ids 56 and 57 are deliberately absent**, not merely unassigned. No measurement reaches
+them, so this module leaves them on the fallback rather
 than guessing what sits between Puru (55) and Muisca (58). Inventing that gap is precisely the kind
 of plausible-but-unchecked entry T070c already got wrong once; do not "complete" it later without
 new evidence.

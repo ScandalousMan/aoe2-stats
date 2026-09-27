@@ -111,8 +111,7 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   `(match id, profile id)` — 88 rows, 37 distinct `civilization_id` values, zero conflicts —
   reaching three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreeing with the
   table. **The other eleven rest on no measurement**: they do not match `100.json` either, which on
-  2026-09-27 numbers the same civilisations one higher (46 Achaemenids against the table's 45) and
-  has 56 Puru and 57 Muisca where the table has none. Whether the dataset changed after T070i or the
+  2026-09-27 has 46 Achaemenids where the table has 45, and 57 Muisca where the table has 58. Whether the dataset changed after T070i or the
   transcription re-mapped it is not recorded. Ids 56 and 57 stay on the fallback. The same
   2026-09-27 join also found three ids this table lacks —
   61 Saxons, 62 Varangians, 63 Danes — which fall back to "Civilisation <id>" in production;
@@ -558,10 +557,10 @@ against keeping one measurement in two homes.
   costs, times, ages, prerequisites or bonuses (research.md D3).
 - **Reliability**: community-maintained, with explicit identifiers — but keyed to the replay's own
   civilisation id space (1-based, release order), not to Relic's `civilization_id` (§1, "Two
-  civilisation id spaces exist"). It corroborates this repository's replay-space table
-  (`packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`'s `[[civilisation_id]]` table) at
-  every one of the six ids that table names — 2 Franks, 4 Teutons, 8 Persians, 9 Saracens,
-  26 Malians, 33 Tatars. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
+  civilisation id spaces exist"). Read 2026-09-27: 9 Saracens, 26 Malians, 46 Achaemenids. It is the
+  source of ids 9 and 26 in the replay-space table
+  (`packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`, `[[civilisation_id]]`), so it
+  cannot also corroborate them. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
   (Relic's space): reading it as doing so was T070i's error, corrected 2026-09-27 (T652n) — see §1
   above, "Ids 45-60 (T070i)", for what actually established that table's ids 45-60.
 - **Update mechanism**: read by a human, by hand, against a checkout of the repository. Never
@@ -569,8 +568,7 @@ against keeping one measurement in two homes.
 - **Version identifier**: none — the source carries no release, tag or version field. Whichever
   commit a maintainer happened to read is not recorded, because the source is never vendored (see
   "Known limitations") and there is nothing to pin a digest to.
-- **Coverage**: replay-space ids 1-62 as read on 2026-09-27. It carries no Relic ids at all; §1
-  records what the Relic table's coverage rests on instead.
+- **Coverage**: it carries no Relic ids at all; §1 records what the Relic table rests on instead.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
   file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
   forbids vendoring a source with no licence and permits only a human's transcription, recorded with
