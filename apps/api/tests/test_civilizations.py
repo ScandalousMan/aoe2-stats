@@ -230,11 +230,12 @@ def test_table_matches_the_alphabetical_ordering_rule() -> None:
 
 
 # Ids 45-60 (T070i) rest on no rule the way 0-44 do: they are individually transcribed, in release
-# order, from a cross-check against SiegeEngineers/aoc-reference-data's `data/datasets/100.json`
-# (module docstring's "Ids 45-60" section). That source carries no licence, so it is read and
+# order, and only 48, 52 and 59 are measured (module docstring's "Ids 45-60" section, which also
+# records why SiegeEngineers/aoc-reference-data's `data/datasets/100.json` does not corroborate
+# them). That source carries no licence, so it is read and
 # transcribed here, never vendored — this literal dict is the fact this test asserts, not a
 # generalisation the way `_ROSTER_AT_ORIGINAL_SPELLING` above is. Ids 56 and 57 are deliberately
-# absent: they are missing from the reference too, and are covered instead by
+# absent: no measurement reaches them, and they are covered instead by
 # `test_falls_back_for_the_deliberate_gap_and_beyond_sixty`.
 _TRANSCRIBED_FORTY_FIVE_TO_SIXTY = {
     45: "Achaemenids",

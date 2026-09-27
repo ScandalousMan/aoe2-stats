@@ -973,7 +973,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
       once, not twice
 
-- [ ] T652n **Two readings of the same file disagree, and one of them may be serving wrong names in
+- [x] T652n **Two readings of the same file disagree, and one of them may be serving wrong names in
       production.** `docs/data-sources.md` §6 states that the aoc-reference-data dataset it names *"confirmed all
       45 civilisation ids this repository had already derived from two frozen provider fixtures"* —
       ids where `apps/api/src/aoe2stats_api/civilizations.py` holds 9 = Byzantines and

@@ -54,15 +54,19 @@ order for them was exactly T070c's original error, so this module still does not
 extend the ordering rule past id 44.
 
 **Ids 45-60 (T070i): transcribed, not derived.** These are not covered by any rule or by this
-repository's own fixtures — the roster and the join above simply do not reach them. Instead they
-were cross-checked against SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a
-community-maintained reference that states civilisation ids explicitly. That check confirmed every
-one of the 45 ids already in this table (0-44) and 44 of their 45 labels — the one disagreement is
-id 30, where the reference writes "Maya" and this table keeps "Mayans"; see the comment on that
-entry below for why. Having confirmed the source agrees with everything this table could already
-check, the fourteen ids below it that this repository has no other evidence for were read from it
-and are transcribed here as individually-verified facts, in release order, not derived from any
-rule the way 0-44 are:
+repository's own fixtures — the roster and the join above simply do not reach them. They were
+transcribed from SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a
+community-maintained reference that states civilisation ids explicitly — but that dataset is keyed
+to the game's own replay-space id (1-based, release order), not to this table's Relic
+`civilization_id` space (`docs/data-sources.md` §1, "Two civilisation id spaces exist"). Reading it
+as also confirming this table's ids 0-44 was wrong — a source keyed to a different space cannot
+corroborate this one at all — and was corrected 2026-09-27 (T652n). What actually corroborates the
+fourteen ids below instead: a fresh 2026-09-27 join of Relic's `getRecentMatchHistory` against
+aoe2companion's `/api/matches`, keyed on `(match id, profile id)`, which reached three of them —
+48 Shu, 52 Khitans, 59 Mapuche — and agreed with the values already here. **The other eleven rest
+on no measurement**: `100.json` read on 2026-09-27 numbers the same civilisations one higher (46
+Achaemenids against 45 here), so they are not a transcription of it as it stands either. They are
+kept because the three measured ids agree with them, not because anything checked them:
 
 ```
 45 Achaemenids   48 Shu    51 Jurchens   54 Thracians   58 Muisca
@@ -126,8 +130,8 @@ KNOWN_CIVILISATION_NAMES: dict[int, str] = {
     27: "Magyars",
     28: "Malay",
     29: "Malians",
-    # T070i cross-checked this table against SiegeEngineers/aoc-reference-data, which spells this
-    # civilisation "Maya". "Mayans" stays: it is the name the game itself displays, and the
+    # SiegeEngineers/aoc-reference-data and aoe2companion both spell this civilisation "Maya".
+    # "Mayans" stays: it is the name the game itself displays, and the
     # MIT-licensed aoe2techtree data — generated from the game's own strings — spells it "Mayans"
     # too. This is a deliberate, checked divergence from that reference, not a stale name; do not
     # "fix" it toward "Maya".

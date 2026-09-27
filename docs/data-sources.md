@@ -94,19 +94,33 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   aoe2companion's `internalLeaderboardId 6` name the identical match, and companion carries
   `leaderboardName: "1v1 Random Map"` for it. `apps/api/src/aoe2stats_api/match_types.py` names
   this id space, by that same companion join, separately from `leaderboards.py`.
+- **Two civilisation id spaces exist, and a value from one must never be looked up in the other.**
+  Relic's `civilization_id` above is 0-based, alphabetical for ids 0-44, then appended — the space
+  `apps/api/src/aoe2stats_api/civilizations.py` holds. Replay files carry a different id, 1-based
+  and in release order — the space `packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`'s
+  `[[civilisation_id]]` table holds, and the one SiegeEngineers/aoc-reference-data's
+  `data/datasets/100.json` is keyed to (§6). They disagree: 9 is Saracens in the replay space and
+  Byzantines in Relic's, 26 is Malians against Lithuanians — read 2026-09-27 (T652n).
 - **Ids 45-60 (T070i).** Not derived — no fixture here reaches them and the ordering rule above
-  stops at 44 by construction. They were instead cross-checked against
-  SiegeEngineers/aoc-reference-data's `data/datasets/100.json`, a community-maintained dataset that
-  states civilisation ids explicitly. That check confirmed all 45 ids already in the table and 44
-  of their 45 labels (id 30 is a deliberate, checked divergence — see the module docstring and the
-  comment on that entry — the reference writes "Maya", the table keeps "Mayans", the name both the
-  game and the MIT-licensed aoe2techtree data use). Fourteen ids the table lacked were then added
-  from the same source, covering the Three Kingdoms, Chronicles and American civilisations.
-  Ids 56 and 57 are absent from that dataset too and stay on the fallback deliberately — not
-  guessed at — as does everything above 60. Unlike aoe2techtree, `aoc-reference-data` carries **no
-  licence at all** (no `LICENSE` file, GitHub reports `license: None`), the same defect recorded
-  above for aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand
-  into `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
+  stops at 44 by construction. They were transcribed from SiegeEngineers/aoc-reference-data's
+  `data/datasets/100.json`, then wrongly read as also confirming this table's Relic-space ids
+  0-44 — it cannot: that dataset is keyed to the replay space above, not to Relic's
+  `civilization_id`, so on its own it never corroborated this table at all (corrected 2026-09-27,
+  T652n). What actually corroborates ids 45-60 instead: a 2026-09-27 join of Relic's
+  `getRecentMatchHistory` (two profiles) against aoe2companion's `/api/matches`, keyed on
+  `(match id, profile id)` — 88 rows, 37 distinct `civilization_id` values, zero conflicts —
+  reaching three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreeing with the
+  table. **The other eleven rest on no measurement**: they do not match `100.json` either, which on
+  2026-09-27 numbers the same civilisations one higher (46 Achaemenids against the table's 45) and
+  has 56 Puru and 57 Muisca where the table has none. Whether the dataset changed after T070i or the
+  transcription re-mapped it is not recorded. Ids 56 and 57 stay on the fallback. The same
+  2026-09-27 join also found three ids this table lacks —
+  61 Saxons, 62 Varangians, 63 Danes — which fall back to "Civilisation <id>" in production;
+  recorded here as known-absent, not added (that addition is outside feature 006, filed
+  separately). Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
+  `LICENSE` file, GitHub reports `license: None`), the same defect recorded above for
+  aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand into
+  `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
   never copied into this repository, and nothing fetches it at build or test time. The table
   itself, not this file, is the one place those pairs are recorded — see the module docstring for
   the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
@@ -542,22 +556,21 @@ against keeping one measurement in two homes.
 
 - **Scope**: names only — identifiers to display names for civilisations and other constants. No
   costs, times, ages, prerequisites or bonuses (research.md D3).
-- **Reliability**: community-maintained, explicit identifiers, cross-checked against this project's
-  own independently captured fixtures rather than trusted blind:
-  `apps/api/src/aoe2stats_api/civilizations.py`'s docstring records that its
-  `data/datasets/100.json` confirmed all 45 civilisation ids this repository had already derived from two frozen provider fixtures, and 44 of
-  their 45 labels — one deliberate, checked divergence at id 30, "Maya" there against "Mayans" here,
-  the name both the game and aoe2techtree use, which this project keeps. Fourteen further ids,
-  outside the fixture-derived range, were added from this source alone, with no independent fixture
-  to confirm them (§1 above, "Ids 45-60 (T070i)").
+- **Reliability**: community-maintained, with explicit identifiers — but keyed to the replay's own
+  civilisation id space (1-based, release order), not to Relic's `civilization_id` (§1, "Two
+  civilisation id spaces exist"). It corroborates this repository's replay-space table
+  (`packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`'s `[[civilisation_id]]` table) at
+  every one of the six ids that table names — 2 Franks, 4 Teutons, 8 Persians, 9 Saracens,
+  26 Malians, 33 Tatars. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
+  (Relic's space): reading it as doing so was T070i's error, corrected 2026-09-27 (T652n) — see §1
+  above, "Ids 45-60 (T070i)", for what actually established that table's ids 45-60.
 - **Update mechanism**: read by a human, by hand, against a checkout of the repository. Never
   fetched at build, test or run time (FR-031, FR-032).
 - **Version identifier**: none — the source carries no release, tag or version field. Whichever
   commit a maintainer happened to read is not recorded, because the source is never vendored (see
   "Known limitations") and there is nothing to pin a digest to.
-- **Coverage**: civilisation ids 0-60 as of the reading recorded in
-  `apps/api/src/aoe2stats_api/civilizations.py`; ids 56, 57 and everything above 60 are absent from
-  this source too and stay on this project's bare-id fallback deliberately, not guessed at.
+- **Coverage**: replay-space ids 1-62 as read on 2026-09-27. It carries no Relic ids at all; §1
+  records what the Relic table's coverage rests on instead.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
   file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
   forbids vendoring a source with no licence and permits only a human's transcription, recorded with
