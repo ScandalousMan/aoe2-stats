@@ -1147,6 +1147,19 @@ Three were arbitration and are decided, with the decision recorded in the task t
       documented as returning an integer and now returns a fraction. Recompute both digests and
       keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
 
+- [ ] T652x **The fifth review's follow-ups, each small, all inside digested or validated content.**
+      (1) Malians' University team row's `validated_by` lists who can research Siege Engineers (377)
+      and omits Tatars, whose tree marks it `ResearchedCompleted`. (2) Nine refusal reasons
+      (Citadels, Ironclad, Crenellations, Bimaristan, Counterweights, Tigui, Farimba, Silk Armor,
+      Timurid Siegecraft) still justify themselves by a condition; amended research.md D5 does not
+      admit that — each is refused because its field is not carried, and should say that alone, as
+      T652w did for eight others. (3) `Context(age=True)` passes the age check and answers the
+      baseline: reject a `bool`. (4) Malians' pierce-armour `source_text` drops the pack's line
+      break, and [data-model.md](./data-model.md) §6 says `source_text` is verbatim: transcribe it
+      exactly, or record the deviation in the row. Recompute both digests; keep both promoted files
+      byte-identical. **Lands before T655 publishes anything**, since FR-025 freezes the snapshot
+      then
+
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
 
