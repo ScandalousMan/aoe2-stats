@@ -256,3 +256,34 @@ def test_every_bullet_count_matches_exactly() -> None:
             f"{len(accounted_for)} ({sorted(accounted_for)!r}) — a mismatch in either direction "
             "means either a dropped bullet or a stale/duplicated entry."
         )
+
+
+def test_malians_pierce_armor_source_text_records_its_line_break_deviation() -> None:
+    """**T652x, item (4).** data-model.md §6 calls `source_text` verbatim. Malians' own bullet
+    wraps mid-sentence in the raw source — `strings.en.json` help_string_id 120175's own text
+    contains `"pierce armor in Feudal/<br>\\nCastle/Imperial Age"`, a rendering line break, not a
+    second bullet — and `effects.toml`'s `source_text` rejoins the two halves with no separating
+    space rather than transcribing the break literally. The two tests above already prove this
+    exact rejoining is `_bullets_for`'s own, universally-applied convention (every civilisation's
+    prose is reconstructed the same way, not only Malians'), so this test proves the second half
+    data-model.md §6 requires: the deviation is not merely handled by test code far from the row,
+    it is recorded in the row's own `validated_by`."""
+    raw = _strings_en()["120175"]
+    assert "Feudal/<br>\nCastle/Imperial Age" in raw, (
+        "strings.en.json help_string_id 120175 no longer wraps this bullet the way this test "
+        "(and effects.toml's own recorded deviation) assumes — re-check both against the pack"
+    )
+    (effect,) = [
+        e
+        for e in effects._effects(_PROMOTED_DIRECTORY)
+        if e.civilisation == "Malians"
+        and e.source_text == "Barracks Units +1/+2/+3 pierce armor in Feudal/Castle/Imperial Age"
+    ]
+    assert "<br>" not in effect.source_text, (
+        "source_text should be the rejoined form (this deviation is recorded, not transcribed "
+        "literally) — a literal <br> here means the row and this test have drifted apart"
+    )
+    assert "<br>" in effect.validated_by and "Feudal" in effect.validated_by, (
+        "the row's own validated_by must record the line-break deviation data-model.md §6 "
+        "requires, not merely rely on a test file to explain it"
+    )

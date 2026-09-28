@@ -45,11 +45,29 @@
 # reading Farm — both ids also coincide with an unrelated real technology, "Faith" and "Masonry")
 # are unchanged, because the age check keeps the building reading in both. `digest` recomputed
 # over the corrected `rules.json` and the unchanged `effects.toml`.
+# T652x (2026-09-28, the fifth review's follow-ups) touches `effects.toml` only, `rules.json`
+# unchanged: (1) the University row's `validated_by` omitted Tatars from Siege Engineers (377) —
+# Tatars' own tree marks it `ResearchedCompleted` — corrected, and re-derived directly from every
+# modelled civilisation's own tree file for every technology that row enumerates, guarded by
+# `test_selector_availability.py`'s own re-derivation so the next omission fails a test rather
+# than a sixth review. (2) Nine refusal reasons (Citadels, Ironclad, Crenellations, Bimaristan,
+# Counterweights, Tigui, Farimba, Silk Armor, Timurid Siegecraft) still justified themselves by a
+# condition amended research.md D5 no longer admits — reworded to say only that their field is
+# not carried, the same treatment T652w already gave eight others, guarded by
+# `test_effects.py`'s own `test_no_refusal_reason_justifies_itself_by_an_unregistered_condition`.
+# (3) `effects.py`'s `Context.age` check accepted a `bool` (an `int` subclass in Python, so
+# `True in {1, 2, 3, 4}`) and silently answered the plain baseline instead of raising — closed;
+# `Context.researched` and `Context.team` do not share this hole, checked directly, not assumed.
+# (4) Malians' pierce-armour `source_text` rejoins the pack's own mid-bullet line break rather
+# than transcribing it literally — the deviation is now recorded in that row's own `validated_by`,
+# not only in the test that already enforced the rejoining convention. `digest` recomputed over
+# the unchanged `rules.json` and the corrected `effects.toml`; both promoted snapshots' files stay
+# byte-identical.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:20956bac619302729d9efa4468395c2b8a31235463dd4ea19c87cb854d5304ca"
+digest = "sha256:9912ee9a68664be220c11bc390f58c31f6aa3fd2659f30d0d20feceac9bb2053"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

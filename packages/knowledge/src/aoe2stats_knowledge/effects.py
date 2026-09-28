@@ -131,7 +131,10 @@ _AGE_KEYS: Final[frozenset[str]] = frozenset({"1", "2", "3", "4"})
 #: `age` outside this set is not a legitimate age an effect's table simply has no key for (that
 #: case answers the plain baseline, per `_AGE_KEYS`'s own docstring); it is not one of the pack's
 #: four ages at all, and `_resolve_conditional_operand` raises `ValueError` for it rather than
-#: reading it as "no discount yet".
+#: reading it as "no discount yet". **T652x**: membership here is checked by value (`in`), and
+#: `bool` is an `int` subclass, so `True in _VALID_AGES` is `True` — `_resolve_conditional_operand`
+#: rejects `isinstance(context.age, bool)` explicitly, before this set is ever consulted, rather
+#: than trusting membership alone to catch it.
 _VALID_AGES: Final[frozenset[int]] = frozenset({1, 2, 3, 4})
 
 #: TOML keys required on every `[[effect]]` table, whatever `modelled` says.
@@ -721,6 +724,21 @@ def _resolve_conditional_operand(
     exists to forbid — measured before this fix, Malians querying Chemistry with
     `Context(team={"Franks"})` (Malians omitted from its own team) and Franks' Castle cost at
     `Context(age=5)` (not one of the pack's four ages) both silently answered the plain baseline.
+
+    **T652x**: `Context.age` is checked by `in _VALID_AGES`, a membership test against a
+    `frozenset[int]` — and `bool` is an `int` subclass in Python, so `True == 1` and `True in
+    {1, 2, 3, 4}`. `Context(age=True)` passed that check, then `str(True)` produced `"True"`, a key
+    absent from every effect's own age table, and answered the plain baseline exactly as a genuinely
+    absent age does — measured before this fix, Persians' Villager (a discount at every one of the
+    pack's four ages, so there is no absent-key reading that is actually correct) at
+    `Context(age=True)` answered 25, unadjusted. Rejected before the membership check, the same way
+    T652r already rejects a `bool` leaf in a parsed `operand` (`_operand_leaves`) rather than
+    trusting `isinstance(x, int)` alone. `Context.researched` and `Context.team` do not share this
+    hole: both are only ever asked "is this string a member", never compared by value, and a bare
+    `bool` is not iterable at all, so Python itself raises `TypeError` before this function's own
+    logic runs (`test_context_researched_and_team_do_not_share_the_bool_hole`) — checked directly,
+    not assumed, since the fix for `age` is not "reject every bool everywhere" but "close the one
+    comparison a bool can silently pass".
     """
     if effect.condition is None:
         return effect.operand, True
@@ -731,7 +749,7 @@ def _resolve_conditional_operand(
                 "conditional on age, and reaching it needs Context(age=...) — neither the "
                 "baseline nor a guessed age is an answer"
             )
-        if context.age not in _VALID_AGES:
+        if isinstance(context.age, bool) or context.age not in _VALID_AGES:
             raise ValueError(
                 f"Context.age must be one of {sorted(_VALID_AGES)} (the pack's own age "
                 f"numbering), got {context.age!r} — this is not an age genuinely absent from "

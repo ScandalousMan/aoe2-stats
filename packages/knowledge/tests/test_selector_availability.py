@@ -41,6 +41,7 @@ signal FR-038 says this package must never paper over with a guess.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from importlib import resources
 from typing import Any
@@ -62,6 +63,9 @@ _TREE_FILE_STEM: Mapping[str, str] = {
     "Franks": "FRANKS",
     "Persians": "PERSIANS",
     "Malians": "MALIANS",
+    "Teutons": "TEUTONS",
+    "Saracens": "SARACENS",
+    "Tatars": "TATARS",
 }
 
 #: A tree entry's own `id` field is `"<Kind>_<node_id>_<building_id>"` — the middle component is
@@ -287,4 +291,105 @@ def test_malians_wood_discount_selector_equals_every_wood_costed_building_the_tr
         f"{directory}: Malians' -15%-wood selector does not equal every wood-costed building "
         f"the tree offers — named but should not be: {sorted(observed - expected)!r}; offered "
         f"but not named: {sorted(expected - observed)!r}"
+    )
+
+
+#: **T652x, item (1).** The University team row's own `validated_by` names, in prose, which of the
+#: six modelled civilisations can research each of six specific technologies (T652w's own reading
+#: omitted Tatars for Siege Engineers, 377 — this table's job is to make that omission fail a test
+#: instead of waiting for a sixth review). Every technology `rules.json` lists as `produced_at`
+#: building 209 ("University") that the row's own `validated_by` names availability for, keyed by
+#: `rules.json`'s own technology id — never the other fourteen the row leaves unenumerated, since
+#: this table only checks what the prose itself claims, not what it is silent about.
+_UNIVERSITY_MODELLED_CIVILISATIONS: tuple[str, ...] = (
+    "Franks",
+    "Teutons",
+    "Persians",
+    "Saracens",
+    "Malians",
+    "Tatars",
+)
+
+#: A row's `validated_by` sentence "X, Y and Z can research NAME (ID)" — the exact shape every
+#: enumerated technology in the University row's `validated_by` uses (checked directly). Also
+#: matches the "Shipwright (373) is `NotAvailable` for all six ..." sentence via its own, separate
+#: assertion below, since that one names no civilisation at all.
+_AVAILABILITY_SENTENCE = re.compile(
+    r"([A-Za-z]+(?:, [A-Za-z]+)*(?: and [A-Za-z]+)?) can research [A-Za-z ]+? \((\d+)\)"
+)
+
+
+def _parsed_university_availability_claims(directory: str) -> Mapping[str, frozenset[str]]:
+    """Every `(technology id -> civilisations claimed able to research it)` pair the University
+    row's own `validated_by` states, parsed from its prose rather than hand-copied — so this test
+    is checking the real row, not a transcription of it made once and never revisited."""
+    (effect,) = [
+        e
+        for e in effects._effects(directory)
+        if e.civilisation == "Malians" and e.condition == "team" and e.field == "production_time"
+    ]
+    claims: dict[str, frozenset[str]] = {}
+    for match in _AVAILABILITY_SENTENCE.finditer(effect.validated_by):
+        civs_raw, tech_id = match.groups()
+        civs = frozenset(part.strip() for part in civs_raw.replace(" and ", ", ").split(", "))
+        claims[tech_id] = civs
+    return claims
+
+
+def _tree_offers_technology(civilisation: str, technology_id: str) -> bool:
+    rules = _rules()
+    tree = _tree_index(civilisation)
+    return _offered(rules, tree, "technology", technology_id)
+
+
+@pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
+def test_university_row_validated_by_availability_list_matches_the_trees(directory: str) -> None:
+    """**T652x, item (1).** For every technology id the University row's own `validated_by`
+    enumerates a civilisation list for, that list must equal — exactly, not merely overlap — the
+    civilisations whose own tree file marks that technology anything other than `NotAvailable`,
+    among the six modelled civilisations. T652w's own reading passed this shape for five of six
+    (`608`, `64`, `909`, `910`, and `373`'s "no one") and missed Tatars for `377` — this test fails
+    on that specific omission and on the shape of any future one, because it re-derives the
+    expected set from the trees on every run rather than trusting the last hand reading."""
+    claims = _parsed_university_availability_claims(directory)
+    assert claims, (
+        f'{directory}: found no "X can research NAME (ID)" sentence in the University row\'s '
+        "validated_by — the parser regex or the row's own prose has drifted apart"
+    )
+    for technology_id, claimed in claims.items():
+        expected = frozenset(
+            civilisation
+            for civilisation in _UNIVERSITY_MODELLED_CIVILISATIONS
+            if _tree_offers_technology(civilisation, technology_id)
+        )
+        assert claimed == expected, (
+            f"{directory}: the University row's validated_by claims {sorted(claimed)!r} can "
+            f"research technology {technology_id}, but the trees say {sorted(expected)!r} — "
+            f"claimed but not offered: {sorted(claimed - expected)!r}; offered but not claimed: "
+            f"{sorted(expected - claimed)!r}"
+        )
+
+
+@pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
+def test_university_row_shipwright_notavailable_claim_matches_the_trees(directory: str) -> None:
+    """The University row's `validated_by` also states, in a different sentence shape ("Shipwright
+    (373) is `NotAvailable` for all six modelled civilisations"), that no modelled civilisation can
+    research Shipwright — checked directly against the trees rather than trusted, the same way the
+    positive claims above are."""
+    (effect,) = [
+        e
+        for e in effects._effects(directory)
+        if e.civilisation == "Malians" and e.condition == "team" and e.field == "production_time"
+    ]
+    assert "Shipwright (373) is `NotAvailable` for all six modelled civilisations" in (
+        effect.validated_by
+    ), f"{directory}: the University row's validated_by no longer states this sentence verbatim"
+    offering = [
+        civilisation
+        for civilisation in _UNIVERSITY_MODELLED_CIVILISATIONS
+        if _tree_offers_technology(civilisation, "373")
+    ]
+    assert not offering, (
+        f"{directory}: validated_by claims Shipwright (373) is NotAvailable for every modelled "
+        f"civilisation, but the trees say {sorted(offering)!r} can research it"
     )

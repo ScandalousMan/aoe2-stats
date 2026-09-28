@@ -472,10 +472,11 @@ source_key = "120157"
 source_text = "Citadels (Castles +4 attack, +3 vs. Rams, +3 vs. Infantry and receive -25% bonus damage)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Citadels" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the combat bonus only applies once it \
-has been researched — the same reasoning Franks' Bearded Axe above uses. It also touches attack \
-and bonus-damage resistance, fields this pack's normaliser does not carry on any entity record.\
+"Citadels" is a Castle unique technology, named under this civilisation's own "Unique Techs:" \
+heading. It touches attack and bonus-damage resistance, fields this pack's normaliser does not \
+carry on any entity record at all — that alone is why this stays refused; a rules query now \
+carries which technologies have been researched (research.md D5, amended by T652u), so being \
+conditional on research no longer disqualifies a bonus by itself.\
 """
 field = "attack"
 selector = [{ kind = "building", id = "82" }]
@@ -678,12 +679,14 @@ source_key = "120153"
 source_text = "Ironclad (Siege Weapons +4 melee armor)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Ironclad" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the armour bonus only applies once it \
-has been researched. It also touches melee armour, a field this pack's normaliser does not carry \
-on any entity record, and "Siege Weapons" is a broad unit-class this pass does not enumerate — \
-the selector below names only the producing building (Siege Workshop), the same anchor-to-the-\
-producing-building treatment this file's Barracks/Stable armour entry above already uses.\
+"Ironclad" is a Castle unique technology, named under this civilisation's own "Unique Techs:" \
+heading. It touches melee armour, a field this pack's normaliser does not carry on any entity \
+record at all — that alone is why this stays refused; a rules query now carries which \
+technologies have been researched (research.md D5, amended by T652u), so being conditional on \
+research no longer disqualifies a bonus by itself. "Siege Weapons" is also a broad unit-class \
+this pass does not enumerate — the selector below names only the producing building (Siege \
+Workshop), the same anchor-to-the-producing-building treatment this file's Barracks/Stable armour \
+entry above already uses.\
 """
 field = "melee_armor"
 selector = [{ kind = "building", id = "49" }]
@@ -704,12 +707,13 @@ source_key = "120153"
 source_text = "Crenellations (Castles +3 range, garrisoned Infantry fires arrows)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Crenellations" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the range bonus only applies once it \
-has been researched — the same reasoning Franks' Bearded Axe and Persians' Citadels above use. \
-It also touches range, a field this pack's normaliser does not carry on any entity record. The \
-same bullet's "garrisoned Infantry fires arrows" clause is transcribed verbatim above but is a \
-boolean behaviour change with no field at all, not separately recorded — nothing to half-apply.\
+"Crenellations" is a Castle unique technology, named under this civilisation's own "Unique \
+Techs:" heading. It touches range, a field this pack's normaliser does not carry on any entity \
+record at all — that alone is why this stays refused; a rules query now carries which \
+technologies have been researched (research.md D5, amended by T652u), so being conditional on \
+research no longer disqualifies a bonus by itself. The same bullet's "garrisoned Infantry fires \
+arrows" clause is transcribed verbatim above but is a boolean behaviour change with no field at \
+all, not separately recorded — nothing to half-apply.\
 """
 field = "range"
 selector = [{ kind = "building", id = "82" }]
@@ -866,10 +870,11 @@ source_key = "120158"
 source_text = "Bimaristan (Monks passively heal multiple nearby units)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Bimaristan" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the behaviour only applies once it has \
-been researched. It also names a behaviour change (healing several units at once), not a \
-numeric stat this pack's normaliser carries on any entity record at all.\
+"Bimaristan" is a Castle unique technology, named under this civilisation's own "Unique Techs:" \
+heading. It names a behaviour change (healing several units at once), not a numeric stat this \
+pack's normaliser carries on any entity record at all — that alone is why this stays refused; a \
+rules query now carries which technologies have been researched (research.md D5, amended by \
+T652u), so being conditional on research no longer disqualifies a bonus by itself.\
 """
 field = "heal_behavior"
 selector = [{ kind = "unit", id = "125" }]
@@ -891,10 +896,11 @@ source_key = "120158"
 source_text = "Counterweights (Trebuchets and Mangonel-line +15% attack)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Counterweights" is a Castle unique technology, \
-named under this civilisation's own "Unique Techs:" heading, so the attack bonus only applies \
-once it has been researched. It also touches attack, a field this pack's normaliser does not \
-carry on any entity record.\
+"Counterweights" is a Castle unique technology, named under this civilisation's own "Unique \
+Techs:" heading. It touches attack, a field this pack's normaliser does not carry on any entity \
+record at all — that alone is why this stays refused; a rules query now carries which \
+technologies have been researched (research.md D5, amended by T652u), so being conditional on \
+research no longer disqualifies a bonus by itself.\
 """
 field = "attack"
 selector = [
@@ -1099,7 +1105,16 @@ Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_stri
 re-read in full on 2026-09-23 by the T652m implementer, confirming the age-gated prose; the \
 selector above names only the producing building ("Barracks"), not the many units trained there, \
 since no matching effect could ever apply the correct per-unit adjustment without one — see \
-reason.\
+reason. \
+T652x correction (2026-09-28, the fifth review): the raw bullet itself wraps mid-sentence, \
+"...pierce armor in Feudal/<br>\nCastle/Imperial Age" (help_string_id 120175's own text, \
+checked directly) — a rendering line break inside one bullet, not a second one. data-model.md \
+§6 calls source_text verbatim; the deviation recorded here, rather than left unstated, is that \
+source_text above rejoins the two halves with no separating space, exactly the "the source's \
+own line wrap, not a second bullet" convention test_bullet_coverage.py's _bullets_for already \
+documents and applies mechanically for every civilisation's prose, so this row's transcription \
+and that reconstruction agree byte for byte (test_bullet_coverage.py's own coverage tests \
+assert this).\
 """
 
 [[effect]]
@@ -1108,10 +1123,11 @@ source_key = "120175"
 source_text = "Tigui (Town Centers fire arrows without garrison)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Tigui" is a Unique Technology, named under this \
-civilisation's own "Unique Techs:" heading, so the behaviour only applies once it has been \
-researched. It also names a behaviour change (firing arrows without a garrison), not a numeric \
-stat this pack's normaliser carries on any entity record at all.\
+"Tigui" is a Unique Technology, named under this civilisation's own "Unique Techs:" heading. It \
+names a behaviour change (firing arrows without a garrison), not a numeric stat this pack's \
+normaliser carries on any entity record at all — that alone is why this stays refused; a rules \
+query now carries which technologies have been researched (research.md D5, amended by T652u), so \
+being conditional on research no longer disqualifies a bonus by itself.\
 """
 field = "fires_arrows_ungarrisoned"
 selector = [
@@ -1136,12 +1152,14 @@ source_key = "120175"
 source_text = "Farimba (Cavalry +5 attack)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Farimba" is a Unique Technology, named under this \
-civilisation's own "Unique Techs:" heading, so the attack bonus only applies once it has been \
-researched. It also touches attack, a field this pack's normaliser does not carry on any entity \
-record, and "Cavalry" is a broad unit-class this pass does not enumerate — the selector below \
-names only the producing building (Stable), the same anchor-to-the-producing-building treatment \
-this file's armour entries already use for a broad unit class.\
+"Farimba" is a Unique Technology, named under this civilisation's own "Unique Techs:" heading. It \
+touches attack, a field this pack's normaliser does not carry on any entity record at all — that \
+alone is why this stays refused; a rules query now carries which technologies have been \
+researched (research.md D5, amended by T652u), so being conditional on research no longer \
+disqualifies a bonus by itself. "Cavalry" is also a broad unit-class this pass does not enumerate \
+— the selector below names only the producing building (Stable), the same \
+anchor-to-the-producing-building treatment this file's armour entries already use for a broad \
+unit class.\
 """
 field = "attack"
 selector = [{ kind = "building", id = "101" }]
@@ -1220,16 +1238,24 @@ effect — Malians' own tree cannot decide which of these technologies a *differ
 research, and the six T652q excluded (each `NotAvailable` for Malians specifically) silently \
 matched no effect at all for every ally that can actually research one, confirmed directly \
 against each civilisation's own tree file, `node_status` other than `NotAvailable`: Franks, \
-Teutons and Saracens can research Siege Engineers (377); Franks, Teutons and Saracens can research \
-Arrowslits (608); Teutons and Tatars can research Bombard Tower (64); Franks, Teutons, Persians \
-and Saracens can research Siphons (909); Persians and Saracens can research Incendiaries (910). \
-Shipwright (373) is `NotAvailable` for all six modelled civilisations, Malians included, and is \
-restored to the selector regardless — this row selects every technology produced at the \
-University, unconditionally; which of them a given ally can actually reach is `available_to`'s \
-question, never this selector's to pre-filter, because the next civilisation this package models \
-may reach it even though none of today's six do. The selector now names all 20 technologies \
-`rules.json` lists as produced_at building 209, exactly the first reading above, with no \
-owner-tree restriction at all.\
+Teutons, Saracens and Tatars can research Siege Engineers (377); Franks, Teutons and Saracens \
+can research Arrowslits (608); Teutons and Tatars can research Bombard Tower (64); Franks, \
+Teutons, Persians and Saracens can research Siphons (909); Persians and Saracens can research \
+Incendiaries (910). Shipwright (373) is `NotAvailable` for all six modelled civilisations, \
+Malians included, and is restored to the selector regardless — this row selects every \
+technology produced at the University, unconditionally; which of them a given ally can \
+actually reach is `available_to`'s question, never this selector's to pre-filter, because the \
+next civilisation this package models may reach it even though none of today's six do. The \
+selector now names all 20 technologies `rules.json` lists as produced_at building 209, exactly \
+the first reading above, with no owner-tree restriction at all. \
+T652x correction (2026-09-28, the fifth review's own follow-up): T652w's own reading omitted \
+Tatars from Siege Engineers (377) — Tatars' own tree (TATARS.json) marks node id 377 \
+`ResearchedCompleted`, not `NotAvailable` — corrected here to the four it actually names, and \
+re-derived for every technology this paragraph enumerates directly against every one of the \
+six modelled civilisations' own tree files (test_selector_availability.py's own \
+test_university_row_validated_by_availability_list_matches_the_trees asserts this against the \
+trees, not against a repeated hand reading, so the next omission fails a test instead of \
+waiting for a sixth review).\
 """
 
 # T652m: Tatars — recording 2's fourth civilisation (raw id 33, corrected from the previously
@@ -1315,10 +1341,11 @@ source_key = "120182"
 source_text = "Silk Armor (Scout Cavalry-line, Steppe Lancers and Cavalry Archers +1 melee/+1 pierce armor)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Silk Armor" is a Unique Technology, named under \
-this civilisation's own "Unique Techs:" heading, so the armour bonus only applies once it has \
-been researched. It also touches melee and pierce armour, fields this pack's normaliser does not \
-carry on any entity record.\
+"Silk Armor" is a Unique Technology, named under this civilisation's own "Unique Techs:" heading. \
+It touches melee and pierce armour, fields this pack's normaliser does not carry on any entity \
+record at all — that alone is why this stays refused; a rules query now carries which \
+technologies have been researched (research.md D5, amended by T652u), so being conditional on \
+research no longer disqualifies a bonus by itself.\
 """
 field = "melee_armor"
 selector = [
@@ -1352,10 +1379,11 @@ source_key = "120182"
 source_text = "Timurid Siegecraft (Trebuchets +2 range)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Timurid Siegecraft" is a Unique Technology, named \
-under this civilisation's own "Unique Techs:" heading, so the range bonus only applies once it \
-has been researched. It also touches range, a field this pack's normaliser does not carry on any \
-entity record.\
+"Timurid Siegecraft" is a Unique Technology, named under this civilisation's own "Unique Techs:" \
+heading. It touches range, a field this pack's normaliser does not carry on any entity record at \
+all — that alone is why this stays refused; a rules query now carries which technologies have \
+been researched (research.md D5, amended by T652u), so being conditional on research no longer \
+disqualifies a bonus by itself.\
 """
 field = "range"
 selector = [{ kind = "unit", id = "331" }]

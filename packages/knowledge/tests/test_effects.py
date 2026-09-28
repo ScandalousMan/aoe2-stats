@@ -997,6 +997,61 @@ def test_context_age_outside_the_valid_range_raises() -> None:
         )
 
 
+def test_context_age_as_a_bool_raises() -> None:
+    """**T652x, item (3).** `bool` is a subclass of `int` in Python, so `True == 1` and `True in
+    {1, 2, 3, 4}` — `Context(age=True)` passed the `_VALID_AGES` membership check the test above
+    guards, and then `str(True)` produced `"True"`, a key absent from every effect's own age table,
+    so it silently answered the plain baseline rather than raising. Measured before this fix:
+    Persians' Villager (unit 83, `condition = "age"`, a discount at every one of the pack's four
+    ages) at `Context(age=True)` answered 25, the unadjusted baseline, exactly as though age were
+    genuinely absent from the table — indistinguishable from a real "no discount yet" answer, the
+    same conflation `test_context_age_outside_the_valid_range_raises` above already forbids for
+    `age=5`. A caller who passes `True` almost certainly meant it as a flag, not as `1`, and either
+    way it is not one of the pack's four ages."""
+    with pytest.raises(ValueError):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Persians",
+            kind="unit",
+            id="83",
+            field="production_time",
+            value=25,
+            context=effects.Context(age=True),
+        )
+
+
+def test_context_researched_and_team_do_not_share_the_bool_hole() -> None:
+    """**T652x, item (3), the sweep.** `Context.age` compares by *value* against a `frozenset[int]`
+    (`context.age not in _VALID_AGES`), which is exactly where `bool`'s `int` subclassing hides —
+    `True == 1`. `Context.researched` and `Context.team` are never compared by value against a
+    civilisation or technology id; they are only ever asked "is this string a member" (`in
+    context.researched`, `in context.team`), and a bare `True`/`False` is not iterable at all, so
+    Python itself raises before this package's own logic runs — confirmed directly, so this is a
+    positive assertion of the current, already-correct behaviour, not a fix: passing a bare `bool`
+    where a `frozenset[str]` belongs must never be mistaken for a silently-accepted baseline answer
+    the way `age=True` was."""
+    with pytest.raises(TypeError):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Franks",
+            kind="unit",
+            id="38",
+            field="production_time",
+            value=30,
+            context=effects.Context(researched=True),  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Malians",
+            kind="technology",
+            id="47",
+            field="production_time",
+            value=100,
+            context=effects.Context(team=True),  # type: ignore[arg-type]
+        )
+
+
 def test_context_valid_team_and_age_still_answer() -> None:
     """The contrast the two tests above both need: a `Context` that is not malformed must still
     answer, not raise — `test_the_real_malians_university_team_bonus_applies_by_team` and
@@ -1283,3 +1338,50 @@ def test_a_scalar_add_that_lands_exactly_at_zero_does_not_raise() -> None:
     )
     assert value == 0
     assert applied == (effect,)
+
+
+# ------------------------------------------------------------ T652x, item (2): the refusal sweep
+
+#: **T652x, item (2).** The literal phrasing the fifth review's nine still used to justify a
+#: refusal by its own condition ("so the combat bonus only applies once it has been researched",
+#: "so the range bonus only applies once it has been ...", one per unique-technology row) — amended
+#: research.md D5 does not admit this anymore: a conditional bonus is a rule now (T652u), so being
+#: conditional on research is never, by itself, a reason to refuse. This is a narrow, literal
+#: regression guard for the exact defect signature the fifth review found, not a general prover: a
+#: differently-worded future violation (e.g. "the bonus needs Chivalry to have been studied first")
+#: would not trip it. A broader word-list (banning "conditional", "researched", "age-gated", ...
+#: anywhere in a reason) was rejected as genuinely brittle — Kamandaran's own reason legitimately
+#: uses this same vocabulary (its refusal really is about a missing wood amount, not the condition,
+#: research.md D5's own stated exception), and the eight rows T652w already fixed legitimately say
+#: "conditional on research no longer disqualifies a bonus by itself", which contains "researched"
+#: and "conditional" too. The one thing every one of those legitimate uses shares, and the nine
+#: defective rows did not, is `effect.condition`: Kamandaran's own effect record carries
+#: `condition = "researched"` (T652x's own re-derivation below checks the *record*, not the prose,
+#: for that), and the fixed eight only ever use the vocabulary to say the condition no longer
+#: matters. So the check is structural where it can be (an effect that frames its own refusal as
+#: conditional, by this literal phrase, must actually carry a registered `condition`), not a
+#: vocabulary ban.
+_JUSTIFIES_REFUSAL_BY_CONDITION_PHRASE = "only applies once it has been"
+
+
+@pytest.mark.parametrize("directory", [_PROMOTED_DIRECTORY, _PROMOTED_177723_DIRECTORY])
+def test_no_refusal_reason_justifies_itself_by_an_unregistered_condition(directory: str) -> None:
+    """**T652x, item (2), the sweep.** Every `modelled = "no"` effect whose `reason` uses the fifth
+    review's defect phrase must actually carry a registered `condition` — otherwise the refusal is
+    blaming a condition amended research.md D5 says can no longer justify a refusal by itself, and
+    the row must instead say only that its field is not carried (T652w did this for eight rows,
+    T652x for the nine the fifth review found)."""
+    offenders = [
+        effect
+        for effect in effects._effects(directory)
+        if effect.modelled == "no"
+        and effect.condition is None
+        and effect.reason is not None
+        and _JUSTIFIES_REFUSAL_BY_CONDITION_PHRASE in effect.reason
+    ]
+    assert not offenders, (
+        f"{directory}: {len(offenders)} modelled=no row(s) still justify their own refusal by a "
+        "condition with no registered effect.condition to back it, amended research.md D5's own "
+        "fault: "
+        f"{[(e.civilisation, e.source_text) for e in offenders]!r}"
+    )
