@@ -146,8 +146,14 @@ export const ActiveStandalone: Story = {
 // distinguishing this frame from `Hover` above without one (fourth-pass review remediation,
 // FR-037). Also at or under 1% unclipped (T675's package-wide sweep) — clipped to the inline link;
 // slice 4b found `pad: '2'` still under 1% on one unit and tightened it to `'0'`, the smallest step
-// this package's own scale names (`tokens/space.json`).
-const INLINE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'view its profile' }], pad: '0' }
+// this package's own scale names (`tokens/space.json`), which still read under 1% at 375 — this
+// link sits mid-sentence in a paragraph, and its own three words wrap across two lines at 375, so
+// the bounding box spans both. T675 slice 4c: `fragment: 'first'` (`story-render.ts`) clips to the
+// link's own first client rect instead — one line, whatever the width — closing the gap.
+const INLINE_LINK_CLIP = {
+  parts: [{ role: 'link' as const, name: 'view its profile', fragment: 'first' as const }],
+  pad: '0',
+}
 
 export const ActiveInline: Story = {
   render: (args) => (

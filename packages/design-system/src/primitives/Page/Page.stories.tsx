@@ -186,7 +186,14 @@ export const Empty: Story = {
 // clipped the ring itself away entirely — it is an *outward* ring (`outline-2 outline-offset-2`,
 // `index.tsx`'s own `focusRing`, 4px total beyond the border box), so the clip rect needs at least
 // that much room; `'1'` (4px) is the smallest step this package's own scale names that still holds
-// it.
+// it. T675 slice 4c: `<main>` itself carries `min-h-svh` (`index.tsx`) — full viewport height at
+// minimum, whatever the content — so the landmark's own area has a floor no clip or pad reaches
+// either; the one thing left to control is not *shrinking below* that floor (impossible) but not
+// *growing past* it, which a tall specimen panel does at a narrow viewport where its own content
+// reflows taller than the viewport itself. `render` below drops the bordered `SamplePanel` stand-in
+// (a heading, a border, block padding — none of it this story exists to show) for one short,
+// realistic line, so this story's own `<main>` sits as close to that `min-h-svh` floor as content
+// can get it, at every width.
 const MAIN_CLIP = { parts: [{ role: 'main' as const }], pad: '1' }
 
 export const FocusVisible: Story = {
@@ -201,7 +208,7 @@ export const FocusVisible: Story = {
   },
   render: (args) => (
     <Page {...args}>
-      <SamplePanel title="Recent matches">Three matches this week.</SamplePanel>
+      <p className="type-body text-md text-text-secondary">No matches recorded yet.</p>
     </Page>
   ),
   play: async ({ canvasElement }) => {

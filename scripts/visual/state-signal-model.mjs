@@ -172,11 +172,19 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
     const role = literalOf(getProp(el, 'role'))
     const name = literalOf(getProp(el, 'name'))
     const nth = literalOf(getProp(el, 'nth'))
+    // T675 slice 4c: `fragment` (`story-render.ts`'s own `VisualCaptureClipPart`) — extracted the
+    // same way every other part field is, for the same reason: this function's own job is reading
+    // back the real shape a story declares, not a subset of it chosen before `fragment` existed.
+    // `hasClip` (this file's own caller, `run.mjs`) does not read it — whether a clip is present at
+    // all does not depend on which of its parts name `fragment` — so this is completeness, not a
+    // second behaviour.
+    const fragment = literalOf(getProp(el, 'fragment'))
     parts.push({
       selector: selector.present && selector.literal ? selector.value : undefined,
       role: role.present && role.literal ? role.value : undefined,
       name: name.present && name.literal ? name.value : undefined,
       nth: nth.present && nth.literal ? nth.value : undefined,
+      fragment: fragment.present && fragment.literal ? fragment.value : undefined,
     })
   }
   const pad = literalOf(getProp(clip, 'pad'))

@@ -20,11 +20,31 @@ export interface VisualForceState {
   nth?: number
 }
 
+// A clip part locates one element (`selector`, or `role` optionally narrowed by `name`; `nth`
+// breaks a tie when either matches more than one — `locateClipPart` below throws otherwise) and
+// contributes its own rect to the union `resolveCaptureClip` clips to, inflated by `pad` (a
+// `tokens/space.json` step name; `resolveCaptureClip`'s own default is `'2'`).
+//
+// `fragment` (T675 slice 4c) — omitted, the default for every clip part before this option
+// existed — takes the element's full *bounding box*, spanning every line an inline element wraps
+// across at a narrow viewport. `fragment: 'first'` takes its own *first client rect*
+// (`getClientRects()[0]`) instead: one line, the one carrying the underline, whatever the
+// container's width — a real fix for an inline `Link` inside running prose, where the bounding box
+// at 375px can be several times the area of the same element unwrapped at 1280px, diluting a real,
+// present signal under the comparator's own `maxDiffPixelRatio` floor for no reason connected to
+// the signal itself (`packages/design-system/specs/README.md`'s Verification-coverage gap
+// register, row 1, the `ThirdPartyObjectionForm`/`Link` `inline` residuals). A no-op for anything
+// that lays out as a single fragment — `getClientRects()` then reports exactly one rect, identical
+// to the bounding box — so it is safe to add without checking a target's own layout first. Opt-in,
+// on the stories that measurably need it, never global: `resolveClipPartRect`'s own tests cover the
+// wrapped-vs-unwrapped shapes without a browser; the sweep and `stories.spec.ts`'s own committed
+// baselines are the coverage for the real, rendered case, since both share this one resolver.
 export interface VisualCaptureClipPart {
   selector?: string
   role?: string
   name?: string
   nth?: number
+  fragment?: 'first'
 }
 
 export interface VisualCaptureClip {
@@ -93,6 +113,42 @@ export async function locateClipPart(root: Locator, storyId: string, part: Visua
   return scoped
 }
 
+// One clip part's own edges — already scroll-adjusted, in page coordinates — plain data with no DOM
+// type of its own, so it crosses the `Locator.evaluate` boundary (browser -> Node) without loss and
+// the pure function below that consumes it needs no browser to run.
+export interface EdgeRect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+// Picks one clip part's own source rect from its element's bounding box and its full list of
+// client rects (`getClientRects()`) — both read once, in the browser, by `resolveCaptureClip`
+// below, and handed to this function as plain data, so this function itself never touches the DOM
+// and is provably unit-testable with synthetic rects alone (`story-render.test.mjs`).
+// `fragment` undefined — every clip part before `fragment` existed, and every one that does not
+// name it today — returns `boundingRect` unchanged: the exact behaviour this function replaces
+// inline. `fragment: 'first'` returns `clientRects[0]` instead, falling back to `boundingRect` only
+// if the element reports no client rects at all (defensive; not observed on a real, laid-out
+// element — an element with zero boxes has nothing to clip to either way). Any other value throws:
+// a known key's own unexpected value is "unknown keys, and so on" applied to that key rather than
+// to the object as a whole, and a silently-ignored typo (`'First'`, `'firsy'`) would otherwise ship
+// the un-narrowed bounding box with nothing in this pipeline ever saying so.
+export function resolveClipPartRect(
+  fragment: VisualCaptureClipPart['fragment'],
+  boundingRect: EdgeRect,
+  clientRects: EdgeRect[],
+): EdgeRect {
+  if (fragment === undefined) return boundingRect
+  if (fragment !== 'first') {
+    throw new Error(
+      `visualCaptureClip: part carries an unrecognised "fragment" value ${JSON.stringify(fragment)} — only "first" is defined.`,
+    )
+  }
+  return clientRects[0] ?? boundingRect
+}
+
 // Resolves a `pad` step name to its px value from the page's own generated `--ds-space-*` custom
 // property, never a literal duplicated from `space.json`.
 export async function resolvePadPx(page: Page, step: string): Promise<number> {
@@ -128,15 +184,19 @@ export async function resolveCaptureClip(
   let union: { left: number; top: number; right: number; bottom: number } | null = null
   for (const part of clip.parts) {
     const located = await locateClipPart(root, storyId, part)
-    const box = await located.evaluate((el) => {
-      const rect = el.getBoundingClientRect()
+    const { boundingRect, clientRects } = await located.evaluate((el) => {
+      const toEdges = (r: DOMRect) => ({
+        left: r.left + window.scrollX,
+        top: r.top + window.scrollY,
+        right: r.right + window.scrollX,
+        bottom: r.bottom + window.scrollY,
+      })
       return {
-        left: rect.left + window.scrollX,
-        top: rect.top + window.scrollY,
-        right: rect.right + window.scrollX,
-        bottom: rect.bottom + window.scrollY,
+        boundingRect: toEdges(el.getBoundingClientRect()),
+        clientRects: Array.from(el.getClientRects()).map(toEdges),
       }
     })
+    const box = resolveClipPartRect(part.fragment, boundingRect, clientRects)
     union = union
       ? {
           left: Math.min(union.left, box.left),

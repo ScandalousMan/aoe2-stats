@@ -76,11 +76,14 @@ const LINK_CLIP = { parts: [{ role: 'link' }], pad: '2' } as const
 // T675 slice 4b: `LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit — tightened here
 // alone, not for the shared constant, because `FocusVisible`'s own outward ring (`outline-2
 // outline-offset-2`, 4px total beyond the link's own box) needs that wider pad to stay inside the
-// clip; `Hover`'s own signal (the underline thickening inward) does not. `pad: '1'` (4px) still read
-// under 1% on one unit; `'0'` is the smallest step this package's own scale names
-// (`tokens/space.json`) and safe here — the thickened underline sits inside the link's own inline
-// box, never past its edge.
-const LINK_HOVER_CLIP = { parts: [{ role: 'link' as const }], pad: '0' } as const
+// clip; `Hover`'s own signal (the underline thickening inward) does not. Reducing `pad` alone (down
+// to `'0'`, the smallest step this package's own scale names) still read under 1% at 375 — this
+// link sits near the end of a long paragraph, and at 375 its own two words wrap across two lines,
+// so the bounding box `pad` shrinks around spans both lines, several times the area of the same
+// element unwrapped at 1280. T675 slice 4c: `fragment: 'first'` (`story-render.ts`) clips to the
+// link's own *first* client rect instead of its bounding box — one line, the one carrying the
+// underline, whatever the width — closing the gap `pad` alone could not.
+const LINK_HOVER_CLIP = { parts: [{ role: 'link' as const, fragment: 'first' as const }], pad: '0' }
 
 export const Hover: Story = {
   args: { ...noopHandlers, initialState: 'idle' },

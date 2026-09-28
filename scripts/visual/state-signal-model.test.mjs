@@ -85,6 +85,14 @@ export const InlineAsConstClip: Story = {
   },
 }
 
+export const FragmentFirstClip: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: { parts: [{ role: 'link', fragment: 'first' as const }], pad: '2' },
+  },
+}
+
 export const KeyboardEndsFocused: Story = {
   args: { variant: 'actions', triggerLabel: 'Manage' },
   play: async ({ canvasElement }) => {
@@ -125,7 +133,9 @@ test('extractFileStoryStates marks a forced story and a play-focus story isState
 test('extractVisualCaptureClip resolves a clip referenced by identifier, not only one written inline', () => {
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('TriggerFocusVisibleByRef').clip, {
-    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
+    parts: [
+      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+    ],
     pad: '2',
   })
 })
@@ -133,7 +143,9 @@ test('extractVisualCaptureClip resolves a clip referenced by identifier, not onl
 test('extractVisualCaptureClip resolves a part role annotated "as const", not only a bare literal', () => {
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('RoleAsConstClip').clip, {
-    parts: [{ selector: undefined, role: 'link', name: undefined, nth: undefined }],
+    parts: [
+      { selector: undefined, role: 'link', name: undefined, nth: undefined, fragment: undefined },
+    ],
     pad: '2',
   })
 })
@@ -146,7 +158,9 @@ test('extractVisualCaptureClip resolves a part role annotated "as const", not on
 test('extractVisualCaptureClip resolves a clip referenced by identifier whose own declaration is annotated "as const"', () => {
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('TriggerHoverByRefAsConst').clip, {
-    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
+    parts: [
+      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+    ],
     pad: '2',
   })
 })
@@ -154,7 +168,20 @@ test('extractVisualCaptureClip resolves a clip referenced by identifier whose ow
 test('extractVisualCaptureClip resolves a clip written inline and annotated "as const", not only one referenced by identifier', () => {
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('InlineAsConstClip').clip, {
-    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
+    parts: [
+      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+    ],
+    pad: '2',
+  })
+})
+
+// T675 slice 4c: `fragment` extracted the same way every other clip-part field already is.
+test('extractVisualCaptureClip resolves a part\'s own "fragment" option, not only role/name/selector/nth', () => {
+  const { byName } = fixtureStories()
+  assert.deepEqual(byName.get('FragmentFirstClip').clip, {
+    parts: [
+      { selector: undefined, role: 'link', name: undefined, nth: undefined, fragment: 'first' },
+    ],
     pad: '2',
   })
 })
