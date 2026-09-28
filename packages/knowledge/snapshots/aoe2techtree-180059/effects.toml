@@ -217,11 +217,11 @@ source_key = "120151"
 source_text = "Team Bonus: Knight-line +2 line of sight"
 modelled = "no"
 reason = """\
-Team-wide (research.md D5): granted to every allied player from a Franks ally, not only to \
-Franks-controlled Knight-line units, so it cannot be modelled as a per-civilisation effect on this \
-civilisation's own entities without also knowing every ally's civilisation, which a rules query \
-does not carry. It also touches line of sight, a field this pack's normaliser does not carry on \
-any entity record.\
+Team-wide: granted to every allied player from a Franks ally, not only to Franks-controlled \
+Knight-line units. It touches line of sight, a field this pack's normaliser does not carry on any \
+entity record at all — that alone is why this stays refused; a rules query now carries the team \
+roster (research.md D5, amended by T652u), so being team-wide no longer disqualifies a bonus by \
+itself.\
 """
 field = "line_of_sight"
 selector = [
@@ -247,10 +247,11 @@ source_key = "120151"
 source_text = "Bearded Axe (Throwing Axemen +2 range)"
 modelled = "no"
 reason = """\
-Conditional on match state (research.md D5): "Bearded Axe" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the range bonus only applies once it \
-has been researched — a fact no static rules query carries. It also touches range, a field this \
-pack's normaliser does not carry on any entity record.\
+"Bearded Axe" is a Castle unique technology, named under this civilisation's own "Unique Techs:" \
+heading. It touches range, a field this pack's normaliser does not carry on any entity record — \
+that alone is why this stays refused; a rules query now carries which technologies have been \
+researched (research.md D5, amended by T652u), so being conditional on research no longer \
+disqualifies a bonus by itself.\
 """
 field = "range"
 selector = [
@@ -298,7 +299,7 @@ vendored source read instead of an independent one: strings.en.json's help_strin
 rules.json's own produced_at field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
 re-read in full on 2026-09-23 by the T652o implementer, confirming the "Unique Techs:" heading; \
-re-checked on 2026-09-26 by the T652q implementer against \
+re-checked on 2026-09-28 by the T652q implementer against \
 packages/knowledge/packs/aoe2techtree/trees/FRANKS.json, restricting "Stables" to every unit and \
 technology rules.json lists as produced_at building 101 ("Stable") whose own tree entry's \
 `node_status` is other than `NotAvailable` — or, for a technology whose own id the tree never \
@@ -439,7 +440,7 @@ vendored source read instead of an independent one: strings.en.json's help_strin
 rules.json's own produced_at field (used to resolve "Town Centers" and "Docks" to every unit and \
 technology produced at building ids 109, 621 or 45). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120157, \
-re-read in full on 2026-09-26 by the T652q implementer, confirming the age-gated, compound \
+re-read in full on 2026-09-28 by the T652q implementer, confirming the age-gated, compound \
 prose; the selector above names every unit and technology `rules.json` lists as `produced_at` \
 building 109, 621 or 45, restricted to what `packages/knowledge/packs/aoe2techtree/trees/\
 PERSIANS.json` offers Persians — its own tree entry's `node_status` other than `NotAvailable`, \
@@ -496,11 +497,11 @@ source_key = "120157"
 source_text = "Team Bonus: Knight-line +2 attack vs. Ranged Soldiers"
 modelled = "no"
 reason = """\
-Team-wide (research.md D5): granted to every allied player from a Persian ally, not only to \
-Persian-controlled Knight-line units, so it cannot be modelled as a per-civilisation effect on this \
-civilisation's own entities without also knowing every ally's civilisation, which a rules query \
-does not carry. It also touches attack, a field this pack's normaliser does not carry on any \
-entity record.\
+Team-wide: granted to every allied player from a Persian ally, not only to Persian-controlled \
+Knight-line units. It touches attack, a field this pack's normaliser does not carry on any \
+entity record at all — that alone is why this stays refused; a rules query now carries the team \
+roster (research.md D5, amended by T652u), so being team-wide no longer disqualifies a bonus by \
+itself.\
 """
 field = "attack"
 selector = [
@@ -547,13 +548,12 @@ source_key = "120153"
 source_text = "Barracks and Stable Units +1/+2 melee armor in Castle/Imperial Age"
 modelled = "no"
 reason = """\
-Age-gated in a way this static knowledge base cannot place: the armour bonus's magnitude depends \
-on which age applies at query time, which a rules query carries no match-time state to resolve \
-(research.md D5). It also touches melee armour, a field this pack's normaliser does not carry on \
-any entity record, and "Barracks and Stable Units" is a broad unit-class this pass does not \
-enumerate (data-model.md §6 forbids a fuzzy class name in place of an explicit selector, and this \
-bonus's own selector would otherwise have to be one) — recorded here as not modelled for both \
-reasons together, with no unit selector, rather than invented.\
+Touches melee armour, a field this pack's normaliser does not carry on any entity record at all \
+— that alone is why this stays refused, whatever age applies (a rules query now carries the age, \
+research.md D5, amended by T652u, so being age-gated no longer disqualifies a bonus by itself). \
+"Barracks and Stable Units" is also a broad unit-class this pass does not enumerate (data-model.md \
+§6 forbids a fuzzy class name in place of an explicit selector, and this bonus's own selector \
+would otherwise have to be one) — recorded here with no unit selector, rather than invented.\
 """
 field = "melee_armor"
 selector = [{ kind = "building", id = "12" }, { kind = "building", id = "101" }]
@@ -921,11 +921,11 @@ source_key = "120158"
 source_text = "Team Bonus: Foot Archers and Skirmishers +2 attack vs. buildings"
 modelled = "no"
 reason = """\
-Team-wide (research.md D5): granted to every allied player from a Saracens ally, not only to \
-Saracens-controlled Foot Archers and Skirmishers, so it cannot be modelled as a per-civilisation \
-effect on this civilisation's own entities without also knowing every ally's civilisation, which \
-a rules query does not carry. It also touches attack, a field this pack's normaliser does not \
-carry on any entity record.\
+Team-wide: granted to every allied player from a Saracens ally, not only to Saracens-controlled \
+Foot Archers and Skirmishers. It touches attack, a field this pack's normaliser does not carry on \
+any entity record at all — that alone is why this stays refused; a rules query now carries the \
+team roster (research.md D5, amended by T652u), so being team-wide no longer disqualifies a bonus \
+by itself.\
 """
 field = "attack"
 selector = [{ kind = "building", id = "87" }]
@@ -950,7 +950,7 @@ for a broad unit class.\
 #
 # Only "Buildings cost -15% wood" touches a tracked field, over the 24 building ids
 # `rules.json` gives a positive wood cost and Malians' own tree (MALIANS.json) marks available
-# (T652q, 2026-09-26, the fourth review — see that row's own `validated_by` for the full
+# (T652q, 2026-09-28, the fourth review — see that row's own `validated_by` for the full
 # accounting, which corrected both a missing entry, Fish Trap 199, and several present-but-
 # wood-less ones the task dispatch that first named this selector had included regardless).
 # Bombard Tower (236) was removed earlier still, by T652p (2026-09-26, third review): Malians'
@@ -1029,7 +1029,7 @@ vendored source read instead of an independent one: strings.en.json's help_strin
 rules.json's own cost field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120175, \
 re-read in full on 2026-09-23 by the T652m implementer, confirming the bullet verbatim; re-read \
-again on 2026-09-26 by the T652q implementer (the fourth review's finding), restricting \
+again on 2026-09-28 by the T652q implementer (the fourth review's finding), restricting \
 "Buildings" to every building `rules.json` gives a positive (non-zero, present) `wood` cost, \
 cross-checked against `packages/knowledge/packs/aoe2techtree/trees/MALIANS.json`'s own entry for \
 each one (`node_status` other than `NotAvailable`). Two corrections from the previously committed \
@@ -1079,14 +1079,13 @@ source_key = "120175"
 source_text = "Barracks Units +1/+2/+3 pierce armor in Feudal/Castle/Imperial Age"
 modelled = "no"
 reason = """\
-Age-gated in a way this static knowledge base cannot place: the armour bonus's magnitude depends \
-on which age applies at query time, which a rules query carries no match-time state to resolve \
-(research.md D5). It also touches pierce armour, a field this pack's normaliser does not carry on \
-any entity record, and "Barracks Units" is a broad unit-class this pass does not enumerate \
-(data-model.md §6 forbids a fuzzy class name in place of an explicit selector, and this bonus's \
-own selector would otherwise have to be one) — recorded here as not modelled for both reasons \
-together, with no unit selector, rather than invented, matching Teutons' identical treatment of \
-"Barracks and Stable Units..." above.\
+Touches pierce armour, a field this pack's normaliser does not carry on any entity record at all \
+— that alone is why this stays refused, whatever age applies (a rules query now carries the age, \
+research.md D5, amended by T652u, so being age-gated no longer disqualifies a bonus by itself). \
+"Barracks Units" is also a broad unit-class this pass does not enumerate (data-model.md §6 \
+forbids a fuzzy class name in place of an explicit selector, and this bonus's own selector would \
+otherwise have to be one) — recorded here with no unit selector, rather than invented, matching \
+Teutons' identical treatment of "Barracks and Stable Units..." above.\
 """
 field = "pierce_armor"
 selector = [{ kind = "building", id = "12" }]
@@ -1173,15 +1172,21 @@ selector = [
   { kind = "technology", id = "51" },
   { kind = "technology", id = "54" },
   { kind = "technology", id = "63" },
+  { kind = "technology", id = "64" },
   { kind = "technology", id = "93" },
   { kind = "technology", id = "140" },
   { kind = "technology", id = "194" },
   { kind = "technology", id = "322" },
+  { kind = "technology", id = "373" },
   { kind = "technology", id = "374" },
   { kind = "technology", id = "375" },
+  { kind = "technology", id = "377" },
   { kind = "technology", id = "380" },
+  { kind = "technology", id = "608" },
   { kind = "technology", id = "907" },
   { kind = "technology", id = "908" },
+  { kind = "technology", id = "909" },
+  { kind = "technology", id = "910" },
 ]
 validated_by = """\
 Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
@@ -1192,13 +1197,14 @@ rules.json's own produced_at field. \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120175, \
 re-read in full on 2026-09-23 by the T652o implementer, confirming the "Team Bonus:" heading and \
 resolving "Universities" to every technology id this promoted snapshot's own rules.json lists as \
-produced_at building 209 ("University"); re-read again on 2026-09-26 by the T652q implementer \
-against packages/knowledge/packs/aoe2techtree/trees/MALIANS.json, restricting that 20-id list to \
-the 14 whose own tree entry's `node_status` is other than `NotAvailable` (every one of these 20 \
-technologies carries `table_origin = "tech"` with no `upgrades_unit`, so each resolves under its \
-own id directly, with no indirection needed). Six are excluded, each explicitly `NotAvailable` \
-for Malians, not merely absent: Bombard Tower (64), Shipwright (373), Siege Engineers (377), \
-Arrowslits (608), Siphons (909) and Incendiaries (910) — the exact six the fourth review named. \
+produced_at building 209 ("University") — 20 ids, with no owner-tree restriction. \
+T652q correction (2026-09-28, the fourth review): restricted that 20-id list to the 14 whose own \
+tree entry's `node_status` is other than `NotAvailable` in packages/knowledge/packs/aoe2techtree/\
+trees/MALIANS.json (every one of these 20 technologies carries `table_origin = "tech"` with no \
+`upgrades_unit`, so each resolves under its own id directly, with no indirection needed), \
+excluding six explicitly `NotAvailable` for Malians: Bombard Tower (64), Shipwright (373), Siege \
+Engineers (377), Arrowslits (608), Siphons (909) and Incendiaries (910) — correct while this row \
+still refused categorically for Malians alone. \
 T652u correction (2026-09-28, repository owner's arbitration of the fourth review): "a \
 conditional bonus is a rule, and is modelled" (research.md D5, amended) — team-wide no longer \
 means unmodelled; `condition = "team"` names this row's own `civilisation` (Malians) as the \
@@ -1207,7 +1213,23 @@ the caller, never guessed) applies the same +80% faster, divided into the baseli
 (data-model.md §6's amended rounding row: "works X% faster" divides by 1+X). A query for a \
 civilisation *not* on the owner's team is simply not this effect's match at all — the baseline \
 stands, unadjusted, not a gap, exactly as an opponent's own University research is untouched by \
-an ally's team bonus in the game itself.\
+an ally's team bonus in the game itself. \
+T652w correction (2026-09-28, the fifth review's blocker): T652q's own tree restriction, correct \
+for an owner-only refusal, stopped being correct the moment T652u turned this row into a team \
+effect — Malians' own tree cannot decide which of these technologies a *different* ally can \
+research, and the six T652q excluded (each `NotAvailable` for Malians specifically) silently \
+matched no effect at all for every ally that can actually research one, confirmed directly \
+against each civilisation's own tree file, `node_status` other than `NotAvailable`: Franks, \
+Teutons and Saracens can research Siege Engineers (377); Franks, Teutons and Saracens can research \
+Arrowslits (608); Teutons and Tatars can research Bombard Tower (64); Franks, Teutons, Persians \
+and Saracens can research Siphons (909); Persians and Saracens can research Incendiaries (910). \
+Shipwright (373) is `NotAvailable` for all six modelled civilisations, Malians included, and is \
+restored to the selector regardless — this row selects every technology produced at the \
+University, unconditionally; which of them a given ally can actually reach is `available_to`'s \
+question, never this selector's to pre-filter, because the next civilisation this package models \
+may reach it even though none of today's six do. The selector now names all 20 technologies \
+`rules.json` lists as produced_at building 209, exactly the first reading above, with no \
+owner-tree restriction at all.\
 """
 
 # T652m: Tatars — recording 2's fourth civilisation (raw id 33, corrected from the previously
@@ -1355,12 +1377,13 @@ source_key = "120182"
 source_text = "Team Bonus: Mounted Archers +2 line of sight"
 modelled = "no"
 reason = """\
-Team-wide (research.md D5): "Mounted Archers +2 line of sight" is named under this \
-civilisation's own "Team Bonus:" heading, so it is granted to every allied player from a Tatars \
-ally, not only to Tatars-controlled mounted archers, and cannot be modelled as a per-civilisation \
-effect without also knowing every ally's civilisation, which a rules query does not carry — the \
-same reasoning Franks', Persians' and Saracens' Team Bonuses above already use. It also touches \
-line of sight, a field this pack's normaliser does not carry on any entity record.\
+Team-wide: "Mounted Archers +2 line of sight" is named under this civilisation's own "Team \
+Bonus:" heading, so it is granted to every allied player from a Tatars ally, not only to \
+Tatars-controlled mounted archers — the same reasoning Franks', Persians' and Saracens' Team \
+Bonuses above already use. It touches line of sight, a field this pack's normaliser does not \
+carry on any entity record at all — that alone is why this stays refused; a rules query now \
+carries the team roster (research.md D5, amended by T652u), so being team-wide no longer \
+disqualifies a bonus by itself.\
 """
 field = "line_of_sight"
 selector = [
@@ -1387,10 +1410,11 @@ source_key = "120182"
 source_text = "New Town Centers spawn 2 Sheep starting in Castle Age"
 modelled = "no"
 reason = """\
-Age-gated in a way this static knowledge base cannot place (Castle Age onward, research.md D5), \
-and touches spawning a Sheep — no Sheep, Deer or Boar entity exists anywhere in this pack's \
+Touches spawning a Sheep — no Sheep, Deer or Boar entity exists anywhere in this pack's \
 rules.json at all (checked directly against every one of its unit, building and technology \
-records), so there is no tracked field this effect could adjust regardless of the age gate.\
+records), so there is no tracked field this effect could adjust, whatever age applies (a rules \
+query now carries the age, research.md D5, amended by T652u, so being age-gated no longer \
+disqualifies a bonus by itself).\
 """
 field = "sheep_spawn"
 selector = [{ kind = "building", id = "109" }, { kind = "building", id = "621" }]

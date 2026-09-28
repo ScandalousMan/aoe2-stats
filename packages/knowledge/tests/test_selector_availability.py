@@ -144,11 +144,22 @@ def _entities_produced_at(
 
 
 def _expected_production_speed_selector(
-    civilisation: str, building_ids: tuple[str, ...]
+    civilisation: str, building_ids: tuple[str, ...], *, condition: str | None
 ) -> frozenset[tuple[str, str]]:
+    """**T652w, the fifth review's blocker.** A `condition = "team"` row's selector is never
+    restricted by its own owner's tree: the row applies to every civilisation on the owner's team
+    (`effects.py`'s `_matches`), and each ally's own tree — not the owner's — decides what that
+    ally can actually research (`available_to` already answers that; T652q's own tree restriction
+    was correct while this row refused for Malians alone, and stopped being correct the moment
+    T652u turned it into a team effect, because it then silently answered no effect at all for
+    every ally whose own tree the owner's selector had excluded). Every other row's selector still
+    restricts to `civilisation`'s own tree (the owner is the only civilisation the row can ever
+    apply to), stated once, here, rather than re-derived per condition at each call site."""
     rules = _rules()
-    tree = _tree_index(civilisation)
     candidates = _entities_produced_at(rules, frozenset(building_ids))
+    if condition == "team":
+        return frozenset(candidates)
+    tree = _tree_index(civilisation)
     return frozenset(
         (kind, entity_id)
         for kind, entity_id in candidates
@@ -217,10 +228,17 @@ def test_production_speed_row_selector_equals_every_entity_produced_at_the_named
         if e.civilisation == civilisation and e.source_key == source_key
     ]
     observed = frozenset((entry.kind, entry.id) for entry in effect.selector)
-    expected = _expected_production_speed_selector(civilisation, building_ids)
+    expected = _expected_production_speed_selector(
+        civilisation, building_ids, condition=effect.condition
+    )
+    restriction = (
+        "no owner-tree restriction (a team row)"
+        if effect.condition == "team"
+        else f"{civilisation}'s own tree"
+    )
     assert observed == expected, (
         f"{directory}: {civilisation}/{source_key}'s selector does not equal every entity "
-        f"produced_at {building_ids} that civilisation's own tree offers — named but should not "
+        f"produced_at {building_ids}, restricted to {restriction} — named but should not "
         f"be: {sorted(observed - expected)!r}; offered but not named: "
         f"{sorted(expected - observed)!r}"
     )

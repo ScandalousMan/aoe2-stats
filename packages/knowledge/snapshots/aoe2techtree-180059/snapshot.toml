@@ -14,20 +14,23 @@
 # recomputed each time that file's content actually changed: T652o (2026-09-23) grew it to
 # account for every bullet of all six civilisations' vendored prose
 # (`packages/knowledge/tests/test_bullet_coverage.py` is the test that now asserts this class of
-# omission cannot recur), T652q (2026-09-26) re-pointed two production_time rows at what a
+# omission cannot recur), T652q (2026-09-28) re-pointed two production_time rows at what a
 # Town Center/Dock/Stable actually produces instead of the buildings themselves, and restricted
 # two selectors to what the civilisation's own tree offers, and T652u (2026-09-28, repository
-# owner's arbitration of the fourth review) re-modelled five refusals that touch a carried field —
+# owner's arbitration of the fourth review) re-modelled four refusals that touch a carried field —
 # Franks' Castle cost, Franks' Chivalry, Persians' Town Center/Dock work speed and Malians'
 # University Team Bonus become `modelled = "yes"` with a `condition` (age, researched or team);
-# Persians' Kamandaran stays refused, the pack never states the wood amount it would need — see
-# `effects.toml`'s own header comment and each corrected row's own `validated_by` for the full
-# corrections.
+# Persians' Kamandaran stays refused, the pack never states the wood amount it would need. T652w
+# (2026-09-28, the fifth review's blocker) then restored Malians' University row's selector to
+# every technology `rules.json` lists as produced_at the University, with no owner-tree
+# restriction — a team effect applies to every ally, and only each ally's own tree, not the
+# owner's, decides what that ally can research — see `effects.toml`'s own header comment and each
+# corrected row's own `validated_by` for the full corrections.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:fac641313bd48faf1810f2fdcbb4ac2dbf53bebcacadccd259bea850fccf865d"
+digest = "sha256:4173512068f52a70afe8867995c777c37e1f86b5f96b45ff5b42b5e04d747dc3"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

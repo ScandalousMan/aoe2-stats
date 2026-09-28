@@ -754,6 +754,128 @@ def test_an_entity_and_field_no_team_effect_touches_answers_with_no_context() ->
     assert applied
 
 
+# ------------------------------------------------------------------------------------- T652w
+
+
+@pytest.mark.parametrize(
+    ("technology_id", "baseline", "civilisation", "team", "expected_divisor"),
+    [
+        # Franks-ally 377 (Siege Engineers, 45s baseline) — absent from Malians' own tree, so the
+        # pre-T652w selector (restricted to Malians' own tree) matched nothing for any ally at all.
+        ("377", 45, "Franks", frozenset({"Malians", "Franks"}), 1.80),
+        # Franks-opponent: the same civilisation, the same technology, no Malians ally — the
+        # contrast the fifth review asked for. The baseline must stand.
+        ("377", 45, "Franks", frozenset({"Franks"}), 1.0),
+        # A second ally, a second technology, neither Franks (Teutons can research Bombard Tower,
+        # 64, per the fifth review's own table) — proving the fix is the selector's shape, not one
+        # hand-picked entity.
+        ("64", 60, "Teutons", frozenset({"Malians", "Teutons"}), 1.80),
+    ],
+)
+def test_the_real_malians_university_team_bonus_reaches_every_ally_technology(
+    technology_id: str,
+    baseline: int,
+    civilisation: str,
+    team: frozenset[str],
+    expected_divisor: float,
+) -> None:
+    """T652w, the fifth review's blocker: T652q restricted this row's selector to what Malians'
+    own tree offers, which was the right restriction while the row refused for Malians alone; T652u
+    then turned it into a `condition = "team"` effect that applies to every ally, and nobody
+    re-derived the selector. Measured before the fix: 377 (Siege Engineers) answered 45s with no
+    effect for any ally at all, not 25 — Malians' own tree does not offer 377, but Franks' does,
+    and an ally's own tree — never the bonus owner's — decides what that ally can research
+    (`available_to`)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation=civilisation,
+        kind="technology",
+        id=technology_id,
+        field="production_time",
+        value=baseline,
+        context=effects.Context(team=team),
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == pytest.approx(baseline / expected_divisor)
+    assert len(applied) == (1 if expected_divisor != 1.0 else 0)
+
+
+def test_context_team_omitting_the_queried_civilisation_raises() -> None:
+    """T652w: `Context.team` is documented as "the civilisations on the player's team, the
+    player's own included" (contracts/knowledge-base.md) — a `team` that leaves the queried
+    civilisation out of its own team is not a legitimate "no Malians ally" answer, it is malformed
+    input, the same way a negative `add` operand or an out-of-range `age` is (see the age test
+    below). Measured before this fix: Malians querying Chemistry (technology 47) with
+    `team={"Franks"}` — omitting Malians itself — silently answered the plain baseline, 100s, as
+    though Malians had no ally, rather than raising. `ValueError`, not `ContextRequired`:
+    `ContextRequired` means the caller left a piece of `Context` out entirely; here a `team` was
+    supplied, and it is simply not a coherent one."""
+    with pytest.raises(ValueError):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Malians",
+            kind="technology",
+            id="47",
+            field="production_time",
+            value=100,
+            context=effects.Context(team=frozenset({"Franks"})),
+        )
+
+
+def test_context_age_outside_the_valid_range_raises() -> None:
+    """T652w: `Context.age` is the pack's own age numbering, 1 (Dark) to 4 (Imperial) — there is no
+    fifth age. Measured before this fix: Franks' Castle cost (age-conditioned, tables for Castle
+    and Imperial only) at `age=5` silently answered the plain baseline, 650 stone, the same way an
+    age genuinely absent from the effect's own table does (age 1 or 2, before the discount starts)
+    — but age 5 is not a legitimate absent key, it is not a game age at all, and conflating the two
+    hides a caller defect behind a value that looks like a real "no discount yet" answer."""
+    with pytest.raises(ValueError):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Franks",
+            kind="building",
+            id="82",
+            field="cost",
+            value={"stone": 650},
+            context=effects.Context(age=5),
+        )
+
+
+def test_context_valid_team_and_age_still_answer() -> None:
+    """The contrast the two tests above both need: a `Context` that is not malformed must still
+    answer, not raise — `test_the_real_malians_university_team_bonus_applies_by_team` and
+    `test_the_real_persians_town_center_work_speed_bonus_applies_by_age` already prove this for a
+    team and an age respectively; this is the direct, side-by-side contrast for the two malformed
+    inputs above, so a future change to either check cannot pass by breaking the valid case
+    instead."""
+    team_result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Malians",
+        kind="technology",
+        id="47",
+        field="production_time",
+        value=100,
+        context=effects.Context(team=frozenset({"Malians", "Franks"})),
+    )
+    assert not isinstance(team_result, effects.EffectNotModelled)
+    team_value, _ = team_result
+    assert team_value == pytest.approx(100 / 1.80)
+
+    age_result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Franks",
+        kind="building",
+        id="82",
+        field="cost",
+        value={"stone": 650},
+        context=effects.Context(age=3),
+    )
+    assert not isinstance(age_result, effects.EffectNotModelled)
+    age_value, _ = age_result
+    assert age_value == {"stone": 553}
+
+
 def test_the_real_persians_parthian_tactics_age_requirement_applies() -> None:
     """Persians: "Parthian Tactics available in Castle Age" lowers the technology's own baseline
     age requirement (4, Imperial — the same numbering unit 358 "Pikeman" = 3 and unit 359
@@ -844,9 +966,13 @@ validated_by = "synthetic fixture, T652p"
 def test_a_set_scalar_effect_returns_an_int_not_a_float() -> None:
     """T652p (d): data-model.md §6's rounding row stated the half-up convention as if it covered
     every operation; it is true of `multiply` and `add` only. `set` is a direct replacement with
-    nothing to round, but the result must still be typed as an int — every scalar field this
-    package models (`age_requirement`, `production_time`) is an integer. Before the fix,
-    `_apply_scalar`'s `set` branch returned the raw float `operand` unconverted."""
+    nothing to round, but a `set` against `age_requirement` — the field this test exercises — must
+    still be typed as an int, that field being one this package always answers as a whole age
+    number. (`production_time` is a `set` field too, but **T652u** stopped forcing it to an int: a
+    time keeps its fraction, so this claim is deliberately scoped to `age_requirement` alone —
+    see `test_the_real_franks_free_technology_effect_answers_zero` below for the `production_time`
+    contrast.) Before the fix, `_apply_scalar`'s `set` branch returned the raw float `operand`
+    unconverted."""
     (effect,) = effects.parse_effects_toml(_MINIMAL_SET_SCALAR_EFFECT)
     value, applied = effects.apply_matched(
         (effect,),

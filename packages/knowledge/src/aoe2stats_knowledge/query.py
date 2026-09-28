@@ -409,9 +409,12 @@ def cost(
 
 def production_time(
     entity: EntityRef, *, civilisation: str, context: Context | None = None
-) -> Answer[int] | KnowledgeGap:
-    """Training time (a unit), construction time (a building) or research time (a technology), in
-    the whole in-game time units `rules.json` itself carries.
+) -> Answer[int | float] | KnowledgeGap:
+    """Training time (a unit), construction time (a building) or research time (a technology).
+    `rules.json`'s own baseline is a whole in-game time unit, but **T652u**: a time keeps its
+    fraction once a civilisation effect divides it — "works X% faster" divides the baseline by
+    1 + X (data-model.md §6's amended rounding row), so a Persians Villager in the Feudal Age
+    answers `22.7`, not a rounded int.
 
     `context` (T652u) is the match state a **conditional** production-time effect needs — an age
     table (Persians' Town Center/Dock work speed), a researched technology (Franks' Chivalry), or

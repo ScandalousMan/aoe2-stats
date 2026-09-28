@@ -1124,7 +1124,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       against `analysis_knowledge_gaps`' unique index, as T652k did for slots. **Lands before T655
       publishes anything**
 
-- [ ] T652w **A team bonus reaches only what its owner can research — the fifth review's
+- [x] T652w **A team bonus reaches only what its owner can research — the fifth review's
       blocker.** T652q restricted Malians' University row to what Malians' own tree offers, which
       was right while the row refused for Malians alone; T652u then made it a `team` effect that
       applies to every ally, and nobody re-derived the selector. Measured with Malians on the team:

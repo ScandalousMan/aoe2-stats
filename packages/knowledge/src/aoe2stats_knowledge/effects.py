@@ -12,11 +12,12 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
 - `source_key` / `source_text` — "the verbatim sentence from the vendored strings, **and its
   key**": `source_key` is `strings.en.json`'s own `help_string_id` (e.g. `"120156"`), so an edit
   to that source string is detectable by re-reading the same key, and `source_text` is transcribed
-  from it (FR-031's provenance) — byte-for-byte for every row except a Team Bonus's: those five
-  (`test_bullet_coverage.py`'s own `_bullets_for` docstring) prepend the literal label
-  `"Team Bonus: "` to the source's own bullet text, since the source itself states that heading
-  once, separately from the bullet it governs, and every `[[effect]]` row for a Team Bonus needs
-  its own `source_text` to carry the distinction on its own.
+  from it (FR-031's provenance). A Team Bonus row (`test_bullet_coverage.py`'s own `_bullets_for`
+  docstring) prepends the literal label `"Team Bonus: "` to the source's own bullet text, since the
+  source itself states that heading once, separately from the bullet it governs, and every
+  `[[effect]]` row for a Team Bonus needs its own `source_text` to carry the distinction on its
+  own — this module does not itself claim how many rows do that, having named that count wrong
+  twice already.
 - `modelled` — `"yes"` or `"no"`, spelled exactly as data-model.md §6 spells it. `"no"` requires a
   non-blank `reason` and **must not** carry an `operation`/`operand` — research.md D5's "a bonus is
   never half-applied" is enforced here, at parse time, not left to a caller to notice a stray
@@ -121,6 +122,13 @@ CONDITIONS: Final[frozenset[str]] = frozenset({"age", "researched", "team"})
 #: 3=Castle, 4=Imperial. An `condition = "age"` effect's `operand` table is keyed by one of these,
 #: spelled as a string (TOML's own key convention, matching `SelectorEntry.id`).
 _AGE_KEYS: Final[frozenset[str]] = frozenset({"1", "2", "3", "4"})
+
+#: T652w: `Context.age`'s own valid values — `_AGE_KEYS` in `Context`'s own `int` form. A caller's
+#: `age` outside this set is not a legitimate age an effect's table simply has no key for (that
+#: case answers the plain baseline, per `_AGE_KEYS`'s own docstring); it is not one of the pack's
+#: four ages at all, and `_resolve_conditional_operand` raises `ValueError` for it rather than
+#: reading it as "no discount yet".
+_VALID_AGES: Final[frozenset[int]] = frozenset({1, 2, 3, 4})
 
 #: TOML keys required on every `[[effect]]` table, whatever `modelled` says.
 _COMMON_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
@@ -228,8 +236,8 @@ class Effect:
             if not isinstance(self.reason, str) or not self.reason.strip():
                 raise EffectsError(
                     'effect.reason must be a non-blank string when modelled = "no" '
-                    "(research.md D5: team-wide, age-gated-beyond-the-recording, or "
-                    "conditional-on-state bonuses are recorded not modelled, with why)"
+                    "(research.md D5: a bonus touching a field the pack does not carry, or one "
+                    "whose amount the source never states, is recorded not modelled, with why)"
                 )
             if self.operation is not None or self.operand is not None:
                 raise EffectsError(
@@ -629,6 +637,18 @@ def _resolve_conditional_operand(
     An unconditional effect (`condition is None`) never reaches any of these checks at all — the
     contrast case contracts/knowledge-base.md itself asks for ("a query whose matching effects are
     unconditional ignores it").
+
+    **T652w**: raises `ValueError`, never `ContextRequired`, when the piece of `context` this
+    effect's own `condition` needs is *present but malformed* — an `age` the pack's own age
+    numbering does not have, or a `team` that leaves the queried civilisation out of its own team.
+    `ContextRequired` means "the caller left this out entirely"; a value the caller did supply,
+    that cannot possibly be a real match, is a different defect — the same distinction Python's
+    own keyword-only `civilisation` (`TypeError` for "omitted") draws against a `civilisation` the
+    snapshot has simply never modelled (a `KnowledgeGap`, not an exception at all). Answering the
+    baseline for either malformed input would be exactly the FR-038 substitution this package
+    exists to forbid — measured before this fix, Malians querying Chemistry with
+    `Context(team={"Franks"})` (Malians omitted from its own team) and Franks' Castle cost at
+    `Context(age=5)` (not one of the pack's four ages) both silently answered the plain baseline.
     """
     if effect.condition is None:
         return effect.operand, True
@@ -638,6 +658,13 @@ def _resolve_conditional_operand(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
                 "conditional on age, and reaching it needs Context(age=...) — neither the "
                 "baseline nor a guessed age is an answer"
+            )
+        if context.age not in _VALID_AGES:
+            raise ValueError(
+                f"Context.age must be one of {sorted(_VALID_AGES)} (the pack's own age "
+                f"numbering), got {context.age!r} — this is not an age genuinely absent from "
+                "the effect's own table (data-model.md §6: an absent age means the bonus does "
+                "not apply then), it is not a game age at all"
             )
         assert isinstance(effect.operand, Mapping)  # enforced by Effect.__post_init__
         key = str(context.age)
@@ -661,6 +688,14 @@ def _resolve_conditional_operand(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is a team "
                 "bonus, and reaching it needs Context(team=...) to know whether "
                 f"{civilisation!r} is one of the owner's teammates"
+            )
+        if civilisation not in context.team:
+            raise ValueError(
+                f"Context.team must include the civilisation being queried ({civilisation!r}); "
+                f"got {sorted(context.team)!r} — contracts/knowledge-base.md: Context.team is "
+                "\"the civilisations on the player's team, the player's own included\", so a "
+                'team that omits the queried civilisation is not a coherent "no ally" answer, '
+                "it is malformed input"
             )
         if effect.civilisation not in context.team:
             return None, False
