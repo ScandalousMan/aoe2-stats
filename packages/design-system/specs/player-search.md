@@ -220,11 +220,11 @@ changes") undersells it in the other direction less than `danger`'s ("something 
    `degraded: true` — a request that never completed is not the same claim as one that completed with
    a reduced answer, and the two must never share a `Callout` tone or a sentence.
 
-**hover / focus-visible** — `Input`: standard text-input interaction, focus ring per DS-4.
-`PlayerResultRow`: whole-row hover fill `surface-sunken`, exactly `match-history.md`'s own
-`MatchRow` rule (nothing inside the row — including `Standing` — has its own hover); focus ring on the
-row's own link wrapper, inset so it never crops `Standing`'s digits, following `profile-summary.md`'s
-identical rule for rating figures.
+**hover / focus-visible** — `Input`: the boundary turns `border-strong` and thickens to `border.ring`,
+drawn inward (below, "Hover signals"; decided 2026-09-28); focus ring per DS-4. `PlayerResultRow`:
+fill `surface-sunken` plus the alias underlined (same subsection) — nothing else in the row, `Standing`
+included, has a hover of its own; focus ring on the row's own link wrapper, inset so it never crops
+`Standing`'s digits, following `profile-summary.md`'s identical rule for rating figures.
 
 **active** — `Input`: standard text-input interaction. `PlayerResultRow` keeps the `surface-sunken`
 hover fill and reserves its inline-start edge at rest, at a constant width across every viewport
@@ -283,11 +283,11 @@ state.
 (`SearchBox`'s own empty 1/2 bullets above), so zero `PlayerResultRow` instances render during this
 state either.
 
-**hover / focus-visible** — `Input`: standard text-input interaction, focus ring per DS-4.
-`PlayerResultRow`: whole-row hover fill `surface-sunken`, exactly `match-history.md`'s own
-`MatchRow` rule (nothing inside the row — including `Standing` — has its own hover); focus ring on the
-row's own link wrapper, inset so it never crops `Standing`'s digits, following `profile-summary.md`'s
-identical rule for rating figures.
+**hover / focus-visible** — `Input`: the boundary turns `border-strong` and thickens to `border.ring`,
+drawn inward (below, "Hover signals"; decided 2026-09-28); focus ring per DS-4. `PlayerResultRow`:
+fill `surface-sunken` plus the alias underlined (same subsection) — nothing else in the row, `Standing`
+included, has a hover of its own; focus ring on the row's own link wrapper, inset so it never crops
+`Standing`'s digits, following `profile-summary.md`'s identical rule for rating figures.
 
 **active** — `Input`: standard text-input interaction. `PlayerResultRow` keeps the `surface-sunken`
 hover fill and reserves its inline-start edge at rest, at a constant width across every viewport
@@ -320,28 +320,85 @@ place.
 **expansion** — not applicable. Neither component collapses or reveals a second surface; every field
 a row carries (§4) either renders or is absent, which is presence, not disclosure.
 
+### Hover signals — decided 2026-09-28 (T675)
+
+This heading is a third `###` after the two component headings above and names neither component,
+so it closes `PlayerResultRow`'s scope exactly where that section's own text already ended; both
+hover answers above point here, so the reasoning is written once rather than quoted twice.
+
+T675's package-wide sweep measured both components' `Hover` stories against their own resting
+renders with the comparator the visual suite uses, whose threshold stays fixed package-wide
+(`README.md`, Verification-coverage gap register, row 1), and found zero surviving pixels in both.
+`Input`'s hover moved one hairline from `border` to `border-strong`; `PlayerResultRow`'s laid a
+`surface-sunken` wash over the row. Each is a colour change and nothing else — FR-037's "more than
+colour, in a still image" failing, not a comparator to tune around — so each gains a shape.
+
+**`Input`: the boundary thickens, inward.** On hover the input keeps `border-strong` on its own 1px
+border and adds `ring-1 ring-inset ring-border-strong` inside it: a boundary two hairlines deep,
+`border.ring` in all, painted as a box-shadow so the typed text and the placeholder do not move by a
+pixel. The hover utilities are scoped to an enabled input (`enabled:hover:`), so the input the
+rate-limit countdown disables never thickens. This is the text-input recipe `structural-tier.md`
+§16.2 specifies for `Field`'s control, which records the alternatives rejected for it (keeping a
+fill, which is the disabled paint; `border-2`, which moves the text; an outer ring, which is focus's
+shape and place). `SearchBox`'s input and `Field`'s control are one category of control and answer
+hover one way (FR-038). Focus-visible is unchanged — `border-strong` at hairline plus the outward
+`focus-ring` outline at `outline-offset-ring`, a ring beyond the box with a gap — so hover and focus
+are different shapes and can show at once. Pair: `border-strong` on `surface`, the input's own fill,
+both themes — a measured row in the README's table, above the 3:1 non-text floor. Recorded, not
+decided here: the input's resting boundary is `border`, where §16.2's recipe rests at
+`border-strong`; that divergence is older than this decision, and closing it moves every `SearchBox`
+resting frame, so it is not folded into a hover fix.
+
+**`PlayerResultRow`: the alias underlines.** On hover the row keeps its `surface-sunken` fill and the
+alias — only the alias — takes a `border.ring`-thick underline (`decoration-2`) at
+`underline-offset-2` in its own `text-primary`. The row link carries a named group
+(`group/row-link`) and the alias span carries `group-hover/row-link:underline`,
+`group-hover/row-link:decoration-2` and `group-hover/row-link:underline-offset-2`. It is never
+`hover:underline` on the `<a>`: a decoration declared on the link propagates to every run of text
+inside it — `Standing`'s count and `UnverifiedSteamClaim`'s id included, which README rule 1 keeps
+clear of ornament — and a descendant cannot switch a propagated decoration off. Press is unchanged
+(the reserved inline-start rule and the inset ring); a pointer press still hovers, so the press
+frame keeps the underline, with no `underline-offset-4` step, because the press already carries two
+geometric marks. Focus-visible is an inset outline box, not a line under text. Pair: `text-primary`
+on `surface-sunken`, both themes, measured. This is the row-link category's one answer, shared with
+`MatchRow`, `FavouritesList`, `Table`'s row link and `Menu`'s items: `structural-tier.md` §16.1
+records the reasoning and the three alternatives rejected.
+
+**Motion.** Neither signal is transitioned: `transition-colors` does not animate a box-shadow, and an
+underline switching on is not a colour. The fill and boundary colour keep their existing transition
+and its reduced-motion collapse, so FR-055 has nothing new to reduce.
+
+**Baselines this moves** (regenerated from CI): `SearchBox` `Hover`, which also takes a
+`visualCaptureClip` to the search input — a hairline ring around one control is far below 1% of the
+story's frame; `PlayerResultRow` `Hover`, which takes a `visualCaptureClip` to the row link for the
+same reason; and `PlayerResultRow` `Active`, which the harness presses by a real hover then a
+mouse-down, so the underline is in that frame too.
+
 ## 6. Tokens used
 
 Colour: `background` (page), `surface` (`Input` fill, row/card), `surface-raised` (`Callout` fill, via
 that component), `surface-sunken` (row hover, `Skeleton` fill, `Input` disabled fill), `border`
-(`Input` boundary at rest, row separators), `border-strong` (`Input` boundary on focus/hover),
-`text-primary` (alias, standing figure), `text-secondary` (idle prompt, clan, country label, labels,
-`UnverifiedSteamClaim`'s label and value — §4a deliberately never promotes it to `text-primary`, so it
-never carries the same visual weight as a verified fact), `text-disabled` (`Input` label while
-disabled), `info` / `warning` / `danger` (the three `Callout` tones in §5), `focus-ring`.
+(`Input` boundary at rest, row separators), `border-strong` (`Input` boundary on focus/hover, and its
+inward hover ring), `text-primary` (alias and its hover underline, standing figure), `text-secondary`
+(idle prompt, clan, country label, labels, `UnverifiedSteamClaim`'s label and value — §4a
+deliberately never promotes it to `text-primary`, so it never carries the same visual weight as a
+verified fact), `text-disabled` (`Input` label while disabled), `info` / `warning` / `danger` (the
+three `Callout` tones in §5), `focus-ring`.
 
 Typography: `mono` for `Standing`'s games-played figure and `UnverifiedSteamClaim`'s id value — DS-8,
 the same reasoning `profile-summary.md` and `match-history.md` give for any number or numeric-looking
 identifier read down a list — `sans` for everything else (alias, clan, country, labels including
 `UnverifiedSteamClaim`'s own "Unverified Steam ID:" label, callout copy). Sizes: `Input` text `md`; row
 text `sm`; alias `sm` `semibold`; clan, country, standing, `UnverifiedSteamClaim` `xs`. Weights
-`semibold` on alias, `normal` elsewhere.
+`semibold` on alias, `normal` elsewhere. The alias's hover underline is `border.ring` thick
+(`decoration-2`) at `underline-offset-2`; the `Input`'s hover ring is `border.hairline` (`ring-1`,
+reached as a bare Tailwind step the way `Link`'s `decoration-1` is), inside its own hairline border.
 
 Radius `md` (`Input`), `lg` (row card at 375, `Callout`, via that component). Elevation `none`
 throughout — `profile-summary.md`'s own reasoning against shadowed cards in a list applies here
 identically. Motion `duration.fast` + `easing.standard` on row hover and `Input`'s focus/border
-transition; **no motion on `Standing`'s figure** — no count-up, no entrance fade, `StatValue`'s own
-rule.
+transition (the alias underline and the `Input`'s hover ring switch instantly); **no motion on
+`Standing`'s figure** — no count-up, no entrance fade, `StatValue`'s own rule.
 
 **Debounce is not a token.** The delay between a keystroke and `SearchBox` issuing its query is an
 interaction-timing default, not a CSS duration drawn from the `motion` family — none of `duration`'s
@@ -454,3 +511,10 @@ criterion, restated here because it applies identically.
       (`normal`) — a token-correct row that gave every field the alias's own weight would leave two
       near-identical names no easier to tell apart than before, defeating the reason this row exists,
       and fails this criterion (FR-063).
+- [ ] `SearchBox` hover capture: the input's boundary is visibly two hairlines deep and darker than at
+      rest, its fill unchanged, and — overlaid on the resting capture — its placeholder and text have
+      not moved by a pixel.
+- [ ] `PlayerResultRow` hover capture: the alias is underlined, and nothing else in the frame is —
+      not the clan tag, the country, the "N games" count or the unverified Steam ID; the resting
+      capture has no underline; the active capture shows the same underline plus the inline-start
+      rule and the inset ring.

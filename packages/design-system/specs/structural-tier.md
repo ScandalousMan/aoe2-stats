@@ -813,9 +813,9 @@ container, **the table's own scroll region scrolls horizontally and the page doe
 **States**
 
 - **default** — as above.
-- **hover** — a row highlights with `surface-sunken` **only when the whole row is a real link**;
-  otherwise no row hover, because a highlight that leads nowhere invites a click that does nothing.
-  Column headers never highlight (nothing here sorts today).
+- **hover** — **only when the whole row is a real link**: fill `surface-sunken` plus the row link's
+  identity text underlined, `decoration-2`/`underline-offset-2` in its own ink (§16.1, 2026-09-28).
+  Otherwise no row hover (a highlight leading nowhere invites a dead click); headers never highlight.
 - **focus-visible** — the scroll region shows the standard ring when it is focused for scrolling; a
   focusable element inside a cell shows its own ring, offset so the frame does not clip it.
 - **active** — a row link's press keeps the hover fill (`surface-sunken`) and adds a boundary: a
@@ -899,8 +899,8 @@ modifier-clicks work. Contrast: `text-primary` and `text-secondary` on `surface`
       loaded story's rows — overlay the two and the header does not move.
 - [ ] The empty and error stories both still show the column headers, with one `EmptyState` or one
       `ErrorState` spanning the body.
-- [ ] In the row-link hover capture, exactly one row is filled and the row rules are still visible
-      through the fill.
+- [ ] In the row-link hover capture, exactly one row is filled, its identity text is underlined
+      (§16.1), and the row rules are still visible through the fill.
 - [ ] The row-link hover and active captures share the same fill, but the active capture also shows
       a full inset `border-strong` ring around that row that the hover capture does not (FR-037).
 - [ ] A `dense` and a `prose` table in one frame have visibly different row heights.
@@ -937,8 +937,8 @@ case. It is not a way to make a form look cleaner.
   `surface` with a `border-hairline` in `border-strong` (the non-text 3:1 pair the README table
   carries for every surface a control sits on); hint `type-supporting` at `text-sm` in
   `text-secondary`; `rounded-control`.
-- **hover** — the control's boundary deepens to `border-strong` on a `surface-sunken` fill; the label
-  and hint do not change. Nothing moves and nothing grows.
+- **hover** — the boundary thickens from `border.hairline` to `border.ring` in its own ink, drawn
+  inward so nothing moves; the fill does not change; label and hint unchanged (§16.2, 2026-09-28).
 - **focus-visible** — `outline-ring` at `outline-offset-ring` in `focus-ring` around the control,
   never around the whole field. The label is not a focus target.
 - **active** — the control's own text-entry state; it has no visual form. A press on a text input
@@ -1244,3 +1244,174 @@ realistic compositions FR-043 requires).
   documented because it is real, never built because the vocabulary lists it (FR-036).
 - **The index row.** T570 adds this file's row to `README.md`'s spec index, alongside the correction
   to `shared-primitives.md`'s own row (`Dialog` was missing from it).
+
+---
+
+## 16. Hover signals decided 2026-09-28 (T675)
+
+T675's package-wide sweep measured every state story against its own resting render with the
+comparator the visual suite uses. Its threshold stays at pixelmatch's default package-wide
+(`README.md`, Verification-coverage gap register, row 1). Two primitives here hovered with zero
+surviving pixels: `Table`'s row link (`RowLinkHover`) and `Field`'s control (`Hover`). In both, rest
+and hover differed by one colour step and nothing else, which violates FR-037's "distinguishable by
+more than colour, in a still image"; it is not a comparator to tune around. §10's and §11's hover
+answers state the fix. This section holds the reasoning and the alternatives rejected, and it sits
+at the end of the file so that no line `README.md`'s row 8 cites by number moves.
+
+Both decisions also define a category the composites follow (FR-038). Row-shaped controls answer as
+§16.1 does; text inputs answer as §16.2 does. The two categories answer differently on purpose. A
+row is a link or a menu item whose name is text, so the pointer is shown on the name. A text input's
+text is the reader's own typing, never a label to decorate, so the pointer is shown on the
+control's boundary.
+
+### 16.1 A row-shaped link hovers by underlining its name (`Table`, and the category it defines)
+
+**The decision.** While a row link is hovered, the row keeps its `surface-sunken` fill and the row's
+name is underlined. For `Table`, the name is the identity cell's text inside the row link:
+`hover:underline hover:decoration-2 hover:underline-offset-2` on the row link's own `<a>`. The
+underline is `border.ring` thick (`decoration-2`, reached as a bare Tailwind step the way §9's
+`decoration-2` is), in the ink of the element that declares it. Here that is the identity cell's
+inherited `text-primary`, even when the cell paints its own text in another ink (`MatchList`'s
+outcome word), because a propagated decoration keeps its declaring element's colour. The fill stays
+beside it: FR-037 asks for a non-colour signal, not the removal of an accompanying colour change.
+
+**Why the `<a>` itself carries it.** The row link wraps only the identity cell, so a decoration
+declared on it reaches that cell's text and no other column, and so never a numeric one (README rule
+1). Its `::after` stretches over the whole row, so a pointer anywhere on the row hovers the link and
+underlines the name.
+
+**One answer for the category (FR-038).** `Table`'s row link, `MatchRow`, `PlayerResultRow`,
+`FavouritesList`'s `ProfileLink` and `Menu`'s items are one category: a row whose whole face is a
+single control, hovered with a `surface-sunken` fill and pressed with a boundary. They now share one
+hover: the fill, plus an underline under the row's name and nothing else. The name is the identity
+cell in `Table`, the outcome word in `MatchRow` (the same text `MatchList`'s 1280 table puts in its
+identity cell), the alias in `PlayerResultRow` and `FavouritesList`, and the item's label in `Menu`.
+The composites that wrap more than a name in their one control cannot declare the underline on the
+control, since it would propagate to every figure inside it and a descendant cannot switch a
+propagated decoration off. They declare it on the name through a named group: `group/row-link` (or
+`group/menu-item`) on the control, and `group-hover/row-link:underline` with its two companions on
+the name. The frame is the same; only the mechanism differs, and each composite's own spec names
+its name. This is also the signal every `Button` variant, `Menu`'s trigger and `SiteHeader`'s nav
+items hover with since 2026-09-28, so "the pointer is here" reads one way across the package. The
+row category differs from `Button` only in press: rows keep their own boundary and take no
+`underline-offset-4` step, because their press already carries two geometric marks.
+
+**Why it survives the comparator.** The new pixels are a solid 2px run in `text-primary` on
+`surface-sunken`. That pair is a measured row in the README's table in both themes, far above the
+3:1 non-text floor. The change that measured zero was a fill step between two surfaces, a pair the
+table records no row for because nothing reads one against the other. `Link`'s own 1px-to-2px
+thickening (§9) is the nearest precedent in this tree and survives the same comparator. The mark is
+still far under 1% of a whole-table frame, so the hover story is clipped to the row (below). The
+sweep's re-run after implementation is what confirms it, not this paragraph.
+
+**What it does not collide with.**
+
+- **Press** is unchanged: the fill and the full inset `border-strong` ring on the link's `::after`
+  (§10 active). A pointer press still hovers, so the underline stays in the press frame and the ring
+  is still what tells press from hover. A keyboard `Enter` presses without hovering and shows the
+  ring without the underline, which is right: nothing is pointing.
+- **Focus-visible** is the standard outline around the link box, in `focus-ring`: a box, not a line
+  under text.
+- **Selection**: `Table` has none (§10). A caller that marks a current row does so with text or a
+  `Badge`, never an underline.
+- **`Link`'s permanent underline**: a row link is not a `Link` and rests with no underline, so
+  "gains an underline" is a real change here, which it cannot be for a `Link`.
+
+**Rejected.**
+
+- **The reserved inline-start rule, drawn on hover.** It is press's mark on `MatchRow`,
+  `PlayerResultRow`, `FavouritesList` and `Menu`'s items, and it cannot paint on a `<tr>` at all
+  (§10 active). Moving it to hover leaves those controls pressing with only a colour change over
+  hover (on `Menu`'s items, `surface-sunken` to `background` and nothing else): the same FR-037
+  failure, one state along.
+- **A hover boundary** (an inset `ring-1`, or a `border` outline). Press is a boundary (T591's "a
+  press is a boundary") and focus-visible is an outline box. A third box, told from those two only
+  by width or ink, is the colour-only trap again.
+- **A trailing chevron revealed on hover.** It is a new glyph the iconography contract would have to
+  admit, it needs width reserved on rows whose alias must never truncate at 375, and a mark that
+  appears in a data list reads as a status rather than as the pointer.
+- **A darker fill.** That is the defect. Any fill step between two surfaces this package defines
+  falls below what the comparator registers.
+
+**Motion.** The underline is not transitioned; it switches with the hover, as `Link`'s thickness
+does (§9). The fill keeps its `motion-reduce:duration-0`, so FR-055 has nothing new to reduce.
+
+**Tokens.** `text-primary`, `surface-sunken`; `border.ring` (underline thickness),
+`underline-offset-2`. No new token.
+
+**Baselines this moves** (regenerated from CI, never locally): `Table` `RowLinkHover`, which also
+takes a `visualCaptureClip` to the hovered row; and `Table` `RowLinkActive`, because the harness
+forces a press by a real hover then a mouse-down, so the underline is in that frame too.
+
+**Acceptance (added to §10's list).**
+
+- [ ] In `RowLinkHover`, the hovered row's identity text carries a 2px underline in `text-primary`
+      and no other cell in any row is underlined; the resting capture shows no underline anywhere.
+- [ ] `RowLinkActive` shows the same underline and, in addition, the full inset ring.
+
+### 16.2 A text input hovers by thickening its boundary, inward (`Field`)
+
+**The decision.** While the control is hovered and enabled, its boundary goes from
+`border.hairline` to `border.ring` in the boundary's own ink. The 1px border stays, and a
+`ring-1 ring-inset` in the same ink is painted inside it: `ring-border-strong` normally,
+`ring-danger` while the control carries `aria-invalid`. The hover utilities are scoped to an enabled
+control (`enabled:hover:ring-1` and its companions). `ring-1` reaches `border.hairline` as a bare
+Tailwind step, the way §9's `decoration-1` does, so there is no new token. The `surface-sunken`
+hover fill §11 used to name is withdrawn.
+
+**Why inward, and why a ring.** `border-2` would shrink the content box by a pixel on each side and
+move the typed text and the placeholder on hover, breaking §11's "nothing moves" to add a signal. A
+box-shadow ring paints inside the border and takes no layout.
+
+**Why the fill goes.** Any one of three reasons is enough. `surface-sunken` is the control's
+disabled fill (§11 disabled), so a hovered field read as half-disabled. `SearchBox`'s input, the
+same category of control, hovers with no fill, and FR-038 gives one category one response. And the
+fill step is the change the sweep measured at zero.
+
+**Why not the boundary's colour alone.** `SearchBox` already tried it: its hover moved a hairline
+from `border` to `border-strong` and also measured zero surviving pixels. A colour change on a 1px
+line does not register; a second line in a pair well above the non-text floor does.
+
+**Why it survives the comparator.** The new pixels are a solid 1px run in `border-strong` (or
+`danger`) replacing the control's own `surface` fill. `border-strong` on `surface` and `danger` on
+`surface` are both measured rows in the README's table, in both themes, each above 3:1. `Link`'s 1px
+thickening (§9) is the precedent. The change is a hairline around one control, so the `Hover` story
+is clipped to the control.
+
+**What it does not collide with.**
+
+- **Focus-visible** is an outline outside the control at `outline-offset-ring`, with a gap, in
+  `focus-ring`: a separate ring beyond the boundary, never a thicker boundary. Both can show at once,
+  because box-shadow and outline are different properties.
+- **Error**: an invalid control thickens in `danger`, never in a neutral ink, so hovering never makes
+  an invalid field look valid.
+- **Disabled** never thickens (the `enabled:` scope) and keeps its own paint.
+- **Active** has no visual form; §11's text-entry answer is unchanged.
+
+**Where it applies.** `Field` does not paint the control. This is the recipe every control a caller
+passes to `Field` owes, and every text input in the package with it: the `Field` stories'
+demonstration input, `SearchBox`'s `Input` (`player-search.md`, same decision), and
+`ThirdPartyObjectionForm`'s profile-id input, which today carries no hover class of any kind. That
+third one is not among T675's nine, because no story hovers it and the comparator never saw it. It
+is named beside the nine in the Verification-coverage gap register, row 1, rather than decided
+silently here.
+
+**Rejected.**
+
+- **Keeping the fill and adding the ring**: the resemblance to the disabled fill stays.
+- **`border-2`**: it reflows the text.
+- **An outer ring**: that is focus's shape and place.
+- **Underlining the label**: §11 keeps the label unchanged, and an underlined label reads as a link.
+
+**Motion.** `transition-colors` does not animate `box-shadow`, so the ring switches instantly and
+FR-055 has nothing new to reduce.
+
+**Baselines this moves** (regenerated from CI): `Field` `Hover`, which also takes a
+`visualCaptureClip` to the control. No press frame moves, because `Field`'s active is
+`ActiveNotApplicable`.
+
+**Acceptance (added to §11's list).**
+
+- [ ] In the hover capture the control's boundary is visibly twice the resting hairline's width, in
+      the same ink, with the fill unchanged. Overlaid on the resting capture, the placeholder has not
+      moved.

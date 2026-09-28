@@ -3752,7 +3752,7 @@ once.
      here from slice 2's own false `zero`).
 
    **New zero-surviving-pixels cells not already given a signal by the "Decided 2026-09-28" bullets
-   below (9) — the next `product-designer` input, same non-fill-signal treatment, same model:**
+   below (9) — decided the same day, second-pass bullets below, same non-fill-signal treatment, same model:**
    `FavouritesList` `Hover`; `Field` `Hover`; `MatchRow` `Hover`; `Menu` `FooterItemHover`;
    `PlayerResultRow` `Hover`; `PrivacyNotice` `Hover`; `SearchBox` `Hover`; `SiteHeader` `Hover`;
    `Table` `RowLinkHover`. (`Button` `GhostHoverLg` and `PrivacyNotice` `ObjectionCallToActionHover`
@@ -3806,10 +3806,50 @@ disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button,
    package-wide sweep finds is resolved the same way — a non-fill signal in that component's own
    spec — never by a threshold change.**
 
+   **Decided 2026-09-28 by `product-designer`, second pass: the nine cells the package-wide sweep
+   added.** Same rule: a non-fill signal in the owning spec, never a threshold change. Two
+   categories, each answering hover one way (FR-038), and they differ on purpose: a row's name is
+   text, so the pointer is shown on the name; a text input's text is the reader's own typing, so the
+   pointer is shown on its boundary (`structural-tier.md` §16).
+   - Row-shaped controls — `Table` `RowLinkHover`, `MatchRow` `Hover`, `PlayerResultRow` `Hover`,
+     `FavouritesList` `Hover`, `Menu` `FooterItemHover` and `Menu`'s ordinary items: the fill stays
+     and the row's name underlines (`decoration-2`, `underline-offset-2`, the name's own ink) —
+     declared on `Table`'s row link itself, and on the name alone through a named group where the
+     control wraps figures; press unchanged, no offset step. Names: the identity cell, the outcome
+     word, the alias, the enabled item's label (`structural-tier.md` §16.1, `match-history.md` §5a,
+     `player-search.md` "Hover signals", `favourites-list.md` §5, `shared-primitives.md` "Menu
+     items' hover signal").
+   - Text inputs — `Field` `Hover`, `SearchBox` `Hover`: the boundary thickens inward from hairline
+     to ring width in its own ink (`danger` when invalid), enabled controls only; `Field`'s
+     `surface-sunken` hover fill is withdrawn because it is the disabled fill (`structural-tier.md`
+     §16.2, `player-search.md` "Hover signals").
+   - `SiteHeader` `Hover`: the nav label underlines, `Button` `ghost`'s hover and press underline in
+     full, reversing `site-header.md` §5's earlier "no underline on hover"; the underline sits under
+     the glyphs inside the box, and the `accent` strip below the box stays the only selection mark
+     (`site-header.md` §5a).
+   - `PrivacyNotice` `Hover`: a `Contents` entry is already underlined, so its underline thickens
+     from hairline to ring width, `Link`'s own hover, with `decoration-1` pinned at rest
+     (`privacy-notice.md` §5, "`Contents` entries").
+   - Found beside them, not among the nine: `ThirdPartyObjectionForm`'s profile-id input carries no
+     hover class at all and owes the §16.2 recipe; no story hovers it, so nothing moves until one is
+     added, and whether that lands in T675 is T675's owner's call.
+
+   Baselines these move, regenerated from CI: `Table` `RowLinkHover`, `RowLinkActive`; `MatchRow`
+   `Hover`, `Active`; `PlayerResultRow` `Hover`, `Active`; `FavouritesList` `Hover`, `Active`;
+   `Menu` `FooterItemHover`, `FooterItemActive`, `Hover`, `Active`; `Field` `Hover`; `SearchBox`
+   `Hover`; `SiteHeader` `Hover`, `Active`; `PrivacyNotice` `Hover`, `Active` — press frames because
+   the harness forces `active` by a real hover then a mouse-down (`Field` and `SearchBox` have no
+   press story). Each hover story not already clipped takes `visualCaptureClip` to its control in
+   the same change — `Table` `RowLinkHover`, `MatchRow` `Hover`, `PlayerResultRow` `Hover`,
+   `FavouritesList` `Hover`, `Field` `Hover`, `SearchBox` `Hover`, `SiteHeader` `Hover` (to the
+   primary nav) — while `Menu` `Hover`/`Active` are already on the "at or under 1%" list. If pinning
+   `decoration-1` moves resting frames (only if the font's `auto` thickness was not one pixel), every
+   `PrivacyNotice` capture showing `Contents` moves too and belongs to this decision.
+
    **What T675 still owes**, now that the sweep runs against every state story in the tree,
    correctly (Done clause met): clipping every "at or under 1%" cell the sweep found (42, listed
    above); implementing the non-fill signals this section already specifies, for every baseline that
-   names moves; and a `product-designer` spec line — then the same implementation — for each of the
+   names moves; and implementing the second-pass signals for each of the
    9 new zero-surviving-pixels cells the sweep found (listed above, its own paragraph); and a real
    look at the 7 `dimension-mismatch` cells (listed above), which are layout questions, not fill
    questions, and so are not this row's own "non-fill signal" fix at all — a design decision this
