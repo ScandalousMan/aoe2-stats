@@ -280,6 +280,60 @@ def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the
     assert result.severity in gaps.SEVERITIES
 
 
+# ------------------------------------------------------- T652u remediation, defect 2: a teammate
+
+
+def test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate() -> None:
+    """T652u remediation, defect 2 (coordinator, measured against the working tree): "a teammate
+    whose civilisation is not modelled makes the answer unknown." Franks is modelled and Pikeman's
+    cost is untouched by any Franks effect (module docstring) — the query's *own* civilisation is
+    never the issue here. Britons is not in `civilisations_modelled`, so which fields *its* bonuses
+    touch is exactly what research.md D5's conservative rule says is unknown — and that rule
+    applies to a teammate exactly as it does to the queried civilisation itself, because a team
+    bonus of Britons' own could touch this same field and this package has no way to know.
+    `context.team` naming Britons at all, regardless of whether any *known* effect touches this
+    entity/field, is what must gap — the existing `civilisation-not-modelled` cause, naming the
+    teammate, not a new cause."""
+    from aoe2stats_knowledge import gaps, query
+
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.cost(
+        entity, civilisation="Franks", context=query.Context(team=frozenset({"Franks", "Britons"}))
+    )
+
+    assert not hasattr(result, "value"), (
+        "a teammate outside civilisations_modelled must gap the whole query, even though the "
+        f"queried civilisation (Franks) is itself modelled: got {getattr(result, 'value', None)!r}"
+    )
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.cause == "civilisation-not-modelled", (
+        f"no new cause — the existing one research.md D5 already defines, got {result.cause!r}"
+    )
+    assert result.civilisation == "Britons", (
+        "the gap must name the unmodelled teammate, not the queried civilisation (Franks, which "
+        f"is modelled) — got {result.civilisation!r}"
+    )
+
+
+def test_a_team_of_only_modelled_civilisations_answers_normally() -> None:
+    """The contrast case defect 2's own fix must not break: a `context.team` made only of
+    civilisations `civilisations_modelled` already names must not gap — the same query as above,
+    with Teutons (modelled) in place of Britons (not modelled)."""
+    from aoe2stats_knowledge import query
+
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.cost(
+        entity, civilisation="Franks", context=query.Context(team=frozenset({"Franks", "Teutons"}))
+    )
+
+    assert hasattr(result, "value"), (
+        f"a team of only modelled civilisations must still answer — got {result!r}"
+    )
+    assert result.value == {"food": 35, "wood": 25}
+
+
 # --------------------------------------------------------------------- a build with no snapshot
 
 

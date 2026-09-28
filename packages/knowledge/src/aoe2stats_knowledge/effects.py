@@ -39,6 +39,21 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   for a single-valued field. Required, and shape-checked, exactly when `modelled == "yes"`.
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
+- `condition` — **T652u** (2026-09-28, repository owner's arbitration of the fourth review,
+  amending research.md D5: "a conditional bonus is a rule, and is modelled"). Optional, closed:
+  `"age"` (`operand` becomes a table keyed by the pack's own age number, `"1"`-`"4"`, and a query at
+  an age absent from the table answers the plain baseline, not a gap), `"researched"` (gated on
+  `condition_technology` having been researched), `"team"` (the effect's own `civilisation` is the
+  bonus's owner; it applies to every civilisation on the owner's team, decided by `Context.team`,
+  never by `civilisation` equality alone). Absent means unconditional, the pre-T652u behaviour
+  unchanged. A conditional effect is still `modelled = "yes"`/`"no"` exactly as any other — "no"
+  still means the field it touches stays gapped (Kamandaran below: conditional on research, but the
+  wood amount the pack never states is missing knowledge, not unplaced match state, so it stays
+  refused) — `condition` only changes *when* a modelled effect's operand applies, never whether an
+  unmodelled one is half-applied.
+- `condition_technology` — required, and only present, when `condition == "researched"`: the
+  technology id (as `rules.json` keys it) that must be in `Context.researched` for the effect to
+  hold.
 
 **T652g: `[[civilisation_id]]`, the replay's raw civilisation integer mapped to this pack's
 civilisation name.** This is a second, independent record `effects.toml` carries, not an
@@ -98,6 +113,15 @@ OPERATIONS: Final[frozenset[str]] = frozenset({"multiply", "add", "set"})
 #: and "modelled = yes" reads the way the rest of that file's keys do.
 _MODELLED_VALUES: Final[frozenset[str]] = frozenset({"yes", "no"})
 
+#: data-model.md §6's closed `condition` set (T652u) — `None` (absent) means unconditional.
+CONDITIONS: Final[frozenset[str]] = frozenset({"age", "researched", "team"})
+
+#: The pack's own age numbering (confirmed directly: unit 358 "Pikeman" = 3, unit 359 "Halberdier"
+#: = 4, `packages/knowledge/tests/test_effects.py`'s own Parthian Tactics test) — 1=Dark, 2=Feudal,
+#: 3=Castle, 4=Imperial. An `condition = "age"` effect's `operand` table is keyed by one of these,
+#: spelled as a string (TOML's own key convention, matching `SelectorEntry.id`).
+_AGE_KEYS: Final[frozenset[str]] = frozenset({"1", "2", "3", "4"})
+
 #: TOML keys required on every `[[effect]]` table, whatever `modelled` says.
 _COMMON_REQUIRED_FIELDS: Final[tuple[str, ...]] = (
     "civilisation",
@@ -114,9 +138,25 @@ class EffectsError(ValueError):
     """A snapshot's `effects.toml` is malformed: a required field is missing or blank, `modelled`
     is not `"yes"`/`"no"`, a `"no"` effect carries an `operation`/`operand` it must not (research.md
     D5: "a bonus is never half-applied"), a `"yes"` effect is missing one, `operation` is not one
-    of data-model.md §6's closed set, or `selector` is empty or malformed. Raised at parse time, in
-    place of returning an `Effect` that looks complete but has a hole a query could fall through.
+    of data-model.md §6's closed set, `condition` is not one of data-model.md §6's closed set
+    (T652u), `condition_technology` is present without `condition == "researched"` or missing when
+    it is, or `selector` is empty or malformed. Raised at parse time, in place of returning an
+    `Effect` that looks complete but has a hole a query could fall through.
     """
+
+
+class ContextRequired(TypeError):
+    """T652u: a query reached a **modelled** conditional effect (`condition` is `"age"`,
+    `"researched"` or `"team"`) without the piece of `Context` that decides whether it holds — the
+    age, the researched-technology set, or the team roster. Raised, never returned as part of the
+    answer-or-gap union, the same way Python's own keyword-only `civilisation` raises when a caller
+    omits it (contracts/knowledge-base.md, "The query surface": "a query that reaches a conditional
+    effect without the input that decides it raises ... the caller asked for a value only the match
+    can fix, and neither the baseline nor a guessed age is an answer"). A subclass of `TypeError`
+    for exactly that reason — a missing match-state input is a caller defect, not game knowledge a
+    query can refuse and move on from, so it is never a `gaps.KnowledgeGap`
+    (`coverage.py` catches this directly: reaching a modelled conditional effect with no context to
+    evaluate it is complete knowledge, not a gap — see that module's own handling)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +184,8 @@ class Effect:
     reason: str | None = None
     operation: str | None = None
     operand: object | None = None
+    condition: str | None = None
+    condition_technology: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -163,6 +205,24 @@ class Effect:
             raise EffectsError(
                 "effect.selector must name at least one entity explicitly — never empty, and "
                 "never a fuzzy class name in place of one"
+            )
+        if self.condition is not None and self.condition not in CONDITIONS:
+            raise EffectsError(
+                f"effect.condition must be one of {sorted(CONDITIONS)} or absent, "
+                f"got {self.condition!r}"
+            )
+        if self.condition == "researched":
+            if (
+                not isinstance(self.condition_technology, str)
+                or not self.condition_technology.strip()
+            ):
+                raise EffectsError(
+                    "effect.condition_technology is required and must be a non-blank string "
+                    'when condition = "researched"'
+                )
+        elif self.condition_technology is not None:
+            raise EffectsError(
+                'effect.condition_technology must be absent unless condition = "researched"'
             )
         if self.modelled == "no":
             if not isinstance(self.reason, str) or not self.reason.strip():
@@ -186,6 +246,41 @@ class Effect:
                 )
             if self.operand is None:
                 raise EffectsError('effect.operand is required when modelled = "yes"')
+            if self.condition == "age":
+                if not isinstance(self.operand, Mapping) or not self.operand:
+                    raise EffectsError(
+                        "effect.operand must be a non-empty table keyed by age when "
+                        'condition = "age", got ' + repr(self.operand)
+                    )
+                if not frozenset(self.operand.keys()) <= _AGE_KEYS:
+                    raise EffectsError(
+                        f"effect.operand's age table keys must all be one of "
+                        f"{sorted(_AGE_KEYS)}, got {sorted(self.operand.keys())!r}"
+                    )
+
+
+@dataclass(frozen=True, slots=True)
+class Context:
+    """T652u: the match state a **modelled** conditional effect (`Effect.condition`) needs to
+    decide whether it holds right now (contracts/knowledge-base.md, "The query surface": "the age,
+    the technologies researched, and the civilisations on the player's team, the player's own
+    included"). Which condition held at a given moment is a question about the match, answered by
+    the caller — never guessed by this package (research.md D5's amendment).
+
+    Every field is independently optional (`None`, not an empty collection) so a caller supplying
+    some match state but not all of it still raises `ContextRequired` exactly at the piece it left
+    out, rather than an empty `frozenset()` being mistaken for "known to be empty" — omitting
+    `researched` entirely must not be read as "researched nothing".
+
+    - `age` — the pack's own age number, 1 (Dark) to 4 (Imperial).
+    - `researched` — the technology ids (as `rules.json` keys them) the player has researched.
+    - `team` — the civilisation names on the player's team, the player's own included — a `"team"`
+      effect matches every civilisation in this set, not the bonus owner alone.
+    """
+
+    age: int | None = None
+    researched: frozenset[str] | None = None
+    team: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +391,8 @@ def _parse_effect(table: Mapping[str, object]) -> Effect:
         reason=_optional_str(table, "reason"),
         operation=_optional_str(table, "operation"),
         operand=table.get("operand"),
+        condition=_optional_str(table, "condition"),
+        condition_technology=_optional_str(table, "condition_technology"),
     )
 
 
@@ -384,18 +481,36 @@ def civilisation_id_names(directory: str) -> Mapping[int, str]:
 
 
 def _matches(effect: Effect, *, civilisation: str, kind: str, id: str, field: str) -> bool:
-    if effect.civilisation != civilisation or effect.field != field:
+    if effect.field != field:
         return False
-    return any(entry.kind == kind and entry.id == id for entry in effect.selector)
+    if not any(entry.kind == kind and entry.id == id for entry in effect.selector):
+        return False
+    if effect.condition == "team" and effect.modelled == "yes":
+        # T652u remediation, defect 1 (coordinator, measured against the working tree): a team
+        # effect's *value*, for every civilisation — not only its owner — depends on team
+        # composition, because the owner might be that civilisation's ally. Matching is therefore
+        # structural only (selector and field), regardless of `civilisation`: whether this query
+        # actually needs `Context.team` to decide is `apply_matched`'s job
+        # (`_resolve_conditional_operand`'s own `condition == "team"` branch), which raises
+        # `ContextRequired` when `context` cannot say either way — never `_matches` silently
+        # deciding "no ally" by only ever looking at the effect's own owner. Scoped to
+        # `modelled == "yes"`: no committed effect pairs `condition = "team"` with
+        # `modelled = "no"` today.
+        return True
+    return effect.civilisation == civilisation
 
 
 def effects_for(
     directory: str, *, civilisation: str, kind: str, id: str, field: str
 ) -> tuple[Effect, ...]:
-    """Every effect in this packaged snapshot whose civilisation, field and selector all match, in
-    file order — whether or not it is modelled. Reading through this before deciding whether to
-    apply is what makes "never half-applied" possible: the caller sees every match, not only the
-    modelled ones, before deciding anything."""
+    """Every effect in this packaged snapshot whose selector and field match, and whose
+    civilisation matches too — except a modelled `condition = "team"` effect, which matches
+    *every* civilisation's query regardless (see `_matches`): its value depends on team
+    composition for every civilisation, not only its own owner, and only `apply_matched` (with
+    `context`) can decide whether that dependency actually holds. In file order — whether or not
+    it is modelled. Reading through this before deciding whether to apply is what makes "never
+    half-applied" possible: the caller sees every match, not only the modelled ones, before
+    deciding anything."""
     return tuple(
         effect
         for effect in _effects(directory)
@@ -411,8 +526,16 @@ def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
 
 
-def _apply_scalar(value: float, operation: str, operand: float) -> int:
+def _apply_scalar(value: float, operation: str, operand: float, *, field: str) -> int | float:
     if operation == "multiply":
+        if field == "production_time":
+            # T652u, data-model.md §6's amended rounding row: "'works X% faster' divides it by
+            # 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s" — a time
+            # keeps its fraction (never rounded), and the transcribed `operand` is the raw
+            # percentage X (e.g. `0.10`), not a pre-computed factor, so this divides rather than
+            # multiplies. Every other scalar field this package models never reaches a `multiply`
+            # today (production_time is the only one a "works X% faster" bonus touches).
+            return value / (1 + operand)
         return _round_half_up(value * operand)
     if operation == "add":
         # T652p (f): no committed effect applies a scalar `add` to a field that must stay
@@ -424,11 +547,17 @@ def _apply_scalar(value: float, operation: str, operand: float) -> int:
         # is transcribed.
         return _round_half_up(value + operand)
     if operation == "set":
-        # T652p (d): every scalar field this package models (age_requirement,
-        # production_time) is an integer — `set` is a direct replacement, not a fractional
-        # derivation, so there is nothing to round, but the result must still be typed as an
-        # int rather than the raw float `operand`. Left uncaught before this fix,
-        # `age_requirement(436, "Persians")`-shaped queries answered `3.0` instead of `3`.
+        if field == "production_time":
+            # T652u: a time keeps its fraction — `set`'s own rounding row says "replaces the
+            # value with the operand", with nothing to round, so the operand's own type (an int
+            # `0` for every free-technology effect this pack currently transcribes) passes
+            # through unconverted rather than being forced to `int`.
+            return operand
+        # T652p (d): age_requirement is the only other scalar field this package models, and it
+        # is an integer — `set` is a direct replacement, not a fractional derivation, so there is
+        # nothing to round, but the result must still be typed as an int rather than the raw
+        # float `operand`. Left uncaught before that fix, `age_requirement(436, "Persians")`-
+        # shaped queries answered `3.0` instead of `3`.
         return int(operand)
     raise AssertionError(f"unreachable: unknown operation {operation!r}")  # pragma: no cover
 
@@ -474,31 +603,102 @@ def _apply_mapping(
 
 
 def _apply_operation(
-    value: object, operation: str, operand: object, *, context: str = ""
+    value: object, operation: str, operand: object, *, field: str, context: str = ""
 ) -> object:
     if isinstance(value, Mapping) and isinstance(operand, Mapping):
         return _apply_mapping(value, operation, operand, context=context)
     if isinstance(value, int | float) and isinstance(operand, int | float):
-        return _apply_scalar(float(value), operation, float(operand))
+        return _apply_scalar(float(value), operation, float(operand), field=field)
     raise EffectsError(
         f"cannot apply operation {operation!r} with operand {operand!r} to value {value!r} — "
         "value and operand must both be mappings (a cost) or both be plain numbers"
     )
 
 
+def _resolve_conditional_operand(
+    effect: Effect, *, civilisation: str, context: Context | None
+) -> tuple[object, bool]:
+    """T652u: given one **modelled** matched `effect`, decide the operand it actually contributes
+    this time (contracts/knowledge-base.md, "Civilisation qualification" step 3: "apply each
+    matching effect whose condition holds in `context`"). Returns `(operand, True)` when the
+    effect applies, or `(None, False)` when its condition genuinely does not hold under `context`
+    (e.g. the wrong age, the technology not yet researched, or a civilisation off the owner's team)
+    — not an error, just nothing to contribute; the baseline stands unadjusted for this effect.
+
+    Raises `ContextRequired` when `context` (or the one piece of it this effect's own `condition`
+    needs) is missing entirely — "reaching a conditional effect without the input that decides it
+    raises ... neither the baseline nor a guessed age is an answer" (contracts/knowledge-base.md).
+    An unconditional effect (`condition is None`) never reaches any of these checks at all — the
+    contrast case contracts/knowledge-base.md itself asks for ("a query whose matching effects are
+    unconditional ignores it").
+    """
+    if effect.condition is None:
+        return effect.operand, True
+    if effect.condition == "age":
+        if context is None or context.age is None:
+            raise ContextRequired(
+                f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
+                "conditional on age, and reaching it needs Context(age=...) — neither the "
+                "baseline nor a guessed age is an answer"
+            )
+        assert isinstance(effect.operand, Mapping)  # enforced by Effect.__post_init__
+        key = str(context.age)
+        if key not in effect.operand:
+            return None, False
+        return effect.operand[key], True
+    if effect.condition == "researched":
+        if context is None or context.researched is None:
+            raise ContextRequired(
+                f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
+                "conditional on a researched technology, and reaching it needs "
+                "Context(researched=...)"
+            )
+        assert effect.condition_technology is not None  # enforced by Effect.__post_init__
+        if effect.condition_technology not in context.researched:
+            return None, False
+        return effect.operand, True
+    if effect.condition == "team":
+        if context is None or context.team is None:
+            raise ContextRequired(
+                f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is a team "
+                "bonus, and reaching it needs Context(team=...) to know whether "
+                f"{civilisation!r} is one of the owner's teammates"
+            )
+        if effect.civilisation not in context.team:
+            return None, False
+        return effect.operand, True
+    raise AssertionError(f"unreachable: unknown condition {effect.condition!r}")  # pragma: no cover
+
+
 def apply_matched(
-    matched: Sequence[Effect], *, civilisation: str, kind: str, id: str, field: str, value: object
+    matched: Sequence[Effect],
+    *,
+    civilisation: str,
+    kind: str,
+    id: str,
+    field: str,
+    value: object,
+    context: Context | None = None,
 ) -> tuple[object, tuple[Effect, ...]] | EffectNotModelled:
     """The pure half of civilisation qualification (contracts/knowledge-base.md, "Civilisation
-    qualification" steps 2-3), given `matched` — already filtered to one civilisation, entity and
-    field, in file order (`effects_for`).
+    qualification" steps 2-3), given `matched` — already filtered to one entity and field, in file
+    order (`effects_for`) — and `context`, the match state a **modelled** conditional effect needs
+    (T652u).
 
     If **any** matched effect is `modelled = "no"`, this refuses with `EffectNotModelled` and
     applies nothing at all — not even a modelled match found alongside it. That is research.md D5's
     "a bonus is never half-applied", read literally: an unmodelled effect touching this field means
     which fields this civilisation's bonuses touch here is not fully known, so no partial answer is
-    trustworthy. Otherwise every modelled match is applied, in order, and the adjusted value is
-    returned together with the effects that produced it.
+    trustworthy. This check never needs `context` at all: a refusal is unconditional on the match
+    state, so it is decided first, before any `ContextRequired` could even be raised.
+
+    Otherwise, every modelled match is resolved against `context` (`_resolve_conditional_operand`)
+    in file order: an unconditional effect always contributes its own operand; a conditional one
+    contributes its operand only when its condition holds under `context`, contributes nothing when
+    `context` says it does not (the baseline stands, unadjusted, for that effect alone — not a
+    gap), and raises `ContextRequired` when `context` cannot say either way. Every effect that did
+    contribute is applied, in order, and the adjusted value is returned together with exactly the
+    effects that were actually applied — never the effects that merely matched but did not hold.
     """
     not_modelled = [effect for effect in matched if effect.modelled == "no"]
     if not_modelled:
@@ -507,21 +707,45 @@ def apply_matched(
         return EffectNotModelled(
             civilisation=civilisation, kind=kind, id=id, field=field, reason=first.reason
         )
-    applied = tuple(effect for effect in matched if effect.modelled == "yes")
+    candidates = tuple(effect for effect in matched if effect.modelled == "yes")
+    resolved: list[tuple[Effect, object]] = []
+    for effect in candidates:
+        operand, holds = _resolve_conditional_operand(
+            effect, civilisation=civilisation, context=context
+        )
+        if holds:
+            resolved.append((effect, operand))
     result = value
-    context = f"civilisation={civilisation!r} kind={kind!r} id={id!r} field={field!r}"
-    for effect in applied:
+    applied: list[Effect] = []
+    error_context = f"civilisation={civilisation!r} kind={kind!r} id={id!r} field={field!r}"
+    for effect, operand in resolved:
         assert effect.operation is not None  # enforced by Effect.__post_init__
-        result = _apply_operation(result, effect.operation, effect.operand, context=context)
-    return result, applied
+        result = _apply_operation(
+            result, effect.operation, operand, field=field, context=error_context
+        )
+        applied.append(effect)
+    return result, tuple(applied)
 
 
 def apply(
-    directory: str, *, civilisation: str, kind: str, id: str, field: str, value: object
+    directory: str,
+    *,
+    civilisation: str,
+    kind: str,
+    id: str,
+    field: str,
+    value: object,
+    context: Context | None = None,
 ) -> tuple[object, tuple[Effect, ...]] | EffectNotModelled:
     """`apply_matched`, reading its `matched` effects from one packaged snapshot's real
     `effects.toml` (`effects_for`) — the one function `query.py` calls."""
     matched = effects_for(directory, civilisation=civilisation, kind=kind, id=id, field=field)
     return apply_matched(
-        matched, civilisation=civilisation, kind=kind, id=id, field=field, value=value
+        matched,
+        civilisation=civilisation,
+        kind=kind,
+        id=id,
+        field=field,
+        value=value,
+        context=context,
     )

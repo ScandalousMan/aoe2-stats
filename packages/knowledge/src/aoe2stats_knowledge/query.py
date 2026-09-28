@@ -97,6 +97,14 @@ from importlib import resources
 from typing import Any, Final
 
 from aoe2stats_knowledge import effects, snapshot
+
+# T652u: re-exported so a caller building match state for `cost`/`production_time` names it as
+# `query.Context`, this module's own public surface (contracts/knowledge-base.md, "The query
+# surface": "context is the match state a conditional effect needs"), rather than reaching into
+# `effects.py` for it. `Context` is a plain dataclass, not a function, so `test_structure.py`'s
+# `_public_module_functions` walk (which filters to functions defined in the sweeping module
+# itself) never mistakes it for an eighth query to check against the answer-or-gap union.
+from aoe2stats_knowledge.effects import Context
 from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.snapshot import Snapshot, SnapshotIdentity
 
@@ -290,7 +298,7 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
 
 
 def _civilisation_qualified(
-    entity: EntityRef, *, civilisation: str, field_name: str
+    entity: EntityRef, *, civilisation: str, field_name: str, context: Context | None = None
 ) -> Answer[Any] | KnowledgeGap:
     """The shared body of every civilisation-qualified query (contracts/knowledge-base.md,
     "Civilisation qualification", steps 1-3): resolve the entity, refuse unless `civilisation` is
@@ -303,12 +311,19 @@ def _civilisation_qualified(
     returns a real, effect-adjusted `Answer`; a call naming any other civilisation still gaps at
     step 1, which remains the correct, honest state research.md D5 requires, not a shortcut this
     function takes.
+
+    `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost` and
+    `production_time` accept it from a caller (contracts/knowledge-base.md, "The query surface");
+    every other query in this module calls this with the default `None`, so a query naming a field
+    no committed effect ever conditions never has to think about it, and `effects.apply` itself is
+    what raises `effects.ContextRequired` if that ever stops being true.
     """
     resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
         return resolved
     snap, record = resolved
-    if civilisation not in _civilisations_modelled(snap.directory):
+    modelled_civilisations = _civilisations_modelled(snap.directory)
+    if civilisation not in modelled_civilisations:
         return KnowledgeGap(
             cause="civilisation-not-modelled",
             build=entity.build,
@@ -317,6 +332,27 @@ def _civilisation_qualified(
             field=field_name,
             civilisation=civilisation,
         )
+    # T652u remediation, defect 2 (coordinator, measured against the working tree): "a teammate
+    # whose civilisation is not modelled makes the answer unknown." research.md D5's conservative
+    # rule — an unmodelled civilisation's bonuses are entirely unknown, so which fields they touch
+    # cannot be ruled out — applies identically to a teammate: this package has no way to know
+    # whether an unmodelled ally carries its own team-wide bonus touching this exact field, so the
+    # whole query is unknown, not only the fields a *known* effect happens to touch. No new gap
+    # cause: the same `civilisation-not-modelled` this step already uses for the queried
+    # civilisation, naming the unmodelled teammate instead. Checked for every member of
+    # `context.team`, sorted, so which one is named is deterministic; the queried civilisation
+    # itself is checked above regardless of whether it also appears in `context.team`.
+    if context is not None and context.team is not None:
+        for teammate in sorted(context.team):
+            if teammate not in modelled_civilisations:
+                return KnowledgeGap(
+                    cause="civilisation-not-modelled",
+                    build=entity.build,
+                    entity_kind=entity.kind,
+                    entity_id=entity.id,
+                    field=field_name,
+                    civilisation=teammate,
+                )
     if not _field_present(record, field_name):
         return KnowledgeGap(
             cause="field-absent",
@@ -334,6 +370,7 @@ def _civilisation_qualified(
         id=entity.id,
         field=field_name,
         value=baseline,
+        context=context,
     )
     if isinstance(applied, effects.EffectNotModelled):
         return KnowledgeGap(
@@ -354,18 +391,36 @@ def _civilisation_qualified(
     )
 
 
-def cost(entity: EntityRef, *, civilisation: str) -> Answer[Mapping[str, int]] | KnowledgeGap:
+def cost(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[Mapping[str, int]] | KnowledgeGap:
     """`entity`'s cost, adjusted for `civilisation` — never the baseline (FR-023: `civilisation`
     is keyword-only and required, so there is no way to ask for, or be handed, a generic value).
+
+    `context` (T652u) is the match state a **conditional** cost effect needs — today, an age table
+    (Franks' Castle discount). Ignored by a query whose matching effects are all unconditional;
+    required, and raising `effects.ContextRequired` if it is missing, the moment a query reaches a
+    conditional one without it.
     """
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="cost")
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="cost", context=context
+    )
 
 
-def production_time(entity: EntityRef, *, civilisation: str) -> Answer[int] | KnowledgeGap:
+def production_time(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[int] | KnowledgeGap:
     """Training time (a unit), construction time (a building) or research time (a technology), in
     the whole in-game time units `rules.json` itself carries.
+
+    `context` (T652u) is the match state a **conditional** production-time effect needs — an age
+    table (Persians' Town Center/Dock work speed), a researched technology (Franks' Chivalry), or
+    the player's team (Malians' University Team Bonus). See `cost`'s own docstring for when it is
+    ignored versus required.
     """
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="production_time")
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="production_time", context=context
+    )
 
 
 def age_requirement(entity: EntityRef, *, civilisation: str) -> Answer[int] | KnowledgeGap:

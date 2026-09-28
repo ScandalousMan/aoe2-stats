@@ -482,7 +482,13 @@ def test_a_free_technology_also_drives_production_time_to_zero(
     "free" is granted automatically on reaching its own baseline age_requirement, never manually
     researched — so the cost being zero is only half the bonus; the player also spends no
     research time at all. Cost-only was itself the FR-038 half-applied substitution research.md D5
-    forbids, the same shape the third review found in Malians' University bonus."""
+    forbids, the same shape the third review found in Malians' University bonus.
+
+    T652u remediation: technology 322 (Murder Holes, Teutons' own case here) is also one of
+    Malians' University Team Bonus's selector entries, so this query now needs `context.team` at
+    all (defect 1) — a solo team (`{civilisation}`, no Malians ally) is what "does this civilisation
+    have an ally" means when the test itself does not claim one, and is enough to let Malians'
+    effect structurally match without ever applying (Malians is not in the solo team)."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation=civilisation,
@@ -490,6 +496,7 @@ def test_a_free_technology_also_drives_production_time_to_zero(
         id=technology_id,
         field="production_time",
         value=baseline_time,
+        context=effects.Context(team=frozenset({civilisation})),
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
@@ -513,7 +520,8 @@ def test_a_free_technology_grant_does_not_leak_to_a_different_civilisation(
     """The mirror of the parametrized test above: a civilisation this file does not grant the
     technology to free must still answer the real, un-adjusted baseline research time — proving
     the new `production_time = 0` effects are matched by civilisation, not merely by technology
-    id."""
+    id. Solo `context.team` for the same T652u reason as above (technology 322, Franks' own case
+    here, is also in Malians' University selector)."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation=civilisation,
@@ -521,6 +529,7 @@ def test_a_free_technology_grant_does_not_leak_to_a_different_civilisation(
         id=technology_id,
         field="production_time",
         value=baseline_time,
+        context=effects.Context(team=frozenset({civilisation})),
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
@@ -528,50 +537,33 @@ def test_a_free_technology_grant_does_not_leak_to_a_different_civilisation(
     assert applied == ()
 
 
-def test_the_real_malians_university_team_bonus_is_not_modelled() -> None:
-    """The third review's own finding (T652o, 2026-09-23): "Universities work +80% faster" touches
-    production_time — a technology's research time is its production_time — and was silently
-    dismissed as untracked before this task. It is team-wide (research.md D5), so the fix is a
-    refusal, not an arithmetic adjustment: recording 1's own blocking-gap count depends on this
-    refusal being real (`test_coverage.py`'s `_MALIANS_UNIVERSITY_TEAM_BONUS_IS_TEAM_WIDE`)."""
-    result = effects.apply(
-        _PROMOTED_DIRECTORY,
-        civilisation="Malians",
-        kind="technology",
-        id="47",
-        field="production_time",
-        value=100,
-    )
-    assert isinstance(result, effects.EffectNotModelled)
-    assert "team" in result.reason.lower()
+#: T652u (2026-09-28, repository owner's arbitration of the fourth review): "Villager time is
+#: equal to standard villager time * bonus multiplier" — a conditional bonus is a rule, and is
+#: modelled. The four tests below replace the pre-T652u "is not modelled" tests for the same four
+#: rows (Malians' University Team Bonus, Franks' Chivalry, Persians' Town Center/Dock work speed):
+#: each is now `modelled = "yes"` with a `condition`, so the real assertion is the adjusted value
+#: under the right `effects.Context`, the contrast case where the condition does not hold (the
+#: baseline stands, unadjusted — not a gap), and that reaching the effect with no `Context` at all
+#: still raises `effects.ContextRequired`, exactly as omitting `civilisation` would.
 
 
-def test_the_real_franks_chivalry_bonus_is_not_modelled() -> None:
-    """ "Chivalry (Stables work +40% faster)" is a Castle unique technology (conditional on match
-    state, research.md D5) — absent from `effects.toml` entirely before this task, the third
-    review's own finding."""
-    result = effects.apply(
-        _PROMOTED_DIRECTORY,
-        civilisation="Franks",
-        kind="unit",
-        id="38",
-        field="production_time",
-        value=30,
-    )
-    assert isinstance(result, effects.EffectNotModelled)
-    assert "research" in result.reason.lower()
-
-
-def test_the_real_persians_town_center_work_speed_bonus_is_not_modelled() -> None:
-    """T652q (the fourth review's blocker): "Town Centers and Docks ... work +5/10/15/20% faster
-    in Dark/Feudal/Castle/Imperial Age" is age-gated (research.md D5) and touches what a Town
-    Center *produces*, not the building's own construction time — the previous version of this
-    test queried `production_time` of building 621 itself, which the row's own selector used to
-    (wrongly) name directly, and which therefore proved the row existed without proving it
-    reached anything the bonus actually adjusts. The real target is the Villager (unit 83),
-    trained at the Town Center: querying its `production_time` for Persians must refuse, exactly
-    as `query.py`'s civilisation qualification promises — before this task it silently answered
-    25, Teutons' own un-adjusted baseline."""
+@pytest.mark.parametrize(
+    ("age", "expected"),
+    [
+        (1, 25 / 1.05),  # Dark Age: +5% faster
+        (2, 25 / 1.10),  # Feudal Age: +10% faster
+        (3, 25 / 1.15),  # Castle Age: +15% faster
+        (4, 25 / 1.20),  # Imperial Age: +20% faster
+    ],
+)
+def test_the_real_persians_town_center_work_speed_bonus_applies_by_age(
+    age: int, expected: float
+) -> None:
+    """T652u: "Town Centers and Docks ... work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial
+    Age" is `condition = "age"` now, not a categorical refusal — the Villager (unit 83), trained at
+    the Town Center, is the real target the row's selector points at (T652q). Every age carries a
+    discount here (unlike Franks' Castle below), so all four ages produce a real, adjusted, still-
+    fractional value — "a time keeps its fraction" (data-model.md §6's amended rounding row)."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation="Persians",
@@ -579,28 +571,187 @@ def test_the_real_persians_town_center_work_speed_bonus_is_not_modelled() -> Non
         id="83",
         field="production_time",
         value=25,
+        context=effects.Context(age=age),
     )
-    assert isinstance(result, effects.EffectNotModelled)
-    assert "age" in result.reason.lower()
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == pytest.approx(expected)
+    assert len(applied) == 1
+    assert applied[0].source_text.startswith("Town Centers and Docks")
 
 
 def test_the_real_teutons_villager_production_time_is_the_baseline_control() -> None:
     """The control half of the fix above: Teutons carries no Town-Center/Dock work-speed bonus at
-    all, so the same query — same unit, same field — must answer the plain, unadjusted baseline
-    rather than refuse, proving the Persians refusal above is this civilisation's own effect and
-    not `effects.apply` refusing every civilisation regardless of selector."""
+    all, so the same query — same unit, same field, every age — must answer the plain, unadjusted
+    baseline of 25 rather than refuse or divide, proving the Persians adjustment above is this
+    civilisation's own effect and not `effects.apply` adjusting every civilisation regardless of
+    selector. `age` is deliberately ignored here — the contrast case: something the bonus must not
+    touch — because Teutons carries no age-conditioned effect on this entity/field at all."""
+    for age in (1, 2, 3, 4):
+        result = effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Teutons",
+            kind="unit",
+            id="83",
+            field="production_time",
+            value=25,
+            context=effects.Context(age=age),
+        )
+        assert not isinstance(result, effects.EffectNotModelled)
+        value, applied = result
+        assert value == 25, f"age {age}: Teutons' Villager must stay the plain baseline"
+        assert applied == ()
+
+
+def test_the_real_persians_town_center_work_speed_bonus_raises_with_no_context() -> None:
+    """T652u: reaching a modelled conditional effect without the input that decides it raises —
+    the same query as the parametrized test above, with no `context` at all."""
+    with pytest.raises(effects.ContextRequired):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Persians",
+            kind="unit",
+            id="83",
+            field="production_time",
+            value=25,
+        )
+
+
+def test_an_unconditional_effect_with_no_context_does_not_raise() -> None:
+    """The contrast case T652u's own contract text asks for directly: "a query whose matching
+    effects are unconditional ignores it" — Teutons' Farm discount (`operation = "multiply"`,
+    `condition` absent) carries no condition at all, so calling `effects.apply` with no `context`
+    must not raise, unlike the conditional query above."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation="Teutons",
-        kind="unit",
-        id="83",
-        field="production_time",
-        value=25,
+        kind="building",
+        id="50",
+        field="cost",
+        value={"wood": 60},
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
-    assert value == 25
-    assert applied == ()
+    assert value == {"wood": 36}
+    assert applied
+
+
+@pytest.mark.parametrize(
+    ("researched", "expected_divisor"),
+    [
+        (frozenset(), 1.0),  # Chivalry not yet researched: the baseline stands, unadjusted
+        (frozenset({"493"}), 1.40),  # Chivalry (technology 493) researched: 40% faster
+    ],
+)
+def test_the_real_franks_chivalry_bonus_before_and_after_research(
+    researched: frozenset[str], expected_divisor: float
+) -> None:
+    """T652u: "Chivalry (Stables work +40% faster)" is `condition = "researched"` now,
+    `condition_technology = "493"` — before Chivalry is researched, the baseline (30) stands,
+    unadjusted (not a gap: a conditional effect that is modelled is complete knowledge); after, the
+    Knight (unit 38)'s training time divides by 1.40."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Franks",
+        kind="unit",
+        id="38",
+        field="production_time",
+        value=30,
+        context=effects.Context(researched=researched),
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == pytest.approx(30 / expected_divisor)
+    assert len(applied) == (1 if researched else 0)
+
+
+def test_the_real_franks_chivalry_bonus_raises_with_no_context() -> None:
+    """The same "no context raises" shape as Persians' age-conditioned row above, for a
+    `condition = "researched"` effect instead."""
+    with pytest.raises(effects.ContextRequired):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation="Franks",
+            kind="unit",
+            id="38",
+            field="production_time",
+            value=30,
+        )
+
+
+@pytest.mark.parametrize(
+    ("civilisation", "team", "expected_divisor"),
+    [
+        ("Malians", frozenset({"Malians"}), 1.80),  # the owner's own query
+        ("Franks", frozenset({"Malians", "Franks"}), 1.80),  # a Malians ally
+        ("Teutons", frozenset({"Teutons"}), 1.0),  # an opponent: the baseline stands
+    ],
+)
+def test_the_real_malians_university_team_bonus_applies_by_team(
+    civilisation: str, team: frozenset[str], expected_divisor: float
+) -> None:
+    """T652u: "Universities work +80% faster" is `condition = "team"` now, `Malians` the effect's
+    own owner — it matches every civilisation on the owner's team (contracts/knowledge-base.md,
+    "Civilisation qualification" step 3), the owner included, and never an opponent's own
+    University research (the contrast case: something the bonus must not touch)."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation=civilisation,
+        kind="technology",
+        id="47",
+        field="production_time",
+        value=100,
+        context=effects.Context(team=team),
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == pytest.approx(100 / expected_divisor)
+    assert len(applied) == (1 if expected_divisor != 1.0 else 0)
+
+
+@pytest.mark.parametrize("civilisation", ["Malians", "Franks", "Teutons"])
+def test_the_real_malians_university_team_bonus_raises_for_any_civilisation_with_no_context(
+    civilisation: str,
+) -> None:
+    """T652u remediation (two defects the coordinator measured against the working tree):
+    **defect 1** — "a team effect must raise for every civilisation when no team is given, not
+    only for its owner." Masonry (technology 50) is one of Malians' University Team Bonus's own
+    selector entries; its `production_time`, for *any* civilisation, genuinely depends on whether
+    that civilisation has a Malians ally (a team-composition fact only the caller can supply), so
+    calling `effects.apply` with no `context` at all must raise `ContextRequired` whether the
+    civilisation asked about owns the bonus (Malians) or not (Franks, Teutons) — answering the
+    plain baseline for a non-owner without ever being told there is no Malians ally is exactly the
+    silent substitution FR-038 and contracts/knowledge-base.md forbid ("a query that reaches a
+    conditional effect without the input that decides it raises")."""
+    with pytest.raises(effects.ContextRequired):
+        effects.apply(
+            _PROMOTED_DIRECTORY,
+            civilisation=civilisation,
+            kind="technology",
+            id="50",
+            field="production_time",
+            value=50,
+        )
+
+
+def test_an_entity_and_field_no_team_effect_touches_answers_with_no_context() -> None:
+    """The contrast case defect 1's own fix must not break: an entity and field no *team* effect
+    touches at all — Franks' "Mill technologies free" (`condition` absent, `civilisation ==
+    "Franks"` only) — still answers with no `context`, exactly as before. Technology 12 (Crop
+    Rotation) is not in Malians' University selector, so nothing here reaches a team-conditioned
+    effect regardless of civilisation."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Franks",
+        kind="technology",
+        id="12",
+        field="production_time",
+        value=70,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == 0
+    assert applied
 
 
 def test_the_real_persians_parthian_tactics_age_requirement_applies() -> None:
@@ -638,8 +789,12 @@ def test_the_real_teutons_farm_discount_applies() -> None:
 
 
 def test_the_real_persians_kamandaran_bonus_is_not_modelled() -> None:
-    """Persians' "Kamandaran" is a Castle unique technology (conditional on match state, research.md
-    D5), so an Archer's cost is refused rather than silently adjusted or silently left baseline."""
+    """Persians' "Kamandaran" is a Castle unique technology, conditional on being researched — a
+    rule this package could model since T652u (research.md D5, amended) — but the bullet never
+    states the wood amount the discounted gold cost is replaced by, and no other vendored field
+    carries it either, so an Archer's cost stays refused rather than silently adjusted (a wrong
+    rule) or silently left baseline (the FR-038 substitution this whole feature exists to forbid).
+    """
     result = effects.apply(
         _PROMOTED_DIRECTORY,
         civilisation="Persians",
@@ -706,38 +861,50 @@ def test_a_set_scalar_effect_returns_an_int_not_a_float() -> None:
     assert applied == (effect,)
 
 
-@pytest.mark.parametrize(
-    ("civilisation", "technology_id", "field", "baseline", "expected"),
-    [
-        ("Franks", "12", "production_time", 70, 0),  # Crop Rotation, "Mill technologies free"
-        ("Persians", "436", "age_requirement", 4, 3),  # Parthian Tactics, Castle Age
-    ],
-)
-def test_the_real_free_technology_and_age_requirement_effects_answer_ints_not_floats(
-    civilisation: str, technology_id: str, field: str, baseline: int, expected: int
-) -> None:
-    """T652p (d), against the real committed snapshot rather than a synthetic fixture: T652o's
-    free-technology model (`production_time = 0`) and the pre-existing Persians `age_requirement`
-    discount both go through `_apply_scalar`'s `set` branch, so both must now answer an int.
-    Confirmed directly before this fix: both answered a float (`0.0`, `3.0`).
+def test_the_real_persians_age_requirement_effect_answers_an_int_not_a_float() -> None:
+    """T652p (d), against the real committed snapshot rather than a synthetic fixture: Persians'
+    pre-existing `age_requirement` discount goes through `_apply_scalar`'s `set` branch, so it must
+    answer an int. Confirmed directly before that fix: it answered a float (`3.0`).
 
     T652q correction (the fourth review, item 6): the previous version of this test asserted only
-    `isinstance(value, int)`, which passes just as well on the un-adjusted `baseline` — every
+    `isinstance(value, int)`, which passes just as well on the un-adjusted `baseline` — the
     `baseline` value passed in is already an int, so a regression that made `apply` return it
     untouched would still pass. This now asserts the real, adjusted value and that an effect was
     actually applied, not merely that whichever value came back happens to be an int."""
     result = effects.apply(
         _PROMOTED_DIRECTORY,
-        civilisation=civilisation,
+        civilisation="Persians",
         kind="technology",
-        id=technology_id,
-        field=field,
-        value=baseline,
+        id="436",
+        field="age_requirement",
+        value=4,
     )
     assert not isinstance(result, effects.EffectNotModelled)
     value, applied = result
-    assert isinstance(value, int), f"{field} must answer an int, got {type(value)!r} ({value!r})"
-    assert value == expected
+    assert isinstance(value, int), f"age_requirement must answer an int, got {type(value)!r}"
+    assert value == 3
+    assert applied, "an effect must actually have been applied, not merely a same-typed baseline"
+
+
+def test_the_real_franks_free_technology_effect_answers_zero() -> None:
+    """T652u: under the amended rounding row a **time** keeps its fraction, so a free technology's
+    `production_time` is no longer asserted to be an `int` specifically — `_apply_scalar`'s `set`
+    branch stops forcing a float `operand` to `int` for `production_time` (data-model.md §6:
+    "`set` replaces the value with the operand", nothing more, and `0` has no fraction to keep
+    either way). What still matters is the real, adjusted value (`0`, not the un-adjusted baseline
+    `70`) and that an effect was actually applied, not merely a same-typed baseline slipping
+    through — the same regression T652q's own correction above guards against."""
+    result = effects.apply(
+        _PROMOTED_DIRECTORY,
+        civilisation="Franks",
+        kind="technology",
+        id="12",
+        field="production_time",
+        value=70,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, applied = result
+    assert value == 0
     assert applied, "an effect must actually have been applied, not merely a same-typed baseline"
 
 

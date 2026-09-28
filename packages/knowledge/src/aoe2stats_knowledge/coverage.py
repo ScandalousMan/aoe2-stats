@@ -16,6 +16,19 @@ branch here that catches a gap and substitutes a value, a default, an average or
 answer for it — a query either resolves for real or its refusal is recorded, and the loop moves on
 to the next field.
 
+**T652u: a modelled conditional effect (`cost`/`production_time` only) is not a gap either, even
+though this pass never builds the `query.Context` that would let the query actually apply one.**
+Reaching a modelled conditional effect (age-gated, gated on a researched technology, or a team
+bonus) with no context raises `effects.ContextRequired` (contracts/knowledge-base.md, "The query
+surface") — this pass catches that directly, in the loop below, and treats it as no gap at all:
+contracts/knowledge-base.md, "Civilisation qualification" is explicit that "a conditional effect
+that is modelled is complete knowledge, so the coverage pass does not report it as a gap; it has
+no match state to supply, and asks whether each field is modelled, not for its value." Building
+that context — the age a building was constructed in, which technologies a player has researched,
+who is on whose team — is T652v's own territory (the canonical event stream does not carry a
+team at all yet); until it lands, this pass can only ask the yes/no question the exception itself
+already answers by being reachable at all.
+
 **The six fields this pass asks about, and why exactly these six.** `packages/core/src/
 aoe2stats_core/truth/register.toml`'s `requires_knowledge` vocabulary is, read directly (there is
 no third field this repository's register ever names): `cost`, `production_time`, `produced_at`,
@@ -259,7 +272,19 @@ def coverage(
             for entity_kind, entity_id in sorted(entities_by_civilisation[civilisation]):
                 entity_ref = query.EntityRef(kind=entity_kind, id=entity_id, build=build)
                 for _field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
-                    answer_or_gap = query_function(entity_ref, civilisation=civilisation)
+                    try:
+                        answer_or_gap = query_function(entity_ref, civilisation=civilisation)
+                    except effects.ContextRequired:
+                        # T652u, contracts/knowledge-base.md "Civilisation qualification": "A
+                        # conditional effect that is modelled is complete knowledge, so the
+                        # coverage pass does not report it as a gap; it has no match state to
+                        # supply, and asks whether each field is modelled, not for its value."
+                        # This pass never builds a `query.Context` at all (no age, no researched
+                        # set, no team roster — T652v is what would add one), so reaching a
+                        # modelled conditional effect here always raises; catching it is exactly
+                        # that "asks whether modelled, not for its value" — the field *is*
+                        # modelled, so there is nothing to report.
+                        continue
                     if isinstance(answer_or_gap, gaps.KnowledgeGap):
                         result.append(answer_or_gap)
 

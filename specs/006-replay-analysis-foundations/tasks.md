@@ -1084,7 +1084,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       nothing has published a snapshot's identity yet (**FR-025** freezes it at T655) — and assert
       that every prerequisite resolves. **Lands before T655 publishes anything**
 
-- [ ] T652u **A conditional bonus is a rule, not a refusal** (fourth review M4, arbitrated
+- [x] T652u **A conditional bonus is a rule, not a refusal** (fourth review M4, arbitrated
       2026-09-28: "Villager time is equal to standard villager time * bonus multiplier"). Amended
       [research.md](./research.md) **D5**, [data-model.md](./data-model.md) §6 (`condition`, and times
       keep their fraction) and [contracts/knowledge-base.md](./contracts/knowledge-base.md) ("The

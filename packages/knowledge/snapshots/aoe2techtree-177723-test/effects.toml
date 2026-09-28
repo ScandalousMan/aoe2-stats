@@ -28,10 +28,18 @@
 # **Classification rule, applied to every civilisation this file models.** A bonus that
 # unconditionally and civilisation-specifically adjusts cost, a production time, an age
 # requirement, a prerequisite, where something is produced, or availability is `modelled = "yes"`
-# below. A bonus that would touch one of those fields but is team-wide, age-gated in a way this
-# static rule cannot place, or conditional on researched state is `modelled = "no"`, with its
-# reason, and an explicit selector naming the real entity or entities it would have touched — never
-# a fuzzy class name (data-model.md §6). A bonus that touches no field this knowledge base tracks
+# below, `condition` absent. A bonus that touches one of those fields but only conditionally — by
+# age, by a technology the player has researched, or by being on the bonus owner's team — is also
+# `modelled = "yes"`, with `condition` naming which and `operand` carrying whatever the condition
+# needs (an age table, a gating technology id) to decide when it applies (**T652u**, 2026-09-28,
+# repository owner's arbitration of the fourth review, amending research.md D5: "a conditional
+# bonus is a rule, and is modelled" — before this task every one of these was a categorical
+# `modelled = "no"` refusal instead). What still stays `modelled = "no"` is only a bonus touching
+# one of those fields where the amount to write into `operand` is not knowledge this file has at
+# all (Persians' Kamandaran below: conditional on research, but the pack never states the wood
+# amount) — with its reason, and an explicit selector naming the real entity or entities it would
+# have touched — never a fuzzy class name (data-model.md §6). A bonus that touches no field this
+# knowledge base tracks
 # *and* has no representable entity at all (no unit, building or technology record corresponds to
 # it), or whose own selector could only ever be an unenumerable fuzzy class ("Units", "Military
 # Units"), cannot be written as a `[[effect]]` table at all — `effects.py`'s `Effect` requires a
@@ -83,16 +91,21 @@
 # `packages/knowledge/tests/test_bullet_coverage.py`'s own registry records both, so their
 # absence from this file is reviewed, not silent. "Bearded Axe" and "Chivalry" (T652o,
 # 2026-09-23) do have representable entities and are recorded as `[[effect]]` entries below
-# instead, both `modelled = "no"` (each is a Castle Unique Technology, conditional on being
-# researched — research.md D5 — and Bearded Axe also touches range, a field this pack's
-# normaliser does not carry on any entity record).
+# instead: both are Castle Unique Technologies, conditional on being researched (research.md D5).
+# Bearded Axe stays `modelled = "no"` — it also touches range, a field this pack's normaliser does
+# not carry on any entity record at all, regardless of the research gate. Chivalry is
+# `modelled = "yes"`, `condition = "researched"` (**T652u**, 2026-09-28: a conditional bonus is a
+# rule, and is modelled — research.md D5, amended) — it touches production_time, which this file
+# does track.
 # Persians: "Start with +50 wood and +50 food" (no entity) is out of scope —
 # `packages/knowledge/tests/test_bullet_coverage.py`'s own registry records it. "Town Centers and
 # Docks +100% HP and work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age" and the unique
 # tech "Citadels" (T652o, 2026-09-23) do touch a tracked field or a representable entity and are
-# recorded as `[[effect]]` entries below instead (both `modelled = "no"`: the former's
-# work-faster half is age-gated, the latter is conditional on being researched and untracked
-# regardless). "Can build Caravanserai in Imperial Age" is left out of the `[[effect]]` table
+# recorded as `[[effect]]` entries below instead. Citadels stays `modelled = "no"` — conditional on
+# being researched, and it touches attack, untracked regardless. The Town Center/Dock bullet's
+# work-faster half is `modelled = "yes"`, `condition = "age"` (**T652u**, 2026-09-28: research.md
+# D5, amended); its own "+100% HP" half remains untracked and unrepresented, exactly as before.
+# "Can build Caravanserai in Imperial Age" is left out of the `[[effect]]` table
 # entirely, not merely unmodelled: only Persians and Hindustanis carry building 1754 at all in
 # `data.json`, but `rules.json`'s own flattened baseline (`_raw_value_for_field`'s `available_to`
 # baseline is always `True` once an entity resolves at all) already answers `True` for Persians
@@ -174,13 +187,11 @@ transcription).\
 civilisation = "Franks"
 source_key = "120151"
 source_text = "Castles cost -15/25% in Castle/Imperial Age"
-modelled = "no"
-reason = """\
-Age-gated in a way this static knowledge base cannot place: the discount's magnitude depends on \
-which age applies at query time, which a rules query carries no match-time state to resolve \
-(research.md D5: "an age-gated bonus whose gate the recording cannot place").\
-"""
+modelled = "yes"
 field = "cost"
+operation = "multiply"
+condition = "age"
+operand = { "3" = { stone = 0.85 }, "4" = { stone = 0.75 } }
 selector = [{ kind = "building", id = "82" }]
 validated_by = """\
 Weak form (FR-030): civilisation bonus scope has no independent source to validate against \
@@ -190,7 +201,14 @@ vendored source read instead of an independent one: strings.en.json's help_strin
 rules.json's entity name field (used to resolve "Castles" to building id 82). \
 Second reading: packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120151, \
 re-read in full on 2026-09-20 by the T645 implementer, confirming the age-gated prose and \
-resolving "Castles" to rules.json building id 82 ("Castle").\
+resolving "Castles" to rules.json building id 82 ("Castle"). \
+T652u correction (2026-09-28, repository owner's arbitration of the fourth review): "a conditional \
+bonus is a rule, and is modelled" (research.md D5, amended) — re-read on 2026-09-28, confirming \
+Castle (82)'s own baseline cost carries stone only (650 stone, 0 wood, rules.json), so the \
+discount touches stone alone; the age table names Castle (3) and Imperial (4) only, since the \
+bullet states no discount before Castle Age, and a query at age 1 (Dark) or 2 (Feudal) answers \
+the plain baseline, unadjusted — not a gap, because a conditional effect that is modelled is \
+complete knowledge (contracts/knowledge-base.md, "Civilisation qualification").\
 """
 
 [[effect]]
@@ -255,23 +273,12 @@ Throwing Axeman").\
 civilisation = "Franks"
 source_key = "120151"
 source_text = "Chivalry (Stables work +40% faster)"
-modelled = "no"
-reason = """\
-Conditional on match state (research.md D5): "Chivalry" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the training-speed bonus only applies \
-once it has been researched — the same reasoning Persians' Kamandaran below uses. Unlike \
-Kamandaran, the field this bonus would touch if it applied — production_time — is one query.py \
-actually exposes, which is exactly why this bullet cannot be silently left out of this file the \
-way it was before this task (T652o, 2026-09-23): a query for any Stable-trained unit's \
-production_time, for Franks, must refuse rather than silently answer with the un-adjusted \
-baseline. \
-T652q correction (the fourth review's blocker): "Stables work faster" adjusts everything a \
-Stable trains **or researches**, not only units, so the selector below also names the \
-technologies `rules.json` lists as `produced_at` building 101 — Cavalier (209), Light Cavalry \
-(254) and Husbandry (39) used to answer Teutons' un-adjusted baseline, 80/45/40, silently, \
-because no effect named the field they touched.\
-"""
+modelled = "yes"
 field = "production_time"
+operation = "multiply"
+condition = "researched"
+condition_technology = "493"
+operand = 0.40
 selector = [
   { kind = "unit", id = "38" },
   { kind = "unit", id = "283" },
@@ -306,7 +313,13 @@ Hussar, Shrivamsha Rider, Hei Guang Cavalry) and one, Hussar (441), is present a
 `NotAvailable`; Hussar's own research technology (428) resolves the same way through its \
 `upgrades_unit` indirection (441) and is excluded for the identical reason. Bloodlines (435), a \
 Stable-produced technology with no unit to indirect through, is also explicitly `NotAvailable` \
-for Franks and stays out. 9 ids named (5 units, 4 technologies).\
+for Franks and stays out. 9 ids named (5 units, 4 technologies). \
+T652u correction (2026-09-28, repository owner's arbitration of the fourth review): "a conditional \
+bonus is a rule, and is modelled" (research.md D5, amended) — "Chivalry" itself resolves to \
+rules.json technology id 493 ("Chivalry", produced_at building 82 "Castle"), confirmed directly \
+against rules.json on 2026-09-28, and is `condition_technology` here; "works +40% faster" divides \
+the baseline by 1.40 (data-model.md §6's amended rounding row), never multiplies by 0.40 outright, \
+and a query before Chivalry is researched answers the plain baseline, unadjusted — not a gap.\
 """
 
 [[effect]]
@@ -337,12 +350,24 @@ civilisation = "Persians"
 source_key = "120157"
 source_text = "Kamandaran (Archer-line gold cost replaced by additional wood cost)"
 modelled = "no"
+condition = "researched"
+condition_technology = "488"
 reason = """\
-Conditional on match state (research.md D5): "Kamandaran" is a Castle unique technology, named \
-under this civilisation's own "Unique Techs:" heading, so the cost change only applies once it has \
-been researched — a fact no static rules query carries, matching the same reasoning Koreans' \
-Bombard-Tower-conditional archer-armour bonus already used before that civilisation was removed \
-from this file (T652m).\
+Conditional on match state (research.md D5), and still not modelled after T652u (2026-09-28, \
+repository owner's arbitration of the fourth review, "a conditional bonus is a rule, and is \
+modelled"): "Kamandaran" is a Castle unique technology, named under this civilisation's own \
+"Unique Techs:" heading (rules.json technology id 488, condition_technology above), so the cost \
+change only applies once it has been researched — that half is now a rule this package could \
+model. What stops it is different: the bullet ("Archer-line gold cost replaced by additional wood \
+cost") never states the wood amount the replaced gold is converted to, and no other field this \
+repository may read carries it either — strings.en.json help_string_id 120157 (re-checked in full \
+on 2026-09-28) is the only source research.md D3 permits for this civilisation, and it stops at \
+the same sentence. This is missing *knowledge*, not unplaced match state — research.md D5's \
+amendment: "What stays out of the effect model is only a bonus touching a field the pack does not \
+carry" is not quite this row's shape (cost *is* carried), but the amount to write into `operand` \
+is not knowledge this package has, so the row stays a refusal rather than becoming a *wrong* rule. \
+Distinct from Koreans' identically-shaped Bombard-Tower-conditional archer-armour bonus, removed \
+from this file entirely once Koreans was found to be in neither committed recording (T652m).\
 """
 field = "cost"
 selector = [
@@ -366,24 +391,11 @@ Crossbowman (24, prerequires 4), Arbalester (492, prerequires 24).\
 civilisation = "Persians"
 source_key = "120157"
 source_text = "Town Centers and Docks +100% HP and work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age"
-modelled = "no"
-reason = """\
-Age-gated in a way this static knowledge base cannot place: the magnitude (5/10/15/20%) depends \
-on which age applies at query time, which a rules query carries no match-time state to resolve \
-(research.md D5), so the work-faster half of this bullet is refused. The same bullet's "+100% \
-HP" half touches hit points, a field this pack's normaliser does not carry on any entity record \
-at all regardless of the age gate, and is not separately recorded — the whole bullet is \
-transcribed verbatim as this effect's source_text (FR-031's provenance), but only the age-gated, \
-tracked half (production_time) is modelled/reasoned here, the same half-a-compound-bullet \
-treatment Saracens' Market entry below already uses. \
-T652q correction (the fourth review's blocker): "work faster" adjusts what a Town Center or Dock \
-*produces*, not the building's own construction time, so the selector below names every unit and \
-technology `rules.json` lists as `produced_at` building 109, 621 or 45 — never the three \
-buildings themselves, which this row used to name and which therefore never matched a query for \
-anything the bonus actually touches (`production_time(unit 83 "Villager", "Persians")` answered \
-Teutons' un-adjusted baseline, 25, silently).\
-"""
+modelled = "yes"
 field = "production_time"
+operation = "multiply"
+condition = "age"
+operand = { "1" = 0.05, "2" = 0.10, "3" = 0.15, "4" = 0.20 }
 selector = [
   { kind = "unit", id = "13" },
   { kind = "unit", id = "17" },
@@ -440,7 +452,17 @@ ids named (18 units, 15 technologies); 14 candidates this same produced_at sweep
 excluded because Persians' own tree marks them, or their `upgrades_unit`, `NotAvailable` or \
 never names them at all — every one a different civilisation's own regional or unique naval \
 entity (Vikings' Longboat line, Koreans' Turtle Ship line, the Caravel and Elite Caravel line, \
-Dragon Ship, Thirisadai, Dromon, Lou Chuan, Catapult Galleon).\
+Dragon Ship, Thirisadai, Dromon, Lou Chuan, Catapult Galleon). \
+T652u correction (2026-09-28, repository owner's arbitration of the fourth review): "a \
+conditional bonus is a rule, and is modelled" (research.md D5, amended) — the age table above \
+covers all four ages (5/10/15/20% in Dark/Feudal/Castle/Imperial), and "work X% faster" divides \
+the baseline by 1+X (data-model.md §6's amended rounding row), never multiplies by X outright; a \
+query at any age still answers a real, adjusted value, because every age carries a discount. The \
+same bullet's "+100% HP" half is untouched by this row and stays unrepresented entirely: it \
+touches hit points, a field this pack's normaliser does not carry on any entity record at all, \
+independent of the age gate — the whole bullet remains this effect's verbatim source_text \
+(FR-031's provenance), but only the half query.py can track (production_time) is modelled here, \
+the same half-a-compound-bullet treatment Saracens' Market entry below already uses.\
 """
 
 [[effect]]
@@ -954,13 +976,16 @@ for a broad unit class.\
 # this file at all was the FR-038 substitution research.md D5's conservative rule exists to
 # forbid: recording 1's Malians player researches four University technologies (47, 50, 93, 140),
 # and every one of them was answered with the un-adjusted baseline, silently, because no effect
-# named the field it touched. Team bonuses stay out of the effect model categorically (research.md
-# D5, "What stays out of the effect model": "Team bonuses ... are recorded as modelled: no with
-# the reason"), so the fix is not to compute +80% faster — a rules query has no way to know which
-# allies also benefit, the same team-wide problem Franks' and Persians' Knight-line Team Bonuses
-# above already record — the fix is to record the refusal explicitly, below, so recording 1's
-# blocking-gap count (`packages/knowledge/tests/test_coverage.py`'s own FR-022b enumeration)
-# correctly reports four blockers instead of silently answering wrong.
+# named the field it touched. T652o (2026-09-23) closed that transcription gap the only way
+# research.md D5 then allowed — a categorical refusal, `modelled = "no"`, so recording 1's
+# blocking-gap count (test_coverage.py's own FR-022b enumeration) correctly reported four
+# blockers instead of silently answering wrong. **T652u (2026-09-28, repository owner's
+# arbitration of the fourth review) superseded that categorical refusal**: "a conditional bonus
+# is a rule, and is modelled" (research.md D5, amended) — a rules query now takes the team roster
+# as `Context.team`, so which allies benefit is the caller's answer, not a fact this package must
+# already know, and the row below is `modelled = "yes"`, `condition = "team"`. Recording 1's own
+# four blocking gaps are gone as a result — the row is complete knowledge now, not an open
+# blocker — the same reclassification `test_coverage.py`'s own re-derivation records.
 
 [[effect]]
 civilisation = "Malians"
@@ -1137,26 +1162,11 @@ Chivalry effect above resolves to.\
 civilisation = "Malians"
 source_key = "120175"
 source_text = "Team Bonus: Universities work +80% faster"
-modelled = "no"
-reason = """\
-Team-wide (research.md D5): "Universities work +80% faster" is named under this civilisation's \
-own "Team Bonus:" heading, so it is granted to every allied player from a Malians ally, not only \
-to Malians-controlled Universities, and cannot be modelled as a per-civilisation effect without \
-also knowing every ally's civilisation, which a rules query does not carry — the same reasoning \
-Franks' and Persians' Knight-line Team Bonuses above already use. Unlike those two, the field \
-this bonus touches — production_time, a technology's research time — is one query.py actually \
-exposes: a technology researched at a University is exactly as production_time-bearing as any \
-other, so leaving this bullet out of this file at all (the third review's own finding, T652o, \
-2026-09-23) let a query for a Malians University technology's production_time answer with the \
-un-adjusted baseline instead of refusing — the exact FR-038 substitution research.md D5's \
-conservative rule exists to forbid, and the reason recording 1's blocking-gap count used to \
-report zero: not because nothing blocks, but because this blocker was never written down. \
-T652q correction (the fourth review's blocker, item 6): the 20-technology selector this row \
-used to carry named every technology produced_at building 209 regardless of which \
-civilisations can actually research each one — the same shape already fixed for Franks' \
-Chivalry above — so it is now restricted to what Malians' own tree offers.\
-"""
+modelled = "yes"
 field = "production_time"
+operation = "multiply"
+condition = "team"
+operand = 0.80
 selector = [
   { kind = "technology", id = "47" },
   { kind = "technology", id = "50" },
@@ -1188,7 +1198,16 @@ the 14 whose own tree entry's `node_status` is other than `NotAvailable` (every 
 technologies carries `table_origin = "tech"` with no `upgrades_unit`, so each resolves under its \
 own id directly, with no indirection needed). Six are excluded, each explicitly `NotAvailable` \
 for Malians, not merely absent: Bombard Tower (64), Shipwright (373), Siege Engineers (377), \
-Arrowslits (608), Siphons (909) and Incendiaries (910) — the exact six the fourth review named.\
+Arrowslits (608), Siphons (909) and Incendiaries (910) — the exact six the fourth review named. \
+T652u correction (2026-09-28, repository owner's arbitration of the fourth review): "a \
+conditional bonus is a rule, and is modelled" (research.md D5, amended) — team-wide no longer \
+means unmodelled; `condition = "team"` names this row's own `civilisation` (Malians) as the \
+bonus's owner, and a query for any civilisation on the owner's team (`Context.team`, decided by \
+the caller, never guessed) applies the same +80% faster, divided into the baseline as 1.80 \
+(data-model.md §6's amended rounding row: "works X% faster" divides by 1+X). A query for a \
+civilisation *not* on the owner's team is simply not this effect's match at all — the baseline \
+stands, unadjusted, not a gap, exactly as an opponent's own University research is untouched by \
+an ally's team bonus in the game itself.\
 """
 
 # T652m: Tatars — recording 2's fourth civilisation (raw id 33, corrected from the previously
