@@ -370,9 +370,11 @@ and its reduced-motion collapse, so FR-055 has nothing new to reduce.
 
 **Baselines this moves** (regenerated from CI): `SearchBox` `Hover`, which also takes a
 `visualCaptureClip` to the search input — a hairline ring around one control is far below 1% of the
-story's frame; `PlayerResultRow` `Hover`, which takes a `visualCaptureClip` to the row link for the
-same reason; and `PlayerResultRow` `Active`, which the harness presses by a real hover then a
-mouse-down, so the underline is in that frame too.
+story's frame; `PlayerResultRow` `Hover`, which takes a `visualCaptureClip` — to the alias itself,
+not the whole row link: the row also carries the clan, the country and the standing figure, and a
+2px line under the alias stayed under the comparator's own 1% floor even clipped to the whole row
+(T675 slice 4b, verification finding, not a design change); and `PlayerResultRow` `Active`, which the
+harness presses by a real hover then a mouse-down, so the underline is in that frame too.
 
 ## 6. Tokens used
 

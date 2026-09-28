@@ -8,6 +8,7 @@ import {
   planSelfRest,
   classifyBucket,
   extractVisualCaptureClip,
+  decideSweepGate,
 } from './state-signal-model.mjs'
 
 // A minimal CSF file exercising every shape `planSelfRest` decides between:
@@ -31,6 +32,7 @@ import { expect, within } from 'storybook/test'
 import { Widget } from './index'
 
 const TRIGGER_CLIP = { parts: [{ role: 'button', name: 'Manage' }], pad: '2' }
+const AS_CONST_CLIP = { parts: [{ role: 'button', name: 'Manage' }], pad: '2' } as const
 
 const meta: Meta<typeof Widget> = {
   id: 'primitives-widget',
@@ -64,6 +66,22 @@ export const RoleAsConstClip: Story = {
   parameters: {
     visualForceState: { state: 'hover', role: 'link' },
     visualCaptureClip: { parts: [{ role: 'link' as const }], pad: '2' },
+  },
+}
+
+export const TriggerHoverByRefAsConst: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: AS_CONST_CLIP,
+  },
+}
+
+export const InlineAsConstClip: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: { parts: [{ role: 'button', name: 'Manage' }], pad: '2' } as const,
   },
 }
 
@@ -116,6 +134,27 @@ test('extractVisualCaptureClip resolves a part role annotated "as const", not on
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('RoleAsConstClip').clip, {
     parts: [{ selector: undefined, role: 'link', name: undefined, nth: undefined }],
+    pad: '2',
+  })
+})
+
+// T675 slice 4b: `buildTopLevelConstNodeMap` used to store the raw `AsExpression` for a top-level
+// `const X = {...} as const` — the shape most `visualCaptureClip` constants in the real tree use —
+// so `extractVisualCaptureClip`'s own `ts.isObjectLiteralExpression(clip)` check failed and treated
+// a real, present clip as absent (`hasClip: false`, and `.clip: null`). Fixed by `unwrapExpression`
+// (state-coverage.mjs), shared by both the const-map path and the inline path below.
+test('extractVisualCaptureClip resolves a clip referenced by identifier whose own declaration is annotated "as const"', () => {
+  const { byName } = fixtureStories()
+  assert.deepEqual(byName.get('TriggerHoverByRefAsConst').clip, {
+    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
+    pad: '2',
+  })
+})
+
+test('extractVisualCaptureClip resolves a clip written inline and annotated "as const", not only one referenced by identifier', () => {
+  const { byName } = fixtureStories()
+  assert.deepEqual(byName.get('InlineAsConstClip').clip, {
+    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
     pad: '2',
   })
 })
@@ -274,4 +313,72 @@ test('classifyBucket: a dimension mismatch is reported rather than silently rati
   ]
   const result = classifyBucket({ hasClip: false, unitResults: units })
   assert.equal(result.bucket, 'dimension-mismatch')
+})
+
+// --- decideSweepGate -----------------------------------------------------------------------------
+// T675 slice 4b: the sweep is a gate, not only a report. Every one of `classifyBucket`'s eight
+// buckets is exercised once here, on a minimal `{ stateId, bucket }` shape — `decideSweepGate` reads
+// only `bucket`, never the unit-level detail `classifyBucket` itself already owns and this file's
+// own tests above already cover.
+function entry(stateId, bucket) {
+  return { stateId, bucket }
+}
+
+test('decideSweepGate: defended and defended-without-clip both pass', () => {
+  const classified = [entry('a', 'defended'), entry('b', 'defended-without-clip')]
+  assert.deepEqual(decideSweepGate(classified), { pass: true, failures: [] })
+})
+
+test('decideSweepGate: dimension-mismatch passes — a size change fails toHaveScreenshot by construction', () => {
+  const classified = [entry('a', 'dimension-mismatch')]
+  assert.deepEqual(decideSweepGate(classified), { pass: true, failures: [] })
+})
+
+test('decideSweepGate: zero and zero-despite-clip both fail, named', () => {
+  const classified = [entry('a', 'zero'), entry('b', 'zero-despite-clip')]
+  const result = decideSweepGate(classified)
+  assert.equal(result.pass, false)
+  assert.deepEqual(
+    result.failures.map((f) => f.stateId),
+    ['a', 'b'],
+  )
+})
+
+test('decideSweepGate: clip-fixes and clipped-still-under-threshold both fail — a real signal that still does not clear the comparator', () => {
+  const classified = [entry('a', 'clip-fixes'), entry('b', 'clipped-still-under-threshold')]
+  const result = decideSweepGate(classified)
+  assert.equal(result.pass, false)
+  assert.deepEqual(
+    result.failures.map((f) => f.stateId),
+    ['a', 'b'],
+  )
+})
+
+test('decideSweepGate: state-not-reproduced fails — the sweep could not confirm the frame it measured', () => {
+  const classified = [entry('a', 'state-not-reproduced')]
+  const result = decideSweepGate(classified)
+  assert.equal(result.pass, false)
+  assert.deepEqual(
+    result.failures.map((f) => f.stateId),
+    ['a'],
+  )
+})
+
+test('decideSweepGate: one failing story fails the whole gate, alongside any number of passing ones', () => {
+  const classified = [
+    entry('good-1', 'defended'),
+    entry('good-2', 'dimension-mismatch'),
+    entry('bad', 'zero'),
+    entry('good-3', 'defended-without-clip'),
+  ]
+  const result = decideSweepGate(classified)
+  assert.equal(result.pass, false)
+  assert.deepEqual(
+    result.failures.map((f) => f.stateId),
+    ['bad'],
+  )
+})
+
+test('decideSweepGate: empty input passes vacuously — nothing measured is nothing left undefended', () => {
+  assert.deepEqual(decideSweepGate([]), { pass: true, failures: [] })
 })

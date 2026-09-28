@@ -46,6 +46,7 @@ import {
   extractFileStoryStates,
   planSelfRest,
   classifyBucket,
+  decideSweepGate,
 } from './state-signal-model.mjs'
 // `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
 // CommonJS module directly (`cjs-module-lexer` statically finds these named exports), which is the
@@ -517,7 +518,28 @@ function runStateSignalSweep() {
 
   writeStateSignalReport({ classified, notMeasurable, measurableCount: measurable.length })
 
-  process.exit(result.status ?? 1)
+  // T675 slice 4b: the sweep is a gate, not only a report — `decideSweepGate` fails on any story
+  // whose own bucket is not a real, over-threshold signal (`defended`/`defended-without-clip`) or a
+  // size/layout change already defended by `toHaveScreenshot` itself (`dimension-mismatch`). No
+  // allowlist: every failure is named, every run.
+  const gate = decideSweepGate(classified)
+  if (!gate.pass) {
+    log(
+      `state-signal-sweep: gate failed — ${gate.failures.length} of ${classified.length} ` +
+        'measured stor(y/ies) carry no defended non-fill signal:',
+    )
+    for (const f of [...gate.failures].sort((a, b) => a.stateId.localeCompare(b.stateId))) {
+      const ratio = typeof f.minRatio === 'number' ? formatPct(f.minRatio) : 'n/a'
+      log(`  - ${f.stateId}: ${f.bucket} (min ratio ${ratio}) — ${f.file}`)
+    }
+  } else {
+    log(
+      `state-signal-sweep: gate passed — ${classified.length} of ${classified.length} measured ` +
+        'stor(y/ies) carry a defended non-fill signal or a defended-by-construction size change.',
+    )
+  }
+
+  process.exit(result.status !== 0 ? (result.status ?? 1) : gate.pass ? 0 : 1)
 }
 
 main()

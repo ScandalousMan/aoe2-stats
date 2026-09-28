@@ -157,8 +157,10 @@ asks for a non-colour signal, not the removal of an accompanying colour one.
 - **Motion.** The underline is not transitioned; it switches with the hover. The fill keeps its
   existing transition and its reduced-motion collapse, so FR-055 has nothing new to reduce.
 - **Baselines this moves** (regenerated from CI): `FavouritesList` `Hover`, which also takes a
-  `visualCaptureClip` to the hovered link — a 2px line under one alias is far below 1% of the list's
-  frame — and `FavouritesList` `Active`, which the harness presses by a real hover then a
+  `visualCaptureClip` — to the alias itself, not the whole hovered link: the row also carries the
+  standing figure and its signed delta, and a 2px line under the alias stayed under the comparator's
+  own 1% floor even clipped to the whole link (T675 slice 4b, verification finding, not a design
+  change) — and `FavouritesList` `Active`, which the harness presses by a real hover then a
   mouse-down, so the underline is in that frame too.
 
 **disabled** — the list has no disabled form. `RemoveControl` is disabled only transiently while its

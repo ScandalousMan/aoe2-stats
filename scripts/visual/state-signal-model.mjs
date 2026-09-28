@@ -47,6 +47,7 @@ import {
   extractVisualForceState,
   buildTopLevelConstNodeMap,
   findPlayFocusTarget,
+  unwrapExpression,
 } from '../checks/state-coverage.mjs'
 import { listComponentDirs, findStoryFile } from '../checks/story-docs.mjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
@@ -156,6 +157,11 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
   if (clip && ts.isIdentifier(clip) && constNodeMap.has(clip.text)) {
     clip = constNodeMap.get(clip.text)
   }
+  // `unwrapExpression` (state-coverage.mjs): `buildTopLevelConstNodeMap` already unwraps a
+  // referenced top-level const, but a clip written inline — `visualCaptureClip: {...} as const`,
+  // directly in `parameters`, no separate declaration — never passes through that map at all, so
+  // it needs the same unwrap here.
+  clip = unwrapExpression(clip)
   if (!clip || !ts.isObjectLiteralExpression(clip)) return null
   const partsExpr = getProp(clip, 'parts')
   if (!partsExpr || !ts.isArrayLiteralExpression(partsExpr)) return null
@@ -347,6 +353,30 @@ export function classifyBucket({ hasClip, unitResults }) {
     return { bucket: hasClip ? 'clipped-still-under-threshold' : 'clip-fixes', minRatio }
   }
   return { bucket: hasClip ? 'defended' : 'defended-without-clip', minRatio }
+}
+
+// T675 slice 4b: turns the sweep from a report into a gate. Five of `classifyBucket`'s eight
+// outcomes fail — `zero`/`zero-despite-clip` (no non-fill signal at all), `clip-fixes`/
+// `clipped-still-under-threshold` (a real signal that still does not clear the comparator's own
+// 1% floor, clipped or not), and `state-not-reproduced` (the sweep could not even confirm the state
+// frame it measured, so nothing it found can be trusted as a pass). Two pass: `defended`/
+// `defended-without-clip` (a real, over-1% signal, FR-037's own bar), and `dimension-mismatch` —
+// not because it is safe by inspection, but because a size or layout change fails
+// `toHaveScreenshot` outright in the real visual suite (`playwright.config.ts`'s own
+// `maxDiffPixelRatio`), so it is defended by construction and this sweep does not need to re-prove
+// it. No allowlist, no per-story exception: every failing bucket names the story that earned it, and
+// the only way off this list is a real, clipped, over-threshold signal.
+const SWEEP_GATE_FAILING_BUCKETS = new Set([
+  'zero',
+  'zero-despite-clip',
+  'clip-fixes',
+  'clipped-still-under-threshold',
+  'state-not-reproduced',
+])
+
+export function decideSweepGate(classified) {
+  const failures = classified.filter((c) => SWEEP_GATE_FAILING_BUCKETS.has(c.bucket))
+  return { pass: failures.length === 0, failures }
 }
 
 // --- Discovery ---------------------------------------------------------------------------------

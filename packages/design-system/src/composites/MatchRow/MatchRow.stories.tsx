@@ -336,15 +336,17 @@ export const ListCardsBelowXl: Story = {
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
 // could only dispatch a synthetic event, which the CSS pseudo-class ignores. §5a (decided
 // 2026-09-28): the fill alone measured zero surviving pixels (T675's package-wide sweep); the
-// outcome word now underlines too, a 2px mark well under 1% of the card's frame, so this story
-// clips to the card.
-const CARD_CLIP = { parts: [{ selector: 'a[href="/matches/1001"]' }], pad: '2' } as const
+// outcome word now underlines too. T675 slice 4b: a clip to the whole card still measured under 1%
+// on every unit (a 2px line under one short word inside a card carrying a map thumbnail and a
+// participant list) — clipped instead to the outcome word itself, `:text-is()` rather than
+// `role`/`name` because `OutcomeLabel` renders a plain `<span>` with no ARIA role of its own.
+const OUTCOME_WORD_CLIP = { parts: [{ selector: ':text-is("Win")' }], pad: '1' } as const
 
 export const Hover: Story = {
   render: () => <MatchRow match={base} />,
   parameters: {
     visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' },
-    visualCaptureClip: CARD_CLIP,
+    visualCaptureClip: OUTCOME_WORD_CLIP,
   },
 }
 

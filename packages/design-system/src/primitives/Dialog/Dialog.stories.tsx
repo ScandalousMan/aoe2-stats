@@ -157,12 +157,25 @@ export const KeyboardFocusOrderAndTrap: Story = {
 // finding. Forced here, on the same button `FocusVisible` above already targets, for the same
 // reason that story does: `Default`'s own resting frame already shows this button unforced, so a
 // second copy without a state change would document nothing (FR-037).
-//
+// T675 slice 4b: `PRIMARY_ACTION_CLIP`'s own `pad: '2'` still measured under 1% on one unit —
+// tightened here alone, not for the shared constant, because `FocusVisible`'s own outward ring
+// (`outline-2 outline-offset-2`, 4px total beyond the border box) needs that wider pad to stay
+// inside the clip; `Hover`'s own signal (a label underline, drawn inside the button) does not.
+// Reducing `pad` alone (down to `'0'`, the smallest step this package's own scale names,
+// `tokens/space.json`) still read under 1% at 375 — the button's own `size="lg"` inline padding
+// (`px-6`) is real box area the underline never touches, present at every pad step. Narrowed
+// instead to `Button`'s own label span (`index.tsx`'s own `<span>{label}</span>`, no class of its
+// own) — `:text-is()` rather than `role`/`name`, which can only ever reach the button as a whole.
+const PRIMARY_ACTION_HOVER_CLIP = {
+  parts: [{ selector: ':text-is("Turn it off")' }],
+  pad: '0',
+}
+
 export const Hover: Story = {
   tags: ['visual-full-page'],
   parameters: {
     visualForceState: { state: 'hover', role: 'button', name: 'Turn it off' },
-    visualCaptureClip: PRIMARY_ACTION_CLIP,
+    visualCaptureClip: PRIMARY_ACTION_HOVER_CLIP,
   },
   args: {
     heading: 'Turn off replay archival?',

@@ -49,11 +49,17 @@ export const ObjectionOnly: Story = {
 // (README's Verification-coverage gap register, row 1), the same for `FocusVisible`/`Active` below.
 const FIRST_LINK_CLIP = { parts: [{ role: 'link' as const, nth: 0 }], pad: '2' }
 
+// T675 slice 4b: `FIRST_LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit — tightened
+// here alone, not for the shared constant, because `FocusVisible`'s own outward ring needs that
+// wider pad to stay inside the clip; `Hover`'s own signal (the underline thickening inward) does
+// not.
+const FIRST_LINK_HOVER_CLIP = { parts: [{ role: 'link' as const, nth: 0 }], pad: '0' }
+
 export const Hover: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
   parameters: {
     visualForceState: { state: 'hover', role: 'link', nth: 0 },
-    visualCaptureClip: FIRST_LINK_CLIP,
+    visualCaptureClip: FIRST_LINK_HOVER_CLIP,
   },
 }
 

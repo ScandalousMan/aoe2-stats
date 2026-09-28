@@ -271,13 +271,19 @@ export const StackedRowsBelowMd: Story = {
 // an unclipped frame in at least one unit, so all three states below clip to the control.
 const DOWNLOAD_CLIP = { parts: [{ role: 'button' as const, name: 'Download' }], pad: '2' }
 
+// T675 slice 4b: `DOWNLOAD_CLIP`'s own whole-button box still measured under 1% on one unit —
+// tightened here alone (not for the shared constant, which `FocusVisible`'s own outward ring still
+// needs) to `Button`'s own label span (`index.tsx`'s own `<span>{label}</span>`, no class of its
+// own) — `:text-is()` rather than `role`/`name`, which can only ever reach the button as a whole.
+const DOWNLOAD_HOVER_CLIP = { parts: [{ selector: ':text-is("Download")' }], pad: '0' }
+
 export const Hover: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
   parameters: {
     visualForceState: { state: 'hover', role: 'button', name: 'Download' },
-    visualCaptureClip: DOWNLOAD_CLIP,
+    visualCaptureClip: DOWNLOAD_HOVER_CLIP,
   },
 }
 

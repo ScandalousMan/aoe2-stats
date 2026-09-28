@@ -806,11 +806,17 @@ implementation confirms it.
 **Motion.** The underline is not transitioned; it switches with the hover. The fill keeps its
 `motion-reduce:duration-0`, so FR-055 has nothing new to reduce.
 
-**Baselines this moves** (regenerated from CI): `Menu` `FooterItemHover` and `FooterItemActive`
-(both already clipped to the open `[role="menu"]` surface), and `Menu` `Hover` and `Active` — press
-frames too, because the harness forces `active` by a real hover then a mouse-down. `Hover` and
-`Active` are not clipped today; each is already on T675's list of "at or under 1%" cells owed a
-`visualCaptureClip` to `[role="menu"]`, and a 2px line under one label keeps that clip necessary.
+**Baselines this moves** (regenerated from CI): `Menu` `FooterItemHover`, clipped to the footer item
+itself, not the whole open `[role="menu"]` surface — a 2px line under one label stayed under the
+comparator's own 1% floor even clipped to the whole panel, diluted by every row above it in the
+union (T675 slice 4b, verification finding, not a design change); `FooterItemActive` keeps the
+panel-wide clip, already defended without needing this narrowing; and `Menu` `Hover` — press frames
+too, because the harness forces `active` by a real hover then a mouse-down — clipped first to
+`[role="menu"]` (the cell on T675's own list of "at or under 1%" cells owed a `visualCaptureClip`),
+then narrowed once more, in the same slice 4b pass, to the hovered item's own label (the item's row
+reserves width for a leading checkmark glyph and a trailing badge/spinner slot the underline never
+touches, the identical dilution `FooterItemHover` found); `Active` keeps the panel-wide clip,
+already defended without needing this narrowing.
 
 **Acceptance.**
 

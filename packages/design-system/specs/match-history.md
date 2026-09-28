@@ -284,9 +284,11 @@ pairs), each above the 3:1 non-text floor an underline owes.
 so FR-055 has nothing new to reduce.
 
 **Baselines this moves** (regenerated from CI): `MatchRow` `Hover`, which also takes a
-`visualCaptureClip` to the hovered card — a 2px line under one word is far below 1% of the frame —
-and `MatchRow` `Active`, which the harness presses by a real hover then a mouse-down, so the
-underline is in that frame too.
+`visualCaptureClip` — to the outcome word itself, not the hovered card: a card also carries a map
+thumbnail and a participant list, and a 2px line under one word stayed under the comparator's own 1%
+floor (`maxDiffPixelRatio`) even clipped to the whole card (T675 slice 4b, verification finding, not
+a design change) — and `MatchRow` `Active`, which the harness presses by a real hover then a
+mouse-down, so the underline is in that frame too.
 
 ## 6. Tokens used
 

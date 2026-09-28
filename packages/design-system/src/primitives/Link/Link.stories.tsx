@@ -144,8 +144,10 @@ export const ActiveStandalone: Story = {
 // §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
 // words inside a paragraph breaks the line — but the underline drops to `underline-offset-4`",
 // distinguishing this frame from `Hover` above without one (fourth-pass review remediation,
-// FR-037). Also at or under 1% unclipped (T675's package-wide sweep) — clipped to the inline link.
-const INLINE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'view its profile' }], pad: '2' }
+// FR-037). Also at or under 1% unclipped (T675's package-wide sweep) — clipped to the inline link;
+// slice 4b found `pad: '2'` still under 1% on one unit and tightened it to `'0'`, the smallest step
+// this package's own scale names (`tokens/space.json`).
+const INLINE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'view its profile' }], pad: '0' }
 
 export const ActiveInline: Story = {
   render: (args) => (

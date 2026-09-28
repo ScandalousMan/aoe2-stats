@@ -510,7 +510,15 @@ export function PrivacyNotice({
                     focusRing,
                   )}
                 >
-                  {index + 1}. {section.label}
+                  {/* T675 slice 4b: a plain, unstyled span around the entry's own text, purely so
+                      the sweep's own clip can target text alone rather than this link's full
+                      padded, full-width box (`min-h-11`) — the underline it hovers/presses is only
+                      ever under these words, and the un-narrowed box diluted the signal below the
+                      comparator's own 1% floor. Paints nothing of its own; the anchor above still
+                      carries every token and every state class. */}
+                  <span>
+                    {index + 1}. {section.label}
+                  </span>
                 </a>
               </li>
             ))}

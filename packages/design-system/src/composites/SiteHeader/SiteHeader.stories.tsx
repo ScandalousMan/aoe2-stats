@@ -156,9 +156,31 @@ export const ThemeControlSetToDark: Story = {
 }
 
 // §5a (decided 2026-09-28): every nav item's `<a>` gains `Button` `ghost`'s own hover and press
-// underline in full, clipped to the primary navigation so the hovered item and the current item's
-// own rule (§4) judge in one frame (`SiteHeader.stories.tsx`'s own §10 acceptance criterion).
-const NAV_CLIP = { parts: [{ selector: 'nav[aria-label="Primary"]' }], pad: '2' } as const
+// underline in full, judged together with the current item's own rule (§4) in one frame
+// (`SiteHeader.stories.tsx`'s own §10 acceptance criterion). T675 slice 4b: clipping to the whole
+// `<nav>` still measured under 1% on every unit (a 2px line under one label, diluted by every other
+// item's own box in the union) — narrowed to the union of exactly the two items the criterion
+// needs, the hovered "Matches" and the current "Dashboard", which `visualCaptureClip`'s own `parts`
+// already supports as a multi-part union (`resolveCaptureClip`, `tests/visual/story-render.ts`).
+const NAV_CLIP = {
+  parts: [
+    { role: 'link' as const, name: 'Matches' },
+    { role: 'link' as const, name: 'Dashboard' },
+  ],
+  pad: '1',
+} as const
+
+// `Hover`'s own signal (the underline, drawn inside each item's box) needs none of `FocusVisible`'s
+// outward-ring room, so its own copy of the same two-item union tightens `pad` to `'0'` — the
+// smallest step this package's own scale names (`tokens/space.json`) — where `NAV_CLIP`'s `'1'`
+// still read under 1% on one unit.
+const NAV_HOVER_CLIP = {
+  parts: [
+    { role: 'link' as const, name: 'Matches' },
+    { role: 'link' as const, name: 'Dashboard' },
+  ],
+  pad: '0',
+} as const
 
 // site-header.md §5 "hover — the item's box fills `surface-sunken` and its label moves to
 // `text-primary`, and the label underlines" (§5a, decided 2026-09-28 — this comment used to quote
@@ -171,7 +193,7 @@ export const Hover: Story = {
   args: { items, currentPath: '/dashboard' },
   parameters: {
     visualForceState: { state: 'hover', role: 'link', name: 'Matches' },
-    visualCaptureClip: NAV_CLIP,
+    visualCaptureClip: NAV_HOVER_CLIP,
   },
 }
 

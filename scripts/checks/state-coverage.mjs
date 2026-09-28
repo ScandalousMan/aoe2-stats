@@ -1443,6 +1443,28 @@ export function evaluateGuards(guards, scope) {
 
 // --- Story parsing: exported story objects, args, visualForceState, play()-focus ----------------
 
+// Strips every `as <T>`, `satisfies <T>` and `(...)` wrapper off an expression node, in whatever
+// order and however many deep they nest (`({...} as const)`, `{...} satisfies X as const`, and so
+// on) — never a single fixed shape, since nothing in this codebase's own TypeScript enforces one.
+// `findExportedStoryObjects` used to unwrap `satisfies` then `as` once each, inline, which is what
+// every real story object in this tree happens to need; `buildTopLevelConstNodeMap` unwrapped
+// neither at all, so a top-level `const X = {...} as const` — the shape `Button.stories.tsx`'s own
+// `PRIMARY_LG_CLIP` and most `visualCaptureClip` constants across this tree use — stored the
+// `AsExpression` itself. Every caller that then asked `ts.isObjectLiteralExpression(node)` (T675's
+// own `state-signal-model.mjs#extractVisualCaptureClip`, among others) got `false` and silently
+// treated a real, present clip as absent — the sweep's own `hasClip` field misreporting `false`
+// for a clipped story, found while implementing T675's own second-pass signals (slice 4b). Shared
+// here so every caller unwraps the same way, once.
+export function unwrapExpression(node) {
+  while (
+    node &&
+    (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node))
+  ) {
+    node = node.expression
+  }
+  return node
+}
+
 export function findExportedStoryObjects(sourceFile) {
   let defaultExportName = null
   for (const statement of sourceFile.statements) {
@@ -1461,9 +1483,7 @@ export function findExportedStoryObjects(sourceFile) {
     if (!isExported) continue
     for (const decl of statement.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name) || decl.name.text === defaultExportName) continue
-      let init = decl.initializer
-      if (init && ts.isSatisfiesExpression(init)) init = init.expression
-      if (init && ts.isAsExpression(init)) init = init.expression
+      const init = unwrapExpression(decl.initializer)
       if (init && ts.isObjectLiteralExpression(init)) {
         stories.push({ exportName: decl.name.text, node: init })
       }
@@ -1715,14 +1735,17 @@ export function extractStringLiteralsDeep(
 
 // Every top-level `const NAME = <expr>` in a file, unresolved — the general-purpose sibling of
 // `buildConstStringMap` (which only keeps the ones that resolve to a class string). Used to chase a
-// story's own shorthand `args` property back to its declaration.
+// story's own shorthand `args` property back to its declaration. Stores the *unwrapped* initializer
+// (`unwrapExpression`, above) — a `const X = {...} as const` is the common shape every
+// `visualCaptureClip` constant not written inline uses, and a caller resolving `X` back through this
+// map wants the object literal itself, never the `AsExpression` wrapping it.
 export function buildTopLevelConstNodeMap(sourceFile) {
   const map = new Map()
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) continue
     for (const decl of statement.declarationList.declarations) {
       if (ts.isIdentifier(decl.name) && decl.initializer) {
-        map.set(decl.name.text, decl.initializer)
+        map.set(decl.name.text, unwrapExpression(decl.initializer))
       }
     }
   }

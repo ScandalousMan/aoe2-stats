@@ -180,8 +180,14 @@ export const Empty: Story = {
 // skip link takes.
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
 // frame in at least one unit — `visualCaptureClip` to the landmark is the mechanical fix (README's
-// Verification-coverage gap register, row 1).
-const MAIN_CLIP = { parts: [{ role: 'main' as const }], pad: '2' }
+// Verification-coverage gap register, row 1). Slice 4b: `pad: '2'` still read under 1% on one
+// unit — the ring is a thin outline around the whole `<main>` landmark, so the ratio is bounded by
+// that landmark's own perimeter against its own area, which no pad shrinks. `pad: '0'` (tried first)
+// clipped the ring itself away entirely — it is an *outward* ring (`outline-2 outline-offset-2`,
+// `index.tsx`'s own `focusRing`, 4px total beyond the border box), so the clip rect needs at least
+// that much room; `'1'` (4px) is the smallest step this package's own scale names that still holds
+// it.
+const MAIN_CLIP = { parts: [{ role: 'main' as const }], pad: '1' }
 
 export const FocusVisible: Story = {
   // A `play()` calling `.focus()` sets DOM focus but not the `:focus-visible` pseudo-class, so this

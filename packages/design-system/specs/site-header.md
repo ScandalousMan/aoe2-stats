@@ -362,12 +362,14 @@ after implementation confirms it; this paragraph does not.
 does. The fill and label colour keep their existing transition and its reduced-motion collapse, so
 FR-055 has nothing new to reduce.
 
-**Baselines this moves** (regenerated from CI, never locally): `SiteHeader` `Hover`, which also
-takes a `visualCaptureClip` to the primary navigation — the hovered item and the current item's rule
-in one frame, so the criterion in §10 is judged on one image, and a 2px line under one label is far
-below 1% of a full header frame — and `SiteHeader` `Active`, which the harness presses by a real
-hover then a mouse-down, so the underline is in that frame too. The `Hover` story's own comment
-quotes the retired "No underline on hover" and is corrected in the same change.
+**Baselines this moves** (regenerated from CI, never locally): `SiteHeader` `Hover`, `Active` and
+`FocusVisible`, which each take a `visualCaptureClip` — to the union of exactly the hovered item and
+the current item, so the criterion in §10 is still judged on one image, without the other three nav
+items diluting it further: a 2px line under one label stayed under the comparator's own 1% floor
+even clipped to the whole `<nav>` (T675 slice 4b, verification finding, not a design change).
+`Active`'s own press is captured the same way, the harness pressing by a real hover then a
+mouse-down. The `Hover` story's own comment quotes the retired "No underline on hover" and is
+corrected in the same change.
 
 ## 6. Tokens used
 

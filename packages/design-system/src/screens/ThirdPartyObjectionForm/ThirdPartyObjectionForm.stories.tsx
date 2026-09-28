@@ -73,9 +73,21 @@ export const FieldError: Story = {
 // (story-baseline-duplicates-debt.json).
 const LINK_CLIP = { parts: [{ role: 'link' }], pad: '2' } as const
 
+// T675 slice 4b: `LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit — tightened here
+// alone, not for the shared constant, because `FocusVisible`'s own outward ring (`outline-2
+// outline-offset-2`, 4px total beyond the link's own box) needs that wider pad to stay inside the
+// clip; `Hover`'s own signal (the underline thickening inward) does not. `pad: '1'` (4px) still read
+// under 1% on one unit; `'0'` is the smallest step this package's own scale names
+// (`tokens/space.json`) and safe here — the thickened underline sits inside the link's own inline
+// box, never past its edge.
+const LINK_HOVER_CLIP = { parts: [{ role: 'link' as const }], pad: '0' } as const
+
 export const Hover: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'hover', role: 'link' }, visualCaptureClip: LINK_CLIP },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: LINK_HOVER_CLIP,
+  },
 }
 
 // §5 "focus-visible — the standard ring... on the input, the submit button and the

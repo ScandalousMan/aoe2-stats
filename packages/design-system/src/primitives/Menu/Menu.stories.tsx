@@ -153,6 +153,16 @@ const MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
 // from Playwright, once the menu has opened and the story has settled, because a synthetic
 // `userEvent.hover()` would dispatch an event every listener sees but the `:hover` pseudo-class
 // itself ignores (see that file's own `VisualForceState` comment).
+// T675 slice 4b: `MENU_CLIP`'s own whole-panel box still measured well under 1% — diluted by every
+// other row in the union. Narrowed to the hovered item itself, `role: 'menuitemradio', name:
+// 'aoe2alt'` — already unambiguous (the same name `visualForceState` above targets), so no new
+// selector is needed.
+// `pad: '1'` on the whole item row (tried first) still read under 1% — the item reserves width for
+// a leading checkmark glyph and a trailing badge/spinner slot on either side of the label, real box
+// area the underline never touches. Narrowed once more to the label text itself — `:text-is()`,
+// since `MenuItemRow`'s own label span (`index.tsx`) carries no ARIA role of its own.
+const HOVERED_ITEM_CLIP = { parts: [{ selector: ':text-is("aoe2alt")' }], pad: '0' }
+
 export const Hover: Story = {
   tags: ['visual-full-page'],
   play: openMenu,
@@ -160,9 +170,10 @@ export const Hover: Story = {
     visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' },
     // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the fill plus a 2px
     // underline under one label is well under 1% of this story's whole-page frame — T675's
-    // Verification-coverage gap register lists this as owed a clip to the open surface, the same
-    // `MENU_CLIP` idiom `FocusVisible`/`KeyboardNavigation` already use.
-    visualCaptureClip: MENU_CLIP,
+    // Verification-coverage gap register lists this as owed a clip to the open surface. Slice 4b
+    // tightens that clip once more, from the whole surface to the hovered item alone
+    // (`HOVERED_ITEM_CLIP`, above).
+    visualCaptureClip: HOVERED_ITEM_CLIP,
   },
   args: {
     variant: 'selection',
@@ -476,13 +487,17 @@ export const TriggerFocusVisible: Story = {
 // `Hover`/`Active` above only ever force a state on a `menuitemradio` row, never on this one.
 // `role: 'menuitem'` needs no `name`: for the `selection` variant rendered here, every row item
 // carries `role="menuitemradio"` (`MenuItemRow`'s own `variant === 'selection'` branch) — the
-// footer item is the sole `menuitem`-role candidate.
+// footer item is the sole `menuitem`-role candidate. T675 slice 4b: clipping to the whole open
+// `[role="menu"]` panel still measured under 1% on every unit (a 2px line under one item's label,
+// diluted by every row above it in the union) — narrowed to the footer item's own button.
+const FOOTER_ITEM_CLIP = { parts: [{ role: 'menuitem' as const }], pad: '1' } as const
+
 export const FooterItemHover: Story = {
   tags: ['visual-full-page'],
   play: openMenu,
   parameters: {
     visualForceState: { state: 'hover', role: 'menuitem' },
-    visualCaptureClip: MENU_CLIP,
+    visualCaptureClip: FOOTER_ITEM_CLIP,
   },
   args: {
     variant: 'selection',

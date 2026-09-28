@@ -563,11 +563,15 @@ underline thickens from `border.hairline` to `border.ring` — `decoration-1` pi
   which a hover fix must not absorb as a side effect.
 - **Motion.** `transition-colors` covers the ink, not the thickness, so the line switches instantly,
   as `Link`'s does; FR-055 has nothing new to reduce.
-- **Baselines this moves** (regenerated from CI): `PrivacyNotice` `Hover` (already clipped to the
-  entry) and `PrivacyNotice` `Active`, which the harness presses by a real hover then a mouse-down.
-  If pinning `decoration-1` moves the resting frame — it does only if the font's `auto` thickness was
-  not already one pixel — every capture showing `Contents` moves with it, and those moves belong to
-  this decision: the implementer checks which baselines the capture moved rather than assuming none.
+- **Baselines this moves** (regenerated from CI): `PrivacyNotice` `Hover`, clipped to the entry's own
+  text span (`index.tsx`'s own wrapping `<span>`), not the whole entry's padded, full-width link box
+  — a 2px thickening stayed under the comparator's own 1% floor even clipped to the whole entry (T675
+  slice 4b, verification finding, not a design change) — and `PrivacyNotice` `Active`, which keeps
+  the whole-entry clip (its own fill and ring need the whole box) and which the harness presses by a
+  real hover then a mouse-down. If pinning `decoration-1` moves the resting frame — it does only if
+  the font's `auto` thickness was not already one pixel — every capture showing `Contents` moves with
+  it, and those moves belong to this decision: the implementer checks which baselines the capture
+  moved rather than assuming none.
 
 **focus-visible** — the standard ring (`outline-2 outline-offset-2` in `focus-ring`, gap DS-4) on
 every link and on the objection button — `ContactRouteLink` included, which takes that ring from

@@ -38,15 +38,17 @@ export const SourceBacked: Story = {
 // (see that file's own `VisualForceState` comment) — a `play()` could only dispatch a synthetic
 // event, which the CSS pseudo-class ignores.
 // "Hover signals" (player-search.md, decided 2026-09-28): the fill alone measured zero surviving
-// pixels (T675's package-wide sweep); the alias now underlines too, a mark well under 1% of the
-// row's frame, so this story clips to the row link.
-const ROW_LINK_CLIP = { parts: [{ selector: 'a[href="/players/12345"]' }], pad: '2' } as const
+// pixels (T675's package-wide sweep); the alias now underlines too. T675 slice 4b: a clip to the
+// whole row still measured under 1% on every unit (a 2px line under the alias inside a row also
+// carrying the clan, the country and the standing figure) — clipped instead to the alias itself,
+// `:text-is()` rather than `role`/`name` since the alias span carries no ARIA role of its own.
+const ALIAS_CLIP = { parts: [{ selector: ':text-is("aoe2villain")' }], pad: '1' } as const
 
 export const Hover: Story = {
   args: { result: base },
   parameters: {
     visualForceState: { state: 'hover', selector: 'a[href="/players/12345"]' },
-    visualCaptureClip: ROW_LINK_CLIP,
+    visualCaptureClip: ALIAS_CLIP,
   },
 }
 
