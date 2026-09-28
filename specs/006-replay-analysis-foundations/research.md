@@ -191,9 +191,17 @@ knowledge base cannot know _which_ fields a bonus touches, so it refuses **every
 civilisation-qualified cost and time for that civilisation. Coverage therefore grows by whole
 civilisations, and the aggregate gap report (FR-039) is the backlog.
 
-**What stays out of the effect model.** Team bonuses, age-gated bonuses whose gate the recording
-cannot place, and anything conditional on state are recorded as _modelled: no_ with the reason; they
-keep their fields gapped. A bonus is never half-applied.
+**A conditional bonus is a rule, and is modelled.** A bonus whose magnitude depends on the age, on
+a technology the player has researched, or on being on the owner's team carries that condition, and
+the query takes the match context that decides it. Which condition held at a given moment is a
+question about the match, answered by the caller — never by the knowledge base, and never by
+assuming one. What stays out of the effect model is only a bonus touching a field the pack does not
+carry; it is _modelled: no_ with the reason. A bonus is never half-applied.
+
+_Amended 2026-09-28, at the repository owner's arbitration of the fourth review (T652u)._ The first
+version also put age-gated, state-conditional and team bonuses out of the model. That turned rules
+any application applies — a Persians Villager takes 25 s ÷ 1.10 in the Feudal Age — into withheld
+values, and asked FR-022a to admit them as blockers.
 
 ## D6 — The register is TOML inside the package that enforces it
 

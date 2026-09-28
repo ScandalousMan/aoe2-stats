@@ -77,8 +77,8 @@ Exact match on `describes_build` among promoted snapshots, or a gap with cause
 ## The query surface
 
 ```python
-def cost(entity, *, civilisation) -> Answer[Cost] | KnowledgeGap
-def production_time(entity, *, civilisation) -> Answer[Duration] | KnowledgeGap
+def cost(entity, *, civilisation, context=None) -> Answer[Cost] | KnowledgeGap
+def production_time(entity, *, civilisation, context=None) -> Answer[Duration] | KnowledgeGap
 def age_requirement(entity, *, civilisation) -> Answer[Age] | KnowledgeGap
 def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | KnowledgeGap
 def produced_at(entity, *, civilisation) -> Answer[EntityRef] | KnowledgeGap
@@ -88,6 +88,11 @@ def name(entity) -> Answer[str] | KnowledgeGap
 
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
+- `context` is the match state a conditional effect needs: the age, the technologies researched, and
+  the civilisations on the player's team, the player's own included. A query whose matching effects
+  are unconditional ignores it. A query that reaches a conditional effect without the input that
+  decides it **raises**, as omitting `civilisation` does: the caller asked for a value only the
+  match can fix, and neither the baseline nor a guessed age is an answer.
 - `Answer` carries the value, the snapshot identity, the source the stored value came from, and the
   effects applied, in order (US2 scenario 1).
 - The union has **no third branch**. No function in the package returns a bare value, accepts a
@@ -102,8 +107,13 @@ In order, for a rule query qualified by civilisation *c*:
    for *c* refuses, because which fields a bonus touches is exactly what is not known.
 2. An effect for *c* touches this entity and field and is `modelled = no` → gap, cause
    `effect-not-modelled`.
-3. Otherwise apply each matching effect in file order and return the adjusted value with the effects
-   listed.
+3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
+   return the adjusted value with the effects listed. A team effect matches every civilisation on
+   the owner's team, not the owner alone.
+
+A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
+as a gap; it has no match state to supply, and asks whether each field is modelled, not for its
+value.
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.

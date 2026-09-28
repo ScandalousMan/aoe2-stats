@@ -137,7 +137,8 @@ edited (FR-025); a correction is a new snapshot.
 | `field`        | Which knowledge field it modifies.                                                    |
 | `operation`    | Closed: `multiply`, `add`, `set`.                                                     |
 | `operand`      | The amount, per resource where the field is a cost.                                   |
-| *rounding*     | Every field this package models is an integer (a cost, a time, an age requirement), so an operation landing on a fraction must still answer one. `multiply` and `add` both **round half up** on the resulting amount — Malians' -15% wood takes a 150-wood Dock to 128, not 127. `set` is a direct replacement, not a fractional derivation, so there is nothing to round — but the result is still typed as an int, never the raw operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
+| `condition`    | Optional, closed: `age` (the operand is a table by age), `researched` (a technology that must have been researched), `team` (applies to every civilisation on the owner's team). Absent means unconditional. |
+| *rounding*     | A **cost** is an integer: `multiply` and `add` round half up — Malians' -15% wood takes a 150-wood Dock to 128, not 127. A **time** keeps its fraction, as the game's does: "works X% faster" divides it by 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s. `set` replaces the value with the operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
 | `validated_by` | The second reading that confirmed it (FR-030).                                        |
 
 **Source disagreement** (FR-028) — entity, field, build, each source's value, which one was stored,

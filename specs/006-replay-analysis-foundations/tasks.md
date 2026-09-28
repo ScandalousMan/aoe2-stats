@@ -1069,7 +1069,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       Reject a non-whole `set` operand and a negative `multiply` operand when `effects.toml` is
       parsed, guard `add` on both paths, and narrow the rounding row to numeric fields. No committed
       effect reaches any of these; **lands before T655 publishes anything**
-- [ ] T652s **A team bonus refuses only for its owner.** Malians' University row gaps
+- [x] T652s **SUPERSEDED by T652u**, whose team condition makes a team effect match every civilisation on the owner's team. **A team bonus refuses only for its owner.** Malians' University row gaps
       `production_time` for Malians alone; an ally's University technologies still answer the
       baseline, the substitution research.md D5 forbids ("keep their fields gapped"). A rules query
       does not know a player's allies. Decide where the gap is raised — the coverage pass knows
@@ -1083,6 +1083,35 @@ Three were arbitration and are decided, with the decision recorded in the task t
       both promoted snapshots' `rules.json` and digests — in place, which is still lawful because
       nothing has published a snapshot's identity yet (**FR-025** freezes it at T655) — and assert
       that every prerequisite resolves. **Lands before T655 publishes anything**
+
+- [ ] T652u **A conditional bonus is a rule, not a refusal** (fourth review M4, arbitrated
+      2026-09-28: "Villager time is equal to standard villager time * bonus multiplier"). Amended
+      [research.md](./research.md) **D5**, [data-model.md](./data-model.md) §6 (`condition`, and times
+      keep their fraction) and [contracts/knowledge-base.md](./contracts/knowledge-base.md) ("The
+      query surface", "Civilisation qualification") state the model; build it. (1) `effects.py`:
+      parse the optional closed `condition` — `age` with an operand table by age, `researched`
+      naming a technology, `team`; reject any other value. (2) `query.py`: `cost` and
+      `production_time` take `context=` (age, researched technologies, the team's civilisations);
+      apply only the effects whose condition holds; a team effect matches every civilisation on the
+      owner's team; reaching a conditional effect without the input that decides it **raises**.
+      Times keep their fraction and "works X% faster" divides by 1 + X; costs still round half up.
+      (3) Re-model the five refusals that touch a carried field: Persians' Town Center and Dock
+      (by age, 5/10/15/20%), Franks' Castles (-15/25% by age), Chivalry and Kamandaran (after the
+      technology), Malians' University (team, 80%). Refusals on fields the pack does not carry stay.
+      (4) `coverage.py` asks whether a field is modelled, not for its value, so a modelled
+      conditional effect is no gap. Re-derive both recordings' enumerated blockers in
+      `test_coverage.py` from what the pass then emits. (5) Tests, each shown failing first: Persians
+      Villager 23.8/22.7/21.7/20.8 s by age, Teutons 25 in every age as the control; Chivalry
+      before and after; a Malians ally's University research 80% faster, an opponent's not; a
+      conditional effect with no context raises and an unconditional one does not. Recompute both
+      digests; keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
+- [ ] T652v **The event stream does not say who is on whose team.** A team effect (T652u) needs the
+      player's team, and `match-started`'s participant entry carries a slot and a civilisation only.
+      The recording's header carries each player's team: add it to
+      [contracts/canonical-events.md](./contracts/canonical-events.md) and the participant entry,
+      emit it from the adapter, and regenerate the golden streams with
+      `scripts/ops/canonical_golden.py`. A free-for-all or unset team is its own value, never team 0
+      shared by strangers. **Lands before T655 publishes anything**
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
