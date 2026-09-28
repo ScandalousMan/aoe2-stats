@@ -115,6 +115,20 @@ describe('MatchRow', () => {
     expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
   })
 
+  // §5a (structural-tier.md §16.1's category, decided 2026-09-28): the fill alone measured zero
+  // surviving pixels (T675's package-wide sweep) — the outcome word now underlines on hover,
+  // through the card's own named group, never `hover:underline` on the `<a>` itself.
+  it('carries the named group on the card and the group-hover underline on the outcome word alone (FR-037, 2026-09-28)', () => {
+    render(<MatchRow match={match} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bgroup\/row-link\b/)
+    expect(link.className).not.toMatch(/\bhover:underline\b/)
+    const outcome = screen.getByText('Win')
+    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
+    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
+    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+  })
+
   it('shows "Win"/"Loss" as text, never colour alone', () => {
     const { rerender } = render(<MatchRow match={match} />)
     expect(screen.getByText('Win')).toBeInTheDocument()

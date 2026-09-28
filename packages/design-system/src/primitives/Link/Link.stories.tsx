@@ -108,29 +108,45 @@ export const Empty: Story = {
 // named story rather than only `Rest`'s invitation above. `tests/visual/stories.spec.ts`
 // drives the real `:hover` from Playwright once this story has settled (see that file's own
 // `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
-// pseudo-class ignores.
+// pseudo-class ignores. T675's package-wide sweep found this story's own surviving signal at or
+// under 1% of an unclipped frame in at least one unit — `visualCaptureClip` to the link is the
+// mechanical fix (README's Verification-coverage gap register, row 1), the same for
+// `FocusVisible`/`ActiveStandalone` below.
+const STANDALONE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'View profile' }], pad: '2' }
+
 export const Hover: Story = {
   args: { variant: 'standalone' },
-  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: STANDALONE_LINK_CLIP,
+  },
 }
 
 // §9 "focus-visible — `outline-ring`... around the whole link box, on top of whatever the hover
 // paint is. Never removed on pointer interaction."
 export const FocusVisible: Story = {
   args: { variant: 'standalone' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: STANDALONE_LINK_CLIP,
+  },
 }
 
 // §9 "active — `standalone`: the hover paint plus a `surface-sunken` fill behind the link's box."
 export const ActiveStandalone: Story = {
   args: { variant: 'standalone' },
-  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: STANDALONE_LINK_CLIP,
+  },
 }
 
 // §9 "active — ... `inline`: the hover paint, with **no** fill — painting a wash behind three
 // words inside a paragraph breaks the line — but the underline drops to `underline-offset-4`",
 // distinguishing this frame from `Hover` above without one (fourth-pass review remediation,
-// FR-037).
+// FR-037). Also at or under 1% unclipped (T675's package-wide sweep) — clipped to the inline link.
+const INLINE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'view its profile' }], pad: '2' }
+
 export const ActiveInline: Story = {
   render: (args) => (
     <p className="type-body max-w-measure text-md text-text-primary">
@@ -138,7 +154,10 @@ export const ActiveInline: Story = {
       <Link {...args}>view its profile</Link> and choose "Link this account" instead.
     </p>
   ),
-  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: INLINE_LINK_CLIP,
+  },
 }
 
 // §9 "disabled — a link is never disabled. A destination the reader may not reach renders as

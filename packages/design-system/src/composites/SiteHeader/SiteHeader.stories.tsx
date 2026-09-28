@@ -155,28 +155,47 @@ export const ThemeControlSetToDark: Story = {
   args: { items, currentPath: '/dashboard' },
 }
 
+// §5a (decided 2026-09-28): every nav item's `<a>` gains `Button` `ghost`'s own hover and press
+// underline in full, clipped to the primary navigation so the hovered item and the current item's
+// own rule (§4) judge in one frame (`SiteHeader.stories.tsx`'s own §10 acceptance criterion).
+const NAV_CLIP = { parts: [{ selector: 'nav[aria-label="Primary"]' }], pad: '2' } as const
+
 // site-header.md §5 "hover — the item's box fills `surface-sunken` and its label moves to
-// `text-primary`... No underline on hover." Forced from Playwright in
+// `text-primary`, and the label underlines" (§5a, decided 2026-09-28 — this comment used to quote
+// the retired "No underline on hover" answer). Forced from Playwright in
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
-// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores. The fill and ink steps
+// alone measured zero surviving pixels (T675's package-wide sweep); the underline is well under 1%
+// of the whole-header frame, so this story clips to the primary nav.
 export const Hover: Story = {
   args: { items, currentPath: '/dashboard' },
-  parameters: { visualForceState: { state: 'hover', role: 'link', name: 'Matches' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', name: 'Matches' },
+    visualCaptureClip: NAV_CLIP,
+  },
 }
 
 // §5 "focus-visible — named explicitly, because this is the state a later reviewer will assume
 // was covered... the one documented ring... drawn outside the item's box, on top of whatever the
-// hover state is."
+// hover state is." T675's package-wide sweep found this story's own surviving signal at or under 1%
+// of an unclipped frame in at least one unit — the same `NAV_CLIP` `Hover` above takes.
 export const FocusVisible: Story = {
   args: { items, currentPath: '/dashboard' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link', name: 'Matches' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', name: 'Matches' },
+    visualCaptureClip: NAV_CLIP,
+  },
 }
 
 // §5 "active — fill `surface-sunken` with a 1px `border-strong` boundary drawn inside the box...
-// label `text-primary`."
+// label `text-primary`." The harness presses by a real hover then a mouse-down, so §5a's underline
+// is in this frame too (at `underline-offset-4`) — the same `NAV_CLIP` as `Hover`/`FocusVisible`.
 export const Active: Story = {
   args: { items, currentPath: '/dashboard' },
-  parameters: { visualForceState: { state: 'active', role: 'link', name: 'Matches' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', name: 'Matches' },
+    visualCaptureClip: NAV_CLIP,
+  },
 }
 
 // §5 "disabled — never, for any part"; "loading — none, and specifically no skeleton row"; "error

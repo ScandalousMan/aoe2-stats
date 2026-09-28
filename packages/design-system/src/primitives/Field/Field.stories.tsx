@@ -27,11 +27,15 @@ type Story = StoryObj<typeof Field>
 // has in scope, not a CSS attribute selector, so a story never depends on anything beyond React
 // props to render correctly.
 //
-// `hover:bg-surface-sunken` (T565 remediation): §11's own "hover" bullet names a sunken fill, which
-// this demo never actually carried — found only once `tests/visual/stories.spec.ts` started driving
-// a real `:hover` instead of a `userEvent.hover()` no synthetic dispatch could ever paint. Its own
-// `FocusVisible` story stays undistinguished from `Default` for an unrelated, pre-existing reason
-// this fix does not touch: `focus-visible:outline-ring`/`outline-offset-ring` set only the
+// §11.2 (structural-tier.md, decided 2026-09-28): the boundary thickens inward on hover, from
+// `border.hairline` to `border.ring`, in `border-strong` (`danger` while invalid) — a `ring-1
+// ring-inset` painted inside the permanent 1px border, scoped to an enabled control
+// (`enabled:hover:`) so the rate-limit-disabled shape never thickens. The `hover:bg-surface-sunken`
+// fill this demo used to carry (T565 remediation) is withdrawn: it is also the disabled fill, and
+// the sweep measured it at zero surviving pixels regardless (README's Verification-coverage gap
+// register, row 1) — the ring is the real signal now, not a second one riding beside the old fill.
+// Its own `FocusVisible` story stays undistinguished from `Default` for an unrelated, pre-existing
+// reason this fix does not touch: `focus-visible:outline-ring`/`outline-offset-ring` set only the
 // outline's width and offset, never `outline-style`, so the ring these classes name never paints
 // regardless of how genuinely `:focus-visible` matches — that is a token/utility defect
 // (`tokens/generated/preset.css`'s `@utility outline-ring`) shared with `Link` and `Table`, out of
@@ -48,10 +52,11 @@ function DemoInput({
       className={cx(
         'w-full rounded-control border bg-surface px-3 type-body text-sm text-text-primary ' +
           'transition-colors duration-120 ease-standard motion-reduce:duration-0 outline-none ' +
-          'hover:bg-surface-sunken ' +
           'focus-visible:outline-ring focus-visible:outline-offset-ring focus-visible:outline-focus-ring ' +
           'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border ' +
-          (invalid ? 'border-danger' : 'border-border-strong'),
+          (invalid
+            ? 'border-danger enabled:hover:ring-1 enabled:hover:ring-inset enabled:hover:ring-danger'
+            : 'border-border-strong enabled:hover:ring-1 enabled:hover:ring-inset enabled:hover:ring-border-strong'),
         className,
       )}
     />
@@ -196,11 +201,15 @@ export const ErrorAppearsAfterMount: Story = {
   },
 }
 
-// structural-tier.md §11 "hover — the control's boundary deepens to `border-strong` on a
-// `surface-sunken` fill; the label and hint do not change." `tests/visual/stories.spec.ts` drives
-// the real `:hover` from Playwright once this story has settled (see that file's own
-// `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
-// pseudo-class ignores.
+// structural-tier.md §11 "hover — the boundary thickens from `border.hairline` to `border.ring` in
+// its own ink, drawn inward so nothing moves; the fill does not change" (§16.2, decided
+// 2026-09-28 — corrected from the fill-deepening answer this comment used to quote, which measured
+// zero surviving pixels, T675's package-wide sweep). `tests/visual/stories.spec.ts` drives the real
+// `:hover` from Playwright once this story has settled (see that file's own `VisualForceState`
+// comment) — a `play()` here could only dispatch a synthetic event, which the pseudo-class ignores.
+// Clipped to the control: a hairline ring around one input is far under 1% of the story's frame.
+const CONTROL_CLIP = { parts: [{ role: 'textbox' as const }], pad: '2' } as const
+
 export const Hover: Story = {
   args: { label: 'Display name' },
   render: (args) => (
@@ -210,11 +219,16 @@ export const Hover: Story = {
       </Field>
     </div>
   ),
-  parameters: { visualForceState: { state: 'hover', role: 'textbox' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'textbox' },
+    visualCaptureClip: CONTROL_CLIP,
+  },
 }
 
 // §11 "focus-visible — `outline-ring` at `outline-offset-ring` in `focus-ring` around the control,
-// never around the whole field."
+// never around the whole field." T675's package-wide sweep found this story's own surviving signal
+// at or under 1% of an unclipped frame in at least one unit — the same `CONTROL_CLIP` `Hover` above
+// takes.
 export const FocusVisible: Story = {
   args: { label: 'Display name' },
   render: (args) => (
@@ -224,7 +238,10 @@ export const FocusVisible: Story = {
       </Field>
     </div>
   ),
-  parameters: { visualForceState: { state: 'focus-visible', role: 'textbox' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'textbox' },
+    visualCaptureClip: CONTROL_CLIP,
+  },
 }
 
 // §11 "active — the control's own text-entry state; no separate paint. A press on a text input is

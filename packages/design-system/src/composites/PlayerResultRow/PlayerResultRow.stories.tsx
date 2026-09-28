@@ -37,9 +37,17 @@ export const SourceBacked: Story = {
 // ring on the row's own link wrapper." Forced from Playwright in `tests/visual/stories.spec.ts`
 // (see that file's own `VisualForceState` comment) — a `play()` could only dispatch a synthetic
 // event, which the CSS pseudo-class ignores.
+// "Hover signals" (player-search.md, decided 2026-09-28): the fill alone measured zero surviving
+// pixels (T675's package-wide sweep); the alias now underlines too, a mark well under 1% of the
+// row's frame, so this story clips to the row link.
+const ROW_LINK_CLIP = { parts: [{ selector: 'a[href="/players/12345"]' }], pad: '2' } as const
+
 export const Hover: Story = {
   args: { result: base },
-  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/players/12345"]' } },
+  parameters: {
+    visualForceState: { state: 'hover', selector: 'a[href="/players/12345"]' },
+    visualCaptureClip: ROW_LINK_CLIP,
+  },
 }
 
 export const FocusVisible: Story = {

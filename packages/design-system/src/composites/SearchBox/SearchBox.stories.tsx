@@ -169,10 +169,17 @@ export const RequestFailed: Story = {
 // player-search.md §5 "hover / focus-visible / active — `Input`: standard text-input interaction,
 // focus ring per DS-4." Forced from Playwright in `tests/visual/stories.spec.ts` (see that file's
 // own `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which the
-// CSS pseudo-class ignores.
+// CSS pseudo-class ignores. "Hover signals" (decided 2026-09-28): the hairline colour swap alone
+// measured zero surviving pixels (T675's package-wide sweep); the boundary now also thickens
+// inward, a mark well under 1% of the story's frame, so this story clips to the input.
+const SEARCH_INPUT_CLIP = { parts: [{ role: 'searchbox' as const }], pad: '2' } as const
+
 export const Hover: Story = {
   render: () => <DemoSearchBox initialValue="" state={{ status: 'idle' }} />,
-  parameters: { visualForceState: { state: 'hover', role: 'searchbox' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'searchbox' },
+    visualCaptureClip: SEARCH_INPUT_CLIP,
+  },
 }
 
 export const FocusVisible: Story = {

@@ -110,10 +110,8 @@ export const DisabledNotApplicable: Story = {
 // README's gap register row 8 (H5): §5's own "focus-visible" sentence above names three
 // elements — "the input, the submit button and the privacy-notice link" — but `FocusVisible`
 // only ever forced the link (`LINK_CLIP`'s own `role: 'link'`). The input (`index.tsx:130`)
-// paints the same `focusRing` trio and had no frame of its own before this story. It carries no
-// `hover:` or `active:` class — `Hover` and `Active` above already depict this form's real
-// hover/press surface, on the privacy-notice link, and this input has nothing of its own for
-// either. `role: 'textbox'` is unambiguous: the form renders exactly one.
+// paints the same `focusRing` trio and had no frame of its own before this story. `role: 'textbox'`
+// is unambiguous: the form renders exactly one.
 const INPUT_CLIP = { parts: [{ role: 'textbox' as const }], pad: '2' }
 
 export const InputFocusVisible: Story = {
@@ -121,6 +119,20 @@ export const InputFocusVisible: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'textbox' },
+    visualCaptureClip: INPUT_CLIP,
+  },
+}
+
+// §16.2 (structural-tier.md, decided 2026-09-28): the profile-id input carried no hover class of
+// any kind — found beside T675's nine (README's Verification-coverage gap register, row 1). It now
+// takes the same inward-thickening ring every text input in this package owes, so it needs a frame:
+// this is the one story this task's own item 3 adds. Clipped to the input for the same reason
+// `InputFocusVisible` above is.
+export const InputHover: Story = {
+  name: 'hover on the profile-id field',
+  args: { ...noopHandlers, initialState: 'idle' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'textbox' },
     visualCaptureClip: INPUT_CLIP,
   },
 }

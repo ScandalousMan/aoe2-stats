@@ -169,7 +169,13 @@ export function Menu({
           'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
           isEmpty
             ? 'cursor-default text-text-disabled'
-            : 'text-text-primary hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
+            : // The trigger follows `Button` `secondary`'s hover and press in full, label underline
+              // included — decided 2026-09-28 (`shared-primitives.md` §Menu, "hover"). This is a
+              // local `<button>`, not a `Button`, so it inherits nothing and carries the recipe
+              // directly on its own non-empty class branch: `hover:underline`/`hover:decoration-2`/
+              // `hover:underline-offset-2` for hover, `active:underline-offset-4` for press, over the
+              // underline's own `currentColor`.
+              'text-text-primary hover:bg-surface-sunken hover:underline hover:decoration-2 hover:underline-offset-2 active:bg-background active:ring-2 active:ring-border-strong active:underline-offset-4',
         )}
       >
         {triggerLabel}
@@ -262,7 +268,10 @@ export function Menu({
                     // too weak a mark for the duplicate check to tell apart from hover
                     // (story-baseline-duplicates-debt.json).
                     'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                    'hover:bg-surface-sunken active:border-l-border-strong active:bg-background',
+                    // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the
+                    // footer item's whole text is its label, so the underline goes directly on its
+                    // own button rather than through a named group.
+                    'hover:bg-surface-sunken hover:underline hover:decoration-2 hover:underline-offset-2 active:border-l-border-strong active:bg-background',
                     'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring',
                   )}
                 >
@@ -361,7 +370,7 @@ function MenuItemRow({
         onKeyDown={onKeyDown}
         onClick={onActivate}
         className={cx(
-          'flex min-h-12 w-full items-center justify-between gap-3 border-l-2 border-l-transparent px-4 text-left font-sans text-sm',
+          'group/menu-item flex min-h-12 w-full items-center justify-between gap-3 border-l-2 border-l-transparent px-4 text-left font-sans text-sm',
           // T560 (FR-038): shared-primitives.md#Menu documents "active — item fill
           // `surface-sunken` with boundary `border-strong` on the inline-start edge", never
           // built. `border-l-transparent` at rest reserves the width so the border does not shift
@@ -382,7 +391,20 @@ function MenuItemRow({
         <span className="flex items-center gap-3">
           {variant === 'selection' && <SelectionGlyph checked={Boolean(item.checked)} />}
           <span className="flex flex-col">
-            <span>{item.label}</span>
+            {/* "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the label
+                alone underlines on hover, through the named group above — a decoration declared on
+                the button itself would propagate to the secondary line, the badge and the spinner,
+                with no way for a descendant to switch it off. Enabled items only, by this branch:
+                the same condition that already gives the button its own `hover:bg-surface-sunken`. */}
+            <span
+              className={
+                item.disabled || item.loading
+                  ? undefined
+                  : 'group-hover/menu-item:underline group-hover/menu-item:decoration-2 group-hover/menu-item:underline-offset-2'
+              }
+            >
+              {item.label}
+            </span>
             {(item.secondaryLine || (item.disabled && item.disabledReason)) && (
               <span className="text-xs text-text-secondary">
                 {item.disabled ? item.disabledReason : item.secondaryLine}

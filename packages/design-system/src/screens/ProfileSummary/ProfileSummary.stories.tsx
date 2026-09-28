@@ -296,7 +296,13 @@ export const BoardLongAliasFlagHoverRevealed: Story = {
   name: 'Flag hover, long alias — the fix holds when the alias is 19 characters, not 7 (004 §13.8, T457)',
   tags: ['visual-full-page'],
   play: hoverFlagOpen,
-  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button', name: 'Country:' },
+    // T675's package-wide sweep found this story's own surviving signal at or under 1% of an
+    // unclipped frame in at least one unit — the same `BOARD_FLAG_REVEALED_CLIP` `BoardFlagHoverRevealed`
+    // above already uses, for the identical reason.
+    visualCaptureClip: BOARD_FLAG_REVEALED_CLIP,
+  },
   args: {
     subject: 'self',
     authenticated: true,
@@ -519,6 +525,12 @@ async function openManage({ canvasElement }: { canvasElement: HTMLElement }) {
   await canvas.findByRole('menu')
 }
 
+// T675's package-wide sweep found each of the four open-menu stories below at or under 1% of an
+// unclipped whole-board frame in at least one unit — `visualCaptureClip` to the open `[role="menu"]`
+// surface is the mechanical fix (README's Verification-coverage gap register, row 1), the same
+// `[role="menu"]` idiom `Menu.stories.tsx`'s own `MENU_CLIP` uses.
+const OPEN_MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
+
 export const SwitcherFocusVisibleAndOpen: Story = {
   tags: ['visual-full-page'],
   play: openSwitcher,
@@ -531,6 +543,7 @@ export const SwitcherFocusVisibleAndOpen: Story = {
   // `focus-visible` stories already are.
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' },
+    visualCaptureClip: OPEN_MENU_CLIP,
   },
   args: {
     subject: 'self',
@@ -554,6 +567,7 @@ export const SwitcherFocusVisibleAndOpen: Story = {
 export const Selection: Story = {
   tags: ['visual-full-page'],
   play: openSwitcher,
+  parameters: { visualCaptureClip: OPEN_MENU_CLIP },
   args: {
     subject: 'self',
     authenticated: true,
@@ -598,6 +612,7 @@ export const RatingEntryHoverNotApplicable: Story = {
 export const PrimaryChangeInFlight: Story = {
   tags: ['visual-full-page'],
   play: openManage,
+  parameters: { visualCaptureClip: OPEN_MENU_CLIP },
   args: {
     subject: 'self',
     authenticated: true,
@@ -617,6 +632,7 @@ export const UnlinkInFlight: Story = {
   // captured a switcher frame with nothing loading in it. `openManage` opens the menu the item
   // actually lives in.
   play: openManage,
+  parameters: { visualCaptureClip: OPEN_MENU_CLIP },
   args: {
     subject: 'self',
     authenticated: true,

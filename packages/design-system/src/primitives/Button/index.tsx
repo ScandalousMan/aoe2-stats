@@ -108,7 +108,7 @@ const sizeClasses: Record<ButtonSize, string> = {
 // `disabled` always wins the cascade without needing an `!` or manual reordering.
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4 disabled:no-underline',
+    'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent',
   secondary:
     'bg-surface text-text-primary border border-border-strong hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
   ghost:
@@ -143,9 +143,15 @@ const focusRing =
 const primaryFocusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring-inset focus-visible:outline-accent-contrast'
 
+// Every variant's label underlines on hover and shifts on press — the non-colour half of FR-037
+// (T588 for `primary`; extended to `secondary`/`ghost`/`destructive` on 2026-09-28,
+// `shared-primitives.md` §Button, "hover is not colour alone either"). Moved from `primary`'s own
+// variant string into this shared base so all four variants compose it identically; the underline
+// follows `currentColor`, so it needs no decoration-colour utility of its own.
 const base = cx(
   'inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold',
   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+  'hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4 disabled:no-underline',
   'disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border disabled:cursor-default',
 )
 

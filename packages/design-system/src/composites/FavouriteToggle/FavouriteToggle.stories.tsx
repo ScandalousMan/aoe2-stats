@@ -103,20 +103,35 @@ export const RequestFailedError: Story = {
 // favourite-toggle.md §5 "hover / focus-visible / active — owned entirely by `Button/ghost`... In
 // the bounded/disabled case there is no hover." Forced here on the enabled control, from
 // Playwright in `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) —
-// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// a `play()` could only dispatch a synthetic event, which the CSS pseudo-class ignores. Owned by
+// `Button` `ghost`, so `shared-primitives.md` §Button's own 2026-09-28 label-underline fix reaches
+// this control's hover/press automatically; T675's package-wide sweep found the resulting signal at
+// or under 1% of an unclipped frame in at least one unit, so all three states below clip to the
+// control.
+const TOGGLE_CLIP = { parts: [{ role: 'button' as const }], pad: '2' }
+
 export const Hover: Story = {
   args: { favourited: false, authenticated: true },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: TOGGLE_CLIP,
+  },
 }
 
 export const FocusVisible: Story = {
   args: { favourited: false, authenticated: true },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: TOGGLE_CLIP,
+  },
 }
 
 export const Active: Story = {
   args: { favourited: false, authenticated: true },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: TOGGLE_CLIP,
+  },
 }
 
 // §5 "empty — not applicable... a toggle with no label is invalid, the same as `Button`. Every

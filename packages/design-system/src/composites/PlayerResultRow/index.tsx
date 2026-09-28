@@ -55,7 +55,7 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
       href={result.href}
       onClick={createRowLinkClickHandler(result.href, onNavigate)}
       className={cx(
-        'flex flex-col gap-1 rounded-panel border border-border bg-surface p-4',
+        'group/row-link flex flex-col gap-1 rounded-panel border border-border bg-surface p-4',
         // Remediation (fifth-pass review M3): `md:border-x-0` used to zero the inline-start
         // reservation below outright from `md` up, so at 768/1280 the press border had nothing
         // reserved to paint over — it appeared *from zero width*, growing the row by 2px and
@@ -96,7 +96,17 @@ export function PlayerResultRow({ result, onNavigate, className }: PlayerResultR
        * below is never part of this row and stays on its own line at every viewport (§4a, §8). */}
       <span className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4">
         <span className="flex flex-wrap items-baseline gap-2">
-          <span className="font-sans text-sm font-semibold text-text-primary">{result.alias}</span>
+          {/* "Hover signals" (player-search.md, decided 2026-09-28): the alias alone underlines on
+              hover, through the row's own named group — never `hover:underline` on the `<a>`, which
+              would propagate to the clan, country, standing and unverified-id text. */}
+          <span
+            className={cx(
+              'font-sans text-sm font-semibold text-text-primary',
+              'group-hover/row-link:underline group-hover/row-link:decoration-2 group-hover/row-link:underline-offset-2',
+            )}
+          >
+            {result.alias}
+          </span>
           {result.clan && (
             <span className="font-sans text-xs text-text-secondary">[{result.clan}]</span>
           )}

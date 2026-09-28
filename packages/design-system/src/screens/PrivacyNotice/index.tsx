@@ -477,7 +477,13 @@ export function PrivacyNotice({
                   href={`#${section.id}`}
                   onClick={scrollAndFocus(section.id)}
                   className={cx(
-                    'flex min-h-11 items-center py-3 font-sans text-md text-link underline',
+                    // Decided 2026-09-28 (`structural-tier.md` §9; `privacy-notice.md` §5,
+                    // "`Contents` entries"): the ink-only hover measured zero surviving pixels
+                    // (T675's package-wide sweep) — an entry is permanently underlined, so "gains an
+                    // underline" was never available; the one geometric step left is `Link`'s own
+                    // thickness switch, `decoration-1` pinned at rest so the step is a real one
+                    // pixel rather than the font's own `auto` metric.
+                    'flex min-h-11 items-center py-3 font-sans text-md text-link underline decoration-1 hover:decoration-2 active:decoration-2',
                     'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                     // Fourth-pass review remediation (FR-037): hover and active shared
                     // `link-hover` with no other signal, so a press was not distinguishable from a
@@ -749,7 +755,13 @@ export function PrivacyNotice({
                 // never reads `--tw-outline-style` and, like `outline`, never participates in
                 // layout — flush against the permanent border, non-colour (a second frame
                 // appearing, not a hue shift) and reflow-free.
-                'hover:bg-surface-sunken active:bg-background active:ring-2 active:ring-border-strong',
+                //
+                // Decided 2026-09-28 (`shared-primitives.md` §Button, "hover is not colour alone
+                // either"; `privacy-notice.md` §5, "found beside them"): this anchor is a local copy
+                // of `Button` `secondary`, so it takes that variant's own label-underline fix too —
+                // `hover:underline`/`hover:decoration-2`/`hover:underline-offset-2` for hover,
+                // `active:underline-offset-4` for press, in `currentColor`.
+                'hover:bg-surface-sunken hover:underline hover:decoration-2 hover:underline-offset-2 active:bg-background active:ring-2 active:ring-border-strong active:underline-offset-4',
                 focusRing,
               )}
             >

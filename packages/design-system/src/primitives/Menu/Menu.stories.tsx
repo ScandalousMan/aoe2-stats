@@ -141,6 +141,12 @@ export const Empty: Story = {
   },
 }
 
+// T591: clipped to the open `[role="menu"]` surface — a small mark on a whole-page frame is
+// invisible to the duplicate check at that scale (story-baseline-duplicates-debt.json). Declared
+// here, ahead of every story that clips to it (including `Hover` immediately below, since a
+// module-level `const` is not hoisted the way a function declaration is).
+const MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
+
 // §Menu "hover — item fill `surface-sunken`." `play()` here only opens the menu (a real state
 // change, since the component's own `onClick` handler responds to a synthetic click just as it
 // would a real one) — `tests/visual/stories.spec.ts` drives the real `:hover` on the item itself
@@ -152,6 +158,11 @@ export const Hover: Story = {
   play: openMenu,
   parameters: {
     visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' },
+    // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the fill plus a 2px
+    // underline under one label is well under 1% of this story's whole-page frame — T675's
+    // Verification-coverage gap register lists this as owed a clip to the open surface, the same
+    // `MENU_CLIP` idiom `FocusVisible`/`KeyboardNavigation` already use.
+    visualCaptureClip: MENU_CLIP,
   },
   args: {
     variant: 'selection',
@@ -179,11 +190,9 @@ export const Hover: Story = {
 // `:focus-visible` from Playwright afterward (see that file's own `VisualForceState` comment) —
 // a synthetic keyboard event here could open the menu (a real state change other listeners
 // receive) but not itself the pseudo-class.
-// T591: clipped to the open `[role="menu"]` surface — the focus ring on one row is a small mark on
-// a whole-page frame, invisible to the duplicate check at that scale
-// (story-baseline-duplicates-debt.json, closed by this clip).
-const MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
-
+// T591: clipped to the open `[role="menu"]` surface (`MENU_CLIP`, declared above `Hover`) — the
+// focus ring on one row is a small mark on a whole-page frame, invisible to the duplicate check at
+// that scale (story-baseline-duplicates-debt.json, closed by this clip).
 export const FocusVisible: Story = {
   play: openMenu,
   parameters: {
@@ -271,10 +280,17 @@ export const KeyboardNavigation: Story = {
 // even closes. The explicit `.focus()` this parameter drives at capture time lands on the element
 // the play function's own final assertion (`toHaveFocus()`) already names — same element, same
 // frame, now provable rather than merely asserted.
+// T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
+// frame in at least one unit — `visualCaptureClip` to the trigger is the mechanical fix (README's
+// Verification-coverage gap register, row 1); `role: 'button'` needs no `name`/`nth` for the same
+// reason the comment above gives.
+const ESCAPE_TRIGGER_CLIP = { parts: [{ role: 'button' as const }], pad: '2' }
+
 export const EscapeReturnsFocusToTrigger: Story = {
   name: 'Escape closes the surface and returns focus to the trigger',
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: ESCAPE_TRIGGER_CLIP,
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
@@ -366,6 +382,9 @@ export const Active: Story = {
   play: openMenu,
   parameters: {
     visualForceState: { state: 'active', role: 'menuitemradio', name: 'aoe2alt' },
+    // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the press frame keeps
+    // the hover underline, so it takes the same clip `Hover` above does.
+    visualCaptureClip: MENU_CLIP,
   },
   args: {
     variant: 'selection',
@@ -384,10 +403,22 @@ export const Active: Story = {
 // it. `Hover`/`Active` above force a state on a `menuitemradio` row, never on the trigger; no other
 // story on this page does either. `role: 'button'` needs no `name`/`nth`: the trigger is the only
 // `button`-role element this component renders (`EscapeReturnsFocusToTrigger`'s own comment makes
-// the same point). No clip: like `ClosedTrigger`/`EscapeReturnsFocusToTrigger`, nothing here
-// escapes the trigger's own layout box.
+// the same point).
+//
+// This story clips to the trigger itself, the same `PRIMARY_ACTION_CLIP`/`GHOST_LG_CLIP` idiom
+// `Dialog.stories.tsx`/`Button.stories.tsx` use. It used not to: nothing here escapes the trigger's
+// own layout box, and the trigger's own hover was, before the label underline landed
+// (`shared-primitives.md` §Menu, decided 2026-09-28), zero surviving pixels in every unit, where no
+// clip could help. Now that the underline is a real shape signal, both this story and
+// `TriggerActive` below take the clip — declared here, ahead of both, since a module-level `const`
+// is not hoisted.
+const TRIGGER_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
+
 export const TriggerHover: Story = {
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: TRIGGER_CLIP,
+  },
   args: {
     variant: 'actions',
     triggerLabel: 'Manage',
@@ -399,9 +430,14 @@ export const TriggerHover: Story = {
 }
 
 // The trigger's own press (T591): `active:bg-background active:ring-2 active:ring-border-strong`,
-// `Button` `secondary`'s own recipe.
+// `Button` `secondary`'s own recipe, plus the hover underline at `active:underline-offset-4` since
+// 2026-09-28 (`shared-primitives.md` §Menu) — at or under 1% unclipped (T675's register), the same
+// `TRIGGER_CLIP` as `TriggerHover` above.
 export const TriggerActive: Story = {
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: TRIGGER_CLIP,
+  },
   args: {
     variant: 'actions',
     triggerLabel: 'Manage',
@@ -418,15 +454,9 @@ export const TriggerActive: Story = {
 // `role: 'button'` too, but always under `variant: 'selection'` args, so it credits `selection`'s
 // own row, never `actions`'s. Forced here the same way `TriggerHover`/`TriggerActive` above already
 // are: no `play()`, since a plain `.focus()` on a fresh page matches `:focus-visible` without one
-// (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment).
-//
-// This story clips to the trigger itself, the same `PRIMARY_ACTION_CLIP`/`GHOST_LG_CLIP` idiom
-// `Dialog.stories.tsx`/`Button.stories.tsx` use, and is defended on that clipped frame (Playwright's
-// own pixelmatch, threshold 0.2, over 1% on every {theme × width} unit). `TriggerHover`'s own
-// signal is zero surviving pixels in every unit, no clip helps; `TriggerActive`'s is at or under
-// 1%, a mechanical clip away — T675's register (README's Verification-coverage gap register).
-const TRIGGER_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
-
+// (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment). Clips to the trigger itself
+// with the same `TRIGGER_CLIP` declared above, and is defended on that clipped frame (Playwright's
+// own pixelmatch, threshold 0.2, over 1% on every {theme × width} unit).
 export const TriggerFocusVisible: Story = {
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'button' },

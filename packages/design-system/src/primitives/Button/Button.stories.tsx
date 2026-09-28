@@ -67,6 +67,29 @@ export const AsLink: Story = {
   args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
 }
 
+// T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
+// frame in at least one unit — `visualCaptureClip` to the button itself is the mechanical fix the
+// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, row
+// 1), the same idiom `GhostFocusVisibleLg`/`GhostActiveLg` below already use.
+const PRIMARY_LG_CLIP = {
+  parts: [{ role: 'button' as const, name: 'Continue with Steam' }],
+  pad: '2',
+}
+const SECONDARY_CLIP = { parts: [{ role: 'button' as const, name: 'Cancel' }], pad: '2' }
+const GHOST_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
+const DESTRUCTIVE_CLIP = {
+  parts: [{ role: 'button' as const, name: 'Unlink this profile' }],
+  pad: '2',
+}
+const PRIMARY_MD_CLIP = {
+  parts: [{ role: 'button' as const, name: 'Continue with Steam' }],
+  pad: '2',
+}
+const AS_LINK_CLIP = {
+  parts: [{ role: 'link' as const, name: 'Read the privacy notice' }],
+  pad: '2',
+}
+
 // shared-primitives.md §Button "hover": fill deepens to `accent-hover`, colour only — a still
 // capture of the real `:hover` pseudo-class. `tests/visual/stories.spec.ts` drives the real state
 // from Playwright, in a real browser, once this story has settled — a `play()` here could only
@@ -74,7 +97,10 @@ export const AsLink: Story = {
 // pseudo-classes ignores (see that file's own `VisualForceState` comment for the measurement).
 export const Hover: Story = {
   args: { variant: 'primary', size: 'lg' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: PRIMARY_LG_CLIP,
+  },
 }
 
 // README's gap register row 8 (H5), F13 (root cause of F1, F2, F4, F6, F7): before this trio,
@@ -90,24 +116,36 @@ export const Hover: Story = {
 // already do — not because the cell was open.
 export const SecondaryHover: Story = {
   args: { variant: 'secondary', children: 'Cancel' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: SECONDARY_CLIP,
+  },
 }
 
 export const GhostHover: Story = {
   args: { variant: 'ghost', children: 'Manage' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: GHOST_CLIP,
+  },
 }
 
 export const DestructiveHover: Story = {
   args: { variant: 'destructive', children: 'Unlink this profile' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: DESTRUCTIVE_CLIP,
+  },
 }
 
 // §Button "focus-visible": the standard ring, reached by the keyboard only — never by a pointer
 // click (that is what makes it `:focus-visible` rather than `:focus`).
 export const FocusVisible: Story = {
   args: { variant: 'primary', size: 'lg' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: PRIMARY_LG_CLIP,
+  },
 }
 
 // Widened 2026-09-12 (README's gap register row 5/H2, `visual-reviewer` pass): before this story,
@@ -118,24 +156,36 @@ export const FocusVisible: Story = {
 // paints regardless of the fill or border it sits on.
 export const SecondaryFocusVisible: Story = {
   args: { variant: 'secondary', children: 'Cancel' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: SECONDARY_CLIP,
+  },
 }
 
 export const GhostFocusVisible: Story = {
   args: { variant: 'ghost', children: 'Manage' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: GHOST_CLIP,
+  },
 }
 
 export const DestructiveFocusVisible: Story = {
   args: { variant: 'destructive', children: 'Unlink this profile' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: DESTRUCTIVE_CLIP,
+  },
 }
 
 // §Button "active": `accent-active`, the third of three deliberately distinct fills (rest, hover,
 // press) — held down rather than released so the capture shows the pressed frame.
 export const Active: Story = {
   args: { variant: 'primary', size: 'lg' },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: PRIMARY_LG_CLIP,
+  },
 }
 
 // Sixth-pass review remediation (B2): before this story, no baseline anywhere captured a pressed
@@ -149,7 +199,10 @@ export const Active: Story = {
 // (`active:ring-2 active:ring-border-strong` for `secondary`) flush against the permanent border.
 export const SecondaryActive: Story = {
   args: { variant: 'secondary', children: 'Cancel' },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: SECONDARY_CLIP,
+  },
 }
 
 // Sixth-pass review remediation (B2): `destructive`'s own pressed frame — `active:ring-2
@@ -157,7 +210,10 @@ export const SecondaryActive: Story = {
 // token this variant already carries at every state (`border-danger`).
 export const DestructiveActive: Story = {
   args: { variant: 'destructive', children: 'Unlink this profile' },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: DESTRUCTIVE_CLIP,
+  },
 }
 
 // Sixth-pass review remediation (B2): `ghost`'s own pressed frame. Unlike `secondary`/
@@ -169,7 +225,10 @@ export const DestructiveActive: Story = {
 // three states had one of its own before this remediation either.
 export const GhostActive: Story = {
   args: { variant: 'ghost', children: 'Manage' },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: GHOST_CLIP,
+  },
 }
 
 // §Button "error": "the button has no error state of its own. The failure renders in a `Callout`
@@ -226,17 +285,26 @@ export const RealisticPageActions: Story = {
 // README.md's row 8 (H5) table.
 export const AsLinkHover: Story = {
   args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
-  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: AS_LINK_CLIP,
+  },
 }
 
 export const AsLinkFocusVisible: Story = {
   args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link' },
+    visualCaptureClip: AS_LINK_CLIP,
+  },
 }
 
 export const AsLinkActive: Story = {
   args: { variant: 'secondary', href: '#', children: 'Read the privacy notice' },
-  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link' },
+    visualCaptureClip: AS_LINK_CLIP,
+  },
 }
 
 // README's gap register row 8 (H5), Cause A, closed by T600: `resolveClassParts`'s own class-half
@@ -252,12 +320,18 @@ export const AsLinkActive: Story = {
 // `GhostHover`/`DestructiveHover`'s own convention for their variant's non-`lg`-labelled stories.
 export const PrimaryHoverMd: Story = {
   args: { variant: 'primary' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: PRIMARY_MD_CLIP,
+  },
 }
 
 export const PrimaryActiveMd: Story = {
   args: { variant: 'primary' },
-  parameters: { visualForceState: { state: 'active', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button' },
+    visualCaptureClip: PRIMARY_MD_CLIP,
+  },
 }
 
 // README's gap register row 8 (H5), Cause A, closed by T600: `ghost|lg` had no hover, focus-visible
@@ -273,14 +347,19 @@ export const PrimaryActiveMd: Story = {
 // boundary-only signal (`focus-visible`'s outline; `active`'s border swap from `transparent`) is a
 // small mark against a mostly unchanged frame, the same reason `Dialog`'s `Hover`/`Active` clip.
 // `GhostFocusVisibleLg` and `GhostActiveLg` below clip to the button itself, the same
-// `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses. `GhostHoverLg` does not — its `md` twin
-// (`GhostHover`) sits in T675's zero-surviving-pixels class, where no clip helps (README's
-// Verification-coverage gap register).
+// `PRIMARY_ACTION_CLIP` idiom `Dialog.stories.tsx` uses. `GhostHoverLg` used not to: its `md` twin
+// (`GhostHover`) sat in T675's zero-surviving-pixels class before the label underline landed
+// (`shared-primitives.md` §Button, decided 2026-09-28), where no clip could help — now that the
+// underline is a real shape signal, `GhostHoverLg` takes the same clip as its two siblings, per that
+// decision's own baseline list.
 const GHOST_LG_CLIP = { parts: [{ role: 'button' as const, name: 'Manage' }], pad: '2' }
 
 export const GhostHoverLg: Story = {
   args: { variant: 'ghost', size: 'lg', children: 'Manage' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button' },
+    visualCaptureClip: GHOST_LG_CLIP,
+  },
 }
 
 export const GhostFocusVisibleLg: Story = {

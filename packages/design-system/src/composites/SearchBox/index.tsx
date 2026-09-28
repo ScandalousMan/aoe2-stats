@@ -144,7 +144,12 @@ export function SearchBox({
             // way as the height fix above, by the new route-level reduced-motion sweep rather than
             // a per-component unit test.
             'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-            'hover:border-border-strong focus-visible:border-border-strong',
+            // "Hover signals" (player-search.md, decided 2026-09-28): the hairline-to-`border-strong`
+            // colour swap alone measured zero surviving pixels (T675's package-wide sweep) — the
+            // boundary now also thickens inward, `ring-1 ring-inset` in the same ink, `border.ring`
+            // deep in all. Scoped to an enabled input so the rate-limited, disabled input never
+            // thickens.
+            'enabled:hover:border-border-strong enabled:hover:ring-1 enabled:hover:ring-inset enabled:hover:ring-border-strong focus-visible:border-border-strong',
             'disabled:cursor-default disabled:border-border disabled:bg-surface-sunken disabled:text-text-disabled',
             inputFocusRing,
           )}

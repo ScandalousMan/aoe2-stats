@@ -582,10 +582,10 @@ left hover and press as one still image; this passage itself described the pre-f
 a fifth-pass review, finding B2). Inline links — the explanation's prose links and `ContactBlock`'s
 contact route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own
 treatment; no fill and no ring, because a wash or a ring behind a few words inside a paragraph
-breaks the line. The prose links reach that treatment through this file's own `inlineLinkClasses`
-copy of it, `ContactRouteLink` through the `Link` primitive itself (§5.1) — one treatment from two
-sources, which is a fact about the source and not about the frame: both paint the same tokens and
-the same utilities, and a screenshot cannot tell them apart. `Contents` entries are a padded,
+breaks the line. Both the prose links and `ContactRouteLink` reach that treatment through the `Link`
+primitive itself — `InlineLink` (below, §5.1's "Done, 2026-09-28 (T674)") is now a thin wrapper
+around it, not a hand-copied recipe, so there is one source for the paint rather than the two this
+passage used to describe. `Contents` entries are a padded,
 `min-h-11` block — `Link`'s `standalone` shape — so they take that variant's own press: a
 `surface-sunken` fill (`active:bg-surface-sunken active:rounded-control`) plus a `border-strong`
 box-shadow ring (`active:ring-2 active:ring-border-strong`), which is the actual non-colour signal

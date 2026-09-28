@@ -100,14 +100,17 @@ describe('Button', () => {
     expect(screen.getByRole('button').className).toMatch(/\bdisabled:no-underline\b/)
   })
 
-  // The underline signal is row 6's answer for `primary` alone — pinning the boundary rather than
-  // asserting "every variant underlines".
-  it('secondary, ghost and destructive never carry the primary underline signal', () => {
+  // The underline signal moved from `primary`'s own variant string into the shared base on
+  // 2026-09-28 (`shared-primitives.md` §Button): every variant now carries it identically.
+  it('secondary, ghost and destructive carry the same underline signal as primary, on hover and on press (FR-037, FR-038, 2026-09-28)', () => {
     ;(['secondary', 'ghost', 'destructive'] as const).forEach((variant) => {
       render(<Button variant={variant}>Continue with Steam</Button>)
       const button = screen.getAllByRole('button').at(-1)
-      expect(button?.className).not.toMatch(/hover:underline\b/)
-      expect(button?.className).not.toMatch(/active:underline-offset-4/)
+      expect(button?.className).toMatch(/\bhover:underline\b/)
+      expect(button?.className).toMatch(/\bhover:decoration-2\b/)
+      expect(button?.className).toMatch(/\bhover:underline-offset-2\b/)
+      expect(button?.className).toMatch(/\bactive:underline-offset-4\b/)
+      expect(button?.className).toMatch(/\bdisabled:no-underline\b/)
     })
   })
 })

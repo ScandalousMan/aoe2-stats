@@ -334,10 +334,18 @@ export const ListCardsBelowXl: Story = {
 // match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
 // including `CaptureStateBadge` — has its own hover." Forced from Playwright in
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
-// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores. §5a (decided
+// 2026-09-28): the fill alone measured zero surviving pixels (T675's package-wide sweep); the
+// outcome word now underlines too, a 2px mark well under 1% of the card's frame, so this story
+// clips to the card.
+const CARD_CLIP = { parts: [{ selector: 'a[href="/matches/1001"]' }], pad: '2' } as const
+
 export const Hover: Story = {
   render: () => <MatchRow match={base} />,
-  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' } },
+  parameters: {
+    visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' },
+    visualCaptureClip: CARD_CLIP,
+  },
 }
 
 // §5 "focus-visible — standard ring on the row's own link wrapper, inset so it never crops the

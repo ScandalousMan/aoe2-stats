@@ -170,9 +170,17 @@ export const StackedBelowMd: Story = {
 // share a hover." Forced from Playwright in `tests/visual/stories.spec.ts` (see that file's own
 // `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which the CSS
 // pseudo-class ignores.
+// §5 (decided 2026-09-28): the fill alone measured zero surviving pixels (T675's package-wide
+// sweep); the alias now underlines too, a mark well under 1% of the list's frame, so this story
+// clips to the hovered link.
+const PROFILE_LINK_CLIP = { parts: [{ selector: 'a[href="/players/1"]' }], pad: '2' } as const
+
 export const Hover: Story = {
   args: { entries: [rated] },
-  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/players/1"]' } },
+  parameters: {
+    visualForceState: { state: 'hover', selector: 'a[href="/players/1"]' },
+    visualCaptureClip: PROFILE_LINK_CLIP,
+  },
 }
 
 export const FocusVisible: Story = {

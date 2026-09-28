@@ -271,10 +271,18 @@ export const Overflow: Story = {
   ),
 }
 
+// `role: 'link', name: 'RedBull_Barley'` is unambiguous: exactly one anchor in this table carries
+// that name. Declared here, ahead of every story that clips to it (a module-level `const` is not
+// hoisted the way a function declaration is).
+const ROW_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'RedBull_Barley' }], pad: '2' }
+
 // structural-tier.md §10 "hover — a row highlights with `surface-sunken` only when the whole row
 // is a real link." `tests/visual/stories.spec.ts` drives the real `:hover` on the row's own anchor
 // from Playwright once this story has settled (see that file's own `VisualForceState` comment) — a
-// `play()` here could only dispatch a synthetic event, which the pseudo-class ignores.
+// `play()` here could only dispatch a synthetic event, which the pseudo-class ignores. §16.1
+// (decided 2026-09-28): the fill alone measured zero surviving pixels (T675's package-wide sweep);
+// the row's name now underlines too, a 2px mark well under 1% of the whole-table frame, so this
+// story clips to the hovered row the same way `RowLinkFocusVisible` below already does.
 export const RowLinkHover: Story = {
   render: () => (
     <Table
@@ -287,12 +295,15 @@ export const RowLinkHover: Story = {
   ),
   parameters: {
     visualForceState: { state: 'hover', role: 'link', name: 'RedBull_Barley' },
+    visualCaptureClip: ROW_LINK_CLIP,
   },
 }
 
 // §10 "active — a row link's press keeps the hover fill and adds a rule down the row's
 // inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037). Held down
-// rather than released so the capture shows the pressed frame.
+// rather than released so the capture shows the pressed frame. The harness presses by a real hover
+// then a mouse-down, so §16.1's underline is in this frame too — the same `ROW_LINK_CLIP` as
+// `RowLinkHover` above.
 export const RowLinkActive: Story = {
   render: () => (
     <Table
@@ -305,6 +316,7 @@ export const RowLinkActive: Story = {
   ),
   parameters: {
     visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' },
+    visualCaptureClip: ROW_LINK_CLIP,
   },
 }
 
@@ -338,13 +350,9 @@ export const FocusVisible: Story = {
 // roughly 0.15-0.47% of the page, under both that checker's `DUPLICATE_MAX_DIFF_RATIO` and
 // `playwright.config.ts`'s own `maxDiffPixelRatio` (both 0.01), the same "rule row 3" ceiling every
 // other single-control ring in this package clips against (`PrivacyNotice`'s `FIRST_LINK_CLIP`/
-// `INLINE_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`). `RowLinkHover`/`RowLinkActive` above
-// escape that ceiling unclipped only because they paint a row-wide fill/edge treatment, not a
-// single anchor's outline, so they stay full-frame — clipping them would only move their baselines
-// with nothing to gain. `role: 'link', name: 'RedBull_Barley'` is unambiguous: exactly one anchor
-// in this table carries that name.
-const ROW_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'RedBull_Barley' }], pad: '2' }
-
+// `INLINE_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`) — the same `ROW_LINK_CLIP` declared
+// above `RowLinkHover`, which now clips for the same reason (§16.1's underline, a mark of the same
+// small order).
 export const RowLinkFocusVisible: Story = {
   render: () => (
     <Table

@@ -229,6 +229,18 @@ describe('PrivacyNotice — the objection call to action', () => {
       link.compareDocumentPosition(nextHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
+
+  // Decided 2026-09-28 (`shared-primitives.md` §Button, "hover is not colour alone either";
+  // `privacy-notice.md` §5, "found beside them"): this anchor is a local copy of `Button`
+  // `secondary`, so it takes that variant's own label-underline fix too.
+  it('underlines its label on hover and shifts the underline on press, matching Button secondary (FR-037, 2026-09-28)', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const link = screen.getByRole('link', { name: 'Object to what is held about me' })
+    expect(link.className).toMatch(/\bhover:underline\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(link.className).toMatch(/\bactive:underline-offset-4\b/)
+  })
 })
 
 describe('PrivacyNotice — contents navigation', () => {
@@ -255,6 +267,22 @@ describe('PrivacyNotice — contents navigation', () => {
       expect(link.className).toMatch(/\bactive:ring-2\b/)
       expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
       expect(link.className).not.toMatch(/\bactive:outline/)
+    }
+  })
+
+  // Decided 2026-09-28 (`structural-tier.md` §9, `privacy-notice.md` §5 "Contents entries"): the
+  // ink-only hover measured zero surviving pixels (T675's package-wide sweep). Each entry now takes
+  // `Link`'s own hover in full — `decoration-1` pinned at rest, thickening to `decoration-2` on
+  // hover and on press.
+  it('every Contents entry pins decoration-1 at rest and thickens to decoration-2 on hover and press (FR-037, 2026-09-28)', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const nav = screen.getByRole('navigation')
+    const links = within(nav).getAllByRole('link')
+    expect(links).toHaveLength(9)
+    for (const link of links) {
+      expect(link.className).toMatch(/\bdecoration-1\b/)
+      expect(link.className).toMatch(/\bhover:decoration-2\b/)
+      expect(link.className).toMatch(/\bactive:decoration-2\b/)
     }
   })
 })

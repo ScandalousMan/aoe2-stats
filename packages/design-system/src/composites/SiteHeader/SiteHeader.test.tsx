@@ -175,6 +175,20 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
     }
   })
 
+  // §5a (decided 2026-09-28): the fill and ink steps alone measured zero surviving pixels (T675's
+  // package-wide sweep) — every item now underlines its label on hover, `Button` `ghost`'s hover and
+  // press underline in full.
+  it('every item underlines its label on hover and shifts the underline on press (FR-037, 2026-09-28)', () => {
+    render(<SiteHeader items={items} currentPath="/dashboard" />)
+    for (const item of items) {
+      const className = screen.getByRole('link', { name: item.label }).className
+      expect(className).toMatch(/\bhover:underline\b/)
+      expect(className).toMatch(/\bhover:decoration-2\b/)
+      expect(className).toMatch(/\bhover:underline-offset-2\b/)
+      expect(className).toMatch(/\bactive:underline-offset-4\b/)
+    }
+  })
+
   // T591: press now moves the fill to `bg-background` (`Button` `ghost`'s own recipe) instead of
   // repeating hover's `surface-sunken` — the boundary alone was too weak a mark for the duplicate
   // check to tell apart from hover at this control's size (story-baseline-duplicates-debt.json).

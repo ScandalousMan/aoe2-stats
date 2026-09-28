@@ -107,6 +107,20 @@ describe('PlayerResultRow', () => {
     expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
   })
 
+  // "Hover signals" (player-search.md, decided 2026-09-28): the fill alone measured zero surviving
+  // pixels (T675's package-wide sweep) — the alias now underlines on hover, through the row's own
+  // named group, never `hover:underline` on the `<a>` itself.
+  it('carries the named group on the row and the group-hover underline on the alias alone (FR-037, 2026-09-28)', () => {
+    render(<PlayerResultRow result={base} />)
+    const link = screen.getByRole('link')
+    expect(link.className).toMatch(/\bgroup\/row-link\b/)
+    expect(link.className).not.toMatch(/\bhover:underline\b/)
+    const alias = screen.getByText(base.alias)
+    expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
+    expect(alias.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
+    expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+  })
+
   // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
   // labelled, and nothing may be built on it.
   describe('unverifiedSteamId (§4a)', () => {

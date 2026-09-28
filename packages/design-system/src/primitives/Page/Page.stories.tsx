@@ -178,6 +178,11 @@ export const Empty: Story = {
 // the skip link sends focus to it, it shows the standard ring... It never shows a ring on a
 // pointer click." Forced here by focusing the `<main>` landmark directly, the same route a real
 // skip link takes.
+// T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
+// frame in at least one unit — `visualCaptureClip` to the landmark is the mechanical fix (README's
+// Verification-coverage gap register, row 1).
+const MAIN_CLIP = { parts: [{ role: 'main' as const }], pad: '2' }
+
 export const FocusVisible: Story = {
   // A `play()` calling `.focus()` sets DOM focus but not the `:focus-visible` pseudo-class, so this
   // story captured the same frame as `Default` until the suite forced the state for it — the defect
@@ -186,6 +191,7 @@ export const FocusVisible: Story = {
   // all, which is a different claim from what the ring looks like.
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'main' },
+    visualCaptureClip: MAIN_CLIP,
   },
   render: (args) => (
     <Page {...args}>

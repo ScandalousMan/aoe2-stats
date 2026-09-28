@@ -265,26 +265,40 @@ export const StackedRowsBelowMd: Story = {
 // replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per
 // `Badge`'s own rule... `DownloadAction`: per `Button`." Forced from Playwright in
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
-// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores. `DownloadAction` is a
+// real `Button`, so `shared-primitives.md` §Button's own 2026-09-28 label-underline fix reaches its
+// hover/press automatically; T675's package-wide sweep found the resulting signal at or under 1% of
+// an unclipped frame in at least one unit, so all three states below clip to the control.
+const DOWNLOAD_CLIP = { parts: [{ role: 'button' as const, name: 'Download' }], pad: '2' }
+
 export const Hover: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Download' } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'button', name: 'Download' },
+    visualCaptureClip: DOWNLOAD_CLIP,
+  },
 }
 
 export const FocusVisible: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'button', name: 'Download' } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button', name: 'Download' },
+    visualCaptureClip: DOWNLOAD_CLIP,
+  },
 }
 
 export const Active: Story = {
   args: {
     rows: [{ id: '1', alias: 'GL.TheViper', availability: 'archived' }],
   },
-  parameters: { visualForceState: { state: 'active', role: 'button', name: 'Download' } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'button', name: 'Download' },
+    visualCaptureClip: DOWNLOAD_CLIP,
+  },
 }
 
 // §5 "disabled — `DownloadAction` has no disabled form... for `expired` and `never_recorded` it is

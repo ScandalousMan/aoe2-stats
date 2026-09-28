@@ -81,6 +81,21 @@ describe('FavouritesList', () => {
       expect(link.className).not.toMatch(/\bactive:outline\b/)
     })
 
+    // §5 (favourites-list.md, decided 2026-09-28): the fill alone measured zero surviving pixels
+    // (T675's package-wide sweep) — the alias now underlines on hover, through the link's own
+    // named group, never `hover:underline` on the `<a>` itself.
+    it('carries the named group on ProfileLink and the group-hover underline on the alias alone (FR-037, 2026-09-28)', () => {
+      render(<FavouritesList entries={[entries[0]]} />)
+      const row = screen.getAllByRole('listitem')[0]
+      const link = within(row).getByRole('link')
+      expect(link.className).toMatch(/\bgroup\/row-link\b/)
+      expect(link.className).not.toMatch(/\bhover:underline\b/)
+      const alias = within(row).getByText(entries[0].alias)
+      expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
+      expect(alias.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
+      expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+    })
+
     it('shows a bracketed clan beside the alias when present, and none when absent', () => {
       render(<FavouritesList entries={entries} />)
       expect(screen.getByText('[GL]')).toBeInTheDocument()

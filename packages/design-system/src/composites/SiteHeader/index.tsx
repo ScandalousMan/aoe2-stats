@@ -216,6 +216,11 @@ export function SiteHeader({
                           'transition-colors duration-120 ease-standard motion-reduce:duration-0',
                           focusRing,
                           'hover:bg-surface-sunken hover:text-text-primary',
+                          // §5a (decided 2026-09-28): `Button` `ghost`'s hover and press underline
+                          // in full — the fill/ink steps alone measured zero surviving pixels
+                          // (T675's package-wide sweep). The item's text is its label and nothing
+                          // else, so the utilities go on this `<a>` directly.
+                          'hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4',
                           // T591: press moves the fill to `bg-background` (`Button` `ghost`'s own
                           // recipe) instead of repeating hover's `surface-sunken` — the boundary
                           // alone was too weak a mark for the duplicate check to tell apart from
