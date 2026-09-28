@@ -1,26 +1,35 @@
-// T675 (slice 1/N): unit tests for state-signal-model.mjs's own pure parts — pairing and bucket
-// classification never touch a filesystem or a browser, so both are provable against small,
+// T675 (slice 2/N): unit tests for state-signal-model.mjs's own pure parts — self-pairing and
+// bucket classification never touch a filesystem or a browser, so both are provable against small,
 // hand-written fixtures rather than the real tree.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   extractFileStoryStates,
-  argsTextMapsEqual,
-  pairRestingStory,
+  planSelfRest,
   classifyBucket,
   extractVisualCaptureClip,
 } from './state-signal-model.mjs'
 
-// A minimal CSF file exercising: a plain rest story, a forced-hover sibling with identical args
-// (the real pairing case), a forced story whose own args carry an extra key no sibling shares (this
-// task's own named trap — comparing a `size: 'lg'` story against a `md`-implicit one), a clipped
-// forced story whose args match the plain rest exactly, and a spread-args pair
-// (`...shared, extra: 1`) so `argsTextMapsEqual` is proven against the spread-expansion path too.
+// A minimal CSF file exercising every shape `planSelfRest` decides between:
+//   - `Primary`: a plain resting story (not a state story at all).
+//   - `Hover`: a `visualForceState` story — the `'forced'` mode, the common case (109 of 113 real
+//     state stories).
+//   - `TriggerFocusVisibleByRef`: a `visualForceState` story whose own `visualCaptureClip` is a
+//     top-level const referenced by identifier, not written inline — proves `extractVisualCaptureClip`
+//     still resolves it the same way slice 1 fixed.
+//   - `RoleAsConstClip`: a clip part's own role annotated `as const` — the second real
+//     `extractVisualCaptureClip` defect slice 1 fixed, still exercised here.
+//   - `KeyboardEndsFocused`: no `visualForceState`, but its own play() ends with a real
+//     `toHaveFocus()` assertion on a `getByRole` target — the `'play-focus-blur'` mode
+//     (`Dialog.stories.tsx`'s own `KeyboardFocusOrderAndTrap` shape).
+//   - `MysteryFocus`: no `visualForceState`, and its own play() calls `.focus()` on an element this
+//     static pass cannot resolve to a role or selector at all — the one static "not measurable" case
+//     `planSelfRest` still reports, unexercised by any real story in the tree today.
 const FIXTURE_SOURCE = `
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { Widget } from './index'
 
-const shared = { onClick: () => {} }
 const TRIGGER_CLIP = { parts: [{ role: 'button', name: 'Manage' }], pad: '2' }
 
 const meta: Meta<typeof Widget> = {
@@ -42,28 +51,6 @@ export const Hover: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button' } },
 }
 
-export const PrimaryHoverMd: Story = {
-  args: { variant: 'primary' },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
-}
-
-export const ClosedTrigger: Story = {
-  args: { variant: 'actions', triggerLabel: 'Manage' },
-}
-
-export const TriggerFocusVisible: Story = {
-  args: { variant: 'actions', triggerLabel: 'Manage' },
-  parameters: {
-    visualForceState: { state: 'focus-visible', role: 'button' },
-    visualCaptureClip: { parts: [{ role: 'button', name: 'Manage' }], pad: '2' },
-  },
-}
-
-// Dialog.stories.tsx's PRIMARY_ACTION_CLIP / Menu.stories.tsx's TRIGGER_CLIP shape: a top-level
-// const referenced by identifier, never written inline — the real defect this fixture exists to
-// pin (an earlier version of extractVisualCaptureClip only ever checked
-// ts.isObjectLiteralExpression directly, which an identifier is not, so it silently read every
-// by-reference clip in the tree as "no clip at all").
 export const TriggerFocusVisibleByRef: Story = {
   args: { variant: 'actions', triggerLabel: 'Manage' },
   parameters: {
@@ -72,26 +59,29 @@ export const TriggerFocusVisibleByRef: Story = {
   },
 }
 
-// AccountErasurePanel.stories.tsx's own erasedScreenLinkClip shape: a clip part's own role
-// annotated \`as const\` — the second real defect this fixture pins (literalOf used to read this
-// back as "present but not a literal" and silently drop it).
-const ROLE_AS_CONST_CLIP = { parts: [{ role: 'link' as const }], pad: '2' }
-
 export const RoleAsConstClip: Story = {
   args: { variant: 'actions', triggerLabel: 'Manage' },
   parameters: {
     visualForceState: { state: 'hover', role: 'link' },
-    visualCaptureClip: ROLE_AS_CONST_CLIP,
+    visualCaptureClip: { parts: [{ role: 'link' as const }], pad: '2' },
   },
 }
 
-export const SpreadRest: Story = {
-  args: { ...shared, extra: 1 },
+export const KeyboardEndsFocused: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const primary = canvas.getByRole('button', { name: 'Turn it off' })
+    await expect(primary).toHaveFocus()
+  },
 }
 
-export const SpreadHover: Story = {
-  args: { ...shared, extra: 1 },
-  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+export const MysteryFocus: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  play: async ({ canvasElement }) => {
+    const el = canvasElement.querySelector('.mystery')
+    el.focus()
+  },
 }
 `
 
@@ -104,22 +94,14 @@ function fixtureStories() {
 test('extractFileStoryStates computes ids the same way the real Storybook build does', () => {
   const { byName } = fixtureStories()
   assert.equal(byName.get('Primary').id, 'primitives-widget--primary')
-  assert.equal(byName.get('PrimaryHoverMd').id, 'primitives-widget--primary-hover-md')
+  assert.equal(byName.get('KeyboardEndsFocused').id, 'primitives-widget--keyboard-ends-focused')
 })
 
-test('extractFileStoryStates marks a forced story isStateStory and a plain one not', () => {
+test('extractFileStoryStates marks a forced story and a play-focus story isStateStory, a plain one not', () => {
   const { byName } = fixtureStories()
   assert.equal(byName.get('Hover').isStateStory, true)
+  assert.equal(byName.get('KeyboardEndsFocused').isStateStory, true)
   assert.equal(byName.get('Primary').isStateStory, false)
-})
-
-test('extractVisualCaptureClip reads parts and pad; absent for an unclipped story', () => {
-  const { byName } = fixtureStories()
-  assert.equal(byName.get('Hover').clip, null)
-  assert.deepEqual(byName.get('TriggerFocusVisible').clip, {
-    parts: [{ selector: undefined, role: 'button', name: 'Manage', nth: undefined }],
-    pad: '2',
-  })
 })
 
 test('extractVisualCaptureClip resolves a clip referenced by identifier, not only one written inline', () => {
@@ -138,79 +120,36 @@ test('extractVisualCaptureClip resolves a part role annotated "as const", not on
   })
 })
 
-test('argsTextMapsEqual: identical merged args (meta default + story override) match', () => {
+test('planSelfRest: a visualForceState story self-pairs in "forced" mode', () => {
   const { byName } = fixtureStories()
-  assert.equal(
-    argsTextMapsEqual(byName.get('Primary').argsTextMap, byName.get('Hover').argsTextMap),
-    true,
-  )
+  assert.deepEqual(planSelfRest(byName.get('Hover')), { measurable: true, mode: 'forced' })
 })
 
-test('argsTextMapsEqual: a key present on one side and absent on the other never matches — the size trap', () => {
+test('planSelfRest: a play()-ending-focused story self-pairs in "play-focus-blur" mode', () => {
   const { byName } = fixtureStories()
-  // `Primary` carries `size: 'lg'`; `PrimaryHoverMd` omits `size` entirely (relies on the
-  // component's own default) — this task's own named trap. Neither `Primary` nor any other sibling
-  // in this fixture shares `PrimaryHoverMd`'s exact key set, so it must pair with nothing.
-  assert.equal(
-    argsTextMapsEqual(byName.get('Primary').argsTextMap, byName.get('PrimaryHoverMd').argsTextMap),
-    false,
-  )
+  assert.deepEqual(planSelfRest(byName.get('KeyboardEndsFocused')), {
+    measurable: true,
+    mode: 'play-focus-blur',
+  })
 })
 
-test('argsTextMapsEqual: a spread of a top-level const object is expanded before comparing', () => {
+test('planSelfRest: a play()-story whose focus target cannot be resolved stays not measurable, with its reason', () => {
   const { byName } = fixtureStories()
-  assert.equal(
-    argsTextMapsEqual(byName.get('SpreadRest').argsTextMap, byName.get('SpreadHover').argsTextMap),
-    true,
-  )
+  const story = byName.get('MysteryFocus')
+  // Confirms the fixture actually hits the "unresolved" branch — a false pass here (this story
+  // silently resolving to a real role) would make the assertion below prove nothing.
+  assert.equal(story.playFocus?.role, 'unresolved')
+  const plan = planSelfRest(story)
+  assert.equal(plan.measurable, false)
+  assert.equal(plan.reason, 'play-focus-target-unresolved')
+  assert.match(plan.detail, /MysteryFocus/)
 })
 
-test('pairRestingStory: the real pairing case resolves to exactly one candidate', () => {
-  const { result, byName } = fixtureStories()
-  const pairing = pairRestingStory(byName.get('Hover'), result.stories)
-  assert.equal(pairing.measurable, true)
-  assert.equal(pairing.restStory.exportName, 'Primary')
-})
-
-test('pairRestingStory: no same-size rest exists — reported, never silently paired with a different size', () => {
-  const { result, byName } = fixtureStories()
-  const pairing = pairRestingStory(byName.get('PrimaryHoverMd'), result.stories)
-  assert.equal(pairing.measurable, false)
-  assert.equal(pairing.reason, 'no-same-args-sibling')
-})
-
-test('pairRestingStory: a clipped state pairs with an unclipped rest — the clip lives on the state story only', () => {
-  const { result, byName } = fixtureStories()
-  const stateStory = byName.get('TriggerFocusVisible')
-  const pairing = pairRestingStory(stateStory, result.stories)
-  assert.equal(pairing.measurable, true)
-  assert.equal(pairing.restStory.exportName, 'ClosedTrigger')
-  // The rest story itself carries no clip of its own — `state-signal-sweep.spec.ts` is what crops
-  // its frame to the *state* story's clip rect at render time; this pure test only proves the pair
-  // is found and that the asymmetry (state clipped, rest not) is real, not itself a pairing defect.
-  assert.equal(stateStory.clip !== null, true)
-  assert.equal(pairing.restStory.clip, null)
-})
-
-test('pairRestingStory: more than one same-args sibling is ambiguous, never guessed', () => {
-  const source = `
-    import type { Meta, StoryObj } from '@storybook/react-vite'
-    import { Widget } from './index'
-    const meta: Meta<typeof Widget> = { id: 'primitives-widget', title: 'Primitives/Widget', component: Widget }
-    export default meta
-    type Story = StoryObj<typeof Widget>
-    export const A: Story = { args: { variant: 'x' } }
-    export const B: Story = { args: { variant: 'x' } }
-    export const Hover: Story = {
-      args: { variant: 'x' },
-      parameters: { visualForceState: { state: 'hover', role: 'button' } },
-    }
-  `
-  const result = extractFileStoryStates('ambiguous.stories.tsx', source)
-  const hover = result.stories.find((s) => s.exportName === 'Hover')
-  const pairing = pairRestingStory(hover, result.stories)
-  assert.equal(pairing.measurable, false)
-  assert.equal(pairing.reason, 'ambiguous-siblings')
+test('planSelfRest: a plain resting story is not a state story at all', () => {
+  const { byName } = fixtureStories()
+  const plan = planSelfRest(byName.get('Primary'))
+  assert.equal(plan.measurable, false)
+  assert.equal(plan.reason, 'not-a-state-story')
 })
 
 test('classifyBucket: zero surviving pixels on every unit, unclipped — no clip can help', () => {

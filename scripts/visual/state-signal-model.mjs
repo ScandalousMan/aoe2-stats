@@ -1,21 +1,35 @@
 #!/usr/bin/env node
-// T675 (slice 1/N — the package-wide sweep only; see this task's own text in tasks.md and row 1 of
-// packages/design-system/specs/README.md's "Verification-coverage gap register" for what the later
-// slices still owe).
+// T675 (slice 2/N — closes the "55 of 113 not measurable" residue slice 1 left; see row 1 of
+// packages/design-system/specs/README.md's "Verification-coverage gap register" for the measured
+// numbers and this task's own text in tasks.md for the Done clause this slice closes: "the sweep
+// runs against every state story in the tree").
 //
-// Pure discovery + pairing + classification logic for the comparator-blind-spot sweep. Nothing in
-// this file touches the filesystem beyond reading `.stories.tsx` source (`readFileSync` is the
+// Pure discovery + self-pairing + classification logic for the comparator-blind-spot sweep. Nothing
+// in this file touches the filesystem beyond reading `.stories.tsx` source (`readFileSync` is the
 // caller's job, not this module's — every exported function here takes source text or already-
 // parsed data, the same "no filesystem access below the pure functions" discipline
 // `scripts/checks/state-coverage.mjs` documents at its own top) and nothing here launches a
 // browser — `tests/visual/state-signal-sweep.spec.ts` is the one Playwright consumer, and
 // `state-signal-model.test.mjs` is the one `node --test` consumer, of the exact same functions.
 //
+// **Slice 1's sibling-pairing rule is retired, not kept alongside this one.** It paired a state
+// story against a *different* sibling story sharing the same resolved args, `play` and `render` —
+// which left 55 of 113 state stories unmeasurable: 34 with no sibling sharing that exact shape, 21
+// tied among more than one candidate (`Menu`'s own `Selection`/`SheetBelowMd`/`ProfileSwitcher`
+// equivalence class among them). The resting counterpart this slice uses instead is the state
+// story *itself*, rendered with its own state not applied — same args, same `render`, same
+// viewport, same clip, by construction, for every story that forces a state at all, which removes
+// the "no sibling" and "tied siblings" cases outright rather than working around them. Nothing about
+// `argsTextMap`/`playKey`/`renderKey` equality survives here: comparing a story's args against its
+// *own* args is always true, so the whole text-equality apparatus slice 1 built for that purpose
+// (`mergedArgsTextMap`, `collectArgsText`, `argsTextMapsEqual`, `pairRestingStory`) is deleted along
+// with it, per this task's own instruction not to leave a second pairing rule alive.
+//
 // Story extraction below reuses `scripts/checks/state-coverage.mjs`'s own exported AST helpers
 // (`parseTsx`, `findMeta`, `findExportedStoryObjects`, `extractVisualForceState`,
 // `buildTopLevelConstNodeMap`, `findPlayFocusTarget`) rather than writing a second parser, per this
-// task's own instruction. Three things that file has no reason to expose are written fresh here,
-// each narrowly scoped to what this sweep alone needs:
+// task's own instruction. Two things that file has no reason to expose are written fresh here, each
+// narrowly scoped to what this sweep alone needs:
 //   - `resolvePlayBody` is private there (not exported) — reimplemented verbatim from its own
 //     shape (a story's own `play`, an arrow/function expression or an identifier resolved against
 //     the file's top-level declarations) because ESM does not expose a module's unexported
@@ -23,24 +37,6 @@
 //   - `extractVisualCaptureClip` reads `parameters.visualCaptureClip` the same way
 //     `extractVisualForceState` reads `parameters.visualForceState` — state-coverage.mjs never
 //     reads this parameter at all (grep confirms zero occurrences), so there is nothing to reuse.
-//   - The "same args once state/clip parameters are removed" pairing rule this task's own text
-//     asks for is answered by *source-text* equality of each merged arg property (meta's `args`
-//     overridden by the story's own, spreads of a top-level const object expanded one level via
-//     `buildTopLevelConstNodeMap`), not by `evaluateMergedArgsObject`'s evaluated JS values. Every
-//     real pairing in this tree already writes the paired stories' `args` byte-for-byte identically
-//     (Button's `Hover`/`Primary`, Dialog's `Hover`/`Default`, Menu's `TriggerHover`/
-///    `ClosedTrigger` — confirmed by reading each file directly), and text equality sidesteps a
-//     real gap in evaluated-value equality: a nested JSX literal inside an `args` object (Menu's
-//     `items[0].badge: <span>Primary</span>`) evaluates to the same *unresolvable* sentinel on
-//     both sides of a real match, which would make evaluated-value equality either treat every
-//     unresolvable leaf as a match (wrong: two genuinely different unresolvable expressions would
-//     then look equal) or refuse to compare at all (wrong: it would falsely call every JSX-bearing
-//     pair "not measurable"). Source text does not have this problem: prettier enforces one quote
-//     style and one property order is never reordered by this codebase's own formatting, so two
-//     properties are byte-identical text if and only if they are the same expression, whether or
-//     not that expression is statically evaluable. `argsTextMapsEqual`'s own test file exercises
-//     the size trap this task's text names directly (`Primary` carries `size: 'lg'`; a sibling that
-//     omits `size` entirely differs in *key set*, not merely in value, so it is never paired).
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -153,11 +149,7 @@ function resolvePlayBody(storyObj, sourceFile) {
 // (`buildTopLevelConstNodeMap`, reused) resolves a bare identifier naming a top-level const
 // (`Button.stories.tsx`'s own `GHOST_LG_CLIP`, `Dialog.stories.tsx`'s `PRIMARY_ACTION_CLIP`,
 // `Menu.stories.tsx`'s `TRIGGER_CLIP`) back to the object literal it names — the shape every real
-// `visualCaptureClip` in this tree that is not written inline uses. An earlier version of this
-// function only ever checked `ts.isObjectLiteralExpression(clip)` directly, which is `false` for an
-// identifier, so it silently read every one of those four as "no clip at all" — the reason
-// `Dialog Active` and `Menu TriggerFocusVisible` first classified into "defended, no clip" rather
-// than "defended, already clipped": confirmed by re-running the sweep after this fix moved both.
+// `visualCaptureClip` in this tree that is not written inline uses.
 export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
   const params = getProp(storyObj, 'parameters')
   let clip = getProp(params, 'visualCaptureClip')
@@ -185,76 +177,12 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
   return { parts, pad: pad.present && pad.literal ? pad.value : undefined }
 }
 
-// --- "Same args" pairing, by source text, not by evaluated value ---------------------------------
-// See this file's header comment for why text, not `evaluateMergedArgsObject`'s evaluated values.
-
-function normalisedText(sourceFile, node) {
-  return node.getText(sourceFile).replace(/\s+/g, ' ').trim()
-}
-
-// Populates `map` (propName -> its own initializer's normalised source text) from one `args`
-// object literal, meta's first and the story's own second so the story's own value wins — the same
-// override order `evaluateMergedArgsObject` uses, just carrying text instead of a value. A spread
-// of a top-level const object (`...noopHandlers`) is expanded one level via `constNodeMap`
-// (`buildTopLevelConstNodeMap`, reused) so `AccountErasurePanel`-shaped stories compare correctly;
-// a spread this cannot resolve (anything other than a bare identifier naming a top-level const
-// object literal — none exist in this tree today) leaves the property set incomplete on purpose,
-// which can only ever make two stories compare *unequal* that a fuller resolution might have
-// matched, never the reverse — the pairing rule's own "never silently paired" rule already asks for
-// that direction of caution when in doubt.
-function collectArgsText(sourceFile, objLiteral, constNodeMap, map, seen = new Set()) {
-  if (!objLiteral || !ts.isObjectLiteralExpression(objLiteral)) return
-  for (const prop of objLiteral.properties) {
-    if (ts.isPropertyAssignment(prop) && !ts.isComputedPropertyName(prop.name)) {
-      map.set(prop.name.getText(sourceFile), normalisedText(sourceFile, prop.initializer))
-    } else if (ts.isShorthandPropertyAssignment(prop)) {
-      map.set(prop.name.text, prop.name.getText(sourceFile))
-    } else if (
-      ts.isSpreadAssignment(prop) &&
-      ts.isIdentifier(prop.expression) &&
-      !seen.has(prop.expression.text)
-    ) {
-      const target = constNodeMap.get(prop.expression.text)
-      if (target) {
-        collectArgsText(
-          sourceFile,
-          target,
-          constNodeMap,
-          map,
-          new Set([...seen, prop.expression.text]),
-        )
-      }
-    }
-  }
-}
-
-export function mergedArgsTextMap(sourceFile, metaObj, storyObj, constNodeMap) {
-  const map = new Map()
-  collectArgsText(sourceFile, getProp(metaObj, 'args'), constNodeMap, map)
-  collectArgsText(sourceFile, getProp(storyObj, 'args'), constNodeMap, map)
-  return map
-}
-
-// Two stories carry "the same args" exactly when their merged text maps agree on every key AND
-// carry the same key set — a key present on one side and absent on the other (`Primary`'s own
-// `size: 'lg'` against a sibling that omits `size` and relies on the component's own default) is a
-// difference in what is being asked for, not only in its value, so it is never treated as a match
-// (this task's own named trap).
-export function argsTextMapsEqual(a, b) {
-  if (a.size !== b.size) return false
-  for (const [key, value] of a) {
-    if (b.get(key) !== value) return false
-  }
-  return true
-}
-
 // --- Per-file story-state extraction ---------------------------------------------------------
 
 // One exported story's own shape this sweep needs — never the full record `state-coverage.mjs`'s
-// own `computeStateCoverage` builds, which answers a different question (does *some* story credit
-// a specific interactive element) than this one (does *this* story's own forced state have a
-// same-args, same-size resting sibling in its own file, and what does the comparator say about the
-// two).
+// own `computeStateCoverage` builds, which answers a different question (does *some* story credit a
+// specific interactive element) than this one (does *this* story's own forced state have a faithful
+// rest — itself, with the state not applied — and what does the comparator say about the two).
 export function extractFileStoryStates(filePath, source) {
   const sourceFile = parseTsx(filePath, source)
   const metaObj = findMeta(sourceFile)
@@ -284,102 +212,85 @@ export function extractFileStoryStates(filePath, source) {
     // half of expansion"`) overrides only the *display* label Storybook's sidebar shows — never the
     // `id` a URL navigates to, which Storybook derives from the export key alone regardless.
     // Confirmed against the real build (`storybook-static/index.json`): `ClosedTrigger`'s own real
-    // id is `primitives-menu--closed-trigger`, not a sanitised form of its display name at all — an
-    // earlier version of this function used the override for `id` too and every pair naming a
-    // `name`-overridden story 404'd ("Couldn't find story matching …") the moment the sweep tried
-    // to navigate to it.
+    // id is `primitives-menu--closed-trigger`, not a sanitised form of its display name at all.
     const id = toId(kind, storyNameFromExport(exportName))
     const clip = extractVisualCaptureClip(node, constNodeMap)
-    const argsTextMap = mergedArgsTextMap(sourceFile, metaObj, node, constNodeMap)
     // A play()-left focus-visible frame with no `visualForceState` of its own (this task's own
-    // "plus focus-visible frames left by a play()" clause) is still a *forced* state as far as
-    // this sweep's own rendering is concerned: navigating to the story and letting its own play()
-    // run is enough, no `applyForceState` call needed (`tests/visual/story-render.ts`'s own
-    // settle-wait already waits for the story's play phase to finish before anything reads the
-    // DOM) — `isStateStory` below folds both into one boolean because the pairing rule treats them
-    // identically (this file's own resting counterpart is whichever sibling story is genuinely
-    // unforced), but `forced`/`playFocus` stay separate fields so the sweep knows *which* one to
-    // drive from Playwright.
+    // "plus focus-visible frames left by a play()" clause) is still a *forced* state as far as this
+    // sweep's own rendering is concerned: navigating to the story and letting its own play() run
+    // already produces the "state" frame (`tests/visual/story-render.ts`'s own settle-wait already
+    // waits for the story's play phase to finish before anything reads the DOM) — the "rest" is the
+    // same render with that focus removed (`planSelfRest`'s own `'play-focus-blur'` mode).
     const isStateStory = Boolean(forced) || Boolean(playFocus)
-    // A story's own `play` is not an "arg" — `argsTextMap` above never sees it — but it is still
-    // part of what the rendered frame *is*: `Menu.stories.tsx`'s own `Expansion` and `ClosedTrigger`
-    // carry byte-identical `args` (an open-panel story and its own closed resting half share the
-    // same trigger data on purpose) yet render completely differently, because `Expansion` runs
-    // `play: openMenu` and `ClosedTrigger` has no `play` at all. Comparing this alongside args text
-    // is what keeps `TriggerHover`/`TriggerActive`/`TriggerFocusVisible` from pairing with
-    // `Expansion` by args-coincidence — the resting counterpart must run the *same* play (most
-    // often: neither runs one) as well as carry the same args. An identifier `play` (`openMenu`) is
-    // compared by name, not by re-resolving and re-comparing the function body: two different
-    // top-level functions sharing one body would be a separate, harder-to-imagine defect this sweep
-    // does not try to catch.
-    const playExpr = getProp(node, 'play')
-    const playKey = playExpr ? normalisedText(sourceFile, playExpr) : null
-    // The same reasoning as `playKey` above, for a story's own `render:` — `Footer.stories.tsx`'s
-    // own `DisabledLoadingErrorNotApplicable` carries byte-identical `args` to `BothLinks` but
-    // wraps the component in an extra explanatory `<p>` via its own `render:`, a real difference in
-    // what is on screen that `argsTextMap` (which never reads `render:`) cannot see on its own.
-    const renderExpr = getProp(node, 'render')
-    const renderKey = renderExpr ? normalisedText(sourceFile, renderExpr) : null
-    return {
-      exportName,
-      id,
-      forced,
-      playFocus,
-      isStateStory,
-      clip,
-      argsTextMap,
-      playKey,
-      renderKey,
-    }
+    return { exportName, id, forced, playFocus, isStateStory, clip }
   })
 
   return { kind, stories }
 }
 
-// --- Pairing ---------------------------------------------------------------------------------
+// --- Self-pairing: the resting counterpart of a state story is itself ----------------------------
 
-// The state story's own resting counterpart: the one sibling in `allStoriesInFile` that is not
-// itself a state story and shares its exact merged-args text map — see `argsTextMapsEqual`'s own
-// comment for what "same" means here. Zero candidates and more than one candidate are both
-// reported, never guessed past (`measurable: false`, with a machine-readable `reason` naming which
-// of the two it was and, for the ambiguous case, every tied candidate).
-export function pairRestingStory(stateStory, allStoriesInFile) {
-  const candidates = allStoriesInFile.filter(
-    (s) =>
-      s !== stateStory &&
-      !s.isStateStory &&
-      s.playKey === stateStory.playKey &&
-      s.renderKey === stateStory.renderKey &&
-      argsTextMapsEqual(s.argsTextMap, stateStory.argsTextMap),
-  )
-  if (candidates.length === 0) {
-    return {
-      measurable: false,
-      reason: 'no-same-args-sibling',
-      detail:
-        `no sibling story in this file shares ${stateStory.exportName}'s own resolved args ` +
-        '(including its size) and own play() behavior once the state/clip parameters are removed.',
-    }
+// What it takes to capture a faithful "without the state" frame of `story`, from `story` alone —
+// never a sibling. Two real shapes exist in this tree today, and a third, static "cannot tell"
+// case this sweep refuses to guess past:
+//   - `'forced'` (109 of 113 state stories): `story.forced` names a real CSS pseudo-class
+//     (`tests/visual/story-render.ts`'s own `applyForceState` drives it, after the story has
+//     settled). The rest is the *same* settled render, captured *before* that driving — always
+//     faithful, by construction: nothing about "not yet having pressed the button" can fail to be a
+//     valid rest frame for "having pressed it".
+//   - `'play-focus-blur'` (the remaining real cases, e.g. `Dialog` `KeyboardFocusOrderAndTrap`): no
+//     `visualForceState` names the state — it is whatever `document.activeElement` genuinely is
+//     once the story's own `play()` has finished. The rest is the same settled render with that
+//     element blurred (`document.activeElement.blur()`, run by the spec after capturing the state
+//     frame) — safe for every real case in this tree (confirmed by reading `Dialog`'s own focus trap
+//     and `Menu`'s own roving-focus effect: both key off real `keydown`/state-driven re-renders,
+//     never `blur`, so a programmatic `.blur()` triggers neither) and, unlike `'forced'`, decided
+//     for real at render time — `document.activeElement` is a DOM fact this static pass cannot
+//     compute, so nothing here inspects the play body except to confirm one thing genuinely
+//     resolves.
+//   - Not measurable: `story.playFocus` was found but its own target does not resolve to a role or
+//     selector this sweep trusts (`findPlayFocusTarget`'s own `'unresolved'` sentinel — a `.focus()`
+//     call on an expression this static pass cannot read back as a role/selector at all). Blurring
+//     `document.activeElement` would still work mechanically at render time, but nothing here can
+//     confirm in advance which element that even is, so this is reported rather than guessed —
+//     unexercised by any real story in this tree today (all four real `'play-focus-blur'` cases
+//     resolve a role cleanly), proven instead by `state-signal-model.test.mjs`'s own synthetic
+//     fixture.
+export function planSelfRest(story) {
+  if (story.forced) {
+    return { measurable: true, mode: 'forced' }
   }
-  if (candidates.length > 1) {
-    return {
-      measurable: false,
-      reason: 'ambiguous-siblings',
-      detail: `${candidates.length} siblings share the same args: ${candidates
-        .map((c) => c.exportName)
-        .join(', ')}.`,
+  if (story.playFocus) {
+    if (!story.playFocus.role || story.playFocus.role === 'unresolved') {
+      return {
+        measurable: false,
+        reason: 'play-focus-target-unresolved',
+        detail:
+          `${story.exportName}'s own play() calls .focus()/toHaveFocus() on a target this sweep ` +
+          `cannot resolve to a role or selector (${JSON.stringify(story.playFocus)}) — blurring ` +
+          'document.activeElement at render time would still work mechanically, but nothing here ' +
+          'can confirm in advance which element that even is, so this is reported rather than ' +
+          'guessed.',
+      }
     }
+    return { measurable: true, mode: 'play-focus-blur' }
   }
-  return { measurable: true, restStory: candidates[0] }
+  return {
+    measurable: false,
+    reason: 'not-a-state-story',
+    detail:
+      `${story.exportName} forces no state (\`visualForceState\`) and its own play(), if any, ` +
+      'leaves no discovered focus target — nothing to pair against itself.',
+  }
 }
 
 // --- Classification ----------------------------------------------------------------------------
 
 // `unitResults`: one entry per {theme, width} this state story renders in, each
 // `{ theme, width, diffPixels, totalPixels, ratio, dimensionMismatch }`. `hasClip` is whether the
-// *state* story itself already names a `visualCaptureClip` (both frames are cropped to it either
-// way, per this task's own method — `hasClip` only changes which of the four/five outcomes below
-// applies, never how the numbers themselves were produced).
+// story itself already names a `visualCaptureClip` (both frames — state and self-rest — are cropped
+// to it either way, per this task's own method — `hasClip` only changes which of the four/five
+// outcomes below applies, never how the numbers themselves were produced).
 //
 // Five outcomes, the four this task's own text names plus one it does not (a story that already
 // defends over 1% on every unit *without* any clip at all — no real example in this tree's own

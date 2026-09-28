@@ -1,4 +1,4 @@
-// T675 (slice 1/N) — the package-wide comparator-blind-spot sweep. NOT part of the ordinary
+// T675 (slice 2/N) — the package-wide comparator-blind-spot sweep. NOT part of the ordinary
 // `pnpm test:visual` selection or the PR `visual` job: `scripts/visual/run.mjs` only ever points
 // Playwright at this file under its own `--state-signal-sweep` flag, which is also the only thing
 // that ever writes `VISUAL_STATE_SWEEP_FILE` — an unset var here (any other invocation of this
@@ -8,21 +8,47 @@
 // once the whole run finishes — see this task's own text in tasks.md for why turning this into a
 // gate is a later slice's job, not this one's.
 //
-// Method (must agree with the task's own classification, and with row 1 of
-// packages/design-system/specs/README.md's "Verification-coverage gap register"): for each
-// {state story, resting counterpart} pair `scripts/visual/state-signal-model.mjs`'s own pairing
-// found (computed by `run.mjs` before this file ever runs — never re-derived here, this file "stays
-// dumb" the same way `stories.spec.ts` does about story *selection*), render both at the same
-// {theme, width} unit and diff the two live renders against each other with Playwright's own
-// comparator — pixelmatch at its default `threshold: 0.2` (`playwright.config.ts` sets only
-// `maxDiffPixelRatio: 0.01`, never `threshold`). "Playwright's own comparator" is not a
-// reimplementation: `playwright-core` bundles `pixelmatch` internally and exposes the exact
-// function `expect(...).toHaveScreenshot` itself calls only through `lib/coreBundle`'s own
-// `utils.getComparator('image/png')` (confirmed by reading the installed playwright@1.62.1's own
-// `node_modules/playwright/lib/matchers/expect.js`, which imports it from that same path) — this
-// file calls that function directly on two in-memory screenshots, never on a checked-in baseline.
+// **Self-pairing (slice 2): a state story's resting counterpart is itself, not a sibling.** Slice 1
+// paired a state story against a *different* story sharing the same resolved args/`play`/`render`,
+// which left 55 of 113 state stories unmeasurable (no matching sibling, or more than one tied).
+// Rendering the same story twice — once with its own forced state applied, once without — has the
+// same args, `render`, viewport and clip *by construction*, for every state story in the tree, which
+// is exactly the "resting frame with the same args and size" this sweep exists to compare against.
+// Two shapes, decided by `scripts/visual/state-signal-model.mjs`'s own `planSelfRest` (never
+// re-derived here — this file "stays dumb" about *which* pairs exist and *how*, the same discipline
+// it already kept in slice 1):
+//   - `'forced'` (a real `visualForceState`): navigate once, reset the pseudo-class explicitly
+//     (move the mouse away for `hover`/`active`, blur `document.activeElement` for
+//     `focus-visible` — see the loop body's own comment for why this reset is unconditional
+//     rather than only-when-needed: several real stories carry a `play()` that already drives the
+//     same role for real before `visualForceState` ever runs, e.g. `Tooltip`'s `HoverRevealed`),
+//     capture (the rest), drive the pseudo-class for real (`story-render.ts`'s own
+//     `applyForceState`), capture again (the state) — on the same page load, which is both cheaper
+//     than two navigations and removes any render-to-render variance from the diff (the
+//     coordinator's own instruction for this slice).
+//   - `'play-focus-blur'` (a focus-visible frame left by a `play()` with no `visualForceState` of
+//     its own, e.g. `Dialog`'s `KeyboardFocusOrderAndTrap`): the story's own `play()` already ran by
+//     the time it settles, so "before" does not exist the way it does for `'forced'` — capture the
+//     settled render first (the state, whatever `document.activeElement` genuinely is), then blur
+//     it (`document.activeElement.blur()`) and capture again (the rest). Confirmed safe for every
+//     real case in this tree by reading `Dialog`'s own focus trap (`keydown`-driven, never `blur`)
+//     and `Menu`'s own roving-focus effect (re-runs on `open`/`activeIndex` state changes, never on
+//     a bare DOM `blur`) — neither refocuses or closes anything in response to a programmatic blur,
+//     so the rest differs from the state only by the missing focus ring, the property this pairing
+//     needs to hold.
 //
-// **Never compared against a checked-in baseline.** Confirmed empirically this task: a locally
+// Method (must agree with the task's own classification, and with row 1 of
+// packages/design-system/specs/README.md's "Verification-coverage gap register"): diff the two live
+// renders against each other with Playwright's own comparator — pixelmatch at its default
+// `threshold: 0.2` (`playwright.config.ts` sets only `maxDiffPixelRatio: 0.01`, never `threshold`).
+// "Playwright's own comparator" is not a reimplementation: `playwright-core` bundles `pixelmatch`
+// internally and exposes the exact function `expect(...).toHaveScreenshot` itself calls only
+// through `lib/coreBundle`'s own `utils.getComparator('image/png')` (confirmed by reading the
+// installed playwright@1.62.1's own `node_modules/playwright/lib/matchers/expect.js`, which imports
+// it from that same path) — this file calls that function directly on two in-memory screenshots,
+// never on a checked-in baseline.
+//
+// **Never compared against a checked-in baseline.** Confirmed empirically in slice 1: a locally
 // rendered, already-clipped baseline (`primitives-menu--trigger-focus-visible`) came back 103px
 // wide against a checked-in 104px-wide reference captured on CI, on every width and both themes —
 // a real, pre-existing local-vs-CI rendering difference (font metrics, subpixel rounding), nothing
@@ -39,7 +65,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { test, type Page } from '@playwright/test'
+import { test, type Locator, type Page } from '@playwright/test'
 import { PNG } from 'pngjs'
 import {
   applyForceState,
@@ -47,7 +73,6 @@ import {
   readCaptureClip,
   readForceState,
   resolveCaptureClip,
-  type VisualCaptureClip,
 } from './story-render'
 
 const rootDir = path.resolve(__dirname, '..', '..')
@@ -55,8 +80,9 @@ const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', '
 mkdirSync(rawResultsDir, { recursive: true })
 
 // The same built-Storybook-index read `stories.spec.ts` already does for `titleById` — here for
-// one more field, `tags`, so this file learns which pairs are `visual-full-page` (a fixed dialog, an
-// open popover) the same way `scripts/visual/run.mjs` does, rather than re-deriving it from source.
+// one more field, `tags`, so this file learns which stories are `visual-full-page` (a fixed dialog,
+// an open popover) the same way `scripts/visual/run.mjs` does, rather than re-deriving it from
+// source.
 const storybookIndexPath = path.join(rootDir, 'packages/design-system/storybook-static/index.json')
 const tagsById = new Map<string, string[]>()
 if (existsSync(storybookIndexPath)) {
@@ -95,18 +121,19 @@ type Theme = 'light' | 'dark'
 const THEMES: Theme[] = ['light', 'dark']
 const WIDTHS = [375, 768, 1280]
 
+// `mode` mirrors `state-signal-model.mjs`'s own `planSelfRest` result — computed there, in
+// `run.mjs`'s ESM context, never re-derived here.
+type SelfRestMode = 'forced' | 'play-focus-blur'
+
 interface WorkItem {
   stateId: string
-  restId: string
   exportName: string
+  mode: SelfRestMode
   file: string
 }
 
-// Written by `scripts/visual/run.mjs`'s own `--state-signal-sweep` flow — the pairing itself
-// (`scripts/visual/state-signal-model.mjs`'s `pairRestingStory`) runs there, in that file's own ESM
-// context, never re-derived here: this file "stays dumb" about *which* pairs exist, the same
-// discipline `stories.spec.ts` already keeps about story *selection*. An unset var (any invocation
-// of this config that is not `run.mjs --state-signal-sweep`) falls back to an empty list.
+// Written by `scripts/visual/run.mjs`'s own `--state-signal-sweep` flow. An unset var (any
+// invocation of this config that is not `run.mjs --state-signal-sweep`) falls back to an empty list.
 const workItemsPath = process.env.VISUAL_STATE_SWEEP_FILE
 const workItems: WorkItem[] = workItemsPath
   ? (JSON.parse(readFileSync(workItemsPath, 'utf8')) as WorkItem[])
@@ -121,61 +148,97 @@ interface UnitResult {
   dimensionMismatch: boolean
 }
 
-// One story's own frame at one {theme, width} unit: navigates, settles
-// (`gotoAndWaitForStorySettled` waits out the story's own `play()`, if any — a play()-left
-// focus-visible frame needs nothing further), drives the real pseudo-class if the story names one
-// (a resting counterpart never does, by the pairing rule's own construction), and returns a raw PNG
-// buffer plus whichever clip it used. `clipOverride`:
-//   - `undefined` (the state story's own capture): read this story's own
-//     `parameters.visualCaptureClip` after it settles, the same way `stories.spec.ts` does.
-//   - a `VisualCaptureClip | null` (the resting story's own capture): use exactly that value —
-//     this task's own method applies the *state* story's clip to both frames, never a clip of the
-//     resting story's own (it does not carry one, by the pairing rule's own construction: a state
-//     story is never its own rest).
-async function captureFrame(
+// The story's own settled frame, clipped to `clip` (the story's own `visualCaptureClip`, resolved
+// fresh against the *current* DOM each time this is called — the clip rect is in page coordinates,
+// so it does not itself move between the two captures below, but resolving it fresh rather than
+// caching it is what `stories.spec.ts` already does and costs nothing extra), full-page when the
+// id's own Storybook tag says so, or the plain `#storybook-root` element otherwise.
+async function captureNow(
   page: Page,
+  root: Locator,
   id: string,
-  theme: Theme,
-  width: number,
+  clip: Awaited<ReturnType<typeof readCaptureClip>>,
   fullPage: boolean,
-  clipOverride?: VisualCaptureClip | null,
-): Promise<{ buffer: Buffer; clip: VisualCaptureClip | null }> {
-  const height = width === 375 ? 900 : 720
-  const root = await gotoAndWaitForStorySettled(page, id, theme, width, height)
-  const forceState = await readForceState(page, id)
-  if (forceState) {
-    await applyForceState(page, root, forceState, { width, height, fullPage })
-  }
-  const clip = clipOverride !== undefined ? clipOverride : await readCaptureClip(page, id)
+): Promise<Buffer> {
   if (clip) {
     const rect = await resolveCaptureClip(page, root, id, clip)
-    // `fullPage: true` alongside `clip` — the same pairing `stories.spec.ts` always uses
-    // (T591's own comment there). Without it, a clip target below the fold of a long `screens/*`
-    // form (`ThirdPartyObjectionForm`'s own privacy-notice link, well past the initial 720-900px
-    // viewport at every width) resolves to a page-coordinate rect Playwright's own clipped
-    // screenshot cannot reach without `fullPage` first laying out and stitching the whole
-    // document — confirmed empirically this task ("Clipped area is either empty or outside the
-    // resulting image" on every one of that file's four clipped stories, at every unit).
-    return { buffer: await page.screenshot({ fullPage: true, clip: rect }), clip }
+    // `fullPage: true` alongside `clip` — the same pairing `stories.spec.ts` always uses (T591's own
+    // comment there). Without it, a clip target below the fold of a long `screens/*` form resolves
+    // to a page-coordinate rect Playwright's own clipped screenshot cannot reach without `fullPage`
+    // first laying out and stitching the whole document (confirmed empirically in slice 1:
+    // "Clipped area is either empty or outside the resulting image" on `ThirdPartyObjectionForm`'s
+    // own clipped stories without this).
+    return page.screenshot({ fullPage: true, clip: rect })
   }
   if (fullPage) {
-    return { buffer: await page.screenshot(), clip }
+    return page.screenshot()
   }
-  return { buffer: await root.screenshot(), clip }
+  return root.screenshot()
 }
 
 for (const item of workItems) {
-  test(`${item.stateId} vs ${item.restId} (comparator sweep)`, async ({ page }) => {
+  test(`${item.stateId} (comparator sweep, self-rest, ${item.mode})`, async ({ page }) => {
     const fullPage = isFullPage(item.stateId)
     const results: UnitResult[] = []
 
     for (const theme of THEMES) {
       for (const width of WIDTHS) {
-        const state = await captureFrame(page, item.stateId, theme, width, fullPage)
-        const rest = await captureFrame(page, item.restId, theme, width, fullPage, state.clip)
+        const height = width === 375 ? 900 : 720
+        const root = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height)
+        const clip = await readCaptureClip(page, item.stateId)
 
-        const stateImage = PNG.sync.read(state.buffer)
-        const restImage = PNG.sync.read(rest.buffer)
+        let stateBuffer: Buffer
+        let restBuffer: Buffer
+        if (item.mode === 'forced') {
+          const forceState = await readForceState(page, item.stateId)
+          if (!forceState) {
+            throw new Error(
+              `state-signal-sweep: work item "${item.stateId}" was planned as "forced" but this ` +
+                "story's own settled render carries no visualForceState parameter — the model and " +
+                'the live story have drifted apart.',
+            )
+          }
+          // "The story has settled but the harness has not yet driven the pseudo-class" is only a
+          // faithful rest when nothing *else* already produced it — several real stories carry a
+          // `play()` that drives the same role for real before `visualForceState` ever runs
+          // (`Tooltip`'s own `HoverRevealed`, `play: hoverOpen` then `visualForceState:
+          // { state: 'hover', ... }` on the same trigger, by that file's own documented design;
+          // `Menu`'s `KeyboardNavigation`/`EscapeReturnsFocusToTrigger`, whose own real
+          // `userEvent.keyboard()` sequence leaves a real DOM `.focus()` — genuinely
+          // `:focus-visible` — on the exact element `visualForceState` re-focuses). Left alone, the
+          // "rest" capture below would already show the state, and the diff would read zero
+          // regardless of whether the two are actually distinguishable — a false "no clip can
+          // help" this sweep must not report. Resetting explicitly, unconditionally, before every
+          // rest capture removes the question of *whether* a play() pre-empted anything rather
+          // than trying to detect it: `:hover`/`:active` are anchored to the real pointer's own
+          // position (moving it away clears both, wherever it was), and a genuinely absent
+          // `document.activeElement` blur is a harmless no-op for the (large majority) of stories
+          // where nothing was ever really focused first.
+          if (forceState.state === 'hover' || forceState.state === 'active') {
+            await page.mouse.move(0, 0)
+          } else {
+            await page.evaluate(() => {
+              const active = document.activeElement
+              if (active instanceof HTMLElement) active.blur()
+            })
+          }
+          restBuffer = await captureNow(page, root, item.stateId, clip, fullPage)
+          await applyForceState(page, root, forceState, { width, height, fullPage })
+          stateBuffer = await captureNow(page, root, item.stateId, clip, fullPage)
+        } else {
+          // The state comes first here: the story's own play() has already run by the time it
+          // settles, so the settled render already *is* the state — there is no "before" to
+          // capture. The rest is the same render with whatever play() left focused now blurred.
+          stateBuffer = await captureNow(page, root, item.stateId, clip, fullPage)
+          await page.evaluate(() => {
+            const active = document.activeElement
+            if (active instanceof HTMLElement) active.blur()
+          })
+          restBuffer = await captureNow(page, root, item.stateId, clip, fullPage)
+        }
+
+        const stateImage = PNG.sync.read(stateBuffer)
+        const restImage = PNG.sync.read(restBuffer)
         if (stateImage.width !== restImage.width || stateImage.height !== restImage.height) {
           results.push({
             theme,
@@ -188,7 +251,7 @@ for (const item of workItems) {
           continue
         }
         const totalPixels = stateImage.width * stateImage.height
-        const diffResult = imageComparator(state.buffer, rest.buffer, { threshold: 0.2 })
+        const diffResult = imageComparator(stateBuffer, restBuffer, { threshold: 0.2 })
         const diffPixels = diffResult
           ? Number(/^(\d+) pixels/.exec(diffResult.errorMessage)?.[1])
           : 0
@@ -203,7 +266,7 @@ for (const item of workItems) {
       }
     }
 
-    const safeName = `${item.stateId}__${item.restId}`.replace(/[^a-z0-9-]+/gi, '_')
+    const safeName = item.stateId.replace(/[^a-z0-9-]+/gi, '_')
     writeFileSync(
       path.join(rawResultsDir, `${safeName}.json`),
       JSON.stringify({ ...item, unitResults: results }, null, 2),

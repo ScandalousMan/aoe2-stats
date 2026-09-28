@@ -37,14 +37,14 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-// T675 (slice 1/N): the package-wide comparator-blind-spot sweep's own pairing and classification —
-// this file's own `--state-signal-sweep` flow is the one caller, so the ESM import (never a `.cjs`
-// bridge — nothing here is transpiled by Playwright, unlike `stories.spec.ts`'s own consumers)
-// works directly.
+// T675 (slice 2/N): the package-wide comparator-blind-spot sweep's own self-pairing and
+// classification — this file's own `--state-signal-sweep` flow is the one caller, so the ESM
+// import (never a `.cjs` bridge — nothing here is transpiled by Playwright, unlike
+// `stories.spec.ts`'s own consumers) works directly.
 import {
   discoverStoryFiles,
   extractFileStoryStates,
-  pairRestingStory,
+  planSelfRest,
   classifyBucket,
 } from './state-signal-model.mjs'
 // `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
@@ -327,13 +327,14 @@ function main() {
   process.exit(stale.length > 0 ? 1 : exitCode)
 }
 
-// --- T675 (slice 1/N): package-wide comparator-blind-spot sweep --------------------------------
+// --- T675 (slice 2/N): package-wide comparator-blind-spot sweep --------------------------------
 
 // Every state story in the tree (`state-signal-model.mjs`'s own `discoverStoryFiles` +
-// `extractFileStoryStates`), paired against its resting counterpart (`pairRestingStory`) — split
-// into `measurable` (a pair `tests/visual/state-signal-sweep.spec.ts` will actually render) and
-// `notMeasurable` (reported as-is, no rendering: the pairing rule itself already answers "not
-// measurable" without a browser).
+// `extractFileStoryStates`), self-paired against its own resting frame (`planSelfRest`) — split
+// into `measurable` (a story `tests/visual/state-signal-sweep.spec.ts` will actually render twice)
+// and `notMeasurable` (reported as-is, no rendering: `planSelfRest` itself already answers "not
+// measurable" without a browser — see that function's own comment for the one static case this
+// covers, unexercised by any real story in this tree today).
 function buildStateSignalWork() {
   const measurable = []
   const notMeasurable = []
@@ -350,12 +351,12 @@ function buildStateSignalWork() {
     const relFile = path.relative(rootDir, filePath)
     for (const story of result.stories) {
       if (!story.isStateStory) continue
-      const pairing = pairRestingStory(story, result.stories)
-      if (pairing.measurable) {
+      const plan = planSelfRest(story)
+      if (plan.measurable) {
         measurable.push({
           stateId: story.id,
-          restId: pairing.restStory.id,
           exportName: story.exportName,
+          mode: plan.mode,
           hasClip: story.clip !== null,
           file: relFile,
         })
@@ -364,8 +365,8 @@ function buildStateSignalWork() {
           stateId: story.id,
           exportName: story.exportName,
           file: relFile,
-          reason: pairing.reason,
-          detail: pairing.detail,
+          reason: plan.reason,
+          detail: plan.detail,
         })
       }
     }
@@ -409,19 +410,22 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
   }
 
   const lines = []
-  lines.push('# State-signal comparator sweep (T675, slice 1/N)')
+  lines.push('# State-signal comparator sweep (T675, slice 2/N — self-paired)')
   lines.push('')
   lines.push(
     'Command: `node scripts/visual/run.mjs --state-signal-sweep` (rebuild Storybook first: ' +
-      "`pnpm --filter design-system build-storybook`). Local renders differ from CI's by roughly " +
-      '2% in absolute terms, but every comparison below is two renders taken on the same machine, ' +
-      'in the same run, against each other — valid for this classification (see ' +
-      "`tests/visual/state-signal-sweep.spec.ts`'s own header).",
+      '`pnpm --filter design-system build-storybook`). Every story below is compared against ' +
+      "*itself* (`state-signal-model.mjs`'s own `planSelfRest`, `tests/visual/" +
+      "state-signal-sweep.spec.ts`'s own header) — the state and the rest share the same args, " +
+      "render, viewport and clip by construction. Local renders differ from CI's by roughly 2% in " +
+      'absolute terms, but every comparison below is two renders taken on the same machine, in the ' +
+      'same run, against each other — valid for this classification.',
   )
   lines.push('')
   lines.push(
-    `${measurableCount} measurable pair(s) rendered; ${notMeasurable.length} state stor` +
-      `${notMeasurable.length === 1 ? 'y' : 'ies'} not measurable (see the table at the end).`,
+    `${measurableCount} of ${measurableCount + notMeasurable.length} state stor` +
+      `${measurableCount + notMeasurable.length === 1 ? 'y' : 'ies'} measured; ` +
+      `${notMeasurable.length} not measurable (see the table at the end).`,
   )
   lines.push('')
 
@@ -430,11 +434,11 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
     if (entries.length === 0) continue
     lines.push(`## ${BUCKET_TITLES[bucket]} (${entries.length})`)
     lines.push('')
-    lines.push('| State story | Resting counterpart | min ratio | file |')
+    lines.push('| State story | mode | min ratio | file |')
     lines.push('| --- | --- | --- | --- |')
     for (const e of [...entries].sort((a, b) => a.stateId.localeCompare(b.stateId))) {
       const ratio = typeof e.minRatio === 'number' ? formatPct(e.minRatio) : 'n/a'
-      lines.push(`| \`${e.stateId}\` | \`${e.restId}\` | ${ratio} | ${e.file} |`)
+      lines.push(`| \`${e.stateId}\` | ${e.mode} | ${ratio} | ${e.file} |`)
     }
     lines.push('')
   }
@@ -501,11 +505,11 @@ function runStateSignalSweep() {
     process.exit(1)
   }
 
-  const hasClipByPair = new Map(measurable.map((m) => [`${m.stateId}__${m.restId}`, m.hasClip]))
+  const hasClipByStateId = new Map(measurable.map((m) => [m.stateId, m.hasClip]))
   const rawFiles = existsSync(rawResultsDir) ? readdirSync(rawResultsDir) : []
   const classified = rawFiles.map((f) => {
     const entry = JSON.parse(readFileSync(path.join(rawResultsDir, f), 'utf8'))
-    const hasClip = hasClipByPair.get(`${entry.stateId}__${entry.restId}`) ?? false
+    const hasClip = hasClipByStateId.get(entry.stateId) ?? false
     return { ...entry, ...classifyBucket({ hasClip, unitResults: entry.unitResults }) }
   })
 

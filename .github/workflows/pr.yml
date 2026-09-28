@@ -336,6 +336,12 @@ jobs:
       # line.
       - run: node scripts/checks/state-coverage.mjs --check-citations
       - run: node --test scripts/checks/state-coverage.test.mjs
+      # T675: the comparator-blind-spot sweep's own pairing (`planSelfRest`) and bucket
+      # classification (`classifyBucket`) — `scripts/visual/state-signal-model.mjs`, the one file
+      # both `scripts/visual/run.mjs --state-signal-sweep` and
+      # `tests/visual/state-signal-sweep.spec.ts` import. Needs no build and no browser, same as the
+      # other static `node --test` suites above; nothing else in CI ran it before this line.
+      - run: node --test scripts/visual/state-signal-model.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
