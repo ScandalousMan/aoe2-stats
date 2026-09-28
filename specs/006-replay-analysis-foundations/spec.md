@@ -82,7 +82,7 @@ lost and when. It cannot be done from a recording, and the spec says so rather t
 A candidate heuristic was proposed in session — treat a unit as lost if it takes damage and then
 performs no further action — and was measured against the 2v2 recording before being accepted or
 rejected. It fails on both of its preconditions. Damage is not observable at all, so the first
-clause can never be evaluated. And units do not act in the log; players issue commands that *mention*
+clause can never be evaluated. And units do not act in the log; players issue commands that _mention_
 unit identifiers, usually in multi-unit selections, so a unit leaves the log the moment its owner
 stops including it in a selection — alive or dead. Applied with a several-minute silence window, the
 rule declares the great majority of every player's units lost, which no game resembles; and it is
@@ -108,7 +108,7 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   change the answer.
 - Q: A heuristic was proposed — a unit that takes damage and then performs no further action is lost.
   Does it hold? → A: No; it was measured against the reference recording and refuted on both
-  preconditions. It is re-typed to an inferred engagement observable, *loss of control over a group*,
+  preconditions. It is re-typed to an inferred engagement observable, _loss of control over a group_,
   with a stated confidence and an explicit non-claim that it is not a casualty count. Explicit
   deletion and market transactions stay exact and are never blended into it; their tier is settled
   below.
@@ -151,7 +151,15 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   including the first — which has had no entry. It is not the on-demand retention basis, whose
   safeguards a public repository cannot meet.
 
-## User Scenarios & Testing *(mandatory)*
+### Session 2026-09-28
+
+- Q: The vendored pack's tree links were read as prerequisites. Are they? → A: No. They are the
+  tech-tree screen's display links, and some point at entities the game never requires. The
+  knowledge base does not carry prerequisites: the query stays and refuses with a gap, which
+  FR-022a admits as a limit of the one lawful source, until a source that states them exists
+  (research.md D3). Found by `/speckit-analyze` against PR #104.
+
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Know what can and cannot be known (Priority: P1)
 
@@ -324,7 +332,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - What happens when a participant is an observer or an absent slot? They yield no participant
   timeline rather than an empty one that reads as a player who did nothing.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### The determinability register
 
@@ -368,7 +376,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-012**: The naming discipline established by 003 MUST hold across the whole vocabulary: a name
   MUST state what was measured, never what a reader would like it to mean — `age_up_commands` rather
   than `age_up_times`, `villagers_ordered` rather than `villagers` (003 FR-043b).
-- **FR-013**: The *loss of control over a group* observable MUST be published only at the inferred
+- **FR-013**: The _loss of control over a group_ observable MUST be published only at the inferred
   tier, MUST carry a confidence, and MUST carry an explicit statement that it is not a casualty count
   (session 2026-09-19).
 - **FR-014**: Explicit deletions and market transactions MUST be published at the decoded tier — the
@@ -437,7 +445,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   source is the strong form and is required wherever one exists. **Where none exists, a second
   reading of the same source through a different field is admissible, and MUST say so** — naming the
   two fields read and why no independent source was available. Research D3 establishes that for
-  civilisation bonus *scope* there is none: the two community datasets are one generation pipeline
+  civilisation bonus _scope_ there is none: the two community datasets are one generation pipeline
   run twice, and the game's own data file is barred by the publisher's usage rules. A validation
   record that does not distinguish which of the two forms it used is not a record (found by
   `/speckit-analyze` 2026-09-21; the weaker form was in use and was being reported as the stronger).
@@ -523,7 +531,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   a severity that is either blocking or informational.
 - **Analysis identity**: the full tuple that makes a published analysis reproducible.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -622,8 +630,8 @@ outcome decides whether feature 007 covers the spatial and income tier or stops 
 working parser and present in the file: per-player starting attributes are reachable by a
 repository-local decoder without a grammar, and the map's object table is reachable behind one.
 Route 3 is chosen, with route 1's open grammar as reference and not as a dependency; route 2 cannot
-deliver objects. The affected data are therefore registered as *decoded and blocked on a named
-decoder* — not as non-determinable — and the decoder is feature 007's first work item. Feature 007
+deliver objects. The affected data are therefore registered as _decoded and blocked on a named
+decoder_ — not as non-determinable — and the decoder is feature 007's first work item. Feature 007
 covers the income side; the map's resource geometry, exploration, vision and map control stay
 deferred at a stated cost. Nothing in this feature's requirements changes: FR-005 and FR-020 were
 written for exactly this outcome.

@@ -86,6 +86,9 @@ def available_to(entity, *, civilisation) -> Answer[bool] | KnowledgeGap
 def name(entity) -> Answer[str] | KnowledgeGap
 ```
 
+- `prerequisites` answers a gap with cause `field-absent` for every entity the snapshot names: the
+  one lawful source carries display links, not the game's prerequisites (research.md D3, T652y).
+  The signature stays, so a future source changes no caller.
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
 - `context` is the match state a conditional effect needs: the age, the technologies researched, and
