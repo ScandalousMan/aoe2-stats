@@ -546,7 +546,9 @@ precedent and is out of this contract's scope until one exists.
 
 **Minimum interactive footprint.** The floor is **44×44 CSS px, in both axes, for every interactive
 element this package renders** — decided 2026-09-28 (T674), codifying the 44px every component spec
-already required; no component's geometry changes. It is WCAG 2.5.5 Target Size (Enhanced), level
+already required; no component spec's required geometry changes. One shipped anchor falls short
+of it and moves: `AccountErasurePanel`'s `ErasedScreen` link, a local copy standing alone in its
+paragraph, gains `standalone`'s block padding when it becomes a `Link`. It is WCAG 2.5.5 Target Size (Enhanced), level
 AAA — stricter than 2.5.8's AA 24×24; specs here that attributed 44px to 2.5.8 were corrected the
 same day. It applies to any icon serving as, or sitting inside, an interactive control, whether or
 not the glyph itself renders that large. Two
