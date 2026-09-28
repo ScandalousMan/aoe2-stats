@@ -63,11 +63,24 @@
 # not only in the test that already enforced the rejoining convention. `digest` recomputed over
 # the unchanged `rules.json` and the corrected `effects.toml`; both promoted snapshots' files stay
 # byte-identical.
+# T652y (2026-09-28, sixth review H2, repository owner's arbitration): the pack's tree links are
+# not the game's prerequisites — T652t made every `BuildingTech` link resolve to an entity that
+# exists, but resolving is not being right, since `link_id` is the tech-tree screen's display link
+# (research.md D3: Hand Cannoneer links to node 6 in Bohemians' tree alone, where the game
+# requires Chemistry in every civilisation). `normalise.py` stops emitting `prerequisites`
+# entirely — the link and `building_upgraded_from_id` readings, T652t's resolver and its
+# supporting tables are all removed, so no entity in `rules.json` carries the key; `query.
+# prerequisites` now answers `field-absent` for every entity the snapshot names, by construction.
+# `reconstruction.prerequisite_order_check` in the truth register moves to `blocked`, naming the
+# gap this leaves. `digest` recomputed over the corrected `rules.json` (`prerequisites` gone from
+# every entity) and `effects.toml` (one header note added, pointing at where a unit line's chain
+# is re-verifiable now that its own field is gone); both promoted snapshots' files stay
+# byte-identical.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:9912ee9a68664be220c11bc390f58c31f6aa3fd2659f30d0d20feceac9bb2053"
+digest = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

@@ -36,11 +36,18 @@
 # reasoning is recorded on the sibling fixture's own `snapshot.toml` (`aoe2techtree-180059`); this
 # file's own `effects.toml` stays byte-identical to that sibling's, so `digest` below is
 # recomputed identically to its sibling's, not by coincidence, exactly as before.
+#
+# T652y (2026-09-28, sixth review H2, repository owner's arbitration) touches both files — the
+# pack's tree links are the tech-tree screen's display link, not the game's prerequisites
+# (research.md D3), so `normalise.py` stops emitting `prerequisites` at all; the full reasoning is
+# recorded on the sibling fixture's own `snapshot.toml` (`aoe2techtree-180059`). This file's own
+# `rules.json` and `effects.toml` stay byte-identical to that sibling's, so `digest` below is
+# recomputed identically to its sibling's, not by coincidence, exactly as before.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 177723
-digest = "sha256:9912ee9a68664be220c11bc390f58c31f6aa3fd2659f30d0d20feceac9bb2053"
+digest = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

@@ -63,7 +63,6 @@
           "wood": 175
         },
         "name": "Stable",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -75,7 +74,6 @@
           "stone": 300
         },
         "name": "Feitoria",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -86,7 +84,6 @@
           "wood": 150
         },
         "name": "Blacksmith",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -97,7 +94,6 @@
           "wood": 175
         },
         "name": "Monastery",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -109,7 +105,6 @@
           "wood": 275
         },
         "name": "Town<br>\nCenter",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -120,7 +115,6 @@
           "stone": 5
         },
         "name": "Stone<br>\nWall",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -131,12 +125,6 @@
           "wood": 150
         },
         "name": "Harbor",
-        "prerequisites": [
-          {
-            "id": "45",
-            "kind": "building"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -147,7 +135,6 @@
           "wood": 175
         },
         "name": "Barracks",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -158,7 +145,6 @@
           "stone": 350
         },
         "name": "Krepost",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -169,12 +155,6 @@
           "stone": 5
         },
         "name": "Fortified<br>\nWall",
-        "prerequisites": [
-          {
-            "id": "117",
-            "kind": "building"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -186,7 +166,6 @@
           "wood": 50
         },
         "name": "Donjon",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -197,7 +176,6 @@
           "wood": 100
         },
         "name": "Folwark",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -209,7 +187,6 @@
           "wood": 175
         },
         "name": "Caravanserai",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -220,7 +197,6 @@
           "wood": 200
         },
         "name": "Fortified<br>\nChurch",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -232,7 +208,6 @@
           "wood": 80
         },
         "name": "Mule Cart",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -243,7 +218,6 @@
           "wood": 110
         },
         "name": "Pasture",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -254,12 +228,6 @@
           "wood": 100
         },
         "name": "Fish Trap",
-        "prerequisites": [
-          {
-            "id": "13",
-            "kind": "unit"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -270,7 +238,6 @@
           "wood": 200
         },
         "name": "University",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -282,12 +249,6 @@
           "wood": 35
         },
         "name": "Guard<br>\nTower",
-        "prerequisites": [
-          {
-            "id": "79",
-            "kind": "building"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -299,12 +260,6 @@
           "wood": 35
         },
         "name": "Keep",
-        "prerequisites": [
-          {
-            "id": "234",
-            "kind": "building"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -317,7 +272,6 @@
           "wood": 0
         },
         "name": "Bombard<br>\nTower",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -328,7 +282,6 @@
           "wood": 125
         },
         "name": "Settlement",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -341,7 +294,6 @@
           "wood": 1000
         },
         "name": "Wonder",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -352,7 +304,6 @@
           "wood": 150
         },
         "name": "Dock",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -363,7 +314,6 @@
           "stone": 30
         },
         "name": "Gate",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -374,7 +324,6 @@
           "wood": 200
         },
         "name": "Siege<br>\nWorkshop",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -385,7 +334,6 @@
           "wood": 60
         },
         "name": "Farm",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -396,7 +344,6 @@
           "wood": 100
         },
         "name": "Lumber<br>\nCamp",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -407,7 +354,6 @@
           "wood": 100
         },
         "name": "Mining<br>\nCamp",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -419,7 +365,6 @@
           "wood": 25
         },
         "name": "Outpost",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -431,7 +376,6 @@
           "wood": 275
         },
         "name": "Town<br>\nCenter",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -442,7 +386,6 @@
           "wood": 100
         },
         "name": "Mill",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -453,7 +396,6 @@
           "wood": 25
         },
         "name": "House",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -465,7 +407,6 @@
           "wood": 275
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -476,7 +417,6 @@
           "wood": 3
         },
         "name": "Palisade<br>\nWall",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -488,7 +428,6 @@
           "wood": 35
         },
         "name": "Watch<br>\nTower",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -499,7 +438,6 @@
           "wood": 30
         },
         "name": "Palisade Gate",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -511,7 +449,6 @@
           "wood": 0
         },
         "name": "Castle",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -522,12 +459,6 @@
           "wood": 175
         },
         "name": "Market",
-        "prerequisites": [
-          {
-            "id": "68",
-            "kind": "building"
-          }
-        ],
         "produced_at": null,
         "table_origin": "building"
       },
@@ -538,7 +469,6 @@
           "wood": 175
         },
         "name": "Archery<br>\nRange",
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "building"
       }
@@ -551,7 +481,6 @@
           "gold": 650
         },
         "name": "Artillery",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -567,12 +496,6 @@
           "gold": 100
         },
         "name": "Crossbowman",
-        "prerequisites": [
-          {
-            "id": "4",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -588,12 +511,6 @@
           "gold": 650
         },
         "name": "Elite<br>\nLiao Dao",
-        "prerequisites": [
-          {
-            "id": "1920",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -609,7 +526,6 @@
           "gold": 300
         },
         "name": "Lamellar<br>\nArmor",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -625,7 +541,6 @@
           "gold": 300
         },
         "name": "Ordo<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -640,7 +555,6 @@
           "food": 500
         },
         "name": "Feudal Age",
-        "prerequisites": [],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -656,12 +570,6 @@
           "wood": 325
         },
         "name": "Transhumance",
-        "prerequisites": [
-          {
-            "id": "1013",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -677,12 +585,6 @@
           "wood": 150
         },
         "name": "Pastoralism",
-        "prerequisites": [
-          {
-            "id": "1014",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -698,7 +600,6 @@
           "wood": 100
         },
         "name": "Domestication",
-        "prerequisites": [],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -714,12 +615,6 @@
           "gold": 200
         },
         "name": "Castle Age",
-        "prerequisites": [
-          {
-            "id": "101",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -735,12 +630,6 @@
           "gold": 800
         },
         "name": "Imperial Age",
-        "prerequisites": [
-          {
-            "id": "102",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -756,12 +645,6 @@
           "gold": 250
         },
         "name": "Heavy Hei Guang<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "1944",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -777,12 +660,6 @@
           "gold": 800
         },
         "name": "Elite Tiger<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "1949",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -798,7 +675,6 @@
           "wood": 300
         },
         "name": "Tuntian",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -814,7 +690,6 @@
           "gold": 450
         },
         "name": "Ming Guang<br>\nArmor",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -830,12 +705,6 @@
           "gold": 500
         },
         "name": "Elite White<br>\nFeather Guard",
-        "prerequisites": [
-          {
-            "id": "1959",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -851,7 +720,6 @@
           "gold": 750
         },
         "name": "Bolt<br>\nMagazine",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -867,7 +735,6 @@
           "gold": 300
         },
         "name": "Coiled<br>\nSerpent Array",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -883,12 +750,6 @@
           "gold": 800
         },
         "name": "Elite Fire<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "1968",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -904,7 +765,6 @@
           "gold": 250
         },
         "name": "Red Cliffs<br>\nTactics",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -920,7 +780,6 @@
           "wood": 600
         },
         "name": "Sitting<br>\nTiger",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -936,7 +795,6 @@
           "stone": 400
         },
         "name": "Crenellations",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -952,12 +810,6 @@
           "wood": 250
         },
         "name": "Crop<br>\nRotation",
-        "prerequisites": [
-          {
-            "id": "13",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -973,12 +825,6 @@
           "wood": 125
         },
         "name": "Heavy<br>\nPlow",
-        "prerequisites": [
-          {
-            "id": "14",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -994,12 +840,6 @@
           "gold": 175
         },
         "name": "Champi<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2588",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1015,12 +855,6 @@
           "gold": 450
         },
         "name": "Elite Champi<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2552",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1036,12 +870,6 @@
           "wood": 750
         },
         "name": "Elite Guecha<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2562",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1057,7 +885,6 @@
           "gold": 350
         },
         "name": "Herbalism",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1073,7 +900,6 @@
           "wood": 450
         },
         "name": "Huaracas",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1089,12 +915,6 @@
           "gold": 800
         },
         "name": "Elite<br>\nKona",
-        "prerequisites": [
-          {
-            "id": "2566",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1110,12 +930,6 @@
           "gold": 500
         },
         "name": "Elite Bolas<br>\nRider",
-        "prerequisites": [
-          {
-            "id": "2569",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -1131,7 +945,6 @@
           "gold": 350
         },
         "name": "Malon",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1147,7 +960,6 @@
           "gold": 450
         },
         "name": "Butalmapu",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1163,12 +975,6 @@
           "gold": 500
         },
         "name": "Elite Blackwood<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "2579",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1184,12 +990,6 @@
           "gold": 600
         },
         "name": "Elite Ibirapema<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2582",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1205,7 +1005,6 @@
           "gold": 200
         },
         "name": "Caciques",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1221,7 +1020,6 @@
           "gold": 600
         },
         "name": "Curare",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1237,12 +1035,6 @@
           "wood": 75
         },
         "name": "Horse<br>\nCollar",
-        "prerequisites": [
-          {
-            "id": "50",
-            "kind": "building"
-          }
-        ],
         "produced_at": {
           "id": "68",
           "kind": "building"
@@ -1258,7 +1050,6 @@
           "wood": 250
         },
         "name": "Guard<br>\nTower",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -1274,12 +1065,6 @@
           "gold": 650
         },
         "name": "Elite Temple<br>\nGuard",
-        "prerequisites": [
-          {
-            "id": "2586",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1295,12 +1080,6 @@
           "gold": 60
         },
         "name": "Champi<br>\nRunner",
-        "prerequisites": [
-          {
-            "id": "2550",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1316,7 +1095,6 @@
           "wood": 150
         },
         "name": "Circum-<br>\nnavigation",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1332,12 +1110,6 @@
           "gold": 200
         },
         "name": "Guilds",
-        "prerequisites": [
-          {
-            "id": "17",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "84",
           "kind": "building"
@@ -1353,7 +1125,6 @@
           "gold": 250
         },
         "name": "Anarchy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1369,12 +1140,6 @@
           "gold": 200
         },
         "name": "Banking",
-        "prerequisites": [
-          {
-            "id": "23",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "84",
           "kind": "building"
@@ -1390,12 +1155,6 @@
           "wood": 75
         },
         "name": "Gold Shaft<br>\nMining",
-        "prerequisites": [
-          {
-            "id": "55",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "584",
           "kind": "building"
@@ -1411,7 +1170,6 @@
           "gold": 0
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "research_time": 1,
         "table_origin": "tech",
@@ -1424,7 +1182,6 @@
           "wood": 100
         },
         "name": "Fortified<br>\nWall",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -1440,12 +1197,6 @@
           "gold": 90
         },
         "name": "Pikeman",
-        "prerequisites": [
-          {
-            "id": "1786",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -1461,7 +1212,6 @@
           "gold": 50
         },
         "name": "Fletching",
-        "prerequisites": [],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1477,12 +1227,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nTarkan",
-        "prerequisites": [
-          {
-            "id": "886",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -1498,12 +1242,6 @@
           "gold": 100
         },
         "name": "Bodkin<br>\nArrow",
-        "prerequisites": [
-          {
-            "id": "199",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1519,12 +1257,6 @@
           "gold": 200
         },
         "name": "Bracer",
-        "prerequisites": [
-          {
-            "id": "200",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1540,7 +1272,6 @@
           "wood": 50
         },
         "name": "Double-Bit<br>\nAxe",
-        "prerequisites": [],
         "produced_at": {
           "id": "562",
           "kind": "building"
@@ -1556,12 +1287,6 @@
           "wood": 100
         },
         "name": "Bow Saw",
-        "prerequisites": [
-          {
-            "id": "202",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "562",
           "kind": "building"
@@ -1577,12 +1302,6 @@
           "gold": 65
         },
         "name": "Long<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "75",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1598,12 +1317,6 @@
           "gold": 300
         },
         "name": "Cavalier",
-        "prerequisites": [
-          {
-            "id": "38",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -1619,7 +1332,6 @@
           "wood": 300
         },
         "name": "Atheism",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1634,7 +1346,6 @@
           "food": 100
         },
         "name": "Padded<br>\nArcher Armor",
-        "prerequisites": [],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1650,12 +1361,6 @@
           "gold": 150
         },
         "name": "Leather<br>\nArcher Armor",
-        "prerequisites": [
-          {
-            "id": "211",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1671,7 +1376,6 @@
           "wood": 50
         },
         "name": "Wheelbarrow",
-        "prerequisites": [],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -1686,12 +1390,6 @@
           "food": 100
         },
         "name": "Squires",
-        "prerequisites": [
-          {
-            "id": "875",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1707,12 +1405,6 @@
           "gold": 100
         },
         "name": "Two-Handed<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "77",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1728,12 +1420,6 @@
           "gold": 500
         },
         "name": "Heavy Cavalry<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "39",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -1749,12 +1435,6 @@
           "gold": 250
         },
         "name": "Ring<br>\nArcher Armor",
-        "prerequisites": [
-          {
-            "id": "212",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -1769,7 +1449,6 @@
           "gold": 50
         },
         "name": "Loom",
-        "prerequisites": [],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -1785,12 +1464,6 @@
           "wood": 200
         },
         "name": "Two-Man<br>\nSaw",
-        "prerequisites": [
-          {
-            "id": "203",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "562",
           "kind": "building"
@@ -1806,12 +1479,6 @@
           "gold": 40
         },
         "name": "Man-at-Arms",
-        "prerequisites": [
-          {
-            "id": "74",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -1827,12 +1494,6 @@
           "gold": 100
         },
         "name": "Coinage",
-        "prerequisites": [
-          {
-            "id": "48",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "84",
           "kind": "building"
@@ -1848,7 +1509,6 @@
           "gold": 200
         },
         "name": "Block<br>\nPrinting",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -1864,7 +1524,6 @@
           "gold": 175
         },
         "name": "Sanctity",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -1880,7 +1539,6 @@
           "gold": 120
         },
         "name": "Illumination",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -1896,12 +1554,6 @@
           "gold": 360
         },
         "name": "Heavy<br>\nCamel Rider",
-        "prerequisites": [
-          {
-            "id": "329",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -1917,12 +1569,6 @@
           "gold": 350
         },
         "name": "Arbalester",
-        "prerequisites": [
-          {
-            "id": "24",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -1938,12 +1584,6 @@
           "wood": 750
         },
         "name": "Heavy<br>\nScorpion",
-        "prerequisites": [
-          {
-            "id": "279",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -1959,7 +1599,6 @@
           "gold": 750
         },
         "name": "Garland<br>\nWars",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -1975,12 +1614,6 @@
           "wood": 250
         },
         "name": "Heavy<br>\nDemo Ship",
-        "prerequisites": [
-          {
-            "id": "527",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -1996,12 +1629,6 @@
           "wood": 200
         },
         "name": "Hand Cart",
-        "prerequisites": [
-          {
-            "id": "213",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -2017,7 +1644,6 @@
           "gold": 140
         },
         "name": "Fervor",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -2033,12 +1659,6 @@
           "gold": 50
         },
         "name": "Light<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "448",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -2053,12 +1673,6 @@
           "food": 1000
         },
         "name": "Siege<br>\nRam",
-        "prerequisites": [
-          {
-            "id": "422",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -2074,12 +1688,6 @@
           "gold": 500
         },
         "name": "Onager",
-        "prerequisites": [
-          {
-            "id": "280",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -2095,12 +1703,6 @@
           "gold": 350
         },
         "name": "Champion",
-        "prerequisites": [
-          {
-            "id": "473",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -2116,12 +1718,6 @@
           "gold": 750
         },
         "name": "Paladin",
-        "prerequisites": [
-          {
-            "id": "283",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -2137,12 +1733,6 @@
           "wood": 1000
         },
         "name": "Elite<br>\nPlumed Archer",
-        "prerequisites": [
-          {
-            "id": "763",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2158,7 +1748,6 @@
           "wood": 75
         },
         "name": "Stone<br>\nMining",
-        "prerequisites": [],
         "produced_at": {
           "id": "584",
           "kind": "building"
@@ -2174,12 +1763,6 @@
           "wood": 75
         },
         "name": "Stone Shaft<br>\nMining",
-        "prerequisites": [
-          {
-            "id": "278",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "584",
           "kind": "building"
@@ -2195,7 +1778,6 @@
           "wood": 300
         },
         "name": "Bimaristan",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2211,12 +1793,6 @@
           "gold": 100
         },
         "name": "Town<br>\nPatrol",
-        "prerequisites": [
-          {
-            "id": "8",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -2232,7 +1808,6 @@
           "wood": 750
         },
         "name": "Yeomen",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2248,7 +1823,6 @@
           "gold": 150
         },
         "name": "Conscription",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2264,7 +1838,6 @@
           "gold": 475
         },
         "name": "Redemption",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -2280,7 +1853,6 @@
           "gold": 325
         },
         "name": "Atonement",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -2296,12 +1868,6 @@
           "gold": 1000
         },
         "name": "Siege<br>\nOnager",
-        "prerequisites": [
-          {
-            "id": "550",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -2317,12 +1883,6 @@
           "wood": 200
         },
         "name": "Sappers",
-        "prerequisites": [
-          {
-            "id": "379",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2338,7 +1898,6 @@
           "stone": 100
         },
         "name": "Murder<br>\nHoles",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2354,12 +1913,6 @@
           "wood": 150
         },
         "name": "War Hulk",
-        "prerequisites": [
-          {
-            "id": "2626",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -2375,12 +1928,6 @@
           "wood": 400
         },
         "name": "Carrack",
-        "prerequisites": [
-          {
-            "id": "2627",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -2396,12 +1943,6 @@
           "gold": 850
         },
         "name": "Elite<br>\nLongbowman",
-        "prerequisites": [
-          {
-            "id": "8",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2417,12 +1958,6 @@
           "gold": 800
         },
         "name": "Elite<br>\nCataphract",
-        "prerequisites": [
-          {
-            "id": "40",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2438,12 +1973,6 @@
           "gold": 1300
         },
         "name": "Elite<br>\nChu Ko Nu",
-        "prerequisites": [
-          {
-            "id": "73",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2459,12 +1988,6 @@
           "gold": 550
         },
         "name": "Elite Throwing<br>\nAxeman",
-        "prerequisites": [
-          {
-            "id": "281",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2480,12 +2003,6 @@
           "gold": 500
         },
         "name": "Elite Teutonic<br>\nKnight",
-        "prerequisites": [
-          {
-            "id": "25",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2501,12 +2018,6 @@
           "gold": 550
         },
         "name": "Elite<br>\nHuskarl",
-        "prerequisites": [
-          {
-            "id": "759",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -2522,12 +2033,6 @@
           "gold": 650
         },
         "name": "Elite<br>\nSamurai",
-        "prerequisites": [
-          {
-            "id": "291",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2543,12 +2048,6 @@
           "gold": 800
         },
         "name": "Elite<br>\nWar Elephant",
-        "prerequisites": [
-          {
-            "id": "239",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2564,12 +2063,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nMameluke",
-        "prerequisites": [
-          {
-            "id": "282",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2585,12 +2078,6 @@
           "gold": 750
         },
         "name": "Elite<br>\nJanissary",
-        "prerequisites": [
-          {
-            "id": "46",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2606,12 +2093,6 @@
           "gold": 800
         },
         "name": "Elite<br>\nWoad Raider",
-        "prerequisites": [
-          {
-            "id": "232",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2627,12 +2108,6 @@
           "gold": 675
         },
         "name": "Elite<br>\nMangudai",
-        "prerequisites": [
-          {
-            "id": "11",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2648,12 +2123,6 @@
           "gold": 475
         },
         "name": "Elite<br>\nLongboat",
-        "prerequisites": [
-          {
-            "id": "250",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -2669,7 +2138,6 @@
           "gold": 300
         },
         "name": "Shipwright",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2685,7 +2153,6 @@
           "gold": 200
         },
         "name": "Careening",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2701,12 +2168,6 @@
           "gold": 400
         },
         "name": "Dry Dock",
-        "prerequisites": [
-          {
-            "id": "374",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2722,12 +2183,6 @@
           "wood": 525
         },
         "name": "Elite Cannon<br>\nGalleon",
-        "prerequisites": [
-          {
-            "id": "420",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -2743,7 +2198,6 @@
           "wood": 600
         },
         "name": "Siege<br>\nEngineers",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2759,7 +2213,6 @@
           "wood": 400
         },
         "name": "Hoardings",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2775,7 +2228,6 @@
           "gold": 100
         },
         "name": "Heated<br>\nShot",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -2791,12 +2243,6 @@
           "gold": 200
         },
         "name": "Eagle<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "751",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -2811,12 +2257,6 @@
           "food": 150
         },
         "name": "Husbandry",
-        "prerequisites": [
-          {
-            "id": "435",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -2832,12 +2272,6 @@
           "gold": 475
         },
         "name": "Elite<br>\nBerserk",
-        "prerequisites": [
-          {
-            "id": "692",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2853,7 +2287,6 @@
           "gold": 450
         },
         "name": "Holcans",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2868,12 +2301,6 @@
           "gold": 200
         },
         "name": "Spies/Treason",
-        "prerequisites": [
-          {
-            "id": "315",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2889,12 +2316,6 @@
           "gold": 600
         },
         "name": "Hussar",
-        "prerequisites": [
-          {
-            "id": "546",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -2910,12 +2331,6 @@
           "gold": 600
         },
         "name": "Halberdier",
-        "prerequisites": [
-          {
-            "id": "1787",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -2931,12 +2346,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nJaguar Warrior",
-        "prerequisites": [
-          {
-            "id": "725",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -2952,12 +2361,6 @@
           "gold": 500
         },
         "name": "Elite Eagle<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "753",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -2973,7 +2376,6 @@
           "gold": 100
         },
         "name": "Bloodlines",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -2989,12 +2391,6 @@
           "gold": 250
         },
         "name": "Parthian<br>\nTactics",
-        "prerequisites": [
-          {
-            "id": "437",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -3010,12 +2406,6 @@
           "wood": 250
         },
         "name": "Thumb<br>\nRing",
-        "prerequisites": [
-          {
-            "id": "185",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -3031,7 +2421,6 @@
           "gold": 200
         },
         "name": "Theocracy",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -3047,7 +2436,6 @@
           "gold": 1000
         },
         "name": "Heresy",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -3063,7 +2451,6 @@
           "gold": 250
         },
         "name": "Supremacy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3079,7 +2466,6 @@
           "gold": 200
         },
         "name": "Herbal<br>\nMedicine",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -3095,7 +2481,6 @@
           "gold": 800
         },
         "name": "Shinkichon",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3111,12 +2496,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nTurtle Ship",
-        "prerequisites": [
-          {
-            "id": "831",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -3132,12 +2511,6 @@
           "gold": 750
         },
         "name": "Faith",
-        "prerequisites": [
-          {
-            "id": "46",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -3153,12 +2526,6 @@
           "wood": 1000
         },
         "name": "Elite<br>\nWar Wagon",
-        "prerequisites": [
-          {
-            "id": "827",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3174,7 +2541,6 @@
           "gold": 500
         },
         "name": "Counter- weights",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3190,7 +2556,6 @@
           "wood": 400
         },
         "name": "Detinets",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3206,7 +2571,6 @@
           "wood": 400
         },
         "name": "Perfusion",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3222,7 +2586,6 @@
           "gold": 200
         },
         "name": "Devotion",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -3238,7 +2601,6 @@
           "gold": 350
         },
         "name": "Atlatl",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3254,7 +2616,6 @@
           "wood": 800
         },
         "name": "Warwolf",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3270,7 +2631,6 @@
           "wood": 400
         },
         "name": "Great Wall",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3286,7 +2646,6 @@
           "gold": 450
         },
         "name": "Chieftains",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3302,7 +2661,6 @@
           "gold": 300
         },
         "name": "Greek Fire",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3318,12 +2676,6 @@
           "gold": 750
         },
         "name": "Elite Genoese<br>\nCrossbowman",
-        "prerequisites": [
-          {
-            "id": "866",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3339,7 +2691,6 @@
           "gold": 200
         },
         "name": "Chemistry",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -3355,12 +2706,6 @@
           "gold": 600
         },
         "name": "Elite Magyar<br>\nHuszar",
-        "prerequisites": [
-          {
-            "id": "869",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3376,7 +2721,6 @@
           "gold": 200
         },
         "name": "Caravan",
-        "prerequisites": [],
         "produced_at": {
           "id": "84",
           "kind": "building"
@@ -3392,12 +2736,6 @@
           "gold": 500
         },
         "name": "Elite Elephant<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "873",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -3413,7 +2751,6 @@
           "gold": 200
         },
         "name": "Stronghold",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3429,7 +2766,6 @@
           "wood": 300
         },
         "name": "Marauders",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3445,7 +2781,6 @@
           "wood": 300
         },
         "name": "Yasama",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3461,7 +2796,6 @@
           "gold": 300
         },
         "name": "Hul'che<br>\nJavelineers",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3477,7 +2811,6 @@
           "wood": 300
         },
         "name": "Eupseong",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3493,7 +2826,6 @@
           "wood": 300
         },
         "name": "Nomads",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3509,7 +2841,6 @@
           "gold": 300
         },
         "name": "Kamandaran",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3525,7 +2856,6 @@
           "wood": 400
         },
         "name": "Ironclad",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3541,7 +2871,6 @@
           "gold": 500
         },
         "name": "Bogsveigar",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3557,7 +2886,6 @@
           "gold": 150
         },
         "name": "Sipahi",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3573,7 +2901,6 @@
           "gold": 300
         },
         "name": "Inquisition",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3589,7 +2916,6 @@
           "wood": 600
         },
         "name": "Chivalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3605,7 +2931,6 @@
           "gold": 250
         },
         "name": "Silk Road",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3621,7 +2946,6 @@
           "gold": 450
         },
         "name": "Furor<br>\nCeltica",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3637,7 +2961,6 @@
           "wood": 175
         },
         "name": "Masonry",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -3653,12 +2976,6 @@
           "gold": 600
         },
         "name": "Elite<br>\nBoyar",
-        "prerequisites": [
-          {
-            "id": "876",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3674,7 +2991,6 @@
           "wood": 200
         },
         "name": "Grand<br>\nTrunk Road",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3690,7 +3006,6 @@
           "gold": 650
         },
         "name": "Shatagni",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3706,12 +3021,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nKamayuk",
-        "prerequisites": [
-          {
-            "id": "879",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3727,12 +3036,6 @@
           "wood": 200
         },
         "name": "Architecture",
-        "prerequisites": [
-          {
-            "id": "50",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -3748,7 +3051,6 @@
           "gold": 500
         },
         "name": "Druzhina",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3764,7 +3066,6 @@
           "gold": 300
         },
         "name": "Corvinian<br>\nArmy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3780,7 +3081,6 @@
           "wood": 600
         },
         "name": "Recurve Bow",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3796,7 +3096,6 @@
           "gold": 300
         },
         "name": "Andean Sling",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3812,7 +3111,6 @@
           "gold": 600
         },
         "name": "Fabric<br>\nShields",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3828,7 +3126,6 @@
           "gold": 900
         },
         "name": "Rocketry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3844,12 +3141,6 @@
           "gold": 500
         },
         "name": "Imperial<br>\nCamel Rider",
-        "prerequisites": [
-          {
-            "id": "330",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -3865,12 +3156,6 @@
           "gold": 600
         },
         "name": "Savar",
-        "prerequisites": [
-          {
-            "id": "283",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -3886,7 +3171,6 @@
           "wood": 200
         },
         "name": "Treadmill<br>\nCrane",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -3902,7 +3186,6 @@
           "wood": 75
         },
         "name": "Gold<br>\nMining",
-        "prerequisites": [],
         "produced_at": {
           "id": "584",
           "kind": "building"
@@ -3918,12 +3201,6 @@
           "gold": 500
         },
         "name": "Elite<br>\nOrgan Gun",
-        "prerequisites": [
-          {
-            "id": "1001",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3939,12 +3216,6 @@
           "wood": 1000
         },
         "name": "Elite<br>\nCamel Archer",
-        "prerequisites": [
-          {
-            "id": "1007",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3960,12 +3231,6 @@
           "gold": 600
         },
         "name": "Elite<br>\nGbeto",
-        "prerequisites": [
-          {
-            "id": "1013",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -3981,12 +3246,6 @@
           "gold": 450
         },
         "name": "Elite<br>\nShotel Warrior",
-        "prerequisites": [
-          {
-            "id": "1016",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4002,7 +3261,6 @@
           "gold": 400
         },
         "name": "Arquebus",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4018,7 +3276,6 @@
           "gold": 300
         },
         "name": "Royal Heirs",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4034,7 +3291,6 @@
           "gold": 600
         },
         "name": "Torsion Engines",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4050,7 +3306,6 @@
           "wood": 300
         },
         "name": "Tigui",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4066,7 +3321,6 @@
           "gold": 400
         },
         "name": "Farimba",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4082,7 +3336,6 @@
           "gold": 250
         },
         "name": "Kasbah",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4098,7 +3351,6 @@
           "gold": 300
         },
         "name": "Maghrebi Camels",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4114,7 +3366,6 @@
           "wood": 550
         },
         "name": "Kataparuto",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4130,12 +3381,6 @@
           "gold": 525
         },
         "name": "Elite<br>\nCaravel",
-        "prerequisites": [
-          {
-            "id": "1004",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -4151,12 +3396,6 @@
           "wood": 450
         },
         "name": "Elite<br>\nGenitour",
-        "prerequisites": [
-          {
-            "id": "1010",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -4172,7 +3411,6 @@
           "wood": 500
         },
         "name": "Drill",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4188,12 +3426,6 @@
           "gold": 600
         },
         "name": "Elite<br>\nConquistador",
-        "prerequisites": [
-          {
-            "id": "771",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4209,12 +3441,6 @@
           "gold": 25
         },
         "name": "Arson",
-        "prerequisites": [
-          {
-            "id": "1699",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -4230,7 +3456,6 @@
           "wood": 250
         },
         "name": "Arrowslits",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -4246,7 +3471,6 @@
           "gold": 600
         },
         "name": "Logistica",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4262,12 +3486,6 @@
           "gold": 500
         },
         "name": "Elite Ballista<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1120",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4283,12 +3501,6 @@
           "gold": 600
         },
         "name": "Elite Karambit<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "1123",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4304,12 +3516,6 @@
           "gold": 750
         },
         "name": "Elite<br>\nArambai",
-        "prerequisites": [
-          {
-            "id": "1126",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4325,12 +3531,6 @@
           "gold": 750
         },
         "name": "Elite<br>\nRattan Archer",
-        "prerequisites": [
-          {
-            "id": "1129",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4346,7 +3546,6 @@
           "wood": 300
         },
         "name": "Tusk Swords",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4362,7 +3561,6 @@
           "gold": 400
         },
         "name": "Double<br>\nCrossbow",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4378,7 +3576,6 @@
           "gold": 300
         },
         "name": "Thalassocracy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4394,7 +3591,6 @@
           "gold": 500
         },
         "name": "Forced Levy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4410,7 +3606,6 @@
           "wood": 300
         },
         "name": "Howdah",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4426,7 +3621,6 @@
           "gold": 300
         },
         "name": "Manipur<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4442,7 +3636,6 @@
           "gold": 250
         },
         "name": "Chatras",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4458,7 +3651,6 @@
           "wood": 200
         },
         "name": "Paper Money",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4474,12 +3666,6 @@
           "wood": 350
         },
         "name": "Keep",
-        "prerequisites": [
-          {
-            "id": "140",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -4495,12 +3681,6 @@
           "gold": 700
         },
         "name": "Elite Battle<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1132",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -4516,12 +3696,6 @@
           "wood": 400
         },
         "name": "Bombard<br>\nTower",
-        "prerequisites": [
-          {
-            "id": "47",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -4537,12 +3711,6 @@
           "wood": 125
         },
         "name": "Gillnets",
-        "prerequisites": [
-          {
-            "id": "906",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -4558,12 +3726,6 @@
           "wood": 300
         },
         "name": "Imperial<br>\nSkirmisher",
-        "prerequisites": [
-          {
-            "id": "6",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -4578,7 +3740,6 @@
           "food": 150
         },
         "name": "Forging",
-        "prerequisites": [],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -4594,12 +3755,6 @@
           "gold": 750
         },
         "name": "Elite<br>\nKonnik",
-        "prerequisites": [
-          {
-            "id": "1254",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1251",
           "kind": "building"
@@ -4615,12 +3770,6 @@
           "gold": 120
         },
         "name": "Iron<br>\nCasting",
-        "prerequisites": [
-          {
-            "id": "67",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -4636,12 +3785,6 @@
           "gold": 600
         },
         "name": "Elite<br>\nKeshik",
-        "prerequisites": [
-          {
-            "id": "1228",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4657,12 +3800,6 @@
           "wood": 1000
         },
         "name": "Elite<br>\nKipchak",
-        "prerequisites": [
-          {
-            "id": "1231",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4678,12 +3815,6 @@
           "gold": 750
         },
         "name": "Elite<br>\nLeitis",
-        "prerequisites": [
-          {
-            "id": "1234",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4699,7 +3830,6 @@
           "gold": 200
         },
         "name": "Stirrups",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4715,7 +3845,6 @@
           "gold": 450
         },
         "name": "Bagains",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4731,7 +3860,6 @@
           "wood": 400
         },
         "name": "Silk Armor",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4747,7 +3875,6 @@
           "wood": 500
         },
         "name": "Timurid<br>\nSiegecraft",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4763,7 +3890,6 @@
           "wood": 300
         },
         "name": "Steppe<br>\nHusbandry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4779,7 +3905,6 @@
           "gold": 400
         },
         "name": "Cuman<br>\nMercenaries",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4795,7 +3920,6 @@
           "gold": 250
         },
         "name": "Hill Forts",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4811,7 +3935,6 @@
           "gold": 200
         },
         "name": "Tower<br>\nShields",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4827,7 +3950,6 @@
           "wood": 600
         },
         "name": "Citadels",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4843,12 +3965,6 @@
           "gold": 550
         },
         "name": "Elite<br>\nSteppe Lancer",
-        "prerequisites": [
-          {
-            "id": "1370",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -4863,7 +3979,6 @@
           "food": 100
         },
         "name": "Scale<br>\nMail Armor",
-        "prerequisites": [],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -4879,12 +3994,6 @@
           "gold": 225
         },
         "name": "Blast<br>\nFurnace",
-        "prerequisites": [
-          {
-            "id": "68",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -4900,12 +4009,6 @@
           "gold": 800
         },
         "name": "Elite<br>\nCoustillier",
-        "prerequisites": [
-          {
-            "id": "1655",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4921,12 +4024,6 @@
           "gold": 675
         },
         "name": "Elite<br>\nSerjeant",
-        "prerequisites": [
-          {
-            "id": "1660",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -4942,7 +4039,6 @@
           "gold": 300
         },
         "name": "Burgundian<br>\nVineyards",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4958,7 +4054,6 @@
           "gold": 150
         },
         "name": "Flemish<br>\nRevolution",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4974,7 +4069,6 @@
           "gold": 300
         },
         "name": "First<br>\nCrusade",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -4990,7 +4084,6 @@
           "gold": 600
         },
         "name": "Hauberk",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5006,12 +4099,6 @@
           "gold": 100
         },
         "name": "Chain<br>\nMail Armor",
-        "prerequisites": [
-          {
-            "id": "74",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -5027,12 +4114,6 @@
           "gold": 150
         },
         "name": "Plate<br>\nMail Armor",
-        "prerequisites": [
-          {
-            "id": "76",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -5048,12 +4129,6 @@
           "gold": 600
         },
         "name": "Elite Obuch",
-        "prerequisites": [
-          {
-            "id": "1701",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5069,12 +4144,6 @@
           "wood": 800
         },
         "name": "Elite Hussite<br>\nWagon",
-        "prerequisites": [
-          {
-            "id": "1704",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5090,7 +4159,6 @@
           "gold": 300
         },
         "name": "Szlachta<br>\nPrivileges",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5106,7 +4174,6 @@
           "gold": 550
         },
         "name": "Lechitic<br>\nLegacy",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5122,7 +4189,6 @@
           "gold": 300
         },
         "name": "Wagenburg<br>\nTactics",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5138,7 +4204,6 @@
           "gold": 450
         },
         "name": "Hussite<br>\nReforms",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5154,12 +4219,6 @@
           "gold": 800
         },
         "name": "Winged<br>\nHussar",
-        "prerequisites": [
-          {
-            "id": "546",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -5175,12 +4234,6 @@
           "gold": 800
         },
         "name": "Houfnice",
-        "prerequisites": [
-          {
-            "id": "36",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -5195,7 +4248,6 @@
           "food": 75
         },
         "name": "Town<br>\nWatch",
-        "prerequisites": [],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -5211,12 +4263,6 @@
           "gold": 200
         },
         "name": "Plate<br>\nBarding Armor",
-        "prerequisites": [
-          {
-            "id": "82",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -5231,7 +4277,6 @@
           "food": 150
         },
         "name": "Scale<br>\nBarding Armor",
-        "prerequisites": [],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -5247,12 +4292,6 @@
           "gold": 150
         },
         "name": "Chain<br>\nBarding Armor",
-        "prerequisites": [
-          {
-            "id": "81",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "103",
           "kind": "building"
@@ -5268,12 +4307,6 @@
           "gold": 450
         },
         "name": "Elite Urumi<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "1735",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5289,12 +4322,6 @@
           "wood": 800
         },
         "name": "Elite Ratha",
-        "prerequisites": [
-          {
-            "id": "1759",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5310,7 +4337,6 @@
           "gold": 300
         },
         "name": "Bearded Axe",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5326,12 +4352,6 @@
           "gold": 650
         },
         "name": "Elite Chakram<br>\nThrower",
-        "prerequisites": [
-          {
-            "id": "1741",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5347,7 +4367,6 @@
           "gold": 200
         },
         "name": "Medical<br>\nCorps",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5363,7 +4382,6 @@
           "gold": 550
         },
         "name": "Wootz Steel",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5379,7 +4397,6 @@
           "wood": 375
         },
         "name": "Paiks",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5395,7 +4412,6 @@
           "wood": 800
         },
         "name": "Mahayana",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5411,7 +4427,6 @@
           "gold": 450
         },
         "name": "Kshatriyas",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5427,7 +4442,6 @@
           "gold": 700
         },
         "name": "Frontier<br>\nGuards",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5442,12 +4456,6 @@
           "food": 850
         },
         "name": "Siege<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1744",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -5463,12 +4471,6 @@
           "gold": 575
         },
         "name": "Elite Ghulam",
-        "prerequisites": [
-          {
-            "id": "1747",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5484,12 +4486,6 @@
           "gold": 500
         },
         "name": "E. Shrivamsha<br>\nRider",
-        "prerequisites": [
-          {
-            "id": "1751",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -5505,7 +4501,6 @@
           "gold": 100
         },
         "name": "Gambesons",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -5521,12 +4516,6 @@
           "gold": 900
         },
         "name": "Elite<br>\nCenturion",
-        "prerequisites": [
-          {
-            "id": "1790",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5542,7 +4531,6 @@
           "wood": 400
         },
         "name": "Ballistas",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5558,7 +4546,6 @@
           "gold": 800
         },
         "name": "Comitatenses",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5574,12 +4561,6 @@
           "gold": 400
         },
         "name": "Legionary",
-        "prerequisites": [
-          {
-            "id": "77",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -5592,7 +4573,6 @@
         "age_requirement": null,
         "cost": {},
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "research_time": 0,
         "table_origin": "tech",
@@ -5605,7 +4585,6 @@
           "gold": 500
         },
         "name": "Pirotechnia",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5621,12 +4600,6 @@
           "wood": 50
         },
         "name": "Demolition<br>\nShip",
-        "prerequisites": [
-          {
-            "id": "1104",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -5642,12 +4615,6 @@
           "wood": 100
         },
         "name": "Fishing<br>\nLines",
-        "prerequisites": [
-          {
-            "id": "199",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -5663,12 +4630,6 @@
           "wood": 200
         },
         "name": "Carvel<br>\nHull",
-        "prerequisites": [
-          {
-            "id": "908",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -5684,7 +4645,6 @@
           "wood": 100
         },
         "name": "Clinker<br>\nConstruction",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -5700,7 +4660,6 @@
           "gold": 175
         },
         "name": "Siphons",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -5716,12 +4675,6 @@
           "gold": 325
         },
         "name": "Incendiaries",
-        "prerequisites": [
-          {
-            "id": "909",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -5737,12 +4690,6 @@
           "wood": 600
         },
         "name": "E. Composite<br>\nBowman",
-        "prerequisites": [
-          {
-            "id": "1800",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5758,12 +4705,6 @@
           "gold": 700
         },
         "name": "Elite<br>\nMonaspa",
-        "prerequisites": [
-          {
-            "id": "1803",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5779,7 +4720,6 @@
           "gold": 400
         },
         "name": "Fereters",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5795,7 +4735,6 @@
           "wood": 350
         },
         "name": "Cilician<br>\nFleet",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5811,7 +4750,6 @@
           "gold": 200
         },
         "name": "Svan Towers",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5827,7 +4765,6 @@
           "gold": 250
         },
         "name": "Aznauri<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5843,7 +4780,6 @@
           "wood": 300
         },
         "name": "Ballistics",
-        "prerequisites": [],
         "produced_at": {
           "id": "209",
           "kind": "building"
@@ -5858,12 +4794,6 @@
           "food": 300
         },
         "name": "Capped<br>\nRam",
-        "prerequisites": [
-          {
-            "id": "1258",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -5879,12 +4809,6 @@
           "wood": 230
         },
         "name": "Elite<br>\nSkirmisher",
-        "prerequisites": [
-          {
-            "id": "7",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -5900,12 +4824,6 @@
           "wood": 800
         },
         "name": "Heavy<br>\nRocket Cart",
-        "prerequisites": [
-          {
-            "id": "1904",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -5921,12 +4839,6 @@
           "gold": 400
         },
         "name": "Elite<br>\nFire Lancer",
-        "prerequisites": [
-          {
-            "id": "1901",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -5942,12 +4854,6 @@
           "gold": 550
         },
         "name": "Elite<br>\nIron Pagoda",
-        "prerequisites": [
-          {
-            "id": "1908",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5963,7 +4869,6 @@
           "wood": 250
         },
         "name": "Fortified<br>\nBastions",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5979,7 +4884,6 @@
           "gold": 600
         },
         "name": "Thunderclap<br>\nBombs",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -5997,7 +4901,6 @@
           "wood": 80
         },
         "name": "Organ Gun",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6012,12 +4915,6 @@
           "wood": 80
         },
         "name": "Elite<br>\nOrgan Gun",
-        "prerequisites": [
-          {
-            "id": "1001",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6032,7 +4929,6 @@
           "wood": 90
         },
         "name": "Caravel",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6047,12 +4943,6 @@
           "wood": 90
         },
         "name": "Elite<br>\nCaravel",
-        "prerequisites": [
-          {
-            "id": "1004",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6067,7 +4957,6 @@
           "wood": 50
         },
         "name": "Camel Archer",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6082,12 +4971,6 @@
           "wood": 50
         },
         "name": "Elite<br>\nCamel Archer",
-        "prerequisites": [
-          {
-            "id": "1007",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6102,7 +4985,6 @@
           "wood": 35
         },
         "name": "Genitour",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -6117,12 +4999,6 @@
           "wood": 35
         },
         "name": "Elite<br>\nGenitour",
-        "prerequisites": [
-          {
-            "id": "1010",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -6137,7 +5013,6 @@
           "gold": 40
         },
         "name": "Gbeto",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6152,12 +5027,6 @@
           "gold": 40
         },
         "name": "Elite<br>\nGbeto",
-        "prerequisites": [
-          {
-            "id": "1013",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6172,7 +5041,6 @@
           "gold": 30
         },
         "name": "Shotel Warrior",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6187,12 +5055,6 @@
           "gold": 30
         },
         "name": "Elite<br>\nShotel Warrior",
-        "prerequisites": [
-          {
-            "id": "1016",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6207,7 +5069,6 @@
           "wood": 55
         },
         "name": "Mangudai",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6222,7 +5083,6 @@
           "wood": 75
         },
         "name": "Fire<br>\nGalley",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6237,7 +5097,6 @@
           "wood": 45
         },
         "name": "Demolition<br>\nRaft",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6252,7 +5111,6 @@
           "wood": 100
         },
         "name": "Siege<br>\nTower",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -6267,7 +5125,6 @@
           "gold": 80
         },
         "name": "Ballista<br>\nElephant",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6282,12 +5139,6 @@
           "gold": 80
         },
         "name": "Elite Ballista<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1120",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6302,7 +5153,6 @@
           "gold": 15
         },
         "name": "Karambit<br>\nWarrior",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6317,12 +5167,6 @@
           "gold": 15
         },
         "name": "Elite Karambit<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "1123",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6337,7 +5181,6 @@
           "wood": 75
         },
         "name": "Arambai",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6352,12 +5195,6 @@
           "wood": 75
         },
         "name": "Elite<br>\nArambai",
-        "prerequisites": [
-          {
-            "id": "1126",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6372,7 +5209,6 @@
           "wood": 50
         },
         "name": "Rattan Archer",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6387,12 +5223,6 @@
           "wood": 50
         },
         "name": "Elite<br>\nRattan Archer",
-        "prerequisites": [
-          {
-            "id": "1129",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6407,7 +5237,6 @@
           "gold": 70
         },
         "name": "Battle Elephant",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -6422,12 +5251,6 @@
           "gold": 70
         },
         "name": "Elite Battle<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1132",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -6442,12 +5265,6 @@
           "wood": 35
         },
         "name": "Imperial<br>\nSkirmisher",
-        "prerequisites": [
-          {
-            "id": "6",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -6462,7 +5279,6 @@
           "gold": 70
         },
         "name": "Konnik",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6477,12 +5293,6 @@
           "gold": 70
         },
         "name": "Elite<br>\nKonnik",
-        "prerequisites": [
-          {
-            "id": "1225",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6497,7 +5307,6 @@
           "gold": 40
         },
         "name": "Keshik",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6512,12 +5321,6 @@
           "gold": 40
         },
         "name": "Elite<br>\nKeshik",
-        "prerequisites": [
-          {
-            "id": "1228",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6532,7 +5335,6 @@
           "wood": 60
         },
         "name": "Kipchak",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6547,12 +5349,6 @@
           "wood": 60
         },
         "name": "Elite<br>\nKipchak",
-        "prerequisites": [
-          {
-            "id": "1231",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6567,7 +5363,6 @@
           "gold": 50
         },
         "name": "Leitis",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6582,12 +5377,6 @@
           "gold": 50
         },
         "name": "Elite<br>\nLeitis",
-        "prerequisites": [
-          {
-            "id": "1234",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6602,7 +5391,6 @@
           "gold": 100
         },
         "name": "Monk",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -6617,7 +5405,6 @@
           "gold": 0
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 16
@@ -6629,7 +5416,6 @@
           "gold": 0
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 16
@@ -6641,7 +5427,6 @@
           "gold": 70
         },
         "name": "Konnik",
-        "prerequisites": [],
         "produced_at": {
           "id": "1251",
           "kind": "building"
@@ -6656,12 +5441,6 @@
           "gold": 70
         },
         "name": "Elite<br>\nKonnik",
-        "prerequisites": [
-          {
-            "id": "1254",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1251",
           "kind": "building"
@@ -6676,7 +5455,6 @@
           "wood": 160
         },
         "name": "Battering<br>\nRam",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -6688,12 +5466,6 @@
         "age_requirement": 4,
         "cost": {},
         "name": "Elite<br>\nKipchak",
-        "prerequisites": [
-          {
-            "id": "690",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6708,7 +5480,6 @@
           "gold": 30
         },
         "name": "Flaming<br>\nCamel",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -6723,7 +5494,6 @@
           "wood": 100
         },
         "name": "Trade Cart",
-        "prerequisites": [],
         "produced_at": {
           "id": "84",
           "kind": "building"
@@ -6737,7 +5507,6 @@
           "wood": 75
         },
         "name": "Fishing<br>\nShip",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6752,12 +5521,6 @@
           "wood": 75
         },
         "name": "Dragon Ship",
-        "prerequisites": [
-          {
-            "id": "529",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6772,7 +5535,6 @@
           "gold": 40
         },
         "name": "Steppe Lancer",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -6787,12 +5549,6 @@
           "gold": 40
         },
         "name": "Elite<br>\nSteppe Lancer",
-        "prerequisites": [
-          {
-            "id": "1370",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -6807,7 +5563,6 @@
           "gold": 75
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 30
@@ -6819,7 +5574,6 @@
           "gold": 55
         },
         "name": "Coustillier",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6834,12 +5588,6 @@
           "gold": 55
         },
         "name": "Elite<br>\nCoustillier",
-        "prerequisites": [
-          {
-            "id": "1655",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6854,7 +5602,6 @@
           "gold": 25
         },
         "name": "Serjeant",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6869,12 +5616,6 @@
           "gold": 25
         },
         "name": "Elite<br>\nSerjeant",
-        "prerequisites": [
-          {
-            "id": "1658",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6889,7 +5630,6 @@
           "gold": 25
         },
         "name": "Serjeant",
-        "prerequisites": [],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -6904,12 +5644,6 @@
           "gold": 25
         },
         "name": "Elite<br>\nSerjeant",
-        "prerequisites": [
-          {
-            "id": "1660",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -6924,7 +5658,6 @@
           "gold": 25
         },
         "name": "Flemish<br>\nMilitia",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -6939,7 +5672,6 @@
           "wood": 100
         },
         "name": "Trade Cog",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -6954,7 +5686,6 @@
           "gold": 20
         },
         "name": "Obuch",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6969,12 +5700,6 @@
           "gold": 20
         },
         "name": "Elite Obuch",
-        "prerequisites": [
-          {
-            "id": "1701",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -6989,7 +5714,6 @@
           "wood": 110
         },
         "name": "Hussite Wagon",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7004,12 +5728,6 @@
           "wood": 110
         },
         "name": "Elite Hussite<br>\nWagon",
-        "prerequisites": [
-          {
-            "id": "1704",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7023,12 +5741,6 @@
           "food": 80
         },
         "name": "Winged<br>\nHussar",
-        "prerequisites": [
-          {
-            "id": "546",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7043,12 +5755,6 @@
           "wood": 225
         },
         "name": "Houfnice",
-        "prerequisites": [
-          {
-            "id": "36",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7063,7 +5769,6 @@
           "gold": 20
         },
         "name": "Urumi<br>\nSwordsman",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7078,12 +5783,6 @@
           "gold": 20
         },
         "name": "Elite Urumi<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "1735",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7098,7 +5797,6 @@
           "wood": 60
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 20
@@ -7110,7 +5808,6 @@
           "wood": 60
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 18
@@ -7122,7 +5819,6 @@
           "gold": 30
         },
         "name": "Chakram<br>\nThrower",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7137,12 +5833,6 @@
           "gold": 30
         },
         "name": "Elite Chakram<br>\nThrower",
-        "prerequisites": [
-          {
-            "id": "1741",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7157,7 +5847,6 @@
           "gold": 95
         },
         "name": "Armored<br>\nElephant",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7172,12 +5861,6 @@
           "gold": 95
         },
         "name": "Siege<br>\nElephant",
-        "prerequisites": [
-          {
-            "id": "1744",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7192,7 +5875,6 @@
           "gold": 45
         },
         "name": "Ghulam",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7207,12 +5889,6 @@
           "gold": 45
         },
         "name": "Elite Ghulam",
-        "prerequisites": [
-          {
-            "id": "1747",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7227,12 +5903,6 @@
           "wood": 180
         },
         "name": "Thirisadai",
-        "prerequisites": [
-          {
-            "id": "532",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -7247,7 +5917,6 @@
           "gold": 30
         },
         "name": "Shrivamsha<br>\nRider",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7262,12 +5931,6 @@
           "gold": 30
         },
         "name": "E. Shrivamsha<br>\nRider",
-        "prerequisites": [
-          {
-            "id": "1751",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7282,7 +5945,6 @@
           "gold": 60
         },
         "name": "Camel Scout",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7297,7 +5959,6 @@
           "wood": 60
         },
         "name": "Ratha",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7312,12 +5973,6 @@
           "wood": 60
         },
         "name": "Elite Ratha",
-        "prerequisites": [
-          {
-            "id": "1759",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7332,7 +5987,6 @@
           "wood": 25
         },
         "name": "Spearman",
-        "prerequisites": [],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -7347,12 +6001,6 @@
           "wood": 25
         },
         "name": "Pikeman",
-        "prerequisites": [
-          {
-            "id": "1786",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -7367,12 +6015,6 @@
           "wood": 25
         },
         "name": "Halberdier",
-        "prerequisites": [
-          {
-            "id": "1787",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "1665",
           "kind": "building"
@@ -7387,7 +6029,6 @@
           "gold": 85
         },
         "name": "Centurion",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7402,12 +6043,6 @@
           "gold": 85
         },
         "name": "Elite<br>\nCenturion",
-        "prerequisites": [
-          {
-            "id": "1790",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7422,12 +6057,6 @@
           "gold": 20
         },
         "name": "Legionary",
-        "prerequisites": [
-          {
-            "id": "77",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -7442,12 +6071,6 @@
           "wood": 175
         },
         "name": "Dromon",
-        "prerequisites": [
-          {
-            "id": "532",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -7462,7 +6085,6 @@
           "wood": 35
         },
         "name": "Composite<br>\nBowman",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7477,12 +6099,6 @@
           "wood": 35
         },
         "name": "E. Composite<br>\nBowman",
-        "prerequisites": [
-          {
-            "id": "1800",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7497,7 +6113,6 @@
           "gold": 45
         },
         "name": "Monaspa",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7512,12 +6127,6 @@
           "gold": 45
         },
         "name": "Elite<br>\nMonaspa",
-        "prerequisites": [
-          {
-            "id": "1803",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7532,7 +6141,6 @@
           "gold": 50
         },
         "name": "Warrior<br>\nPriest",
-        "prerequisites": [],
         "produced_at": {
           "id": "1806",
           "kind": "building"
@@ -7547,12 +6155,6 @@
           "gold": 75
         },
         "name": "Savar",
-        "prerequisites": [
-          {
-            "id": "283",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7567,7 +6169,6 @@
           "wood": 25
         },
         "name": "Slinger",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -7582,7 +6183,6 @@
           "wood": 45
         },
         "name": "Fire Lancer",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -7597,12 +6197,6 @@
           "wood": 45
         },
         "name": "Elite<br>\nFire Lancer",
-        "prerequisites": [
-          {
-            "id": "1901",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -7617,7 +6211,6 @@
           "wood": 135
         },
         "name": "Rocket<br>\nCart",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7632,12 +6225,6 @@
           "wood": 135
         },
         "name": "Heavy<br>\nRocket Cart",
-        "prerequisites": [
-          {
-            "id": "1904",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7652,7 +6239,6 @@
           "gold": 55
         },
         "name": "Iron<br>\nPagoda",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7667,12 +6253,6 @@
           "gold": 55
         },
         "name": "Elite<br>\nIron Pagoda",
-        "prerequisites": [
-          {
-            "id": "1908",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7687,7 +6267,6 @@
           "gold": 65
         },
         "name": "Grenadier",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -7702,7 +6281,6 @@
           "gold": 40
         },
         "name": "Liao Dao",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7717,12 +6295,6 @@
           "gold": 40
         },
         "name": "Elite<br>\nLiao Dao",
-        "prerequisites": [
-          {
-            "id": "1920",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7737,12 +6309,6 @@
           "gold": 175
         },
         "name": "Mounted<br>\nTrebuchet",
-        "prerequisites": [
-          {
-            "id": "36",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7757,12 +6323,6 @@
           "wood": 175
         },
         "name": "Traction<br>\nTrebuchet",
-        "prerequisites": [
-          {
-            "id": "36",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7777,7 +6337,6 @@
           "gold": 65
         },
         "name": "Hei Guang<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7792,12 +6351,6 @@
           "gold": 65
         },
         "name": "Heavy Hei Guang<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "1944",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -7812,12 +6365,6 @@
           "wood": 250
         },
         "name": "Lou Chuan",
-        "prerequisites": [
-          {
-            "id": "532",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -7832,7 +6379,6 @@
           "gold": 80
         },
         "name": "Tiger<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7847,12 +6393,6 @@
           "gold": 80
         },
         "name": "Elite Tiger<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "1949",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7867,7 +6407,6 @@
           "wood": 65
         },
         "name": "Xianbei<br>\nRaider",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -7882,12 +6421,6 @@
           "gold": 500
         },
         "name": "Cao Cao",
-        "prerequisites": [
-          {
-            "id": "331",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7902,7 +6435,6 @@
           "gold": 15
         },
         "name": "White<br>\nFeather Guard",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7917,12 +6449,6 @@
           "gold": 15
         },
         "name": "Elite White<br>\nFeather Guard",
-        "prerequisites": [
-          {
-            "id": "1959",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7937,7 +6463,6 @@
           "gold": 90
         },
         "name": "War<br>\nChariot",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -7952,12 +6477,6 @@
           "gold": 500
         },
         "name": "Liu Bei",
-        "prerequisites": [
-          {
-            "id": "331",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7972,7 +6491,6 @@
           "wood": 45
         },
         "name": "Fire<br>\nArcher",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -7987,12 +6505,6 @@
           "wood": 45
         },
         "name": "Elite Fire<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "1968",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8007,7 +6519,6 @@
           "gold": 50
         },
         "name": "Jian<br>\nSwordsman",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8022,12 +6533,6 @@
           "gold": 500
         },
         "name": "Sun Jian",
-        "prerequisites": [
-          {
-            "id": "331",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8042,7 +6547,6 @@
           "gold": 90
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 28
@@ -8054,12 +6558,6 @@
           "gold": 60
         },
         "name": "Imperial<br>\nCamel Rider",
-        "prerequisites": [
-          {
-            "id": "330",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8074,12 +6572,6 @@
           "wood": 90
         },
         "name": "War Galley",
-        "prerequisites": [
-          {
-            "id": "539",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8094,7 +6586,6 @@
           "gold": 25
         },
         "name": "Woad Raider",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8109,7 +6600,6 @@
           "gold": 85
         },
         "name": "War Elephant",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8124,12 +6614,6 @@
           "wood": 25
         },
         "name": "Crossbowman",
-        "prerequisites": [
-          {
-            "id": "4",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8144,7 +6628,6 @@
           "gold": 30
         },
         "name": "Teutonic<br>\nKnight",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8159,7 +6642,6 @@
           "wood": 100
         },
         "name": "Longboat",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8174,7 +6656,6 @@
           "gold": 25
         },
         "name": "Champi<br>\nScout",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8189,12 +6670,6 @@
           "gold": 25
         },
         "name": "Champi<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2588",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8209,12 +6684,6 @@
           "gold": 25
         },
         "name": "Elite Champi<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2552",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8229,7 +6698,6 @@
           "wood": 50
         },
         "name": "Guecha<br>\nWarrior",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8244,12 +6712,6 @@
           "wood": 50
         },
         "name": "Elite Guecha<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2562",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8264,7 +6726,6 @@
           "gold": 40
         },
         "name": "Kona",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8279,12 +6740,6 @@
           "gold": 40
         },
         "name": "Elite<br>\nKona",
-        "prerequisites": [
-          {
-            "id": "2566",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8299,7 +6754,6 @@
           "wood": 45
         },
         "name": "Bolas<br>\nRider",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8314,12 +6768,6 @@
           "wood": 45
         },
         "name": "Elite Bolas<br>\nRider",
-        "prerequisites": [
-          {
-            "id": "2569",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8334,7 +6782,6 @@
           "wood": 35
         },
         "name": "Blackwood<br>\nArcher",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8349,12 +6796,6 @@
           "wood": 35
         },
         "name": "Elite Blackwood<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "2579",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8369,7 +6810,6 @@
           "gold": 60
         },
         "name": "Ibirapema<br>\nWarrior",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8384,12 +6824,6 @@
           "gold": 60
         },
         "name": "Elite Ibirapema<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "2582",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8404,7 +6838,6 @@
           "gold": 45
         },
         "name": "Temple<br>\nGuard",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8419,12 +6852,6 @@
           "gold": 45
         },
         "name": "Elite Temple<br>\nGuard",
-        "prerequisites": [
-          {
-            "id": "2586",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8439,12 +6866,6 @@
           "gold": 25
         },
         "name": "Champi<br>\nRunner",
-        "prerequisites": [
-          {
-            "id": "2550",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8459,7 +6880,6 @@
           "wood": 75
         },
         "name": "Hulk",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8474,12 +6894,6 @@
           "wood": 75
         },
         "name": "War Hulk",
-        "prerequisites": [
-          {
-            "id": "2626",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8494,12 +6908,6 @@
           "wood": 75
         },
         "name": "Carrack",
-        "prerequisites": [
-          {
-            "id": "2627",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8514,12 +6922,6 @@
           "wood": 225
         },
         "name": "Catapult Galleon",
-        "prerequisites": [
-          {
-            "id": "532",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8534,7 +6936,6 @@
           "wood": 75
         },
         "name": "Scorpion",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -8549,7 +6950,6 @@
           "wood": 160
         },
         "name": "Mangonel",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -8564,7 +6964,6 @@
           "gold": 25
         },
         "name": "Throwing<br>\nAxeman",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8579,7 +6978,6 @@
           "gold": 85
         },
         "name": "Mameluke",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8594,12 +6992,6 @@
           "gold": 75
         },
         "name": "Cavalier",
-        "prerequisites": [
-          {
-            "id": "38",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8614,7 +7006,6 @@
           "gold": 30
         },
         "name": "Samurai",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8629,12 +7020,6 @@
           "gold": 60
         },
         "name": "Camel Rider",
-        "prerequisites": [
-          {
-            "id": "1755",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8649,12 +7034,6 @@
           "gold": 60
         },
         "name": "Heavy<br>\nCamel Rider",
-        "prerequisites": [
-          {
-            "id": "329",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8669,7 +7048,6 @@
           "wood": 200
         },
         "name": "Trebuchet",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8684,12 +7062,6 @@
           "wood": 25
         },
         "name": "Pikeman",
-        "prerequisites": [
-          {
-            "id": "93",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8704,12 +7076,6 @@
           "wood": 25
         },
         "name": "Halberdier",
-        "prerequisites": [
-          {
-            "id": "358",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8724,7 +7090,6 @@
           "wood": 225
         },
         "name": "Bombard<br>\nCannon",
-        "prerequisites": [],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -8739,7 +7104,6 @@
           "gold": 75
         },
         "name": "Knight",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8754,7 +7118,6 @@
           "wood": 40
         },
         "name": "Cavalry<br>\nArcher",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8769,7 +7132,6 @@
           "wood": 25
         },
         "name": "Archer",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8784,7 +7146,6 @@
           "gold": 75
         },
         "name": "Cataphract",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8799,7 +7160,6 @@
           "gold": 35
         },
         "name": "Huskarl",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8814,7 +7174,6 @@
           "wood": 200
         },
         "name": null,
-        "prerequisites": [],
         "produced_at": null,
         "table_origin": "unit",
         "training_time": 50
@@ -8826,12 +7185,6 @@
           "wood": 200
         },
         "name": "Cannon<br>\nGalleon",
-        "prerequisites": [
-          {
-            "id": "65",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8846,12 +7199,6 @@
           "wood": 160
         },
         "name": "Capped<br>\nRam",
-        "prerequisites": [
-          {
-            "id": "1258",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -8866,7 +7213,6 @@
           "gold": 20
         },
         "name": "Petard",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8880,12 +7226,6 @@
           "food": 80
         },
         "name": "Hussar",
-        "prerequisites": [
-          {
-            "id": "546",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8900,12 +7240,6 @@
           "wood": 90
         },
         "name": "Galleon",
-        "prerequisites": [
-          {
-            "id": "21",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -8919,7 +7253,6 @@
           "food": 80
         },
         "name": "Scout<br>\nCavalry",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -8934,7 +7267,6 @@
           "gold": 55
         },
         "name": "Janissary",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -8949,12 +7281,6 @@
           "gold": 20
         },
         "name": "Two-Handed<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "77",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -8969,12 +7295,6 @@
           "wood": 40
         },
         "name": "Heavy Cavalry<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "39",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -8989,12 +7309,6 @@
           "wood": 25
         },
         "name": "Arbalester",
-        "prerequisites": [
-          {
-            "id": "24",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -9009,12 +7323,6 @@
           "gold": 50
         },
         "name": "Hand<br>\nCannoneer",
-        "prerequisites": [
-          {
-            "id": "6",
-            "kind": "technology"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -9029,12 +7337,6 @@
           "wood": 45
         },
         "name": "Demolition<br>\nShip",
-        "prerequisites": [
-          {
-            "id": "1104",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9049,12 +7351,6 @@
           "wood": 45
         },
         "name": "Heavy<br>\nDemo Ship",
-        "prerequisites": [
-          {
-            "id": "527",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9069,12 +7365,6 @@
           "wood": 75
         },
         "name": "Fire Ship",
-        "prerequisites": [
-          {
-            "id": "1103",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9089,12 +7379,6 @@
           "wood": 35
         },
         "name": "Elite<br>\nLongbowman",
-        "prerequisites": [
-          {
-            "id": "8",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9109,12 +7393,6 @@
           "gold": 25
         },
         "name": "Elite Throwing<br>\nAxeman",
-        "prerequisites": [
-          {
-            "id": "281",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9129,12 +7407,6 @@
           "wood": 75
         },
         "name": "Fast<br>\nFire Ship",
-        "prerequisites": [
-          {
-            "id": "529",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9149,12 +7421,6 @@
           "wood": 100
         },
         "name": "Elite<br>\nLongboat",
-        "prerequisites": [
-          {
-            "id": "250",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9169,12 +7435,6 @@
           "gold": 25
         },
         "name": "Elite<br>\nWoad Raider",
-        "prerequisites": [
-          {
-            "id": "232",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9189,7 +7449,6 @@
           "wood": 90
         },
         "name": "Galley",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9204,12 +7463,6 @@
           "wood": 75
         },
         "name": "Heavy<br>\nScorpion",
-        "prerequisites": [
-          {
-            "id": "279",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -9223,7 +7476,6 @@
           "wood": 125
         },
         "name": "Transport<br>\nShip",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9237,12 +7489,6 @@
           "food": 80
         },
         "name": "Light<br>\nCavalry",
-        "prerequisites": [
-          {
-            "id": "448",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -9257,12 +7503,6 @@
           "wood": 160
         },
         "name": "Siege<br>\nRam",
-        "prerequisites": [
-          {
-            "id": "422",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -9277,12 +7517,6 @@
           "wood": 160
         },
         "name": "Onager",
-        "prerequisites": [
-          {
-            "id": "280",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -9297,12 +7531,6 @@
           "gold": 75
         },
         "name": "Elite<br>\nCataphract",
-        "prerequisites": [
-          {
-            "id": "40",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9317,12 +7545,6 @@
           "gold": 30
         },
         "name": "Elite Teutonic<br>\nKnight",
-        "prerequisites": [
-          {
-            "id": "25",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9337,12 +7559,6 @@
           "gold": 35
         },
         "name": "Elite<br>\nHuskarl",
-        "prerequisites": [
-          {
-            "id": "41",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9357,12 +7573,6 @@
           "gold": 85
         },
         "name": "Elite<br>\nMameluke",
-        "prerequisites": [
-          {
-            "id": "282",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9377,12 +7587,6 @@
           "gold": 55
         },
         "name": "Elite<br>\nJanissary",
-        "prerequisites": [
-          {
-            "id": "46",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9397,12 +7601,6 @@
           "gold": 85
         },
         "name": "Elite<br>\nWar Elephant",
-        "prerequisites": [
-          {
-            "id": "239",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9417,12 +7615,6 @@
           "wood": 40
         },
         "name": "Elite<br>\nChu Ko Nu",
-        "prerequisites": [
-          {
-            "id": "73",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9437,12 +7629,6 @@
           "gold": 30
         },
         "name": "Elite<br>\nSamurai",
-        "prerequisites": [
-          {
-            "id": "291",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9457,12 +7643,6 @@
           "wood": 55
         },
         "name": "Elite<br>\nMangudai",
-        "prerequisites": [
-          {
-            "id": "11",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9477,12 +7657,6 @@
           "gold": 20
         },
         "name": "Champion",
-        "prerequisites": [
-          {
-            "id": "473",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9497,12 +7671,6 @@
           "gold": 75
         },
         "name": "Paladin",
-        "prerequisites": [
-          {
-            "id": "283",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -9517,12 +7685,6 @@
           "wood": 160
         },
         "name": "Siege<br>\nOnager",
-        "prerequisites": [
-          {
-            "id": "550",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "49",
           "kind": "building"
@@ -9537,12 +7699,6 @@
           "wood": 35
         },
         "name": "Elite<br>\nSkirmisher",
-        "prerequisites": [
-          {
-            "id": "7",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -9557,12 +7713,6 @@
           "wood": 200
         },
         "name": "Elite Cannon<br>\nGalleon",
-        "prerequisites": [
-          {
-            "id": "420",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -9577,7 +7727,6 @@
           "gold": 20
         },
         "name": "Berserk",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9592,12 +7741,6 @@
           "gold": 20
         },
         "name": "Elite<br>\nBerserk",
-        "prerequisites": [
-          {
-            "id": "692",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9612,7 +7755,6 @@
           "wood": 35
         },
         "name": "Skirmisher",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -9627,7 +7769,6 @@
           "gold": 30
         },
         "name": "Jaguar Warrior",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9642,12 +7783,6 @@
           "gold": 30
         },
         "name": "Elite<br>\nJaguar Warrior",
-        "prerequisites": [
-          {
-            "id": "725",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9662,7 +7797,6 @@
           "wood": 40
         },
         "name": "Chu Ko Nu",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9677,7 +7811,6 @@
           "gold": 20
         },
         "name": "Militia",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9692,12 +7825,6 @@
           "gold": 20
         },
         "name": "Man-at-Arms",
-        "prerequisites": [
-          {
-            "id": "74",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9712,7 +7839,6 @@
           "gold": 50
         },
         "name": "Eagle<br>\nScout",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9727,12 +7853,6 @@
           "gold": 50
         },
         "name": "Elite Eagle<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "753",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9747,12 +7867,6 @@
           "gold": 50
         },
         "name": "Eagle<br>\nWarrior",
-        "prerequisites": [
-          {
-            "id": "751",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9767,7 +7881,6 @@
           "gold": 60
         },
         "name": "Tarkan",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9782,12 +7895,6 @@
           "gold": 60
         },
         "name": "Elite<br>\nTarkan",
-        "prerequisites": [
-          {
-            "id": "755",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9802,7 +7909,6 @@
           "gold": 35
         },
         "name": "Huskarl",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9817,12 +7923,6 @@
           "gold": 35
         },
         "name": "Elite<br>\nHuskarl",
-        "prerequisites": [
-          {
-            "id": "759",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9837,7 +7937,6 @@
           "wood": 55
         },
         "name": "Plumed Archer",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9852,12 +7951,6 @@
           "wood": 55
         },
         "name": "Elite<br>\nPlumed Archer",
-        "prerequisites": [
-          {
-            "id": "763",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9872,12 +7965,6 @@
           "gold": 20
         },
         "name": "Long<br>\nSwordsman",
-        "prerequisites": [
-          {
-            "id": "75",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -9892,7 +7979,6 @@
           "gold": 60
         },
         "name": "Conquistador",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9907,12 +7993,6 @@
           "gold": 60
         },
         "name": "Elite<br>\nConquistador",
-        "prerequisites": [
-          {
-            "id": "771",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9926,7 +8006,6 @@
           "gold": 100
         },
         "name": "Missionary",
-        "prerequisites": [],
         "produced_at": {
           "id": "104",
           "kind": "building"
@@ -9941,7 +8020,6 @@
           "wood": 35
         },
         "name": "Longbowman",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9956,7 +8034,6 @@
           "wood": 200
         },
         "name": "War Wagon",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9971,12 +8048,6 @@
           "wood": 200
         },
         "name": "Elite<br>\nWar Wagon",
-        "prerequisites": [
-          {
-            "id": "827",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -9990,7 +8061,6 @@
           "food": 50
         },
         "name": "Villager",
-        "prerequisites": [],
         "produced_at": {
           "id": "109",
           "kind": "building"
@@ -10005,7 +8075,6 @@
           "wood": 190
         },
         "name": "Turtle Ship",
-        "prerequisites": [],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -10020,12 +8089,6 @@
           "wood": 190
         },
         "name": "Elite<br>\nTurtle Ship",
-        "prerequisites": [
-          {
-            "id": "831",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "45",
           "kind": "building"
@@ -10040,7 +8103,6 @@
           "wood": 45
         },
         "name": "Genoese<br>\nCrossbowman",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10055,12 +8117,6 @@
           "wood": 45
         },
         "name": "Elite Genoese<br>\nCrossbowman",
-        "prerequisites": [
-          {
-            "id": "866",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10075,7 +8131,6 @@
           "gold": 45
         },
         "name": "Magyar<br>\nHuszar",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10090,12 +8145,6 @@
           "gold": 45
         },
         "name": "Elite Magyar<br>\nHuszar",
-        "prerequisites": [
-          {
-            "id": "869",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10110,7 +8159,6 @@
           "gold": 80
         },
         "name": "Elephant Archer",
-        "prerequisites": [],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -10125,12 +8173,6 @@
           "gold": 80
         },
         "name": "Elite Elephant<br>\nArcher",
-        "prerequisites": [
-          {
-            "id": "873",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "87",
           "kind": "building"
@@ -10145,7 +8187,6 @@
           "gold": 70
         },
         "name": "Boyar",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10160,12 +8201,6 @@
           "gold": 70
         },
         "name": "Elite<br>\nBoyar",
-        "prerequisites": [
-          {
-            "id": "876",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10180,7 +8215,6 @@
           "gold": 30
         },
         "name": "Kamayuk",
-        "prerequisites": [],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10195,12 +8229,6 @@
           "gold": 30
         },
         "name": "Elite<br>\nKamayuk",
-        "prerequisites": [
-          {
-            "id": "879",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "82",
           "kind": "building"
@@ -10215,7 +8243,6 @@
           "gold": 35
         },
         "name": "Condottiero",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"
@@ -10230,7 +8257,6 @@
           "gold": 60
         },
         "name": "Tarkan",
-        "prerequisites": [],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -10245,12 +8271,6 @@
           "gold": 60
         },
         "name": "Elite<br>\nTarkan",
-        "prerequisites": [
-          {
-            "id": "886",
-            "kind": "unit"
-          }
-        ],
         "produced_at": {
           "id": "101",
           "kind": "building"
@@ -10265,7 +8285,6 @@
           "wood": 25
         },
         "name": "Spearman",
-        "prerequisites": [],
         "produced_at": {
           "id": "12",
           "kind": "building"

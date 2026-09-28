@@ -1160,7 +1160,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       byte-identical. **Lands before T655 publishes anything**, since FR-025 freezes the snapshot
       then
 
-- [ ] T652y **The pack's tree links are not the game's prerequisites — the sixth review's H2,
+- [x] T652y **The pack's tree links are not the game's prerequisites — the sixth review's H2,
       arbitrated 2026-09-28: do not carry them.** T652t made every `BuildingTech` link resolve to an
       entity that exists, but resolving is not being right: `link_id` is the tech-tree screen's
       display link ([research.md](./research.md) D3). Hand Cannoneer (5) answers technology 6, Drill,
@@ -1183,8 +1183,9 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `prerequisites`; `query.prerequisites` answers `field-absent` with severity `informational` for
       an entity the pack names, and `entity-absent` for one it does not (the contrast); replace
       T652t's resolution test, which asserted existence only; re-derive `test_coverage.py`'s
-      enumerated blockers from what the pass emits — the `prerequisites` tuples of buildings 490 and
-      673 become informational and leave the list. (7) `docs/data-sources.md` §6, aoe2techtree: Scope
+      enumerated blockers from what the pass emits. _Measured: the blocked entry was the only one
+      requiring `age_requirement` and `available_to` too, so all three fields' gaps turn
+      informational and buildings 490 and 673 keep 6 blocking tuples, not 12._ (7) `docs/data-sources.md` §6, aoe2techtree: Scope
       and Coverage stop claiming prerequisites, and Known limitations says what the links are.
       **Lands before T655 publishes anything**
 - [ ] T652z **The sixth review's follow-ups.** (1)

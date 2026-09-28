@@ -53,6 +53,16 @@
 # `produced_at`, `name`), not by hand-guessing which ids belong to a named class. Each
 # civilisation's own header comment below records exactly how its own selectors were resolved.
 #
+# **T652y, 2026-09-28: `rules.json` no longer carries `prerequisites`** (research.md D3 — the
+# pack's own tree links are the tech-tree screen's display link, not a game rule). The
+# `validated_by` readings below that resolved a unit line through it are dated records of what was
+# read that day and stay as written; they are not a live claim about today's `rules.json`. Checked
+# now, not assumed: a technology's own `upgrades_unit` field (the unit id it upgrades into)
+# reproduces the Knight-line (Cavalier id 209 targets 283, Paladin id 265 targets 569) and the
+# Archer-line (Crossbowman id 100 targets 24, Arbalester id 237 targets 492) chains this file cites
+# below; it does not reproduce the Galley-line (539, 21, 442) — no technology in either promoted
+# snapshot carries `upgrades_unit` for 21 or 442.
+#
 # **Rounding.** Where an operand does not land on an integer resource amount, this package's stated
 # convention (packages/knowledge/tests/test_query.py's module docstring) is round half up, applied
 # by `effects.py`'s `_round_half_up` — never Python's own banker's rounding.

@@ -300,9 +300,15 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 #: source coverage hole, not a decoding or civilisation-assignment error, and not a civilisation
 #: bonus at all — re-modelling a bonus as a conditional rule (T652u) has nothing to say about an
 #: id the pack never names in the first place; vendoring a second source to close it is explicitly
-#: rejected by research.md D3 for this feature. Each id fails all six of `query.py`'s
+#: rejected by research.md D3 for this feature. Each id fails three of `query.py`'s six
 #: query-surface fields, for the civilisation the recording actually places it under — building
-#: 490 for Franks, 673 for Teutons. **12 tuples.**
+#: 490 for Franks, 673 for Teutons. **6 tuples** (T652y: down from 12 — `reconstruction.
+#: prerequisite_order_check`, blocked now, was the *only* register entry that required
+#: `age_requirement`, `available_to` or `prerequisites` at all (checked directly against
+#: register.toml, not assumed from the task text's own illustrative count), so D7 computes every
+#: gap naming one of those three fields `informational` now, not only `prerequisites`' own two —
+#: six tuples close per building, not two, leaving only `cost`, `produced_at` and
+#: `production_time`).
 _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
     name="Buildings 490 and 673 are absent from the vendored aoe2techtree pack entirely",
     why_the_vendored_source_cannot_close_it=(
@@ -315,16 +321,10 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
         "a second vendored source naming both ids, which research.md D3 rejects for this feature."
     ),
     gap_tuples=(
-        ("building", "490", "age_requirement", "Franks", "entity-absent"),
-        ("building", "490", "available_to", "Franks", "entity-absent"),
         ("building", "490", "cost", "Franks", "entity-absent"),
-        ("building", "490", "prerequisites", "Franks", "entity-absent"),
         ("building", "490", "produced_at", "Franks", "entity-absent"),
         ("building", "490", "production_time", "Franks", "entity-absent"),
-        ("building", "673", "age_requirement", "Teutons", "entity-absent"),
-        ("building", "673", "available_to", "Teutons", "entity-absent"),
         ("building", "673", "cost", "Teutons", "entity-absent"),
-        ("building", "673", "prerequisites", "Teutons", "entity-absent"),
         ("building", "673", "produced_at", "Teutons", "entity-absent"),
         ("building", "673", "production_time", "Teutons", "entity-absent"),
     ),
@@ -344,8 +344,9 @@ _RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = (
 )
 
 #: The flattened union of every blocker's `gap_tuples` — what recording 2's observed blocking
-#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 12 tuples (T652u: down
-#: from 24 — three of the four T652q-derived blockers closed; see the note above).
+#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 6 tuples (T652y: down
+#: from 12 — see the blocker's own comment above; T652u: down from 24 before that — three of the
+#: four T652q-derived blockers closed; see the note above).
 _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_2_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -484,10 +485,12 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
     `coverage.coverage`'s return is **the gap list alone** (contracts/knowledge-base.md: "Its
     output is the gap list the document publishes") — it does not also hand back the values that
     *did* resolve. So "every independent value is still produced" is proven the only way the
-    return value can prove it: the gap list contains **exactly one** entry, which is the Market's
-    missing cost for Saracens. Every other query the pass must have made — the Market's five other
-    fields, and all six of the Mill's — produced no gap at all, which is only possible if each
-    one resolved to a real answer.
+    return value can prove it: the gap list contains the Market's missing cost for Saracens, plus
+    (T652y) one structural `prerequisites` gap per entity queried — `rules.json` carries no
+    `prerequisites` field at all any more, so `_field_present` refuses it for every entity,
+    independent of this mutation, the Mill's own untouched query included. Every other query the
+    pass must have made — the Market's four other fields, and the Mill's other five — produced no
+    gap at all, which is only possible if each one resolved to a real answer.
     """
     from aoe2stats_knowledge import coverage, gaps
 
@@ -533,12 +536,23 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
         rules_overrides={_BUILD: mutated_rules},
     )
 
-    assert len(result) == 1, (
-        "exactly one gap is expected (the Market's withheld cost for Saracens); every independent "
-        f"value — the Market's other five fields, and all six of the Mill's — must still resolve "
-        f"with no gap of its own. Got {result!r}"
+    prerequisites_gaps = [g for g in result if g.field == "prerequisites"]
+    other_gaps = [g for g in result if g.field != "prerequisites"]
+
+    # T652y: `prerequisites` always refuses — see this test's own docstring — so both entities
+    # queried (Market, Mill) gap it regardless of the mutation, `informational` (D7: the one
+    # register entry that named the field is `blocked`), never the mutation's own signal.
+    assert {(g.entity_id, g.severity) for g in prerequisites_gaps} == {
+        (_MARKET_ID, "informational"),
+        (_MILL_ID, "informational"),
+    }, f"got {prerequisites_gaps!r}"
+
+    assert len(other_gaps) == 1, (
+        "exactly one non-structural gap is expected (the Market's withheld cost for Saracens); "
+        f"every independent value — the Market's other four fields, and the Mill's other five — "
+        f"must still resolve with no gap of its own. Got {other_gaps!r}"
     )
-    (gap,) = result
+    (gap,) = other_gaps
     assert isinstance(gap, gaps.KnowledgeGap)
     assert gap.cause == "field-absent", (
         "the entity resolves and the civilisation is modelled — only the field itself is "

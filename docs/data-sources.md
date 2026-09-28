@@ -486,8 +486,8 @@ against keeping one measurement in two homes.
 ### aoe2techtree (`SiegeEngineers/aoe2techtree`)
 
 - **Scope**: unit, building and technology costs, training/construction/research times, age
-  requirements and prerequisites, and per-civilisation membership — which entities each
-  civilisation can build or research — the bulk of what `packages/knowledge` needs (FR-022).
+  requirements, and per-civilisation membership — which entities each civilisation can build or
+  research — the bulk of what `packages/knowledge` needs (FR-022).
   Civilisation bonuses are carried too, but only as **English prose** in
   `data/locales/en/strings.json`, never as structured data; this is why bonuses are hand-modelled
   rather than imported (research.md D5).
@@ -510,7 +510,7 @@ against keeping one measurement in two homes.
   why every snapshot describing 180059 carries a carry-forward validation record rather than a
   direct import (`packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`).
 - **Coverage**: all 53 civilisations present in the trees directory at the pinned commit; costs,
-  times, ages and prerequisites for every unit, building and technology those trees name. The first
+  times and ages for every unit, building and technology those trees name. The first
   knowledge snapshot imports this but validates and hand-models bonuses only for the six
   civilisations the committed reference recordings need — Byzantines, Koreans, Franks, Persians,
   Teutons, Gurjaras (research.md D11) — and everything else surfaces as a gap on first use rather
@@ -518,7 +518,10 @@ against keeping one measurement in two homes.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the pinned commit as of this
-  assessment.
+  assessment. Each tree entry's `link_id`/`link_node_type` is the tech-tree screen's display link,
+  not the game's own prerequisite rule: Hand Cannoneer links to node 6 in Bohemians' tree alone,
+  where the game requires Chemistry in every civilisation (research.md D3, T652y).
+  `packages/knowledge` does not carry a `prerequisites` field for this reason.
 - **Assessed**: 2026-09-19 (survey, research.md D3); vendored and carry-forward-validated
   2026-09-20 (`packages/knowledge/packs/aoe2techtree/LICENCE.md`,
   `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`). Licence: MIT, **copy
