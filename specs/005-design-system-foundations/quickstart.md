@@ -1137,6 +1137,22 @@ reintroduces motion).
 **Item 13: unchanged, partly met; all four halves now sized and owned (T674) rather than left as an
 un-owned "partly met" — not ticked.**
 
+**Superseded, 2026-09-28 (T674).** The four route-level sub-suites are built —
+`tests/visual/route-keyboard.spec.ts`, `tests/visual/route-focus-visibility.spec.ts`,
+`tests/visual/route-touch-footprint.spec.ts` and `tests/visual/route-reduced-motion.spec.ts`, 88
+tests over every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in both
+themes (touch footprints at 375 only, by construction) — and backed by a real run: PR #102's
+`visual` job, run [36400703606](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36400703606)
+at `ea9bd7a4`, the head carrying the suites in their final form, passed all 88. That run's 84
+failures were all `stories.spec.ts` baselines for the 14 `SearchBox` and `AccountErasurePanel`
+stories T674 deliberately moved (the 44px `SearchBox` floor, the `ErasedScreen` link's move to
+`standalone`), not one of them a route suite; the next run, 36416548359 at `dab3d1be`, failed on
+exactly those 14 stories and nothing else, and they were regenerated from CI in `fca9ad48` (dispatch
+36416561802). **Item 13 is Met** on the head that carries T674, and its row in
+`packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted rather
+than left open. The verdicts above are not rewritten: they stand as true records of the commits
+they ran on, the same discipline the Item 9 note above follows.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness
