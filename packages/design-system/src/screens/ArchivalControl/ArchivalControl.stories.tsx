@@ -109,6 +109,7 @@ const withPrivacyNoticeArgs = {
   privacyNoticeHref: '/privacy',
 }
 
+// visual-equivalence: screens-accounterasurepanel--erased-screen-hover: both screens render the same `Link` (`variant="standalone"`, label "Read the privacy notice") and both stories clip to that link alone, so the frame depicts only the primitive (T674)
 export const PrivacyNoticeLinkHover: Story = {
   name: 'hover on PrivacyNoticeLink ("Read the privacy notice")',
   args: withPrivacyNoticeArgs,
@@ -118,6 +119,7 @@ export const PrivacyNoticeLinkHover: Story = {
   },
 }
 
+// visual-equivalence: screens-accounterasurepanel--erased-screen-focus-visible: both screens render the same `Link` (`variant="standalone"`, label "Read the privacy notice") and both stories clip to that link alone, so the frame depicts only the primitive (T674)
 export const PrivacyNoticeLinkFocusVisible: Story = {
   name: 'focus-visible on PrivacyNoticeLink ("Read the privacy notice")',
   args: withPrivacyNoticeArgs,
@@ -127,6 +129,7 @@ export const PrivacyNoticeLinkFocusVisible: Story = {
   },
 }
 
+// visual-equivalence: screens-accounterasurepanel--erased-screen-active: both screens render the same `Link` (`variant="standalone"`, label "Read the privacy notice") and both stories clip to that link alone, so the frame depicts only the primitive (T674)
 export const PrivacyNoticeLinkActive: Story = {
   name: 'active (pressed) on PrivacyNoticeLink ("Read the privacy notice")',
   args: withPrivacyNoticeArgs,
