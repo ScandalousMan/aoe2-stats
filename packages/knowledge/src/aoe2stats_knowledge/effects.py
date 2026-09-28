@@ -24,10 +24,10 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   operand on an effect it should never apply.
 - `selector` — "which entities it touches — by explicit identifier list, never by a fuzzy class
   name": a non-empty tuple of `(kind, id)` pairs, each resolved by hand from `rules.json`'s own
-  `prerequisites`/`produced_at` structure (this module's docstring for `_effects_toml_text`-style
-  provenance lives in the two committed `effects.toml` files themselves, not here — see their
-  header comments for exactly how "Spearman-line" and "Ranged Soldiers and Infantry" were resolved
-  to real unit ids).
+  `produced_at` structure, and its `prerequisites` until T652y removed them (this module's
+  docstring for `_effects_toml_text`-style provenance lives in the two committed `effects.toml`
+  files themselves, not here — see their header comments for exactly how "Spearman-line" and
+  "Ranged Soldiers and Infantry" were resolved to real unit ids).
 - `field` — which query-level field this effect modifies. Not restricted to the six names
   `query.py` exposes (a not-modelled effect may legitimately name a field this knowledge base does
   not otherwise track at all, e.g. a unit's hit points) — restricting it would silently imply that
