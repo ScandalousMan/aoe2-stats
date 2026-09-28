@@ -287,22 +287,45 @@ export function planSelfRest(story) {
 // --- Classification ----------------------------------------------------------------------------
 
 // `unitResults`: one entry per {theme, width} this state story renders in, each
-// `{ theme, width, diffPixels, totalPixels, ratio, dimensionMismatch }`. `hasClip` is whether the
-// story itself already names a `visualCaptureClip` (both frames — state and self-rest — are cropped
-// to it either way, per this task's own method — `hasClip` only changes which of the four/five
-// outcomes below applies, never how the numbers themselves were produced).
+// `{ theme, width, diffPixels, totalPixels, ratio, dimensionMismatch, stateMatchesBaseline }`.
+// `hasClip` is whether the story itself already names a `visualCaptureClip` (both frames — state
+// and self-rest — are cropped to it either way, per this task's own method — `hasClip` only changes
+// which of the outcomes below applies, never how the numbers themselves were produced).
 //
-// Five outcomes, the four this task's own text names plus one it does not (a story that already
-// defends over 1% on every unit *without* any clip at all — no real example in this tree's own
-// required contrast list, but nothing rules it out elsewhere, and silently folding it into
-// "defended" would erase the fact that no clip was needed for it, information a later reader might
-// want): `zero` (no clip can help), `clip-fixes` (a clip is a mechanical fix), `clipped-still-under-threshold`
-// (already clipped, still at or under 1% — this task's own "flag a clip that does not defend"),
-// `defended` (already clipped, over 1% everywhere) and `defended-without-clip` (over 1% everywhere,
-// no clip in the picture at all).
+// Seven outcomes. `'state-not-reproduced'` (slice 3) is checked first and overrides every other
+// question this function could otherwise answer: if `tests/visual/state-signal-sweep.spec.ts`'s own
+// state capture does not match that story's *committed* baseline for some unit
+// (`stateMatchesBaseline === false`), nothing this function could conclude from comparing that same
+// capture to its own rest is trustworthy — the capture itself failed, not the comparison. Found
+// necessary reading one committed baseline directly (`Tooltip` `HoverRevealed`'s own, still showing
+// its tooltip open where this sweep's *rest* capture should have shown it closed) — the same shape
+// as `dimension-mismatch` below (a check this function answers before trusting the pixel diff at
+// all), but about the state frame's own fidelity rather than the two frames' own comparability.
+// `dimension-mismatch` is checked second, for the same reason it always was. The remaining five are
+// the four this task's own text names plus one it does not (a story that already defends over 1% on
+// every unit *without* any clip at all — no real example in this tree's own required contrast list,
+// but nothing rules it out elsewhere, and silently folding it into "defended" would erase the fact
+// that no clip was needed for it, information a later reader might want): `zero` (no clip can help),
+// `clip-fixes` (a clip is a mechanical fix), `clipped-still-under-threshold` (already clipped, still
+// at or under 1% — this task's own "flag a clip that does not defend"), `defended` (already clipped,
+// over 1% everywhere) and `defended-without-clip` (over 1% everywhere, no clip in the picture at
+// all).
 export function classifyBucket({ hasClip, unitResults }) {
   if (unitResults.length === 0) {
     throw new Error('classifyBucket: unitResults must not be empty.')
+  }
+  const unreproduced = unitResults.filter((u) => u.stateMatchesBaseline === false)
+  if (unreproduced.length > 0) {
+    return {
+      bucket: 'state-not-reproduced',
+      detail:
+        `${unreproduced.length} of ${unitResults.length} unit(s) render a state frame that does ` +
+        "not match this story's own committed baseline (beyond " +
+        "tests/visual/state-signal-sweep.spec.ts's own BASELINE_MAX_DIFF_RATIO — see that " +
+        "constant's own comment for why it is wider than playwright.config.ts's own " +
+        'maxDiffPixelRatio) — this sweep failed to reproduce the state itself, so its own ' +
+        'state-vs-rest diff answers nothing about whether the two are really distinguishable.',
+    }
   }
   const mismatched = unitResults.filter((u) => u.dimensionMismatch)
   if (mismatched.length > 0) {

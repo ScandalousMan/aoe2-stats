@@ -209,6 +209,58 @@ test('classifyBucket: defended without ever needing a clip', () => {
   })
 })
 
+test('classifyBucket: a zero-looking diff whose state frame does not match its own baseline is state-not-reproduced, never zero', () => {
+  // The exact shape slice 3's own defect had: `Tooltip` `HoverRevealed`'s own state capture still
+  // showed the rest, not the state (the reset had not finished before the "rest" was captured), so
+  // the pixel diff between the two reads zero — but the *state* frame this sweep actually captured
+  // never matched the story's own committed baseline at all, which is what this override catches.
+  const units = [
+    {
+      theme: 'light',
+      width: 1280,
+      diffPixels: 0,
+      totalPixels: 1000,
+      ratio: 0,
+      dimensionMismatch: false,
+      stateMatchesBaseline: false,
+    },
+  ]
+  const result = classifyBucket({ hasClip: false, unitResults: units })
+  assert.equal(result.bucket, 'state-not-reproduced')
+})
+
+test('classifyBucket: state-not-reproduced overrides every other question, not only a zero-looking one', () => {
+  const units = [
+    {
+      theme: 'light',
+      width: 1280,
+      diffPixels: 500,
+      totalPixels: 1000,
+      ratio: 0.5,
+      dimensionMismatch: false,
+      stateMatchesBaseline: false,
+    },
+  ]
+  const result = classifyBucket({ hasClip: true, unitResults: units })
+  assert.equal(result.bucket, 'state-not-reproduced')
+})
+
+test('classifyBucket: a missing baseline (stateMatchesBaseline null) is not a failure — classifies normally', () => {
+  const units = [
+    {
+      theme: 'light',
+      width: 1280,
+      diffPixels: 0,
+      totalPixels: 1000,
+      ratio: 0,
+      dimensionMismatch: false,
+      stateMatchesBaseline: null,
+    },
+  ]
+  const result = classifyBucket({ hasClip: false, unitResults: units })
+  assert.equal(result.bucket, 'zero')
+})
+
 test('classifyBucket: a dimension mismatch is reported rather than silently ratioed', () => {
   const units = [
     {

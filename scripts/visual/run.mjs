@@ -379,6 +379,8 @@ function formatPct(ratio) {
 }
 
 const BUCKET_TITLES = {
+  'state-not-reproduced':
+    "The state capture does not match its own committed baseline — the sweep's own render failed, not a real classification",
   zero: 'Zero surviving pixels on every unit — no clip can help',
   'zero-despite-clip': 'Zero surviving pixels despite an existing clip — no clip can help',
   'clip-fixes': 'A real signal at or under 1% on at least one unit, unclipped — a clip fixes this',

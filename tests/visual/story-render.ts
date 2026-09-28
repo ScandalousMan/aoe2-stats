@@ -174,9 +174,20 @@ export async function gotoAndWaitForStorySettled(
   theme: Theme,
   width: number,
   height: number,
+  { autoplay = true }: { autoplay?: boolean } = {},
 ): Promise<Locator> {
   await page.setViewportSize({ width, height })
-  await page.goto(`/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`)
+  // `autoplay: false` appends `&embed=true` — a real Storybook preview render option (confirmed by
+  // reading the installed storybook@10.5.9's own preview runtime: `shouldAutoplay = ({ search }) =>
+  // !shouldEmbed({ search })`, `shouldEmbed = ({ search }) => new URLSearchParams(search).get
+  // ('embed') === 'true'`), never a hand-rolled convention. Optional and defaulting to the existing
+  // behaviour (`stories.spec.ts` never passes it) — a genuinely unplayed render is what
+  // `tests/visual/state-signal-sweep.spec.ts`'s own self-paired rest needs for a state story whose
+  // `play()` does something a reset cannot reliably reverse (see that file's own header comment for
+  // why: a JS-driven reveal keyed to a reference-counted pointer region, `Tooltip`'s own shape,
+  // cannot be undone by a bounded number of synthetic mouse moves).
+  const embed = autoplay ? '' : '&embed=true'
+  await page.goto(`/iframe.html?id=${id}&viewMode=story${embed}&globals=theme:${theme}`)
   const root = page.locator('#storybook-root')
   await root.waitFor({ state: 'visible' })
   await page.waitForFunction(
