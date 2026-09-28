@@ -414,6 +414,10 @@ criterion, restated here because it applies identically.
   screen reader as part of the row's one link, in document order, the same as every other field.
 - 200% zoom and 320px logical width without horizontal scrolling; no field ellipsises at any
   viewport (§8).
+- `Input` clears the 44×44 CSS px minimum interactive footprint (`h-11`, decided 2026-09-28,
+  `README.md`'s "Minimum interactive footprint") — moved up from `h-10` (40px) by T674's route-level
+  touch-footprint sweep, the first mechanical check to measure a real route's own rendered input
+  height at 375px rather than a Storybook specimen.
 
 ## 10. Visual acceptance criteria
 

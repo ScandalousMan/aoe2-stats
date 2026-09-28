@@ -658,6 +658,14 @@ a wrapper that adds the in-page `scrollAndFocus` handler to a `Link`, and `inlin
 deleted. Two inline links in one file taking the same paint from two sources is a source-level
 inconsistency, not a visual one, and it is the smaller of the two risks on offer today.
 
+**Done, 2026-09-28 (T674).** The touch-footprint route sweep needed a real DOM marker
+(`data-variant`) to exempt an `inline` link inside running prose from the 44×44 floor
+(`README.md`, "Minimum interactive footprint"), which no hand-copied recipe can carry — that is
+what forced the deferral above closed rather than the source-level inconsistency alone. `InlineLink`
+is now exactly the wrapper this passage predicted, and `inlineLinkClasses` is deleted. The paint was
+already proven identical (previous paragraph), so no baseline moves for `InlineLink`'s own four call
+sites; `data-variant="inline"` is an attribute, not a class, and paints nothing.
+
 **What this changes in the generated coverage region**, so the implementer is not surprised by it:
 this anchor stops being a locally styled element of `screens/PrivacyNotice` and becomes a `Link`
 instance at `inline`, which the extractor tracks on the primitive's own variant axis instead. The

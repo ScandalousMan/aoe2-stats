@@ -141,6 +141,10 @@ export function Link({ href, variant = 'inline', external = false, children, ...
       href={href}
       target={external ? '_blank' : undefined}
       rel={external ? 'noopener noreferrer' : undefined}
+      // T674's touch-footprint sweep reads this, never a layout heuristic, to exempt an `inline`
+      // link inside running prose from the 44×44 floor (`specs/README.md`, "Minimum interactive
+      // footprint") — the only DOM signal for WCAG 2.5.5's inline exception.
+      data-variant={variant}
       className={cx(
         ink,
         underline,

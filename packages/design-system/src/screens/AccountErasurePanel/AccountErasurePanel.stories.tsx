@@ -61,14 +61,18 @@ export const Erased: Story = {
   render: () => <ErasedScreen homeHref="/privacy-notice" />,
 }
 
-// README's gap register row 7 (H4): `ErasedScreen`'s privacy-notice link is a local anchor styled
-// directly inside this screen (`index.tsx`), not a `Button` instance and not owned by any dialog or
-// checkbox — the same shape as `ThirdPartyObjectionForm`'s own inline link, which carries this same
-// `Hover`/`FocusVisible`/`Active` trio under a link clip (T591's "all three or none"). Not
-// `PrivacyNotice`: its trio forces and clips `role: 'link', nth: 0`, the first table-of-contents
-// entry, not its inline-link recipe (`inlineLinkClasses`, `PrivacyNotice/index.tsx`), which has no
-// state frame of its own (README's gap register row 8, T595). `role: 'link'` is unambiguous here:
-// `ErasedScreen` renders exactly one anchor.
+// README's gap register row 7 (H4): `ErasedScreen`'s privacy-notice link, not a `Button` instance and not owned by any dialog or
+// checkbox, still needs this own `Hover`/`FocusVisible`/`Active`
+// trio under a link clip (T591's "all three or none") — the coverage this row closed does not lapse
+// just because the element underneath changed shape. T674 (2026-09-28) turned it from a local
+// anchor styled directly inside this screen (`index.tsx`) into a real `Link` (`variant="standalone"`
+// — it stands alone in its own paragraph, unlike an inline prose link), which is why its baselines
+// below move; the trio is still this call site's own, never deferred, because the pairing
+// convention asserts a token against the surface a component actually paints, not the surface its
+// own package stories assume. Not `PrivacyNotice`: its trio forces and clips `role: 'link', nth: 0`,
+// the first table-of-contents entry, not its inline-link recipe, which has no state frame of its own
+// (README's gap register row 8, T595). `role: 'link'` is unambiguous here: `ErasedScreen` renders
+// exactly one anchor.
 const erasedScreenLinkClip = { parts: [{ role: 'link' as const }], pad: '2' }
 
 export const ErasedScreenHover: Story = {
@@ -141,7 +145,9 @@ export const AcknowledgementCheckboxFocusVisible: Story = {
 // to defer `ErasedScreen`'s link too, a local anchor styled inside this same file that none of
 // those components own. That link's own hover, focus-visible and active are not deferred to
 // anyone; they are `ErasedScreenHover`, `ErasedScreenFocusVisible` and `ErasedScreenActive` above,
-// judged against §5's own paragraph on that link.
+// judged against §5's own paragraph on that link. (T674, 2026-09-28: that link is now a `Link`
+// primitive, `variant="standalone"`, rather than a local anchor — see the comment above
+// `erasedScreenLinkClip`.)
 export const HoverFocusActiveNotApplicable: Story = {
   render: (args) => (
     <div className="flex flex-col gap-2">
@@ -152,8 +158,8 @@ export const HoverFocusActiveNotApplicable: Story = {
         covered elsewhere (`ReplayAvailabilityList`, `UploadControl`, `Dialog`'s own
         `FocusVisible`), and the erase button's own hover and press at this size have no frame
         anywhere yet. One other thing is not covered here: `ErasedScreen`'s privacy-notice link is a
-        local anchor styled inside this screen — see `ErasedScreenHover`, `ErasedScreenFocusVisible`
-        and `ErasedScreenActive` above for its own coverage. The acknowledgement checkbox is also a
+        `Link` (`variant="standalone"`) — see `ErasedScreenHover`, `ErasedScreenFocusVisible` and
+        `ErasedScreenActive` above for its own coverage. The acknowledgement checkbox is also a
         local control of this screen, not deferred to anyone; its focus-visible is
         `AcknowledgementCheckboxFocusVisible` above, and it paints no hover or active class at all.
       </p>

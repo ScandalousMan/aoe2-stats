@@ -91,6 +91,23 @@ describe('Link', () => {
     expect(link.className).not.toMatch(/active:ring-border-strong/)
   })
 
+  // T674: the touch-footprint route sweep exempts an `inline` link inside running prose from the
+  // 44×44 floor by reading this marker off the DOM — never a layout heuristic (`specs/README.md`,
+  // "Minimum interactive footprint").
+  it('renders its variant as a data attribute, the only marker the touch-footprint sweep reads', () => {
+    render(<Link href="/players/1807091">View profile</Link>)
+    expect(screen.getByRole('link')).toHaveAttribute('data-variant', 'inline')
+  })
+
+  it('renders the standalone variant in the same data attribute', () => {
+    render(
+      <Link href="/players/1807091" variant="standalone">
+        View profile
+      </Link>,
+    )
+    expect(screen.getByRole('link')).toHaveAttribute('data-variant', 'standalone')
+  })
+
   it('a link is never disabled — there is no disabled prop', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     expect(screen.getByRole('link')).not.toHaveAttribute('disabled')

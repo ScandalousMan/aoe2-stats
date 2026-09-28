@@ -134,8 +134,16 @@ export function SearchBox({
           aria-describedby={rateLimited ? rateLimitId : undefined}
           onChange={(event) => onValueChange(event.target.value)}
           className={cx(
-            'h-10 w-full rounded-control border border-border bg-surface px-4 font-sans text-md text-text-primary',
-            'transition-colors duration-120 ease-standard',
+            // T674: was `h-10` (40px), under the 44×44 CSS px minimum interactive footprint decided
+            // 2026-09-28 (`packages/design-system/specs/README.md`, "Minimum interactive
+            // footprint") — found by the new route-level touch-footprint sweep, never caught before
+            // because nothing measured a real route's own rendered input height at 375px.
+            'h-11 w-full rounded-control border border-border bg-surface px-4 font-sans text-md text-text-primary',
+            // T674: `motion-reduce:duration-0` was missing — FR-055 (every transition MUST be
+            // reduced to no perceptible duration under a reduced-motion preference), found the same
+            // way as the height fix above, by the new route-level reduced-motion sweep rather than
+            // a per-component unit test.
+            'transition-colors duration-120 ease-standard motion-reduce:duration-0',
             'hover:border-border-strong focus-visible:border-border-strong',
             'disabled:cursor-default disabled:border-border disabled:bg-surface-sunken disabled:text-text-disabled',
             inputFocusRing,

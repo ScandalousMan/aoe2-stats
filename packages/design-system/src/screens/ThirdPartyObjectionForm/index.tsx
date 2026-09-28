@@ -3,6 +3,7 @@ import { useId, useRef, useState } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../../primitives/Button'
 import { Callout } from '../../primitives/Callout'
+import { Link } from '../../primitives/Link'
 import { Page } from '../../primitives/Page'
 
 // packages/design-system/specs/third-party-objection.md
@@ -28,24 +29,6 @@ export interface ThirdPartyObjectionFormProps {
 // shipped as a bare `outline-offset-2` literal — same rendered offset, now a named token.
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
-
-// Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
-// signal, so a press was not distinguishable from a hover in a still image.
-// `active:underline-offset-4` gives press its own frame without a fill — the same fix now shared
-// with `Link`'s `inline` variant, `Footer`, `PrivacyNotice` and `AccountErasurePanel`'s own copies
-// of this pattern.
-// T591: this copy was missing the underline-thickness half of `Link`'s own `inline` recipe
-// (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2`,
-// `primitives/Link/index.tsx`'s `underline` constant) — hover and active still shared the
-// underline's own weight, one of the two signals `structural-tier.md` §9 "hover" ("two signals,
-// one of which is not colour") documents for every link in this product. Found and fixed
-// alongside the identical omission in `PrivacyNotice` and `AccountErasurePanel` (T591's own
-// instruction: all three or none).
-const inlineLinkClasses = cx(
-  'text-link underline decoration-1 underline-offset-2 transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover hover:decoration-2 active:text-link-hover active:decoration-2 active:underline-offset-4',
-  focusRing,
-)
 
 // The visible heading and the hidden `Page` title below share this string (structural-tier.md
 // §5): `Page` owns the route's only `<h1>`, so `Explanation`'s own heading is downgraded to
@@ -220,10 +203,9 @@ function Explanation({ privacyNoticeHref }: { privacyNoticeHref: string }) {
           Objecting does not delete the matches, which are other players' records too, and it does
           not delete or alter a recording. This is pseudonymisation, not anonymisation — the record
           still describes a game somebody played. To read the whole of what is held and why, see the{' '}
-          <a href={privacyNoticeHref} className={inlineLinkClasses}>
-            privacy notice
-          </a>
-          .
+          {/* T674: was a local `<a>` copying `Link`'s own `inline` recipe by hand, so it never
+              carried the `data-variant="inline"` marker the touch-footprint route sweep reads. */}
+          <Link href={privacyNoticeHref}>privacy notice</Link>.
         </p>
       </div>
     </>
