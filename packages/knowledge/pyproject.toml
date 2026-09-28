@@ -16,6 +16,20 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aoe2stats_knowledge"]
+# `src/aoe2stats_knowledge/{snapshots,packs}` are symlinks to the two directories below, kept so an
+# editable dev install (which never applies force-include) still resolves them at runtime relative to
+# `__file__`. A real, non-editable wheel build's default `packages` scan follows those symlinks and
+# duplicates the same files at the paths `force-include` already forces below — hatchling then refuses
+# with "A second file is being added to the wheel archive at the same path". Hit in production
+# 2026-09-28 (PR #90's post-merge deploy): `uv sync --no-editable` builds the wheel directly from this
+# source tree and follows the symlinks, unlike `uv build`'s sdist round-trip, which does not. Excluding
+# the two symlinks from `packages` leaves `force-include` the only source of these files in a real
+# wheel — see https://hatch.pypa.io/1.8/config/build/#forced-inclusion, the note on paths nested
+# inside `packages`.
+exclude = [
+  "src/aoe2stats_knowledge/snapshots",
+  "src/aoe2stats_knowledge/packs",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "snapshots" = "aoe2stats_knowledge/snapshots"
