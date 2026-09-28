@@ -181,7 +181,7 @@ def _payload_from_json(kind: EventKind, raw: Mapping[str, Any] | None) -> Any:
             map_name=raw["map_name"],
             lobby_presets=dict(raw["lobby_presets"]),
             participants=tuple(
-                ParticipantEntry(slot=p["slot"], civilisation=p["civilisation"])
+                ParticipantEntry(slot=p["slot"], civilisation=p["civilisation"], team=p.get("team"))
                 for p in raw["participants"]
             ),
         )
@@ -506,7 +506,9 @@ def test_removing_a_required_field_withholds_only_its_dependent_values() -> None
             payload=MatchStartedPayload(
                 build=_BUILD,
                 map_name="9",
-                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+                participants=(
+                    ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID, team=None),
+                ),
             ),
         ),
         CanonicalEvent(
@@ -621,6 +623,293 @@ def test_two_slots_on_one_civilisation_produce_no_duplicate_gaps() -> None:
     )
 
 
+# ------------------------------------------------------------------------------------- T652v
+#
+# The recording's header carries each player's team (`ParticipantEntry.team`,
+# `contracts/canonical-events.md`); this pass now supplies it as `query.Context.team`
+# (`contracts/knowledge-base.md`, "Civilisation qualification" step 1 and "The query surface").
+# Every test below builds its own small, synthetic `match-started` — real recordings' own teams
+# are exercised by SC-007a (above) once the goldens carry `team`, but neither committed recording
+# seats an unmodelled civilisation at all, so the unmodelled-teammate behaviour these tests are
+# about has no real-recording instance to exercise it on.
+
+#: Real raw civilisation ids from the promoted snapshot's own `[[civilisation_id]]` table
+#: (`effects.toml`, T652g) — resolved with no override needed, exactly as SC-007a resolves them.
+_FRANKS_RAW_ID = 2
+_TEUTONS_RAW_ID = 4
+_MALIANS_RAW_ID = 26
+
+#: An arbitrary raw id no real civilisation ever carries (`test_query.py`'s own convention for a
+#: synthetic id), resolved to "Britons" — a real pack civilisation name genuinely absent from
+#: `civilisations_modelled` (T645/T652m: the six are Franks, Teutons, Persians, Saracens, Malians,
+#: Tatars) — only through this test file's own `civilisation_names` override, the same seam
+#: `test_query.py`'s own `test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate`
+#: uses Britons for.
+_UNMODELLED_ALLY_RAW_ID = 900_101
+_UNMODELLED_OPPONENT_RAW_ID = 900_102
+
+#: "Siege Engineers" — real technology id `377`, `research_time = 45` in the committed pack.
+#: Absent from Malians' own tech tree but present in Franks' (test_effects.py's own
+#: `test_the_real_malians_university_team_bonus_reaches_every_ally_technology`), and one of the
+#: selector entries Malians' "Universities work +80% faster" Team Bonus touches.
+_SIEGE_ENGINEERS_ID = "377"
+
+#: "Mill" — real building id `68`, cost `{wood: 100}` (module docstring above). No modelled
+#: civilisation's effect touches it, and it is available to every civilisation, so it is this
+#: section's "nothing at all should gap" building.
+_TEST_TEAM_ALLIES = 10
+_TEST_TEAM_OPPONENTS = 20
+
+
+def _team_participant(slot: int, raw_civilisation: int, team: int | None) -> ParticipantEntry:
+    return ParticipantEntry(slot=slot, civilisation=raw_civilisation, team=team)
+
+
+def _team_match_started(*participants: ParticipantEntry) -> CanonicalEvent:
+    return CanonicalEvent(
+        clock_ms=0,
+        kind=EventKind.MATCH_STARTED,
+        payload=MatchStartedPayload(build=_BUILD, map_name="9", participants=participants),
+    )
+
+
+def _research_event(slot: int, technology_id: str, clock_ms: int = 1_000) -> CanonicalEvent:
+    return CanonicalEvent(
+        clock_ms=clock_ms,
+        kind=EventKind.RESEARCH_QUEUED,
+        participant=slot,
+        payload=ResearchQueuedPayload(technology_id=int(technology_id), building_object=7),
+    )
+
+
+def _building_event(slot: int, building_id: str, clock_ms: int = 1_000) -> CanonicalEvent:
+    return CanonicalEvent(
+        clock_ms=clock_ms,
+        kind=EventKind.BUILDING_PLACED,
+        participant=slot,
+        payload=BuildingPlacedPayload(building_id=int(building_id), position=Position(x=1, y=1)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("ally_raw_id", "ally_name", "expect_gap"),
+    [
+        (_TEUTONS_RAW_ID, "Teutons", False),  # the contrast: a modelled ally, no gap at all
+        (_UNMODELLED_ALLY_RAW_ID, "Britons", True),
+    ],
+)
+def test_an_unmodelled_ally_gaps_every_cost_and_time_the_ally_modelled_answers(
+    ally_raw_id: int, ally_name: str, expect_gap: bool
+) -> None:
+    """T652v: "make the coverage pass supply each participant's team as `Context.team`, so an
+    unmodelled teammate gaps every cost and time for its allies" — contrast test, "the same stream
+    with that ally modelled answers." Franks (slot 1) places a Mill (cost) and researches Siege
+    Engineers (production_time); slot 2, on the same team, is either Teutons (modelled — the
+    contrast, no gap at all) or an unmodelled civilisation (Britons) — every one of Franks' cost
+    and production_time queries must then gap, naming Britons, cause `civilisation-not-modelled`,
+    regardless of whether any real effect touches the Mill or Siege Engineers at all (step 1 fires
+    before step 2/3 are ever reached)."""
+    from aoe2stats_knowledge import coverage, gaps
+
+    events = [
+        _team_match_started(
+            _team_participant(1, _FRANKS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(2, ally_raw_id, _TEST_TEAM_ALLIES),
+        ),
+        _building_event(1, _MILL_ID),
+        _research_event(1, _SIEGE_ENGINEERS_ID),
+    ]
+
+    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: ally_name})
+
+    franks_cost_and_time_gaps = [
+        gap
+        for gap in result
+        if gap.field in ("cost", "production_time")
+        and (gap.entity_kind, gap.entity_id) in {("building", _MILL_ID), ("technology", "377")}
+    ]
+    if not expect_gap:
+        assert franks_cost_and_time_gaps == ([]), (
+            f"a modelled ally must not gap Franks' own queries: {franks_cost_and_time_gaps!r}"
+        )
+        return
+
+    assert len(franks_cost_and_time_gaps) == 4, (
+        "both the Mill's and Siege Engineers' cost and production_time must all gap once Britons "
+        f"is an unmodelled ally, got {franks_cost_and_time_gaps!r}"
+    )
+    for gap in franks_cost_and_time_gaps:
+        assert isinstance(gap, gaps.KnowledgeGap)
+        assert gap.cause == "civilisation-not-modelled"
+        assert gap.civilisation == "Britons", (
+            "the gap must name the unmodelled teammate, not Franks (which is itself modelled) — "
+            f"got {gap.civilisation!r}"
+        )
+
+
+def test_two_allies_sharing_one_unmodelled_teammate_produce_one_gap_not_two() -> None:
+    """T652v: "A gap naming an unmodelled teammate is the same row for every ally that raised it,
+    so de-duplicate it against `analysis_knowledge_gaps`' unique index, as T652k did for slots."
+    Franks (slot 1) and Teutons (slot 3) are both modelled and both on Britons' (slot 2, unmodelled)
+    team; both place a Mill (building 68), a real, shared, non-unique building both civilisations
+    can build. Each of their two `cost` queries independently reaches "is every member of
+    context.team modelled" and both name the same unmodelled teammate (Britons) — the resulting
+    `KnowledgeGap`s are equal on every column the unique index checks (`entity_kind`, `entity_id`,
+    `field`, `civilisation`), even though they were raised by two different civilisations' own
+    queries, so they must collapse to one row, not two."""
+    from aoe2stats_knowledge import coverage
+
+    events = [
+        _team_match_started(
+            _team_participant(1, _FRANKS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(2, _UNMODELLED_ALLY_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(3, _TEUTONS_RAW_ID, _TEST_TEAM_ALLIES),
+        ),
+        _building_event(1, _MILL_ID),
+        _building_event(3, _MILL_ID),
+    ]
+
+    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Britons"})
+
+    matching = [
+        gap
+        for gap in result
+        if gap.entity_kind == "building"
+        and gap.entity_id == _MILL_ID
+        and gap.field == "cost"
+        and gap.civilisation == "Britons"
+    ]
+    assert len(matching) == 1, (
+        "Franks' and Teutons' own, independent queries both name the same unmodelled teammate "
+        f"(Britons) for the same entity and field — expected exactly one row, got {matching!r}"
+    )
+
+
+def test_an_unmodelled_participant_does_not_gap_an_opposing_teams_queries() -> None:
+    """T652v: "key it by civilisation and team" — an unmodelled civilisation on the *opposing*
+    team must never leak into an unrelated team's own `context.team`. Franks (slot 1) is allied
+    with Teutons (slot 2, modelled) on one team; an unmodelled civilisation (Britons, slot 3) sits
+    alone on the opposing team. If the pass ignored team boundaries and built `context.team` from
+    every seated participant instead of only this participant's own team, Franks' and Teutons'
+    queries would incorrectly gap, naming an opponent that is not their ally at all — this is the
+    "not an opponent" half of "a team effect reaches an ally but not an opponent," at the coverage
+    pass's own team-scoping, not at the effect layer (test_effects.py already covers the effect
+    layer itself)."""
+    from aoe2stats_knowledge import coverage
+
+    events = [
+        _team_match_started(
+            _team_participant(1, _FRANKS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(2, _TEUTONS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(3, _UNMODELLED_OPPONENT_RAW_ID, _TEST_TEAM_OPPONENTS),
+        ),
+        _building_event(1, _MILL_ID),
+        _building_event(2, _MILL_ID),
+    ]
+
+    result = coverage.coverage(
+        events, civilisation_names={_UNMODELLED_OPPONENT_RAW_ID: "Byzantines"}
+    )
+
+    leaked = [gap for gap in result if gap.civilisation == "Byzantines" and gap.entity_id == "68"]
+    assert leaked == [], (
+        f"an unmodelled opponent must never gap an unrelated team's own queries — got {leaked!r}"
+    )
+
+
+def test_ffa_or_unset_team_does_not_make_two_participants_allies() -> None:
+    """T652v: "A free-for-all or unset team is its own value, never team 0 shared by strangers."
+    Two participants each carry `team=None` (the adapter's own translation of the recording's "no
+    team" sentinel, `contracts/canonical-events.md`) — Franks (modelled) and an unmodelled
+    civilisation (Britons). Both being `None` must never read as sharing a team: Franks' own
+    queries must not gap on Britons' account, and `_context_for`'s own "a participant with no team
+    gets a team of itself alone" must hold even when a *different* participant, elsewhere in the
+    same stream, also carries `None`."""
+    from aoe2stats_knowledge import coverage
+
+    events = [
+        _team_match_started(
+            _team_participant(1, _FRANKS_RAW_ID, None),
+            _team_participant(2, _UNMODELLED_ALLY_RAW_ID, None),
+        ),
+        _building_event(1, _MILL_ID),
+    ]
+
+    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Britons"})
+
+    leaked = [gap for gap in result if gap.civilisation == "Britons"]
+    assert leaked == [], (
+        "two participants who each individually carry team=None must never be read as allies of "
+        f"one another — got {leaked!r}"
+    )
+
+
+def test_coverage_threads_each_participants_real_team_into_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T652v: "a Malians-ally team effect reaching an ally but not an opponent through the
+    coverage pass" — `coverage.coverage`'s own gap-list output cannot distinguish "the effect
+    applied" from "the effect structurally matched but did not apply" (both resolve with no gap,
+    contracts/knowledge-base.md: "Its output is the gap list the document publishes"), so this
+    spies on `effects.apply`'s own `context` argument — the exact value the coverage pass threads
+    through `query.py` into the effect layer — rather than on `coverage.coverage`'s return value.
+    Franks (slot 1) is Malians' (slot 2) ally; Teutons (slot 3) is the opponent, on the other team.
+    All three research Siege Engineers (377), one of Malians' University Team Bonus's own selector
+    entries (test_effects.py). Franks' own call must carry `context.team == {"Malians", "Franks"}`
+    (the ally reached) and Teutons' own call must carry `context.team == {"Teutons"}` — Malians
+    excluded, because Teutons is the opponent, not the ally."""
+    from aoe2stats_knowledge import coverage, effects, query
+
+    real_apply = effects.apply
+    calls: list[tuple[str, query.Context | None]] = []
+
+    def _spy(
+        directory: str,
+        *,
+        civilisation: str,
+        kind: str,
+        id: str,
+        field: str,
+        value: object,
+        context: query.Context | None = None,
+    ) -> object:
+        calls.append((civilisation, context))
+        return real_apply(
+            directory,
+            civilisation=civilisation,
+            kind=kind,
+            id=id,
+            field=field,
+            value=value,
+            context=context,
+        )
+
+    monkeypatch.setattr(effects, "apply", _spy)
+
+    events = [
+        _team_match_started(
+            _team_participant(1, _FRANKS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(2, _MALIANS_RAW_ID, _TEST_TEAM_ALLIES),
+            _team_participant(3, _TEUTONS_RAW_ID, _TEST_TEAM_OPPONENTS),
+        ),
+        _research_event(1, _SIEGE_ENGINEERS_ID),
+        _research_event(3, _SIEGE_ENGINEERS_ID),
+    ]
+
+    coverage.coverage(events)
+
+    franks_contexts = [context for civilisation, context in calls if civilisation == "Franks"]
+    teutons_contexts = [context for civilisation, context in calls if civilisation == "Teutons"]
+    assert any(
+        context is not None and context.team == frozenset({"Malians", "Franks"})
+        for context in franks_contexts
+    ), f"Franks' own call must carry its real Malians ally: {franks_contexts!r}"
+    assert any(
+        context is not None and context.team == frozenset({"Teutons"})
+        for context in teutons_contexts
+    ), f"Teutons' own call must not carry Malians at all — it is the opponent: {teutons_contexts!r}"
+
+
 # ------------------------------------------------------------------------------------- T652b
 
 
@@ -655,7 +944,9 @@ def test_a_stream_with_no_build_at_all_records_a_blocking_gap() -> None:
             payload=MatchStartedPayload(
                 build=None,
                 map_name="9",
-                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+                participants=(
+                    ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID, team=None),
+                ),
             ),
         ),
         CanonicalEvent(
@@ -707,7 +998,9 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
             payload=MatchStartedPayload(
                 build=unresolvable_build,
                 map_name="9",
-                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+                participants=(
+                    ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID, team=None),
+                ),
             ),
         ),
         CanonicalEvent(
@@ -766,7 +1059,9 @@ def test_an_unresolvable_build_with_no_entities_still_reports_one_gap() -> None:
             payload=MatchStartedPayload(
                 build=unresolvable_build,
                 map_name="9",
-                participants=(ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID),),
+                participants=(
+                    ParticipantEntry(slot=1, civilisation=_SYNTHETIC_CIVILISATION_ID, team=None),
+                ),
             ),
         ),
     ]

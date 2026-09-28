@@ -62,7 +62,7 @@ set.
 
 **Carry-forward** (research D4) is one kind of validation. Its record lists every build between the
 source revision's build and `describes_build`, and for each: the notes consulted, where they were
-read, the date, and the reading — *no field this pack carries changed*, or the fields that did. A
+read, the date, and the reading — _no field this pack carries changed_, or the fields that did. A
 build with no entry in that list makes the snapshot unpromotable.
 
 ## Resolution by build (FR-027)
@@ -101,13 +101,13 @@ def name(entity) -> Answer[str] | KnowledgeGap
 
 ## Civilisation qualification (research D5)
 
-In order, for a rule query qualified by civilisation *c*:
+In order, for a rule query qualified by civilisation _c_:
 
-1. *c* not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every cost and time
-   for *c* refuses, because which fields a bonus touches is exactly what is not known. The same
-   holds for any civilisation in `context.team`: a teammate's team bonus touches *c*, so an
-   unmodelled teammate refuses every cost and time for *c*, and the gap names the teammate.
-2. An effect for *c* touches this entity and field and is `modelled = no` → gap, cause
+1. _c_ not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every cost and time
+   for _c_ refuses, because which fields a bonus touches is exactly what is not known. The same
+   holds for any civilisation in `context.team`: a teammate's team bonus touches _c_, so an
+   unmodelled teammate refuses every cost and time for _c_, and the gap names the teammate.
+2. An effect for _c_ touches this entity and field and is `modelled = no` → gap, cause
    `effect-not-modelled`.
 3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
    return the adjusted value with the effects listed. A team effect matches every civilisation on
@@ -115,7 +115,11 @@ In order, for a rule query qualified by civilisation *c*:
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
 as a gap. The pass supplies no age or research state, so it treats a query that raises for want of
-one as modelled.
+one as modelled. **T652v**: the pass does supply each participant's real team, read from the
+recording's own header — every ally's civilisation, the participant's own included, never a guess —
+so a team-conditioned effect is applied for real rather than merely treated as modelled, and an
+unmodelled ally is what gaps every cost and time query for that ally's teammates (step 1, above), not
+only the query naming the unmodelled civilisation directly.
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.
@@ -171,7 +175,7 @@ already weighed that for this same source — `docs/data-sources.md` §1 rules i
 risk register's R7 records the residual — so the ruling cites both and restates neither. It is not
 the flags pack's position, which has no game-derived content at all.
 
-Sources ruled *read and transcribe only* appear in no pack. A value transcribed from one is an
+Sources ruled _read and transcribe only_ appear in no pack. A value transcribed from one is an
 effect or a disagreement entry carrying the sentence read, where, by whom and when.
 
 ## Source assessments (FR-029, FR-030)

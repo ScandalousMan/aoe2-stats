@@ -74,7 +74,7 @@ import json
 import struct
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Final, cast
 
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
@@ -441,6 +441,21 @@ def _seated(parsed: Mapping[str, object]) -> frozenset[int]:
 _LOBBY_PRESET_FIELDS: tuple[str, ...] = ("starting_resources_id", "starting_age_id", "map_size")
 
 
+#: The DE lobby's own sentinel for "no team" (`resolved_team_id`) — measured directly against
+#: `mgz` (the secondary parser)'s own `summary/teams.py`, which documents `header.de.players[i].
+#: resolved_team_id` as "0: empty slot, 1: no team, n: n - 1 = team number" and reads exactly `1`
+#: as "give this player their own team, shared with nobody" (never a shared "team 0"). Measured on
+#: both committed recordings: `AgeIIDE_Replay_500546441.zip` (a locked 1v1) carries `2` and `3`, one
+#: real team each, not `1` — a 1v1 lobby still assigns each player a distinct real team number here,
+#: it does not use the "no team" sentinel; `AgeIIDE_Replay_504695319.zip` (a 2v2) carries `2, 3, 2,
+#: 3, `pairing slots 1&3 and slots 2&4. Neither committed recording exercises the sentinel itself
+#: (an FFA or "no teams" lobby setting), so `_TEAM_SENTINEL_NO_TEAM`'s translation to `None` is
+#: measured against `mgz`'s documented reading, not against a committed fixture — `events.py`'s own
+#: `ParticipantEntry.team` docstring records why `None`, not `0` or the raw `1` itself, is this
+#: adapter's chosen representation.
+_TEAM_SENTINEL_NO_TEAM: Final[int] = 1
+
+
 def _match_started(parsed: Mapping[str, object]) -> CanonicalEvent:
     """`match-started`: the header's own event, at clock zero, corresponding to no operation.
 
@@ -450,6 +465,15 @@ def _match_started(parsed: Mapping[str, object]) -> CanonicalEvent:
     silent: `game_settings["players"]` already excludes both (`_seated`'s own docstring).
     Civilisations are carried as the game's integer identifier, never a name — naming is the
     knowledge base's job.
+
+    **T652v: each participant's team** is read from the same player record's `resolved_team_id` —
+    the game's own post-random-assignment team, not `selected_team_id` (what the player picked in
+    the lobby before random-team resolution ran; both fields agree on both committed recordings,
+    but `resolved_team_id` is what actually held during the match, so it is the one this adapter
+    reads). `_TEAM_SENTINEL_NO_TEAM` (`1`, "no team") is translated to `None` here — never carried
+    through as the literal integer `1`, and never defaulted to `0` — so two participants who are
+    each, individually, on no team at all are never read downstream as sharing a team with one
+    another (`events.py`'s own `ParticipantEntry.team` docstring).
     """
     zheader = cast(Mapping[str, object], parsed["zheader"])
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
@@ -458,6 +482,11 @@ def _match_started(parsed: Mapping[str, object]) -> CanonicalEvent:
         ParticipantEntry(
             slot=cast(int, player["player_number"]),
             civilisation=cast(int, player["civ_id"]),
+            team=(
+                None
+                if cast(int, player["resolved_team_id"]) == _TEAM_SENTINEL_NO_TEAM
+                else cast(int, player["resolved_team_id"])
+            ),
         )
         for player in sorted(raw_players, key=lambda player: cast(int, player["player_number"]))
     )

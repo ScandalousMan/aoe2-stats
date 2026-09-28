@@ -1109,7 +1109,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       before and after; a Malians ally's University research 80% faster, an opponent's not; a
       conditional effect with no context raises and an unconditional one does not. Recompute both
       digests; keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
-- [ ] T652v **The event stream does not say who is on whose team.** A team effect (T652u) needs the
+- [x] T652v **The event stream does not say who is on whose team.** A team effect (T652u) needs the
       player's team, and `match-started`'s participant entry carries a slot and a civilisation only.
       The recording's header carries each player's team: add it to
       [contracts/canonical-events.md](./contracts/canonical-events.md) and the participant entry,

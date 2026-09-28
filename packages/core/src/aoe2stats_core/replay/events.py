@@ -81,6 +81,15 @@ class ParticipantEntry:
     # The game's integer civilisation identifier, never a name: naming is the knowledge base's
     # job, not the adapter's (T629a).
     civilisation: int
+    # T652v: the recording's header carries each player's team as ``resolved_team_id`` — the
+    # DE lobby's own sentinel, ``1``, means "no team" (free-for-all, or a locked 1v1/every-
+    # player-their-own-team lobby), never a real, shared team number. The adapter translates
+    # that sentinel to ``None`` here, so "no team" is its own value and never collides with a
+    # real team id shared by two strangers ("team 0"): two participants both carrying ``None``
+    # are never treated as allies of one another by anything that reads this field — each is a
+    # team of one. A real team is the pack's own integer, unchanged, and two participants
+    # sharing it are genuine allies.
+    team: int | None
 
 
 @dataclass(frozen=True, slots=True)

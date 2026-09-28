@@ -25,8 +25,8 @@ pinned wheel is imported in `packages/replay-engine` only, as today.
 **The accounting is deliberately not on this protocol.** `events` returns a stream and nothing else,
 so obligation 3's conservation test — the one that proves no operation is lost — reaches the
 generator underneath it to read the tally. That is the one sanctioned kind of exception — two tests take it — and it is stated
-here rather than left for a reader to rediscover: everything that is *evidence about the stream's
-content* (the goldens, engine independence, the collapse rule) goes through `events`, and only the
+here rather than left for a reader to rediscover: everything that is _evidence about the stream's
+content_ (the goldens, engine independence, the collapse rule) goes through `events`, and only the
 count of what the generator dropped does not, because a tally is not a stream and putting it on the
 protocol would widen the seam to carry a diagnostic. Regenerating the goldens goes through `events`
 too — `scripts/ops/canonical_golden.py`, outside the shipped package (constitution XII).
@@ -35,22 +35,22 @@ too — `scripts/ops/canonical_golden.py`, outside the shipped package (constitu
 
 Closed. Each kind has one typed payload. Tier is per kind and fixed.
 
-| Kind                   | Tier     | Payload                                                         | Produced now          |
-| ---------------------- | -------- | --------------------------------------------------------------- | --------------------- |
-| `match-started`        | observed | build, map, lobby presets, participants and their civilisations | yes                   |
-| `building-placed`      | decoded  | building id, position                                           | yes                   |
-| `unit-queued`          | observed | unit id, building type, producing building object, count        | yes                   |
-| `unit-unqueued`        | observed | unit id, count                                                  | yes                   |
-| `research-queued`      | observed | technology id, researching building object                      | yes                   |
-| `units-commanded`      | observed | command class, unit object ids, optional target                 | yes                   |
-| `market-transaction`   | decoded  | direction, resource, steps                                      | yes — needs a decoder |
-| `object-deleted`       | decoded  | object id                                                       | yes — needs a decoder |
-| `chat`                 | decoded  | channel — **not the text**                                      | yes — needs a decoder |
-| `participant-resigned` | observed | —                                                               | yes                   |
-| `match-ended`          | observed | final match-clock time                                          | yes                   |
-| `undecoded`            | observed | opaque operation label, payload length                          | yes                   |
-| `starting-attributes`  | decoded  | per-participant attribute values                                | **declared only**     |
-| `starting-object`      | decoded  | object id, class, position, owner                               | **declared only**     |
+| Kind                   | Tier     | Payload                                                                     | Produced now          |
+| ---------------------- | -------- | --------------------------------------------------------------------------- | --------------------- |
+| `match-started`        | observed | build, map, lobby presets, participants, their civilisations and their team | yes                   |
+| `building-placed`      | decoded  | building id, position                                                       | yes                   |
+| `unit-queued`          | observed | unit id, building type, producing building object, count                    | yes                   |
+| `unit-unqueued`        | observed | unit id, count                                                              | yes                   |
+| `research-queued`      | observed | technology id, researching building object                                  | yes                   |
+| `units-commanded`      | observed | command class, unit object ids, optional target                             | yes                   |
+| `market-transaction`   | decoded  | direction, resource, steps                                                  | yes — needs a decoder |
+| `object-deleted`       | decoded  | object id                                                                   | yes — needs a decoder |
+| `chat`                 | decoded  | channel — **not the text**                                                  | yes — needs a decoder |
+| `participant-resigned` | observed | —                                                                           | yes                   |
+| `match-ended`          | observed | final match-clock time                                                      | yes                   |
+| `undecoded`            | observed | opaque operation label, payload length                                      | yes                   |
+| `starting-attributes`  | decoded  | per-participant attribute values                                            | **declared only**     |
+| `starting-object`      | decoded  | object id, class, position, owner                                           | **declared only**     |
 
 **Two additions, each forced by the timeline golden (T628).** `unit-queued` carries the building
 _type_ beside the building object: the old timeline publishes each training's building type (a Town
@@ -61,6 +61,13 @@ carries both an integer unit id and an integer amount, and any other shape stays
 nothing is read from a payload whose layout no recording has shown. A command naming several
 producing buildings is still one event carrying the first: the timeline never read a building object,
 so nothing it published is lost, and the one-event-per-operation accounting is unchanged.
+
+**A participant's team (T652v).** Each `match-started` participant carries `team`, read from the
+recording's own `resolved_team_id` — a real, positive integer shared by every ally on that team, or
+`None` when the lobby's own "no team" sentinel (`1`) was recorded, meaning this participant has no
+ally at all. `None` is its own value, never a shared `0`: two participants who each individually
+carry `None` are never allies of one another because of it, and nothing downstream (the knowledge
+base's `Context.team`, contracts/knowledge-base.md) may read two `None`s as a match.
 
 **`building-placed` is `decoded`**, not observed: the building identifier is read from a payload by
 this repository's own decoder. The participant on the same event comes from a named field and would
