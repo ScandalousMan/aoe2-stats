@@ -15,7 +15,7 @@
 // baselines.yml` used to, before this same file transport replaced its batching too).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect, type Locator, type Page, type Route } from '@playwright/test'
+import { test, expect, type Route } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 // `.cjs`, not `.mjs` — see that file's header comment. An `.mjs` sibling imported from here used to
 // crash on CI (never locally): Playwright transpiles this spec to CommonJS, and a transpiled `.mjs`
@@ -27,6 +27,16 @@ import {
   recordScanned,
   recordViolation,
 } from '../../scripts/visual/a11y-scan.cjs'
+// T675 (slice 1/N): the settle logic, force-state driving and clip resolution below used to live
+// inline in this file; factored out so `tests/visual/state-signal-sweep.spec.ts` can reuse the
+// exact same functions rather than a second copy of any of them — see that module's own header.
+import {
+  applyForceState,
+  gotoAndWaitForStorySettled,
+  readCaptureClip,
+  readForceState,
+  resolveCaptureClip,
+} from './story-render'
 
 // Playwright loads this file as CommonJS unless the nearest package.json sets `"type": "module"`
 // (playwright.config.ts's own comment) — `__dirname` is what stays valid either way.
@@ -87,213 +97,6 @@ interface VisualStory {
   fullPage: boolean
 }
 
-// Remediation of T565's blocking finding: a story's own `parameters.visualForceState` names a real
-// CSS pseudo-class to drive from here, in a real browser, rather than inside the story's own
-// `play()` — `userEvent.hover()`/`userEvent.tab()`/`userEvent.pointer()` dispatch synthetic
-// (`isTrusted: false`) DOM events, which every JS event listener still receives (a component's own
-// `onMouseEnter`/`onFocus` handler fires, which is why a structural reveal like `Tooltip`'s or
-// `Menu`'s popover opening from `play()` is genuine) but which Chromium's `:hover`, `:active` and
-// `:focus-visible` pseudo-classes never match — those are driven by the browser's real input
-// pipeline alone. Measured empirically (not assumed) against a fresh Storybook iframe navigation,
-// the same shape every capture unit below already is:
-//   - `hover`: only `locator.hover()` (real, CDP-driven mouse move) moves the pointer in a way
-//     `:hover` matches. A prior real `page.mouse` click elsewhere on the same page would also affect
-//     this, but no capture unit before this one ever runs in the same page (each unit gets its own
-//     `page.goto` above), so that never arises here.
-//   - `active`: needs a genuine mouse button down, which only `page.mouse.down()` (after a real
-//     `.hover()` onto the target) provides — `userEvent.pointer({ keys: '[MouseLeft>]' })` dispatches
-//     a `pointerdown`/`mousedown` event, which every JS listener sees but which does not set
-//     Chromium's own `:active` flag, itself tied to the platform's real button state.
-//   - `focus-visible`: a plain script `element.focus()` call — even one this file makes directly,
-//     not routed through any keyboard event at all — reliably matches `:focus-visible` in Chromium,
-//     *provided nothing on this page has yet triggered a real, trusted pointer/mouse interaction*.
-//     Confirmed by direct experiment: on a fresh page, `el.focus()` alone matches; the same call
-//     after a real (CDP) `page.mouse` click anywhere on the page does not; a synthetic, untrusted
-//     click (exactly what a story's own `play()` uses to open a menu or a popover) does *not* poison
-//     it either, which is why a `play()` that opens a surface via `userEvent.click` and this file's
-//     own subsequent `.focus()` on an item inside it coexist safely. A real, trusted keyboard `Tab`
-//     (`page.keyboard.press('Tab')`) matches equally well and was verified as a second, independent
-//     route — either is "real"; `.focus()` is used uniformly below because it does not depend on tab
-//     order, which several of these components (`Table`'s scroll region, `Menu`'s roving items) would
-//     otherwise make fragile.
-// T568 (FR-047): none of the three routes above waits on the clock, on randomness or on the network
-// — `hover()`/`mouse.down()`/`.focus()` are synchronous with respect to Playwright's own action
-// waiting, so this adds no new source of flake.
-interface VisualForceState {
-  state: 'hover' | 'active' | 'focus-visible'
-  // Exactly one of `selector` or `role` locates the element, scoped within `#storybook-root` (never
-  // the whole page — a story's subject, even a `visual-full-page` one, is still that root's own DOM
-  // descendant per this file's existing `#storybook-root` axe-scan comment above). `role` is paired
-  // with `name` (Playwright's accessible-name matcher, substring by default) when more than one
-  // element on the page shares that role; `nth` (0-based) breaks a tie no `name` can when several
-  // elements share both role and accessible name (e.g. `Footer`'s first link, which has no name of
-  // its own worth asserting on).
-  selector?: string
-  role?: string
-  name?: string
-  nth?: number
-}
-
-// Reads the settled story's own `parameters.visualForceState`, the same
-// `window.__STORYBOOK_PREVIEW__.storyRenders` this file already reads (immediately below) to learn
-// a story's render `phase` — not a second mechanism, the same one asked one more question. Returns
-// `null` for every story that carries none, which is nearly all of them.
-async function readForceState(page: Page, storyId: string): Promise<VisualForceState | null> {
-  return page.evaluate((id: string) => {
-    const preview = (
-      window as unknown as {
-        __STORYBOOK_PREVIEW__?: {
-          storyRenders?: { id: string; story?: { parameters?: Record<string, unknown> } }[]
-        }
-      }
-    ).__STORYBOOK_PREVIEW__
-    const render = preview?.storyRenders?.find((r) => r.id === id)
-    const forced = render?.story?.parameters?.visualForceState
-    return (forced ?? null) as VisualForceState | null
-  }, storyId)
-}
-
-// T591 (FR-037's verification half): a story that names a state whose signal is smaller than
-// roughly 1% of its own frame — a 2px inline-start rule or a 1px boundary on a component sized in
-// the hundreds of pixels — is structurally invisible to `story-baselines-duplicates.mjs`'s own
-// tolerance regardless of whether the underlying CSS is correct. `visualCaptureClip`, a sibling
-// parameter to `visualForceState` above and read the same way, names the part(s) of the story worth
-// capturing instead of the whole `#storybook-root` box or the whole page, so the signal the story
-// exists to prove occupies enough of the frame for the comparator to see it. `pad` is a spacing-
-// scale step *name* (`space.json`'s own `scale` keys — '2' is `space.2`, 8px), resolved below from
-// the page's own `--ds-space-*` custom property rather than a hand-picked px literal, the same rule
-// every component source in this package already follows for a spacing value.
-interface VisualCaptureClipPart {
-  // Exactly one of `selector` or `role` locates the element, scoped within `#storybook-root` — see
-  // `VisualForceState`'s own comment above for why `role`/`name`/`nth` share that shape here too.
-  selector?: string
-  role?: string
-  name?: string
-  nth?: number
-}
-
-interface VisualCaptureClip {
-  // The clip rect is the union of every part's own `getBoundingClientRect()`, in page coordinates —
-  // more than one part lets a story clip to, say, a trigger button AND the popover it opens, which
-  // do not share a common ancestor smaller than the story root.
-  parts: VisualCaptureClipPart[]
-  // A `space.json` `scale` key, e.g. '2'. Defaults to '2' (`space.2`, 8px) when omitted.
-  pad?: string
-}
-
-// Reads the settled story's own `parameters.visualCaptureClip` — the same
-// `window.__STORYBOOK_PREVIEW__.storyRenders` lookup `readForceState` above already performs, asked
-// one more question. Returns `null` for every story that carries none, which is nearly all of them.
-async function readCaptureClip(page: Page, storyId: string): Promise<VisualCaptureClip | null> {
-  return page.evaluate((id: string) => {
-    const preview = (
-      window as unknown as {
-        __STORYBOOK_PREVIEW__?: {
-          storyRenders?: { id: string; story?: { parameters?: Record<string, unknown> } }[]
-        }
-      }
-    ).__STORYBOOK_PREVIEW__
-    const render = preview?.storyRenders?.find((r) => r.id === id)
-    const clip = render?.story?.parameters?.visualCaptureClip
-    return (clip ?? null) as VisualCaptureClip | null
-  }, storyId)
-}
-
-// One part's own box, located the same way `VisualForceState`'s `target` is located above — a
-// selector or a role(+name), scoped to `root`, with `nth` breaking a tie. Throws (never returns a
-// shrunken or empty clip) when the part matches zero or more-than-one element with no `nth` to
-// disambiguate: a silently wrong clip would hide the very signal this parameter exists to surface,
-// worse than the axe/render errors this file already lets propagate as a thrown test failure.
-async function locateClipPart(root: Locator, storyId: string, part: VisualCaptureClipPart) {
-  const role = part.role as Parameters<typeof root.getByRole>[0]
-  const located = part.selector
-    ? root.locator(part.selector)
-    : root.getByRole(role, part.name !== undefined ? { name: part.name } : undefined)
-  const scoped = typeof part.nth === 'number' ? located.nth(part.nth) : located
-  const count = await scoped.count()
-  if (count !== 1) {
-    throw new Error(
-      `visualCaptureClip: part ${JSON.stringify(part)} of story "${storyId}" matched ${count} ` +
-        'element(s) — expected exactly 1 (add "nth" to disambiguate a part that matches more than one).',
-    )
-  }
-  return scoped
-}
-
-// Resolves a `pad` step name to its px value from the page's own generated `--ds-space-*` custom
-// property, never a literal duplicated from `space.json` — the same var Tailwind's own utilities
-// (`p-3`, `gap-4`, ...) already resolve through. `space.json`'s `unit` is `rem`-based, so the
-// returned string can be `rem` or already `px` depending on the step; both are handled without
-// assuming which.
-async function resolvePadPx(page: Page, step: string): Promise<number> {
-  return page.evaluate((s: string) => {
-    const raw = getComputedStyle(document.documentElement)
-      .getPropertyValue(`--ds-space-${s}`)
-      .trim()
-    if (!raw)
-      throw new Error(
-        `visualCaptureClip: unknown spacing token step "${s}" (--ds-space-${s} is unset).`,
-      )
-    const value = Number.parseFloat(raw)
-    if (Number.isNaN(value)) {
-      throw new Error(
-        `visualCaptureClip: could not parse "--ds-space-${s}" value "${raw}" as a number.`,
-      )
-    }
-    return raw.trim().endsWith('rem') ? value * 16 : value
-  }, step)
-}
-
-// The clip rect `expect(page).toHaveScreenshot` takes: the union of every part's own box (page
-// coordinates, via `getBoundingClientRect()` + the page's own scroll offsets), inflated by `padPx`
-// on every side, clamped to the page's own scrollable extent so the inflation can never request a
-// rect outside what Playwright can actually capture.
-async function resolveCaptureClip(
-  page: Page,
-  root: Locator,
-  storyId: string,
-  clip: VisualCaptureClip,
-): Promise<{ x: number; y: number; width: number; height: number }> {
-  const padPx = await resolvePadPx(page, clip.pad ?? '2')
-
-  let union: { left: number; top: number; right: number; bottom: number } | null = null
-  for (const part of clip.parts) {
-    const located = await locateClipPart(root, storyId, part)
-    const box = await located.evaluate((el) => {
-      const rect = el.getBoundingClientRect()
-      return {
-        left: rect.left + window.scrollX,
-        top: rect.top + window.scrollY,
-        right: rect.right + window.scrollX,
-        bottom: rect.bottom + window.scrollY,
-      }
-    })
-    union = union
-      ? {
-          left: Math.min(union.left, box.left),
-          top: Math.min(union.top, box.top),
-          right: Math.max(union.right, box.right),
-          bottom: Math.max(union.bottom, box.bottom),
-        }
-      : box
-  }
-  if (!union) {
-    throw new Error(`visualCaptureClip: story "${storyId}" names no parts.`)
-  }
-
-  const pageExtent = await page.evaluate(() => ({
-    width: document.documentElement.scrollWidth,
-    height: document.documentElement.scrollHeight,
-  }))
-
-  const left = Math.max(0, union.left - padPx)
-  const top = Math.max(0, union.top - padPx)
-  const right = Math.min(pageExtent.width, union.right + padPx)
-  const bottom = Math.min(pageExtent.height, union.bottom + padPx)
-
-  return { x: left, y: top, width: right - left, height: bottom - top }
-}
-
 // `run.mjs` always sets `VISUAL_STORIES_FILE`; `tests/visual/app-routes.spec.ts` is Playwright's
 // other spec under this same config and takes no units at all, so an unset var here (any run that
 // selects `stories.spec.ts` at all comes from `run.mjs` or `baselines.yml`, both of which set it)
@@ -341,126 +144,30 @@ for (const { id, theme, width, fullPage } of stories) {
     // uses the desktop default of 720, so 768 and 1280 share one convention instead of inventing a
     // third with no history behind it. Do not simplify this back to one constant.
     const height = width === 375 ? 900 : 720
-    await page.setViewportSize({ width, height })
     // Mirrors `tests/visual/focus-ring.spec.ts`'s exact URL pattern for driving the theme global.
-    await page.goto(`/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`)
     // Storybook mounts every story under this id; waiting for it removes the render race that
-    // would otherwise make the very first screenshot after a baseline change flaky.
-    const root = page.locator('#storybook-root')
-    await root.waitFor({ state: 'visible' })
-    // `waitFor({ state: 'visible' })` only proves the root element exists — it says nothing about
-    // whether the story is still mutating the DOM. Playwright's own screenshot stability polling
-    // (retinting until two consecutive frames match) only kicks in once a baseline already exists;
-    // the very first capture of a story — which is exactly the state a new baseline is taken from —
-    // fires immediately with no such polling. A story with a `play()` (Tooltip's hover/focus-reveal
-    // stories among them) is still running its interaction, and possibly a CSS transition it
-    // triggered, well after the root is visible, so that first screenshot can bake in a pre-play or
-    // mid-transition frame.
-    //
-    // Storybook 10.5.9 exposes the render driving this story as an entry in
+    // would otherwise make the very first screenshot after a baseline change flaky. Storybook
+    // 10.5.9 exposes the render driving this story as an entry in
     // `window.__STORYBOOK_PREVIEW__.storyRenders` (confirmed by reading the installed
-    // `storybook/dist/preview/runtime.js`'s `StoryRender` class, not assumed from an API guess).
-    // Its `.phase` advances `preparing -> loading -> rendering -> playing -> played -> completing
-    // -> completed -> afterEach -> finished` for a story that renders cleanly, and short-circuits
-    // to `errored` (still followed by `finished`) if the story or its `play()` throws. `completing`
-    // is where Storybook itself awaits any CSS transition or Web Animation the story's own render
-    // started (its `waitForAnimations`) — the exact class of thing `duration-120` fade-ins like
-    // Tooltip's reveal are — so `played` alone is not enough: it fires *before* that wait. Waiting
-    // past it, for `completed` (or `finished`/`errored`, reached by a story with no `play()` at all
-    // or one whose `play()` failed), is therefore what a story with a play function AND a story
-    // without one both eventually reach — no per-story branching, no knowledge here of which
-    // stories carry a `play()`, matching this file's "stays dumb" rule above.
-    await page.waitForFunction(
-      (storyId: string) => {
-        const preview = (
-          window as unknown as {
-            __STORYBOOK_PREVIEW__?: { storyRenders?: { id: string; phase?: string }[] }
-          }
-        ).__STORYBOOK_PREVIEW__
-        const render = preview?.storyRenders?.find((r) => r.id === storyId)
-        return !!render && ['completed', 'finished', 'errored'].includes(render.phase ?? '')
-      },
-      id,
-      { timeout: 5_000 },
-    )
-    // typography-tokens.md §10: with `font-display: swap` a story can be screenshotted in the
-    // fallback face if the capture beats the font — the DOM has rendered, but the render has not
-    // finished, the same class of wait as the `completing`-state one directly above. Waited here,
-    // after the story-settled wait and before the axe scan and the screenshot, so neither ever
-    // runs against a mid-swap frame.
-    await page.evaluate(() => document.fonts.ready)
+    // `storybook/dist/preview/runtime.js`'s `StoryRender` class, not assumed from an API guess);
+    // `gotoAndWaitForStorySettled` (factored into `story-render.ts`, T675) waits for its `.phase`
+    // to reach `completed`/`finished`/`errored` — the same state a story with a `play()` AND one
+    // without eventually both reach — and for web fonts to finish loading before returning.
+    const root = await gotoAndWaitForStorySettled(page, id, theme, width, height)
 
-    // Remediation of T565's blocking finding (see `VisualForceState`'s own comment above): drives
-    // the real CSS pseudo-class a vocabulary-state story names, in this real browser, after the
-    // story has settled and before anything reads or captures it — a real `:hover`/`:active` must
-    // still be showing at the moment of the screenshot below, and the axe scan just after this block
-    // runs against the same forced DOM state a reader would actually see.
+    // Remediation of T565's blocking finding (see `story-render.ts`'s own `VisualForceState`
+    // comment): drives the real CSS pseudo-class a vocabulary-state story names, in this real
+    // browser, after the story has settled and before anything reads or captures it — a real
+    // `:hover`/`:active` must still be showing at the moment of the screenshot below, and the axe
+    // scan just after this block runs against the same forced DOM state a reader would actually see.
     const forceState = await readForceState(page, id)
     let releaseMouseAfterCapture = false
     if (forceState) {
-      // Several of these pseudo-classes paint through a token-driven CSS transition
-      // (`transition-colors duration-120` on `Button`, for one) rather than an instant swap.
-      // `.hover()`/`page.mouse.down()`/`.focus()` below resolve as soon as the input itself has
-      // been dispatched, not once the transition it triggers has finished animating — confirmed
-      // empirically: without this, `Button`'s own `Hover` story captured byte-identical to its
-      // resting state, the transition's very first (unchanged) frame. Disabling every transition
-      // and animation for the page removes the race outright rather than papering over it with a
-      // fixed wait, which is also what FR-047 asks for ("no dependence on ... an unsettled
-      // animation") — the forced state now paints in the same frame it is applied, deterministically,
-      // instead of racing a clock.
-      await page.addStyleTag({
-        content:
-          '*, *::before, *::after { transition: none !important; animation: none !important; }',
-      })
-      const target = (() => {
-        // `role` travels as a plain string from a story's own `parameters`, not as Playwright's
-        // `AriaRole` union, hence the cast — the string itself still reaches a real ARIA role query.
-        const role = forceState.role as Parameters<typeof root.getByRole>[0]
-        const located = forceState.selector
-          ? root.locator(forceState.selector)
-          : root.getByRole(
-              role,
-              forceState.name !== undefined ? { name: forceState.name } : undefined,
-            )
-        return typeof forceState.nth === 'number' ? located.nth(forceState.nth) : located
-      })()
-      if (!fullPage && (forceState.state === 'hover' || forceState.state === 'active')) {
-        // `:hover`/`:active` are anchored to the mouse's actual viewport position, not to the
-        // element — a root taller than the viewport (every `screens/*` composition at 375) needs
-        // Playwright to scroll during `.hover()` to bring the target into view, and needs to scroll
-        // again while stitching a full-element screenshot taller than one viewport. The pointer
-        // itself never moves during that second scroll, so whatever now sits under its fixed
-        // viewport coordinate — not the element we hovered — is what ends up `:hover`ed by the time
-        // the capture actually happens. Confirmed empirically: `ThirdPartyObjectionForm`'s `Hover`
-        // story (a root 1596px tall, well past the 900px viewport at 375) captured byte-identical to
-        // its own resting state even though `getComputedStyle` read the correct hovered colour
-        // immediately after `.hover()` — the scroll that followed, internal to the screenshot call,
-        // silently lost it. Growing the viewport to the full content height before hovering removes
-        // the second scroll entirely, so nothing can move under the pointer between the hover and
-        // the capture.
-        //
-        // Only for `!fullPage`: the comment above `setViewportSize` a few lines up is the reason —
-        // a `fullPage: true` subject (a `position: fixed` dialog, an absolutely positioned popover)
-        // is height-*dependent*, a fixed dialog centers against the viewport and a taller one
-        // measurably shifts its content (T505's own finding, moved 44 baselines). None of this
-        // suite's `fullPage: true` + hover/active stories are taller than their starting viewport in
-        // practice (confirmed: `Menu`'s `Hover`/`Active` already capture correctly without this), so
-        // the height this branch would otherwise grow never needs to move for them, and this stays
-        // narrowly scoped to the case that does.
-        const contentHeight = await root.evaluate((el) => el.scrollHeight)
-        if (contentHeight > height) {
-          await page.setViewportSize({ width, height: contentHeight })
-        }
-      }
-      if (forceState.state === 'hover') {
-        await target.hover()
-      } else if (forceState.state === 'active') {
-        await target.hover()
-        await page.mouse.down()
-        releaseMouseAfterCapture = true
-      } else if (forceState.state === 'focus-visible') {
-        await target.evaluate((el: HTMLElement) => el.focus())
-      }
+      ;({ releaseMouseAfterCapture } = await applyForceState(page, root, forceState, {
+        width,
+        height,
+        fullPage,
+      }))
     }
 
     // T507 (FR-057, FR-058, SC-007): runs here, on the same settled DOM the screenshot below is

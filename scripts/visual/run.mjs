@@ -24,11 +24,29 @@
 // checkout left `origin/main` unresolvable, `runGit()` swallowed the failed `git diff` and returned
 // `[]`, and an empty diff and an unreadable one printed the identical "nothing to test" — see
 // `runGitOrFail()`, which exists to keep those two outcomes from ever looking the same again).
-import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+} from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// T675 (slice 1/N): the package-wide comparator-blind-spot sweep's own pairing and classification —
+// this file's own `--state-signal-sweep` flow is the one caller, so the ESM import (never a `.cjs`
+// bridge — nothing here is transpiled by Playwright, unlike `stories.spec.ts`'s own consumers)
+// works directly.
+import {
+  discoverStoryFiles,
+  extractFileStoryStates,
+  pairRestingStory,
+  classifyBucket,
+} from './state-signal-model.mjs'
 // `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
 // CommonJS module directly (`cjs-module-lexer` statically finds these named exports), which is the
 // only shape this shared module can take without also being ambiguous to Playwright's transpile of
@@ -63,6 +81,29 @@ const GLOBAL_REACH_PREFIXES = [
 ]
 
 const changedOnly = process.argv.slice(2).includes('--changed')
+// T675 (slice 1/N): a report, never part of the ordinary `pnpm test:visual` / `--changed` selection
+// below — its own entry point, `pnpm exec node scripts/visual/run.mjs --state-signal-sweep` (see
+// `package.json`'s `test:visual:state-signal-sweep` script). Checked ahead of everything else in
+// `main()` so this flow never touches the ordinary story-selection logic at all.
+const stateSignalSweep = process.argv.slice(2).includes('--state-signal-sweep')
+
+// Every ordinary visual spec under `tests/visual/` *except* the sweep's own — computed from the
+// directory itself, not a hand-maintained list, so a future ordinary suite never needs this file
+// edited to be included, and the sweep spec (deliberately excluded, see its own header) never needs
+// this file edited to stay excluded either. Passed as explicit positional arguments to `playwright
+// test` below: the previous, argument-less invocation relied on Playwright's own default
+// `testMatch` picking up every `*.spec.ts` under `testDir` (`playwright.config.ts`), which would
+// have silently swept `state-signal-sweep.spec.ts` into every ordinary run and every PR `visual`
+// job the moment it existed as a sibling file.
+const STATE_SIGNAL_SWEEP_SPEC = 'tests/visual/state-signal-sweep.spec.ts'
+function listOrdinaryVisualSpecFiles() {
+  const visualDir = path.join(rootDir, 'tests', 'visual')
+  return readdirSync(visualDir)
+    .filter((f) => f.endsWith('.spec.ts'))
+    .map((f) => path.posix.join('tests/visual', f))
+    .filter((f) => f !== STATE_SIGNAL_SWEEP_SPEC)
+    .sort()
+}
 
 function log(message) {
   console.log(`test:visual: ${message}`)
@@ -124,6 +165,11 @@ function main() {
         'to test. Run `pnpm --filter design-system build-storybook` first if stories already exist.',
     )
     process.exit(0)
+  }
+
+  if (stateSignalSweep) {
+    runStateSignalSweep()
+    return
   }
 
   const index = JSON.parse(readFileSync(indexPath, 'utf8'))
@@ -223,14 +269,24 @@ function main() {
 
   let result
   try {
-    result = spawnSync('pnpm', ['exec', 'playwright', 'test', '--config=playwright.config.ts'], {
-      cwd: rootDir,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        VISUAL_STORIES_FILE: storiesPath,
+    result = spawnSync(
+      'pnpm',
+      [
+        'exec',
+        'playwright',
+        'test',
+        ...listOrdinaryVisualSpecFiles(),
+        '--config=playwright.config.ts',
+      ],
+      {
+        cwd: rootDir,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          VISUAL_STORIES_FILE: storiesPath,
+        },
       },
-    })
+    )
   } finally {
     // Cleaned up here — a `finally` runs whether `spawnSync` above returned normally or threw —
     // rather than left for the OS's own temp-directory reaping, so a developer running this
@@ -269,6 +325,193 @@ function main() {
 
   const exitCode = result.status ?? 1
   process.exit(stale.length > 0 ? 1 : exitCode)
+}
+
+// --- T675 (slice 1/N): package-wide comparator-blind-spot sweep --------------------------------
+
+// Every state story in the tree (`state-signal-model.mjs`'s own `discoverStoryFiles` +
+// `extractFileStoryStates`), paired against its resting counterpart (`pairRestingStory`) — split
+// into `measurable` (a pair `tests/visual/state-signal-sweep.spec.ts` will actually render) and
+// `notMeasurable` (reported as-is, no rendering: the pairing rule itself already answers "not
+// measurable" without a browser).
+function buildStateSignalWork() {
+  const measurable = []
+  const notMeasurable = []
+  for (const filePath of discoverStoryFiles()) {
+    const source = readFileSync(filePath, 'utf8')
+    let result
+    try {
+      result = extractFileStoryStates(filePath, source)
+    } catch (err) {
+      log(`state-signal-sweep: skipping ${path.relative(rootDir, filePath)}: ${err.message}`)
+      continue
+    }
+    if (!result) continue
+    const relFile = path.relative(rootDir, filePath)
+    for (const story of result.stories) {
+      if (!story.isStateStory) continue
+      const pairing = pairRestingStory(story, result.stories)
+      if (pairing.measurable) {
+        measurable.push({
+          stateId: story.id,
+          restId: pairing.restStory.id,
+          exportName: story.exportName,
+          hasClip: story.clip !== null,
+          file: relFile,
+        })
+      } else {
+        notMeasurable.push({
+          stateId: story.id,
+          exportName: story.exportName,
+          file: relFile,
+          reason: pairing.reason,
+          detail: pairing.detail,
+        })
+      }
+    }
+  }
+  return { measurable, notMeasurable }
+}
+
+function formatPct(ratio) {
+  return `${(ratio * 100).toFixed(3)}%`
+}
+
+const BUCKET_TITLES = {
+  zero: 'Zero surviving pixels on every unit — no clip can help',
+  'zero-despite-clip': 'Zero surviving pixels despite an existing clip — no clip can help',
+  'clip-fixes': 'A real signal at or under 1% on at least one unit, unclipped — a clip fixes this',
+  'clipped-still-under-threshold':
+    'Already clipped, still at or under 1% — a clip that does not defend',
+  defended: 'Defended (over 1% on every unit), already clipped',
+  'defended-without-clip': 'Defended (over 1% on every unit), no clip involved',
+  'dimension-mismatch':
+    'State and rest render at different pixel dimensions — not a comparator question',
+}
+const BUCKET_ORDER = Object.keys(BUCKET_TITLES)
+
+// Renders `test-results/state-signal-sweep/report.{json,md}` — a report, never restated into
+// `packages/design-system/specs/README.md` beyond what classifying needs (this task's own
+// instruction): the register row names each story and its bucket, not every per-unit ratio this
+// file's own JSON already carries in full.
+function writeStateSignalReport({ classified, notMeasurable, measurableCount }) {
+  const reportDir = path.join(rootDir, 'test-results', 'state-signal-sweep')
+  mkdirSync(reportDir, { recursive: true })
+  writeFileSync(
+    path.join(reportDir, 'report.json'),
+    JSON.stringify({ classified, notMeasurable }, null, 2),
+  )
+
+  const byBucket = new Map()
+  for (const c of classified) {
+    if (!byBucket.has(c.bucket)) byBucket.set(c.bucket, [])
+    byBucket.get(c.bucket).push(c)
+  }
+
+  const lines = []
+  lines.push('# State-signal comparator sweep (T675, slice 1/N)')
+  lines.push('')
+  lines.push(
+    'Command: `node scripts/visual/run.mjs --state-signal-sweep` (rebuild Storybook first: ' +
+      "`pnpm --filter design-system build-storybook`). Local renders differ from CI's by roughly " +
+      '2% in absolute terms, but every comparison below is two renders taken on the same machine, ' +
+      'in the same run, against each other — valid for this classification (see ' +
+      "`tests/visual/state-signal-sweep.spec.ts`'s own header).",
+  )
+  lines.push('')
+  lines.push(
+    `${measurableCount} measurable pair(s) rendered; ${notMeasurable.length} state stor` +
+      `${notMeasurable.length === 1 ? 'y' : 'ies'} not measurable (see the table at the end).`,
+  )
+  lines.push('')
+
+  for (const bucket of BUCKET_ORDER) {
+    const entries = byBucket.get(bucket) ?? []
+    if (entries.length === 0) continue
+    lines.push(`## ${BUCKET_TITLES[bucket]} (${entries.length})`)
+    lines.push('')
+    lines.push('| State story | Resting counterpart | min ratio | file |')
+    lines.push('| --- | --- | --- | --- |')
+    for (const e of [...entries].sort((a, b) => a.stateId.localeCompare(b.stateId))) {
+      const ratio = typeof e.minRatio === 'number' ? formatPct(e.minRatio) : 'n/a'
+      lines.push(`| \`${e.stateId}\` | \`${e.restId}\` | ${ratio} | ${e.file} |`)
+    }
+    lines.push('')
+  }
+
+  if (notMeasurable.length > 0) {
+    lines.push(`## Not measurable (${notMeasurable.length})`)
+    lines.push('')
+    lines.push('| State story | reason | detail | file |')
+    lines.push('| --- | --- | --- | --- |')
+    for (const e of [...notMeasurable].sort((a, b) => a.stateId.localeCompare(b.stateId))) {
+      lines.push(`| \`${e.stateId}\` | ${e.reason} | ${e.detail} | ${e.file} |`)
+    }
+    lines.push('')
+  }
+
+  writeFileSync(path.join(reportDir, 'report.md'), `${lines.join('\n')}\n`)
+  log(`state-signal-sweep: report written to test-results/state-signal-sweep/report.{json,md}`)
+}
+
+// Never part of `pnpm test:visual` / `--changed` (see `stateSignalSweep`'s own comment above): its
+// own entry point only, `pnpm exec node scripts/visual/run.mjs --state-signal-sweep`
+// (`package.json`'s `test:visual:state-signal-sweep`). Builds the work list from source alone (no
+// browser), spawns Playwright against `state-signal-sweep.spec.ts` alone for the rendering half,
+// then classifies whatever raw per-unit results that run produced — regardless of Playwright's own
+// exit status, the same "a stale finding is still reported on an otherwise-green run" shape
+// `checkStaleness()` above already follows, because one pair's own render failure (a selector this
+// task's own render-time check throws on, `story-render.ts`'s own `locateClipPart`) says nothing
+// about any other pair's numbers.
+function runStateSignalSweep() {
+  const { measurable, notMeasurable } = buildStateSignalWork()
+  log(
+    `state-signal-sweep: ${measurable.length} measurable pair(s), ${notMeasurable.length} ` +
+      'not-measurable state stor(y/ies) found from source.',
+  )
+
+  const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
+  rmSync(rawResultsDir, { recursive: true, force: true })
+  mkdirSync(rawResultsDir, { recursive: true })
+
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'aoe2-state-signal-sweep-'))
+  const workItemsPath = path.join(tmpDir, 'work-items.json')
+  writeFileSync(workItemsPath, JSON.stringify(measurable))
+
+  let result
+  try {
+    result = spawnSync(
+      'pnpm',
+      ['exec', 'playwright', 'test', STATE_SIGNAL_SWEEP_SPEC, '--config=playwright.config.ts'],
+      {
+        cwd: rootDir,
+        stdio: 'inherit',
+        env: { ...process.env, VISUAL_STATE_SWEEP_FILE: workItemsPath },
+      },
+    )
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
+
+  if (result.error) {
+    log(
+      'could not start `pnpm exec playwright test` for the state-signal sweep: ' +
+        result.error.message,
+    )
+    process.exit(1)
+  }
+
+  const hasClipByPair = new Map(measurable.map((m) => [`${m.stateId}__${m.restId}`, m.hasClip]))
+  const rawFiles = existsSync(rawResultsDir) ? readdirSync(rawResultsDir) : []
+  const classified = rawFiles.map((f) => {
+    const entry = JSON.parse(readFileSync(path.join(rawResultsDir, f), 'utf8'))
+    const hasClip = hasClipByPair.get(`${entry.stateId}__${entry.restId}`) ?? false
+    return { ...entry, ...classifyBucket({ hasClip, unitResults: entry.unitResults }) }
+  })
+
+  writeStateSignalReport({ classified, notMeasurable, measurableCount: measurable.length })
+
+  process.exit(result.status ?? 1)
 }
 
 main()
