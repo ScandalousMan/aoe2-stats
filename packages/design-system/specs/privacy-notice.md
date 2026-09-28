@@ -520,8 +520,11 @@ accordion, no "read more", no truncation with an expander anywhere in this compo
 viewport. The page is allowed to be long.
 
 **hover** — inline links and `Contents` entries only: the link colour moves to `link-hover` and
-the underline stays (it was never absent). `ObjectionCallToAction` hovers as `Button/secondary`. No
-other part of this component responds to a pointer.
+the underline stays (it was never absent). `ObjectionCallToAction` hovers as `Button/secondary`, in
+full: fill `surface-sunken` **and** the label underline `Button`'s own hover carries
+(`hover:underline hover:decoration-2 hover:underline-offset-2`, in `text-primary` via
+`currentColor` — `shared-primitives.md` §Button, decided 2026-09-28), so its hover is not colour
+alone either. No other part of this component responds to a pointer.
 `ContactRouteLink` (§5.1) is one of those inline links, and its hover carries the second,
 non-colour half every link in this product owes — the underline thickens to `border.ring` (FR-037,
 `structural-tier.md` §9) — taken from `Link` itself rather than from this file's own copy of that
@@ -553,7 +556,9 @@ measured it clears only 1.18:1 light / 1.07:1 dark against the fill it replaces 
 presented as the non-colour half, not the signal itself). `ObjectionCallToAction` is styled like
 `Button/secondary` and takes that variant's own fix: the fill steps to `background`, the ramp's
 other attenuated rung, plus the same `border-strong` ring, bounded by the control's own permanent
-`border-strong` edge regardless of what fills it. Nothing translates or scales.
+`border-strong` edge regardless of what fills it, and its label underline drops to
+`underline-offset-4` (`active:underline-offset-4`), as `Button`'s does. Nothing translates or
+scales.
 
 **disabled** — **nothing in this component is ever disabled.** A right that is described and then
 greyed out has been withdrawn without saying so. If a target route is unavailable, the link is still
@@ -625,7 +630,7 @@ of prose: §9's own definition of `inline`, and the opposite of `standalone`'s "
 action link on its own line". §9 states the consequence plainly — `inline`'s press paints no fill
 and no ring, "because painting a wash behind three words inside a paragraph breaks the line".
 `standalone` would additionally force a 44px padded block into the middle of a sentence, which this
-file's own §9 rules out in terms: an inline link in a running sentence takes WCAG 2.5.8's inline
+file's own §9 rules out in terms: an inline link in a running sentence takes WCAG 2.5.5's inline
 exception and is not padded to 44px, because doing so breaks the line rhythm of a long document.
 This is the mirror image of [`archival-control.md`](./archival-control.md) §5.1's decision for that
 screen's own privacy link, and the two differ for exactly the reason §9's variant table gives: that
@@ -773,7 +778,7 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
   is a real `<a href>` whose accessible name is the words "this contact route" — never "here", never
   the raw URL (`structural-tier.md` §9, FR-051).
 - Touch targets: every `Contents` entry and the objection button clear 44px. Inline links inside a
-  running sentence — `ContactRouteLink` among them — take WCAG 2.5.8's inline exception and are not
+  running sentence — `ContactRouteLink` among them — take WCAG 2.5.5's inline exception and are not
   padded to 44px, because doing so would break the line rhythm of a long document, and every one of
   them has a standalone equivalent in `Contents` or in a `RightsItem` control. That exception is
   what makes `inline` the right variant there (§5.1), and it is exactly the exception

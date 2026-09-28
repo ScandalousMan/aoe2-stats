@@ -166,7 +166,7 @@ That is the whole spacing surface. The pair adds no outer margin; the caller's o
   image reserves its space before it decodes — no layout shift, which is the same reflow rule §4's
   loading state states from the other side. `loading="lazy"` and `decoding="async"`: a long history
   list must not block first paint on 30 emblems.
-- Not focusable, no `title`, no tooltip. The component is non-interactive, so WCAG 2.5.8's 44px
+- Not focusable, no `title`, no tooltip. The component is non-interactive, so WCAG 2.5.5's 44px
   target does not apply. If a call site ever wraps the pair in a link, that link's hit area is at
   least `icon-xl` (44px) — the reason that token is fixed at 44 rather than sitting on the space
   scale (`game-asset-tokens.md`, Decision 2).

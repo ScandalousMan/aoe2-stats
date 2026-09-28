@@ -158,13 +158,13 @@ fixes independently. Seven steps — enough to serve all five components without
 | `icon-sm`  | `1rem` (16px)    | `space-4`    | Inline `CountryFlag` beside an alias; the smallest a glyph-bearing swatch (winner marker) stays legible.                                                                |
 | `icon-md`  | `1.5rem` (24px)  | `space-6`    | Default `CivilisationIcon` in a match-history row — the common case, reads at a glance in a list.                                                                       |
 | `icon-lg`  | `2rem` (32px)    | `space-8`    | `CivilisationIcon` in the match-detail panel; a compact `PlayerAvatar`.                                                                                                 |
-| `icon-xl`  | `2.75rem` (44px) | — (see note) | The **interactive floor**: any icon-only control's hit area (WCAG 2.5.8, touch ≥44px). Not a space step; 44px is the accessibility constant, recorded as its own value. |
+| `icon-xl`  | `2.75rem` (44px) | — (see note) | The **interactive floor**: any icon-only control's hit area (WCAG 2.5.5, touch ≥44px). Not a space step; 44px is the accessibility constant, recorded as its own value. |
 | `icon-2xl` | `4rem` (64px)    | `space-16`   | `PlayerAvatar` on the profile header; `MapThumbnail` in a dense list.                                                                                                   |
 | `icon-3xl` | `6rem` (96px)    | `space-24`   | Large `MapThumbnail` in the match-detail panel; a hero avatar.                                                                                                          |
 
 **Why `icon-xl` is 44px and not on the space grid.** The other six steps are space-scale multiples so
 icon size and layout gaps share one rhythm. `icon-xl` exists for a different reason — it is the
-minimum **touch target** an interactive icon must fill (WCAG 2.5.8), which is a fixed 44px, not a
+minimum **touch target** an interactive icon must fill (WCAG 2.5.5), which is a fixed 44px, not a
 design rhythm. Keeping it a named token means an icon-only button sizes its hit area from
 `icon-xl` rather than a component reaching for a raw `44px`. A visually smaller interactive icon
 (e.g. a 16px `FavouriteToggle`-style mark) still owes a 44px target: it renders at `icon-sm` inside a

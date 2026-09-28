@@ -410,7 +410,7 @@ above.
   route shell renders `<main id="main-content" tabIndex={-1}>` so focus actually lands there; a skip
   link that scrolls but does not move focus is the failure this control is famous for.
 - **Touch targets**: every item's box is `space-12` (48px) tall at every viewport, clearing WCAG
-  2.5.8's 44px floor. `SkipLink` and `Brand` clear it by their own padding-block.
+  2.5.5's 44px floor. `SkipLink` and `Brand` clear it by their own padding-block.
 - **Contrast**: `text-secondary` on `surface` (6.2 light / 7.8 dark), `text-primary` on `surface`
   (15.3 / 13.3), `accent` on `surface` (4.9 / 7.7 — the current-route rule owes only the 3:1
   non-text floor and clears the text floor anyway), `border-strong` on `surface` (3.5 / 3.8),

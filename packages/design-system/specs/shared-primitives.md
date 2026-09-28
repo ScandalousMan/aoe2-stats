@@ -119,6 +119,42 @@ showing the rule. Every `accent`-filled control added later follows this, and it
 captured as its own component-scoped story so the signal is larger than the visual suite's
 comparator tolerance (README's gap register, row 6/H3 closure).
 
+**`secondary`, `ghost` and `destructive` hover is not colour alone either — decided 2026-09-28
+(T675).** Until this decision those three hovered by fill alone (`surface` or transparent →
+`surface-sunken`), the same FR-037 violation T588 fixed on `primary`, one step less visible: the
+fill step falls under the visual suite's comparator threshold in every capture unit, so no frame
+could fail on it (README's Verification-coverage gap register, the comparator row). That is a
+missing signal, not a comparator blind spot, and it is fixed the way `primary`'s was. **The label
+underline moves from `primary`'s variant string into the shared base every variant composes**:
+`hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4
+disabled:no-underline`, with no decoration-colour utility — the rule follows `currentColor`, so it
+is `accent-contrast` on `primary`, `text-primary` on `secondary` and `ghost`, `danger` on
+`destructive`. That is each variant's own label ink on its own hover and press fills, pairs the
+README contrast table already asserts, so no new contrast pair and no new token. `decoration-2` is
+`border.ring`, reached the way `Link` reaches it (`structural-tier.md` §9, Tokens used);
+`underline-offset-2`/`-4` are the bare Tailwind steps `Link` already uses. Why this signal and not
+another:
+
+- **FR-038.** Four variants of one control respond to hover the same way; a different shape per
+  variant would be a difference no spec states a reason for. The differences that remain are the
+  press-time ones already stated above (`ghost`'s appearing border, `secondary`/`destructive`'s
+  ring, `primary`'s inward focus ring), and they are unchanged.
+- **Distinct from rest and from press in one still image.** Rest has no rule; hover has the rule at
+  `underline-offset-2`; press moves it to `underline-offset-4` on top of press's own fill and ring
+  or border. A pointer press always matches `:hover` too (the visual suite forces `active` by a real
+  hover then a mouse-down), so every press capture carries the dropped rule.
+- **No reflow.** `text-decoration` paints and never lays out; nothing moves, on any variant.
+- **Not the shapes already spent.** A hover ring would be the press ring at a smaller width — two
+  states told apart by one pixel. A hover border on `ghost` would take the shape its press owns. An
+  `outline` utility on any state but `:focus-visible` is dead on this element (the trap recorded
+  above, T096) and is not used.
+
+`AsLink` renders the same class set on its `<a>`; `disabled:no-underline` is inert there because an
+anchor has no `:disabled`. Every hover or press story of a non-`primary` variant is captured with
+`visualCaptureClip` to its button: a 2px rule under a short label is well under 1% of an unclipped
+story frame, which is below the comparator's pixel-ratio tolerance (README's gap register, the
+comparator row, lists the stories whose baselines move).
+
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
 — commits an irreversible action — the same axis `primary`/`secondary`/`ghost` sit on, while `danger`
@@ -136,11 +172,12 @@ extended to 44px by padding rather than by a transparent overlay.
 **States**
 
 - **default** — as tabled above.
-- **hover** — `primary`: fill `accent-hover`, in both themes, **and the label underlines**
-  (`decoration-2`, `underline-offset-2`, in `accent-contrast` via `currentColor`) — the non-colour
-  half of FR-037 a fill step this small (1.26:1 light / 1.25:1 dark) cannot carry alone (T588,
-  above). `secondary` / `ghost` / `destructive`: fill `surface-sunken`. Transition
-  `motion.duration.fast` with `easing.standard`; colour only for those three, no lift, no scale.
+- **hover** — **every variant: the label underlines** (`decoration-2`, `underline-offset-2`, in the
+  label's own ink via `currentColor`) — the non-colour half of FR-037 no fill step here carries
+  (T588 for `primary`; extended to the other three on 2026-09-28, above). Fill: `primary`
+  `accent-hover`, in both themes; `secondary` / `ghost` / `destructive` `surface-sunken`. Transition
+  `motion.duration.fast` with `easing.standard` on the fill; the underline appears instantly, as
+  `Link`'s thickness switch does. No lift, no scale.
 - **focus-visible** — `secondary` / `ghost` / `destructive`: `outline-2 outline-offset-2` in
   `focus-ring` (gap DS-4), clearing 3:1 against whatever page surface the button renders on.
   `primary`: `outline-2 -outline-offset-4` in `accent-contrast` instead (DS-10, `color-tokens.md`
@@ -149,10 +186,10 @@ extended to 44px by padding rather than by a transparent overlay.
   behind the button: 6.07:1 light / 8.07:1 dark at rest (higher on hover and press,
   `build-tokens.test.mjs`). Either way, on top of whatever the hover state is; never removed on
   mouse click; never replaced by a fill change alone.
-- **active** — `primary`: `accent-active`, **and the label's underline drops to
-  `underline-offset-4`** — position rather than the hover step's thickness, so a still image never
-  has to tell hover and press apart by a 1.28:1/1.57:1 fill step alone (T588, above). `secondary` /
-  `ghost` / `destructive`: fill `background`
+- **active** — **every variant: the label's underline drops to `underline-offset-4`** — position
+  rather than the hover step's thickness, so a still image never has to tell hover and press apart
+  by a fill step alone (T588; all four variants since 2026-09-28, above). `primary`:
+  `accent-active`. `secondary` / `ghost` / `destructive`: fill `background`
   — a different token from `hover`'s `surface-sunken`, so pressing repaints rather than repeating
   the hover frame. `ghost` additionally gains a `border-strong` boundary it does not carry at
   `hover`; `secondary` keeps the `border-strong` boundary it already carries at rest; `destructive`
@@ -163,8 +200,9 @@ extended to 44px by padding rather than by a transparent overlay.
   every variant's focus ring composes `outline-none` and `tailwind.css` restores that property
   only under `:focus-visible` — see the paragraph above.)** No translate, no layout change.
 - **disabled** — fill `surface-sunken`, label `text-disabled`, boundary `border`, cursor default,
-  `disabled` attribute set. A disabled button must be accompanied by visible text saying why, in
-  `text-secondary`; a button that is grey with no explanation is a dead end.
+  `disabled` attribute set, no underline at hover (`disabled:no-underline`). A disabled button must
+  be accompanied by visible text saying why, in `text-secondary`; a button that is grey with no
+  explanation is a dead end.
 - **loading** — `aria-busy="true"`, `disabled`, label replaced by an action-specific present
   participle supplied by the caller ("Taking you to Steam…"), spinner in the leading slot. Width
   does not change: reserve the icon slot at rest. A caller that gives no loading label gets the
@@ -186,7 +224,9 @@ extended to 44px by padding rather than by a transparent overlay.
 **Tokens** — colour `accent`, `accent-hover`, `accent-active`, `accent-contrast`, `surface`,
 `background`, `surface-sunken`, `border`, `border-strong`, `text-primary`, `text-secondary`,
 `text-disabled`, `danger`, `focus-ring`. Radius `md`. Font family `sans`, size `sm` / `md`, weight
-`semibold`. Motion `duration.fast`, `easing.standard`. Elevation `none` — buttons do not float.
+`semibold`. Underline thickness `border.ring` (`decoration-2`), offset steps `underline-offset-2` /
+`underline-offset-4`, ink `currentColor`. Motion `duration.fast`, `easing.standard`. Elevation
+`none` — buttons do not float.
 
 **Spacing** — icon-to-label `space-2`. Sibling buttons `space-3` apart.
 
@@ -206,12 +246,15 @@ the button's own edge and clears 3:1 against the page surface behind it; on `pri
 `accent-contrast`, sitting 4px inward of the button's own edge (`-outline-offset-4`, T586) with a
 2px band of `accent` fill on either side of it, so it reads against that fill (6.07:1 light /
 8.07:1 dark) and never against the page surface, which its geometry keeps it from ever touching; the
-default, hover and active screenshots are three distinguishable frames for **every** variant —
-`primary`'s hover fill is visibly darker than its resting fill and its active fill darker again;
-`secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and active fill (`background`)
-are two different, already-measured tokens, and `ghost`'s active additionally draws a boundary its
-hover does not — loading button shows a spinner and the same width as at rest; disabled button has
-visible explanatory text near it.
+default, hover and active screenshots are three distinguishable frames for **every** variant, and
+not by colour alone — on every variant the hover frame shows the label underlined in the label's
+own ink and the default frame shows no underline, and the active frame shows that underline visibly
+lower than the hover frame's; `primary`'s hover fill is visibly darker than its resting fill and its
+active fill darker again; `secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and
+active fill (`background`) are two different, already-measured tokens, and `ghost`'s active
+additionally draws a boundary its hover does not — no hover frame shows a ring, a border that the
+resting frame lacks, or any shift of the label — loading button shows a spinner and the same width
+as at rest; disabled button has visible explanatory text near it, and no underline.
 
 ---
 
@@ -413,15 +456,22 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
 **States**
 
 - **default** — surface `surface-raised`, boundary `border`, elevation `overlay`, radius `lg`.
-- **hover** — item fill `surface-sunken`. `motion.duration.fast`.
+- **hover** — item fill `surface-sunken`. `motion.duration.fast`. **The trigger follows `Button`
+  `secondary`'s hover in full, label underline included** (decided 2026-09-28, T675, for the reason
+  §Button gives): fill `surface-sunken` plus `hover:underline hover:decoration-2
+hover:underline-offset-2`, ink `currentColor` (`text-primary`). The trigger is a local `<button>`
+  styled like `secondary` (T560, FR-038), not a `Button` instance, so it inherits nothing from
+  `Button`'s source: these utilities are written on the trigger's own non-empty class branch. Its
+  empty (`aria-disabled`) branch carries no hover class at all, so it needs no `no-underline`.
 - **focus-visible** — the focused item shows the standard focus ring inset within its bounds. Focus
   follows the roving item, never both trigger and item.
 - **active** — item fill `background` (`Button` `ghost`'s own press fill — a plain repeat of
   `hover`'s `surface-sunken` was indistinguishable from hover to the visual suite,
   story-baseline-duplicates-debt.json, T591) with boundary `border-strong` on the inline-start
   edge. The trigger button follows `Button` `secondary`'s own active recipe in full
-  (`bg-background`, `ring-2 ring-border-strong`), matching its resting/hover recipe already
-  documented as that variant's own (T560).
+  (`bg-background`, `ring-2 ring-border-strong`, and since 2026-09-28 `underline-offset-4` on the
+  hover underline), matching its resting/hover recipe already documented as that variant's own
+  (T560).
 - **disabled** — a disabled item keeps focus (`aria-disabled="true"`, not the `disabled`
   attribute), shows `text-disabled`, and carries a reason on its secondary line.
 - **loading** — an item whose action is in flight shows a spinner in its trailing slot and sets
@@ -473,9 +523,10 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
   drawn beside the trigger when expanded, and is absent entirely when collapsed — never present but
   merely dimmed or scaled to zero.
 
-**Tokens** — `surface-raised`, `surface-sunken`, `border`, `border-strong`, `text-primary`,
-`text-secondary`, `text-disabled`, `focus-ring`, `overlay` (backdrop, mobile sheet only). Radius
-`lg`. Elevation `overlay`. Motion `duration.fast`, `easing.decelerate`.
+**Tokens** — `surface-raised`, `surface-sunken`, `background`, `border`, `border-strong`,
+`text-primary`, `text-secondary`, `text-disabled`, `focus-ring`, `overlay` (backdrop, mobile sheet
+only). Trigger underline: `border.ring` (`decoration-2`), `underline-offset-2` / `underline-offset-4`,
+`currentColor`. Radius `lg`. Elevation `overlay`. Motion `duration.fast`, `easing.decelerate`.
 
 **Spacing** — surface padding-block `space-2`; item padding-inline `space-4`; label to secondary
 line `space-1`; separator margin-block `space-2`.
@@ -512,10 +563,12 @@ visibly different shapes, not merely two different hues; a `badge` slot, where a
 one, adds a second, independent signal beside that glyph (`<Badge>Current</Badge>` in `SiteHeader`
 and `ProfileSummary`, a plain placeholder in `Menu`'s own stories) rather than standing in for it;
 focus ring visible on the
-focused item; the trigger regains focus after Escape; an item's label and its optional secondary
-line are visibly distinguishable by size and colour (`type-body` in `text-primary` against a smaller
-line in `text-secondary`) — a token-correct item that set both to the same size and ink would read
-as one run-on line and fails this criterion (FR-063).
+focused item; the trigger regains focus after Escape; the hovered trigger's label is underlined and
+the resting trigger's is not, and the pressed trigger's underline sits visibly lower than the
+hovered one's — the same three frames `Button` `secondary` shows; an item's label and its optional
+secondary line are visibly distinguishable by size and colour (`type-body` in `text-primary` against
+a smaller line in `text-secondary`) — a token-correct item that set both to the same size and ink
+would read as one run-on line and fails this criterion (FR-063).
 
 ---
 
@@ -560,6 +613,9 @@ slot, exactly two actions — rather than generalised further than either consum
   call site, and hover, active and disabled all belong to the `Button`s inside it — each one's own
   `disabled` prop, as `loading` above already uses to disable one action without the other — not to
   the dialog itself, which has no resting/pressed/disabled distinction independent of its actions.
+  The `Hover` and `Active` stories force those states on `primaryAction`'s own button (`destructive`
+  unless the caller sets a variant), so what they depict is `Button` `destructive`'s hover and press
+  — the label underline included since 2026-09-28 (§Button) — and nothing of `Dialog`'s own.
 - **selection** — not applicable; a dialog is not a set member.
 - **expansion** — not applicable, and deliberately not the vocabulary's shipping case for this
   shape: a `Dialog` is open or closed by a caller-held boolean, not by an `aria-expanded` toggle on a

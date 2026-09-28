@@ -275,7 +275,7 @@ running prose", which this is not. Two consequences settle it beyond the taxonom
 
 - **Touch target.** `standalone` reaches 44px by its own block padding (§9 Spacing), never by an
   overlay. The shipped `text-sm` anchor with no padding does not, and this file's own §9 states the
-  44px floor — so `inline` would leave an accessibility criterion failing on purpose. The WCAG 2.5.8
+  44px floor — so `inline` would leave an accessibility criterion failing on purpose. The WCAG 2.5.5
   inline exception that excuses a link inside a running sentence does not reach this one, because
   this one is not inside a sentence.
 - **A press signal a screenshot can resolve.** `inline`'s press is the underline dropping by one

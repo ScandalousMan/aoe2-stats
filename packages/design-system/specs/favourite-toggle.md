@@ -95,9 +95,11 @@ another."_ — the max shown as the plain number the consumer supplied (§4). A 
 `favourited` is **never** in this state: removal is always allowed, so the marked default above still
 renders and still works at the bound.
 
-**hover / focus-visible / active** — owned entirely by `Button/ghost` (`surface-sunken` hover fill,
-standard `focus-ring` at `outline-offset-2`, `surface-sunken` + `border-strong` active). The profile
-header around it does not add a second hover. In the bounded/disabled case there is no hover.
+**hover / focus-visible / active** — owned entirely by `Button/ghost`, exactly as
+`shared-primitives.md` §Button States defines them (hover: `surface-sunken` fill and the label
+underline; focus-visible: the standard `focus-ring` at `outline-offset-2`; press: `background` fill,
+`border-strong` boundary, and the underline dropped to `underline-offset-4`). The profile header around
+it does not add a second hover. In the bounded/disabled case there is no hover.
 
 **disabled** — the bounded state above is the only disabled condition, and it always carries its
 `Explanation`. There is no other reason this control is ever disabled; a disabled toggle with no reason
@@ -169,9 +171,10 @@ it and the state must exist the moment the allowlist is lifted, not be invented 
 
 Colour, all via `Button/ghost` and `Callout`, no new token and no new pair (every one is already in
 `specs/README.md`'s measured table and asserted in `tokens/build-tokens.test.mjs`): `surface`
-(page/header behind the ghost control), `surface-sunken` (`Button` hover/active fill, disabled fill),
-`surface-raised` (`Callout` fill, via that component), `border` (disabled boundary), `border-strong`
-(active boundary), `text-primary` (resting label), `text-secondary` (`Explanation`, and the disabled
+(page/header behind the ghost control), `surface-sunken` (`Button` hover fill, disabled fill),
+`background` (`Button` press fill), `surface-raised` (`Callout` fill, via that component), `border`
+(disabled boundary), `border-strong` (active boundary), `text-primary` (resting label, and the hover
+underline via `currentColor`), `text-secondary` (`Explanation`, and the disabled
 label via `text-disabled`), `text-disabled` (bounded/disabled label), `warning` / `danger` (the two
 `Callout` tones in §5), `focus-ring`. **No `accent`**: this control never fills with `accent`, in
 either state — the marked state is carried by label, `aria-pressed` and glyph, not by tinting a ghost

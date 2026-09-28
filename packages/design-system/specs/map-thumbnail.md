@@ -152,7 +152,7 @@ No outer margin; the caller's layout gap (`match-history.md` §7) positions the 
   name. Never `alt="Arabia"` (a screen reader would say the map twice), never `alt="map"`.
 - `width`/`height` from the size token, so space is reserved before decode: no layout shift.
   `loading="lazy"`, `decoding="async"` — a 30-row history must not block first paint on 30 minimaps.
-- Non-interactive: no `tabindex`, no `title`, no hover-only affordance. WCAG 2.5.8's 44px target does
+- Non-interactive: no `tabindex`, no `title`, no hover-only affordance. WCAG 2.5.5's 44px target does
   not apply; if a call site ever links the pair, the link's hit area is at least `icon-xl` (44px).
 - Contrast: the name is `text-primary` on `surface` (15.3 light / 13.3 dark) or, unresolved,
   `text-secondary` on `surface` (6.2 / 7.8) — both from README's measured table, both AA. The

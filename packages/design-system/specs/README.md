@@ -544,8 +544,12 @@ precedent and is out of this contract's scope until one exists.
   enclosing control's own `aria-label`, already states the same fact. The icon is never the thing
   that is named; the control or the text beside it is.
 
-**Minimum interactive footprint.** WCAG 2.5.8's 44×44px floor applies to any icon serving as, or
-sitting inside, an interactive control, whether or not the glyph itself renders that large. Two
+**Minimum interactive footprint.** The floor is **44×44 CSS px, in both axes, for every interactive
+element this package renders** — decided 2026-09-28 (T674), codifying the 44px every component spec
+already required; no component's geometry changes. It is WCAG 2.5.5 Target Size (Enhanced), level
+AAA — stricter than 2.5.8's AA 24×24; specs here that attributed 44px to 2.5.8 were corrected the
+same day. It applies to any icon serving as, or sitting inside, an interactive control, whether or
+not the glyph itself renders that large. Two
 routes satisfy it, both already shipping, and a third is forbidden:
 
 - **The icon's own box is the hit area.** `icon-xl` is fixed at 44px rather than following the
@@ -561,6 +565,18 @@ routes satisfy it, both already shipping, and a third is forbidden:
   already states this for the system generally; an icon-sized control is where it is most tempting,
   because the glyph looks finished at its visual size and the padding around it looks like wasted
   space. It is not — it is the touch target.
+
+**How the floor is asserted, and its one exemption.** T674's touch-footprint sub-suite measures
+`getBoundingClientRect()` of every interactive element on every application route at 375px, in both
+themes, and fails on any box under 44 in either axis. An input wrapped by its `<label>` is measured
+by the label's box; an element hidden until focused (`SiteHeader`'s skip link) is measured in the
+state that reveals it, never skipped. The one exemption is WCAG 2.5.5's inline exception, read from
+the DOM, never from layout: an anchor carrying `data-variant="inline"` — which only `Link` renders
+(`structural-tier.md` §9) — whose parent element's trimmed text is longer than its own. The second
+condition exists because `inline` is `Link`'s default: a standalone link whose call site forgot
+`variant="standalone"` fails, and the failure names the fix. A local anchor copying `inline`'s
+recipe carries no marker and is measured like any other target; its exemption comes from becoming a
+`Link`.
 
 **An icon is never the only carrier of a meaning (FR-011).** Rule 4 above, applied to icons
 specifically: an icon-only control needs a text alternative reachable by every input — a visible
@@ -674,7 +690,7 @@ the ones genuinely open.
 `PlayerColourSwatch`, `CountryFlag`, `PlayerAvatar` — need a shared, sanctioned scale. A new **`icon`**
 family (`tokens/icon.json`, seven steps `icon-xs`…`icon-3xl`) closes it: six steps are `space`-scale
 multiples so icon size and layout gaps share one rhythm, and `icon-xl` is fixed at 44px as the WCAG
-2.5.8 touch-target floor an interactive icon must fill. Values, per-component mapping, and the
+2.5.5 touch-target floor an interactive icon must fill. Values, per-component mapping, and the
 generator wiring T410 owes (it is hand-wired like `radius`, not auto-discovered) are in
 [`game-asset-tokens.md`](./game-asset-tokens.md). The id is kept rather than renumbered so this
 register and the commit history line up with the gap it describes. `icon-xl`'s reason for existing
@@ -2580,10 +2596,10 @@ counting the citation once.
 | `privacy-notice.md`        |        1 | `:523` "`ObjectionCallToAction` hovers as `Button/secondary`" (filed under **PrivacyNotice**, target primitives/Button, `secondary\|lg` at the size the anchor renders — **F10**: accurate about the classes; that row's hover is elsewhere, unnamed by this spec).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `profile-summary.md`       |        5 | `:134` "switcher trigger and menu items per `Menu`" (hover) and `:141` "per `Button` and `Menu`" (active) — two citations; `profile-summary.md:138`'s focus-visible bullet ("standard ring on the trigger, on menu items, and on the ghost actions") describes the ring directly rather than deferring — cited by its own full path so it is verified without counting toward this row's own tally; `:869` "the pointer over the flag opens the tooltip" (hover), `:873` "the identity bar's focus stops are now the flag …" (focus-visible), `:882` "pressing the flag pins its tooltip open" (active) — three more citations. Five total: the switcher pair filed under **ProfileSummary**→Menu/Button (F15/F16-carried), the flag trio under **ProfileSummary**→Tooltip.                               |
 | `replay-availability.md`   |        2 | `:157` "`AvailabilityBadge`: none, per `Badge`'s own rule" (filed under **ReplayAvailabilityList**, target primitives/Badge). `:158` "`DownloadAction`: per `Button`" (target primitives/Button, `secondary`\|`lg` — missed by the prior sweep, found in the pass before this one).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `shared-primitives.md`     |        5 | `:242-243` "— none; the root is not interactive. Actions inside it have their own" (hover / active) (filed under **N4**, Callout, no fixed owner). `:422` "The trigger button follows `Button` `secondary`'s own active recipe in full" (filed under **Menu**, target primitives/Button, `secondary` — provenance, not a gap). `:560` "hover, active and disabled all belong to the `Button`s inside it" (filed under **Dialog**, target primitives/Button — **F3**). `:616-617` "none unless the value is a link, in which case the standard ring applies to the link" (focus-visible) and `:618` "none" (active) (filed under **N5**, StatValue, no fixed owner and no live instance).                                                                                                                  |
+| `shared-primitives.md`     |        5 | `:285-286` "— none; the root is not interactive. Actions inside it have their own" (hover / active) (filed under **N4**, Callout, no fixed owner). `:471` "The trigger button follows `Button` `secondary`'s own active recipe in full" (filed under **Menu**, target primitives/Button, `secondary` — provenance, not a gap). `:613` "hover, active and disabled all belong to the `Button`s inside it" (filed under **Dialog**, target primitives/Button — **F3**). `:672-673` "none unless the value is a link, in which case the standard ring applies to the link" (focus-visible) and `:674` "none" (active) (filed under **N5**, StatValue, no fixed owner and no live instance).                                                                                                                  |
 | `sign-in-screen.md`        |        1 | `:69` "owned entirely by `Button`" (filed under **SignInScreen**, target primitives/Button, `primary`\|`lg` — **F5**, true of the default state, imprecise about outcome-state buttons).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `site-header.md`           |        1 | `:296-298` "`ThemeControl`'s own states … are `Menu`'s, unchanged by this composition" (filed under **SiteHeader**, target primitives/Menu, `selection` — F15/F16-carried; no line at all in the prior tally, found in the pass before this one).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `structural-tier.md`       |        6 | `:441` "A `Panel` is never itself interactive" (filed under **N1**, Panel, no fixed owner). `:344-345` "none of its own. Its heading is not a control … the components inside it carry their own" (filed under **N2**, Section, no fixed owner). `:550-551` "Text that responds to a pointer is a `Link` (§9) or sits inside a `Button`" — one citation, two names (filed under **N3**, Text, no fixed owner). `:552` "none of its own. `Text` is not focusable" (filed under **N3**, same). `:1036` "none of its own; the action inside it carries `Button`'s" (filed under **EmptyState**, target primitives/Button, `secondary`\|`md` — **F4**). `:1125` "none of its own; the recovery action carries `Button`'s" (filed under **ErrorState**, target primitives/Button, `secondary`\|`md` — **F4**). |
+| `structural-tier.md`       |        6 | `:441` "A `Panel` is never itself interactive" (filed under **N1**, Panel, no fixed owner). `:344-345` "none of its own. Its heading is not a control … the components inside it carry their own" (filed under **N2**, Section, no fixed owner). `:550-551` "Text that responds to a pointer is a `Link` (§9) or sits inside a `Button`" — one citation, two names (filed under **N3**, Text, no fixed owner). `:552` "none of its own. `Text` is not focusable" (filed under **N3**, same). `:1048` "none of its own; the action inside it carries `Button`'s" (filed under **EmptyState**, target primitives/Button, `secondary`\|`md` — **F4**). `:1137` "none of its own; the recovery action carries `Button`'s" (filed under **ErrorState**, target primitives/Button, `secondary`\|`md` — **F4**). |
 | `third-party-objection.md` |        2 | `:217-218` "the submit button (per `Button`)" (hover), `:230` "The button is per `Button`" (active) — filed under **ThirdPartyObjectionForm**, target primitives/Button. Corrected from the prior tally's 3: the focus-visible bullet (`:223-225`) names the same standard ring on three elements without deferring any of their _own_ states to another spec, so it is not counted here.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `tooltip.md`               |        0 | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `typography-tokens.md`     |        0 | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -2665,7 +2681,7 @@ checker can verify it the same way it verifies 8c's own table.
 | `DataExportPanel`         | `:126` "owned by the `Button`s, the `DownloadLink`… the sections" (comment, quoting the spec) and `:150-151` "its hover, focus-visible and press are all real, but the frames that prove them are `ReplayAvailabilityList`'s and `UploadControl`'s own" (rendered text) — **corrected 2026-09-19 (T595)**: the pair used to read "already covered by `Button.stories.tsx`'s per-variant stories," true for the ownership fact and false for the story named — `RequestButton` is `secondary\|lg` (`index.tsx:118-119,215`), and `Button.stories.tsx`'s own per-variant stories force `md`, never `lg`, the same shape F20 found in `AccountErasurePanel` and this audit found in `MatchDetailPanel`. The generated `secondary\|lg` row's own hover, focus-visible and press cells all read `ReplayAvailabilityList`/`UploadControl`, never `Button.stories.tsx`'s own — the rewritten text now states exactly that.                                                                                                                                                                  |
 | `Dialog`                  | `:183` "malformed call site, and hover, active and disabled all belong to the `Button`s inside it" (comment) and `:191` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim. (Line numbers moved from `:130`/`:138` to `:169`/`:177` when T600 appended `Hover`/`Active` above this story in the same file, to `:187`/`:195` when row 8's own debt-closure remediation (2026-09-23) corrected the comment above `PRIMARY_ACTION_CLIP`, then to `:183`/`:191` when that same comment was cut to remove unverifiable claims, still immediately above this story in the same file.)                                                                                                                                                                                         |
 | `Section`                 | `:124` "the components inside it carry their own" (comment, quoting `structural-tier.md` §6) and `:130` "The components inside it carry their own." (rendered text) — target: none, the same no-fixed-owner shape N2 already files — **true as a blanket statement**: `Section` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no child to falsify the claim against, the same reason `Dialog`'s blanket claim above is true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `Callout`                 | `:97` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:242-243`) and `:103` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:108`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                                                                                                                                                                                                                                                                                                                                                   |
+| `Callout`                 | `:97` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:285-286`) and `:103` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:108`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                                                                                                                                                                                                                                                                                                                                                   |
 | `Text`                    | `:134` "none of its own. `Text` is not focusable" (comment, quoting `structural-tier.md` §8, reused from N3/8c's own `:552`) and `:142-143` "that ring belongs to the caller, not to this component." (rendered text) — target: none, the same no-fixed-owner shape N3 already files — **true as a blanket statement**: this story renders `<Text role="display">Recent matches</Text>` with no `tabIndex` at all, so there is no focused instance here to falsify the claim against, the same reason `Section`'s and `Dialog`'s blanket claims above are true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `Panel`                   | `:167` "hover — none. A `Panel` is never itself interactive" (comment, quoting `structural-tier.md` §7) and `:175` "that link owns its own hover, focus and active states." (rendered text) — target: none, the same no-fixed-owner shape N2/N3 already file — **true as a blanket statement**: `Panel` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no real link to falsify the claim against, the same reason `Section`'s, `Dialog`'s and `Text`'s blanket claims above are (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`).                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `CivilisationIcon`        | `:120` "the enclosing row link owns interaction, this mark never does." (comment, quoting `civilisation-icon.md` §4) and `:126` "The enclosing row's own link owns the hover fill." (rendered text) — target: none, the same shape `FavouriteToggle`'s and `ReplayAvailabilityList`'s own "owned entirely by" rows above are — **true**: generated Record 1 lists `composites/CivilisationIcon` with `(no local interactive element)`, and its own consumers (`MatchRow` `index.tsx:397`, `PlayerResultRow` `index.tsx:54`, `FavouritesList` `index.tsx:244`) each carry a real row-link hover/focus-visible/active of their own — the enclosing link genuinely does own it (added 2026-09-19, T594 B3: found once the vocabulary sweep admitted `owns`).                                                                                                                                                                                                                                                                                                                            |
@@ -2733,7 +2749,7 @@ the prior sweep; confirmed against the generated region above, which shows every
   own. `Text` is not focusable" (focus-visible) — no directory named (Link/Button/"whatever wraps
   it").
 - **N4 (corrected in this pass: the render is not fully covered).** `Callout`'s handoff,
-  `shared-primitives.md:242-243` "— none; the root is not interactive. Actions inside it have
+  `shared-primitives.md:285-286` "— none; the root is not interactive. Actions inside it have
   their own" — no directory named; its own illustrative stories happen to use `Button/primary` at
   `md` (the generated `Button` matrix's own `primary|md` row), but that row reads `hover: none`,
   `active: none` — **false for hover and press**, the same cells F14 and 8c-bis's own `Callout`
@@ -2741,9 +2757,9 @@ the prior sweep; confirmed against the generated region above, which shows every
   written governs whatever a caller supplies, and remains true in kind (the states genuinely are
   the `Button`'s own to paint); it is this component's own illustrative render that is not, for
   two of the three states Record 1 tracks.
-- **N5.** `StatValue`'s handoff, `shared-primitives.md:616-617` "none unless the value is a link,
+- **N5.** `StatValue`'s handoff, `shared-primitives.md:672-673` "none unless the value is a link,
   in which case the standard ring applies to the link" (focus-visible) and
-  `shared-primitives.md:618` "none" (active) — no directory named, and no `StatValue` instance
+  `shared-primitives.md:674` "none" (active) — no directory named, and no `StatValue` instance
   anywhere in the tree renders as a link (confirmed: the generated Record 1 region has no
   `StatValue` entry at all).
 - **N6 (its own size named, corrected in this pass — T594's REJECT on #80, item 6: judged before
@@ -2776,7 +2792,7 @@ generated region now settles on its own, and left two of them honestly `unresolv
   2026-09-21 (T596) — the rendered claim is now true of the privacy link.
 - **F3 (citation corrected 2026-09-19 — M2/M3: `:127,138` is each `<Button` tag's own opening line;
   each `variant` prop is one line below it; corrected again 2026-09-20 — the `destructive` half of
-  the supporting parenthetical went stale, the verdict itself did not).** `shared-primitives.md:560`
+  the supporting parenthetical went stale, the verdict itself did not).** `shared-primitives.md:613`
   and `Dialog.stories.tsx`'s `EmptyHoverActiveDisabledNotApplicable`
   — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:127-128,138-139`,
   `variant={primaryAction.variant ?? 'destructive'}`/`?? 'secondary'`) now resolve mechanically per
@@ -2795,7 +2811,7 @@ generated region now settles on its own, and left two of them honestly `unresolv
   verdict was always judged against and remains true at. `secondary`'s exists elsewhere
   (`secondary|lg`) but is not what "belong to the `Button`s inside it" points a reader toward, and no
   story forces `secondaryAction`'s own state at all.
-- **F4 (closed 2026-09-19, T595).** `structural-tier.md:1036,1125` and `EmptyState`/`ErrorState`'s own
+- **F4 (closed 2026-09-19, T595).** `structural-tier.md:1048,1137` and `EmptyState`/`ErrorState`'s own
   `HoverFocusActiveNotApplicable` stories — both actions are `secondary|md` (generated Record 3
   confirms the size directly — `EmptyState.stories.tsx:33`, `ErrorState.stories.tsx:26` etc.).
   Neither story's own sentence ever names a specific story — both say only "carries `Button`'s
@@ -2974,6 +2990,9 @@ again</Button>` its own `FocusVisible` story renders, once candidates are narrow
   crop, so it cannot fail a regression in that state today; `destructive|lg`'s own active frame
   (`Dialog:Active`) is defended on its clipped baseline. The hover half is a comparator blind spot,
   not a coverage one, and is owned by T675 (Verification-coverage gap register), not reopened here.**
+  **Reclassified 2026-09-28: not a comparator blind spot but a missing non-colour signal —
+  `destructive`'s hover now carries the label underline every `Button` variant shares
+  (`shared-primitives.md` §Button; Verification-coverage gap register, row 2).**
   `primary/md`'s own hover and press: `Button:PrimaryHoverMd`/`PrimaryActiveMd`, first-party frames
   matching the `SecondaryHover`/`GhostHover`/`DestructiveHover` convention. `destructive/lg`'s own
   hover and press: `Dialog:Hover`/`Active`, forced on the same `primaryAction` button
@@ -3598,10 +3617,16 @@ once.
      confirming nothing at route level (a wrapper, a reset) repaints or hides what the component
      alone already guarantees.
    - **Touch footprints** — a `getBoundingClientRect()` sweep of every interactive element at the
-     375px width in both themes, asserting a minimum touch-target size. What floor to assert is not
-     this entry's decision — this system has not yet recorded one, which is itself part of the sizing
-     (a `product-designer` question, not an `implementer` one) — but the sweep itself needs no
-     screenshot, only computed geometry.
+     375px width in both themes, asserting a minimum touch-target size. **The floor, decided
+     2026-09-28 by `product-designer` on the project owner's arbitration: 44×44 CSS px in both axes**
+     (WCAG 2.5.5, the value every component spec already required), with one exemption — a `Link`
+     the DOM marks `data-variant="inline"` inside running prose — read from a marker, never a layout
+     heuristic; the rule and how the sweep measures a wrapped input or a skip link are in the
+     Iconography contract's "Minimum interactive footprint", stated there once. Before this
+     sub-suite can go green, `Link` must render the marker, and the local anchors copying `inline`'s
+     recipe (`PrivacyNotice`'s `InlineLink` call sites, `ThirdPartyObjectionForm`'s privacy link,
+     `AccountErasurePanel`'s `ErasedScreen` link) must become `Link`s at the variant their placement
+     calls for. The sweep itself needs no screenshot, only computed geometry.
    - **Reduced motion** — `page.emulateMedia({ reducedMotion: 'reduce' })` before navigation, then
      asserting every element `tokens/motion.json` governs computes a near-zero transition/animation
      duration on the real route. `Table.test.tsx` and `Menu.test.tsx` already unit-test this per
@@ -3624,8 +3649,7 @@ once.
    the frame the ratio is taken against without ever raising that count. **Classified this task
    (2026-09-23), by Playwright's own pixelmatch (threshold 0.2), against the {theme × width} units
    each story renders in:**
-   - **Zero surviving pixels in every unit — no clip can help, a `product-designer` decision is
-     needed:** `Button` `SecondaryHover` vs `Secondary`, `GhostHover` vs `Ghost`, `DestructiveHover` vs
+   - **Zero surviving pixels in every unit — no clip can help; decided 2026-09-28, below:** `Button` `SecondaryHover` vs `Secondary`, `GhostHover` vs `Ghost`, `DestructiveHover` vs
      `Destructive`; `Button` `AsLinkHover` vs `AsLink`; `Menu` `TriggerHover` vs `ClosedTrigger`;
      `Dialog` `Hover` (clipped) vs `Default` cropped to the same rect (F14, above).
    - **A real surviving signal, but at or under 1% on at least one unit while unclipped — a clip fixes
@@ -3644,15 +3668,48 @@ once.
    **The package-wide extent beyond this list is unmeasured and owed** — never a sweep of the whole
    tree.
 
-   **What T675 owes:** a package-wide sweep by this same method; clipping every "at or under 1%" cell
-   above, which is mechanical; and a `product-designer` decision for every "zero surviving pixels"
-   cell — a non-fill signal of its own, or a lower comparator threshold, applied per component or
-   package-wide. That decision also bears on FR-037's "more than colour" requirement. Any such
-   threshold bound differs per theme; establishing it is part of this task, not decided here. **Owner:
+   **Decided 2026-09-28 by `product-designer`, on the project owner's arbitration: the comparator
+   threshold stays at pixelmatch's default 0.2, package-wide; `playwright.config.ts` does not
+   change.** Every zero-surviving-pixels cell above is a hover that changes fill and nothing else —
+   `shared-primitives.md` §Button said so, "colour only for those three" — which is an FR-037
+   violation (distinguishable by more than colour, in a still image), not a blind spot to tune the
+   comparator around. Rejected: **lowering the threshold package-wide** moves every baseline in both
+   themes, invites anti-aliasing flake, and would let CI pass a colour-only state FR-037 forbids;
+   **per-component threshold overrides** add per-story configuration and still leave FR-037
+   violated. **The fix is a non-fill signal in the owning component's spec, on the model T588 set
+   for `primary`** (Contrast-signal register, row 6/H3):
+   - `Button` `secondary`/`ghost`/`destructive` hover, and `AsLink`'s: the label underline moves
+     from `primary`'s variant into the base class list every variant composes —
+     `hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4
+     disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button, which records
+     why not a hover ring, border or outline).
+   - `Menu` `TriggerHover`: the trigger is a local `<button>`, not a `Button`, so it inherits
+     nothing — the same underline utilities go on its own non-empty class branch
+     (`shared-primitives.md` §Menu).
+   - `Dialog` `Hover`: no line of its own — it hovers `primaryAction`'s `destructive` `Button`, so
+     the `Button` fix is the `Dialog` fix.
+   - Found beside them: `PrivacyNotice`'s `ObjectionCallToAction`, a local copy of `secondary`,
+     takes the same utilities (`privacy-notice.md` §5).
+
+   Baselines this moves, regenerated from CI: `Button` `SecondaryHover`, `GhostHover`,
+   `DestructiveHover`, `AsLinkHover`, `GhostHoverLg`, `SecondaryActive`, `GhostActive`,
+   `DestructiveActive`, `AsLinkActive`, `GhostActiveLg`; `Menu` `TriggerHover`, `TriggerActive`;
+   `Dialog` `Hover`, `Active`; `FavouriteToggle` `Hover`, `Active`; `ReplayAvailabilityList`
+   `Hover`, `Active`; `PrivacyNotice` `ObjectionCallToActionHover`, `ObjectionCallToActionActive` —
+   press frames too, because the harness forces `active` by a real hover then a mouse-down. A 2px
+   rule is under 1% of an unclipped frame, so each of these not already clipped takes
+   `visualCaptureClip` in the same change. **Any further zero-surviving-pixels cell T675's
+   package-wide sweep finds is resolved the same way — a non-fill signal in that component's own
+   spec — never by a threshold change.**
+
+   **What T675 still owes:** the package-wide sweep by this method; clipping every "at or under 1%"
+   cell above; implementing the signals above; and a `product-designer` spec line for each further
+   zero-surviving-pixels cell. Expected but unmeasured candidates: every other
+   `surface`→`surface-sunken` hover (row links, `Menu` items, `SiteHeader` nav, `Field`). **Owner:
    T675. Fix by 2026-10-07.**
 
 Row 1 above is not evidence that item 13 is met — sizing the work is not doing it, the distinction
 an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays open until
 T674 lands. Row 2 answers a different question — the comparator's own sensitivity, not an axis the
-harness fails to run — and stays open until T675's package-wide sweep and its `product-designer`
-decision land.
+harness fails to run — and stays open until T675's package-wide sweep lands and the non-fill
+signals above are implemented; the threshold question itself was closed on 2026-09-28.

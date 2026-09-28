@@ -1,5 +1,5 @@
 {
-  "$comment": "Icon-size scale (T410, closes gap DS-7). Six of the seven steps are space-scale multiples (unit 0.25rem) so an icon and the space around it share one rhythm; icon-xl is the one fixed value — the 44px WCAG 2.5.8 touch-target floor — not a design rhythm. Values and rationale: packages/design-system/specs/game-asset-tokens.md, Decision 2. Edit here, then run `pnpm --filter design-system tokens:build`.",
+  "$comment": "Icon-size scale (T410, closes gap DS-7). Six of the seven steps are space-scale multiples (unit 0.25rem) so an icon and the space around it share one rhythm; icon-xl is the one fixed value — the 44px WCAG 2.5.5 touch-target floor — not a design rhythm. Values and rationale: packages/design-system/specs/game-asset-tokens.md, Decision 2. Edit here, then run `pnpm --filter design-system tokens:build`.",
   "xs": "0.75rem",
   "sm": "1rem",
   "md": "1.5rem",

@@ -205,7 +205,7 @@ That is the whole spacing surface. The pair adds no outer margin; the caller's l
 - `width`/`height` (or an equivalent CSS aspect box) come from the size token and the 4:3 rule, so
   the image reserves its space before it decodes — no layout shift. `loading="lazy"`,
   `decoding="async"`.
-- Not focusable, no `title`, no tooltip. The component is non-interactive, so WCAG 2.5.8's 44px
+- Not focusable, no `title`, no tooltip. The component is non-interactive, so WCAG 2.5.5's 44px
   target does not apply. If a call site ever wraps the pair in a link — nothing in 004 does — that
   link's hit area is at least `icon-xl` (44px).
 - Contrast: the name inherits the caller's colour and is measured there

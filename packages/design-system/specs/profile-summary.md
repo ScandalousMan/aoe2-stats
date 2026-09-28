@@ -946,7 +946,7 @@ where the row has room and no name competes for it.
 - **The reduced switcher-trigger padding at the mobile breakpoint (§13.6, §13.10) is horizontal
   only** and does not touch the ≥44px target: the trigger's height is set by the `Button` touch rule
   (`shared-primitives.md`, ≥44px on touch) and is unchanged, and its width — alias plus chevron plus
-  the reduced padding — stays far above 44px, so WCAG 2.5.8 holds. This is a ProfileSummary-scoped
+  the reduced padding — stays far above 44px, so WCAG 2.5.5 holds. This is a ProfileSummary-scoped
   density on the switcher trigger, not a change to the `Button` primitive's default.
 - The tooltip opens **above** the flag (`tooltip.md` §3a), so it never covers the rating board
   beneath the identity bar. That is README rule 1 applied to placement: nothing passes over a figure,
@@ -1053,7 +1053,7 @@ for most 8-character aliases. Chosen over the alternatives because:
 - It is **one rule, at one breakpoint, on one control**, and verifiable from a screenshot.
 
 **The touch target holds.** The reduction is horizontal only; the trigger's height (≥44px on touch,
-`shared-primitives.md`) does not move, and its width stays far above 44px, so WCAG 2.5.8 is met
+`shared-primitives.md`) does not move, and its width stays far above 44px, so WCAG 2.5.5 is met
 (§13.7).
 
 **What still truncates.** A genuinely long alias (e.g. `TheUndefeatedAoE2GM`) still exceeds the

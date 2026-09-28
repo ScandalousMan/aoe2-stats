@@ -338,7 +338,7 @@ closes.
 - The inline privacy-notice link is an `<a>` with a permanent underline, never colour alone (README
   rule 4).
 - Touch targets: the input, the submit button and the link each clear 44px (the input via its own
-  height, the link inside prose taking WCAG 2.5.8's inline exception where it runs inside a sentence).
+  height, the link inside prose taking WCAG 2.5.5's inline exception where it runs inside a sentence).
 - Contrast per the README table, both themes: body and label `text-primary` on `surface`; `HelpText`
   `text-secondary` on `surface`; the inline link `accent` on `surface`; the input boundary
   `border-strong` on `surface` (the 3:1 non-text floor a control owes); `FieldError` `danger` on
