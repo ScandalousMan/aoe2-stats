@@ -1335,7 +1335,7 @@
         "prerequisites": [
           {
             "id": "17",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -1689,7 +1689,7 @@
         "prerequisites": [
           {
             "id": "875",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -1830,7 +1830,7 @@
         "prerequisites": [
           {
             "id": "48",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -2320,7 +2320,7 @@
         "prerequisites": [
           {
             "id": "379",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -2814,7 +2814,7 @@
         "prerequisites": [
           {
             "id": "435",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -2871,7 +2871,7 @@
         "prerequisites": [
           {
             "id": "315",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -2992,7 +2992,7 @@
         "prerequisites": [
           {
             "id": "437",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -3013,7 +3013,7 @@
         "prerequisites": [
           {
             "id": "185",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -4212,7 +4212,7 @@
         "prerequisites": [
           {
             "id": "1699",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7230,7 +7230,7 @@
         "prerequisites": [
           {
             "id": "532",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7445,7 +7445,7 @@
         "prerequisites": [
           {
             "id": "532",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7740,7 +7740,7 @@
         "prerequisites": [
           {
             "id": "36",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7760,7 +7760,7 @@
         "prerequisites": [
           {
             "id": "36",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7815,7 +7815,7 @@
         "prerequisites": [
           {
             "id": "532",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7885,7 +7885,7 @@
         "prerequisites": [
           {
             "id": "331",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -7955,7 +7955,7 @@
         "prerequisites": [
           {
             "id": "331",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -8025,7 +8025,7 @@
         "prerequisites": [
           {
             "id": "331",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -8517,7 +8517,7 @@
         "prerequisites": [
           {
             "id": "532",
-            "kind": "building"
+            "kind": "unit"
           }
         ],
         "produced_at": {
@@ -8829,7 +8829,7 @@
         "prerequisites": [
           {
             "id": "65",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {
@@ -9012,7 +9012,7 @@
         "prerequisites": [
           {
             "id": "6",
-            "kind": "building"
+            "kind": "technology"
           }
         ],
         "produced_at": {

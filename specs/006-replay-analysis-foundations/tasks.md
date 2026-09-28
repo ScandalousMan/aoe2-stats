@@ -1078,7 +1078,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       every seated civilisation, and gapping the field for every participant in a match that seats
       the owner never answers wrong — and record the decision in research.md D5 before building it.
       Neither committed recording triggers it; **lands before T655 publishes anything**
-- [ ] T652t **Twenty prerequisite references in `rules.json` point at nothing.** Technology 436 lists
+- [x] T652t **Twenty prerequisite references in `rules.json` point at nothing.** Technology 436 lists
       `{kind: building, id: 437}`, but 437 is a technology, and 437 lists building 185. The fault is
       in `packages/knowledge/src/aoe2stats_knowledge/normalise.py`'s kind assignment, so
       `query.prerequisites` answers with entities that do not exist. Fix it there, regenerate

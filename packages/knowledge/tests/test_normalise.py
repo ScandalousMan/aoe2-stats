@@ -340,6 +340,45 @@ def test_every_building_referenced_by_a_committed_recording_resolves_or_is_a_nam
     assert unresolved_buildings == _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK
 
 
+#: Both committed, promoted snapshot directories (`snapshots/*/snapshot.toml`, `promoted = true`):
+#: `contracts/knowledge-base.md`'s "Entity resolution" is not only about what a committed
+#: recording's canonical stream names directly, but about every entity `rules.json` itself names —
+#: including a prerequisite's own claimed kind.
+_PROMOTED_SNAPSHOT_DIRECTORIES: tuple[str, ...] = (
+    "aoe2techtree-180059",
+    "aoe2techtree-177723-test",
+)
+
+
+def test_every_prerequisite_in_both_promoted_snapshots_resolves_to_its_claimed_kind() -> None:
+    """T652t: the vendored pack's own `"BuildingTech"` link tag names a unit, a technology and
+    (rarely) a building alike, never disambiguating which; an earlier revision of `normalise.py`
+    mapped it to `"building"` unconditionally regardless, so twenty prerequisites across both
+    promoted snapshots named an entity absent from the kind they claimed — technology 436's own
+    prerequisite read "building 437" when 437 is itself a technology, and technology 437's own
+    prerequisite read "building 185" when 185 is a unit, among eighteen others.
+    `query.prerequisites` would answer with an entity that does not exist under the kind it
+    names. This walks every prerequisite of every entity in both committed, promoted `rules.json`
+    files (not a fresh normalisation — the committed bytes themselves, the same file `query.py`
+    actually reads) and asserts each one resolves against the kind it claims; before the
+    kind-assignment fix, exactly twenty of these did not."""
+    for directory in _PROMOTED_SNAPSHOT_DIRECTORIES:
+        document = json.loads(
+            (
+                Path(__file__).resolve().parents[1] / "snapshots" / directory / "rules.json"
+            ).read_text(encoding="utf-8")
+        )
+        entities = document["entities"]
+        unresolved = [
+            (entity_kind, entity_id, prerequisite["kind"], prerequisite["id"])
+            for entity_kind, table in entities.items()
+            for entity_id, entity in table.items()
+            for prerequisite in entity["prerequisites"]
+            if prerequisite["id"] not in entities.get(prerequisite["kind"], {})
+        ]
+        assert unresolved == [], f"{directory}: unresolved prerequisite(s) {unresolved}"
+
+
 # ------------------------------------------------------------------------------- rules.json bytes
 
 

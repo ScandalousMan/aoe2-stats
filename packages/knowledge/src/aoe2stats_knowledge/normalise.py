@@ -84,18 +84,50 @@ _USE_TYPE_KIND: Final[Mapping[str, str]] = {
 }
 
 #: A tree entry's `link_node_type` (the *kind* of the node a prerequisite link points at) to this
-#: module's entity-kind vocabulary. Every value seen across the committed pack's 53 trees is listed
-#: (`test_every_link_node_type_in_the_real_pack_is_mapped` asserts none is silently dropped).
+#: module's entity-kind vocabulary — for every value **except** `"BuildingTech"`, which the pack
+#: uses for a link to a unit, a technology and (rarely) a building alike, never disambiguating
+#: which (T652t, read empirically: across the real pack's 53 trees, every `"BuildingTech"`-tagged
+#: link this revision actually carries points at a unit or a technology, never a genuine building,
+#: yet the string itself gives no hint which). Mapping it to `"building"` unconditionally, as an
+#: earlier revision of this module did, produced twenty prerequisites across both promoted
+#: snapshots that named an entity absent from the kind they claimed — a technology's prerequisite
+#: reading "building 437" when 437 is itself a technology, for one. `"BuildingTech"` is deliberately
+#: **absent** from this table now; `_resolve_ambiguous_prerequisite` below resolves it instead,
+#: against the real, already-normalised entity tables rather than a static string mapping, because
+#: no static mapping can be right for a value the source pack itself reuses across kinds.
 _LINK_NODE_KIND: Final[Mapping[str, str]] = {
     "Unit": "unit",
     "UnitUpgrade": "unit",
     "UniqueUnit": "unit",
     "RegionalUnit": "unit",
     "Research": "technology",
-    "BuildingTech": "building",
     "BuildingNonTech": "building",
     "UniqueBuilding": "building",
 }
+
+#: The `link_node_type` value this module cannot map statically — see `_LINK_NODE_KIND`'s own
+#: comment above.
+_AMBIGUOUS_LINK_NODE_TYPE: Final[str] = "BuildingTech"
+
+#: A placeholder `prerequisites[].kind` a `_TreeReading` carries between `_collect_tree_readings`
+#: (which does not yet know the real, fully-merged entity tables) and `_resolve_ambiguous_
+#: prerequisites` (which runs once they exist) — never written to `rules.json` itself; every
+#: occurrence is replaced by a real kind before `normalise_pack_data` returns
+#: (`test_every_prerequisite_in_both_promoted_snapshots_resolves_to_its_claimed_kind` in the test
+#: suite is the guard: `"ambiguous"` itself is never a real entity kind, so a leftover placeholder
+#: fails that assertion exactly like any other unresolved reference would).
+_AMBIGUOUS_PREREQUISITE_KIND: Final[str] = "ambiguous"
+
+#: Tie-break order `_resolve_ambiguous_prerequisite` falls back to when more than one kind's own
+#: age is eligible (or when no age data settles it at all): every multi-candidate case the real,
+#: committed pack actually carries is a same-branch technology chain (Coinage feeds Banking feeds
+#: Guilds; Squires feeds Gambesons) rather than a coincidental collision with an unrelated unit or
+#: building, so technology is asked first.
+_AMBIGUOUS_PREREQUISITE_KIND_PREFERENCE: Final[tuple[str, ...]] = (
+    "technology",
+    "unit",
+    "building",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,8 +225,16 @@ def _reading_from_units_techs_entry(
     civilisation: str, entry: Mapping[str, Any], strings: Mapping[str, str]
 ) -> _TreeReading:
     link_id = entry.get("link_id")
-    link_kind = _LINK_NODE_KIND.get(entry.get("link_node_type", ""))
-    prerequisite = (link_kind, link_id) if link_id is not None and link_kind is not None else None
+    link_node_type = entry.get("link_node_type", "")
+    if link_id is None:
+        prerequisite = None
+    elif link_node_type == _AMBIGUOUS_LINK_NODE_TYPE:
+        # See `_LINK_NODE_KIND`'s own comment: this pack's one polysemous link kind, resolved
+        # later, once the real entity tables exist, by `_resolve_ambiguous_prerequisite`.
+        prerequisite = (_AMBIGUOUS_PREREQUISITE_KIND, link_id)
+    else:
+        link_kind = _LINK_NODE_KIND.get(link_node_type)
+        prerequisite = (link_kind, link_id) if link_kind is not None else None
     return _TreeReading(
         civilisation=civilisation,
         age_id=entry.get("age_id"),
@@ -271,6 +311,63 @@ def _prerequisites(prerequisite: tuple[str, int] | None) -> list[dict[str, str]]
         return []
     kind, node_id = prerequisite
     return [{"kind": kind, "id": str(node_id)}]
+
+
+def _resolve_ambiguous_prerequisite(
+    entities: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    *,
+    source_age: int | None,
+    target_id: str,
+) -> dict[str, str]:
+    """One `_AMBIGUOUS_PREREQUISITE_KIND` placeholder, resolved against the real, fully-merged
+    entity tables (T652t). `target_id` may exist under more than one kind — the pack's own Unit,
+    Building and Tech tables are separate id spaces the source never reconciles, so the same small
+    integer occasionally names a real unit *and* a real technology, or a real building *and* a
+    real technology, by pure coincidence (id 45 is both the Dock building and the "Faith"
+    technology; id 50 is both the Farm building and the "Masonry" technology). A prerequisite from
+    a *later* age than the entity it unlocks never happens in the real game, so whichever
+    candidate's own age does not exceed `source_age` is preferred; `_AMBIGUOUS_PREREQUISITE_KIND_
+    PREFERENCE` breaks a tie between two still-eligible candidates, and is also the fallback order
+    when age data settles nothing (an unset age on either side, or every candidate reading later
+    than the source)."""
+    candidates = [
+        (kind, entities[kind][target_id]["age_requirement"])
+        for kind in _AMBIGUOUS_PREREQUISITE_KIND_PREFERENCE
+        if target_id in entities[kind]
+    ]
+    if not candidates:
+        raise ValueError(
+            f"prerequisite id {target_id!r} resolves under no kind at all — "
+            "the vendored pack names it nowhere in Unit, Building or Tech"
+        )
+    eligible = [
+        (kind, age)
+        for kind, age in candidates
+        if age is None or source_age is None or age <= source_age
+    ]
+    chosen_kind, _ = (eligible or candidates)[0]
+    return {"kind": chosen_kind, "id": target_id}
+
+
+def _resolve_ambiguous_prerequisites(
+    entities: Mapping[str, Mapping[str, dict[str, Any]]],
+) -> None:
+    """The repair pass `normalise_pack_data` runs once `entities` is complete: every prerequisite
+    still carrying `_AMBIGUOUS_PREREQUISITE_KIND` (from a `"BuildingTech"`-tagged link) is replaced
+    in place by `_resolve_ambiguous_prerequisite`'s real answer. Mutates `entities`; there is
+    nothing left to return."""
+    for table in entities.values():
+        for entity in table.values():
+            entity["prerequisites"] = [
+                _resolve_ambiguous_prerequisite(
+                    entities,
+                    source_age=entity["age_requirement"],
+                    target_id=prerequisite["id"],
+                )
+                if prerequisite["kind"] == _AMBIGUOUS_PREREQUISITE_KIND
+                else prerequisite
+                for prerequisite in entity["prerequisites"]
+            ]
 
 
 def _entity(
@@ -429,8 +526,11 @@ def normalise_pack_data(
         entity["upgrades_unit"] = unit_id
         technologies[technology_id] = entity
 
+    entities = {"unit": units, "building": buildings, "technology": technologies}
+    _resolve_ambiguous_prerequisites(entities)
+
     return NormalisedPack(
-        entities={"unit": units, "building": buildings, "technology": technologies},
+        entities=entities,
         civilisations=civilisations,
         disagreements=tuple(disagreements),
     )

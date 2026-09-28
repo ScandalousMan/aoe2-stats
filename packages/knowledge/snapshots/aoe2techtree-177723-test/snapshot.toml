@@ -22,11 +22,20 @@
 # build, with no intervening, unattested build to carry forward across. This is the second, real
 # validation basis T646 asked for in place of a second carry-forward record: simpler, and no less
 # real, because it rests on evidence already read and recorded for the sibling fixture.
+#
+# T652t (2026-09-28) regenerated `rules.json` in both promoted directories — the vendored pack's
+# own `"BuildingTech"` link tag names a unit, a technology and (rarely) a building alike, never
+# disambiguating which, and `normalise.py`'s earlier revision mapped it to `"building"`
+# unconditionally, so twenty prerequisites named an entity absent from the kind they claimed. The
+# fix and its reasoning are recorded in full on the sibling fixture's own `snapshot.toml`
+# (`aoe2techtree-180059`); this file's own `rules.json` stays byte-identical to that sibling's,
+# still reproduced by re-running `normalise_pack()` against the same, unchanged vendored pack, so
+# `digest` below is recomputed identically to its sibling's, not by coincidence, exactly as before.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 177723
-digest = "sha256:b0afb43d2aead97cb763091f59c3f58ca741beba868d24f6a622585289d1c9e4"
+digest = "sha256:20956bac619302729d9efa4468395c2b8a31235463dd4ea19c87cb854d5304ca"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

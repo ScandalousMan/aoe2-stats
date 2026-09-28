@@ -31,12 +31,25 @@
 # Malians' University Team Bonus) are `operation = "faster"` now, not `operation = "multiply"`;
 # no other field of any row changed, and no committed effect reached any of T652r's new parse-time
 # numeric guards (a negative cost `multiply` operand, a `faster` operand of -1 or below, a
-# non-whole `cost`/`age_requirement` `set` operand).
+# non-whole `cost`/`age_requirement` `set` operand). T652t (2026-09-28) is the first task to touch
+# `rules.json` itself since T642: the vendored pack's own `"BuildingTech"` link tag names a unit, a
+# technology and (rarely) a building alike, never disambiguating which, and `normalise.py`'s
+# earlier revision mapped it to `"building"` unconditionally — twenty prerequisites across both
+# promoted snapshots named an entity absent from the kind they claimed (technology 436's
+# prerequisite read "building 437" when 437 is itself a technology, among nineteen others).
+# `normalise.py`'s `_resolve_ambiguous_prerequisite` now asks the real, already-merged entity
+# tables instead, preferring whichever candidate kind's own age does not exceed the referring
+# entity's (a prerequisite from a later age than the thing it unlocks never happens in the real
+# game) — every one of the twenty now resolves, and the two prerequisites this fix could have
+# wrongly changed instead (Harbor's own building_upgraded_from_id reading Dock, Horse Collar's
+# reading Farm — both ids also coincide with an unrelated real technology, "Faith" and "Masonry")
+# are unchanged, because the age check keeps the building reading in both. `digest` recomputed
+# over the corrected `rules.json` and the unchanged `effects.toml`.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:b0afb43d2aead97cb763091f59c3f58ca741beba868d24f6a622585289d1c9e4"
+digest = "sha256:20956bac619302729d9efa4468395c2b8a31235463dd4ea19c87cb854d5304ca"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 
