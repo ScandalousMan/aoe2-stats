@@ -20,6 +20,29 @@ at ratios well past the shared `_MAX_DECOMPRESSION_RATIO` zip-bomb cap (`_well_f
 check, measured here at ~91x for 1,000 repeated bytes), which would trip that check first and mask
 the raw-size ceiling this file exists to pin. Incompressible content keeps the ratio near 1x, so the
 only thing standing between these payloads and the engine is `max_raw_bytes`.
+
+**T632** extends this file two ways. First, the refusal coverage above is `extract()`-only;
+`events()` (T629b) shares `_parsed_or_refuse` with `extract()`, but it returns a generator
+(`canonical_events` yields), which raises a real hazard: if the ceiling check happened *inside* the
+generator body rather than in `events()`'s own function body, the refusal would not surface until
+the first `next()` rather than on the call itself. The two `test_events_*_eagerly` tests below prove
+which behavior this code actually has, by calling `extractor.events(zip_bytes)` directly and never
+`next()`-ing the result — see each test's own docstring for what was found. Second, every refusal
+test above proves only that an oversized input is rejected; it says nothing about what an *accepted*
+input consumes once it reaches the engine and folds into canonical events. The tests in the "T632:
+peak allocation" section below measure that with `tracemalloc`, over both committed recordings
+driven fully through `events()`, and record the ceiling they assert against with its derivation
+written out there — and assert FR-020's declared-only kinds are never emitted, alongside it.
+
+**T633** adds the group-silence accumulator (`aoe2stats_replay_engine.silence`) to the same
+measured path, inside the same `tracemalloc` region, and re-derives the ceiling from a fresh
+measurement rather than assuming the old one still holds — see the derivation comment above
+`_PEAK_ALLOCATION_CEILING_BYTES` for what that re-measurement found.
+
+**T648** adds `aoe2stats_knowledge.coverage.coverage` — the knowledge-coverage pass over the same
+fully-materialised `events` list — as the third and last accumulator that measurement names,
+inside the same `tracemalloc` region, and re-derives the ceiling from a fresh measurement the same
+way T633 did rather than assuming either earlier one still holds.
 """
 
 from __future__ import annotations
@@ -27,15 +50,23 @@ from __future__ import annotations
 import inspect
 import io
 import os
+import tracemalloc
 import zipfile
-from dataclasses import fields
+from collections.abc import Sequence
+from dataclasses import dataclass, fields
+from pathlib import Path
 
 import pytest
 from aoe2rec_py import aoe2rec_py as _native
 
 from aoe2stats_core.replay.analysis import MatchTimeline, ParticipantTimeline
+from aoe2stats_core.replay.events import CanonicalEvent, EventKind
 from aoe2stats_core.replay.validation import EngineParseError, MalformedArchiveError
+from aoe2stats_core.truth.confidence import ConfidenceLevel
+from aoe2stats_knowledge import coverage as knowledge_coverage
+from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
+from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 
 # `aoe2rec.py` itself binds this same module object as `_native` (`from aoe2rec_py import
 # aoe2rec_py as _native`) — Python caches module imports, so monkeypatching an attribute on the
@@ -116,6 +147,58 @@ def test_a_recording_at_or_under_the_ceiling_reaches_the_engine(
         extractor.extract(zip_bytes)
 
 
+def test_events_over_the_configured_ceiling_is_refused_eagerly_not_lazily(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`events()` (T629b) shares `_parsed_or_refuse` with `extract()` — same ceiling, same
+    exception. The hazard this test rules out: `events()` returns a generator (`canonical_events`
+    yields), so *if* the ceiling check ran inside that generator's body rather than in
+    `events()`'s own function body, calling `extractor.events(zip_bytes)` would not raise at
+    all — it would hand back a suspended generator, and `MalformedArchiveError` would only
+    surface on the first `next()`.
+
+    Found: refusal is eager. Reading `Aoe2RecExtractor.events` in `aoe2rec.py` shows it is not
+    itself a generator function (no `yield` in its own body) — it calls `self._parsed_or_refuse(
+    zip_bytes)` synchronously, which raises before `events()` ever reaches its `return
+    canonical_events(parsed)` line and constructs the generator. So the call below, which never
+    calls `next()` on anything, is itself the proof: if `events()` returned a generator object
+    instead of raising here, this test would fail with "DID NOT RAISE" and the hazard above would be
+    real.
+    """
+    zip_bytes = _zip_bytes({"AgeIIDE_Replay_1.aoe2record": os.urandom(1_000)})
+    extractor = Aoe2RecExtractor(max_raw_bytes=100)
+
+    def _must_not_be_called(data: bytes) -> object:
+        raise AssertionError("the native engine must not be invoked past the raw-size ceiling")
+
+    monkeypatch.setattr(_native, "parse_rec", _must_not_be_called)
+
+    with pytest.raises(MalformedArchiveError, match="exceeds this analysis's 100-byte ceiling"):
+        extractor.events(zip_bytes)  # deliberately not `next(extractor.events(zip_bytes))`
+
+
+def test_events_at_or_under_the_ceiling_reaches_the_engine_eagerly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The inverse of the refusal above, through `events()`: a payload at or under `max_raw_bytes`
+    reaches the native engine, and reaches it eagerly. The stubbed engine's `ValueError`, wrapped as
+    `EngineParseError` by `_parse_or_raise`, surfaces from the call to `events()` itself — again
+    never `next()` — because `_parsed_or_refuse` (which calls the engine) runs entirely inside
+    `events()`'s own function body, ahead of the `canonical_events(parsed)` call that constructs the
+    generator it returns.
+    """
+    zip_bytes = _zip_bytes({"AgeIIDE_Replay_1.aoe2record": os.urandom(1_000)})
+    extractor = Aoe2RecExtractor(max_raw_bytes=1_000)
+
+    def _stub_parse_rec(data: bytes) -> object:
+        raise ValueError("stub reached: the raw-size gate let this payload through")
+
+    monkeypatch.setattr(_native, "parse_rec", _stub_parse_rec)
+
+    with pytest.raises(EngineParseError, match="stub reached"):
+        extractor.events(zip_bytes)  # deliberately not `next(extractor.events(zip_bytes))`
+
+
 def test_extract_never_returns_the_operation_stream() -> None:
     # Field introspection on the return type, not on any one instance: neither `MatchTimeline` nor
     # `ParticipantTimeline` may carry a field that is the raw operation list, or anything named for
@@ -163,3 +246,164 @@ def test_extract_never_returns_the_operation_stream() -> None:
         "participants",
     }
     assert match_timeline_fields == allowed_match_fields
+
+
+# --- T632: peak allocation over the full canonical path, and FR-020's declared-only kinds -------
+#
+# What this does and does not cover. `tracemalloc` traces Python-level allocations only.
+# `aoe2rec_py` is a native (Rust/PyO3) extension; whatever *it* allocates internally while building
+# the structure it hands back is invisible to `tracemalloc` unless and until it is materialised as
+# Python objects — which, per this file's own module docstring and R3, is exactly what `parse_rec`
+# does (every operation becomes a Python dict). So the number below is a good proxy for the
+# Python-object cost this feature's own code is responsible for — the parsed operation structure,
+# and the canonical events folded from it — but it is not total process RSS, and it does not
+# capture any native-only working memory the wheel allocates and frees before returning.
+#
+# Derivation of the ceiling. Measured directly over both committed recordings, driving
+# `Aoe2RecExtractor(max_raw_bytes=...).events()` to full consumption inside a `tracemalloc.start()`/
+# `get_traced_memory()` region (three repeated runs each, stable to well under 1%):
+#   - AgeIIDE_Replay_500546441.zip (484,542 raw operations, `tests/fixtures/replays/README.md`):
+#     peak ~282 MB (295,482,129 to 295,786,301 bytes across runs)
+#   - AgeIIDE_Replay_504695319.zip (232,503 raw operations): peak ~152 MB (159,841,749 to
+#     159,845,213 bytes across runs)
+# Peak allocation tracks raw operation count (R3: "memory scales with operation count"), not the
+# object-id space the T632 task text names as "several times" larger in the second recording — a
+# different axis (distinct object ids referenced across the match), irrelevant to this measurement.
+# The higher of the two measured peaks, ~282 MB, is the basis for the ceiling below.
+#
+# Headroom: ~3.2x over the measured ~282 MB, landing on 900 MB. This mirrors this repository's own
+# precedent for exactly this kind of number — `ANALYSIS_MAX_RAW_BYTES`'s 2 GB ceiling sits ~3.17x
+# over R3's own measured 631 MB resident — rather than inventing a new ratio. The point of this much
+# headroom is stability across machines, Python builds and allocator behavior, not a tight pin: a
+# memory assertion that flakes on a slower box or a different malloc arena strategy is worse than a
+# loose one that still catches a regression an order of magnitude off.
+#
+# T633 re-derivation: the group-silence accumulator (`aoe2stats_replay_engine.silence`,
+# `compute_group_silence_episodes`) is now on this same path, live inside the `tracemalloc` region
+# below via the `measurement` fixture. Measured the same way, over the same fully-materialised
+# `events` list feeding the accumulator (three repeated runs each, stable to well under 1%):
+#   - AgeIIDE_Replay_500546441.zip: peak ~282 MB (295,481,745 to 295,781,189 bytes across runs;
+#     260 episodes produced)
+#   - AgeIIDE_Replay_504695319.zip: peak ~152 MB (159,841,365 to 159,842,325 bytes across runs;
+#     153 episodes produced)
+# Both ranges sit inside T632's own measured range for the same two recordings above — the
+# accumulator's own state (a dict keyed by (participant, frozenset of unit ids), at most a few
+# hundred entries, and a result list of at most a few hundred small `GroupSilenceEpisode`
+# dataclasses) is negligible next to the ~484,542 and ~232,503 raw parsed operations that dominate
+# the peak, so the honest finding is that this accumulator does not move the ceiling — not that a
+# number should be bumped for its own sake ("do not simply bump the number without re-measuring",
+# per this task). The ceiling is kept at 900 MB, at the same ~3.2x headroom, re-derived from this
+# run's own peak rather than carried over unverified from T632's.
+#
+# T648 re-derivation: `aoe2stats_knowledge.coverage.coverage` — the knowledge-coverage pass — is
+# now on this same path too, live inside the `tracemalloc` region below via the `measurement`
+# fixture, over the same fully-materialised `events` list, run *after* the group-silence
+# accumulator so both live simultaneously in the traced region exactly as they would on a real
+# request. Measured the same way (three repeated runs each, stable to well under 1%):
+#   - AgeIIDE_Replay_500546441.zip: peak ~282 MB (295,482,641 to 295,782,413 bytes across runs; 3
+#     knowledge gaps produced)
+#   - AgeIIDE_Replay_504695319.zip: peak ~152 MB (159,842,261 bytes, identical across all three
+#     runs; 15 knowledge gaps produced)
+# Both ranges sit inside T633's own measured range for the same two recordings above. This pass's
+# own state — the small per-slot entity sets it collects while walking the stream, and a result
+# list of at most a few dozen small `KnowledgeGap` dataclasses (3 and 15 here; see `coverage.py`'s
+# own module docstring for what they are and why they are real, not a defect) — is negligible next
+# to the ~484,542 and ~232,503 raw parsed operations that dominate the peak, the same finding T633
+# already made for the accumulator before this one. This is the last of the three accumulators
+# T632's own task text named ("the stream's consumers, the group-silence state and the coverage
+# pass"), and the honest finding, again, is that it does not move the ceiling — not that a number
+# should be bumped for its own sake. The ceiling is kept at 900 MB, at the same ~3.2x headroom,
+# re-derived from this run's own peak rather than carried over unverified from T633's.
+_PEAK_ALLOCATION_CEILING_BYTES = 900 * 1024 * 1024
+
+# Generous relative to both committed recordings' extracted size (~6.9 MB and ~4.0 MB per
+# `tests/fixtures/replays/README.md`). A fixture-test-local constant only — never
+# `ANALYSIS_MAX_RAW_BYTES` itself, which this package never hard-codes (see module docstring).
+_FIXTURE_MAX_RAW_BYTES = 50_000_000
+
+_FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
+_COMMITTED_RECORDINGS = sorted(_FIXTURES_ROOT.glob("AgeIIDE_Replay_*.zip"))
+
+# FR-020: these two kinds are declared in the closed vocabulary with no producer yet (T623) — see
+# `packages/core/src/aoe2stats_core/replay/events.py` and `contracts/canonical-events.md`'s
+# "declared only" column. The day a producer lands, this set is what changes; no event type does.
+_DECLARED_ONLY_KINDS = frozenset({EventKind.STARTING_ATTRIBUTES, EventKind.STARTING_OBJECT})
+
+
+@dataclass(frozen=True)
+class _Measurement:
+    events: list[CanonicalEvent]
+    episodes: tuple[GroupSilenceEpisode, ...]
+    knowledge_gaps: Sequence[KnowledgeGap]
+    peak_bytes: int
+
+
+@pytest.fixture(scope="module", params=_COMMITTED_RECORDINGS, ids=lambda p: p.stem)
+def measurement(request: pytest.FixtureRequest) -> _Measurement:
+    """Drive one committed recording through the full canonical path (`events()`, fully consumed),
+    then the group-silence accumulator (T633) and the knowledge-coverage pass (T648) over the same
+    events, tracing peak Python allocation over the whole call. Module-scoped and parametrized so
+    each recording is parsed and measured exactly once and shared between the tests below, rather
+    than reparsed per assertion."""
+    zip_bytes = request.param.read_bytes()
+    extractor = Aoe2RecExtractor(max_raw_bytes=_FIXTURE_MAX_RAW_BYTES)
+
+    tracemalloc.start()
+    try:
+        events = list(extractor.events(zip_bytes))
+        episodes = compute_group_silence_episodes(events)
+        knowledge_gaps = knowledge_coverage.coverage(events)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    return _Measurement(
+        events=events, episodes=episodes, knowledge_gaps=knowledge_gaps, peak_bytes=peak
+    )
+
+
+def test_the_committed_recordings_are_found() -> None:
+    assert len(_COMMITTED_RECORDINGS) >= 2
+
+
+def test_peak_allocation_over_the_full_canonical_path_stays_under_the_measured_ceiling(
+    measurement: _Measurement,
+) -> None:
+    assert measurement.events, "expected the canonical stream to yield at least one event"
+    assert measurement.peak_bytes <= _PEAK_ALLOCATION_CEILING_BYTES, (
+        f"peak Python allocation {measurement.peak_bytes} bytes "
+        f"({measurement.peak_bytes / 1024 / 1024:.1f} MB) exceeds the "
+        f"{_PEAK_ALLOCATION_CEILING_BYTES / 1024 / 1024:.0f} MB ceiling derived above — all three "
+        "accumulators this measurement names (T633's group-silence, T648's knowledge-coverage) are "
+        "already live on this path, so crossing it here means either a real regression or that the "
+        "derivation above needs redoing"
+    )
+
+
+def test_group_silence_episodes_are_computed_on_the_measured_path(
+    measurement: _Measurement,
+) -> None:
+    """T633: the accumulator this measurement now includes actually ran and produced its result —
+    a silent no-op here would make the memory measurement above meaningless as evidence for it."""
+    assert isinstance(measurement.episodes, tuple)
+    for episode in measurement.episodes:
+        assert episode.confidence.level is not ConfidenceLevel.HIGH
+
+
+def test_knowledge_coverage_is_computed_on_the_measured_path(measurement: _Measurement) -> None:
+    """T648: the knowledge-coverage pass this measurement now includes actually ran and produced
+    its result — a silent no-op here would make the memory measurement above meaningless as
+    evidence for it (the same reasoning as T633's sibling test above, for the third accumulator)."""
+    assert isinstance(measurement.knowledge_gaps, tuple)
+    for gap in measurement.knowledge_gaps:
+        assert isinstance(gap, KnowledgeGap)
+
+
+def test_the_declared_only_kinds_are_never_emitted(measurement: _Measurement) -> None:
+    """FR-020: `starting-attributes` and `starting-object` exist in the vocabulary with no producer.
+    Asserting they are never emitted — rather than saying nothing about them — is what makes the
+    reserved vocabulary honest: the day a producer for either lands, this test is what changes, and
+    no event type does."""
+    emitted_kinds = {event.kind for event in measurement.events}
+    leaked = emitted_kinds & _DECLARED_ONLY_KINDS
+    assert not leaked, f"declared-only kind(s) emitted with no producer implemented: {leaked}"

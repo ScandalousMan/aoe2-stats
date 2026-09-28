@@ -1,0 +1,787 @@
+# The determinability register — the only place a classification is written.
+# Schema and loader guarantees: specs/006-replay-analysis-foundations/contracts/register.md
+# `evidence` is always a reference into docs/data-sources.md or a research record, never a restated
+# measurement (SC-013). `path` is the entry's position in the published document, which is what lets
+# the publication gate resolve a leaf to exactly one datum.
+
+[datum."document.schema_version"]
+classification = "observed"
+status = "published"
+path = "schema_version"
+source = "the analyzer's own document constant, not a field of the recording"
+method = "written verbatim by the analyzer when it serialises the document; names the document's shape"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D8"
+
+[datum."match.game_id"]
+classification = "observed"
+status = "published"
+path = "game_id"
+source = "the platform's match identifier, carried by the request that fetched the recording; not read from inside the recording"
+method = "copied unchanged from the match record the analysis was requested for"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "docs/data-sources.md §2"
+
+[datum."match.point_of_view_profile_id"]
+classification = "observed"
+status = "published"
+path = "point_of_view_profile_id"
+source = "the profile identifier the recording was fetched for; the recording is that profile's point of view"
+method = "copied unchanged from the fetch request"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "docs/data-sources.md §2"
+
+[datum."match.world_time_ms"]
+classification = "observed"
+status = "published"
+path = "world_time_ms"
+source = "the recording's post-game world-time block"
+method = "read unchanged from the block; it is the match clock's end, not a wall-clock duration"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."engine.name"]
+classification = "observed"
+status = "published"
+path = "engine.name"
+source = "the parser distribution's own name"
+method = "read from installed distribution metadata"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."engine.version"]
+classification = "observed"
+status = "published"
+path = "engine.version"
+source = "the parser distribution's installed version"
+method = "read from installed distribution metadata"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."engine.dependencies"]
+classification = "observed"
+status = "published"
+path = "engine.deps.*"
+source = "the installed metadata of the parser and each requirement it declares"
+method = "read from installed distribution metadata; empty is a construction error"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."source_recording.object_key"]
+classification = "observed"
+status = "published"
+path = "source_recording.object_key"
+source = "the object store key of the retained original archive"
+method = "copied unchanged from the retention record"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R9"
+
+[datum."source_recording.sha256"]
+classification = "observed"
+status = "published"
+path = "source_recording.sha256"
+source = "the checksum of the retained original archive, recorded at retention"
+method = "copied unchanged from the retention record and verified again on retrieval"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R9"
+
+[datum."participant.profile_id"]
+classification = "observed"
+status = "published"
+path = "participants[].profile_id"
+source = "the recording header's game-settings player slot"
+method = "read unchanged from the slot; it joins the parse to the match's participants without inference"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R2"
+
+[datum."participant.player_number"]
+classification = "observed"
+status = "published"
+path = "participants[].player_number"
+source = "the recording header's game-settings player slot"
+method = "read unchanged from the slot; it joins the parse to the match's participants without inference"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R2"
+
+[datum."participant.civ_id"]
+classification = "observed"
+status = "published"
+path = "participants[].civ_id"
+source = "the recording header's game-settings player slot"
+method = "read unchanged from the slot; it joins the parse to the match's participants without inference"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R2"
+
+[datum."participant.resolved_team_id"]
+classification = "observed"
+status = "published"
+path = "participants[].resolved_team_id"
+source = "the recording header's game-settings player slot"
+method = "read unchanged from the slot; it joins the parse to the match's participants without inference"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R2"
+
+[datum."participant.builds.building_id"]
+classification = "decoded"
+status = "published"
+path = "participants[].builds[].building_id"
+source = "the raw payload of a build command; the pinned wheel returns it undecoded"
+method = "the repository's own build-payload decoder, golden-tested against every committed recording"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R4"
+
+[datum."participant.builds.world_time_ms"]
+classification = "observed"
+status = "published"
+path = "participants[].builds[].world_time_ms"
+source = "the time field of the build action"
+method = "read unchanged from the action"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R4"
+
+[datum."participant.trainings.unit_id"]
+classification = "observed"
+status = "published"
+path = "participants[].trainings[].unit_id"
+source = "a named field of the wheel-decoded training-queue command"
+method = "read unchanged, one entry per command, never collapsed"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.trainings.amount"]
+classification = "observed"
+status = "published"
+path = "participants[].trainings[].amount"
+source = "a named field of the wheel-decoded training-queue command"
+method = "read unchanged, one entry per command, never collapsed"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.trainings.building_id"]
+classification = "observed"
+status = "published"
+path = "participants[].trainings[].building_id"
+source = "a named field of the wheel-decoded training-queue command"
+method = "read unchanged, one entry per command, never collapsed"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.trainings.world_time_ms"]
+classification = "observed"
+status = "published"
+path = "participants[].trainings[].world_time_ms"
+source = "the time field of the training command"
+method = "read unchanged from the action"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.researches.technology_id"]
+classification = "observed"
+status = "published"
+path = "participants[].researches[].technology_id"
+source = "a named field of the wheel-decoded research command"
+method = "read unchanged; first occurrence per technology over the whole match"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R5"
+
+[datum."participant.researches.world_time_ms"]
+classification = "observed"
+status = "published"
+path = "participants[].researches[].world_time_ms"
+source = "the time field of the first research command naming the technology"
+method = "read unchanged from the action; later identical commands do not move it"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R5"
+
+[datum."participant.age_up_commands"]
+classification = "observed"
+status = "published"
+path = "participants[].age_up_commands.*"
+source = "research commands naming an age technology, per participant"
+method = "first-occurrence collapse; match-clock time of the command. It is an order, not an arrival"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R5"
+
+[datum."participant.villagers_ordered"]
+classification = "decoded"
+status = "published"
+path = "participants[].villagers_ordered"
+source = "villager training commands and their cancellation counterparts, per participant"
+method = "sum of ordered amounts less cancelled amounts; a count of commands, never a population"
+requires_knowledge = []
+depends_on = ["participant.trainings.unit_id", "participant.trainings.amount"]
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.actions"]
+classification = "decoded"
+status = "published"
+path = "participants[].actions"
+source = "every action operation issued by the participant"
+method = "count of action operations before any collapse"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."participant.actions_per_minute"]
+classification = "decoded"
+status = "published"
+path = "participants[].actions_per_minute"
+source = "the participant's action count and the match clock's end"
+method = "actions divided by match minutes; zero when the clock is zero"
+requires_knowledge = []
+depends_on = ["participant.actions", "match.world_time_ms"]
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/003-player-search-match-analysis/research.md R1"
+
+[datum."participant.resigned_at_ms"]
+classification = "observed"
+status = "published"
+path = "participants[].resigned_at_ms"
+source = "the time field of the participant's first resignation action"
+method = "read unchanged from the action; absent when the participant never resigned"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
+evidence = "specs/006-replay-analysis-foundations/research.md D11"
+
+[datum."event.clock_ms"]
+classification = "observed"
+status = "planned"
+source = "the time of an operation on the match clock"
+method = "match-clock time; accumulated from sync increments and asserted to agree with each action's own time field"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.participant"]
+classification = "observed"
+status = "planned"
+source = "the issuing player of an action"
+method = "player identifier of the action; absent only on match-level events, never an observer or empty slot"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.match_started.game_build"]
+classification = "observed"
+status = "planned"
+source = "the recording header's game build field"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.match_started.map"]
+classification = "observed"
+status = "planned"
+source = "the recording header's resolved map field"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.match_started.lobby_presets"]
+classification = "observed"
+status = "planned"
+source = "the recording header's lobby preset fields"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.match_started.participants"]
+classification = "observed"
+status = "planned"
+source = "the recording header's game-settings player slots"
+method = "read unchanged; observers and empty slots are omitted, not present and silent"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.building_placed.building_id"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of a build command"
+method = "the repository's own build-payload decoder"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.building_placed.position"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of a build command"
+method = "the repository's own build-payload decoder"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_queued.unit_id"]
+classification = "observed"
+status = "planned"
+source = "a named field of the training-queue command"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_queued.building_type"]
+classification = "observed"
+status = "planned"
+source = "a named field of the training-queue command"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_queued.building_object"]
+classification = "observed"
+status = "planned"
+source = "the training-queue command's list of producing-building object ids"
+method = "the first id in the list is kept; a command naming several producing buildings still yields one event, and the rest are not represented — a narrowing of the vocabulary, not a re-decoding of the omitted ones"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_queued.count"]
+classification = "observed"
+status = "planned"
+source = "a named field of the training-queue command"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_unqueued.unit_id"]
+classification = "observed"
+status = "planned"
+source = "a named field of a top-level cancellation command (Unqueue, FarmUnqueue, FishtrapUnqueue)"
+method = "read unchanged, only when the payload carries both an integer unit id and an integer amount; any other shape stays undecoded rather than guessed"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_canonical.py::test_a_top_level_cancellation_is_a_unit_unqueued_event — synthetic: neither committed recording produces a cancellation (feature 006 phase 3, T633)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.unit_unqueued.count"]
+classification = "observed"
+status = "planned"
+source = "a named field of a top-level cancellation command (Unqueue, FarmUnqueue, FishtrapUnqueue)"
+method = "read unchanged, only when the payload carries both an integer unit id and an integer amount; any other shape stays undecoded rather than guessed"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests/test_canonical.py::test_a_top_level_cancellation_is_a_unit_unqueued_event — synthetic: neither committed recording produces a cancellation (feature 006 phase 3, T633)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.research_queued.technology_id"]
+classification = "observed"
+status = "planned"
+source = "a named field of the research command"
+method = "read unchanged; first occurrence collapse"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.research_queued.researching_building"]
+classification = "observed"
+status = "planned"
+source = "a named field of the research command"
+method = "read unchanged; first occurrence collapse"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.units_commanded.command_class"]
+classification = "observed"
+status = "planned"
+source = "the wheel's own name for the command variant"
+method = "read unchanged, mapped to the closed command-class vocabulary"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.units_commanded.unit_object_ids"]
+classification = "observed"
+status = "planned"
+source = "the unit identifier list of a move, interact or order command"
+method = "read unchanged; other command kinds carry no ids and yield an empty list, never a guess"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.units_commanded.target"]
+classification = "observed"
+status = "planned"
+source = "the target field of an interact or order command"
+method = "read unchanged; optional"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.match_ended.final_clock_ms"]
+classification = "observed"
+status = "planned"
+source = "the recording's post-game world-time block"
+method = "read unchanged"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.undecoded.operation_label"]
+classification = "observed"
+status = "planned"
+source = "the wheel's own label for an action it does not map"
+method = "carried as an opaque label, never the payload's shape"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.undecoded.payload_length"]
+classification = "observed"
+status = "planned"
+source = "the byte length of the unmapped action's payload"
+method = "read unchanged; no bytes and no offsets are carried"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.chat.channel"]
+classification = "decoded"
+status = "planned"
+source = "the channel inside the chat operation's JSON string"
+method = "the repository's own decoder; the message text is discarded at the adapter and appears nowhere"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+
+# ---------------------------------------------------------------------------------------------
+# T614 — the entries the spec names individually.
+# ---------------------------------------------------------------------------------------------
+
+[datum."participant.units_lost"]
+classification = "non-determinable"
+status = "blocked"
+blocked_on = "an outcome event in the recording format"
+source = "no field of the recording: the recording carries no damage, death or completion event and no post-game statistics block"
+method = "none exists; nothing is computed and nothing is published under this id"
+requires_knowledge = []
+depends_on = []
+validation = "the absence is re-measured against every newly committed current-patch recording, as docs/data-sources.md section 2 requires"
+reason = "the operation stream is player intent only: it carries no damage event, no death event and no completion event, and the post-game operation carries no statistics block, so no field of the file states that any unit died"
+impact = "no casualty count, no army value over time, no trade evaluation, and no military-strength dimension that needs either; the analytics that wanted them are not degraded, they are absent"
+approximation = "group silence, published separately under participant.group_silence_episodes as an inferred engagement signal that is explicitly not a casualty count"
+approximation_acceptable = "no"
+would_change_if = "a recording format that carries outcome events or a post-game statistics block"
+evidence = "docs/data-sources.md §2"
+
+[datum."event.object_deleted.object_id"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of an explicit delete command; the pinned wheel returns it as undecoded bytes"
+method = "the repository's own delete-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.market_transaction.direction"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes"
+method = "the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.market_transaction.resource"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes"
+method = "the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The code is read from the payload and only 0, 1 and 2 occur; the names food, wood and stone are the game's own resource enumeration, which the recordings cannot confirm by themselves"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."event.market_transaction.steps"]
+classification = "decoded"
+status = "planned"
+source = "the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes"
+method = "the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The payload carries a count of market steps, only 1 and 5 occurring, and that count is published unmultiplied — the step's size in resource units (100) is the game's fixed constant, not carried by any recording, and multiplying it is 007's reconstruction layer's job, behind a versioned constant that can gap"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."participant.group_silence_episodes"]
+classification = "inferred"
+status = "planned"
+source = "unit object identifiers named by move, interact and order commands, the match clock, participant-resigned and match-ended"
+method = "group-silence.banding v1 (T633): a group is two or more unit object ids named together by one participant's move, interact or order command (the only classes carrying decoded ids), seen together on at least REPEAT_MIN=2 separate occasions, then never named together again before that participant's exit or the match's end. An episode publishes only when the resulting silence lasts at least MIN_SILENCE_MS=180000 ms. Confidence basis: intensity is the occurrence count above; duration_ratio is the observed silence length divided by the time remaining in the match after the group's last command, measured to the true match end even when the participant resigned first — an observed silence cut short by resignation is therefore a weaker signal than one that ran to the match's own end. Confidence bands: medium when intensity>=MEDIUM_INTENSITY=4 and duration_ratio>=MEDIUM_DURATION_RATIO=0.5, low otherwise. High is never assigned: this method sees only three command kinds — move, interact and order carry decoded unit ids; formation, stance, patrol and stop do not — so a group parked by one of those commands is indistinguishable here from one truly abandoned, and that blind spot caps the level this banding may assign at medium, structurally, not as a per-instance judgement. These four thresholds are read by the implementation from this sentence, not from a Python constant: changing one is a register edit and a regenerated view (packages/replay-engine/src/aoe2stats_replay_engine/silence.py)"
+requires_knowledge = []
+depends_on = ["event.units_commanded.unit_object_ids", "event.clock_ms", "event.participant", "event.match_ended.final_clock_ms"]
+validation = "packages/replay-engine/tests/test_silence.py — synthetic silence streams and both committed recordings (feature 006 phase 3, T633)"
+confidence_method = "the ratio of the observed silence length to the match time remaining after the group's last command (duration_ratio), combined with the number of times the group was commanded together before it (intensity), banded per the method's MEDIUM_INTENSITY and MEDIUM_DURATION_RATIO thresholds; medium or low only, never high, per the method's blind-spot cap"
+non_claim = "this is not a casualty count and not a count of units lost: a unit leaves the command log when its owner stops selecting it, alive or dead, and a unit never individually selected is never in the log at all; a group told to hold, patrol or stop reads as silent"
+evidence = "specs/006-replay-analysis-foundations/research.md D10"
+
+[datum."participant.starting_attributes"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-attributes decoder (feature 007, research D1 tier A)"
+source = "the per-player attribute array in the decompressed header, present in the file and reachable by no working parser"
+method = "a repository-local decoder anchored on the participant's name string, golden-tested against committed recordings"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden starting attributes (feature 007)"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."participant.starting_resources"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-attributes decoder (feature 007, research D1 tier A)"
+source = "the first entries of the participant's starting attribute array: food, wood, stone and gold"
+method = "read from the decoded attribute array in the engine's own resource order"
+requires_knowledge = []
+depends_on = ["participant.starting_attributes"]
+validation = "packages/replay-engine/tests — golden starting attributes (feature 007)"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."event.starting_attributes.values"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-attributes decoder (feature 007, research D1 tier A)"
+source = "the per-participant attribute values of the declared-only starting-attributes canonical event"
+method = "emitted by the starting-attributes decoder once it exists; the type is declared now so its arrival changes no type"
+requires_knowledge = []
+depends_on = ["participant.starting_attributes"]
+validation = "a test asserts the adapter emits no such event until the decoder lands"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."map.starting_objects"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the Gaia and per-player object table in the decompressed header, present in the file and behind a variable-length grammar"
+method = "a repository-local decoder ported from an existing open grammar, golden-tested against committed recordings"
+requires_knowledge = []
+depends_on = []
+validation = "packages/replay-engine/tests — golden object table (feature 007)"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."event.starting_object.object_id"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the object identifier of the declared-only starting-object canonical event"
+method = "emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "a test asserts the adapter emits no such event until the decoder lands"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."event.starting_object.object_class"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the object class of the declared-only starting-object canonical event"
+method = "emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "a test asserts the adapter emits no such event until the decoder lands"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."event.starting_object.position"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the position of the declared-only starting-object canonical event"
+method = "emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "a test asserts the adapter emits no such event until the decoder lands"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."event.starting_object.owner"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the owning participant of the declared-only starting-object canonical event"
+method = "emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "a test asserts the adapter emits no such event until the decoder lands"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."participant.start_position"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the position of the participant's starting town centre among the decoded starting objects"
+method = "read from the decoded object table; the participant is the object's owner"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "packages/replay-engine/tests — golden object table (feature 007)"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."map.resource_geometry"]
+classification = "decoded"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the positions of gold, stone, berries, huntables and forest among the decoded objects and the terrain"
+method = "read from the decoded object table and the terrain grid; deferred behind feature 007's income work"
+requires_knowledge = []
+depends_on = ["map.starting_objects"]
+validation = "packages/replay-engine/tests — golden object table (feature 007)"
+evidence = "specs/006-replay-analysis-foundations/research.md D1"
+
+[datum."reconstruction.resources_spent"]
+classification = "reconstructed"
+status = "planned"
+source = "queued units, researched technologies and placed buildings, priced by the versioned knowledge base for the participant's civilisation"
+method = "sum, per resource, of the knowledge base's cost for each ordered entity, cancellations subtracted; an order is a command, not a completion"
+requires_knowledge = ["cost"]
+depends_on = ["event.unit_queued.unit_id", "event.unit_queued.count", "event.research_queued.technology_id", "event.building_placed.building_id", "event.match_started.participants"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.ordered_production_ms"]
+classification = "reconstructed"
+status = "planned"
+source = "queued units and researched technologies, timed by the versioned knowledge base for the participant's civilisation"
+method = "sum of the knowledge base's production time for each order against the producing building, per building; an order is a command, not a completion"
+requires_knowledge = ["production_time", "produced_at"]
+depends_on = ["event.unit_queued.unit_id", "event.unit_queued.count", "event.unit_queued.building_object", "event.research_queued.technology_id", "event.research_queued.researching_building", "event.match_started.participants"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.age_up_modelled_arrival_ms"]
+classification = "reconstructed"
+status = "planned"
+source = "the age-up research command and the knowledge base's research time for that age and civilisation"
+method = "command time plus the modelled research time; a model of an arrival, kept apart from the observed command time"
+requires_knowledge = ["production_time"]
+depends_on = ["participant.age_up_commands", "event.match_started.participants"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.prerequisite_order_check"]
+classification = "reconstructed"
+status = "planned"
+source = "ordered entities and their required age and prerequisite buildings from the versioned knowledge base"
+method = "for each order, whether its age requirement and prerequisites were commanded earlier on the match clock"
+requires_knowledge = ["age_requirement", "prerequisites", "available_to"]
+depends_on = ["event.unit_queued.unit_id", "event.research_queued.technology_id", "event.building_placed.building_id", "event.clock_ms", "event.match_started.participants"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.ordered_army_cost"]
+classification = "derived"
+status = "planned"
+source = "the reconstructed resources spent on military units ordered"
+method = "resources spent restricted to units the knowledge base classes as military; a spending figure, not an army value, since losses are unknowable"
+requires_knowledge = ["cost"]
+depends_on = ["reconstruction.resources_spent"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.income_model"]
+classification = "reconstructed"
+status = "blocked"
+blocked_on = "the starting-attributes decoder (feature 007, research D1 tier A)"
+source = "the reconstructed spending and the participant's decoded starting resources"
+method = "starting resources plus modelled income less modelled spending over the match clock"
+requires_knowledge = ["cost"]
+depends_on = ["participant.starting_resources", "reconstruction.resources_spent"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.exploration_coverage"]
+classification = "reconstructed"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "the participant's start position, commanded movement and the map's decoded objects"
+method = "tiles within modelled line of sight of commanded positions; a model of sight, never an observation of what was seen"
+requires_knowledge = ["line_of_sight"]
+depends_on = ["participant.start_position", "map.starting_objects", "event.units_commanded.unit_object_ids"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
+
+[datum."reconstruction.map_control_model"]
+classification = "reconstructed"
+status = "blocked"
+blocked_on = "the starting-object-table decoder (feature 007, research D1 tier B)"
+source = "decoded starting objects, placed buildings and commanded movement"
+method = "a modelled reading of where each participant had presence; not a measurement of control"
+requires_knowledge = ["line_of_sight"]
+depends_on = ["map.starting_objects", "event.building_placed.position", "event.units_commanded.unit_object_ids"]
+validation = "feature 007 golden reconstruction fixtures and reconstruction invariants"
+evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)"
