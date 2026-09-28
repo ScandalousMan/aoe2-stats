@@ -1071,7 +1071,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       operation name, so that `multiply` means one thing on every field
       ([data-model.md](./data-model.md) §6, `operand` row). No committed effect reaches any of
       these; **lands before T655 publishes anything**
-- [x] T652s **SUPERSEDED by T652u**, whose team condition makes a team effect match every civilisation on the owner's team. **A team bonus refuses only for its owner.** Malians' University row gaps
+- [x] T652s **SUPERSEDED by T652u and T652w**, whose team condition makes a team effect match every civilisation on the owner's team. **A team bonus refuses only for its owner.** Malians' University row gaps
       `production_time` for Malians alone; an ally's University technologies still answer the
       baseline, the substitution research.md D5 forbids ("keep their fields gapped"). A rules query
       does not know a player's allies. Decide where the gap is raised — the coverage pass knows
@@ -1100,6 +1100,8 @@ Three were arbitration and are decided, with the decision recorded in the task t
       (3) Re-model the five refusals that touch a carried field: Persians' Town Center and Dock
       (by age, 5/10/15/20%), Franks' Castles (-15/25% by age), Chivalry and Kamandaran (after the
       technology), Malians' University (team, 80%). Refusals on fields the pack does not carry stay.
+      _Done for four: Kamandaran stays refused, because the source never states its wood amount
+      ([research.md](./research.md) D5)._
       (4) `coverage.py` asks whether a field is modelled, not for its value, so a modelled
       conditional effect is no gap. Re-derive both recordings' enumerated blockers in
       `test_coverage.py` from what the pass then emits. (5) Tests, each shown failing first: Persians
@@ -1116,8 +1118,34 @@ Three were arbitration and are decided, with the decision recorded in the task t
       shared by strangers. Then make the coverage pass supply each participant's team as
       `Context.team`, so an unmodelled teammate gaps every cost and time for its allies
       ([contracts/knowledge-base.md](./contracts/knowledge-base.md), "Civilisation qualification"
-      step 1). Contrast test: the same stream with that ally modelled answers. **Lands before T655
+      step 1). Contrast test: the same stream with that ally modelled answers. The pass merges entities
+      per civilisation (T652k), which cannot carry two teams: key it by civilisation and team. A gap
+      naming an unmodelled teammate is the same row for every ally that raised it, so de-duplicate it
+      against `analysis_knowledge_gaps`' unique index, as T652k did for slots. **Lands before T655
       publishes anything**
+
+- [ ] T652w **A team bonus reaches only what its owner can research — the fifth review's
+      blocker.** T652q restricted Malians' University row to what Malians' own tree offers, which
+      was right while the row refused for Malians alone; T652u then made it a `team` effect that
+      applies to every ally, and nobody re-derived the selector. Measured with Malians on the team:
+      Chemistry (47) answers 55.6 s for Franks, but Siege Engineers (377) answers **45 s with no
+      effect** — it should be 25 — and Arrowslits (608) 25 where it should be 13.9; 64, 909 and 910
+      the same. Every modelled ally can research at least one of the six. (1) A `team` row selects
+      every technology produced at the named building, **with no owner-tree restriction**: each
+      ally's own tree decides what that ally can research, and `available_to` already answers that.
+      Change `test_selector_availability.py` to derive a team row that way, and add Franks-ally
+      377 = 25 with Franks-opponent 377 = 45 as the contrast. (2) Validate `Context`: a supplied
+      `team` that omits the queried civilisation, or an `age` outside 1-4, raises instead of
+      answering the baseline — measured, Malians with `team={"Franks"}` answers 100 s, and Franks'
+      Castle at age 5 answers 650. (3) Same files, same commit: `coverage.py`'s comments still quote
+      contract wording 57a78a5b removed; `effects.py`'s `source_text` claim names five exceptions
+      where there are six (Malians' pierce-armour row loses the pack's line break); `effects.toml`
+      reasons that say a rules query cannot carry allies, age or match state contradict amended D5 —
+      each such row is refused only because its field is not carried, and should say that alone;
+      `snapshot.toml` says "five" re-modelled refusals and lists four; T652q's `validated_by`
+      readings are dated 2026-09-26 but were made 2026-09-28; `query.production_time` is typed and
+      documented as returning an integer and now returns a fraction. Recompute both digests and
+      keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
