@@ -13,14 +13,14 @@ a source, it references `docs/data-sources.md` or [research.md](./research.md).
 
 The closed, ordered set carried by every published value (FR-007, FR-008).
 
-| Order | Tier            | Means                                                                 |
-| ----- | --------------- | --------------------------------------------------------------------- |
-| 1     | `observed`      | Read from a named field of the recording, unchanged.                  |
-| 2     | `decoded`       | Extracted from a payload by this repository's own decoding.           |
-| 3     | `reconstructed` | Produced by replaying game rules over observed and decoded inputs.    |
-| 4     | `derived`       | Computed from reconstructed state.                                    |
-| 5     | `inferred`      | An interpretation. Always carries a confidence.                       |
-| 6     | `predicted`     | A statement about what was expected. Always carries a confidence.     |
+| Order | Tier            | Means                                                              |
+| ----- | --------------- | ------------------------------------------------------------------ |
+| 1     | `observed`      | Read from a named field of the recording, unchanged.               |
+| 2     | `decoded`       | Extracted from a payload by this repository's own decoding.        |
+| 3     | `reconstructed` | Produced by replaying game rules over observed and decoded inputs. |
+| 4     | `derived`       | Computed from reconstructed state.                                 |
+| 5     | `inferred`      | An interpretation. Always carries a confidence.                    |
+| 6     | `predicted`     | A statement about what was expected. Always carries a confidence.  |
 
 **Rules.**
 
@@ -37,10 +37,10 @@ The closed, ordered set carried by every published value (FR-007, FR-008).
 
 Attached to every value at `inferred` or `predicted`, and to nothing else (FR-010, FR-010a).
 
-| Field   | Type                          | Rule                                                                     |
-| ------- | ----------------------------- | ------------------------------------------------------------------------ |
-| `level` | closed, ordered: `low` < `medium` < `high` | Never a number. A numeric probability is rejected by the type. |
-| `basis` | non-empty text                | The evidence that placed the value at this level, stated so a reader can check it. An empty or whitespace basis fails construction. |
+| Field   | Type                                       | Rule                                                                                                                                |
+| ------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `level` | closed, ordered: `low` < `medium` < `high` | Never a number. A numeric probability is rejected by the type.                                                                      |
+| `basis` | non-empty text                             | The evidence that placed the value at this level, stated so a reader can check it. An empty or whitespace basis fails construction. |
 
 A confidence on a value at tier 1 to 4 is an error, not a harmless extra: it would suggest doubt
 where the method admits none.
@@ -49,43 +49,43 @@ where the method admits none.
 
 What produced one value (FR-009).
 
-| Field        | Type                         | Rule                                                                 |
-| ------------ | ---------------------------- | -------------------------------------------------------------------- |
-| `datum`      | register datum id            | Must resolve to a register entry (FR-006).                           |
-| `tier`       | Truth tier                   | Must equal the entry's tier, and obey the weakest-input rule.        |
-| `method`     | method id + version          | Names the algorithm in a form a reader can recompute (FR-009).       |
-| `inputs`     | list of datum ids            | Empty only at `observed`.                                            |
-| `confidence` | Confidence, optional         | Required at tiers 5 and 6, forbidden elsewhere.                      |
-| `non_claim`  | text, optional               | Required where the register entry declares one (FR-013).             |
+| Field        | Type                 | Rule                                                           |
+| ------------ | -------------------- | -------------------------------------------------------------- |
+| `datum`      | register datum id    | Must resolve to a register entry (FR-006).                     |
+| `tier`       | Truth tier           | Must equal the entry's tier, and obey the weakest-input rule.  |
+| `method`     | method id + version  | Names the algorithm in a form a reader can recompute (FR-009). |
+| `inputs`     | list of datum ids    | Empty only at `observed`.                                      |
+| `confidence` | Confidence, optional | Required at tiers 5 and 6, forbidden elsewhere.                |
+| `non_claim`  | text, optional       | Required where the register entry declares one (FR-013).       |
 
 ## 4. Determinability entry
 
 One record of `packages/core/src/aoe2stats_core/truth/register.toml` (FR-001 to FR-006a). Schema and
 gate in [contracts/register.md](./contracts/register.md).
 
-| Field                | Rule                                                                                   |
-| -------------------- | -------------------------------------------------------------------------------------- |
+| Field                | Rule                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------ |
 | `id`                 | Unique, stable, dotted. States what was measured, never what it is hoped to mean (FR-012). |
-| `classification`     | One of the six tiers, or `non-determinable`.                                           |
-| `status`             | `published`, `planned` (a later feature publishes it), or `blocked`.                   |
-| `source`             | The recording field, payload or upstream datum it comes from.                          |
-| `method`             | The decoding or algorithm.                                                             |
-| `requires_knowledge` | List of knowledge field references; drives gap severity (research D7).                 |
-| `depends_on`         | Other datum ids. The graph must be acyclic.                                            |
-| `validation`         | How it is checked — a test id or a named procedure.                                    |
-| `evidence`           | Reference into `docs/data-sources.md` or a research record. Never a restated number.   |
-| `blocked_on`         | Required when `status` is `blocked`: the named dependency (FR-005).                    |
-| `non_claim`          | Required for the group-silence datum (FR-013); optional elsewhere.                     |
+| `classification`     | One of the six tiers, or `non-determinable`.                                               |
+| `status`             | `published`, `planned` (a later feature publishes it), or `blocked`.                       |
+| `source`             | The recording field, payload or upstream datum it comes from.                              |
+| `method`             | The decoding or algorithm.                                                                 |
+| `requires_knowledge` | List of knowledge field references; drives gap severity (research D7).                     |
+| `depends_on`         | Other datum ids. The graph must be acyclic.                                                |
+| `validation`         | How it is checked — a test id or a named procedure.                                        |
+| `evidence`           | Reference into `docs/data-sources.md` or a research record. Never a restated number.       |
+| `blocked_on`         | Required when `status` is `blocked`: the named dependency (FR-005).                        |
+| `non_claim`          | Required for the group-silence datum (FR-013); optional elsewhere.                         |
 
 Only when `classification` is `non-determinable`, and then all five are mandatory (FR-003, FR-004):
 
-| Field                      | Rule                                                        |
-| -------------------------- | ----------------------------------------------------------- |
-| `reason`                   | Why it cannot be known.                                     |
-| `impact`                   | What it costs the analytics that wanted it.                 |
-| `approximation`            | Whether one exists, and what it is.                         |
-| `approximation_acceptable` | `yes` or `no`. There is no third value and no omission.     |
-| `would_change_if`          | The condition that would change the answer (FR-004).        |
+| Field                      | Rule                                                    |
+| -------------------------- | ------------------------------------------------------- |
+| `reason`                   | Why it cannot be known.                                 |
+| `impact`                   | What it costs the analytics that wanted it.             |
+| `approximation`            | Whether one exists, and what it is.                     |
+| `approximation_acceptable` | `yes` or `no`. There is no third value and no omission. |
+| `would_change_if`          | The condition that would change the answer (FR-004).    |
 
 **State.** `blocked` to `planned` to `published`, forward only, each move made by the change that
 earns it. The starting-state data enter as `blocked`, with `blocked_on` naming the decoder research
@@ -96,13 +96,13 @@ D1 describes — not `non-determinable`, which research D1 showed to be the wron
 One engine-independent occurrence (FR-015 to FR-020). Vocabulary in
 [contracts/canonical-events.md](./contracts/canonical-events.md).
 
-| Field         | Type                       | Rule                                                                  |
-| ------------- | -------------------------- | --------------------------------------------------------------------- |
+| Field         | Type                       | Rule                                                                                                                        |
+| ------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `clock_ms`    | integer                    | Match clock, **accumulated** from sync increments — only actions carry a time of their own (research D10). Never wall time. |
-| `participant` | participant slot, optional | Absent only for match-level events. Never an observer or empty slot.  |
-| `kind`        | closed enumeration         | See the contract. Includes `undecoded`.                               |
-| `tier`        | Truth tier                 | `observed` or `decoded` for everything this feature's adapter emits.  |
-| `payload`     | one typed record per kind  | No field named, shaped or offset after an engine's output (FR-017).   |
+| `participant` | participant slot, optional | Absent only for match-level events. Never an observer or empty slot.                                                        |
+| `kind`        | closed enumeration         | See the contract. Includes `undecoded`.                                                                                     |
+| `tier`        | Truth tier                 | `observed` or `decoded` for everything this feature's adapter emits.                                                        |
+| `payload`     | one typed record per kind  | No field named, shaped or offset after an engine's output (FR-017).                                                         |
 
 **Rules.** Research, age-up and resignation collapse to their first occurrence over the whole match;
 no other kind collapses (FR-018). Nothing is attributed to a participant after their exit. An unfinished production is never emitted as complete.
@@ -114,32 +114,32 @@ changes no type (FR-020).
 One immutable body of rules (FR-022 to FR-028, FR-034). Surface in
 [contracts/knowledge-base.md](./contracts/knowledge-base.md).
 
-| Field           | Rule                                                                                      |
-| --------------- | ----------------------------------------------------------------------------------------- |
-| `source`        | Pack name.                                                                                |
-| `source_version`| The pack's own revision — a commit, since the source publishes nothing else.              |
-| `describes_build` | The game build the snapshot speaks for. **Distinct from** the build the source revision implemented (research D4). |
-| `digest`        | Over the snapshot's canonical content. Verified on load; a mismatch refuses to load.      |
-| `validation`    | What was checked, against what, by whom, when (FR-030). Includes any carry-forward attestation, build by build. |
-| `civilisations_modelled` | The civilisations whose effects are modelled. All others refuse qualified queries (research D5). |
+| Field                    | Rule                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `source`                 | Pack name.                                                                                                         |
+| `source_version`         | The pack's own revision — a commit, since the source publishes nothing else.                                       |
+| `describes_build`        | The game build the snapshot speaks for. **Distinct from** the build the source revision implemented (research D4). |
+| `digest`                 | Over the snapshot's canonical content. Verified on load; a mismatch refuses to load.                               |
+| `validation`             | What was checked, against what, by whom, when (FR-030). Includes any carry-forward attestation, build by build.    |
+| `civilisations_modelled` | The civilisations whose effects are modelled. All others refuse qualified queries (research D5).                   |
 
 Identity is the first four fields together (FR-024). A snapshot directory is written once and never
 edited (FR-025); a correction is a new snapshot.
 
 **Civilisation effect** — one hand-transcribed bonus.
 
-| Field          | Rule                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------- |
-| `civilisation` | Identifier.                                                                           |
-| `source_text`  | The verbatim sentence from the vendored strings, and its key.                         |
-| `modelled`     | `yes` or `no`. `no` requires `reason`, and keeps the touched fields gapped.           |
-| `selector`     | Which entities it touches — by explicit identifier list, never by a fuzzy class name. |
-| `field`        | Which knowledge field it modifies.                                                    |
-| `operation`    | Closed: `multiply`, `add`, `set`.                                                     |
-| `operand`      | The amount, per resource where the field is a cost. For a **time**, `multiply`'s operand is the X of "works X% faster", and the time is divided by 1 + X — Chivalry's "+40%" is `0.40`, never the factor `0.6`. |
-| `condition`    | Optional, closed: `age` (the operand is a table by age), `researched` (a technology that must have been researched), `team` (applies to every civilisation on the owner's team). Absent means unconditional. An `age` table is keyed `"1"`-`"4"` by the pack's age number, and an age absent from it means the bonus does not apply then — Franks' Castle discount before the Castle Age — not a gap. `researched` names its technology in `condition_technology`. |
-| *rounding*     | A **cost** is an integer: `multiply` and `add` round half up — Malians' -15% wood takes a 150-wood Dock to 128, not 127. A **time** keeps its fraction, as the game's does: "works X% faster" divides it by 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s. `set` replaces the value with the operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
-| `validated_by` | The second reading that confirmed it (FR-030).                                        |
+| Field          | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `civilisation` | Identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `source_text`  | The verbatim sentence from the vendored strings, and its key.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `modelled`     | `yes` or `no`. `no` requires `reason`, and keeps the touched fields gapped.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `selector`     | Which entities it touches — by explicit identifier list, never by a fuzzy class name.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `field`        | Which knowledge field it modifies.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `operation`    | Closed: `multiply`, `add`, `set`, `faster`. `multiply` means the same literal factor on every field it touches (T652r) — "works X% faster" is not a `multiply`, it is its own operation, `faster`, so a reader never has to know which field a `multiply` row touches to know what it does.                                                                                                                                                                                                                                              |
+| `operand`      | The amount, per resource where the field is a cost. For a **time**, `faster`'s operand is the X of "works X% faster", and the time is divided by 1 + X — Chivalry's "+40%" is `0.40`, never the factor `0.6`. Rejected at parse time (T652r): a negative `multiply` operand on a `cost` (it would flip the cost's own sign), a `faster` operand of `-1` or below (dividing by `1 + operand` divides by zero or goes negative), and a non-whole `set` operand on `cost` or `age_requirement` (the game never prices either fractionally). |
+| `condition`    | Optional, closed: `age` (the operand is a table by age), `researched` (a technology that must have been researched), `team` (applies to every civilisation on the owner's team). Absent means unconditional. An `age` table is keyed `"1"`-`"4"` by the pack's age number, and an age absent from it means the bonus does not apply then — Franks' Castle discount before the Castle Age — not a gap. `researched` names its technology in `condition_technology`.                                                                       |
+| _rounding_     | A **cost** is an integer: `multiply` and `add` round half up — Malians' -15% wood takes a 150-wood Dock to 128, not 127; `add` never carries a cost below zero, on either the per-resource or the scalar path (T652r). A **time** keeps its fraction, as the game's does: `faster` divides it by 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s. `set` replaces the value with the operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`.      |
+| `validated_by` | The second reading that confirmed it (FR-030).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Source disagreement** (FR-028) — entity, field, build, each source's value, which one was stored,
 and why.
@@ -148,15 +148,15 @@ and why.
 
 One absent required field (FR-035 to FR-039).
 
-| Field          | Rule                                                                                   |
-| -------------- | -------------------------------------------------------------------------------------- |
-| `entity`       | Kind and identifier.                                                                   |
-| `field`        | The knowledge field that was asked for.                                                |
+| Field          | Rule                                                                                                                                                                                                                                                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity`       | Kind and identifier.                                                                                                                                                                                                                                                                                                  |
+| `field`        | The knowledge field that was asked for.                                                                                                                                                                                                                                                                               |
 | `build`        | The recording's game build. **`-1` where the stream named none at all** — the column is not nullable and `cause` is closed, so a sentinel is the only honest answer left; it cannot collide with a real build or with the test stub's `describes_build = 0`. FR-039's rate report must not show it as a build (T662). |
-| `civilisation` | The civilisation the query was qualified by, where it was — or, when a teammate outside `civilisations_modelled` made the answer unknown, that teammate. |
-| `cause`        | Closed: `no-snapshot-for-build`, `entity-absent`, `field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. |
-| `prevents`     | The register data that need this field, by id — what the gap stops, not that it exists (FR-036). Computed. |
-| `severity`     | `blocking` or `informational`. **Computed** from `prevents`: blocking when it is non-empty (research D7). Never supplied by a caller. |
+| `civilisation` | The civilisation the query was qualified by, where it was — or, when a teammate outside `civilisations_modelled` made the answer unknown, that teammate.                                                                                                                                                              |
+| `cause`        | Closed: `no-snapshot-for-build`, `entity-absent`, `field-absent`, `civilisation-not-modelled`, `effect-not-modelled`.                                                                                                                                                                                                 |
+| `prevents`     | The register data that need this field, by id — what the gap stops, not that it exists (FR-036). Computed.                                                                                                                                                                                                            |
+| `severity`     | `blocking` or `informational`. **Computed** from `prevents`: blocking when it is non-empty (research D7). Never supplied by a caller.                                                                                                                                                                                 |
 
 A query that cannot answer returns a gap **in place of** a value. The return type has no third
 branch, which is how SC-008's "by construction" is met: there is no code path on which a default
@@ -164,15 +164,15 @@ could be produced.
 
 **Persistence** — `analysis_knowledge_gaps`, the feature's one table, for FR-039's aggregate report.
 
-| Column            | Type        | Note                                                      |
-| ----------------- | ----------- | --------------------------------------------------------- |
-| `id`              | bigint, PK  |                                                           |
-| `game_id`         | bigint, FK to `matches` | Indexed.                                      |
-| `identity_digest` | text        | Which analysis recorded it.                               |
-| `build`           | integer     | Indexed with `cause` — the per-patch rate is this query.  |
-| `entity_kind`, `entity_id`, `field`, `civilisation_id` | | `civilisation_id` nullable.     |
-| `cause`, `severity` | enumerations |                                                         |
-| `recorded_at`     | timestamptz |                                                           |
+| Column                                                 | Type                    | Note                                                     |
+| ------------------------------------------------------ | ----------------------- | -------------------------------------------------------- |
+| `id`                                                   | bigint, PK              |                                                          |
+| `game_id`                                              | bigint, FK to `matches` | Indexed.                                                 |
+| `identity_digest`                                      | text                    | Which analysis recorded it.                              |
+| `build`                                                | integer                 | Indexed with `cause` — the per-patch rate is this query. |
+| `entity_kind`, `entity_id`, `field`, `civilisation_id` |                         | `civilisation_id` nullable.                              |
+| `cause`, `severity`                                    | enumerations            |                                                          |
+| `recorded_at`                                          | timestamptz             |                                                          |
 
 Unique on (`identity_digest`, `entity_kind`, `entity_id`, `field`, `civilisation_id`), so a
 reproduced analysis records nothing twice. It holds no personal data: a participant is not a column.
@@ -182,14 +182,14 @@ reproduced analysis records nothing twice. It holds no personal data: a particip
 The tuple that makes a published analysis reproducible (FR-040 to FR-044). Document shape in
 [contracts/analysis-document.md](./contracts/analysis-document.md).
 
-| Component                  | Source                                                                       |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `recording`                | Object key and checksum of the retained bytes (003's `source_recording`).    |
-| `parser`                   | Name and version from the adapter.                                           |
-| `parser_dependencies`      | Installed distribution versions of the engine's declared requirements. **Non-empty, or validation fails** (FR-044). |
-| `knowledge`                | The snapshot identity, or an explicit record that no snapshot matched the build. |
-| `reconstruction_engine`    | `not-applicable` until 007. Present from the start so the tuple never changes shape. |
-| `analytics`                | This feature's own version for the coverage pass and the group-silence method. |
+| Component               | Source                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `recording`             | Object key and checksum of the retained bytes (003's `source_recording`).                                           |
+| `parser`                | Name and version from the adapter.                                                                                  |
+| `parser_dependencies`   | Installed distribution versions of the engine's declared requirements. **Non-empty, or validation fails** (FR-044). |
+| `knowledge`             | The snapshot identity, or an explicit record that no snapshot matched the build.                                    |
+| `reconstruction_engine` | `not-applicable` until 007. Present from the start so the tuple never changes shape.                                |
+| `analytics`             | This feature's own version for the coverage pass and the group-silence method.                                      |
 
 `digest` is computed over the canonical serialisation of the six, and is stored on the row in a new
 nullable `match_analyses.identity_digest` column, added by the same additive revision as the gap

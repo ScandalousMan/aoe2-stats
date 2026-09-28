@@ -1062,7 +1062,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       free-technology model uses `set`) and that `source_text` is byte-for-byte (five rows are
       not); the digest credited to T652o in `snapshot.toml`; and `test_effects.py`'s int-type test,
       which passes on the unadjusted baseline — assert the value and a non-empty `applied`
-- [ ] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add` and a
+- [x] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add` and a
       cost `multiply` with a negative operand go below zero unguarded; a time `multiply` divides by
       1 + X, so X = -1 divides by zero and X < -1 gives a negative time; a cost `set` truncates a
       fractional operand with `int()`. Reject, when `effects.toml` is parsed, a negative cost

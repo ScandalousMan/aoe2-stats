@@ -25,12 +25,18 @@
 # every technology `rules.json` lists as produced_at the University, with no owner-tree
 # restriction — a team effect applies to every ally, and only each ally's own tree, not the
 # owner's, decides what that ally can research — see `effects.toml`'s own header comment and each
-# corrected row's own `validated_by` for the full corrections.
+# corrected row's own `validated_by` for the full corrections. T652r (2026-09-28) gave "works X%
+# faster" its own operation, `faster`, distinct from `multiply` — the three rows this snapshot
+# carries whose bullet reads "work ... faster" (Franks' Chivalry, Persians' Town Center/Dock,
+# Malians' University Team Bonus) are `operation = "faster"` now, not `operation = "multiply"`;
+# no other field of any row changed, and no committed effect reached any of T652r's new parse-time
+# numeric guards (a negative cost `multiply` operand, a `faster` operand of -1 or below, a
+# non-whole `cost`/`age_requirement` `set` operand).
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:4173512068f52a70afe8867995c777c37e1f86b5f96b45ff5b42b5e04d747dc3"
+digest = "sha256:b0afb43d2aead97cb763091f59c3f58ca741beba868d24f6a622585289d1c9e4"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 

@@ -159,6 +159,144 @@ def test_parse_effects_toml_rejects_malformed_toml() -> None:
         effects.parse_effects_toml("this is not [ valid toml")
 
 
+# ----------------------------------------------------------------- T652r: numeric parse guards
+
+_MINIMAL_FASTER_EFFECT = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "998"
+source_text = "synthetic: a 'works X% faster' bonus, T652r"
+modelled = "yes"
+field = "production_time"
+operation = "faster"
+operand = 0.40
+selector = [{ kind = "unit", id = "1" }]
+validated_by = "synthetic fixture, T652r"
+"""
+
+
+def test_faster_is_its_own_operation_distinct_from_multiply() -> None:
+    """T652r: "works X% faster" no longer overloads `multiply` — `multiply` means a literal
+    factor on every field it touches, and a time bonus's own divide-by-(1+X) semantics get their
+    own name, `faster`."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_FASTER_EFFECT)
+    assert effect.operation == "faster"
+    assert "faster" in effects.OPERATIONS
+
+
+@pytest.mark.parametrize("operand", [-1, -1.0, -2, -1.5])
+def test_parse_effects_toml_rejects_a_faster_operand_at_or_below_negative_one(
+    operand: float,
+) -> None:
+    """T652r: a 'faster' operand divides the baseline by `1 + operand` — `operand = -1` divides
+    by zero, and anything below that produces a negative time. Both are values the game cannot
+    produce, so parsing must refuse rather than let `apply` raise or silently invert a time
+    later."""
+    text = _MINIMAL_FASTER_EFFECT.replace("operand = 0.40", f"operand = {operand}")
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+def test_parse_effects_toml_accepts_a_faster_operand_above_negative_one() -> None:
+    """The contrast case the guard above needs: an operand just above the forbidden boundary
+    (never reached by a committed effect, but a legitimate value in principle) must still parse."""
+    text = _MINIMAL_FASTER_EFFECT.replace("operand = 0.40", "operand = -0.99")
+    (effect,) = effects.parse_effects_toml(text)
+    assert effect.operand == -0.99
+
+
+def test_parse_effects_toml_rejects_a_faster_operand_below_negative_one_in_an_age_table() -> None:
+    """The same guard, reached through a `condition = "age"` operand table (Persians' Town
+    Center/Dock row's own shape) instead of a bare number — the parse-time walk must not stop at
+    the table's outer level."""
+    text = (
+        _MINIMAL_FASTER_EFFECT.replace("operand = 0.40", 'operand = { "1" = -1.0 }')
+        + 'condition = "age"\n'
+    )
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+@pytest.mark.parametrize("operand", [-0.1, -1])
+def test_parse_effects_toml_rejects_a_negative_cost_multiply_operand(operand: float) -> None:
+    """T652r: a negative `multiply` operand on a cost flips its sign — the game never prices
+    anything negatively, so parsing must refuse rather than let a query silently answer a
+    negative cost."""
+    text = _MINIMAL_MODELLED_EFFECT.replace(
+        "operand = { food = 0.75, wood = 0.75 }", f"operand = {{ wood = {operand} }}"
+    )
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+def test_parse_effects_toml_rejects_a_negative_cost_multiply_operand_in_an_age_table() -> None:
+    """The same guard, reached through a `condition = "age"` operand table (Franks' Castle
+    discount's own shape: an age table of per-resource mappings) instead of a bare resource
+    mapping — the parse-time walk must reach every nesting level."""
+    text = (
+        _MINIMAL_MODELLED_EFFECT.replace(
+            "operand = { food = 0.75, wood = 0.75 }", 'operand = { "3" = { stone = -0.15 } }'
+        )
+        + 'condition = "age"\n'
+    )
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+_MINIMAL_COST_SET_EFFECT = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "998"
+source_text = "synthetic: a 'set' cost effect, T652r"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { wood = 0 }
+selector = [{ kind = "building", id = "1" }]
+validated_by = "synthetic fixture, T652r"
+"""
+
+
+def test_parse_effects_toml_rejects_a_non_whole_cost_set_operand() -> None:
+    """T652r: `_apply_scalar`'s `set` branch truncates a fractional operand with `int()` for
+    `age_requirement`, and `_apply_mapping`'s does the same for `cost` — a transcription that
+    puts a fractional amount into a 'set' cost is a defect the game cannot represent, and must be
+    refused at parse time rather than silently truncated later."""
+    text = _MINIMAL_COST_SET_EFFECT.replace("operand = { wood = 0 }", "operand = { wood = 12.5 }")
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+def test_parse_effects_toml_accepts_a_whole_cost_set_operand() -> None:
+    (effect,) = effects.parse_effects_toml(_MINIMAL_COST_SET_EFFECT)
+    assert effect.operand == {"wood": 0}
+
+
+_MINIMAL_AGE_REQUIREMENT_SET_EFFECT = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "998"
+source_text = "synthetic: a 'set' age_requirement effect, T652r"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = 3
+selector = [{ kind = "technology", id = "1" }]
+validated_by = "synthetic fixture, T652r"
+"""
+
+
+def test_parse_effects_toml_rejects_a_non_whole_age_requirement_set_operand() -> None:
+    text = _MINIMAL_AGE_REQUIREMENT_SET_EFFECT.replace("operand = 3", "operand = 3.5")
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
+def test_parse_effects_toml_accepts_a_whole_age_requirement_set_operand() -> None:
+    (effect,) = effects.parse_effects_toml(_MINIMAL_AGE_REQUIREMENT_SET_EFFECT)
+    assert effect.operand == 3
+
+
 # --------------------------------------------------------------------------------- matching
 
 
@@ -213,6 +351,23 @@ def test_apply_matched_applies_a_multiply_operation_on_a_cost_with_round_half_up
     )
     # 35 * 0.75 = 26.25 -> 26; 25 * 0.75 = 18.75 -> 19 (round half up, never banker's rounding).
     assert value == {"food": 26, "wood": 19}
+    assert applied == (effect,)
+
+
+def test_apply_matched_applies_a_faster_operation_on_a_time() -> None:
+    """T652r: `faster` divides the baseline by `1 + operand`, distinct from `multiply` — a
+    synthetic, file-free counterpart to the real Chivalry/Town Center/University rows below,
+    proving the mechanism directly against `apply_matched`."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_FASTER_EFFECT)
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="unit",
+        id="1",
+        field="production_time",
+        value=25,
+    )
+    assert value == pytest.approx(25 / 1.40)
     assert applied == (effect,)
 
 
@@ -1082,4 +1237,49 @@ def test_an_add_that_lands_exactly_at_zero_does_not_raise() -> None:
         value={"wood": 25},
     )
     assert value == {"wood": 0}
+    assert applied == (effect,)
+
+
+_MINIMAL_ADD_SCALAR_EFFECT_TEMPLATE = """\
+[[effect]]
+civilisation = "Franks"
+source_key = "998"
+source_text = "synthetic: an add effect on a scalar field, T652r"
+modelled = "yes"
+field = "age_requirement"
+operation = "add"
+operand = {operand}
+selector = [{{ kind = "technology", id = "1" }}]
+validated_by = "synthetic fixture, T652r"
+"""
+
+
+def test_a_scalar_add_that_would_drive_a_field_negative_raises() -> None:
+    """T652r: `_apply_mapping`'s 'add' branch already refused a cost below zero (T652p (f)); the
+    scalar path (`_apply_scalar`) previously did not — "a scalar `add` ... go[es] below zero
+    unguarded." No committed effect reaches this today, but the invariant must hold wherever
+    `add` is live, not only on the mapping half."""
+    (effect,) = effects.parse_effects_toml(_MINIMAL_ADD_SCALAR_EFFECT_TEMPLATE.format(operand=-5))
+    with pytest.raises(effects.EffectsError, match="negative"):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Franks",
+            kind="technology",
+            id="1",
+            field="age_requirement",
+            value=3,
+        )
+
+
+def test_a_scalar_add_that_lands_exactly_at_zero_does_not_raise() -> None:
+    (effect,) = effects.parse_effects_toml(_MINIMAL_ADD_SCALAR_EFFECT_TEMPLATE.format(operand=-3))
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="technology",
+        id="1",
+        field="age_requirement",
+        value=3,
+    )
+    assert value == 0
     assert applied == (effect,)
